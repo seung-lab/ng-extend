@@ -194,6 +194,8 @@ watch(hasMergeSegments, shown => { if (shown) placeBesideChat(); }, { immediate:
 // (Ames 2026-10-08), and loses its remove button once it has been sent.
 const rowStatus = (i: number) => store.mergeRows[i]?.status || '';
 const rowRemovable = (i: number) => store.mergeRows[i]?.removable ?? true;
+/** Why a merge failed, in the server's words: shown under its row. */
+const rowWhy = (i: number) => store.mergeRows[i]?.why || '';
 
 /** Toggle NG's native auto-submit checkbox */
 function toggleAutoSubmit() {
@@ -345,6 +347,8 @@ function cancelTool() {
                   @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)">{{ pair[1] }}</span>
             <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
+            <!-- why it failed, in the server's words, on a line of its own -->
+            <div v-if="rowWhy(i)" class="nge-smo-merge-why">{{ rowWhy(i) }}</div>
           </div>
         </div>
       </div>
@@ -1301,4 +1305,12 @@ function cancelTool() {
 .nge-smo-merge-status--done { border-color: rgb(0 220 120 / .6); color: #a6ffd6; background: rgb(0 220 120 / .10); }
 .nge-smo-merge-status--failed { border-color: rgb(255 100 100 / .6); color: #ffb0b0; background: rgb(255 80 80 / .10); }
 .nge-smo-merge-remove:hover, .nge-smo-merge-remove:focus-visible { background: rgb(255 90 90 / .14); outline: none; }
+/* A failed merge says why, under its row: the server's own words, wrapped.
+   (Not a hover card: the list scrolls, and would clip one.) */
+.nge-smo-merge-row { flex-wrap: wrap; }
+.nge-smo-merge-why {
+  flex: 0 0 100%; box-sizing: border-box; margin: 1px 0 3px; padding-left: 23px;
+  font-family: 'Inter', system-ui, sans-serif; font-size: 11px; line-height: 1.35; color: #ffb4b4;
+  white-space: normal; overflow-wrap: anywhere; user-select: text;
+}
 </style>

@@ -342,6 +342,17 @@ export const useLayersStore = defineStore('layers', () => {
       } catch { return null; }
     }
 
+    /** Is there a segmentation layer on a graph server (one whose edits are
+     *  answered with an operation id)? */
+    function hasGraphLayer(): boolean {
+      try {
+        for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+          if (ml?.layer?.constructor?.type === 'segmentation' && ml.layer.graphConnection?.value) return true;
+        }
+      } catch { /* the viewer is going away */ }
+      return false;
+    }
+
     // Signal fires (segId, wasAdded) — track the specific segments involved
     const handler = (changedId?: any, wasAdded?: boolean) => {
       const newCount = visibleSegs.size;
@@ -401,6 +412,15 @@ export const useLayersStore = defineStore('layers', () => {
 
         // The graph server's own acknowledgement already counted this one.
         if (Date.now() - lastAckAt < EDIT_DEBOUNCE_MS + 5000) return;
+        // On a graph layer every real edit is acknowledged with the server's
+        // operation id, and that acknowledgement is what gets counted. This
+        // watcher can then only be wrong: a second copy of an edit whose
+        // segments settled more than eight seconds after its acknowledgement
+        // (a batch of merges), or a cell added to or taken out of the view
+        // while a tool was open. From 2026-10-06 to 10-10 it wrote 335 of the
+        // 3,338 edits logged, none with an operation id. It now counts only
+        // where there is no graph layer to acknowledge anything.
+        if (lastAckAt > 0 || hasGraphLayer()) return;
         countEdit(operation, {
           segment_before: removedIds,
           segment_after: addedIds,
@@ -3131,8 +3151,9 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   const mergeSegments = ref<string[][]>([]);
   /** One per queued merge, in step with mergeSegments: where it stands
    *  ('submitting', 'done', an error, or '' while it waits) and whether it
-   *  can still be removed (not once it is on its way to the server). */
-  const mergeRows = ref<{ status: string; removable: boolean }[]>([]);
+   *  can still be removed (not once it is on its way to the server). For a
+   *  failed one, `why` is what the server said. */
+  const mergeRows = ref<{ status: string; removable: boolean; why?: string }[]>([]);
   /** Whether NG's auto-submit checkbox is checked */
   const autoSubmit = ref(false);
   const submitting = ref(false);
@@ -5915,24 +5936,44 @@ export const useChatStore = defineStore('chat', () => {
       if (name) tickerNames[row.user_id] = name;
     }
     if (!name) return;
-    pushCompletion(name, new Date());
+    pushCompletion(name, new Date(), completionKind(row.dataset));
   }
 
-  const completionText = (name: string, n: number) => n === 1 ? `${name} completed a cell` : `${name} completed ${n.toLocaleString()} cells`;
+  // Which kind of cell it was, from the dataset the completion was logged in
+  // (Nik 2026-10-10: "<player name> completed a retinal/cortex/hippocampus
+  // cell"). '' for a dataset with no short word: the line then says "a cell".
+  function completionKind(dataset: unknown): string {
+    const d = String(dataset ?? '').toLowerCase();
+    if (/retina|^eyewire_ii$/.test(d)) return 'retina';
+    if (/pinky/.test(d)) return 'Sandbox';
+    if (/ca3/.test(d)) return 'hippocampus';
+    if (/mec/.test(d)) return 'entorhinal cortex';
+    if (/h01/.test(d)) return 'human cortex';
+    if (/minnie|microns/.test(d)) return 'cortex';
+    if (/banc|brain_and_nerve_cord/.test(d)) return 'fly';
+    if (/flywire|fafb/.test(d)) return 'fly brain';
+    return '';
+  }
+  const completionText = (name: string, n: number, kind = '') => {
+    const cell = kind ? `${kind} cell` : 'cell';
+    if (n > 1) return `${name} completed ${n.toLocaleString()} ${cell}s`;
+    return `${name} completed ${/^[aeiou]/i.test(cell) ? 'an' : 'a'} ${cell}`;
+  };
   /** One more completion for `name`. A run by one player with nothing said in
    *  between is ONE line that counts up ("Nseraf completed 240 cells"), so a
    *  batch of hundreds does not push the conversation out of the chat. */
-  function pushCompletion(name: string, at: Date) {
+  function pushCompletion(name: string, at: Date, kind = '') {
     const list = chatMessages.value;
     const last = list[list.length - 1];
-    if (last && last.type === 'complete' && last.name === name
+    // a run counts up only while it is the same player, day and kind of cell
+    if (last && last.type === 'complete' && last.name === name && (last.dataset || '') === kind
         && last.dateTime.toDateString() === at.toDateString()) {
       const n = (last.count || 1) + 1;
-      list[list.length - 1] = { ...last, count: n, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, n) }] };
+      list[list.length - 1] = { ...last, count: n, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, n, kind) }] };
       return;
     }
     addTimeSeparatorIfNeeded(at);
-    list.push({ type: 'complete', name, rank: '', count: 1, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, 1) }] });
+    list.push({ type: 'complete', name, rank: '', dataset: kind, count: 1, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, 1, kind) }] });
   }
 
   /** The completion lines are made from the activity log as it happens, so a
@@ -5946,7 +5987,7 @@ export const useChatStore = defineStore('chat', () => {
       let truncated = false;
       for (let page = 0; page < MAX_PAGES; page++) {
         const { data, error } = await supabase.from('edit_log')
-          .select('user_id,operation,timestamp,metadata,success')
+          .select('user_id,operation,timestamp,metadata,success,dataset')
           .in('operation', ['mark_complete', 'complete_task'])
           .gte('timestamp', sinceIso)
           .order('timestamp', { ascending: false })
@@ -5959,7 +6000,7 @@ export const useChatStore = defineStore('chat', () => {
       rows.reverse();                                        // chronological
       // The same folding as the live ticker: one completion logs up to two rows.
       const seenBy: Record<string, { at: number; cell: string }[]> = {};
-      const events: { user: string; at: Date }[] = [];
+      const events: { user: string; at: Date; kind: string }[] = [];
       for (const r of rows) {
         if (!r.user_id || r.success === false) continue;
         const md = r.metadata || {};
@@ -5968,7 +6009,7 @@ export const useChatStore = defineStore('chat', () => {
         const seen = (seenBy[r.user_id] = (seenBy[r.user_id] || []).filter(e => t - e.at < 10 * 60_000));
         if (seen.some(e => (cell && e.cell === cell) || ((!cell || !e.cell) && t - e.at < 10_000))) continue;
         seen.push({ at: t, cell });
-        events.push({ user: r.user_id, at: new Date(t) });
+        events.push({ user: r.user_id, at: new Date(t), kind: completionKind(r.dataset) });
       }
       if (!events.length) return;
       const ids = [...new Set(events.map(e => e.user))].filter(id => !tickerNames[id] && !online.value[id]);
@@ -5979,22 +6020,22 @@ export const useChatStore = defineStore('chat', () => {
       // Weave into the loaded chat by time. Lines already there (made live
       // while this was loading) are dropped first so nothing is counted twice.
       const base = chatMessages.value.filter(m => m.type !== 'time' && m.type !== 'complete');
-      const timeline: { at: number; msg?: ChatMessage; name?: string }[] = base.map(m => ({ at: m.dateTime.getTime(), msg: m }));
+      const timeline: { at: number; msg?: ChatMessage; name?: string; kind?: string }[] = base.map(m => ({ at: m.dateTime.getTime(), msg: m }));
       for (const e of events) {
         const name = online.value[e.user]?.name || tickerNames[e.user];
-        if (name) timeline.push({ at: e.at.getTime(), name });
+        if (name) timeline.push({ at: e.at.getTime(), name, kind: e.kind });
       }
       timeline.sort((a, b) => a.at - b.at);
       const out: ChatMessage[] = [];
       for (const item of timeline) {
         if (item.msg) { out.push(item.msg); continue; }
-        const at = new Date(item.at), name = item.name!;
+        const at = new Date(item.at), name = item.name!, kind = item.kind || '';
         const last = out[out.length - 1];
-        if (last && last.type === 'complete' && last.name === name && last.dateTime.toDateString() === at.toDateString()) {
+        if (last && last.type === 'complete' && last.name === name && (last.dataset || '') === kind && last.dateTime.toDateString() === at.toDateString()) {
           const n = (last.count || 1) + 1;
-          out[out.length - 1] = { ...last, count: n, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, n) }] };
+          out[out.length - 1] = { ...last, count: n, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, n, kind) }] };
         } else {
-          out.push({ type: 'complete', name, rank: '', count: 1, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, 1) }] });
+          out.push({ type: 'complete', name, rank: '', dataset: kind, count: 1, time: formatTime(at), dateTime: at, parts: [{ type: 'text', text: completionText(name, 1, kind) }] });
         }
       }
       // More completions than could be read: the oldest run would be a part

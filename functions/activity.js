@@ -61,7 +61,19 @@ async function recordActivity({rpc, insertLegacy, who, me, token, value, fetchIm
     }
   }
   const r = await rpc('ew_log_activity', {p_user: me.id, p_row: row});
-  if (r.status !== 200 || !r.body || typeof r.body !== 'object') fail(500, 'The activity could not be recorded.');
+  if (r.status !== 200 || !r.body || typeof r.body !== 'object') {
+    // Say WHY, in the server log. This line used to be all there was, and a
+    // database rule that refused every 'annotate' row went unseen for four
+    // days (2026-10-05 to 10-09): hundreds of refusals, none with a reason.
+    // The database's own code and message, and what kind of row it was;
+    // nothing of the player's beyond that.
+    console.error('[activity] the database refused a record', JSON.stringify({
+      operation: row.operation, dataset: row.dataset, status: r.status,
+      code: r.body && r.body.code, message: String((r.body && r.body.message) || '').slice(0, 300),
+      details: String((r.body && r.body.details) || '').slice(0, 200),
+    }));
+    fail(500, 'The activity could not be recorded.');
+  }
   return {counted: true, verified: check.state === 'verified' ? true : check.state === 'unverified' ? false : null, ...r.body};
 }
 

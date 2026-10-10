@@ -953,7 +953,7 @@ function observeSplitMergeTools() {
 
       // Scrape segment IDs from each submission pair
       const segments: string[][] = [];
-      const rows: { status: string; removable: boolean }[] = [];
+      const rows: { status: string; removable: boolean; why: string }[] = [];
       submissions.forEach(sub => {
         const points = sub.querySelectorAll('.graphene-merge-segments-point');
         const pair: string[] = [];
@@ -969,7 +969,9 @@ function observeSplitMergeTools() {
           const raw = (sub.querySelector('.graphene-merge-segments-submission-status')?.textContent || '').trim();
           const low = raw.toLowerCase();
           const removable = !!sub.querySelector('[title*="delete" i]');
-          rows.push({ status: low.startsWith('trying') ? 'submitting' : low === 'done' ? 'done' : raw ? 'failed' : (!removable ? 'submitting' : ''), removable });
+          const status = low.startsWith('trying') ? 'submitting' : low === 'done' ? 'done' : raw ? 'failed' : (!removable ? 'submitting' : '');
+          // For a merge that failed, what the server said about it.
+          rows.push({ status, removable, why: status === 'failed' ? raw.slice(0, 400) : '' });
         }
       });
       store.mergeSegments = segments;

@@ -681,6 +681,33 @@ function toggleBronzeFeatured() {
   backendStore.saveBronzeBadges([...shownBronze().filter(x => x !== sl), sl]);
 }
 
+// ── Favorites in the player's own order, within a strip ────────────────────
+// Drag a silver favorite among the silver ones, a bronze among the bronze
+// (Ames 2026-10-10). Gold is one, so it has nowhere to go.
+const draggingFav = ref<FavItem | null>(null);
+const dropFav = ref<string>('');
+const favDraggable = (f: FavItem) => !viewingOtherUser.value && f.tier !== 'gold';
+function favDragStart(f: FavItem, e: DragEvent) {
+  if (!favDraggable(f)) { e.preventDefault(); return; }
+  draggingFav.value = f;
+  try { e.dataTransfer?.setData('text/plain', f.slug); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; } catch { /* some browsers */ }
+}
+function favDragOver(f: FavItem, e: DragEvent) {
+  const from = draggingFav.value;
+  if (!from || from.slug === f.slug || from.tier !== f.tier) return;
+  e.preventDefault();
+  dropFav.value = f.slug;
+}
+function favDrop(f: FavItem) {
+  const from = draggingFav.value;
+  draggingFav.value = null; dropFav.value = '';
+  if (!from || from.slug === f.slug || from.tier !== f.tier) return;
+  const list = (from.tier === 'silver' ? shownSilver() : shownBronze()).filter(x => x !== from.slug);
+  list.splice(list.indexOf(f.slug), 0, from.slug);   // lands where the one it was dropped on stood
+  if (from.tier === 'silver') backendStore.saveSilverBadges(list); else backendStore.saveBronzeBadges(list);
+}
+function favDragEnd() { draggingFav.value = null; dropFav.value = ''; }
+
 // ── Trophy Case sections in the player's own order ─────────────────────────
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
@@ -1882,16 +1909,18 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <template v-if="favoriteRow.length">
               <div class="nge-trophy-favs-row">
                 <button v-for="f in favoriteRow.filter(x => x.tier !== 'bronze')" :key="f.slug" class="nge-trophy-fav"
-                        :class="{ 'nge-trophy-fav--gold': f.gold, 'is-shown': featuredSlug === f.slug }"
-                        :title="f.name + (f.gold ? ', gold favorite' : ', silver favorite')" @click="openFavorite(f)">
+                        :class="{ 'nge-trophy-fav--gold': f.gold, 'is-shown': featuredSlug === f.slug, 'is-dragging': draggingFav?.slug === f.slug, 'is-drop': dropFav === f.slug }"
+                        :draggable="favDraggable(f)" @dragstart="favDragStart(f, $event)" @dragover="favDragOver(f, $event)" @drop.prevent="favDrop(f)" @dragend="favDragEnd"
+                        :title="f.name + (f.gold ? ', gold favorite' : ', silver favorite' + (viewingOtherUser ? '' : '. Drag to reorder.'))" @click="openFavorite(f)">
                   <img :src="f.img" :alt="f.name" />
                   <span class="nge-trophy-fav-star">★</span>
                 </button>
               </div>
               <div v-if="bronzeRow.length" class="nge-trophy-favs-row nge-trophy-favs-row--bronze">
                 <button v-for="f in bronzeRow" :key="f.slug" class="nge-trophy-fav nge-trophy-fav--bronze"
-                        :class="{ 'is-shown': featuredSlug === f.slug }"
-                        :title="f.name + ', bronze favorite'" @click="openFavorite(f)">
+                        :class="{ 'is-shown': featuredSlug === f.slug, 'is-dragging': draggingFav?.slug === f.slug, 'is-drop': dropFav === f.slug }"
+                        :draggable="favDraggable(f)" @dragstart="favDragStart(f, $event)" @dragover="favDragOver(f, $event)" @drop.prevent="favDrop(f)" @dragend="favDragEnd"
+                        :title="f.name + ', bronze favorite' + (viewingOtherUser ? '' : '. Drag to reorder.')" @click="openFavorite(f)">
                   <img :src="f.img" :alt="f.name" />
                   <span class="nge-trophy-fav-star">★</span>
                 </button>
@@ -3862,6 +3891,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 .nge-trophy-starbtn--bronze:hover:not(:disabled), .nge-trophy-starbtn--bronze.is-on { color: #e8a878; border-color: rgba(232, 168, 120, 0.6); }
 .nge-trophy-starbtn--bronze.is-on { background: rgba(232, 168, 120, 0.1); }
 .nge-trophy-favs-row--bronze { margin-top: 10px; gap: 6px; }
+.nge-trophy-fav[draggable="true"] { cursor: grab; }
+.nge-trophy-fav.is-dragging { opacity: 0.4; }
+.nge-trophy-fav.is-drop { box-shadow: -3px 0 0 0 rgba(120, 190, 255, 0.9); }
 .nge-trophy-fav--bronze { width: 42px; height: 42px; padding: 4px; border-color: rgba(214, 150, 96, 0.45); }
 .nge-trophy-fav--bronze:hover { border-color: rgba(232, 168, 120, 0.9); }
 .nge-trophy-fav--bronze .nge-trophy-fav-star { font-size: 12px; color: #e8a878; text-shadow: 0 0 4px #000, 0 0 6px rgba(232, 168, 120, 0.6); }
