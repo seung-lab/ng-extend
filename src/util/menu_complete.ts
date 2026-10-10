@@ -63,13 +63,36 @@ export async function planMenuCompletion(segId: string): Promise<MenuCompletionP
   const queue = useProofreadingQueueStore();
   if (queue.sheetUrl !== sheetUrl || !queue.items.length) await queue.loadFromSheet(sheetUrl, dataset);
   const rows = queue.items;
+  // Whether this is a Cell Library cell could not be worked out (the list or
+  // the cell's edit history did not load). That used to be treated as "not a
+  // Cell Library cell": the cell was marked proofread with no ending asked
+  // for and nothing written to the sheet, and the player had to fill in the
+  // date, ID and link by hand (Nseraf 2026-10-10). Stop instead, before
+  // anything is saved, and say so. Every caller already shows `blocked`.
+  const cannotTell = 'Could not check this cell against the cell list just now, so nothing was saved. Try again in a moment.';
+  if (!rows.length) { plan.blocked = cannotTell; return plan; }
   let row = rows.find(r => r.segId === segId || r.finalSegId === segId);
-  if (!row && rows.length) {
+  if (!row) {
+    // One of your own claims, by its current ID (kept up to date from the
+    // claim's fixed point): no history lookup needed.
+    const backend = useProofreadingBackendStore();
+    const mine = backend.tasks.find(t => t.assigned_to === backend.userId
+      && (t.status === 'assigned' || t.status === 'in_progress')
+      && (backend.liveRoots[t.id] === segId || t.final_segment_id === segId));
+    if (mine) row = rows.find(r => r.segId === mine.segment_id);
+  }
+  if (!row) {
     // Edited since it was listed: the sheet's Start SegID is an ancestor.
-    const hit = await ancestorAmong(segId, rows.map(r => r.segId));
+    // The lookup can fail for a moment; ask twice before giving up.
+    let hit = await ancestorAmong(segId, rows.map(r => r.segId));
+    if (hit === undefined) {
+      await new Promise(r => setTimeout(r, 1200));
+      hit = await ancestorAmong(segId, rows.map(r => r.segId));
+    }
+    if (hit === undefined) { plan.blocked = cannotTell; return plan; }
     if (hit) row = rows.find(r => r.segId === hit);
   }
-  if (!row) return plan;  // not a Cell Library cell: CAVE only
+  if (!row) return plan;  // truly not a Cell Library cell: CAVE only
   plan.row = row;
 
   const backend = useProofreadingBackendStore();
