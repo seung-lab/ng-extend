@@ -70,12 +70,29 @@ export function branchSegments(graph: BranchGraph, from: string, ref: string, wa
   const join = (a: number[] | undefined, b: number[] | undefined) => {
     if (a && b && (a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2])) segments.push([a, b]);
   };
+  // The clicked piece has a point of its own, somewhere inside the piece:
+  // it can lie on either side of the click. A mark drawn through it when it
+  // is on the wrong side runs a little way in the wrong direction (Ames
+  // 2026-10-10: "it extends a bit upstream from where I clicked"). So the
+  // piece's point is used only when it lies on the side being marked, judged
+  // against the next point back toward the soma. Otherwise the mark starts
+  // at the click itself.
+  const ownPoint = graph.points.get(from);
+  let back: number[] | undefined;
+  for (let n = parent.get(from) ?? null; n != null && !back; n = parent.get(n) ?? null) back = graph.points.get(n);
+  /** Is `p` on the soma side of the click? */
+  const somaSide = (p: number[]) => {
+    if (!fromPoint || !back) return false;
+    let dot = 0;
+    for (let i = 0; i < 3; i++) dot += (p[i] - fromPoint[i]) * (back[i] - fromPoint[i]);
+    return dot > 0;
+  };
 
   if (way === 'toward') {
-    let last = fromPoint ?? graph.points.get(from);
+    let last = fromPoint ?? ownPoint;
     let pieces = 1;
-    // A click that is not exactly on its piece's point: start at the click.
-    if (fromPoint && graph.points.get(from)) { join(fromPoint, graph.points.get(from)); last = graph.points.get(from); }
+    // Through the clicked piece's own point only when that is on the way.
+    if (fromPoint && ownPoint && somaSide(ownPoint)) { join(fromPoint, ownPoint); last = ownPoint; }
     for (let n = parent.get(from) ?? null; n != null; n = parent.get(n) ?? null) {
       pieces++;
       const p = graph.points.get(n);
@@ -91,10 +108,13 @@ export function branchSegments(graph: BranchGraph, from: string, ref: string, wa
   // Beyond: every piece whose way back passes through `from`.
   const children = new Map<string, string[]>();
   for (const [n, p] of parent) if (p != null) { const l = children.get(p); if (l) l.push(n); else children.set(p, [n]); }
-  if (fromPoint && graph.points.get(from)) join(fromPoint, graph.points.get(from));
+  // Start from the clicked piece's own point only when it lies beyond the
+  // click; otherwise straight from the click to what comes next.
+  const start = fromPoint && ownPoint && !somaSide(ownPoint) ? ownPoint : (fromPoint ?? ownPoint);
+  if (fromPoint && start === ownPoint) join(fromPoint, ownPoint);
   let pieces = 1;
   // [piece, the nearest point back toward `from` that a stroke can start at]
-  const stack: [string, number[] | undefined][] = [[from, graph.points.get(from) ?? fromPoint]];
+  const stack: [string, number[] | undefined][] = [[from, start]];
   while (stack.length) {
     const [n, anchor] = stack.pop()!;
     for (const child of children.get(n) ?? []) {

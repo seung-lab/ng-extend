@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T15:22:00Z",
+      "title": "Highlight: cleaner starts, calmer color",
+      "items": [
+        "A mark made with To soma or Beyond now starts exactly where you clicked, and no longer runs a little way in the other direction.",
+        "The newest mark is still the brightest, without burning out to a pale blank.",
+        "The point you clicked stays in view after its mark is made, until you place the next one."
+      ]
+    },
+    {
       "at": "2026-10-10T15:14:00Z",
       "title": "Highlight: to the soma, and beyond a point",
       "items": [

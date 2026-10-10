@@ -317,7 +317,10 @@ if (uNgeTintOn > 0.5) {
       // The glowing colour keeps only a third of the shading and sits above
       // full brightness, so it reads as lit from within.
       highp float isGlow = uNgeTintGlow.a * step(distance(tintRgb, uNgeTintGlow.rgb), 0.06);
-      highp float tintLight = mix(lightingFactor, 0.95 + 0.35 * lightingFactor, isGlow);
+      // Lit more evenly than the rest, but never past full brightness: at
+      // 0.95 + 0.35 a large mark (a whole arbor from Beyond) burned out to a
+      // pale blank, most of all in yellow (Ames 2026-10-10).
+      highp float tintLight = mix(lightingFactor, min(1.0, 0.58 + 0.44 * lightingFactor), isGlow);
       vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
     }
   }

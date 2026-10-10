@@ -78,3 +78,19 @@ test('a piece with no position is bridged, not a gap', { skip: typeof strip !== 
   assert.equal(away.pieces, 6);
   assert.deepEqual(nearestPiece(graph(), [29, 1, 0]), { id: 'c', distNm: Math.hypot(1, 1) });
 });
+
+test('a mark starts at the click, never behind it', { skip: typeof strip !== 'function' }, () => {
+  const { branchSegments } = load();
+  // The click is on piece b, at x = 23: b's own point (x = 20) is on the soma side of it.
+  const beyond = branchSegments(graph(), 'b', 'S', 'away', [23, 0, 0]);
+  for (const [p, q] of beyond.segments) assert.ok(p[0] >= 23 && q[0] >= 23, 'beyond must not run back toward the soma: ' + key([p, q]));
+  assert.ok(beyond.segments.some(s => key(s) === '23,0,0 > 30,0,0'));
+  // The same click, to soma: b's point IS on the way, so the mark goes through it.
+  assert.equal(key(branchSegments(graph(), 'b', 'S', 'toward', [23, 0, 0]).segments[0]), '23,0,0 > 20,0,0');
+  // A click on the soma side of b's point (x = 17): to soma must not start by going out to x = 20.
+  const back = branchSegments(graph(), 'b', 'S', 'toward', [17, 0, 0]);
+  assert.equal(key(back.segments[0]), '17,0,0 > 10,0,0');
+  for (const [p, q] of back.segments) assert.ok(p[0] <= 17 && q[0] <= 17);
+  // And beyond from there does take in b's own point, which lies beyond the click.
+  assert.equal(key(branchSegments(graph(), 'b', 'S', 'away', [17, 0, 0]).segments[0]), '17,0,0 > 20,0,0');
+});

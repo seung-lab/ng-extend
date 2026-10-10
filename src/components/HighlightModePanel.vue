@@ -284,6 +284,7 @@ async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit:
   let wanted = true;
   let timer = 0;
   let asked: NeedsSomaSide | null = null;
+  let ok = false;
   const gaveUp = new Promise<never>((_, reject) => {
     stopTrace = () => reject(new Error('Stopped. Nothing was marked.'));
     timer = window.setTimeout(() => reject(new Error('The server took too long. Nothing was marked. Try again, or pick two closer points.')), TRACE_LIMIT_MS);
@@ -293,6 +294,7 @@ async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit:
     // The band announces it first; closeBand() then writes the footer line.
     doneStat.value = `${n.toLocaleString()} ${n === 1 ? unit.replace(/s$/, '') : unit}`;
     traceOk = n > 0;
+    ok = traceOk;
     if (!traceOk) say('Highlight complete', false, doneStat.value);
   } catch (e: any) {
     if (passSomaAsk && e instanceof NeedsSomaSide) asked = e;
@@ -307,7 +309,9 @@ async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit:
     stopTrace = null;
     clearTimeout(timer);
     busy.value = false;
-    if (!asked) clearStartMarker();
+    // The clicked point stays in sight after its mark is made, until the next
+    // point is placed (Ames 2026-10-10). A mark that failed leaves nothing.
+    if (!asked && !ok) clearStartMarker();
     refresh();
   }
   if (asked) throw asked;
