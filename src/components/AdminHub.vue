@@ -312,27 +312,37 @@ async function loadTriageNumbers() {
   try {
     const { supabase } = await import('../supabase');
     const next: Record<string, number> = {};
-    let bugs = 0, features = 0, other = 0;
+    let bugs = 0, features = 0, other = 0, today = 0;
+    const todayIs = new Date().toDateString();
     // 500 at a time: the server refuses a larger page, which is why the
     // numbers did not show at first.
     for (let from = 0, n = 0; ; from += 500) {
-      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
+      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
       if (error || !data) return;
       for (const r of data as any[]) {
         next[r.id] = ++n;
-        if (r.status === 'done' || r.impl_state === 'deployed') { if (r.recommendation === 'new_feature') features++; else if (r.recommendation === 'bug_fix_spec') bugs++; else other++; }
+        if (r.status === 'done' || r.impl_state === 'deployed') {
+          if (r.recommendation === 'new_feature') features++; else if (r.recommendation === 'bug_fix_spec') bugs++; else other++;
+          if (r.reviewed_at && new Date(r.reviewed_at).toDateString() === todayIs) today++;
+        }
       }
       if (data.length < 500) break;
     }
     triageNumbers.value = next;
-    triageTally.value = { bugs, features, other };
+    triageTally.value = { bugs, features, other, today };
   } catch { /* the cards simply show no number */ }
 }
 
 // ── What has been closed, and a moment of reward for closing one ──
 // Counted over every report, not only the ones on the board (Ames
 // 2026-10-10: "give me some visual reward for completing them").
-const triageTally = ref({ bugs: 0, features: 0, other: 0 });
+const triageTally = ref({ bugs: 0, features: 0, other: 0, today: 0 });
+/** Everything closed, and how far along to the next round number (every 25). */
+const triageScore = computed(() => {
+  const t = triageTally.value, total = t.bugs + t.features + t.other;
+  const next = (Math.floor(total / 25) + 1) * 25;
+  return { total, next, toGo: next - total, fill: Math.round(((total % 25) / 25) * 100) };
+});
 const triageCheer = ref<{ key: number; kind: 'bug' | 'feature' | 'other'; text: string } | null>(null);
 let cheerTimer: ReturnType<typeof setTimeout> | null = null;
 function cheerFor(row: TriageRow) {
@@ -1947,10 +1957,27 @@ function practiceWhen(iso: string | null) {
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
-          <span class="nge-triage-tally" title="Closed so far, over every report">
-            <span class="nge-triage-tally-item nge-triage-tally-item--bug" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'bug' }" :key="'b' + triageTally.bugs"><b>{{ triageTally.bugs }}</b> {{ triageTally.bugs === 1 ? 'bug' : 'bugs' }} fixed</span>
-            <span class="nge-triage-tally-item nge-triage-tally-item--feature" :class="{ 'nge-triage-tally-item--pop': triageCheer?.kind === 'feature' }" :key="'f' + triageTally.features"><b>{{ triageTally.features }}</b> {{ triageTally.features === 1 ? 'feature' : 'features' }} shipped</span>
-          </span>
+          <div class="nge-triage-score" title="Closed so far, over every report">
+            <div class="nge-triage-score-item nge-triage-score-item--bug" :class="{ 'nge-triage-score-item--pop': triageCheer?.kind === 'bug' }" :key="'b' + triageTally.bugs">
+              <span class="nge-triage-score-icon" aria-hidden="true">🐛</span>
+              <b>{{ triageTally.bugs }}</b>
+              <span class="nge-triage-score-word">{{ triageTally.bugs === 1 ? 'bug' : 'bugs' }} fixed</span>
+            </div>
+            <div class="nge-triage-score-item nge-triage-score-item--feature" :class="{ 'nge-triage-score-item--pop': triageCheer?.kind === 'feature' }" :key="'f' + triageTally.features">
+              <span class="nge-triage-score-icon" aria-hidden="true">✨</span>
+              <b>{{ triageTally.features }}</b>
+              <span class="nge-triage-score-word">{{ triageTally.features === 1 ? 'feature' : 'features' }} shipped</span>
+            </div>
+            <div class="nge-triage-score-item nge-triage-score-item--today" :class="{ 'nge-triage-score-item--pop': !!triageCheer }" :key="'t' + triageTally.today">
+              <span class="nge-triage-score-icon" aria-hidden="true">{{ triageTally.today ? '🔥' : '☕' }}</span>
+              <b>{{ triageTally.today }}</b>
+              <span class="nge-triage-score-word">closed today</span>
+            </div>
+            <div class="nge-triage-score-goal" :title="`${triageScore.total} closed in all. ${triageScore.toGo} to go to ${triageScore.next}.`">
+              <div class="nge-triage-score-goal-text"><b>{{ triageScore.toGo }}</b> to go to {{ triageScore.next }}</div>
+              <div class="nge-triage-score-bar"><span :style="{ width: triageScore.fill + '%' }"></span></div>
+            </div>
+          </div>
           <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
@@ -2849,16 +2876,29 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-col--folded .nge-triage-group-count { writing-mode: horizontal-tb; }
 
 /* Closed so far, and the moment one more is closed. */
-.nge-triage-tally { display: inline-flex; gap: 8px; align-items: center; }
-.nge-triage-tally-item {
-  font-size: 12px; padding: 3px 9px; border-radius: 11px; white-space: nowrap;
-  background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.72);
+.nge-triage-score { display: inline-flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.nge-triage-score-item {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap;
 }
-.nge-triage-tally-item b { font-weight: 700; font-variant-numeric: tabular-nums; }
-.nge-triage-tally-item--bug b { color: #ff9c94; }
-.nge-triage-tally-item--feature b { color: #8ee8a0; }
-.nge-triage-tally-item--pop { animation: nge-tally-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
-@keyframes nge-tally-pop { 0% { transform: scale(1); } 35% { transform: scale(1.22); } 100% { transform: scale(1); } }
+.nge-triage-score-icon { font-size: 19px; line-height: 1; }
+.nge-triage-score-item b { font: 800 24px/1 'Inter', system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.nge-triage-score-word { font-size: 12px; line-height: 1.15; color: rgba(255, 255, 255, 0.7); max-width: 62px; white-space: normal; }
+.nge-triage-score-item--bug b { color: #ff9c94; }
+.nge-triage-score-item--feature b { color: #8ee8a0; }
+.nge-triage-score-item--today b { color: #ffc857; }
+.nge-triage-score-item--pop { animation: nge-score-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.5); }
+.nge-triage-score-item--pop .nge-triage-score-icon { animation: nge-score-wiggle 0.7s ease-in-out; display: inline-block; }
+@keyframes nge-score-pop { 0% { transform: scale(1); } 30% { transform: scale(1.16); } 100% { transform: scale(1); } }
+@keyframes nge-score-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-18deg) scale(1.2); } 60% { transform: rotate(14deg) scale(1.2); } }
+.nge-triage-score-goal { display: inline-flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 128px; padding: 0 4px; }
+.nge-triage-score-goal-text { font-size: 12px; color: rgba(255, 255, 255, 0.7); white-space: nowrap; }
+.nge-triage-score-goal-text b { font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+.nge-triage-score-bar { height: 8px; border-radius: 5px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.nge-triage-score-bar span {
+  display: block; height: 100%; border-radius: 5px; min-width: 6px;
+  background: linear-gradient(90deg, #58b6f5, #8ee8a0); transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 .nge-triage-cheer {
   position: fixed; left: 50%; top: 64px; transform: translateX(-50%); z-index: 100002;
   display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px 10px 12px; border-radius: 26px;
@@ -2887,7 +2927,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-cheer-leave-to { opacity: 0; transform: translateX(-50%) translateY(-8px); }
 @media (prefers-reduced-motion: reduce) {
   .nge-triage-board .nge-triage-cols { transition: none; }
-  .nge-triage-tally-item--pop, .nge-triage-cheer-check, .nge-triage-cheer-ring { animation: none; }
+  .nge-triage-score-item--pop, .nge-triage-score-item--pop .nge-triage-score-icon, .nge-triage-cheer-check, .nge-triage-cheer-ring { animation: none; }
+  .nge-triage-score-bar span { transition: none; }
   .nge-triage-cheer-ring { display: none; }
   .nge-triage-cheer-enter-active, .nge-triage-cheer-leave-active { transition: opacity 0.2s ease; }
 }
@@ -2966,9 +3007,15 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-admin-action-btn:hover:not(:disabled) { background: #edf2fa; border-color: #7fa3d8; }
 .nge-triage-light .nge-triage-done-btn { color: #1d7038; border-color: #8fcba3; }
 .nge-triage-light .nge-triage-discard-btn { color: #a8271e; border-color: #e3aaa5; }
-.nge-triage-light .nge-triage-tally-item { background: #e3e8f0; color: #3a475c; }
-.nge-triage-light .nge-triage-tally-item--bug b { color: #b3261e; }
-.nge-triage-light .nge-triage-tally-item--feature b { color: #1d7038; }
+.nge-triage-light .nge-triage-score-item { background: #ffffff; border-color: #d3dae6; box-shadow: 0 1px 2px rgba(20, 30, 50, 0.06); }
+.nge-triage-light .nge-triage-score-word { color: #4a5870; }
+.nge-triage-light .nge-triage-score-item--bug b { color: #c0362c; }
+.nge-triage-light .nge-triage-score-item--feature b { color: #1f8a4c; }
+.nge-triage-light .nge-triage-score-item--today b { color: #c47a00; }
+.nge-triage-light .nge-triage-score-goal-text { color: #4a5870; }
+.nge-triage-light .nge-triage-score-goal-text b { color: #1c2635; }
+.nge-triage-light .nge-triage-score-bar { background: #d7deea; }
+.nge-triage-light .nge-triage-score-bar span { background: linear-gradient(90deg, #2f8fd6, #2e9e68); }
 .nge-triage-light a { color: #1f5fc4; }
 .nge-triage-light :focus-visible { outline: 2px solid #2f6fd6; outline-offset: 2px; }
 @media (max-width: 1100px) {
