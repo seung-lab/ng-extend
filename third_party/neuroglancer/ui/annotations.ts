@@ -484,6 +484,25 @@ export class AnnotationLayerView extends Tab {
     this.updateCoordinateSpace();
     this.updateAttachedAnnotationLayerStates();
     this.updateSelectionView();
+    // A click on an annotation in the 2D or 3D view asks its list to show the
+    // row (src/util/annotation_click_select.ts). A list that has only just
+    // been brought forward has no height yet, so it tries until it has.
+    const onReveal = (event: Event) => {
+      const {state, id} = (event as CustomEvent).detail ?? {};
+      let tries = 0;
+      const reveal = () => {
+        if (this.wasDisposed) return;
+        const index = this.listElements.findIndex(e => e.state === state && e.annotation.id === id);
+        if (index >= 0 && this.virtualList.element.offsetHeight > 0) {
+          this.virtualList.scrollItemIntoView(index);
+          return;
+        }
+        if (++tries < 20) setTimeout(reveal, 60);
+      };
+      reveal();
+    };
+    window.addEventListener('nge-annotation-reveal', onReveal);
+    this.registerDisposer(() => window.removeEventListener('nge-annotation-reveal', onReveal));
   }
 
   private getRenderedAnnotationListElement(
