@@ -613,6 +613,15 @@ export async function setCellComplete(
 
   // annotationLog: no CAVE table to write; the edit_log path below is the record.
   if (!dsCfg.annotationLog) try {
+    // Unmarking needs the mark's ID in CAVE. The menu may only know the copy
+    // kept in this browser (shown as -1) or nothing at all, and then the
+    // mark was cleared here while CAVE kept it. Look the real one up first.
+    if (!complete && (existingAnnotationId === undefined || existingAnnotationId < 0) && dsCfg.datastack && cellStatusTable) {
+      const rows = await queryAnnotationsForRootId(caveServer, dsCfg.datastack, cellStatusTable, rootId).catch(() => []);
+      const hit = dsCfg.cellStatusSchema === 'proofreading_boolstatus_user' || dsCfg.cellStatusSchema === 'representative_point' ? undefined
+        : rows.find((a: any) => typeof a.tag === 'string' && (a.tag === 'complete' || a.tag.startsWith('complete' + USER_DELIMITER)));
+      if (hit && typeof hit.id === 'number' && hit.id >= 0) existingAnnotationId = hit.id;
+    }
     if (!complete && existingAnnotationId !== undefined) {
       // Local annotation — just clear localStorage
       if (existingAnnotationId < 0) {
@@ -629,6 +638,7 @@ export async function setCellComplete(
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
         console.error(`[lightbulb] CAVE DELETE failed (${res.status}):`, errText);
+        lastCompletionProblem = `CAVE did not remove the mark (error ${res.status}), so the cell is still marked. Try again in a moment.`;
       } else {
         // Clear local mirror so the lightbulb doesn't keep showing the deleted state.
         deleteLocalAnnotation(segKey(rootId), 'isComplete');
@@ -719,9 +729,17 @@ export async function setCellComplete(
       const errText = await res.text().catch(() => '');
       console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
       reportWriteFailure('cave_write', `proofread mark ${res.status} on ${getActiveDatasetConfig().cellStatusTable}`, errText.slice(0, 500));
+      // CAVE did not save it, so it is NOT proofread. This used to fall
+      // through to "saved in this browser only": the menu said Proofread,
+      // the completion was counted and the sheet was written, while CAVE and
+      // every other browser still said In Progress (Krzysztof 2026-10-09).
+      lastCompletionProblem = `CAVE did not save this (error ${res.status}), so the cell is not marked. Try again in a moment.`;
+      return false;
     }
   } catch (e) {
     console.error('[lightbulb] setCellComplete — CAVE network error:', e);
+    lastCompletionProblem = 'CAVE could not be reached, so nothing was changed. Try again in a moment.';
+    return false;
   }
 
   // localStorage fallback — save locally so UI still works (keyed by rootId)
