@@ -152,19 +152,24 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
 }
 
 // ── Who submitted each report (site_issues, admins only via the gateway) ──
-const reporters = ref<Record<string, { name: string; category: string; at: string }>>({});
+const reporters = ref<Record<string, { name: string; category: string; at: string; message?: string }>>({});
 async function loadReporters(rows: TriageRow[]) {
   const ids = [...new Set(rows.filter(r => r.source === 'site_issue' && r.source_id && !reporters.value[r.source_id]).map(r => r.source_id))];
   if (!ids.length) return;
   try {
     const { supabase } = await import('../supabase');
-    const { data } = await supabase.from('site_issues').select('id,user_name,category,created_at').in('id', ids);
+    const { data } = await supabase.from('site_issues').select('id,user_name,category,created_at,message').in('id', ids);
     const next = { ...reporters.value };
-    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '' };
+    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', message: String(i.message || '').trim() };
     reporters.value = next;
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
 }
 const reporterOf = (r: TriageRow) => (r.source === 'site_issue' ? reporters.value[r.source_id] : undefined);
+/** What the player wrote, in full. The triage row only keeps an excerpt,
+ *  which ends in "..." when the report was long (Ames 2026-10-10: "make it
+ *  so the user's full text appears"). The excerpt stands in until the report
+ *  itself has loaded, or when there is no report behind the row. */
+const fullTextOf = (r: TriageRow) => reporterOf(r)?.message || r.source_excerpt || '';
 /** A steady color for a name, so each reporter is easy to spot on the board. */
 function avatarHue(name: string): number {
   let h = 0;
@@ -288,7 +293,7 @@ function triageMatches(r: TriageRow): boolean {
   if (!words.length) return true;
   const n = triageNumbers.value[r.id];
   const who = reporterOf(r);
-  const hay = [n ? `#${n}` : '', who?.name, who?.category, r.source_excerpt, r.rationale, r.spec, r.proposed_message,
+  const hay = [n ? `#${n}` : '', who?.name, who?.category, who?.message, r.source_excerpt, r.rationale, r.spec, r.proposed_message,
     r.approver_note, r.impl_summary, r.result_note, r.reviewed_by, r.status, r.impl_state, TRIAGE_LABELS[r.recommendation],
     ...(r.feedback_log || []).map(f => f.text)].filter(Boolean).join(' | ').toLowerCase();
   return words.every(w => hay.includes(w));
@@ -520,7 +525,7 @@ function claudeBriefing(row: TriageRow): string {
     'You are helping with the EyeWire II community app (seung-lab/ng-extend, branch eyewire-ii-community;',
     'a Vue 3 + Pinia extension of neuroglancer). Work on this user report.',
     '',
-    `Report${triageNumbers.value[row.id] ? ' #' + triageNumbers.value[row.id] : ''} (${row.source.replace('_', ' ')}, ${row.created_at.slice(0, 10)}): "${row.source_excerpt || ''}"`,
+    `Report${triageNumbers.value[row.id] ? ' #' + triageNumbers.value[row.id] : ''} (${row.source.replace('_', ' ')}, ${row.created_at.slice(0, 10)}): "${fullTextOf(row)}"`,
     `Triage proposal: ${TRIAGE_LABELS[row.recommendation]}. Status: ${row.status}${row.impl_state ? `, robot state: ${row.impl_state}` : ''}.`,
     row.rationale ? `Rationale: ${row.rationale}` : '',
     row.spec ? `Spec:\n${row.spec}` : '',
@@ -2002,7 +2007,7 @@ function practiceWhen(iso: string | null) {
             <span class="nge-triage-avatar" aria-hidden="true" :style="{ '--hue': avatarHue(reporterOf(row)?.name || '') }">{{ (reporterOf(row)?.name || '?').slice(0, 1).toUpperCase() }}</span>
             <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
-          <div v-if="row.source_excerpt" class="nge-triage-excerpt">"{{ row.source_excerpt }}"</div>
+          <div v-if="fullTextOf(row)" class="nge-triage-excerpt">"{{ fullTextOf(row) }}"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
             <button class="nge-triage-console-btn" @click="toggleIssueConsole(row)">
               {{ issueConsole[row.id] === undefined ? '🖥 Console messages' : issueConsoleOpen[row.id] ? '▾ Console messages' : '▸ Console messages' }}
@@ -2748,6 +2753,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .nge-triage-board .nge-triage-card--selected { cursor: default; }
+/* The whole report, with the player's own line breaks, on an opened card. */
+.nge-triage-card--selected .nge-triage-excerpt, .nge-triage-cols:not([style]) .nge-triage-excerpt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .nge-triage-col-empty { padding: 14px 4px; color: #62738c; font-size: 0.9em; text-align: center; }
 
 /* ── Chips ───────────────────────────────────────────────────────────────
