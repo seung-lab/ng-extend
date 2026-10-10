@@ -3077,7 +3077,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-spec {
   background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
   border-radius: 6px; color: #ccd; font-size: 13.5px; padding: 10px 12px;
-  max-height: 240px; overflow-y: auto; margin: 0;
+  /* The whole suggestion, always: no box to scroll inside the card, and a
+     long file path wraps instead of running off the side (Ames 2026-10-10). */
+  margin: 0;
   display: flex; flex-direction: column; gap: 5px;
 }
 .nge-triage-spec-row { display: flex; gap: 8px; align-items: baseline; line-height: 1.45; }
@@ -3086,7 +3088,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em;
   text-transform: uppercase; color: rgba(100, 200, 255, 0.75);
 }
-.nge-triage-spec-text { color: rgba(235, 238, 250, 0.88); }
+.nge-triage-spec-text { color: rgba(235, 238, 250, 0.88); min-width: 0; overflow-wrap: anywhere; }
 .nge-triage-actions { display: flex; gap: 8px; }
 
 .nge-admin-badge-grid {
