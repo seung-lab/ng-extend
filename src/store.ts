@@ -5762,8 +5762,16 @@ function currentDatasetName(): string | null {
 }
 
 /** Parse message text into parts (text + auto-detected links + #SegID references) */
-function parseMessageParts(name: string, text: string): MessagePart[] {
+/** How many digits a #number needs to count as a cell ID. Cell IDs on the
+ *  proofreading datasets are 15 digits or more; "#12345" in ordinary talk was
+ *  being turned into a cell link (Krzysztof 2026-10-09). The explore only
+ *  volumes with short body IDs (H01, MANC, MCNS, MAOL) keep the old 5. */
+function minIdDigits(dataset?: string | null): number {
+  return /h01|manc|mcns|malecns|maol|optic_lobe/i.test(dataset || '') ? 5 : 15;
+}
+function parseMessageParts(name: string, text: string, dataset?: string | null): MessagePart[] {
   const parts: MessagePart[] = [{ type: 'sender', text: name }];
+  const idDigits = minIdDigits(dataset);
   // Split on URLs, #SegmentID references, and @mentions.
   //
   // A mention is a SINGLE token: we can't reliably guess where a multi-word
@@ -5780,7 +5788,7 @@ function parseMessageParts(name: string, text: string): MessagePart[] {
     if (!seg) continue;
     if (/^https?:\/\//.test(seg)) {
       parts.push({ type: 'link', text: seg });
-    } else if (/^#\d{5,}$/.test(seg)) {
+    } else if (/^#\d{5,}$/.test(seg) && seg.length - 1 >= idDigits) {
       parts.push({ type: 'segment', text: seg });
     } else if (/^@[A-Za-z0-9._-]/.test(seg)) {
       parts.push({ type: 'mention', text: seg });
@@ -6062,7 +6070,7 @@ export const useChatStore = defineStore('chat', () => {
       rank: r.user_id ? (r.rank || 'player') : 'player',
       time: formatTime(date),
       dateTime: date,
-      parts: parseMessageParts(r.name, r.text),
+      parts: parseMessageParts(r.name, r.text, r.dataset),
       dataset: r.dataset ?? null,
       notificationId: r.notification_id ?? null,
       id: r.id ?? null,
@@ -6393,7 +6401,7 @@ export const useChatStore = defineStore('chat', () => {
       const date = new Date(row.created_at);
       addTimeSeparatorIfNeeded(date);
       chatMessages.value.push({type:'message', name:row.name, rank:row.rank || 'player', time:formatTime(date), dateTime:date,
-        parts:parseMessageParts(row.name,row.text), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null, replyTo:row.reply_to ?? null});
+        parts:parseMessageParts(row.name,row.text,row.dataset), dataset:row.dataset ?? null, notificationId:row.notification_id ?? null, id:row.id ?? null, userId:row.user_id ?? null, replyTo:row.reply_to ?? null});
       // "!online name": Nurro looks the person up, then answers (live only).
       // "!leaders" / "!today": Nurro posts the daily leaders card again.
       // Nurro answers privately (Amy 2026-09-30): only the asker's screen

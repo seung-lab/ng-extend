@@ -167,7 +167,9 @@ async function loadReporters(rows: TriageRow[]) {
 const reporterOf = (r: TriageRow) => (r.source === 'site_issue' ? reporters.value[r.source_id] : undefined);
 const shortDate = (iso: string) => {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  // Date and time, in the admin's own time zone (Ames 2026-10-10: "timestamp,
+  // not just date"): several reports land on the same day.
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
 // ── Board: open work on top, finished and dismissed folded away ───────────
