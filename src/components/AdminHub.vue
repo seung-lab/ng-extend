@@ -377,6 +377,38 @@ const boardColumns = computed(() => triageGroups.value.map(g => (isFolded(g.key)
 // This moves a card to In progress WITHOUT queueing a robot build and without
 // sending anything to the reporter. The note is how the Slack bridge knows not
 // to start a build (scripts/slack-triage-bridge.mjs reads the same words).
+// ── A new report, no suggestion yet ──
+// Every report is put on the board at once, with no Claude run (Ames
+// 2026-10-10: a suggestion is only made when asked for). Such a card is an
+// ordinary row whose rationale starts with these words; Suggest a fix writes
+// a note the bridge reads, and the suggestion then fills the same card in.
+// Same words in scripts/slack-triage-bridge.mjs and triage-loop.mjs.
+const NEW_REPORT_NOTE = 'No suggestion yet';
+const SUGGEST_NOTE = 'Suggest:';
+const isNewReport = (r: TriageRow) => r.status === 'proposed' && (r.rationale || '').startsWith(NEW_REPORT_NOTE);
+// Asked in the last 45 minutes; after that the button comes back (the bridge
+// stops trying then too), so a failed run can be asked again.
+const suggestAsked = (r: TriageRow) => {
+  if (!isNewReport(r) || !(r.approver_note || '').startsWith(SUGGEST_NOTE)) return false;
+  const at = Date.parse(((r.approver_note || '').match(/\d{4}-\d\d-\d\dT[\d:.]+Z/) || [''])[0]);
+  return Number.isNaN(at) || Date.now() - at < 45 * 60 * 1000;
+};
+/** A card that never had a suggestion (still new, or since handled by hand). */
+const hadNoSuggestion = (r: TriageRow) => (r.rationale || '').startsWith(NEW_REPORT_NOTE);
+async function askForSuggestion(row: TriageRow) {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  try {
+    const who = backend.userName || backend.userEmail || 'admin';
+    await secureWrite('triage.update', { id: row.id, fields: { approver_note: `${SUGGEST_NOTE} asked on the board by ${who} at ${new Date().toISOString()}` } });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+
 const BY_HAND_NOTE = 'By hand';
 const isByHand = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(BY_HAND_NOTE);
 async function markInProgress(row: TriageRow) {
@@ -2033,7 +2065,7 @@ function practiceWhen(iso: string | null) {
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
-            <span class="nge-triage-rec" :class="`nge-triage-rec--${row.recommendation}`">{{ TRIAGE_LABELS[row.recommendation] }}</span>
+            <span class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
             <span v-if="isByHand(row)" class="nge-triage-impl" title="Marked in progress by hand. The robot is not building this.">by hand</span>
@@ -2051,7 +2083,8 @@ function practiceWhen(iso: string | null) {
             </button>
             <pre v-if="issueConsoleOpen[row.id]" class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
           </div>
-          <div v-if="row.rationale" class="nge-triage-rationale">{{ row.rationale }}</div>
+          <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
+          <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale">{{ row.rationale }}</div>
           <textarea
             v-if="row.recommendation === 'message' && row.status === 'proposed'"
             v-model="triageEdits[row.id]"
@@ -2089,7 +2122,10 @@ function practiceWhen(iso: string | null) {
           ></textarea>
           <!-- The decision first (Ames 2026-10-05), then the other tools. -->
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
-            <button class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
+            <button v-if="isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id || suggestAsked(row)"
+                    title="Asks Claude to read the code and suggest a fix for this report. One Claude run, 20 to 60 cents."
+                    @click="askForSuggestion(row)">{{ suggestAsked(row) ? 'Suggestion on its way…' : '✨ Suggest a fix' }}</button>
+            <button v-else class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
             </button>
             <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">
@@ -2970,6 +3006,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-card--closed { opacity: 0.8; }
 .nge-triage-light .nge-triage-num { background: #e3ebf8; color: #20457f; }
 .nge-triage-light .nge-triage-rec--nothing { background: #e7eaf0; color: #56637a; }
+.nge-triage-light .nge-triage-rec--new { background: #dff1ff; color: #14598f; }
 .nge-triage-light .nge-triage-rec--message { background: #dceefb; color: #0d5f94; }
 .nge-triage-light .nge-triage-rec--bug_fix_spec { background: #fde4e1; color: #a8271e; }
 .nge-triage-light .nge-triage-rec--new_feature { background: #dff3e4; color: #1d7038; }
@@ -3056,6 +3093,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   padding: 1px 8px; border-radius: 9px; text-transform: uppercase;
 }
 .nge-triage-rec--nothing      { background: rgba(255,255,255,0.08); color: #aab; }
+.nge-triage-rec--new          { background: rgba(79,207,255,0.16); color: #8fdcff; }
 .nge-triage-rec--message      { background: rgba(100,200,255,0.14); color: #64c8ff; }
 .nge-triage-rec--bug_fix_spec { background: rgba(255,120,120,0.14); color: #f88; }
 .nge-triage-rec--new_feature  { background: rgba(160,255,160,0.12); color: #8e8; }

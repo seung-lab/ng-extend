@@ -456,71 +456,87 @@ function isSuggestRequest(text, botId = BOT_USER_ID) {
   return SUGGEST_PLAIN.test(rest);
 }
 
-async function suggestRequests() {
-  if (!GH_TOKEN) return 0;
-  // Reports from the last 10 days that have no suggestion yet.
+// Every new report still goes on the triage board at once, as a card with
+// no suggestion on it: no Claude run, nothing posted, nobody notified. The
+// card is an ordinary row (so the board, Slack replies, Done and Dismiss all
+// work on it), told apart by its rationale. Asking for a suggestion later
+// fills the same row in. Same words in AdminHub.vue and triage-loop.mjs.
+const NEW_REPORT_NOTE = 'No suggestion yet';
+const isNewReport = row => row.status === 'proposed' && String(row.rationale || '').startsWith(NEW_REPORT_NOTE);
+// The board's "Suggest a fix" button writes this at the start of the card's note.
+const BOARD_ASK = 'Suggest:';
+
+async function fileNewReports() {
   const since = encodeURIComponent(new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString());
   const [issuesRes, triageRes] = await Promise.all([
-    sb(`site_issues?created_at=gte.${since}&select=id,message,created_at&order=created_at.desc&limit=60`),
+    sb(`site_issues?created_at=gte.${since}&select=id,message,created_at&order=created_at.asc&limit=200`),
     sb(`feedback_triage?source=eq.site_issue&created_at=gte.${since}&select=source_id`),
   ]);
-  if (!issuesRes.ok || !triageRes.ok) { console.warn(`[bridge] suggest check skipped (${issuesRes.status}/${triageRes.status})`); return 0; }
-  const done = new Set((await triageRes.json()).map(r => r.source_id));
-  const open = (await issuesRes.json()).filter(i => !done.has(i.id));
-  if (!open.length) return 0;
-
-  // Their Slack posts: one read of the channel around those dates.
-  const oldest = Math.min(...open.map(i => new Date(i.created_at).getTime())) / 1000 - 600;
-  const posts = [];
-  for (let cursor = '', page = 0; page < 5; page++) {
-    const h = await slackGet('conversations.history', { channel: CHANNEL, oldest: String(oldest), limit: 200, ...(cursor ? { cursor } : {}) });
-    posts.push(...(h.messages ?? []).filter(m => /New site issue submitted/i.test(m.text || '')));
-    cursor = h.response_metadata?.next_cursor || '';
-    if (!cursor) break;
+  if (!issuesRes.ok || !triageRes.ok) { console.warn(`[bridge] new reports not filed (${issuesRes.status}/${triageRes.status})`); return 0; }
+  const have = new Set((await triageRes.json()).map(r => r.source_id));
+  const fresh = (await issuesRes.json()).filter(i => !have.has(i.id)).slice(0, 20);
+  let filed = 0;
+  for (const issue of fresh) {
+    const row = { source: 'site_issue', source_id: issue.id, source_excerpt: String(issue.message || '').slice(0, 500) };
+    // Its Slack thread, so replies there (done, dismiss, a tag for a
+    // suggestion) reach this card. Found, not posted to.
+    const threadTs = await findReportTs(row).catch(() => null);
+    const res = await sb('feedback_triage?on_conflict=source,source_id', {
+      method: 'POST', headers: { Prefer: 'return=minimal,resolution=ignore-duplicates' },
+      body: JSON.stringify({ ...row, recommendation: 'nothing', status: 'proposed',
+        rationale: `${NEW_REPORT_NOTE}. To get one, press Suggest a fix on this card, or tag the bot in the report's Slack thread.`,
+        ...(threadTs ? { slack_channel: CHANNEL, slack_ts: threadTs } : {}) }),
+    });
+    if (res.ok) filed++; else console.warn(`[bridge] could not file report ${issue.id}: ${res.status}`);
   }
-  // Every thread on the first pass of a run; after that only threads that
-  // had a reply in the last 20 minutes (a pass comes round every minute).
-  const firstPass = !process.env.BRIDGE_PASS || process.env.BRIDGE_PASS === '1';
-  const fresh = Date.now() / 1000 - 20 * 60;
+  if (filed) console.log(`[bridge] filed ${filed} new report(s) on the board, no suggestion asked`);
+  return filed;
+}
 
+async function suggestRequests() {
+  if (!GH_TOKEN) return 0;
+  const res = await sb(`feedback_triage?status=eq.proposed&source=eq.site_issue&rationale=like.${encodeURIComponent(NEW_REPORT_NOTE)}*&select=*&order=created_at.desc&limit=80`);
+  if (!res.ok) { console.warn(`[bridge] suggest check skipped (${res.status})`); return 0; }
   const wanted = [];
-  for (const issue of open) {
-    const at = new Date(issue.created_at).getTime() / 1000;
-    const needle = lettersOnly(issue.message).slice(0, 40);
-    const post = (needle.length >= 8 && posts.find(m => lettersOnly(m.text).includes(needle)))
-      || posts.map(m => ({ m, gap: Math.abs(Number(m.ts) - at) })).filter(x => x.gap <= 180).sort((a, b) => a.gap - b.gap)[0]?.m;
-    if (!post || !post.reply_count) continue;
-    if (!firstPass && Number(post.latest_reply || 0) < fresh) continue;
-    let thread;
-    try { thread = await slackGet('conversations.replies', { channel: CHANNEL, ts: post.ts, limit: 200 }); }
-    catch (e) { console.warn(`[bridge] replies fetch failed for report ${issue.id}: ${e.message}`); continue; }
-    const replies = (thread.messages ?? []).slice(1);
-    const ask = replies.find(m => !m.bot_id && m.subtype !== 'bot_message' && APPROVERS.includes(m.user) && isSuggestRequest(m.text));
-    if (!ask) continue;
-    wanted.push({ issue, post, ask, acked: replies.some(m => m.bot_id && Number(m.ts) > Number(ask.ts) && /^👀/.test(m.text || '')) });
+  for (const row of await res.json()) {
+    // Asked on the board: the button wrote a note starting "Suggest:".
+    const board = String(row.approver_note || '').startsWith(BOARD_ASK);
+    let replies = [];
+    if (row.slack_ts) {
+      // The same read the stop and approve checks make this pass.
+      try { replies = ((await slackGet('conversations.replies', { channel: CHANNEL, ts: row.slack_ts, limit: 200 })).messages ?? []).slice(1); }
+      catch (e) { console.warn(`[bridge] replies fetch failed for ${row.id}: ${e.message}`); }
+    }
+    const tag = replies.find(m => !m.bot_id && m.subtype !== 'bot_message' && APPROVERS.includes(m.user) && isSuggestRequest(m.text));
+    if (!tag && !board) continue;
+    const askedAt = tag ? Number(tag.ts) : (Date.parse(String(row.approver_note).match(/\d{4}-\d\d-\d\dT[\d:.]+Z/)?.[0] || '') / 1000 || Date.now() / 1000);
+    // An ask is good for 45 minutes. If no suggestion came of it (a failed
+    // run), it is not retried for ever: ask again.
+    if (Date.now() / 1000 - askedAt > 45 * 60) continue;
+    wanted.push({ row, tag, askedAt, acked: replies.some(m => m.bot_id && /^👀/.test(m.text || '') && Number(m.ts) > askedAt - 5) });
   }
   if (!wanted.length) return 0;
 
-  for (const w of wanted.filter(x => !x.acked)) {
-    await slack('chat.postMessage', { channel: CHANNEL, thread_ts: w.post.ts,
-      text: `👀 On it, <@${w.ask.user}>. Claude is reading the code for this one; a suggested fix will be posted here in a few minutes.` }).catch(() => {});
+  for (const w of wanted.filter(x => !x.acked && x.row.slack_ts)) {
+    await slack('chat.postMessage', { channel: CHANNEL, thread_ts: w.row.slack_ts,
+      text: `👀 On it${w.tag ? `, <@${w.tag.user}>` : ' (asked on the triage board)'}. Claude is reading the code for this one; a suggested fix will be posted here in a few minutes.` }).catch(() => {});
   }
   // One run at a time, and no hammering: if a run already started after the
   // newest request and within the last 10 minutes, it had its chance.
   const runs = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/triage-propose.yml/runs?per_page=3`, {
     headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' } }).then(r => r.ok ? r.json() : { workflow_runs: [] }).catch(() => ({ workflow_runs: [] }));
   const last = (runs.workflow_runs || [])[0];
-  const newestAsk = Math.max(...wanted.map(w => Number(w.ask.ts)));
+  const newestAsk = Math.max(...wanted.map(w => w.askedAt));
   if (last && last.status !== 'completed') return 0;
   if (last) {
     const started = new Date(last.created_at).getTime() / 1000;
     if (started > newestAsk + 5 && Date.now() / 1000 - started < 600) return 0;
   }
-  const ids = wanted.map(w => w.issue.id).slice(0, 20).join(',');
-  const res = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/triage-propose.yml/dispatches`, {
+  const ids = wanted.map(w => w.row.source_id).slice(0, 20).join(',');
+  const go = await fetch(`https://api.github.com/repos/${GH_REPO}/actions/workflows/triage-propose.yml/dispatches`, {
     method: 'POST', headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
     body: JSON.stringify({ ref: 'main', inputs: { issue_ids: ids } }) });
-  if (res.status !== 204) { console.warn(`[bridge] could not start Triage Propose: ${res.status}`); return 0; }
+  if (go.status !== 204) { console.warn(`[bridge] could not start Triage Propose: ${go.status}`); return 0; }
   console.log(`[bridge] suggestion asked for ${wanted.length} report(s): started Triage Propose (${ids})`);
   return wanted.length;
 }
@@ -544,7 +560,7 @@ async function openThread(row, footer) {
 
 async function postProposals() {
   const res = await sb('feedback_triage?status=eq.proposed&slack_ts=is.null&select=*');
-  const rows = await res.json();
+  const rows = (await res.json()).filter(row => !isNewReport(row));
   for (const row of rows) {
     const where = await openThread(row,
       `Reply *approve* or *dismiss* in this thread. Text after "approve" is kept as your note${LOOP ? ' and handed to Claude with the spec' : ''}. Also on the <${LIVE_URL}?triage=board&report=${row.id}|triage board>. Anytime, reply *update sender* to draft a note to the person who reported it. ${REPLY_GUIDE}.`);
@@ -624,6 +640,12 @@ async function readApprovals() {
       }
       const decision = /^(approve|accept)/i.test(m[1]) ? 'approved' : 'dismissed';
       const extraText = m[2]?.trim() || '';
+      if (isNewReport(row) && decision === 'approved') {
+        // Said once per reply: the answer is itself a reply in the thread.
+        if (!(replies.messages ?? []).some(x => x.bot_id && Number(x.ts) > Number(msg.ts) && /no suggestion to approve/i.test(x.text || '')))
+          await say(row, `There is no suggestion to approve yet, <@${msg.user}>. Tag me here to get one, or reply *done* or *dismiss*.`).catch(() => {});
+        continue;
+      }
       await applyDecision(row, decision, msg.user, extraText);
       const building = LOOP && decision === 'approved' && isBuildable(row);
       if (building) await notifyReporter(row, '🛠️ Your report is being worked on', `${quoteReport(row)} It was accepted and a fix is being built now. You'll get another note when it's live.`, WORKING_IMAGE_URL);
@@ -1232,6 +1254,7 @@ let LOOP = false;
     if (!GH_TOKEN) console.warn('[bridge] TRIAGE_LOOP=on but GITHUB_TOKEN is missing');
     else LOOP = true;
   }
+  await fileNewReports().catch(e => console.warn('[bridge] filing new reports failed:', e.message));
   const posted = await postProposals();
   await suggestRequests().catch(e => console.warn('[bridge] suggest check failed:', e.message));
   const halted = COLS ? await stopRequests().catch(e => { console.warn('[bridge] stop check failed:', e.message); return 0; }) : 0;

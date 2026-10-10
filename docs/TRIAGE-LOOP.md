@@ -64,8 +64,12 @@ the new preview.
    `suggest a fix`. The bot answers "On it", and within a few minutes Claude
    has read the code and written one `feedback_triage` row: no action, send
    a message, bug fix spec, or new feature. Every admin gets a 🗂️ "Feedback
-   triage: new suggestion" notification in the app when it is posted. A
-   report nobody asks about never reaches the triage board.
+   triage: new suggestion" notification in the app when it is posted.
+   Meanwhile every report is on the triage board from the moment it comes
+   in, as a **New report** card with no suggestion: fix it by hand, mark it
+   done, dismiss it, or press **Suggest a fix** on the card, which asks
+   Claude the same way a tag in Slack does. A request that produces nothing
+   within 45 minutes can be asked again.
 3. **Decision.** The proposal is posted in the report's Slack thread. An
    approver (Amy or Celia) approves or dismisses it, in Slack or in Admin Hub
    > Triage. Both places always show the same rows.

@@ -337,13 +337,19 @@ async function reverted() {
   await patchRow(row.id, { impl_state: back ? 'changes_requested' : 'failed', ...(ts ? { last_reply_ts: ts } : {}) });
 }
 
+// Same words as scripts/slack-triage-bridge.mjs and AdminHub.vue.
+const NEW_REPORT_NOTE = 'No suggestion yet';
+const isNewReport = r => r.status === 'proposed' && String(r.rationale || '').startsWith(NEW_REPORT_NOTE);
+
 async function pending() {
   const [issuesRes, triageRes] = await Promise.all([
     sb(`site_issues?created_at=gte.${encodeURIComponent(PROPOSE_SINCE)}&select=id,category,message,url,dataset,created_at&order=created_at.asc`),
-    sb(`feedback_triage?source=eq.site_issue&created_at=gte.${encodeURIComponent(PROPOSE_SINCE)}&select=source_id`),
+    sb(`feedback_triage?source=eq.site_issue&created_at=gte.${encodeURIComponent(PROPOSE_SINCE)}&select=source_id,status,rationale`),
   ]);
   if (!issuesRes.ok || !triageRes.ok) throw new Error(`pending query failed: ${issuesRes.status}/${triageRes.status}`);
-  const seen = new Set((await triageRes.json()).map(r => r.source_id));
+  // A card with no suggestion on it yet (the bridge files one for every new
+  // report) does not count as triaged: it is what a suggestion fills in.
+  const seen = new Set((await triageRes.json()).filter(r => !isNewReport(r)).map(r => r.source_id));
   // Only the reports that were asked about (ISSUE_IDS, from the bridge when
   // an approver tags the bot in a report's thread). No ids, no suggestions.
   const asked = new Set(String(env.ISSUE_IDS || '').split(',').map(s => s.trim()).filter(Boolean));
@@ -418,6 +424,19 @@ async function insertProposals() {
     spec: ['bug_fix_spec', 'new_feature'].includes(p.recommendation) ? String(p.spec || '').slice(0,12000) || null : null,
   }));
   if (!rows.length) { console.log('[loop] no valid proposals'); return; }
+  // A report already on the board as a card with no suggestion: fill that
+  // card in. Clearing slack_ts lets the bridge post the suggestion in the
+  // report's thread and tell the admins, as it does for any new proposal.
+  let filled = 0;
+  for (const row of rows) {
+    const { source, source_id, ...fields } = row;
+    const u = await sb(`feedback_triage?source=eq.site_issue&source_id=eq.${source_id}&status=eq.proposed&rationale=like.${encodeURIComponent(NEW_REPORT_NOTE)}*`, {
+      method: 'PATCH', body: JSON.stringify({ ...fields, slack_ts: null, approver_note: null }),
+      headers: { Prefer: 'return=representation' },
+    });
+    if (u.ok && (await u.json()).length) filled++;
+  }
+  if (filled) console.log(`[loop] filled in ${filled} card(s) that had no suggestion`);
   // UNIQUE (source, source_id): if anything else proposed it first, keep theirs.
   const r = await sb('feedback_triage?on_conflict=source,source_id', {
     method: 'POST', body: JSON.stringify(rows),
