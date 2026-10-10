@@ -10,11 +10,15 @@
  * chain of parents from the clicked piece. "Beyond" is everything whose way
  * back passes through the clicked piece.
  *
- * The graph is not always a tree: branches that touch make loops, and a
- * false merge joins two cells. The way back is then the one with the fewest
- * pieces, so "beyond" can include or miss a branch right where the cell is
- * wrongly joined. That is worth knowing when reading the result, and it is
- * said in the panel.
+ * The graph is not always a tree: a thick part of the cell (the soma) is
+ * several pieces that all touch, branches that touch make loops, and a
+ * false merge joins two cells. Measured on one retina cell, 2026-10-10: 65
+ * pieces, 5 loops, 15 pieces on a loop. Where there are two ways back, the
+ * way back is the SHORTER ONE IN DISTANCE along the cell (it was the one
+ * with the fewest pieces, which a few large pieces could win while going the
+ * long way round). So inside a loop "beyond" stops where the other way round
+ * becomes the shorter, and near a false merge it can include or miss a
+ * branch. That is worth knowing when reading the result.
  *
  * No imports on purpose: the tests load this file on its own.
  */
@@ -45,6 +49,61 @@ function neighbours(graph: BranchGraph): Map<string, string[]> {
 }
 
 /**
+ * For every piece that can be reached from `ref`, the next piece back toward
+ * it on the shortest way, by distance between the pieces' points. A link to
+ * or from a piece with no point counts as the typical link of this cell, so
+ * a missing position neither blocks a way nor makes it look free.
+ */
+function shortestWaysBack(graph: BranchGraph, adj: Map<string, string[]>, ref: string): Map<string, string | null> {
+  const lengths: number[] = [];
+  const span = (a: string, b: string): number | undefined => {
+    const p = graph.points.get(a), q = graph.points.get(b);
+    return p && q ? Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) : undefined;
+  };
+  for (const [a, b] of graph.edges) { const d = span(a, b); if (d !== undefined) lengths.push(d); }
+  lengths.sort((x, y) => x - y);
+  const typical = lengths.length ? lengths[lengths.length >> 1] : 1;
+  const parent = new Map<string, string | null>();
+  const dist = new Map<string, number>([[ref, 0]]);
+  // A small binary heap of [distance, piece, the piece it was reached from].
+  const heap: [number, string, string | null][] = [[0, ref, null]];
+  const push = (item: [number, string, string | null]) => {
+    heap.push(item);
+    for (let i = heap.length - 1; i > 0;) {
+      const up = (i - 1) >> 1;
+      if (heap[up][0] <= heap[i][0]) break;
+      [heap[up], heap[i]] = [heap[i], heap[up]]; i = up;
+    }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop()!;
+    if (heap.length) {
+      heap[0] = last;
+      for (let i = 0;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
+      }
+    }
+    return top;
+  };
+  while (heap.length) {
+    const [d, n, via] = pop();
+    if (parent.has(n)) continue;          // already settled by a shorter way
+    parent.set(n, via);
+    for (const next of adj.get(n) ?? []) {
+      if (parent.has(next)) continue;
+      const nd = d + (span(n, next) ?? typical);
+      if (!(dist.get(next)! <= nd)) { dist.set(next, nd); push([nd, next, n]); }
+    }
+  }
+  return parent;
+}
+
+/**
  * The strokes to draw, each a pair of points in nanometers.
  *   from       the clicked piece
  *   ref        a piece on the soma side (the soma's own piece when known)
@@ -59,12 +118,9 @@ export function branchSegments(graph: BranchGraph, from: string, ref: string, wa
   if (from === ref) throw new Error(way === 'toward'
     ? 'That point is already at the soma.'
     : 'Those two points are in the same small piece of the cell. Pick the second one closer to the soma.');
-  // Breadth first from the reference: parent = one step back toward it.
-  const parent = new Map<string, string | null>([[ref, null]]);
-  const order: string[] = [ref];
-  for (let i = 0; i < order.length; i++) {
-    for (const n of adj.get(order[i]) ?? []) if (!parent.has(n)) { parent.set(n, order[i]); order.push(n); }
-  }
+  // Outward from the reference by distance along the cell (Dijkstra):
+  // parent = one step back toward it, on the shortest way.
+  const parent = shortestWaysBack(graph, adj, ref);
   if (!parent.has(from)) throw new Error('No connection was found between that point and the soma side of the cell.');
   const segments: Segment[] = [];
   const join = (a: number[] | undefined, b: number[] | undefined) => {

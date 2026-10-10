@@ -94,3 +94,25 @@ test('a mark starts at the click, never behind it', { skip: typeof strip !== 'fu
   // And beyond from there does take in b's own point, which lies beyond the click.
   assert.equal(key(branchSegments(graph(), 'b', 'S', 'away', [17, 0, 0]).segments[0]), '17,0,0 > 20,0,0');
 });
+
+test('where there are two ways back, the shorter one in distance is taken', { skip: typeof strip !== 'function' }, () => {
+  const { branchSegments } = load();
+  // Two ways from the soma S to t: through one far away piece (3 pieces, about
+  // 1000 long), or along four near ones (5 pieces, 40 long). Fewest pieces
+  // would go through the far one.
+  const g = { edges: [['S', 'far'], ['far', 't'], ['S', 'p'], ['p', 'q'], ['q', 'r'], ['r', 't'], ['t', 'u']],
+    points: new Map(Object.entries({ S: [0, 0, 0], far: [500, 0, 0], p: [0, 10, 0], q: [0, 20, 0], r: [0, 30, 0], t: [0, 40, 0], u: [0, 50, 0] })) };
+  const toSoma = branchSegments(g, 'u', 'S', 'toward');
+  assert.equal(toSoma.pieces, 6);                                   // u, t, r, q, p, S
+  assert.ok(!toSoma.segments.some(s => key(s).includes('500,0,0')));
+  // "Beyond" p is everything whose shorter way back is through p: q, r, t and u, not the far piece.
+  assert.deepEqual([...new Set(branchSegments(g, 'p', 'S', 'away').segments.flat().map(x => x.join()))].sort(),
+    ['0,10,0', '0,20,0', '0,30,0', '0,40,0', '0,50,0']);
+  // Move the far piece in close (41 long) and bend the near way out (56 long): now it is through the far piece.
+  g.points.set('far', [0, 20, 5]);
+  g.points.set('q', [15, 20, 0]);
+  assert.equal(branchSegments(g, 'u', 'S', 'toward').pieces, 4);    // u, t, far, S
+  // A piece with no position does not block the way or stop the walk.
+  g.points.delete('q');
+  assert.ok(branchSegments(g, 'q', 'S', 'toward', [15, 20, 0]).pieces >= 3);
+});

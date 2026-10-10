@@ -222,6 +222,12 @@ const renderMarkdown = (text: string) => renderSafeMarkdown(text, true);
 // card; a square or tall one (a Nurro card) keeps the narrower column, where
 // it already fills its space (Ames 2026-10-10: "so much empty space").
 const pictureWide = ref(false);
+// A wide picture takes the larger column only beside a short note. Beside a
+// long one (the daily "Today in Pyr" list) it squeezed the text into a
+// narrow strip down the right (Ames 2026-10-10): there the words are the
+// point, so the picture keeps its ordinary column and the text gets the room.
+const LONG_READ_CHARS = 600;
+const longRead = computed(() => String(openNotif.value?.body ?? '').length > LONG_READ_CHARS);
 function onPictureLoad(e: Event) {
   const img = e.target as HTMLImageElement;
   pictureWide.value = img.naturalWidth >= 600 && img.naturalWidth / Math.max(1, img.naturalHeight) >= 1.25;
@@ -471,7 +477,7 @@ function padRank(rank: number): string {
       <div v-if="openNotif" class="nge-notif-detail-backdrop" @click.self="closeDetail">
         <div
           class="nge-notif-detail"
-          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide }"
+          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
           role="dialog"
           aria-modal="true"
           :aria-label="cleanCopy(openNotif.title)"

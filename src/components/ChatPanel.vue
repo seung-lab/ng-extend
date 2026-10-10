@@ -1381,12 +1381,15 @@ function toggleCollapse() {
         <!-- Cross-dataset jump guard: a root ID from another segmentation would
              land on a different cell (or nothing) without warning. -->
         <div v-if="pendingSegJump" class="nge-chat-segwarn">
+          <!-- A cell ID only exists in its own dataset, so there is nothing to
+               hedge about: say where it is, and offer to go there (Ames
+               2026-10-10). When the message carries no dataset, say that. -->
           <div class="nge-chat-segwarn-text">
-            This ID is from <strong>{{ pendingSegJump.from || 'an unknown dataset' }}</strong>,
-            but you're viewing <strong>{{ pendingSegJump.to }}</strong>. It may not exist here.
+            <template v-if="pendingSegJump.from">This cell is in <strong>{{ pendingSegJump.from }}</strong>. You're viewing <strong>{{ pendingSegJump.to }}</strong>.</template>
+            <template v-else>This message does not say which dataset the cell is in. You're viewing <strong>{{ pendingSegJump.to }}</strong>.</template>
           </div>
           <div class="nge-chat-segwarn-actions">
-            <button class="nge-chat-segwarn-go" @click="confirmSegJump">Jump anyway</button>
+            <button class="nge-chat-segwarn-go" @click="confirmSegJump">{{ pendingSegJump.from ? `Jump to ${pendingSegJump.from}` : 'Look for it here' }}</button>
             <button class="nge-chat-segwarn-no" @click="pendingSegJump = null">Cancel</button>
           </div>
         </div>

@@ -100,10 +100,17 @@ async function lastDigestSentAt() {
 // game's own copy rules): the game is Pyr, no dashes, "Achievement", plain
 // words, nothing invented.
 const SUMMARY_SYSTEM = [
-  'You write a two or three sentence note for players of Pyr, a citizen science game where people trace',
-  'neurons in electron microscope images. You are given the entries of today\'s changelog as JSON. Write',
-  'what changed today in plain words a player understands, naming the changes that matter most, at most',
-  '60 words. Rules: call the game Pyr, never EyeWire; say Achievement, never badge; use no dashes of any',
+  'You write a short note for players of Pyr, a citizen science game where people trace neurons in',
+  'electron microscope images. You are given the entries of today\'s changelog as JSON, in the order they',
+  'went live. Write what changed today in plain words a player understands.',
+  'Cover EVERY major change of the day, not one of them. A major change is something a player can now do',
+  'that they could not do before: a new mode, a new tool, a new button or shortcut that does something new,',
+  'a new dataset. Name each one and say in a few words what it does. The order of the entries says nothing',
+  'about importance: the last entry is not the headline, and an entry from the morning matters as much as',
+  'one from the evening. When several entries are about the same feature, treat them as one. Fixes and',
+  'small polish get one short closing clause together, or nothing.',
+  'Two to four sentences, at most 90 words.',
+  'Rules: call the game Pyr, never EyeWire; say Achievement, never badge; use no dashes of any',
   'kind (no hyphens between words, no en or em dashes), write commas and periods instead; no emoji, no',
   'exclamation marks, no headings, no bullet points, no file names or code words; do not mention the date;',
   'do not invent anything that is not in the entries; do not list every item. Reply with the note only.',
@@ -112,7 +119,7 @@ const SUMMARY_SYSTEM = [
 function houseStyleProblems(text) {
   const problems = [];
   if (!text || text.length < 20) problems.push('it is empty or too short');
-  if (text.length > 600) problems.push('it is too long');
+  if (text.length > 800) problems.push('it is too long');
   if (/[\u2013\u2014]/.test(text) || /\s-\s/.test(text) || /\w-\w/.test(text)) problems.push('it contains a dash');
   if (/badge/i.test(text)) problems.push('it says badge instead of Achievement');
   if (/eyewire/i.test(text)) problems.push('it says EyeWire instead of Pyr');
@@ -120,6 +127,31 @@ function houseStyleProblems(text) {
   if (/^\s*[#*\u2022-]/m.test(text)) problems.push('it contains a heading or bullet');
   if (/\p{Extended_Pictographic}/u.test(text)) problems.push('it contains an emoji');
   return problems;
+}
+
+/**
+ * How many of the day's entries the note touches at all. The first digest
+ * with a model TLDR (2026-10-10) named only the entry that went live last,
+ * Lantern mode, and left out the day's larger change, To soma and Beyond in
+ * Highlight (Ames: "the TLDR should highlight the MAJOR changes, not just
+ * one"). An entry counts as touched when the note uses one of the telling
+ * words of its title, or two of the telling words of its items.
+ */
+const PLAIN_WORDS = new Set(('about after again along also and are back been before being both button can cell cells click does each every from have here into just know less like longer made make mark marks mode more most much need needs never newest now only other over point points says shows some than that the their them then there these they this those through today under until very view what when where which while with without would your yours pyr').split(' '));
+const tellingWords = text => [...new Set(String(text).toLowerCase().match(/[a-z]{4,}/g) ?? [])].filter(w => !PLAIN_WORDS.has(w));
+function entriesTouched(text, entries) {
+  const said = new Set(tellingWords(text));
+  return entries.filter(e => {
+    if (tellingWords(e.title).some(w => said.has(w))) return true;
+    return tellingWords((e.items || []).join(' ')).filter(w => said.has(w)).length >= 2;
+  }).length;
+}
+/** The note must reach beyond one entry on a day with several. */
+function coverageProblems(text, entries) {
+  if (entries.length < 2) return [];
+  const want = entries.length >= 4 ? 3 : 2;
+  const got = entriesTouched(text, entries);
+  return got >= want ? [] : [`it covers ${got} of today's ${entries.length} entries; name every major change, including the ones that went live earlier in the day`];
 }
 
 async function askClaude(messages) {
@@ -133,8 +165,10 @@ async function askClaude(messages) {
     },
     body: JSON.stringify({
       model: SUMMARY_MODEL,
-      max_tokens: 400,
-      output_config: { effort: 'low' },
+      max_tokens: 500,
+      // Weighing a day's entries against each other is a judgment: at low effort
+      // the note simply echoed the last entry.
+      output_config: { effort: 'medium' },
       fallbacks: 'default',
       system: SUMMARY_SYSTEM,
       messages,
@@ -153,13 +187,13 @@ async function writeSummary(entries) {
   const messages = [{ role: 'user', content: `Today's changelog entries:\n${input}` }];
   try {
     let text = await askClaude(messages);
-    let problems = houseStyleProblems(text);
+    let problems = [...houseStyleProblems(text), ...coverageProblems(text, entries)];
     if (problems.length) {
       console.log(`[digest] summary broke a rule (${problems.join('; ')}); asking once more`);
       messages.push({ role: 'assistant', content: text });
       messages.push({ role: 'user', content: `Rewrite it: ${problems.join('; ')}. Reply with the note only.` });
       text = await askClaude(messages);
-      problems = houseStyleProblems(text);
+      problems = [...houseStyleProblems(text), ...coverageProblems(text, entries)];
       if (problems.length) { console.log(`[digest] still ${problems.join('; ')}; using the plain list`); return null; }
     }
     return text;
