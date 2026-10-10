@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-10T15:45:00Z",
+      "title": "Bigger pictures in notifications",
+      "items": [
+        "When you open a notification with a wide picture, the picture is now much larger and the window uses more of your screen."
+      ]
+    },
+    {
       "at": "2026-10-10T15:49:00Z",
       "title": "Chat: search, bold and underline, and your own messages",
       "items": [

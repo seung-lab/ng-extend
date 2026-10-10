@@ -218,6 +218,16 @@ function openHelpTab() {
 /** Sanitize stored Markdown, including generated URLs; remote images are omitted. */
 const renderMarkdown = (text: string) => renderSafeMarkdown(text, true);
 
+// A wide picture (a screenshot, a render) gets the larger share of a wider
+// card; a square or tall one (a Nurro card) keeps the narrower column, where
+// it already fills its space (Ames 2026-10-10: "so much empty space").
+const pictureWide = ref(false);
+function onPictureLoad(e: Event) {
+  const img = e.target as HTMLImageElement;
+  pictureWide.value = img.naturalWidth >= 600 && img.naturalWidth / Math.max(1, img.naturalHeight) >= 1.25;
+}
+watch(openNotif, () => { pictureWide.value = false; });
+
 /** Markdown stripped to plain text, for the compact card preview line. */
 function plainText(text: string): string {
   return (text || '')
@@ -461,7 +471,7 @@ function padRank(rank: number): string {
       <div v-if="openNotif" class="nge-notif-detail-backdrop" @click.self="closeDetail">
         <div
           class="nge-notif-detail"
-          :class="{ 'nge-notif-detail--champions': champions }"
+          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide }"
           role="dialog"
           aria-modal="true"
           :aria-label="cleanCopy(openNotif.title)"
@@ -489,6 +499,7 @@ function padRank(rank: number): string {
                 <img
                   :src="openNotif.image_url || openNotif.thumbnail_url"
                   class="nge-notif-detail-img"
+                  @load="onPictureLoad"
                   @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
                 />
               </div>
@@ -1194,6 +1205,17 @@ function padRank(rank: number): string {
 }
 .nge-notif-detail-layout--has-image .nge-notif-detail-img {
   max-height: min(600px, calc(100vh - 220px));
+}
+/* With a picture the card may use more of the window, and a wide picture
+   takes the larger column. Phones and narrow windows keep the stacked layout
+   below. */
+@media (min-width: 761px) {
+  .nge-notif-detail--picture { width: min(1080px, 94vw); max-width: 94vw; max-height: 88vh; }
+  .nge-notif-detail--wide-picture { width: min(1360px, 94vw); }
+  .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-image { width: 62%; }
+  .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-img { max-height: calc(88vh - 130px); }
+  .nge-notif-detail--picture .nge-notif-detail-layout--has-image .nge-notif-detail-image { transition: width 0.25s ease; }
+  .nge-notif-detail--picture { transition: width 0.25s ease; }
 }
 
 .nge-notif-detail-text {
