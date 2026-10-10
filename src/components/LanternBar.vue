@@ -6,6 +6,14 @@
  */
 import { computed, ref } from 'vue';
 import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
+import { spooky, callGhost, callTheReaper, shoo } from '../util/spooky';
+import { useProofreadingBackendStore } from '../store';
+import ghostIcon from '../images/ghost-icon.png';
+
+// The ghost button (Halloween: util/spooky.ts). Everyone has it in Halloween
+// week; outside it, admins only, for trying it out.
+const backend = useProofreadingBackendStore();
+const showGhost = computed(() => spooky.season || backend.isAdmin);
 
 // The bar can be dragged anywhere by its grip (Ames 2026-10-10: "I need to be
 // able to move the lantern box"). Its place is remembered in this browser;
@@ -53,6 +61,7 @@ function resetPlace() {
 
 <template>
   <Teleport to="body">
+    <Transition name="nge-lantern-bar">
     <div v-if="lantern.on" ref="bar" class="nge-lantern" :class="{ 'nge-lantern--folded': !lantern.open }" :style="placed" role="group" aria-label="Lantern mode">
       <span class="nge-lantern-grip" title="Drag to move. Double click to put it back." aria-hidden="true"
             @pointerdown="startDrag" @dblclick="resetPlace">⠿</span>
@@ -76,8 +85,20 @@ function resetPlace() {
           <output>{{ lantern.flame }}%</output>
         </label>
       </template>
+      <span v-if="showGhost" class="nge-lantern-spooky">
+        <button type="button" class="nge-lantern-ghost" :class="{ 'is-on': spooky.on }" title="Call a ghost" aria-label="Call a ghost" @click="callGhost">
+          <img :src="ghostIcon" alt="" draggable="false" />
+        </button>
+        <template v-if="spooky.on">
+          <button type="button" class="nge-lantern-mini nge-lantern-mini--reaper" title="Call the reaper" aria-label="Call the reaper" @click="callTheReaper">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M4.2 14.5 10.6 2.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M10.6 2.2c-3.4-.9-6.3.2-8.2 2.7 2.4-1 4.9-.9 7.2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="currentColor" fill-opacity=".35"/></svg>
+          </button>
+          <button type="button" class="nge-lantern-mini" title="Send them away" aria-label="Send them away" @click="shoo">shoo</button>
+        </template>
+      </span>
       <button type="button" class="nge-lantern-off" title="Turn the Lantern off (Shift+N)" aria-label="Turn the Lantern off" @click="lantern.on = false">×</button>
     </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -93,6 +114,19 @@ function resetPlace() {
   user-select: none;
 }
 .nge-lantern--folded { gap: 4px; }
+/* The bar comes in as the lantern lights: out of a bright blur, once. */
+.nge-lantern-bar-enter-active { animation: nge-lantern-bar-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nge-lantern-bar-leave-active { animation: nge-lantern-bar-out 0.26s ease-in both; }
+@keyframes nge-lantern-bar-in {
+  0%   { opacity: 0; filter: blur(8px) brightness(2.4); box-shadow: 0 0 0 0 rgba(255, 200, 120, 0.9); }
+  55%  { opacity: 1; filter: blur(0) brightness(1.2); box-shadow: 0 0 26px 4px rgba(255, 200, 120, 0.45); }
+  100% { opacity: 1; filter: none; }
+}
+@keyframes nge-lantern-bar-out {
+  0%   { opacity: 1; filter: none; }
+  100% { opacity: 0; filter: blur(6px) brightness(0.6); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-lantern-bar-enter-active, .nge-lantern-bar-leave-active { animation: none; } }
 .nge-lantern-grip { margin-right: -8px; padding: 3px 4px; border-radius: 5px; cursor: grab; font-size: 13px; line-height: 1; color: rgba(255, 200, 120, 0.55); touch-action: none; }
 .nge-lantern-grip:hover { color: #ffc878; background: rgba(255, 196, 110, 0.1); }
 .nge-lantern-grip:active { cursor: grabbing; }
@@ -106,6 +140,18 @@ function resetPlace() {
 .nge-lantern-set output { min-width: 44px; font-variant-numeric: tabular-nums; color: #f3f6fb; }
 /* a unit symbol is never upper-cased by a parent */
 .nge-lantern-unit { text-transform: none; color: rgba(190, 205, 225, 0.7); }
+/* The ghost button, and what comes with it once the haunting is on */
+.nge-lantern-spooky { display: inline-flex; align-items: center; gap: 4px; padding-left: 10px; border-left: 1px solid rgba(196, 228, 255, 0.14); }
+.nge-lantern-ghost { width: 28px; height: 28px; padding: 2px; border: 1px solid transparent; border-radius: 7px; background: none; cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
+.nge-lantern-ghost img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0.7; transition: opacity 0.15s ease, filter 0.15s ease; }
+.nge-lantern-ghost:hover, .nge-lantern-ghost:focus-visible { transform: translateY(-2px); border-color: rgba(160, 225, 255, 0.5); background: rgba(160, 225, 255, 0.08); outline: none; }
+.nge-lantern-ghost:hover img, .nge-lantern-ghost:focus-visible img, .nge-lantern-ghost.is-on img { opacity: 1; filter: drop-shadow(0 0 5px rgba(160, 225, 255, 0.8)); }
+.nge-lantern-ghost:active { transform: scale(0.9); }
+.nge-lantern-mini { height: 24px; padding: 0 7px; border: 1px solid rgba(196, 228, 255, 0.2); border-radius: 6px; background: none; cursor: pointer; font: inherit; font-size: 11px; color: rgba(190, 205, 225, 0.85); display: inline-flex; align-items: center; }
+.nge-lantern-mini:hover, .nge-lantern-mini:focus-visible { color: #fff; border-color: rgba(196, 228, 255, 0.5); outline: none; }
+.nge-lantern-mini--reaper { color: #ff8f84; border-color: rgba(255, 120, 110, 0.35); }
+.nge-lantern-mini--reaper:hover, .nge-lantern-mini--reaper:focus-visible { color: #ffc2bb; border-color: rgba(255, 120, 110, 0.75); }
+@media (prefers-reduced-motion: reduce) { .nge-lantern-ghost { transition: none; } .nge-lantern-ghost:hover { transform: none; } }
 .nge-lantern-off {
   padding: 1px 7px; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer;
   font: inherit; font-size: 16px; line-height: 1; color: rgba(190, 205, 225, 0.8);

@@ -15,7 +15,7 @@
  */
 
 import {bindNgeMeshTint, getNgeMeshTint} from 'neuroglancer/mesh/nge_tint';
-import {getNgeLantern, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
+import {getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
 import {VisibleLayerInfo} from 'neuroglancer/layer';
@@ -233,6 +233,13 @@ export class MeshShaderManager {
       gl.uniform4f(
           shader.uniform('uNgeLantern'), ngeLanternPos[0], ngeLanternPos[1], ngeLanternPos[2], lantern.radiusNm);
       gl.uniform3f(shader.uniform('uNgeLanternLight'), 1, lantern.intensity, lantern.shadow);
+      const second = getNgeLanternSecond();
+      if (second !== null && second.radiusNm > 0) {
+        gl.uniform4f(shader.uniform('uNgeLantern2'), second.posNm[0], second.posNm[1], second.posNm[2], second.radiusNm);
+        gl.uniform3f(shader.uniform('uNgeLantern2Color'), second.color[0], second.color[1], second.color[2]);
+      } else {
+        gl.uniform4f(shader.uniform('uNgeLantern2'), 0, 0, 0, 0);
+      }
     } else {
       gl.uniform3f(shader.uniform('uNgeLanternLight'), 0, 1, 1);
     }
@@ -304,6 +311,9 @@ export class MeshShaderManager {
         builder.addUniform('highp mat4', 'uNgeLanternModel');
         builder.addUniform('highp vec4', 'uNgeLantern');
         builder.addUniform('highp vec3', 'uNgeLanternLight');
+        // A second, coloured light (the reaper's red lantern): xyz nm, w reach.
+        builder.addUniform('highp vec4', 'uNgeLantern2');
+        builder.addUniform('highp vec3', 'uNgeLantern2Color');
         if (silhouetteRenderingEnabled) {
           builder.addUniform('highp float', 'uSilhouettePower');
         }
@@ -355,6 +365,11 @@ if (uNgeLanternLight.x > 0.5) {
   // In shadow a cell keeps its shape and loses its colour.
   highp float grey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
   vColor.rgb = mix(vec3(grey) * uNgeLanternLight.z, min(vColor.rgb * uNgeLanternLight.y, vec3(1.0)), lit);
+  if (uNgeLantern2.w > 0.0) {
+    // The second light colours what it reaches, whatever colour the cell is.
+    highp float lit2 = 1.0 - smoothstep(0.3 * uNgeLantern2.w, uNgeLantern2.w, length(lanternFrom + uNgeLantern.xyz - uNgeLantern2.xyz));
+    vColor.rgb = mix(vColor.rgb, min(uNgeLantern2Color * (0.35 + 1.9 * grey), vec3(1.0)), 0.92 * lit2);
+  }
 }
 `;
         if (silhouetteRenderingEnabled) {
