@@ -438,7 +438,24 @@ export class AnnotationLayerView extends Tab {
     const countEl = this.ngeCountEl = document.createElement('span');
     countEl.className = 'nge-ann-count';
     countEl.title = 'Annotations in this layer';
-    topRow.append(topBox, topLabel, countEl);
+    // Previous / next annotation (Nseraf 2026-10-10: "arrows that allow you
+    // to go to next/previous annotation"). Each press selects the neighbour
+    // in the list and moves the view to it, wrapping round at the ends.
+    const stepper = document.createElement('span');
+    stepper.className = 'nge-ann-stepper';
+    const arrow = (delta: number, glyph: string, title: string) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'nge-ann-step';
+      b.textContent = glyph;
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.addEventListener('mousedown', event => event.stopPropagation());
+      b.addEventListener('click', event => { event.stopPropagation(); this.ngeStepAnnotation(delta); });
+      return b;
+    };
+    stepper.append(arrow(-1, '‹', 'Previous annotation'), arrow(1, '›', 'Next annotation'));
+    topRow.append(topBox, topLabel, stepper, countEl);
     this.updateListLength();
     this.element.appendChild(topRow);
 
@@ -679,6 +696,31 @@ export class AnnotationLayerView extends Tab {
         [{retainCount: 0, deleteCount: oldLength, insertCount: listElements.length}]);
     this.mutableControls.style.display = isMutable ? 'contents' : 'none';
     this.resetOnUpdate();
+  }
+
+  /** Select the annotation before or after the selected one and go to it. */
+  private ngeStepAnnotation(delta: number) {
+    const {listElements} = this;
+    const n = listElements.length;
+    if (!n) return;
+    const selected = this.selectedAnnotationState.value;
+    const at = selected === undefined ? -1 : listElements.findIndex(
+        e => e.state === selected.annotationLayerState && e.annotation.id === selected.annotationId);
+    // Nothing selected yet: Next starts at the first, Previous at the last.
+    const index = at < 0 ? (delta > 0 ? 0 : n - 1) : (at + delta + n) % n;
+    const {annotation, state} = listElements[index];
+    this.layer.selectAnnotation(state, annotation.id, true);
+    this.virtualList.scrollItemIntoView(index);
+    try {
+      const chunkTransform = state.chunkTransform.value as ChunkTransformParameters;
+      const {layerRank} = chunkTransform;
+      const chunkPosition = new Float32Array(layerRank);
+      const layerPosition = new Float32Array(layerRank);
+      getCenterPosition(chunkPosition, annotation);
+      matrix.transformPoint(
+          layerPosition, chunkTransform.chunkToLayerTransform, layerRank + 1, chunkPosition, layerRank);
+      setLayerPosition(this.layer, state.chunkTransform.value, layerPosition);
+    } catch { /* the layer's transform is not ready: it is still selected */ }
   }
 
   private updateListLength() {
