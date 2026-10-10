@@ -1,3 +1,8 @@
+-- NOT RUN, AND NOT TO BE RUN. Ames decided on 2026-10-10 to fix the counting
+-- going forward only and leave players' existing totals as they are ("I won't
+-- remove his edit count"). Only step 1, the read-only preview, was ever run.
+-- Kept as a record of what the extra rows are and how to find them.
+--
 -- Remove the edits the old on-screen watcher counted by mistake
 -- (Ames 2026-10-10).
 --
