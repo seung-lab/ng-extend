@@ -32,6 +32,8 @@ import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
 import { undelete, undeleteCount } from "../util/undelete";
+import { lantern, toggleLantern } from "../util/lantern";
+import LanternBar from "./LanternBar.vue";
 import RadioPlayer from "components/RadioPlayer.vue";
 import UsernamePrompt from "components/UsernamePrompt.vue";
 import MobileWelcome from "components/MobileWelcome.vue";
@@ -210,6 +212,12 @@ onMounted(() => {
       e.stopImmediatePropagation();
       if (!showCellLibrary.value) cellLibraryInitialTab.value = undefined;
       showCellLibrary.value = !showCellLibrary.value;
+    }
+    // Shift+N: the Lantern, on and off.
+    if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'N' || e.key === 'n')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      toggleLantern();
     }
     if (!typing && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
       e.preventDefault();
@@ -728,6 +736,9 @@ const toolbarActions: Record<string, ToolbarAction> = {
   // Undelete (Krzysztof Kruk's idea): bring back the cells last removed from
   // the view. It never undoes an edit. Its counter is a Settings choice, off
   // by default.
+  // Lantern (Krzysztof Kruk's idea): light the cell around the centre of the
+  // view and dim the rest. Its settings are in the small bar it opens.
+  lantern:     { action: () => { toggleLantern(); } },
   undelete:    { action: () => { undelete(); }, badge: () => useUserPreferencesStore().prefs.undeleteCounter ? undeleteCount.value : 0 },
   // Badge suppressed when the user mutes help requests (Settings → Notifications).
   help:        { action: () => { cellLibraryInitialTab.value = 'help'; showCellLibrary.value = true; }, badge: () => useUserPreferencesStore().prefs.helpMuted ? 0 : helpStore.pending.length },
@@ -760,6 +771,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => {
 
 // Map icon IDs to their active (open) state
 const iconActiveState: Record<string, () => boolean> = {
+  lantern: () => lantern.on,
   layers: () => layerPanelOpen.value,
   recap: () => showProfile.value && profileInitialTab.value === 'weekInScience',
   leaderboard: () => showLeaderboard.value,
@@ -874,6 +886,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 
 <template>
   <login-modal />
+  <LanternBar />
   <!-- <annotation-panel /> --> <!-- Hidden: users pick cells from Cell Library instead -->
   <achievement-toast />
   <command-palette

@@ -15,6 +15,7 @@
  */
 
 import {bindNgeMeshTint, getNgeMeshTint} from 'neuroglancer/mesh/nge_tint';
+import {getNgeLantern, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
 import {VisibleLayerInfo} from 'neuroglancer/layer';
@@ -163,6 +164,10 @@ highp vec3 getVertexPosition() {
 // (mesh/nge_tint.ts).
 const ngeTintSamplerSymbol = Symbol('ngeMeshTint');
 const ngeTintMat = mat4.create();
+// EyeWire II Lantern mode: the cell is lit around where you are, and left in
+// shadow elsewhere (mesh/nge_lantern.ts).
+const ngeLanternMat = mat4.create();
+const ngeLanternPos = new Float32Array(3);
 
 export class MeshShaderManager {
   private tempLightVec = new Float32Array(4);
@@ -217,6 +222,19 @@ export class MeshShaderManager {
       gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
+    }
+    // Lantern: only where colour is drawn (never the picking pass, so a cell
+    // in shadow can still be hovered and clicked).
+    const lantern = renderContext.emitColor ? getNgeLantern() : null;
+    if (lantern !== null) {
+      ngeLanternPositionNm(ngeLanternPos, lantern, projectionParameters.invViewMatrix);
+      gl.uniformMatrix4fv(
+          shader.uniform('uNgeLanternModel'), false, ngeLanternNmFromModel(ngeLanternMat, lantern, modelMat));
+      gl.uniform4f(
+          shader.uniform('uNgeLantern'), ngeLanternPos[0], ngeLanternPos[1], ngeLanternPos[2], lantern.radiusNm);
+      gl.uniform3f(shader.uniform('uNgeLanternLight'), 1, lantern.intensity, lantern.shadow);
+    } else {
+      gl.uniform3f(shader.uniform('uNgeLanternLight'), 0, 1, 1);
     }
   }
 
@@ -281,6 +299,11 @@ export class MeshShaderManager {
         builder.addUniform('highp float', 'uNgeTintOn');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
+        // Lantern: model to nanometres; where it is (xyz, nm) and how far it
+        // reaches (w, nm); x on or off, y brightness of the lit part, z of the rest.
+        builder.addUniform('highp mat4', 'uNgeLanternModel');
+        builder.addUniform('highp vec4', 'uNgeLantern');
+        builder.addUniform('highp vec3', 'uNgeLanternLight');
         if (silhouetteRenderingEnabled) {
           builder.addUniform('highp float', 'uSilhouettePower');
         }
@@ -324,6 +347,14 @@ if (uNgeTintOn > 0.5) {
       vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
     }
   }
+}
+if (uNgeLanternLight.x > 0.5) {
+  highp vec3 lanternFrom = (uNgeLanternModel * vec4(vertexPosition, 1.0)).xyz - uNgeLantern.xyz;
+  // Fully lit inside four fifths of the reach, fading out just past it.
+  highp float lit = 1.0 - smoothstep(0.8 * uNgeLantern.w, 1.2 * uNgeLantern.w, length(lanternFrom));
+  // In shadow a cell keeps its shape and loses its colour.
+  highp float grey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
+  vColor.rgb = mix(vec3(grey) * uNgeLanternLight.z, min(vColor.rgb * uNgeLanternLight.y, vec3(1.0)), lit);
 }
 `;
         if (silhouetteRenderingEnabled) {

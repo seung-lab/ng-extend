@@ -1,6 +1,7 @@
 import { startViewAutosave } from './util/view_autosave';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
+import {startLantern} from './util/lantern';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
@@ -378,6 +379,7 @@ function setupViewer() {
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
   startImageLoadingHint(viewer);
+  startLantern(viewer);
   startInvalidSegmentWatch(viewer);
   startAnnotationClickSelect(viewer);
   // Phones: never leave the 3D only view with nothing in it.

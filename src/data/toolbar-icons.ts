@@ -106,6 +106,9 @@ export const FLIGHT_SVG      = `<svg viewBox="1 1 14 14" fill="none" style="${S}
 // counter is off unless turned on in Settings (Ames 2026-10-07).
 const UNDELETE_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${ACCENT_SKY}"><path d="M3.2 6.4h6.1a3.6 3.6 0 0 1 0 7.2H5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 3.4 3 6.4l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+// A hanging lantern with a flame (a stand in: Ames may supply the real one).
+const LANTERN_SVG     = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:#ffc878"><path d="M6 2.2h4M8 2.2V1M5.2 4.4h5.6l.9 7.2H4.3l.9-7.2ZM4.6 13.6h6.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 6.4c1 1.1 1.5 1.9 1.5 2.7a1.5 1.5 0 0 1-3 0c0-.8.5-1.6 1.5-2.7Z" fill="currentColor"/></svg>`;
+
 export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
   { id: 'merge',       emoji: '🔗', svg: MERGE_SVG,       label: 'Merge Mode (M)' },
@@ -121,6 +124,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor' },
   { id: 'screenshot',  emoji: '📷', svg: CAMERA_SVG,      label: 'Take a screenshot' },
   { id: 'undelete',    emoji: '↩️', svg: UNDELETE_SVG,    label: 'Undelete: bring back a cell you removed from view (Ctrl+Z)' },
+  { id: 'lantern',     emoji: '🏮', svg: LANTERN_SVG,     label: 'Lantern (Shift+N): light the cell around where you are, and dim the rest' },
   { id: 'help',        emoji: '🔍', svg: HELP_SVG,        label: 'Second Opinion Requests' },
   { id: 'tags',        emoji: '📍', svg: TAG_SVG,         label: 'Tag Mode (Shift+T)' },
   { id: 'feed',        emoji: '📡', svg: FEED_SVG,        label: 'Activity Feed' },
@@ -153,7 +157,7 @@ export const RETIRED_TOOLBAR_ICON_IDS = ['quest', 'feed', 'settings'];
 // be farther right") — see REPOSITION_TOOLBAR_ICONS for saved prefs.
 // Cell Library first (Amy 2026-09-30): the main way in, left of Split/Merge.
 export const DEFAULT_TOOLBAR_ORDER = [
-  'cells', 'split', 'merge', 'findPath', 'highlight', 'undelete', 'recap', 'leaderboard', 'datasetStats',
+  'cells', 'split', 'merge', 'findPath', 'highlight', 'lantern', 'undelete', 'recap', 'leaderboard', 'datasetStats',
   'batch', 'help', 'tags', 'layers', 'notif', 'chat',
 ];
 
@@ -173,6 +177,7 @@ const AUTO_INJECT_TOOLBAR_ICONS: { id: string; after?: string; beforeFallback?: 
   { id: 'tags',     after: 'help', beforeFallback: 'notif' },
   { id: 'datasetStats', after: 'leaderboard', beforeFallback: 'notif' },
   { id: 'undelete', after: 'highlight', beforeFallback: 'recap' },
+  { id: 'lantern', after: 'highlight', beforeFallback: 'recap' },
 ];
 
 /**
