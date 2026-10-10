@@ -23,7 +23,7 @@ const norm = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g,'');
 function sourceFor(input) {
   if (!Object.hasOwn(SOURCES,input.dataset)) fail(400,'This dataset has no registered source sheet.');
   if (!/^\d{1,20}$/.test(String(input.segmentId))) fail(400,'Invalid segment ID.');
-  if (!['claim','complete','coordinates','release'].includes(input.action)) fail(400,'Invalid sheet action.');
+  if (!['claim','complete','coordinates','release','reopen'].includes(input.action)) fail(400,'Invalid sheet action.');
   return SOURCES[input.dataset];
 }
 /** Letters and digits only, lower case: "Krzysztof Kruk" and "KrzysztofKruk" are one name. */
@@ -62,6 +62,16 @@ function sheetValues(input, me, task, now) {
   // the sheet"). Sent just BEFORE the claim is released, while it is still
   // theirs. Only their own name is cleared, however the sheet spells it, and
   // only on a row that is not finished or waiting on a gamemaster.
+  // Reopening a cell the player completed (sent just AFTER the claim is open
+  // again): its finished Status goes back to WIP. Nothing is erased; the date,
+  // final ID and link stay until the cell is completed again, and are then
+  // replaced (see `whenReopened` below). Only on the player's own row.
+  if (input.action === 'reopen') {
+    if (task.status === 'completed') fail(409,'Reopen this cell before syncing.');
+    const mine = [...new Set([me.sheet_name, me.display_name, me.username].map(nameKey).filter(Boolean))];
+    const finished = SOURCES[input.dataset].completeStatuses || ['Complete'];
+    return [[['status'],'WIP',{replaceValues:finished,requireName:mine}]];
+  }
   if (input.action === 'release') {
     if (task.status === 'completed') fail(409,'A completed cell keeps its proofreader.');
     const mine = [...new Set([me.sheet_name, me.display_name, me.username].map(nameKey).filter(Boolean))];
@@ -94,15 +104,20 @@ function sheetValues(input, me, task, now) {
     // Plain text only: String(['Complete']) is 'Complete', and a list must not pass as one.
     const status = input.status == null || input.status === '' ? 'Complete' : input.status;
     if (typeof status !== 'string' || !allowed.includes(status)) fail(400,'That status is not one of this sheet\'s options.');
-    fields.push([['status'],status,{replaceValues:UNFINISHED_STATUSES}],[['datecomplete','completedtime','dateended'],now,isDate]);
-    if (task.final_segment_id && /^\d{1,20}$/.test(task.final_segment_id)) fields.push([['finalseg'],task.final_segment_id]);
+    // whenReopened: on a row the player reopened (Status WIP, their own
+    // name), the date, final ID and link from the first completion are
+    // replaced by this one's. On any other row a filled cell is kept.
+    const mineKeys = [...new Set([me.sheet_name, me.display_name, me.username].map(nameKey).filter(Boolean))];
+    const again = {whenReopened:mineKeys};
+    fields.push([['status'],status,{replaceValues:UNFINISHED_STATUSES}],[['datecomplete','completedtime','dateended'],now,{...isDate,...again}]);
+    if (task.final_segment_id && /^\d{1,20}$/.test(task.final_segment_id)) fields.push([['finalseg'],task.final_segment_id,again]);
     // The proofreader's view of the finished cell (Amy 2026-09-28): the
     // retina sheet's "Final Link" column. https only, no spaces or quotes;
     // written RAW like every field, so it can never become a formula.
     const link = String(input.link ?? '').trim();
     if (link) {
       if (link.length > 2000 || !/^https:\/\/[^\s"'<>]+$/i.test(link)) fail(400,'The link must be a single https link.');
-      fields.push([['finallink','finalnglink'],link]);
+      fields.push([['finallink','finalnglink'],link,again]);
     }
     // Optional note from the Complete form, for the sheet's Notes column.
     const notes = String(input.notes ?? '').replace(/\s+/g,' ').trim();
@@ -155,6 +170,9 @@ function planSheetUpdate(grid, title, match, fields) {
   // "Need Help" and every finished Status keep the name they have.
   const openClaim=!statusNow || statusNow==='WIP';
   let nameCleared=false;
+  // Whose row this is, for the rules that only apply to the player's own.
+  const nameCol=firstColumn(header,['proofreader','claimedby','completedby']);
+  const rowName=nameCol<0 ? '' : nameKey(grid[row][nameCol]);
   const rangeOf=col=>{let letters='',n=col; do {letters=String.fromCharCode(65+n%26)+letters; n=Math.floor(n/26)-1;} while(n>=0); return `'${title.replace(/'/g,"''")}'!${letters}${row+1}`;};
   for(const [patterns,value,opts] of fields) {
     const col=firstColumn(header,patterns);
@@ -172,8 +190,10 @@ function planSheetUpdate(grid, title, match, fields) {
     // Preserve the sheet owner's existing data. Retrying a write is harmless.
     // Exception: the Proofreader on completion, while Status is still empty.
     // Exception: a Status that only says the cell was in progress.
+    if(opts?.requireName && !opts.requireName.includes(rowName)) continue;
     const replaceable = (opts?.replaceUntilStatus && statusEmpty && existing!==String(value))
-      || (opts?.replaceValues?.includes(existing) && existing!==String(value));
+      || (opts?.replaceValues?.includes(existing) && existing!==String(value))
+      || (opts?.whenReopened && statusNow==='WIP' && opts.whenReopened.includes(rowName) && existing!==String(value));
     if(existing && !replaceable) continue;
     let letters='',n=col;
     do {letters=String.fromCharCode(65+n%26)+letters; n=Math.floor(n/26)-1;} while(n>=0);

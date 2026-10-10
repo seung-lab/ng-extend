@@ -167,3 +167,32 @@ test('releasing a claim takes the player\'s own name off the row, and nothing el
  // The name as the sheet spells it (spaces and capitals aside) counts as hers.
  assert.deepEqual(plan(['123','KrzysztofKruk','','',''],{id:'mine',display_name:'Krzysztof Kruk'}).data,[{range:"'cells'!B2",values:[['']]}]);
 });
+test('reopening a completed cell puts its row back to WIP, and the next completion replaces what the first one wrote',()=>{
+ const base={dataset:'stroeh_mouse_retina',segmentId:'123'};
+ const kk={id:'mine',display_name:'Krzysztof Kruk',username:'KrzysztofKruk'};
+ const open={assigned_to:'mine',dataset:base.dataset,segment_id:'123',status:'in_progress',final_segment_id:'456'};
+ const head=['Start SegID','Proofreader','Status','Date Complete','Final SegID','Final Link','Notes'];
+ const reopen=row=>planSheetUpdate([head,row],'cells','123',sheetValues({...base,action:'reopen'},kk,open,'10/10/2026'));
+ // His own finished row: Status becomes WIP and nothing else is touched.
+ assert.deepEqual(reopen(['123','KrzysztofKruk','Complete (cut off)','10/9/2026','456','https://old.example/link','note']).data,[{range:"'cells'!C2",values:[['WIP']]}]);
+ assert.deepEqual(reopen(['123','KrzysztofKruk','Complete','10/9/2026','456','','']).data,[{range:"'cells'!C2",values:[['WIP']]}]);
+ // Someone else's row, or a row that is not finished: left alone.
+ assert.deepEqual(reopen(['123','Nseraf','Complete (cut off)','10/9/2026','456','','']).data,[]);
+ assert.deepEqual(reopen(['123','KrzysztofKruk','Need Help','','','','']).data,[]);
+ assert.deepEqual(reopen(['123','KrzysztofKruk','','','','','']).data,[]);
+ // The claim must be open again first.
+ assert.throws(()=>sheetValues({...base,action:'reopen'},kk,{...open,status:'completed'},'now'));
+ assert.throws(()=>sheetValues({...base,action:'reopen'},kk,{...open,assigned_to:'someone-else'},'now'));
+ // Completing it again: the WIP row takes the new status, date, final ID and link.
+ const done={...open,status:'completed',final_segment_id:'789'};
+ const again=row=>planSheetUpdate([head,row],'cells','123',sheetValues({...base,action:'complete',status:'Complete',link:'https://new.example/link'},kk,done,'10/10/2026'));
+ const p=again(['123','KrzysztofKruk','WIP','10/9/2026','456','https://old.example/link','note']);
+ const wrote=Object.fromEntries([...p.data,...p.userEnteredData].map(d=>[d.range.slice(-2),d.values[0][0]]));
+ assert.deepEqual(wrote,{C2:'Complete',D2:'10/10/2026',E2:'789',F2:'https://new.example/link'});
+ // A row that was never reopened keeps a filled date, final ID and link, as before.
+ const q=again(['123','KrzysztofKruk','','10/1/2026','111','https://kept.example/link','']);
+ assert.deepEqual(Object.fromEntries([...q.data,...q.userEnteredData].map(d=>[d.range.slice(-2),d.values[0][0]])),{C2:'Complete'});
+ // WIP under another player's name: their date, ID and link are not replaced.
+ const r=again(['123','Nseraf','WIP','10/1/2026','111','https://kept.example/link','']);
+ assert.equal([...r.data,...r.userEnteredData].some(d=>/[DEF]2$/.test(d.range)),false);
+});

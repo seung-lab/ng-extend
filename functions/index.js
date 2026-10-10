@@ -1756,6 +1756,12 @@ exports.ewSecureWrite = onRequest(
             out = await sb("rpc/pilot_task_set_anchor", { method: "POST", body: JSON.stringify({ p_user: me.id, p_args: args.args || {} }) });
             break;
           }
+          // Reopening your own completed cell: a small function of its own
+          // (supabase-task-reopen.sql).
+          if (action === "pilot.task" && args.operation === "reopen") {
+            out = await sb("rpc/pilot_task_reopen", { method: "POST", body: JSON.stringify({ p_user: me.id, p_args: args.args || {} }) });
+            break;
+          }
           const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat","save_link"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
           const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};
