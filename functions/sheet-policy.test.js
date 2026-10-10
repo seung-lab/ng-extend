@@ -169,7 +169,7 @@ test('releasing a claim takes the player\'s own name off the row, and nothing el
 });
 test('reopening a completed cell puts its row back to WIP, and the next completion replaces what the first one wrote',()=>{
  const base={dataset:'stroeh_mouse_retina',segmentId:'123'};
- const kk={id:'mine',display_name:'Krzysztof Kruk',username:'KrzysztofKruk'};
+ const kk={id:'mine',display_name:'Krzysztof Kruk',username:'KrzysztofKruk',sheet_name:'KrzysztofKruk'};
  const open={assigned_to:'mine',dataset:base.dataset,segment_id:'123',status:'in_progress',final_segment_id:'456'};
  const head=['Start SegID','Proofreader','Status','Date Complete','Final SegID','Final Link','Notes'];
  const reopen=row=>planSheetUpdate([head,row],'cells','123',sheetValues({...base,action:'reopen'},kk,open,'10/10/2026'));
