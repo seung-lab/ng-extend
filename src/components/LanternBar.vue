@@ -2,7 +2,7 @@
 /**
  * The Lantern's controls: one slim bar under the top bar while Lantern mode is
  * on. It folds down to a chip, so it never takes more than a line. See
- * util/lantern.ts for what the three settings do.
+ * util/lantern.ts for what the two settings do.
  */
 import { computed, ref } from 'vue';
 import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
@@ -69,11 +69,6 @@ function resetPlace() {
           <span>Size</span>
           <input type="range" v-model.number="lantern.sizeUm" :min="L.sizeUm.min" :max="L.sizeUm.max" :step="L.sizeUm.step" @keydown.stop />
           <output>{{ lantern.sizeUm }} <span class="nge-lantern-unit">µm</span></output>
-        </label>
-        <label class="nge-lantern-set" title="Lift the lantern off the centre, toward you, so it lights the side of the cell you are looking at">
-          <span>Height</span>
-          <input type="range" v-model.number="lantern.heightUm" :min="L.heightUm.min" :max="L.heightUm.max" :step="L.heightUm.step" @keydown.stop />
-          <output>{{ lantern.heightUm }} <span class="nge-lantern-unit">µm</span></output>
         </label>
         <label class="nge-lantern-set" title="How bright the lit part is">
           <span>Flame</span>

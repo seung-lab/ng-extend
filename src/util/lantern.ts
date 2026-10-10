@@ -7,11 +7,13 @@
  * (third_party/neuroglancer/mesh/nge_lantern.ts); this file keeps the
  * settings, follows the view, and remembers the settings in this browser.
  *
- * Three settings:
+ * Two settings:
  *   size    how far the light reaches, in micrometres
- *   height  how far the lantern is lifted off the centre toward your eye, so
- *           it lights the side of the cell you are looking at (Ames)
  *   flame   how bright the lit part is (Ames: "a flame intensity slider")
+ * A third, Height (lifting the light toward the eye), was tried and taken out
+ * the same day: on screen it read as a smaller Size and needed explaining
+ * (Ames 2026-10-10: "I don't understand height", "remove height"). The
+ * renderer can still do it (heightNm), it is simply always 0.
  */
 import {reactive, watch} from 'vue';
 import {setNgeLantern, type NgeLantern} from 'neuroglancer/mesh/nge_lantern';
@@ -19,14 +21,13 @@ import {setNgeLantern, type NgeLantern} from 'neuroglancer/mesh/nge_lantern';
 const KEY = 'nge-lantern-v1';
 export const LANTERN_LIMITS = {
   sizeUm: {min: 2, max: 80, step: 1, start: 12},
-  heightUm: {min: 0, max: 40, step: 1, start: 0},
   flame: {min: 50, max: 180, step: 5, start: 115},     // per cent
 };
 /** How bright the part in shadow is. Dim enough to recede, not so dim that
  *  the shape of the cell is lost. */
 const SHADOW = 0.26;
 
-interface Saved { on: boolean; sizeUm: number; heightUm: number; flame: number; open: boolean; }
+interface Saved { on: boolean; sizeUm: number; flame: number; open: boolean; }
 const clamp = (v: unknown, r: {min: number; max: number; start: number}) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(r.min, Math.min(r.max, n)) : r.start;
@@ -37,7 +38,6 @@ function load(): Saved {
   return {
     on: false,                                   // never on by surprise after a reload
     sizeUm: clamp(s.sizeUm, LANTERN_LIMITS.sizeUm),
-    heightUm: clamp(s.heightUm, LANTERN_LIMITS.heightUm),
     flame: clamp(s.flame, LANTERN_LIMITS.flame),
     open: s.open !== false,
   };
@@ -66,7 +66,7 @@ function readView() {
 
 function apply() {
   state.radiusNm = lantern.sizeUm * 1000;
-  state.heightNm = lantern.heightUm * 1000;
+  state.heightNm = 0;
   state.intensity = lantern.flame / 100;
   readView();
   setNgeLantern(lantern.on ? state : null);
@@ -90,7 +90,7 @@ export function startLantern(v: any) {
   try { viewer.coordinateSpace.changed.add(() => { if (lantern.on) apply(); }); } catch { /* fixed scales */ }
   watch(lantern, () => {
     apply();
-    try { localStorage.setItem(KEY, JSON.stringify({sizeUm: lantern.sizeUm, heightUm: lantern.heightUm, flame: lantern.flame, open: lantern.open})); } catch { /* not remembered */ }
+    try { localStorage.setItem(KEY, JSON.stringify({sizeUm: lantern.sizeUm, flame: lantern.flame, open: lantern.open})); } catch { /* not remembered */ }
   }, {deep: true});
   apply();
 }

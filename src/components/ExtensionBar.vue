@@ -2006,6 +2006,33 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 @keyframes nge-ti-undelete-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1.6px); } }
 @keyframes nge-ti-undelete-swing { 0% { transform: rotate(-70deg) scale(1.2); filter: brightness(2); } 100% { transform: none; filter: none; } }
 @media (prefers-reduced-motion: reduce) { #extensionBar [data-icon-id="undelete"] svg { animation: none !important; } }
+/* Lantern: the flame flickers and the lantern glows while the mouse is on it
+   (Ames 2026-10-10: "light up, like the flame flicker, on hover"). While
+   Lantern mode is on it keeps a steady glow, so the icon shows it is lit. */
+#extensionBar [data-icon-id="lantern"] .nge-ti-flame { transform-box: fill-box; transform-origin: 50% 100%; }
+#extensionBar [data-icon-id="lantern"] svg { transition: filter 0.2s ease; }
+#extensionBar [data-icon-id="lantern"]:hover svg,
+#extensionBar [data-icon-id="lantern"]:focus-visible svg { animation: nge-ti-lantern-glow 1.1s ease-in-out infinite; }
+#extensionBar [data-icon-id="lantern"]:hover .nge-ti-flame,
+#extensionBar [data-icon-id="lantern"]:focus-visible .nge-ti-flame { animation: nge-ti-lantern-flicker 0.62s ease-in-out infinite; }
+#extensionBar [data-icon-id="lantern"].nge-icon-btn--active svg { filter: drop-shadow(0 0 4px rgba(255, 190, 90, 0.85)); }
+@keyframes nge-ti-lantern-flicker {
+  0%   { transform: scale(1, 1) rotate(0deg); opacity: 1; }
+  18%  { transform: scale(0.86, 1.22) rotate(-5deg); opacity: 0.9; }
+  37%  { transform: scale(1.1, 0.92) rotate(3deg); opacity: 1; }
+  55%  { transform: scale(0.9, 1.3) rotate(5deg); opacity: 0.82; }
+  76%  { transform: scale(1.06, 1.04) rotate(-3deg); opacity: 1; }
+  100% { transform: scale(1, 1) rotate(0deg); opacity: 1; }
+}
+@keyframes nge-ti-lantern-glow {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(255, 190, 90, 0.7)); }
+  40%      { filter: drop-shadow(0 0 7px rgba(255, 205, 120, 1)); }
+  70%      { filter: drop-shadow(0 0 4px rgba(255, 180, 80, 0.8)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #extensionBar [data-icon-id="lantern"] svg, #extensionBar [data-icon-id="lantern"] .nge-ti-flame { animation: none !important; }
+  #extensionBar [data-icon-id="lantern"]:hover svg { filter: drop-shadow(0 0 5px rgba(255, 190, 90, 0.9)); }
+}
 
 /* Screenshot (camera): the lens glints; click is a shutter flash. */
 #extensionBar [data-icon-id="screenshot"]:hover svg > :nth-child(2) { animation: nge-ti-lens 0.9s ease-in-out infinite; }

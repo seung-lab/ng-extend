@@ -107,7 +107,7 @@ export const FLIGHT_SVG      = `<svg viewBox="1 1 14 14" fill="none" style="${S}
 const UNDELETE_SVG    = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:${ACCENT_SKY}"><path d="M3.2 6.4h6.1a3.6 3.6 0 0 1 0 7.2H5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 3.4 3 6.4l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 // A hanging lantern with a flame (a stand in: Ames may supply the real one).
-const LANTERN_SVG     = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:#ffc878"><path d="M6 2.2h4M8 2.2V1M5.2 4.4h5.6l.9 7.2H4.3l.9-7.2ZM4.6 13.6h6.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 6.4c1 1.1 1.5 1.9 1.5 2.7a1.5 1.5 0 0 1-3 0c0-.8.5-1.6 1.5-2.7Z" fill="currentColor"/></svg>`;
+const LANTERN_SVG     = `<svg viewBox="0 0 16 16" fill="none" style="${S}color:#ffc878"><path d="M6 2.2h4M8 2.2V1M5.2 4.4h5.6l.9 7.2H4.3l.9-7.2ZM4.6 13.6h6.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path class="nge-ti-flame" d="M8 6.4c1 1.1 1.5 1.9 1.5 2.7a1.5 1.5 0 0 1-3 0c0-.8.5-1.6 1.5-2.7Z" fill="currentColor"/></svg>`;
 
 export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'split',       emoji: '✂️', svg: SPLIT_SVG,       label: 'Cut Mode (C)' },
