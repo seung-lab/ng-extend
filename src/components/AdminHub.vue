@@ -2790,9 +2790,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-card:hover { border-top-color: rgba(79, 207, 255, 0.45); border-right-color: rgba(79, 207, 255, 0.45); border-bottom-color: rgba(79, 207, 255, 0.45); }
 /* Compact until clicked: who, what they said, where it stands. */
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) > :not(.nge-triage-meta):not(.nge-triage-from):not(.nge-triage-excerpt) { display: none; }
-.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
-}
+/* The whole report on the chip too, never cut short (Ames 2026-10-10:
+   "these are supposed to show the full bug report text"). */
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt { white-space: pre-wrap; overflow-wrap: anywhere; }
 .nge-triage-board .nge-triage-card--selected { cursor: default; }
 /* The whole report, with the player's own line breaks, on an opened card. */
 .nge-triage-card--selected .nge-triage-excerpt, .nge-triage-cols:not([style]) .nge-triage-excerpt { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -2836,7 +2836,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-board .nge-triage-card--selected .nge-triage-avatar { margin-right: 6px; vertical-align: -3px; }
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt {
-  font-size: 12.5px; line-height: 1.35; -webkit-line-clamp: 2;
+  font-size: 12.5px; line-height: 1.35;
 }
 /* Inside a category the chips sit in as many columns as fit, so a wide
    category shows a lot at once. The heading, an opened card and the empty
