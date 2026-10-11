@@ -2002,6 +2002,14 @@ exports.ewCommunityData = onRequest(
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];
         for(const row of rows) {
           const badges=await sb("special_badges?id=eq."+Number(row.badge_id)+"&select=name,slug&limit=1");
+          // The Merger Sandbox Achievement (code name merger-sandbox, any display
+          // name): only with every merger on the player's own record as cut.
+          // Keep the count in step with SANDBOX_CELLS in src/practice_pools.ts.
+          if(badges.some(b=>b.slug==="merger-sandbox")) {
+            const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.9&practice_made=gt.0&select=item&limit=500");
+            if(new Set(done.map(r=>r.item).filter(Boolean)).size<5) throw ewErr(403,"Cut every merger in the Merger Sandbox first.");
+            continue;
+          }
           if(!badges.some(b=>["Citizen Scientist","Advanced Operator","Mini Michelangelo","Safety Scissors","Merge Master","Cut Master"].includes(b.name))) throw ewErr(403,"This award requires an admin.");
         }
       }
