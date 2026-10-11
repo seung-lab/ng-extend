@@ -681,9 +681,13 @@ async function echoAppDecisions() {
     // Marked "In progress" by hand in the Admin Hub: someone is fixing it
     // themselves, so the robot does not build it (AdminHub.vue BY_HAND_NOTE).
     const byHand = row.status === 'approved' && /^By hand\b/.test(row.approver_note || '');
-    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state && !byHand;
+    // Kept as an idea for later (AdminHub.vue LATER_NOTE): not built either.
+    const later = row.status === 'approved' && /^Later\b/.test(row.approver_note || '');
+    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state && !byHand && !later;
     const note = row.approver_note ? ` with the note "${row.approver_note}"` : '';
-    const posted = await say(row, byHand
+    const posted = await say(row, later
+      ? `Kept as an idea for later in the Admin Hub by ${row.reviewed_by}. The robot is not building it. 💡`
+      : byHand
       ? `Marked in progress in the Admin Hub by ${row.reviewed_by}: it is being fixed by hand, so the robot is not building it. ✓`
       : row.status === 'approved'
       ? `Approved in the Admin Hub by ${row.reviewed_by}${note}.${building ? ` Claude is starting on it now. <@${tester}>, you're the tester.` : ''} ✓`

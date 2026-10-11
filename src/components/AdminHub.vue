@@ -212,8 +212,8 @@ const shortDate = (iso: string) => {
 // ── Board: open work on top, finished and dismissed folded away ───────────
 // Slack and this tab write the same rows, so a dismiss, stop or "good" in a
 // Slack thread moves the card here too (after Refresh).
-type TriageGroupKey = 'decide' | 'progress' | 'done' | 'dismissed';
-const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, done: false, dismissed: false });
+type TriageGroupKey = 'decide' | 'progress' | 'later' | 'done' | 'dismissed';
+const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, later: false, done: false, dismissed: false });
 
 // The card you are working on stays marked, and stays in view when the list
 // reloads after an action (Ames 2026-10-05: sending an update reloaded the
@@ -274,12 +274,14 @@ function triageGroupOf(r: TriageRow): TriageGroupKey {
   if (r.status === 'dismissed') return 'dismissed';
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
   if (r.status === 'proposed') return 'decide';
+  if (isLater(r)) return 'later';
   return 'progress';
 }
 const triageGroups = computed(() => {
   const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
     { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Triage zero. Nicely done.', closed: false },
     { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
+    { key: 'later', icon: '💡', title: 'Ideas for later', hint: 'Good ideas, not now', empty: 'No ideas put by.', closed: true },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
   ];
@@ -421,7 +423,7 @@ function cheerFor(row: TriageRow) {
 // to fold or open it; the choice is remembered.
 const TRIAGE_FOLD_KEY = 'nge_triage_folded_v3';
 const triageFolded = ref<Record<TriageGroupKey, boolean>>((() => {
-  const start = { decide: false, progress: false, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
+  const start = { decide: false, progress: false, later: true, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
   try { return { ...start, ...(JSON.parse(localStorage.getItem(TRIAGE_FOLD_KEY) || '{}') || {}) }; } catch { return start; }
 })());
 function toggleFold(key: TriageGroupKey) {
@@ -472,7 +474,13 @@ async function askForSuggestion(row: TriageRow) {
 
 const BY_HAND_NOTE = 'By hand';
 const isByHand = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(BY_HAND_NOTE);
-async function markInProgress(row: TriageRow) {
+/** A good idea that is not being done yet (Ames 2026-10-11: "add to future
+ *  ideas"). Kept the same way as a card marked by hand, so the robot leaves
+ *  it alone: approved, never queued, with a note that starts with this word.
+ *  scripts/slack-triage-bridge.mjs looks for the same word. */
+const LATER_NOTE = 'Later';
+const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(LATER_NOTE);
+async function markInProgress(row: TriageRow, later = false) {
   if (triageActing.value) return;
   triageActing.value = row.id;
   try {
@@ -480,10 +488,15 @@ async function markInProgress(row: TriageRow) {
     const comment = (triageNotes.value[row.id] ?? '').trim();
     await secureWrite('triage.update', { id: row.id, fields: {
       status: 'approved',
-      approver_note: `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
+      // A build the robot had waiting is taken off its list.
+      impl_state: null,
+      approver_note: later
+        ? `${LATER_NOTE}: a good idea kept for later, not being built now.${comment ? ' ' + comment : ''}`
+        : `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
     } });
+    if (later) { await loadTriage(); return; }
     triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
@@ -711,7 +724,7 @@ function relTime(iso: string): string {
  *  with that same text as its note, so there is no second question to answer
  *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
  *  not be sent, the report is left where it is. */
-async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false) {
+async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false, andLater = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
   let sent = false;
@@ -746,7 +759,7 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
     sent = true;
-    if (!andDone && !andProgress) await loadTriage();
+    if (!andDone && !andProgress && !andLater) await loadTriage();
   } catch (e: any) {
     triageError.value = `Could not send the update: ${e?.message ?? String(e)}`;
   } finally {
@@ -755,6 +768,7 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
   if (sent && andDone) await setTriageStatus(row, 'done', false, false, text.replace(/\s+/g, ' ').slice(0, 300));
   // The submitter has been told it is being looked into: move it to In progress, by hand (Ames 2026-10-11).
   if (sent && andProgress) await markInProgress(row);
+  if (sent && andLater) await markInProgress(row, true);
 }
 
 /** Build ID of the preview waiting to go live: the tested preview, or one
@@ -2268,9 +2282,12 @@ function practiceWhen(iso: string | null) {
             <!-- Done, on every card that is not already done (Ames 2026-10-01:
                  "a lot of the time I fix in Claude"), whatever state it is in:
                  waiting for a decision, in progress, or dismissed. -->
-            <button v-if="row.status === 'proposed'" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+            <button v-if="row.status === 'proposed' || isLater(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
                     title="You are fixing this yourself, for example in a Claude chat. Moves the card to In progress. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row)">▶ In progress</button>
+            <button v-if="row.status === 'proposed' || isByHand(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+                    title="A good idea, but not now. Moves the card to Ideas for later. The robot does not build it and nothing is sent to the reporter."
+                    @click="markInProgress(row, true)">💡 Later</button>
             <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
@@ -2332,6 +2349,10 @@ function practiceWhen(iso: string | null) {
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
                         title="Sends this to the submitter, then moves the card to In progress, marked by hand so the robot does not build it."
                         @click="sendReporterUpdate(row, false, true)">▶ Send: mark in progress</button>
+                <button v-if="triageGroupOf(row) === 'decide' || isByHand(row)" class="nge-admin-action-btn"
+                        :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
+                        title="Sends this to the submitter, then moves the card to Ideas for later."
+                        @click="sendReporterUpdate(row, false, false, true)">💡 Send: mark later</button>
                 <button class="nge-admin-action-btn" :disabled="reporterSending === row.id" @click="closeReporterDraft(row)">Not now</button>
               </div>
             </template>
@@ -2951,6 +2972,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-board .nge-triage-col--decide { border-top: 3px solid #ff8d8d; }
 .nge-triage-board .nge-triage-col--progress { border-top: 3px solid #4fcfff; }
+.nge-triage-board .nge-triage-col--later { border-top: 3px solid #ffd24d; }
 .nge-triage-board .nge-triage-col--done { border-top: 3px solid #5ee8a8; }
 .nge-triage-board .nge-triage-col--dismissed { border-top: 3px solid #7f93ad; }
 /* Column headers stay put and are not folds here. */
