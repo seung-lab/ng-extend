@@ -15,7 +15,8 @@ import {currentDatasetTag} from '../datasets';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {cellAtCrosshair} from '../util/crosshair_cell';
-import {ancestorAmong} from './pcg_service';
+import {markToCarry, type KeptMark} from '../util/mark_follow';
+import {ancestorAmong, latestDescendants, getRootFromSupervoxel} from './pcg_service';
 import nurroSuccess from '../../static/nurro/nurro-success.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
@@ -232,6 +233,9 @@ interface LocalAnnotationStore {
   [key: string]: {
     isComplete: boolean;
     cellType: string;
+    /** The supervoxel the mark was made on, when known: it says which cell
+     *  the mark belongs to after any number of edits, as CAVE itself does. */
+    sv?: string;
   };
 }
 
@@ -246,10 +250,57 @@ function getLocalAnnotations(): LocalAnnotationStore {
   } catch { return {}; }
 }
 
-function setLocalAnnotation(key: string, data: Partial<{isComplete: boolean; cellType: string}>) {
+function setLocalAnnotation(key: string, data: Partial<{isComplete: boolean; cellType: string; sv: string}>) {
   const store = getLocalAnnotations();
   store[key] = { ...{isComplete: false, cellType: ''}, ...store[key], ...data };
   localStorage.setItem(LOCAL_ANNOTATION_KEY, JSON.stringify(store));
+}
+
+/**
+ * This browser's copy of a cell's marks, following the cell through edits.
+ *
+ * A mark made in the menu shows at once from this copy, kept under the ID the
+ * cell had then; CAVE only starts reporting a new mark some time later. An
+ * edit gives the cell a new ID, so straight after a merge the cell type or
+ * completion just set was gone from the menu (Nseraf 2026-10-11: "the
+ * annotation does not follow with the new segID"). When the new ID has no
+ * copy, the cell's history is asked whether an ID that has one led to it,
+ * and that copy is carried over to the new ID.
+ */
+const followed = new Map<string, Promise<void>>();
+let lineageBusy = 0;
+const lineageQueue: (() => void)[] = [];
+async function carryLocalAnnotation(rootId: string): Promise<void> {
+  const marks: Record<string, KeptMark> = {};
+  const store = getLocalAnnotations();
+  for (const k of Object.keys(store)) if (k.startsWith('seg:')) marks[k.slice(4)] = store[k];
+  // A long segment list asks for many cells at once: a few at a time.
+  if (lineageBusy >= 4) await new Promise<void>(go => lineageQueue.push(go));
+  lineageBusy++;
+  let from: string | null = null;
+  try {
+    from = await markToCarry(rootId, marks, { ancestorAmong, rootOfSupervoxel: getRootFromSupervoxel, liveEnds: latestDescendants });
+  } finally { lineageBusy--; lineageQueue.shift()?.(); }
+  const old = from ? getLocalAnnotations()[segKey(from)] : undefined;
+  if (!old || getLocalAnnotations()[segKey(rootId)]) return;
+  setLocalAnnotation(segKey(rootId), { isComplete: !!old.isComplete, cellType: old.cellType || '', ...(old.sv ? { sv: old.sv } : {}) });
+}
+/** Note the spot a mark was just made on, if the crosshairs are in the cell. */
+function rememberMarkSpot(rootId: string) {
+  void cellAtCrosshair().then(at => {
+    if (at.supervoxel && at.root === rootId && getLocalAnnotations()[segKey(rootId)]) setLocalAnnotation(segKey(rootId), { sv: at.supervoxel });
+  }).catch(() => { /* the mark is kept without its spot */ });
+}
+/** The copy for this cell, carried over from an earlier ID of it if need be. */
+async function localAnnotationFor(rootId: string): Promise<LocalAnnotationStore[string] | undefined> {
+  const exact = getLocalAnnotations()[segKey(rootId)];
+  if (exact || !/^\d+$/.test(rootId)) return exact;
+  // Asked once per ID and per number of marks kept, not on every redraw.
+  const key = rootId + ':' + Object.keys(getLocalAnnotations()).length;
+  let p = followed.get(key);
+  if (!p) { p = carryLocalAnnotation(rootId).catch(() => { followed.delete(key); }); followed.set(key, p); }
+  await p;
+  return getLocalAnnotations()[segKey(rootId)];
 }
 
 function deleteLocalAnnotation(key: string, field: 'isComplete' | 'cellType') {
@@ -456,7 +507,7 @@ export async function getCellStatus(
   if (dsCfg.annotationLog === 'edit_log') {
     const logged = await statusFromEditLog(rootId);
     // Your own just-made change shows at once, even before the read sees it.
-    const local = getLocalAnnotations()[segKey(rootId)];
+    const local = await localAnnotationFor(rootId);
     if (local && local.isComplete !== undefined && !logged.isComplete && local.isComplete) { logged.isComplete = true; logged.annotationId = -1; }
     if (local?.cellType && !logged.cellType) { logged.cellType = local.cellType; logged.cellTypeAnnotationId = -1; }
     return logged;
@@ -538,8 +589,8 @@ export async function getCellStatus(
   // Local data only fills fields CAVE didn't already populate (CAVE wins ties).
   // Mirror is keyed by rootId, so each per-segment read gets its own entry.
   {
-    const store = getLocalAnnotations();
-    const local = store[segKey(rootId)];
+    // Only when CAVE left something unanswered: it is the record once it knows.
+    const local = status.isComplete && status.cellType ? undefined : await localAnnotationFor(rootId);
     if (local) {
       if (!status.isComplete && local.isComplete) {
         status.isComplete = true;
@@ -688,6 +739,7 @@ export async function setCellComplete(
         // Mirror to localStorage so the lightbulb shows the write immediately,
         // before the next materialization cron run (every other day on stroeh).
         setLocalAnnotation(segKey(rootId), {isComplete: true});
+        if (!pointOverride) rememberMarkSpot(rootId);
         // Notify all rendered lightbulbs in the seg panel so their triangle
         // pip flips immediately. Without this, the pip stays gray until page
         // reload — particularly visible after batch completions.
@@ -814,14 +866,34 @@ export async function setCellComplete(
 /**
  * Save (or update) the cell-type annotation for a root ID.
  */
+/** Why the last cell type was refused, in plain words ('' if it wasn't). */
+let lastCellTypeProblem = '';
+export function getLastCellTypeProblem(): string { return lastCellTypeProblem; }
+
 export async function saveCellType(
     caveServer: string, rootId: string, cellType: string,
-    existingAnnotationId?: number): Promise<boolean> {
+    existingAnnotationId?: number,
+    /** The batch tool types many cells from one view and cannot move the
+     *  crosshairs into each of them. */
+    skipCrosshairCheck = false): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellTypeTable, cellTypeSchema, alignedVolume} = dsCfg;
+  lastCellTypeProblem = '';
   if (!caveServer) {
     console.warn('[lightbulb] No CAVE server — cannot save cell type.');
     return false;
+  }
+  // A cell type is saved at a POINT, like a completion, and CAVE files it
+  // under whatever cell is at that point. So the crosshairs must be inside
+  // this cell (Ames 2026-10-11): then the type lands on the right cell, and
+  // the spot says which cell it belongs to after later edits.
+  if (!skipCrosshairCheck && !dsCfg.annotationLog) {
+    const problem = (await crosshairProblem(rootId)).replace('then mark it again', 'then save the type again');
+    if (problem) {
+      lastCellTypeProblem = problem;
+      console.warn('[lightbulb] cell type refused:', problem);
+      return false;
+    }
   }
 
   const baseUrl = annotationBaseUrl(caveServer, cellTypeTable, alignedVolume);
@@ -885,6 +957,7 @@ export async function saveCellType(
       // Mirror to localStorage so the lightbulb shows the write immediately,
       // before the next materialization cron run.
       setLocalAnnotation(segKey(rootId), {cellType});
+      rememberMarkSpot(rootId);
       try {
         const backend = useProofreadingBackendStore();
         if (backend.userId) {

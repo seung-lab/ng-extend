@@ -7,7 +7,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useHelpRequestStore } from '../store';
-import { getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem } from '../widgets/lightbulb_service';
+import { getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { currentSegLayerName, currentCellTypes } from '../datasets';
 import { planMenuCompletion, finishMenuCompletion, needsCompletionDetails } from '../util/menu_complete';
@@ -227,6 +227,8 @@ async function pickCellType(type: string) {
       },
     }));
     flash();
+  } else if (getLastCellTypeProblem()) {
+    sheetNote.value = getLastCellTypeProblem();
   }
   savingType.value = false;
 }

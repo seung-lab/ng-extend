@@ -3079,10 +3079,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-score-word--big { max-width: none; font-size: 14px; font-weight: 700; color: #b9f5c6; }
 .nge-hud-spark { display: inline-flex; flex-direction: column; justify-content: flex-end; gap: 4px; padding: 0 4px; margin-left: auto; }
 .nge-hud-nurro { position: relative; flex: 0 0 130px; align-self: stretch; margin-left: auto; min-height: 62px; pointer-events: none; }
-.nge-hud-nurro img { position: absolute; left: 50%; top: 50%; height: 150px; margin-top: -75px; width: auto; transform: translateX(-50%); filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)); animation: nge-hud-nurro-bob 5s ease-in-out infinite; }
-@keyframes nge-hud-nurro-bob { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-4px); } }
+.nge-hud-nurro img { position: absolute; left: 50%; top: 50%; height: 150px; margin-top: -75px; width: auto; transform: translateX(-50%); filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)); }
 .nge-hud-nurro + .nge-hud-spark { margin-left: 0; }
-@media (prefers-reduced-motion: reduce) { .nge-hud-nurro img { animation: none; } }
 .nge-hud-spark-bars { display: flex; align-items: flex-end; gap: 3px; height: 40px; }
 .nge-hud-spark-bar { width: 8px; border-radius: 3px 3px 1px 1px; background: #58b6f5; transition: height 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .nge-hud-spark-bar--none { background: rgba(255, 255, 255, 0.16); }
