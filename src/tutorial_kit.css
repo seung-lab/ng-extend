@@ -349,57 +349,44 @@
   .nge-status-pop, .introductionStepAnchor .chip button.next.nge-next-ready { animation: none; box-shadow: 0 0 0 2px rgba(111, 227, 165, 0.8); }
 }
 
-/* Merger Sandbox progress: one cell per merger, drawn as a readout rather
-   than a row of lamps (Ames, 2026-10-11: the filled cells were too bright).
-   Cut ones carry a thin lit edge and a dim wash, the one in hand has a
-   bright frame with a sweep across it, the rest are hairlines. */
-.nge-sbx-progress {
-  position: relative;
-  display: flex; align-items: center; gap: 12px;
-  margin: 4px 0 14px; padding: 10px 12px 10px 14px;
-  background:
-    linear-gradient(90deg, rgba(126, 224, 255, 0.07), rgba(126, 224, 255, 0) 70%),
-    repeating-linear-gradient(0deg, rgba(126, 224, 255, 0.035) 0 1px, transparent 1px 3px);
-  border-top: 1px solid rgba(126, 224, 255, 0.16);
-  border-bottom: 1px solid rgba(126, 224, 255, 0.16);
+/* Merger Sandbox progress: a chain of small diamonds on a hairline, one per
+   merger, with the count set large and light beside it (Ames, 2026-10-11:
+   the row of boxes was ugly). A solved merger is a lit diamond, and the line
+   between two solved ones lights up; the one in hand is an open diamond with
+   a slow ring. No frame, no fill. */
+.nge-sbx-progress { display: flex; align-items: center; gap: 22px; margin: 10px 0 20px; padding: 0 4px 0 8px; }
+.nge-sbx-track { position: relative; flex: 1; display: flex; align-items: center; height: 26px; }
+.nge-sbx-node {
+  position: relative; flex: none; width: 8px; height: 8px; transform: rotate(45deg);
+  border: 1px solid rgba(150, 215, 255, 0.32); background: rgba(8, 18, 30, 0.9);
+  transition: background 0.4s, box-shadow 0.4s, border-color 0.4s;
 }
-/* Corner brackets, left and right. */
-.nge-sbx-progress::before, .nge-sbx-progress::after {
-  content: ''; position: absolute; top: -1px; bottom: -1px; width: 7px;
-  border: 1px solid rgba(126, 224, 255, 0.7);
+.nge-sbx-node--done {
+  background: #c9f3ff; border-color: #ffffff;
+  box-shadow: 0 0 6px rgba(140, 228, 255, 0.95), 0 0 16px rgba(110, 200, 255, 0.5), 0 0 34px rgba(110, 160, 255, 0.22);
 }
-.nge-sbx-progress::before { left: 0; border-right: 0; }
-.nge-sbx-progress::after { right: 0; border-left: 0; }
-.nge-sbx-count { font-family: 'Orbitron', 'Rajdhani', ui-monospace, monospace; font-size: 0.8em; letter-spacing: 0.08em; color: rgba(143, 169, 196, 0.75); white-space: nowrap; }
-.nge-sbx-count b { font-size: 1.45em; font-weight: 600; color: #bfeeff; text-shadow: 0 0 12px rgba(126, 224, 255, 0.35); }
-.nge-sbx-label { font-size: 0.62em; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(143, 169, 196, 0.6); margin-left: -6px; }
-.nge-sbx-cells { display: flex; flex: 1; gap: 5px; }
-.nge-sbx-cell {
-  position: relative; overflow: hidden;
-  flex: 1; height: 1.75em; min-width: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.66em; font-weight: 600; letter-spacing: 0.04em;
-  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-  border: 1px solid rgba(126, 224, 255, 0.13);
-  color: rgba(143, 169, 196, 0.38); background: rgba(6, 16, 28, 0.5);
+.nge-sbx-node--now { width: 10px; height: 10px; border-color: #ffffff; background: rgba(140, 228, 255, 0.18); box-shadow: 0 0 10px rgba(140, 228, 255, 0.45); }
+.nge-sbx-node--now::after {
+  content: ''; position: absolute; inset: -1px; border: 1px solid rgba(190, 240, 255, 0.9);
+  animation: nge-sbx-ring 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
 }
-.nge-sbx-cell--done {
-  border-color: rgba(126, 224, 255, 0.42);
-  color: #a9e6fb;
-  background: linear-gradient(180deg, rgba(126, 224, 255, 0.05), rgba(126, 224, 255, 0.16));
-  box-shadow: inset 0 -2px 0 rgba(126, 224, 255, 0.75);
+@keyframes nge-sbx-ring { 0% { transform: scale(1); opacity: 0.9; } 80%, 100% { transform: scale(3.1); opacity: 0; } }
+.nge-sbx-link { flex: 1; height: 1px; margin: 0 6px; background: rgba(150, 215, 255, 0.14); }
+.nge-sbx-link--lit {
+  background: linear-gradient(90deg, rgba(201, 243, 255, 0.95), rgba(140, 200, 255, 0.75));
+  box-shadow: 0 0 5px rgba(140, 228, 255, 0.75), 0 0 14px rgba(110, 180, 255, 0.3);
 }
-.nge-sbx-cell--now {
-  border-color: rgba(214, 244, 255, 0.9);
-  color: #f2fbff;
-  background: rgba(126, 224, 255, 0.07);
+.nge-sbx-count { flex: none; display: flex; align-items: baseline; gap: 5px; font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1; }
+.nge-sbx-count b { font-size: 2.2em; font-weight: 200; letter-spacing: -0.02em; color: #f1fbff; text-shadow: 0 0 18px rgba(140, 228, 255, 0.45); }
+.nge-sbx-count i { font-style: normal; font-size: 0.95em; font-weight: 400; color: rgba(160, 190, 220, 0.6); }
+.nge-sbx-count em { font-style: normal; margin-left: 6px; font-size: 0.6em; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(160, 190, 220, 0.55); }
+/* Every merger solved: a slow glint runs along the chain. */
+.nge-sbx-progress--all .nge-sbx-track::after {
+  content: ''; position: absolute; top: 50%; left: -12%; width: 12%; height: 9px; margin-top: -4.5px;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.85), rgba(160, 230, 255, 0) 70%);
+  animation: nge-sbx-glint 3.4s ease-in-out infinite;
 }
-.nge-sbx-cell--now::after {
-  content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%;
-  background: linear-gradient(90deg, transparent, rgba(190, 238, 255, 0.4), transparent);
-  animation: nge-sbx-sweep 2.2s linear infinite;
-}
-@keyframes nge-sbx-sweep { to { left: 110%; } }
-@media (prefers-reduced-motion: reduce) { .nge-sbx-cell--now::after { animation: none; display: none; } }
+@keyframes nge-sbx-glint { 0% { left: -12%; } 60%, 100% { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .nge-sbx-node--now::after, .nge-sbx-progress--all .nge-sbx-track::after { animation: none; display: none; } }
 
 .nge-sbx-caption { display: block; font-size: 0.86em; line-height: 1.45; color: #9fb4cc; }

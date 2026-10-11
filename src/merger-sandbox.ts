@@ -137,11 +137,16 @@ document.addEventListener('nge:sandbox-next', () => {
 /** The run of mergers as a row of cells: lit for each one cut, a pulse on
  *  the one in hand, dim for the rest, with the count beside it. */
 function progressBar(): string {
-  const cells = SANDBOX_CELLS.map((c, i) => {
-    const state = sandboxDone.value.includes(c.id) ? 'done' : i === current ? 'now' : 'todo';
-    return `<span class="nge-sbx-cell nge-sbx-cell--${state}" title="Merger ${i + 1}${state === 'done' ? ', cut' : state === 'now' ? ', this one' : ''}">${i + 1}</span>`;
-  }).join('');
-  return `<div class="nge-sbx-progress" role="img" aria-label="${doneCount()} of ${TOTAL} mergers cut"><span class="nge-sbx-count"><b>${doneCount()}</b>/${TOTAL}</span><span class="nge-sbx-label">cut</span><span class="nge-sbx-cells">${cells}</span></div>`;
+  const done = SANDBOX_CELLS.map(c => sandboxDone.value.includes(c.id));
+  let chain = '';
+  done.forEach((d, i) => {
+    const state = d ? 'done' : i === current ? 'now' : 'todo';
+    chain += `<span class="nge-sbx-node nge-sbx-node--${state}" title="Merger ${i + 1}${d ? ', solved' : state === 'now' ? ', this one' : ''}"></span>`;
+    // The line between two solved mergers lights up.
+    if (i < TOTAL - 1) chain += `<span class="nge-sbx-link${d && done[i + 1] ? ' nge-sbx-link--lit' : ''}"></span>`;
+  });
+  const n = doneCount();
+  return `<div class="nge-sbx-progress${n >= TOTAL ? ' nge-sbx-progress--all' : ''}" role="img" aria-label="${n} of ${TOTAL} mergers solved"><span class="nge-sbx-track">${chain}</span><span class="nge-sbx-count"><b>${n}</b><i>/ ${TOTAL}</i><em>solved</em></span></div>`;
 }
 
 /** The done box asks the cell itself whether it was cut; until that answer

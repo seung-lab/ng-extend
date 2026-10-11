@@ -879,7 +879,7 @@ const FRIENDLY_TIPS: Record<string, string> = {
   '3D neurons': 'The 3D reconstruction of every cell in the images',
 };
 function friendlyLayerNames() {
-  const inTutorial = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  const inTutorial = [3, 5, 9].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
   // Which dataset is on screen decides the shown names. The Sandbox and the
   // tutorials say "2D EM" and "3D segmentation", the Retina "2D EM" and
   // "3D Retina Cells" (Ames 2026-10-06). Every other dataset says
