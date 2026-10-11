@@ -12,6 +12,7 @@ import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
+import {loadRepoStats, BUILDER_USER_ID, type RepoStats} from '../util/repo_stats';
 import {getToolbarIconDef} from '../data/toolbar-icons';
 // The same drawing the top bar uses for Week in Science (Ames 2026-10-05).
 const recapIconSvg = getToolbarIconDef('recap')?.svg || '';
@@ -57,6 +58,10 @@ function toggleExtra(id: string, ev: Event) {
   prefsStore.save({ extraDatasets: [...set] });  // saved to the account too
 }
 const otherUserProfile = ref<any>(null);
+// ── Building Pyr: commits and deploys, on Ames's own profile (2026-10-10) ──
+const repoStats = ref<RepoStats | null>(null);
+const showsBuilding = computed(() => (props.viewUserId || backendStore.userId) === BUILDER_USER_ID);
+watch(showsBuilding, on => { if (on && !repoStats.value) void loadRepoStats().then(s => { repoStats.value = s; }); }, { immediate: true });
 // ── Days track: total days shown up, the streaks, and the milestone ladder ──
 const otherDays = ref<number | null>(null);
 const totalDays = computed(() => viewingOtherUser.value ? (otherDays.value ?? 0) : (stats.value.totalDays || 0));
@@ -1210,6 +1215,22 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                     {{ col.splits }}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Building Pyr: how much has been built, from GitHub. Only on
+               the profile of the person building it (Ames 2026-10-10). -->
+          <div v-if="showsBuilding && repoStats" class="nge-profile-section nge-profile-section--building">
+            <div class="nge-profile-section-label">▌ Building Pyr</div>
+            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
+              <div class="nge-profile-stat-col nge-profile-stat-tile nge-profile-stat-tile--build" title="Changes saved to Pyr's code">
+                <div class="nge-profile-stat-label">Commits</div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="repoStats.commits" /></div>
+              </div>
+              <div class="nge-profile-stat-col nge-profile-stat-tile nge-profile-stat-tile--build" title="Times a new version of Pyr has gone live">
+                <div class="nge-profile-stat-label">Deploys</div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="repoStats.deploys" /></div>
               </div>
             </div>
           </div>
@@ -3243,6 +3264,8 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* Compact (Ames 2026-10-01): label and number share a line, so the four
    tiles take two short rows and the column fits without scrolling. */
 .nge-profile-stat-row--tiles { gap: 6px; }
+.nge-profile-stat-tile--build { background: rgba(170, 140, 255, 0.08); border-color: rgba(170, 140, 255, 0.3); }
+.nge-profile-stat-tile--build .nge-profile-stat-val { color: #c9b8ff; text-shadow: 0 0 14px rgba(170, 140, 255, 0.4); }
 .nge-profile-stat-row--tiles .nge-profile-stat-tile {
   flex: 1 1 calc(50% - 3px);
   box-sizing: border-box;

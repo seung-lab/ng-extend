@@ -7,6 +7,8 @@ import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {renderSafeMarkdown} from '../util/safe_markdown';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
+import RollUp from 'components/RollUp.vue';
+import {loadRepoStats, type RepoStats} from '../util/repo_stats';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
 import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
@@ -313,6 +315,7 @@ async function loadTriageNumbers() {
     const { supabase } = await import('../supabase');
     const next: Record<string, number> = {};
     let bugs = 0, features = 0, other = 0, today = 0;
+    const days: Record<string, number> = {};
     const todayIs = new Date().toDateString();
     // 500 at a time: the server refuses a larger page, which is why the
     // numbers did not show at first.
@@ -324,32 +327,69 @@ async function loadTriageNumbers() {
         if (r.status === 'done' || r.impl_state === 'deployed') {
           if (r.recommendation === 'new_feature') features++; else if (r.recommendation === 'bug_fix_spec') bugs++; else other++;
           if (r.reviewed_at && new Date(r.reviewed_at).toDateString() === todayIs) today++;
+          if (r.reviewed_at) { const k = dayKey(new Date(r.reviewed_at)); days[k] = (days[k] || 0) + 1; }
         }
       }
       if (data.length < 500) break;
     }
     triageNumbers.value = next;
-    triageTally.value = { bugs, features, other, today };
+    triageTally.value = { bugs, features, other, today, days };
   } catch { /* the cards simply show no number */ }
 }
 
 // ── What has been closed, and a moment of reward for closing one ──
 // Counted over every report, not only the ones on the board (Ames
 // 2026-10-10: "give me some visual reward for completing them").
-const triageTally = ref({ bugs: 0, features: 0, other: 0, today: 0 });
+const triageTally = ref({ bugs: 0, features: 0, other: 0, today: 0, days: {} as Record<string, number> });
+/** A day on this computer's calendar, as 2026-10-10. */
+function dayKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 /** Everything closed, and how far along to the next round number (every 25). */
 const triageScore = computed(() => {
   const t = triageTally.value, total = t.bugs + t.features + t.other;
   const next = (Math.floor(total / 25) + 1) * 25;
   return { total, next, toGo: next - total, fill: Math.round(((total % 25) / 25) * 100) };
 });
-const triageCheer = ref<{ key: number; kind: 'bug' | 'feature' | 'other'; text: string } | null>(null);
+// ── The game on top of the board (Ames 2026-10-10: "gamify it, make the top
+// bar more exciting"). Every number is counted from the reports themselves:
+// a level for every 25 closed, days in a row with one closed, the best day,
+// and the last two weeks. A closed report is dated by the day it was decided,
+// the one date every report carries.
+const TRIAGE_RANKS = ['Spine Spotter', 'Dendrite Detective', 'Axon Tracker', 'Synapse Fixer', 'Soma Guardian',
+  'Circuit Mechanic', 'Network Engineer', 'Cortex Commander', 'Connectome Keeper', 'Bug Legend'];
+const triageGame = computed(() => {
+  const t = triageTally.value, total = t.bugs + t.features + t.other;
+  const level = Math.floor(total / 25) + 1;
+  const rank = TRIAGE_RANKS[Math.min(level, TRIAGE_RANKS.length) - 1];
+  const at = (back: number) => { const d = new Date(); d.setDate(d.getDate() - back); return d; };
+  const on = (back: number) => t.days[dayKey(at(back))] || 0;
+  // Today not closed yet does not break a streak; it is only at risk.
+  let streak = 0;
+  for (let back = on(0) ? 0 : 1; on(back) > 0; back++) streak++;
+  let bestBefore = 0;
+  const todayKey = dayKey(new Date());
+  for (const [k, n] of Object.entries(t.days)) if (k !== todayKey && n > bestBefore) bestBefore = n;
+  const best = Math.max(bestBefore, on(0));
+  const spark = Array.from({ length: 14 }, (_, i) => {
+    const back = 13 - i, d = at(back), n = on(back);
+    return { key: dayKey(d), n, today: back === 0, label: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), h: 0 };
+  });
+  const top = Math.max(1, ...spark.map(d => d.n));
+  for (const d of spark) d.h = d.n ? Math.max(14, Math.round((d.n / top) * 100)) : 6;
+  const waiting = triageRows.value.filter(r => triageGroupOf(r) === 'decide').length;
+  return { level, rank, streak, streakAtRisk: streak > 0 && !on(0), best, record: on(0) > 0 && bestBefore > 0 && on(0) > bestBefore, spark, waiting };
+});
+const repoStats = ref<RepoStats | null>(null);
+onMounted(() => { void loadRepoStats().then(s => { repoStats.value = s; }); });
+
+const triageCheer = ref<{ key: number; kind: 'bug' | 'feature' | 'other'; text: string; levelUp?: boolean } | null>(null);
 let cheerTimer: ReturnType<typeof setTimeout> | null = null;
 function cheerFor(row: TriageRow) {
   const kind = row.recommendation === 'new_feature' ? 'feature' : row.recommendation === 'bug_fix_spec' ? 'bug' : 'other';
   const n = triageNumbers.value[row.id];
   const what = kind === 'feature' ? 'Feature shipped' : kind === 'bug' ? 'Bug fixed' : 'Report closed';
-  triageCheer.value = { key: Date.now(), kind, text: `${what}${n ? ` · #${n}` : ''}` };
+  // This close is the one that reaches the next level when one was left to go.
+  const levelUp = triageScore.value.toGo === 1;
+  triageCheer.value = { key: Date.now(), kind, levelUp, text: levelUp ? `Level ${triageGame.value.level + 1}! ${what}${n ? ` · #${n}` : ''}` : `${what}${n ? ` · #${n}` : ''}` };
   if (cheerTimer) clearTimeout(cheerTimer);
   cheerTimer = setTimeout(() => { triageCheer.value = null; }, 2600);
 }
@@ -1989,25 +2029,66 @@ function practiceWhen(iso: string | null) {
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
-          <div class="nge-triage-score" title="Closed so far, over every report">
-            <div class="nge-triage-score-item nge-triage-score-item--bug" :class="{ 'nge-triage-score-item--pop': triageCheer?.kind === 'bug' }" :key="'b' + triageTally.bugs">
+          <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
+            <!-- Level: one for every 25 reports closed. The ring fills toward the next. -->
+            <div class="nge-hud-level" :class="{ 'nge-hud-level--up': triageCheer?.levelUp }"
+                 :title="`${triageScore.total} closed in all. ${triageScore.toGo} to go to level ${triageGame.level + 1}.`">
+              <div class="nge-hud-ring" :style="{ '--fill': triageScore.fill + '%' }">
+                <div class="nge-hud-ring-in">
+                  <span class="nge-hud-ring-word">LEVEL</span>
+                  <b>{{ triageGame.level }}</b>
+                </div>
+              </div>
+              <div class="nge-hud-level-text">
+                <div class="nge-hud-rank">{{ triageGame.rank }}</div>
+                <div class="nge-triage-score-bar"><span :style="{ width: triageScore.fill + '%' }"></span></div>
+                <div class="nge-triage-score-goal-text"><b>{{ triageScore.toGo }}</b> to go to level {{ triageGame.level + 1 }}</div>
+              </div>
+            </div>
+            <div class="nge-triage-score-item nge-triage-score-item--bug" :class="{ 'nge-triage-score-item--pop': triageCheer?.kind === 'bug' }">
               <span class="nge-triage-score-icon" aria-hidden="true">🐛</span>
-              <b>{{ triageTally.bugs }}</b>
+              <b><RollUp :value="triageTally.bugs" /></b>
               <span class="nge-triage-score-word">{{ triageTally.bugs === 1 ? 'bug' : 'bugs' }} fixed</span>
             </div>
-            <div class="nge-triage-score-item nge-triage-score-item--feature" :class="{ 'nge-triage-score-item--pop': triageCheer?.kind === 'feature' }" :key="'f' + triageTally.features">
+            <div class="nge-triage-score-item nge-triage-score-item--feature" :class="{ 'nge-triage-score-item--pop': triageCheer?.kind === 'feature' }">
               <span class="nge-triage-score-icon" aria-hidden="true">✨</span>
-              <b>{{ triageTally.features }}</b>
+              <b><RollUp :value="triageTally.features" /></b>
               <span class="nge-triage-score-word">{{ triageTally.features === 1 ? 'feature' : 'features' }} shipped</span>
             </div>
-            <div class="nge-triage-score-item nge-triage-score-item--today" :class="{ 'nge-triage-score-item--pop': !!triageCheer }" :key="'t' + triageTally.today">
-              <span class="nge-triage-score-icon" aria-hidden="true">{{ triageTally.today ? '🔥' : '☕' }}</span>
-              <b>{{ triageTally.today }}</b>
-              <span class="nge-triage-score-word">closed today</span>
+            <div class="nge-triage-score-item nge-triage-score-item--today"
+                 :class="{ 'nge-triage-score-item--pop': !!triageCheer, 'nge-triage-score-item--record': triageGame.record }"
+                 :title="triageGame.best ? `Best day so far: ${triageGame.best} closed` : undefined">
+              <span class="nge-triage-score-icon" aria-hidden="true">{{ triageGame.record ? '🏆' : triageTally.today ? '🔥' : '☕' }}</span>
+              <b><RollUp :value="triageTally.today" /></b>
+              <span class="nge-triage-score-word">{{ triageGame.record ? 'today, a new best' : 'closed today' }}</span>
             </div>
-            <div class="nge-triage-score-goal" :title="`${triageScore.total} closed in all. ${triageScore.toGo} to go to ${triageScore.next}.`">
-              <div class="nge-triage-score-goal-text"><b>{{ triageScore.toGo }}</b> to go to {{ triageScore.next }}</div>
-              <div class="nge-triage-score-bar"><span :style="{ width: triageScore.fill + '%' }"></span></div>
+            <div class="nge-triage-score-item nge-triage-score-item--streak" :class="{ 'nge-triage-score-item--cold': !triageGame.streak }"
+                 :title="triageGame.streak ? (triageGame.streakAtRisk ? 'Close one today to keep the streak going' : 'Days in a row with a report closed') : 'Close one today to start a streak'">
+              <span class="nge-triage-score-icon" aria-hidden="true">{{ triageGame.streak ? '⚡' : '💤' }}</span>
+              <b><RollUp :value="triageGame.streak" /></b>
+              <span class="nge-triage-score-word">{{ triageGame.streak === 1 ? 'day' : 'days' }} in a row</span>
+            </div>
+            <div class="nge-triage-score-item nge-triage-score-item--inbox" :class="{ 'nge-triage-score-item--zero': !triageGame.waiting }"
+                 title="Reports waiting for your decision">
+              <span class="nge-triage-score-icon" aria-hidden="true">{{ triageGame.waiting ? '📥' : '🎉' }}</span>
+              <template v-if="triageGame.waiting">
+                <b><RollUp :value="triageGame.waiting" /></b>
+                <span class="nge-triage-score-word">waiting for you</span>
+              </template>
+              <span v-else class="nge-triage-score-word nge-triage-score-word--big">Inbox zero</span>
+            </div>
+            <!-- The last 14 days, one bar a day. -->
+            <div class="nge-hud-spark" title="Reports closed on each of the last 14 days">
+              <div class="nge-hud-spark-bars">
+                <span v-for="d in triageGame.spark" :key="d.key" class="nge-hud-spark-bar"
+                      :class="{ 'nge-hud-spark-bar--today': d.today, 'nge-hud-spark-bar--none': !d.n }"
+                      :style="{ height: d.h + '%' }" :title="`${d.label}: ${d.n} closed`"></span>
+              </div>
+              <div class="nge-hud-spark-word">last 14 days</div>
+            </div>
+            <div v-if="repoStats" class="nge-hud-repo" title="Your commits on the live branch, and how many times it has gone live">
+              <div><b><RollUp :value="repoStats.commits" /></b><span>commits</span></div>
+              <div><b><RollUp :value="repoStats.deploys" /></b><span>deploys</span></div>
             </div>
           </div>
           <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
@@ -2913,6 +2994,49 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 
 /* Closed so far, and the moment one more is closed. */
 .nge-triage-score { display: inline-flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+/* On the board the score is its own row: a lit panel under the title. */
+.nge-triage-board .nge-triage-score {
+  order: 10; flex: 1 1 100%; display: flex; gap: 10px; padding: 10px 12px; border-radius: 14px; position: relative; overflow: hidden;
+  background: linear-gradient(100deg, rgba(88, 182, 245, 0.10), rgba(142, 232, 160, 0.06) 45%, rgba(255, 200, 87, 0.08));
+  border: 1px solid rgba(120, 190, 255, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 26px rgba(0, 0, 0, 0.3);
+}
+/* A slow sheen across the panel, and a quick one when a report is closed. */
+.nge-triage-board .nge-triage-score::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 30%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+  animation: nge-hud-sheen 9s ease-in-out infinite;
+}
+.nge-triage-board .nge-triage-score--lit::after { animation: nge-hud-sheen 0.9s ease-out 1; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.22), transparent); }
+@keyframes nge-hud-sheen { 0%, 55% { left: -40%; } 100% { left: 115%; } }
+.nge-hud-level { display: inline-flex; align-items: center; gap: 11px; padding-right: 8px; }
+.nge-hud-ring {
+  --fill: 0%; width: 62px; height: 62px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center;
+  background: conic-gradient(#ffc857 var(--fill), rgba(255, 255, 255, 0.13) 0); box-shadow: 0 0 18px rgba(255, 200, 87, 0.28);
+}
+.nge-hud-ring-in { width: 50px; height: 50px; border-radius: 50%; background: #0b1424; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.nge-hud-ring-word { font-size: 8px; font-weight: 700; letter-spacing: 0.14em; color: rgba(255, 255, 255, 0.62); }
+.nge-hud-ring-in b { font: 800 22px/1 'Inter', system-ui, sans-serif; color: #ffd978; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.nge-hud-level-text { display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
+.nge-hud-rank { font: 800 15px/1.1 'Inter', system-ui, sans-serif; color: #fff; letter-spacing: 0.01em; white-space: nowrap; }
+.nge-hud-level--up .nge-hud-ring { animation: nge-hud-levelup 1.2s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+@keyframes nge-hud-levelup { 0% { transform: scale(1) rotate(0); } 40% { transform: scale(1.35) rotate(200deg); box-shadow: 0 0 44px rgba(255, 200, 87, 0.9); } 100% { transform: scale(1) rotate(360deg); } }
+.nge-triage-score-item--streak b { color: #7fd4ff; }
+.nge-triage-score-item--inbox b { color: #ff9ecb; }
+.nge-triage-score-item--cold { opacity: 0.6; }
+.nge-triage-score-item--record { border-color: rgba(255, 200, 87, 0.7); box-shadow: 0 0 18px rgba(255, 200, 87, 0.3); }
+.nge-triage-score-item--zero { border-color: rgba(142, 232, 160, 0.6); background: rgba(142, 232, 160, 0.12); }
+.nge-triage-score-word--big { max-width: none; font-size: 14px; font-weight: 700; color: #b9f5c6; }
+.nge-hud-spark { display: inline-flex; flex-direction: column; justify-content: flex-end; gap: 4px; padding: 0 4px; margin-left: auto; }
+.nge-hud-spark-bars { display: flex; align-items: flex-end; gap: 3px; height: 40px; }
+.nge-hud-spark-bar { width: 8px; border-radius: 3px 3px 1px 1px; background: #58b6f5; transition: height 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.nge-hud-spark-bar--none { background: rgba(255, 255, 255, 0.16); }
+.nge-hud-spark-bar--today { background: #ffc857; box-shadow: 0 0 8px rgba(255, 200, 87, 0.6); }
+.nge-hud-spark-bar--today.nge-hud-spark-bar--none { background: rgba(255, 200, 87, 0.4); box-shadow: none; }
+.nge-hud-spark-word { font-size: 10.5px; color: rgba(255, 255, 255, 0.6); text-align: center; white-space: nowrap; }
+.nge-hud-repo { display: inline-flex; flex-direction: column; justify-content: center; gap: 4px; padding: 0 6px 0 12px; border-left: 1px solid rgba(255, 255, 255, 0.12); }
+.nge-hud-repo div { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.nge-triage-score .nge-hud-repo b { font: 800 17px/1 'Inter', system-ui, sans-serif; color: #c9b8ff; font-variant-numeric: tabular-nums; min-width: 46px; text-align: right; }
+.nge-hud-repo div > span { font-size: 11.5px; color: rgba(255, 255, 255, 0.66); }
 .nge-triage-score-item {
   display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 14px;
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap;
@@ -2964,7 +3088,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 @media (prefers-reduced-motion: reduce) {
   .nge-triage-board .nge-triage-cols { transition: none; }
   .nge-triage-score-item--pop, .nge-triage-score-item--pop .nge-triage-score-icon, .nge-triage-cheer-check, .nge-triage-cheer-ring { animation: none; }
-  .nge-triage-score-bar span { transition: none; }
+  .nge-triage-score-bar span, .nge-hud-spark-bar { transition: none; }
+  .nge-triage-board .nge-triage-score::after, .nge-hud-level--up .nge-hud-ring { animation: none; }
+  .nge-triage-board .nge-triage-score::after { display: none; }
   .nge-triage-cheer-ring { display: none; }
   .nge-triage-cheer-enter-active, .nge-triage-cheer-leave-active { transition: opacity 0.2s ease; }
 }
@@ -3052,6 +3178,22 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-score-goal-text { color: #4a5870; }
 .nge-triage-light .nge-triage-score-goal-text b { color: #1c2635; }
 .nge-triage-light .nge-triage-score-bar { background: #d7deea; }
+.nge-triage-light.nge-triage-board .nge-triage-score { background: linear-gradient(100deg, #eaf3ff, #eefaf0 45%, #fff6e2); border-color: #c9d6ea; box-shadow: 0 2px 10px rgba(20, 30, 50, 0.08); }
+.nge-triage-light .nge-hud-ring { background: conic-gradient(#d68a00 var(--fill), #d7deea 0); box-shadow: none; }
+.nge-triage-light .nge-hud-ring-in { background: #ffffff; }
+.nge-triage-light .nge-hud-ring-word { color: #5a6880; }
+.nge-triage-light .nge-hud-ring-in b { color: #b46f00; }
+.nge-triage-light .nge-hud-rank { color: #1c2635; }
+.nge-triage-light .nge-triage-score-item--streak b { color: #1670b8; }
+.nge-triage-light .nge-triage-score-item--inbox b { color: #b82f73; }
+.nge-triage-light .nge-triage-score-item--zero { background: #e4f7e9; border-color: #8fd0a2; }
+.nge-triage-light .nge-triage-score-word--big { color: #1f8a4c; }
+.nge-triage-light .nge-hud-spark-bar { background: #2f8fd6; }
+.nge-triage-light .nge-hud-spark-bar--none { background: #cfd8e6; }
+.nge-triage-light .nge-hud-spark-bar--today { background: #d68a00; box-shadow: none; }
+.nge-triage-light .nge-hud-spark-word, .nge-triage-light .nge-hud-repo div > span { color: #4a5870; }
+.nge-triage-light .nge-hud-repo { border-left-color: #cfd8e6; }
+.nge-triage-light .nge-triage-score .nge-hud-repo b { color: #5b3fc4; }
 .nge-triage-light .nge-triage-score-bar span { background: linear-gradient(90deg, #2f8fd6, #2e9e68); }
 .nge-triage-light a { color: #1f5fc4; }
 .nge-triage-light :focus-visible { outline: 2px solid #2f6fd6; outline-offset: 2px; }
