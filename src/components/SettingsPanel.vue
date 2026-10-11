@@ -27,11 +27,16 @@ function openUsernameDialog() {
 const draftFlag = ref('');
 const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
+/** A pill shows the name only. A label may go on to explain itself after a
+ *  colon (the Lantern's ran out of the panel, Krzysztof Kruk 2026-10-11);
+ *  the whole label is the pill's tooltip. */
+const pillName = (label: string) => label.split(':')[0].trim();
 const draftChatMuted = ref(false);
 const draftChatFade = ref(true);
 const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
+const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
@@ -102,6 +107,7 @@ onMounted(() => {
   draftChatMarkMine.value = prefsStore.prefs.chatMarkMine !== false;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
+  draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
@@ -131,7 +137,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -370,11 +376,11 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-label">Toolbar Icons</label>
             <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
             <div class="nge-settings-toolbar-grid">
-              <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" @click="toggleToolbarIcon(opt.id)">
+              <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" :title="opt.label" @click="toggleToolbarIcon(opt.id)">
                 <span v-if="opt.svg" class="nge-settings-toolbar-emoji" v-html="opt.svg"></span>
                 <img v-else-if="opt.img" :src="opt.img" class="nge-settings-toolbar-icon-img" :alt="opt.label" />
                 <span v-else class="nge-settings-toolbar-emoji">{{ opt.emoji }}</span>
-                <span class="nge-settings-toolbar-label">{{ opt.label }}</span>
+                <span class="nge-settings-toolbar-label">{{ pillName(opt.label) }}</span>
               </button>
             </div>
             <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
@@ -405,6 +411,14 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
               <input type="checkbox" v-model="draftUndeleteCounter" />
               <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
+            </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">
+              <span class="nge-settings-toggle-label">When I complete a cell, show</span>
+              <select v-model="draftCellMessage" class="nge-sv-select">
+                <option value="full">Full congratulations</option>
+                <option value="small">A small note at the top</option>
+                <option value="off">Nothing</option>
+              </select>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
               <span class="nge-settings-toggle-label">Cell Library opens on</span>
@@ -1034,7 +1048,13 @@ const props = defineProps<{ embedded?: boolean }>();
 
 .nge-settings-toolbar-label {
   font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+/* No pill is ever wider than the panel it sits in. */
+.nge-settings-toolbar-item { max-width: 100%; min-width: 0; }
 
 .nge-settings-toolbar-reset {
   margin-top: 6px;
