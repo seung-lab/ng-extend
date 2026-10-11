@@ -6,16 +6,20 @@ version of this file (2026-10-10, commit 7c43513) described the tutorials
 and what the test would need; this one says what is built, what was found
 out about the demo cell, and what is left for Ames.
 
-**State (2026-10-11 02:00 UTC): built and tested, not deployed.** The demo
-cell is back in its start state (Ames said to run the undos; operations 1878
-and 1879 undid 1864 and 1863, the current root is `648518346354883702`), the
-soma was found from the mesh (viewer 80868, 52282, 1637, supervoxel
-75084893952345677, inside the cell) and the registration SQL is generated.
-Still to come from Ames: the branch end coordinates (put them in
-`config/proofreading-test.json` under `endpoints` and run the script with
-`--endpoints-only`), the `EW_CAVE_TOKEN` secret, running the SQL, and the
-word to deploy. Nothing a player can see changes until the SQL is run, the
-secret is set, the functions are deployed and the test row is enabled.
+**State (2026-10-11 17:00 UTC): LIVE on production, on trial.** The schema,
+the registration (8 graph checks) and the trial settings (feedback `detail`,
+`grant_pilot` false, `cave_groups` {}) are in the database; the test is
+enabled; `ewProofreadingTest` is deployed (health `code`
+`2026-10-11-proofreading-test-2`); the app on `eyewire-ii-community` serves
+the test (changelog entry "A Proofreading Test, on trial"). Ames took it
+once: 3 of 7 (the three cuts), nothing damaged, the cell went back to
+`ready`. **Still missing: the branch end checks.** Her 38 points live in her
+"end of segmentation (3D)" annotation layer (state
+`.../nglstate/api/v1/4816048758980608`, unreadable from this machine); she
+copies them with a console `copy(...)` snippet, they go into
+`config/proofreading-test.json` under `endpoints`, and
+`scripts/proofreading-test-register.py --endpoints-only` prints the SQL.
+Radius default 1500 nm; she asked to see it in the game first.
 
 ## The goal
 
@@ -131,15 +135,24 @@ reset job's history rules (a test keeps it in step with
 
 ### Client: `src/proofreading-test.ts`, tutorial 11
 
-Three boxes. 1: what the test is, the rules, the player's own record
-(tries, last score, wait), "Start the test". 2: claims the cell behind the
-"Moving you to the Sandbox" card, loads the start view, shows the cell by its
-current root, opens the split view with Sections; renews the hold once a
-minute while the player is active, warns in the last five quiet minutes,
-hands the cell back after the quiet time; "Submit for scoring". 3: scores,
-celebrates a pass (confetti only on a pass: `Step.noConfetti`), explains the
-score by the feedback level, pins the misses for two minutes on `detail`,
-refreshes the dataset permissions, "Try again" or "done".
+Four boxes and a bar (Ames's changes while taking it, 2026-10-11). Box 1:
+what the test is, one player at a time, the rules, the player's own record
+(tries, last score, wait), whether a pass grants anything (`grants` in the
+public shape), "Start the test". Box 2: how to work the cell: follow every
+branch with Highlight, place a point in the End layer at every branch end,
+cut off what does not belong and extend what is missing. Box 3 ("Getting
+your cell") claims the cell behind the "Moving you to the Sandbox" card,
+loads the start view, shows the cell by its current root, makes an empty
+annotation layer named **End**, then closes itself; it stays only when the
+claim is refused ("Try again"). From then on a **bar at the top left**
+(`#nge-test-hud`) carries an "i" that opens the instructions, the count of
+things to fix, a countdown of the quiet time left (the hold renews once a
+minute while the player moves; the last five minutes warn), and **Submit for
+scoring**, which opens box 4. Box 4 scores, celebrates a pass only
+(`Step.noConfetti`), explains the score by the feedback level, pins each miss
+for two minutes on `detail`, says "branch ends are not scored yet" while no
+endpoint check exists, refreshes the dataset permissions, "Try again" or
+"done". No forced 2D view.
 
 Leaving the tutorial (x, menu, another tutorial) hands the cell back
 unscored. The burger menu lists "5 Proofreading Test" under Tutorials once
