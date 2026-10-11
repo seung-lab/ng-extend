@@ -8,6 +8,21 @@ import {renderSafeMarkdown} from '../util/safe_markdown';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
 import RollUp from 'components/RollUp.vue';
+import nurroDance from '../../static/nurro/nurro-dance.png';
+import nurroTrophy from '../../static/nurro/nurro-trophy.png';
+import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
+import nurroMicroscope from '../../static/nurro/nurro-microscope.png';
+import nurroPopcorn from '../../static/nurro/nurro-popcorn.png';
+import nurroAtHome from '../../static/nurro/nurro-at-home.png';
+import nurroConfetti from '../../static/nurro/nurro-confetti.png';
+import nurroInspector from '../../static/nurro/nurro-inspector.png';
+import nurroExperiment from '../../static/nurro/nurro-experiment.png';
+import nurroLaserTeach from '../../static/nurro/nurro-laser-teach.png';
+import nurroCelebrate2 from '../../static/nurro/nurro-celebrate2.png';
+import nurroSuperV2 from '../../static/nurro/nurro-super-v2.png';
+import nurroWheres from '../../static/nurro/nurro-wheres.png';
+import nurroOriginal from '../../static/nurro/nurro-original.png';
+import nurroSuccess from '../../static/nurro/nurro-success.png';
 import {loadRepoStats, type RepoStats} from '../util/repo_stats';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
@@ -263,7 +278,7 @@ function triageGroupOf(r: TriageRow): TriageGroupKey {
 }
 const triageGroups = computed(() => {
   const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
-    { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Inbox zero. Nicely done.', closed: false },
+    { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Triage zero. Nicely done.', closed: false },
     { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
@@ -378,6 +393,12 @@ const triageGame = computed(() => {
   const waiting = triageRows.value.filter(r => triageGroupOf(r) === 'decide').length;
   return { level, rank, streak, streakAtRisk: streak > 0 && !on(0), best, record: on(0) > 0 && bestBefore > 0 && on(0) > bestBefore, spark, waiting };
 });
+// One Nurro a day in the bar, the same one all day, in a fixed order.
+const NURROS: string[] = [nurroDance, nurroTrophy, nurroCelebrate, nurroMicroscope, nurroPopcorn, nurroAtHome, nurroConfetti, nurroInspector, nurroExperiment, nurroLaserTeach, nurroCelebrate2, nurroSuperV2, nurroWheres, nurroOriginal, nurroSuccess];
+const todaysNurro = (() => {
+  const d = new Date(), day = Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
+  return NURROS[day % NURROS.length];
+})();
 const repoStats = ref<RepoStats | null>(null);
 onMounted(() => { void loadRepoStats().then(s => { repoStats.value = s; }); });
 
@@ -2075,8 +2096,10 @@ function practiceWhen(iso: string | null) {
                 <b><RollUp :value="triageGame.waiting" /></b>
                 <span class="nge-triage-score-word">waiting for you</span>
               </template>
-              <span v-else class="nge-triage-score-word nge-triage-score-word--big">Inbox zero</span>
+              <span v-else class="nge-triage-score-word nge-triage-score-word--big">Triage zero</span>
             </div>
+            <!-- Today's Nurro: a different one each day (Ames 2026-10-10). -->
+            <div class="nge-hud-nurro" aria-hidden="true"><img :src="todaysNurro" alt="" /></div>
             <!-- The last 14 days, one bar a day. -->
             <div class="nge-hud-spark" title="Reports closed on each of the last 14 days">
               <div class="nge-hud-spark-bars">
@@ -3027,6 +3050,11 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-score-item--zero { border-color: rgba(142, 232, 160, 0.6); background: rgba(142, 232, 160, 0.12); }
 .nge-triage-score-word--big { max-width: none; font-size: 14px; font-weight: 700; color: #b9f5c6; }
 .nge-hud-spark { display: inline-flex; flex-direction: column; justify-content: flex-end; gap: 4px; padding: 0 4px; margin-left: auto; }
+.nge-hud-nurro { position: relative; flex: 0 0 130px; align-self: stretch; margin-left: auto; min-height: 62px; pointer-events: none; }
+.nge-hud-nurro img { position: absolute; left: 50%; top: 50%; height: 150px; margin-top: -75px; width: auto; transform: translateX(-50%); filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)); animation: nge-hud-nurro-bob 5s ease-in-out infinite; }
+@keyframes nge-hud-nurro-bob { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-4px); } }
+.nge-hud-nurro + .nge-hud-spark { margin-left: 0; }
+@media (prefers-reduced-motion: reduce) { .nge-hud-nurro img { animation: none; } }
 .nge-hud-spark-bars { display: flex; align-items: flex-end; gap: 3px; height: 40px; }
 .nge-hud-spark-bar { width: 8px; border-radius: 3px 3px 1px 1px; background: #58b6f5; transition: height 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .nge-hud-spark-bar--none { background: rgba(255, 255, 255, 0.16); }
