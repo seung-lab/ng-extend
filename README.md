@@ -370,6 +370,13 @@ the **top** of `entries`, in the same commit as the change:
   longer goes wrong. No file names, no code words, no dashes. Say "Achievement",
   never "badge". The game is called Pyr.
 
+- `digest` (optional): how the daily "Today in Pyr" notification treats the
+  entry. That note is short and picks what to mention by itself. `"headline"`
+  means it is always mentioned: use it for something players should not miss,
+  such as a new mode, tool, dataset or Achievement track. `"minor"` means it is
+  never mentioned, though it still counts in the day's total: use it for small
+  polish. Leave it out and the note decides.
+
 Leave out changes a player cannot notice (refactors, admin tools, server
 housekeeping). Never rewrite or remove older entries.
 

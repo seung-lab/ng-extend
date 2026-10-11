@@ -16,6 +16,11 @@
  * breaks a rule twice, it is one line: how many updates went live and the
  * names of three of them. It never lists every entry.
  *
+ * An entry can say how it should be treated here, with an optional "digest"
+ * field (Ames, 2026-10-11): "headline" is always in the note, "minor" is never
+ * in it (it still counts in the day's total). Unmarked entries are left to the
+ * model's judgment.
+ *
  * Runs from .github/workflows/daily-deploy-digest.yml every day at 4:30 pm
  * Eastern (Ames, 2026-10-10): the workflow fires at both UTC times that can be
  * 4:30 pm Eastern and DIGEST_LOCAL_TIME=16:30 makes the wrong one exit quietly.
@@ -118,6 +123,8 @@ const SUMMARY_SYSTEM = [
   'A big change is something a player can now do that they could not do before: a new mode, a new tool, a',
   'new button or shortcut, a new Achievement, a new dataset. The order of the entries says nothing about',
   'importance: an entry from the morning matters as much as one from the evening.',
+  'An entry marked "headline": true was picked by the game\'s maker as one players must hear about: it',
+  'MUST be named in the tldr and have a highlight (headlines about the same feature may share one).',
   'Rules: call the game Pyr, never EyeWire; say Achievement, never badge; use no dashes of any',
   'kind (no hyphens between words, no en or em dashes), write commas and periods instead; no emoji, no',
   'exclamation marks, no file names or code words; do not mention the date; do not invent anything that',
@@ -214,13 +221,20 @@ function readNote(reply, entries) {
   }
   const all = [tldr, ...highlights.flatMap(h => [h.title, h.text])].join('\n');
   problems.push(...houseStyleProblems(all), ...coverageProblems(all, entries));
+  // Every headline is in the note.
+  for (const e of entries.filter(isHeadline)) {
+    if (entriesTouched(all, [e]) === 0) problems.push(`it leaves out the headline "${e.title}", which must be named`);
+  }
   return problems.length ? { problems } : { tldr, highlights };
 }
+
+const isHeadline = e => e.digest === 'headline';
+const isMinor = e => e.digest === 'minor';
 
 /** The day in a few lines, in player words, or null when it cannot be had. */
 async function writeSummary(entries) {
   if (!ANTHROPIC_API_KEY) { console.log('[digest] no ANTHROPIC_API_KEY; using the one line fallback'); return null; }
-  const input = JSON.stringify(entries.map(e => ({ title: e.title, items: e.items })), null, 1);
+  const input = JSON.stringify(entries.map(e => ({ title: e.title, items: e.items, ...(isHeadline(e) ? { headline: true } : {}) })), null, 1);
   const messages = [{ role: 'user', content: `Today's changelog entries:\n${input}` }];
   try {
     let reply = await askClaude(messages);
@@ -251,12 +265,19 @@ function buildBody(entries, sinceMs, nowMs, summary) {
     parts.push(`Since the last update on ${easternDay(new Date(sinceMs))}:`);
   }
   const n = entries.length;
+  const told = entries.filter(e => !isMinor(e));
+  if (told.length === 0) {
+    // Nothing but entries marked minor.
+    parts.push(`**TLDR:** ${n === 1 ? 'One small fix' : `${n} small fixes`} went live in Pyr today.`);
+    return parts.join('\n\n');
+  }
   if (!summary) {
-    // No note to be had: one line, never the whole list.
-    const some = entries.slice(-3).reverse().map(e => e.title);
+    // No note to be had: one line, never the whole list. Headlines first, then the newest.
+    const newestFirst = [...told].reverse();
+    const some = [...newestFirst.filter(isHeadline), ...newestFirst.filter(e => !isHeadline(e))].slice(0, 3).map(e => e.title);
     parts.push(n <= 3
-      ? `**TLDR:** ${joinNaturally(entries.map(e => e.title))}.`
-      : `**TLDR:** ${n} updates went live in Pyr today. Among the newest: ${some.join('; ')}.`);
+      ? `**TLDR:** ${joinNaturally(told.map(e => e.title))}.`
+      : `**TLDR:** ${n} updates went live in Pyr today. Among them: ${some.join('; ')}.`);
     return parts.join('\n\n');
   }
   parts.push(`**TLDR:** ${summary.tldr}`);
@@ -297,14 +318,16 @@ function easternMinutes(d) {
   }
 
   const title = `${DIGEST_TAG}: ${easternDay(now)}`;
-  const summary = await writeSummary(entries);
+  // Entries marked minor are never in the note; they still count in the total.
+  const told = entries.filter(e => !isMinor(e));
+  const summary = told.length ? await writeSummary(told) : null;
   const body = buildBody(entries, sinceMs, nowMs, summary);
   const row = {
     title, body, target_type: 'all', send_at: now.toISOString(), post_to_chat: postToChat,
     thumbnail_url: THUMBNAIL_URL, image_url: IMAGE_URL,
   };
   console.log(`[digest] ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}: ` +
-      entries.map(e => `"${e.title}" (${e.at})`).join(', '));
+      entries.map(e => `"${e.title}" (${e.at}${e.digest ? `, ${e.digest}` : ''})`).join(', '));
 
   if (dryRun) {
     console.log('[digest] DRY RUN, would send:\n' + JSON.stringify(row, null, 2));

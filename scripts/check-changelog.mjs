@@ -36,6 +36,8 @@ export function readEntries(text, now = Date.now()) {
     if (Number.isNaN(at)) throw new Error(`${where} has no readable "at" time`);
     if (at > now + 20 * 60_000) throw new Error(`${where} is dated in the future (${e.at}). Use the time of this push, in UTC`);
     if (/[–—]/.test(e.title + e.items.join(' '))) throw new Error(`${where} has a long dash in it. Use commas and full stops`);
+    // Optional: how the daily "Today in Pyr" note treats the entry.
+    if (e.digest !== undefined && e.digest !== 'headline' && e.digest !== 'minor') throw new Error(`${where} has "digest": ${JSON.stringify(e.digest)}. It is "headline", "minor", or left out`);
   });
   return data.entries;
 }
