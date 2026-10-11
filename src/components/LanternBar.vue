@@ -124,8 +124,9 @@ function resetPlace() {
   display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); box-sizing: border-box;
   /* 3px of headroom above the shape: the pads sit ON the top edge, half above it */
   padding: 10px 18px 7px 8px; border: 0; border-radius: 0;
-  /* the edge light down the sides and along the foot; it never paints the headroom */
-  background: linear-gradient(180deg, var(--lan-edge) 0%, rgba(255, 196, 110, 0.4) 55%, rgba(255, 196, 110, 0.16) 100%) no-repeat left bottom / 100% calc(100% - 3px);
+  /* The trace turns the corners and runs on down the sides, fading out as it
+     nears the foot (Ames 2026-10-10). It never paints the headroom. */
+  background: linear-gradient(180deg, var(--lan-trace) 0%, rgba(255, 204, 128, 0.85) 30%, rgba(255, 196, 110, 0.3) 72%, rgba(255, 196, 110, 0.05) 100%) no-repeat left bottom / 100% calc(100% - 3px);
   clip-path: var(--lan-cut);
   font: 500 12px/1.2 'Inter', system-ui, sans-serif; color: rgba(239, 244, 251, 0.9);
   user-select: none;
