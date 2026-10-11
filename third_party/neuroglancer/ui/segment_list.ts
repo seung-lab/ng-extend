@@ -1228,8 +1228,9 @@ export class SegmentDisplayTab extends Tab {
                       new StarredSegmentsListSource(layer.displayState, parent));
                   const list = context.registerDisposer(
                       new VirtualList({source: listSource, horizontalScroll: true}));
+                  // nge: a segment's row is the same wherever it sits in the list.
                   const selectedSegmentsList = context.registerDisposer(new VirtualList(
-                      {source: selectedSegmentsListSource, horizontalScroll: true}));
+                      {source: selectedSegmentsListSource, horizontalScroll: true, keepRowsOnSplice: true}));
 
                   const group = layer.displayState.segmentationGroupState.value;
 
