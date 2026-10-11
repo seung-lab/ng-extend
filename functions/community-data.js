@@ -7,7 +7,12 @@ const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/
 // Blog covers may also be images that ship with the public site itself.
 const SITE_ASSETS = 'https://connectome.quest/assets/';
 // Chat reactions on offer; keep in step with CHAT_REACTION_EMOJI in src/store.ts.
-const REACTION_EMOJI = new Set(['👍', '❤️', '🔥', '😂', '🎉', '🧠']);
+// The six quick ones, then the longer list behind the picker's "+" (Ames
+// approved it 2026-10-11). Nothing outside this list is accepted.
+const REACTION_EMOJI = new Set([
+  '👍', '❤️', '🔥', '😂', '🎉', '🧠',
+  '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈',
+]);
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 // users.last_edit_date and users.total_days are never writable from a browser:
 // the database decides when a new day starts (supabase-days-need-action.sql),

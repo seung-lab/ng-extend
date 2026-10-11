@@ -5975,7 +5975,11 @@ function readMentionNotifyPref(): boolean {
 
 /** Reactions offered on chat messages. The ewCommunityData gateway accepts
  *  exactly these, so keep functions/community-data.js in step. */
-export const CHAT_REACTION_EMOJI = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+export const CHAT_REACTION_QUICK = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+/** More reactions, behind the picker's "+" (Nseraf 2026-10-11 asked for
+ *  more; Ames approved this list). All friendly or neutral. */
+export const CHAT_REACTION_MORE = ['👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈'];
+export const CHAT_REACTION_EMOJI = [...CHAT_REACTION_QUICK, ...CHAT_REACTION_MORE];
 
 export const useChatStore = defineStore('chat', () => {
   const chatMessages = ref<ChatMessage[]>([]);

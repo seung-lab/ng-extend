@@ -11,7 +11,7 @@ import { booGhost, isBoo, inSeason } from '../util/spooky';
 import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI, CHAT_MAX_CHARS, chatTextLength } from '../store';
+import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_MAX_CHARS, chatTextLength } from '../store';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
@@ -827,7 +827,32 @@ async function joinHelp(msg: any) {
 
 // ── Reactions (Ames 2026-09-28) ──
 const pickerFor = ref<string | null>(null);
-function togglePicker(id: string) { pickerFor.value = pickerFor.value === id ? null : id; }
+/** The longer list behind the picker's "+" is open. */
+const pickerMore = ref(false);
+/** Where the list goes: above the "+" when there is room, else below it,
+ *  and never off the side of the window. */
+const morePlace = ref<Record<string, string>>({});
+const MORE_W = 236, MORE_H = 152;
+function toggleMore(e: MouseEvent) {
+  pickerMore.value = !pickerMore.value;
+  if (!pickerMore.value) return;
+  const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const left = Math.max(6, Math.min(window.innerWidth - MORE_W - 6, at.right - MORE_W));
+  const above = at.top - MORE_H - 8;
+  const top = above >= 6 ? above : Math.min(window.innerHeight - MORE_H - 6, at.bottom + 8);
+  morePlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(Math.max(6, top))}px` };
+  // A press anywhere else puts it away, the 3D view included (which keeps
+  // its clicks to itself, so the chat's own click handler never hears them).
+  const away = (ev: PointerEvent) => {
+    const t = ev.target as HTMLElement;
+    if (t.closest?.('.nge-chat-react-more') || t.closest?.('.nge-chat-react-add')) return;
+    document.removeEventListener('pointerdown', away, true);
+    pickerMore.value = false;
+    pickerFor.value = null;
+  };
+  document.addEventListener('pointerdown', away, true);
+}
+function togglePicker(id: string) { pickerMore.value = false; pickerFor.value = pickerFor.value === id ? null : id; }
 function react(id: string, emoji: string) {
   pickerFor.value = null;
   void chatStore.toggleReaction(id, emoji);
@@ -888,7 +913,7 @@ function reactedByMe(list: Array<{ userId: string }>) {
 }
 function closePopovers(e: MouseEvent) {
   const t = e.target as HTMLElement;
-  if (!t.closest?.('.nge-chat-react-add')) pickerFor.value = null;
+  if (!t.closest?.('.nge-chat-react-add') && !t.closest?.('.nge-chat-react-more')) pickerFor.value = null;
   if (!t.closest?.('.nge-chat-share')) shareMenuOpen.value = false;
   if (!t.closest?.('.nge-chat-emoji')) emojiOpen.value = false;
 }
@@ -1271,7 +1296,8 @@ function toggleCollapse() {
                     <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                             @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
                     <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
-                      <button v-for="e in CHAT_REACTION_EMOJI" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                      <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                      <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                     </span>
                   </span>
                   <span class="nge-chat-announce-cta">Open →</span>
@@ -1381,7 +1407,8 @@ function toggleCollapse() {
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                               @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
-                        <button v-for="e in CHAT_REACTION_EMOJI" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                        <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                        <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                       </span>
                     </span>
                     <div v-if="Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row">
@@ -1501,6 +1528,13 @@ function toggleCollapse() {
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
                           @close="showShareShot = false" @attached="onShareShotAttached" />
       </template>
+    </div>
+  </Teleport>
+  <!-- More reactions: drawn on the page itself, not inside the chat, so the
+       chat's own edges never cut it off however small the chat is. -->
+  <Teleport to="body">
+    <div v-if="pickerMore && pickerFor" class="nge-chat-react-more" :style="morePlace" role="menu" aria-label="More reactions" @click.stop @mousedown.stop>
+      <button v-for="e in CHAT_REACTION_MORE" :key="e" role="menuitem" @click.stop="react(pickerFor, e)">{{ e }}</button>
     </div>
   </Teleport>
 </template>
@@ -1755,7 +1789,9 @@ function toggleCollapse() {
   overflow-y: auto;
   display: flex;
   flex-direction: column-reverse;
-  padding: 2px 8px;
+  /* No space on the left: a message's own indent is enough, and the bar on
+     your own messages sits on the panel's edge (Ames 2026-10-11). */
+  padding: 2px 8px 2px 0;
   position: relative;
   z-index: 2;
 }
@@ -1807,6 +1843,9 @@ function toggleCollapse() {
 /* Room between that bar and the words (Ames 2026-10-11: "too close to the
    text"). Every message gets it, so yours and everyone else's still line up. */
 .nge-chat-msg { padding-left: 11px; }
+/* Everything that is not a message (date lines, join notices, cards) keeps
+   the space the list itself used to give it. */
+.nge-chat-messages-inner > :not(.nge-chat-msg) { margin-left: 8px; }
 .nge-chat-b { font-weight: 700; color: #f2f6fc; }
 .nge-chat-u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 /* Search */
@@ -2492,6 +2531,20 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
   transition: transform 0.1s;
 }
 .nge-chat-react-picker button:hover { transform: scale(1.25); background: rgba(74, 158, 255, 0.15); }
+/* "+": the longer list, in a small grid under the quick row. */
+.nge-chat-react-picker .nge-chat-react-more-btn { font-size: 15px; font-weight: 700; color: #9fc4ff; width: 23px; }
+.nge-chat-react-picker .nge-chat-react-more-btn--open { background: rgba(74, 158, 255, 0.22); }
+.nge-chat-react-more {
+  position: fixed; z-index: 100001;
+  display: grid; grid-template-columns: repeat(8, 27px); gap: 1px; padding: 5px;
+  background: rgba(10, 16, 30, 0.98); border: 1px solid rgba(74, 158, 255, 0.3); border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+}
+.nge-chat-react-more button {
+  background: none; border: none; font-size: 17px; line-height: 1; cursor: pointer; transition: transform 0.1s;
+}
+.nge-chat-react-more button:hover { transform: scale(1.25); background: rgba(74, 158, 255, 0.15); }
+.nge-chat-react-more button { width: 27px; height: 27px; padding: 0; border-radius: 6px; }
 .nge-chat-react-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .nge-chat-react {
   display: inline-flex;
