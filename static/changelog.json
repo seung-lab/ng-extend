@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T01:48:00Z",
+      "title": "A new Achievement in the Merger Sandbox",
+      "items": [
+        "Cut every merger in the Merger Sandbox to earn the Pyramidal Precision Achievement.",
+        "If you have already cut them all, it is yours the next time you open Pyr."
+      ]
+    },
+    {
       "at": "2026-10-11T01:50:00Z",
       "title": "Three more mergers in the Merger Sandbox",
       "items": [

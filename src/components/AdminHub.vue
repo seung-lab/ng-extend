@@ -1694,7 +1694,7 @@ function practiceWhen(iso: string | null) {
     <div v-if="!standalone" class="nge-admin-subtabs">
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
-      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
+      <button class="nge-admin-subtab nge-admin-subtab--badges" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
       <!-- Triage lives on its own page: the full board, in a new tab (Ames 2026-10-05). -->
       <a class="nge-admin-subtab nge-admin-subtab--triage" :href="boardUrl" target="_blank" rel="noopener" title="Opens the triage board in a new tab">Triage ↗</a>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
@@ -2391,6 +2391,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 /* Triage stands out in red (Ames): it is the tab that needs attention. */
 .nge-admin-subtab--triage,
 .nge-admin-subtab--triage:hover { color: #ff6b6b; }
+/* Special Badges in blue (Ames 2026-10-10), as Triage is in red. */
+.nge-admin-subtab--badges,
+.nge-admin-subtab--badges:hover { color: #5aa9ff; }
+.nge-admin-subtab--badges.nge-admin-subtab--active { color: #8cc4ff; border-bottom-color: #5aa9ff; }
 .nge-admin-subtab--triage.nge-admin-subtab--active { color: #ff8585; border-bottom-color: #ff6b6b; }
 
 .nge-admin-section { display: flex; flex-direction: column; gap: 16px; }

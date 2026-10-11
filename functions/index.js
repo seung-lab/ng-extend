@@ -2003,8 +2003,11 @@ exports.ewCommunityData = onRequest(
         for(const row of rows) {
           const badges=await sb("special_badges?id=eq."+Number(row.badge_id)+"&select=name,slug&limit=1");
           // The Merger Sandbox Achievement (code name merger-sandbox, any display
-          // name): only with every merger on the player's own record as cut.
-          // Keep the count in step with SANDBOX_CELLS in src/practice_pools.ts.
+          // name). The app asks for it only once EVERY merger in its list
+          // (SANDBOX_CELLS in src/practice_pools.ts) is cut, so the number
+          // needed grows by itself as mergers are added there (Ames 2026-10-10).
+          // This is the floor under that: never with fewer than the five the
+          // sandbox opened with on the player's own record.
           if(badges.some(b=>b.slug==="merger-sandbox")) {
             const done=await sb("tutorial_completions?user_id=eq."+me.id+"&tutorial=eq.9&practice_made=gt.0&select=item&limit=500");
             if(new Set(done.map(r=>r.item).filter(Boolean)).size<5) throw ewErr(403,"Cut every merger in the Merger Sandbox first.");
