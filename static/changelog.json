@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T15:32:00Z",
+      "title": "Announcements in chat show their picture",
+      "items": [
+        "An announcement in chat, such as a new blog post, now shows a small version of its picture beside the text."
+      ]
+    },
+    {
       "at": "2026-10-11T15:28:00Z",
       "title": "A Proofreading Test, on trial",
       "items": [

@@ -935,6 +935,13 @@ async function deleteChatMessage(msg: ChatMessage) {
   if (!ok) window.alert('Could not delete that message. Please try again.');
 }
 
+/** The picture of the notification an announcement refers to (a blog post's
+ *  feature image, say), small, beside its line in chat (Ames 2026-10-11).
+ *  Empty when the notification has none or is not in this player's list. */
+function announcePicture(id: number): string {
+  const n = backendStore.notifications.find(x => x.id === id);
+  return n?.thumbnail_url || n?.image_url || '';
+}
 function openAnnouncement(id: number) {
   document.dispatchEvent(new CustomEvent('nge:open-notification', { detail: { id } }));
 }
@@ -1246,6 +1253,7 @@ function toggleCollapse() {
                      @keydown.enter="openAnnouncement(msg.notificationId)"
                      title="Open this notification">
                   <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
+                  <img v-if="announcePicture(msg.notificationId)" class="nge-chat-announce-thumb" :src="announcePicture(msg.notificationId)" alt="" loading="lazy" />
                   <span class="nge-chat-announce-text">{{ msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('') }}</span>
                   <!-- Announcements take reactions like any message (Ames
                        2026-10-07). The picker sits in the row, beside Open,
@@ -1956,6 +1964,10 @@ function toggleCollapse() {
 .nge-chat-react-add.nge-chat-react-add--inline { position: relative; top: auto; right: auto; flex: 0 0 auto; }
 .nge-chat-react-row--announce { flex: 1 0 100%; margin-top: 3px; }
 .nge-chat-announce-text { flex: 1; color: #d6e6ff; }
+.nge-chat-announce-thumb {
+  flex: 0 0 auto; width: 46px; height: 46px; object-fit: cover; border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(120, 170, 255, 0.3);
+}
 .nge-chat-announce-cta {
   flex: 0 0 auto;
   font-size: 10.5px;
