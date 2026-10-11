@@ -48,17 +48,17 @@ export const spooky = reactive({ on: inSeason() || testOn(), season: inSeason() 
 const haunted = () => lantern.on && spooky.on;
 
 type Kind = 'ghost' | 'reaper' | 'boo';
-// The ghost and the reaper are a FIXED SIZE in the data, in micrometres, so
-// they are the same against the cell however far you are zoomed, and small
-// beside a cell body (about 10 um across). They turn up at the edge of the
+// The ghost and the reaper are sized in the data, in micrometres, within
+// limits, so they are always small beside a cell body (about 10 um across)
+// and still visible from far off. They turn up at the edge of the
 // Lantern's light. (Ames 2026-10-10. Sized by the view the ghost was as big
 // as the cell body from far away; sized by the Lantern he was still too big.)
 // The boo! ghost is the exception: it pops up in front of you, so its size
 // is a share of the view.
 const KINDS: Record<Kind, {
   model: 'ghost' | 'reaper';
-  sizeUm?: number;                 // its height, micrometres
-  sizeOfView?: number;             // or, for boo, its height as a share of the view
+  sizeUm?: [number, number];       // its height in micrometres: never smaller than the first, never bigger than the second
+  sizeOfView: number;              // and, between those, this share of the view when it arrives
   near: number; far: number;       // where it appears: this many Lantern reaches from the centre
   scared: number;                  // it goes when the view centre is this many of its own heights away (0 = never)
   tooBig: number;                  // and when zooming in makes it taller than this share of the view
@@ -69,14 +69,14 @@ const KINDS: Record<Kind, {
 }> = {
   // The ghost bobs, faces you, and comes back two seconds after it goes,
   // somewhere else. He does not let you zoom right in on him.
-  ghost:  { model: 'ghost',  sizeUm: 2.4, near: 0.85, far: 1.1, scared: 2.6, tooBig: 0.13, appearS: 0.9, vanishS: 0.9, stayS: [22, 40], gapS: [2, 2], still: false,
+  ghost:  { model: 'ghost',  sizeUm: [3.2, 7], sizeOfView: 0.045, near: 0.85, far: 1.1, scared: 2.6, tooBig: 0.13, appearS: 0.9, vanishS: 0.9, stayS: [22, 40], gapS: [2, 2], still: false,
             alpha: 0.86, shade: 1, glow: [0.16, 0.2, 0.26], rim: [0.55, 0.9, 1.0] },
   // The reaper does not move and does not turn to look at you: he stands in
   // the dark past the edge of the light, a shape with a red edge, and his
   // lantern beats slowly. He comes up out of the dark slowly and is gone in
   // an instant. (Ames: "he should not float/move ... he should not always
   // turn to look at you ... more ominous ... he looks too big".)
-  reaper: { model: 'reaper', sizeUm: 4.2, near: 1.15, far: 1.4, scared: 1.5, tooBig: 0.3, appearS: 3.2, vanishS: 0.3, stayS: [18, 30], gapS: [6, 14], still: true,
+  reaper: { model: 'reaper', sizeUm: [5, 10], sizeOfView: 0.07, near: 1.15, far: 1.4, scared: 1.5, tooBig: 0.3, appearS: 3.2, vanishS: 0.3, stayS: [18, 30], gapS: [6, 14], still: true,
             alpha: 1, shade: 0.34, glow: [0.02, 0.0, 0.0], rim: [1.0, 0.1, 0.06] },
   boo:    { model: 'ghost',  sizeOfView: 0.15, near: 0, far: 0, scared: 0, tooBig: 0, appearS: 0.34, vanishS: 1.15, stayS: [1.0, 1.0], gapS: [0, 0], still: false,
             alpha: 0.95, shade: 1, glow: [0.2, 0.24, 0.3], rim: [0.6, 0.92, 1.0] },
@@ -199,7 +199,10 @@ function arrive(kind: Kind, f: Frame, now: number) {
   const k = KINDS[kind], h = f.heightNm;
   // where it appears is measured in Lantern reaches
   const unit = Math.max(1000, lantern.sizeUm * 1000);
-  const sizeNm = k.sizeUm != null ? k.sizeUm * 1000 : (k.sizeOfView ?? 0.1) * h;
+  // A share of the view, held between two real sizes: big enough to see
+  // from far off, never as big as a cell body. (A fixed 2.4 um was right up
+  // close and a speck from far away: Ames, "he is so tiny! maybe too tiny".)
+  const sizeNm = k.sizeUm ? Math.max(k.sizeUm[0] * 1000, Math.min(k.sizeUm[1] * 1000, k.sizeOfView * h)) : k.sizeOfView * h;
   const at = (x: number, y: number, z: number) => [0, 1, 2].map(i => f.centreNm[i] + f.right[i] * x + f.up[i] * y + f.eye[i] * z);
   let pos: number[] = [], drift = [0, 0, 0], nearCell = false;
   if (kind === 'boo') {
