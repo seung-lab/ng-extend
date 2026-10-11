@@ -402,12 +402,18 @@ function nameColor(msg: { name: string; rank: string }): string {
 
 // ── Who is online: the "2 online" label opens the list ──────────────────
 const showOnline = ref(false);
+/** The short name of the dataset someone has open, for the online list. */
+function onlineDatasetName(tag: string): string {
+  const d = DATASETS.find(x => canonicalDataset(segLayerName(x)) === tag || x.id === tag);
+  // Retina's short label is the project's old name; players know it as Retina.
+  return d?.shortLabel === 'EyeWire II' ? 'Retina' : d?.shortLabel || '';
+}
 const onlineNow = computed(() => {
   void chatStore.onlineCount;          // the store's tick: people go stale after 90 s
   const cutoff = Date.now() - 90_000;
   return Object.entries(chatStore.online)
     .filter(([, p]) => p.lastSeen >= cutoff)
-    .map(([id, p]) => ({ id, name: p.name }))
+    .map(([id, p]) => ({ id, name: p.name, where: p.dataset ? onlineDatasetName(p.dataset) : '' }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 });
 function openOnlineProfile(id: string) {
@@ -1152,7 +1158,8 @@ function toggleCollapse() {
           <div v-if="showOnline" class="nge-chat-online-list" role="menu" @click.stop>
             <button v-for="p in onlineNow" :key="p.id" type="button" class="nge-chat-online-name" role="menuitem"
                     :style="{ color: rankColor(knownRank[p.name] || 'player') }" @click="openOnlineProfile(p.id)">
-              <span class="nge-chat-online-dot" aria-hidden="true"></span>{{ p.name }}
+              <span class="nge-chat-online-dot" aria-hidden="true"></span><span class="nge-chat-online-who">{{ p.name }}</span>
+              <span v-if="p.where" class="nge-chat-online-where" :title="'In ' + p.where">{{ p.where }}</span>
             </button>
           </div>
         </span>
@@ -1844,6 +1851,8 @@ function toggleCollapse() {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .nge-chat-online-name:hover, .nge-chat-online-name:focus-visible { background: rgba(255, 255, 255, 0.07); outline: none; }
+.nge-chat-online-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nge-chat-online-where { margin-left: auto; padding-left: 10px; flex: 0 0 auto; font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.6); }
 .nge-chat-online-dot { width: 7px; height: 7px; border-radius: 50%; background: #7dffb0; box-shadow: 0 0 6px rgba(125, 255, 176, 0.8); flex: 0 0 auto; }
 .nge-chat-del {
   visibility: hidden;

@@ -23,7 +23,7 @@ const columns = {
   notification_reads: 'id,notification_id,user_id,read_at,dismissed,dismissed_at',
   working_links: 'id,user_id,title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,created_at,updated_at,screenshot_url',
   // Who is in chat right now. Public: usernames are already public in chat.
-  chat_presence: 'user_id,name,last_seen_at,joined_at',
+  chat_presence: 'user_id,name,last_seen_at,joined_at,dataset',
   feedback_triage: 'id,source,source_id,source_excerpt,recommendation,rationale,proposed_message,spec,status,reviewed_by,reviewed_at,created_at,slack_channel,slack_ts,result_note,done_slack_ts,approver_slack_id,approver_note,decision_slack_ts,impl_state,impl_branch,impl_summary,impl_run_url,impl_attempts,impl_started_at,preview_url,feedback_log,last_reply_ts,last_nag_at,nag_count,tested_by,tested_at',
   site_issues: 'id,category,message,url,dataset,user_id,user_name,created_at,screenshot_url,console_log',
   user_groups: 'id,name,description,color,created_at,created_by',
@@ -46,8 +46,9 @@ const columns = {
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,total_annotations,favorite_badges,favorite_badges_bronze,trophy_order',
   working_links: 'title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,updated_at,screenshot_url',
-  // Nothing from the client is kept: every field is set below from identity.
-  chat_presence: 'last_seen_at',
+  // Identity and time are set below from the verified sign-in. The one field
+  // kept from the client is the dataset it has open, checked there as a tag.
+  chat_presence: 'last_seen_at,dataset',
   notification_reads: 'notification_id,dismissed,dismissed_at',
   user_groups: 'name,description,color',
   user_group_members: 'group_id,user_id',
@@ -267,8 +268,12 @@ function authorizeData(input, ctx) {
     }
     if (table === 'chat_presence') {
       // Identity and time are the server's; the client only says "I'm here".
+      // The one thing it may add is which dataset it has open, shown beside
+      // the name in the online list (Krzysztof Kruk 2026-10-11): a plain tag.
+      const dataset = typeof row.dataset === 'string' && /^[A-Za-z0-9_]{1,48}$/.test(row.dataset) ? row.dataset : null;
       for (const k of Object.keys(row)) delete row[k];
       row.user_id = own(); row.name = me.username || me.display_name || 'Player'; row.last_seen_at = ctx.now;
+      if (dataset) row.dataset = dataset;
     }
     if (table === 'user_groups' && method === 'POST') row.created_by = own();
     if (table === 'user_group_members' && method === 'POST') row.added_by = own();

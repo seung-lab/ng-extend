@@ -6044,7 +6044,7 @@ export const useChatStore = defineStore('chat', () => {
   // be forged, unlike the old open broadcast the security fix removed.
   const ONLINE_MS = 90_000;
   const HEARTBEAT_MS = 60_000;
-  const online = ref<Record<string, { name: string; lastSeen: number }>>({});
+  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
   const presenceTick = ref(0);
   const onlineCount = computed(() => {
@@ -6197,18 +6197,31 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Which dataset you have open goes with the heartbeat, for the online list
+  // (Krzysztof Kruk 2026-10-11). If the server does not take it yet, the
+  // plain heartbeat is used from then on, so being online never depends on it.
+  let presenceTakesDataset = true;
   async function heartbeat() {
+    if (presenceTakesDataset) {
+      const { error } = await supabase.from('chat_presence').upsert({ dataset: currentDatasetTag() }, { onConflict: 'user_id' });
+      if (!error) return;
+      presenceTakesDataset = false;
+    }
     const { error } = await supabase.from('chat_presence').upsert({}, { onConflict: 'user_id' });
     if (error) console.warn('[chat] presence heartbeat failed:', error.message);
   }
 
   async function loadOnline() {
     const since = new Date(Date.now() - ONLINE_MS).toISOString();
-    const { data, error } = await supabase.from('chat_presence')
-      .select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
+    let { data, error } = await supabase.from('chat_presence')
+      .select(presenceTakesDataset ? 'user_id,name,last_seen_at,dataset' : 'user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
+    if (error && presenceTakesDataset) {
+      presenceTakesDataset = false;
+      ({ data, error } = await supabase.from('chat_presence').select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500));
+    }
     if (error || !data) return;
-    const next: Record<string, { name: string; lastSeen: number }> = {};
-    for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime() };
+    const next: Record<string, { name: string; lastSeen: number; dataset?: string }> = {};
+    for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime(), ...(r.dataset ? { dataset: r.dataset } : {}) };
     online.value = next;
   }
 
@@ -6229,7 +6242,7 @@ export const useChatStore = defineStore('chat', () => {
     // tab) is not news: Ames saw "celiad joined the chat" three times in a
     // row. Only announce people who weren't here.
     const wasOnline = !!online.value[row.user_id];
-    online.value[row.user_id] = { name: row.name, lastSeen: seen };
+    online.value[row.user_id] = { name: row.name, lastSeen: seen, ...(row.dataset ? { dataset: row.dataset } : {}) };
     // joined_at is only moved on a real (re)join, so a routine heartbeat is silent.
     if (row.user_id !== me && !wasOnline && Math.abs(seen - joined) < 5000) sysLine('join', row.name);
   }
