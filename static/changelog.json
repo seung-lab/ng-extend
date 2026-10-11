@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T15:00:00Z",
+      "title": "Editor Achievements come closer together",
+      "items": [
+        "The Achievements you earn by editing now come at steadier steps: every 100 edits up to 500, then 750 and 1,000, every 500 up to 5,000, every 1,000 up to 10,000, every 2,000 up to 20,000, every 5,000 up to 100,000, and every 10,000 after that.",
+        "Nobody loses an Achievement. If your count already passes a new mark, it shows as earned in your Trophy Case."
+      ]
+    },
+    {
       "at": "2026-10-11T14:55:00Z",
       "title": "Start the Merger Sandbox again",
       "items": [

@@ -64,3 +64,11 @@ test('a Loyalty achievement is announced once the total days have reached it', (
   assert.throws(() => achievementRow('loyalty', day(40).id, {total_edits: 5000, cells_completed: 5000, total_days: 39}), /Not earned yet/);
   assert.equal(achievementRow('loyalty', day(40).id, {total_days: 41}).name, 'Forty Days');
 });
+
+test('edit tiers rise all the way, in the steps Ames set', () => {
+  const t = TABLE.filter(a => a.track === 'building').sort((a, b) => a.id - b.id).map(a => a.threshold);
+  assert.equal(t.length, 100);
+  for (let i = 1; i < t.length; i++) assert.ok(t[i] > t[i - 1], `tier ${i + 1}`);
+  assert.deepEqual(t.slice(0, 12), [1, 10, 25, 50, 100, 200, 300, 400, 500, 750, 1000, 1500]);
+  assert.equal(t[99], 650000);
+});
