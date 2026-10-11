@@ -6,6 +6,15 @@
  */
 import { computed, ref } from 'vue';
 import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
+import { spooky, callGhost, callTheReaper, shoo } from '../util/spooky';
+import { useProofreadingBackendStore } from '../store';
+import ghostIcon from '../images/ghost-icon.png';
+import reaperIcon from '../images/reaper-icon.png';
+
+// The ghost button (Halloween: util/spooky.ts). Everyone has it in Halloween
+// week; outside it, admins only, for trying it out.
+const backend = useProofreadingBackendStore();
+const showGhost = computed(() => spooky.season || backend.isAdmin);
 
 // The bar can be dragged anywhere by its grip (Ames 2026-10-10: "I need to be
 // able to move the lantern box"). Its place is remembered in this browser;
@@ -53,6 +62,7 @@ function resetPlace() {
 
 <template>
   <Teleport to="body">
+    <Transition name="nge-lantern-bar">
     <div v-if="lantern.on" ref="bar" class="nge-lantern" :class="{ 'nge-lantern--folded': !lantern.open }" :style="placed" role="group" aria-label="Lantern mode">
       <span class="nge-lantern-grip" title="Drag to move. Double click to put it back." aria-hidden="true"
             @pointerdown="startDrag" @dblclick="resetPlace">⠿</span>
@@ -76,36 +86,112 @@ function resetPlace() {
           <output>{{ lantern.flame }}%</output>
         </label>
       </template>
+      <span v-if="showGhost" class="nge-lantern-spooky">
+        <button type="button" class="nge-lantern-ghost" :class="{ 'is-on': spooky.on }" title="Call a ghost" aria-label="Call a ghost" @click="callGhost">
+          <img :src="ghostIcon" alt="" draggable="false" />
+        </button>
+        <!-- The reaper is held back from players for now: admins only, to try him out. -->
+        <button v-if="backend.isAdmin" type="button" class="nge-lantern-ghost nge-lantern-ghost--reaper" title="Call the reaper (admins only, for testing)" aria-label="Call the reaper" @click="callTheReaper">
+          <img :src="reaperIcon" alt="" draggable="false" />
+        </button>
+        <button v-if="spooky.on" type="button" class="nge-lantern-mini" title="Send them away" aria-label="Send them away" @click="shoo">shoo</button>
+      </span>
       <button type="button" class="nge-lantern-off" title="Turn the Lantern off (Shift+N)" aria-label="Turn the Lantern off" @click="lantern.on = false">×</button>
     </div>
+    </Transition>
   </Teleport>
 </template>
 
 <style scoped>
 .nge-lantern {
-  position: fixed; left: 50%; top: 46px; transform: translateX(-50%); z-index: 900;
+  /* The same cut as the layer tabs (ng-override.css): a circuit board part,
+     with a long diagonal on the top right, a short one top left, a third on
+     the bottom left and one corner left square, so no two corners match
+     (Ames 2026-10-10: "a cool scifi circuit vibe like the layers tabs"). A
+     clipped box cannot carry a border, so the edge is the box's own
+     background showing round a slightly smaller fill (::before). In the
+     Lantern's amber, where the layer tabs are blue. */
+  --lan-edge: rgba(255, 196, 110, 0.62);
+  --lan-fill: #0a1120;
+  --lan-trace: #ffd08a;
+  /* where the two pads sit, measured along the top edge (6px in, 14px short) */
+  --lan-pad-x: calc(6px + (100% - 20px) * 0.75);
+  --lan-cut: polygon(
+    6px 3px, calc(var(--lan-pad-x) - 8px) 3px, calc(var(--lan-pad-x) - 8px) 0,
+    calc(var(--lan-pad-x) + 8px) 0, calc(var(--lan-pad-x) + 8px) 3px,
+    calc(100% - 14px) 3px, 100% 17px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
+  position: fixed; left: 50%; top: 43px; transform: translateX(-50%); z-index: 900;
   display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); box-sizing: border-box;
-  padding: 5px 6px 5px 4px; border-radius: 10px;
-  background: linear-gradient(158deg, rgba(15, 18, 24, 0.95), rgba(6, 10, 18, 0.97));
-  border: 1px solid rgba(255, 196, 110, 0.34);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(196, 228, 255, 0.08);
+  /* 3px of headroom above the shape: the pads sit ON the top edge, half above it */
+  padding: 10px 18px 7px 8px; border: 0; border-radius: 0;
+  /* The trace turns the corners and runs on down the sides, fading out as it
+     nears the foot (Ames 2026-10-10). It never paints the headroom. */
+  background: linear-gradient(180deg, var(--lan-trace) 0%, rgba(255, 204, 128, 0.85) 30%, rgba(255, 196, 110, 0.3) 72%, rgba(255, 196, 110, 0.05) 100%) no-repeat left bottom / 100% calc(100% - 3px);
+  clip-path: var(--lan-cut);
   font: 500 12px/1.2 'Inter', system-ui, sans-serif; color: rgba(239, 244, 251, 0.9);
   user-select: none;
 }
-.nge-lantern--folded { gap: 4px; }
+.nge-lantern::before {
+  /* reaches the shape's very top, so the trace is the only top edge */
+  content: ''; position: absolute; inset: 3px 1px 1px 1px; z-index: 0; pointer-events: none;
+  background: linear-gradient(168deg, #0d1628 0%, var(--lan-fill) 60%, #070c18 100%);
+  clip-path: polygon(5px 0, calc(100% - 13px) 0, 100% 14px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 6.4px);
+}
+/* The top edge IS the circuit trace, as on the selected layer tab (Ames
+   2026-10-10: "the circuit line at the top IS the top bar, not in addition to
+   the top bar"). It runs inward along the edge from either side; the two runs
+   do not join, each ends on a pad, and the pads sit either side of a small
+   gap three quarters of the way across. */
+.nge-lantern::after {
+  content: ''; position: absolute; z-index: 1; pointer-events: none;
+  left: 6px; right: 14px; top: 0; height: 7px;
+  background:
+    radial-gradient(circle at calc(75% - 4.5px) 3.7px, #1a1408 0 0.9px, var(--lan-trace) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at calc(75% + 4.5px) 3.7px, #1a1408 0 0.9px, var(--lan-trace) 1.3px 2.1px, transparent 2.5px),
+    linear-gradient(var(--lan-trace), var(--lan-trace)) left 0 top 3px / calc(75% - 6.8px) 1.4px no-repeat,
+    linear-gradient(var(--lan-trace), var(--lan-trace)) right 0 top 3px / calc(25% - 6.8px) 1.4px no-repeat;
+}
+.nge-lantern > * { position: relative; z-index: 1; }
+.nge-lantern--folded { gap: 4px; padding-right: 14px; }
+/* The bar comes in as the lantern lights: a light runs across it from the
+   left, once, like the one crossing the cells. */
+.nge-lantern-bar-enter-active { animation: nge-lantern-bar-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nge-lantern-bar-leave-active { animation: nge-lantern-bar-out 0.26s ease-in both; }
+@keyframes nge-lantern-bar-in {
+  0%   { opacity: 0; filter: brightness(2.6); clip-path: polygon(6px 3px, 6px 3px, 6px 0, 6px 0, 6px 3px, 6px 3px, 6px 17px, 6px 100%, 6px 100%, 0 calc(100% - 9px), 0 9px); }
+  100% { opacity: 1; filter: none; clip-path: var(--lan-cut); }
+}
+@keyframes nge-lantern-bar-out {
+  0%   { opacity: 1; filter: none; }
+  100% { opacity: 0; filter: brightness(0.5); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-lantern-bar-enter-active, .nge-lantern-bar-leave-active { animation: none; } }
 .nge-lantern-grip { margin-right: -8px; padding: 3px 4px; border-radius: 5px; cursor: grab; font-size: 13px; line-height: 1; color: rgba(255, 200, 120, 0.55); touch-action: none; }
 .nge-lantern-grip:hover { color: #ffc878; background: rgba(255, 196, 110, 0.1); }
 .nge-lantern-grip:active { cursor: grabbing; }
 .nge-lantern-name {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px;
-  background: none; cursor: pointer; font: inherit; font-weight: 600; letter-spacing: 0.04em; color: #ffc878;
+  background: none; cursor: pointer; font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #ffc878;
 }
 .nge-lantern-name:hover, .nge-lantern-name:focus-visible { border-color: rgba(255, 196, 110, 0.45); outline: none; }
 .nge-lantern-set { display: inline-flex; align-items: center; gap: 7px; color: rgba(190, 205, 225, 0.85); }
+.nge-lantern-set > span:first-child { font: 500 10px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 208, 138, 0.72); }
 .nge-lantern-set input[type='range'] { width: 92px; accent-color: #ffc878; }
 .nge-lantern-set output { min-width: 44px; font-variant-numeric: tabular-nums; color: #f3f6fb; }
 /* a unit symbol is never upper-cased by a parent */
 .nge-lantern-unit { text-transform: none; color: rgba(190, 205, 225, 0.7); }
+/* The ghost button, and what comes with it once the haunting is on */
+.nge-lantern-spooky { display: inline-flex; align-items: center; gap: 4px; padding-left: 10px; border-left: 1px solid rgba(196, 228, 255, 0.14); }
+.nge-lantern-ghost { width: 28px; height: 28px; padding: 2px; border: 1px solid transparent; border-radius: 7px; background: none; cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
+.nge-lantern-ghost img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0.7; transition: opacity 0.15s ease, filter 0.15s ease; }
+.nge-lantern-ghost:hover, .nge-lantern-ghost:focus-visible { transform: translateY(-2px); border-color: rgba(160, 225, 255, 0.5); background: rgba(160, 225, 255, 0.08); outline: none; }
+.nge-lantern-ghost:hover img, .nge-lantern-ghost:focus-visible img, .nge-lantern-ghost.is-on img { opacity: 1; filter: drop-shadow(0 0 5px rgba(160, 225, 255, 0.8)); }
+.nge-lantern-ghost:active { transform: scale(0.9); }
+.nge-lantern-mini { height: 24px; padding: 0 7px; border: 1px solid rgba(196, 228, 255, 0.2); border-radius: 6px; background: none; cursor: pointer; font: inherit; font-size: 11px; color: rgba(190, 205, 225, 0.85); display: inline-flex; align-items: center; }
+.nge-lantern-mini:hover, .nge-lantern-mini:focus-visible { color: #fff; border-color: rgba(196, 228, 255, 0.5); outline: none; }
+.nge-lantern-ghost--reaper:hover, .nge-lantern-ghost--reaper:focus-visible { border-color: rgba(255, 120, 110, 0.6); background: rgba(255, 120, 110, 0.08); }
+.nge-lantern-ghost--reaper:hover img, .nge-lantern-ghost--reaper:focus-visible img { filter: drop-shadow(0 0 5px rgba(255, 90, 70, 0.85)); }
+@media (prefers-reduced-motion: reduce) { .nge-lantern-ghost { transition: none; } .nge-lantern-ghost:hover { transform: none; } }
 .nge-lantern-off {
   padding: 1px 7px; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer;
   font: inherit; font-size: 16px; line-height: 1; color: rgba(190, 205, 225, 0.8);

@@ -14,6 +14,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import { beginPractice, cellIsCut, endPractice, ensureTool } from './practice';
 import { SANDBOX_CELLS } from './practice_pools';
 import { supabase } from './supabase';
+import { awardSpecialOnce } from './util/special_award';
 import { useProofreadingBackendStore } from './store';
 import { show2D, showSections } from './tutorial-cut';
 import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
@@ -37,6 +38,24 @@ function markDone(id: string) {
 }
 
 /**
+ * Every merger in the sandbox cut: a special Achievement (Ames 2026-10-10).
+ * An admin makes it in the Admin Hub with the code name below, under any
+ * name and art; until then this does nothing, and it is checked again on
+ * every sign in, so players who finished earlier still get it. The server
+ * checks the player's own record of cut mergers before it lets the award
+ * through (functions/index.js), so this browser's memory alone is not enough.
+ */
+export const SANDBOX_AWARD_SLUG = 'merger-sandbox';
+function awardIfAllCut() {
+  if (!SANDBOX_CELLS.every(c => sandboxDone.value.includes(c.id))) return;
+  void awardSpecialOnce({
+    slug: SANDBOX_AWARD_SLUG,
+    reason: `Cut all ${SANDBOX_CELLS.length} mergers in the Merger Sandbox`,
+    earnedBy: `cut all ${SANDBOX_CELLS.length} mergers in the Merger Sandbox`,
+  });
+}
+
+/**
  * The mergers this player has cut, from their account (tutorial_completions),
  * so the count follows them to another computer. Added to what this browser
  * remembers; looked up once the player is known, and again on each start.
@@ -49,6 +68,9 @@ async function loadDoneFromAccount() {
       .select('item').eq('user_id', uid).eq('tutorial', SANDBOX_TUTORIAL).gt('practice_made', 0).limit(500);
     if (error || !data) return;
     for (const row of data as Array<{ item: string | null }>) if (row.item && SANDBOX_CELLS.some(c => c.id === row.item)) markDone(row.item);
+    // Asked from the account's record, so it also reaches players who cut
+    // the last merger before the Achievement existed.
+    awardIfAllCut();
   } catch { /* the browser's own record still counts */ }
 }
 setTimeout(loadDoneFromAccount, 6000);
@@ -208,7 +230,13 @@ The cells go back to their merged state for the next person. You can cut any of 
       const id = cell().id;
       checking.value = true;
       try { if (await cellIsCut(id)) creditPractice(id); } finally { checking.value = false; }
-      if (practiceEarned()) { markDone(id); celebrateStep(); recordTutorialDone(SANDBOX_TUTORIAL, id); }
+      if (practiceEarned()) {
+        markDone(id); celebrateStep();
+        // Recorded on the account first: the server looks there before it
+        // lets the Achievement through.
+        await Promise.resolve(recordTutorialDone(SANDBOX_TUTORIAL, id)).catch(() => {});
+        awardIfAllCut();
+      }
       stopWatching();
       endPractice();
     },

@@ -1016,9 +1016,26 @@ const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => no
 const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'   && isCategoryVisible(n)));
 const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'  && isCategoryVisible(n)));
 
+// ── Preview: the draft, in the window players will read it in ──
+// (Ames 2026-10-10.) Shown by the notification panel itself, so it is the
+// real layout and formatting, not a copy of them. A picture that has been
+// attached but not uploaded yet is shown from this computer.
+const editingImageUrl = ref('');
+let previewObjectUrl: string | null = null;
+function previewNotification() {
+  if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
+  let image = '';
+  if (notifImageFile.value) image = previewObjectUrl = URL.createObjectURL(notifImageFile.value);
+  else if (editingId.value != null) image = editingImageUrl.value;
+  document.dispatchEvent(new CustomEvent('nge:preview-notification', {
+    detail: { title: notifTitle.value.trim() || 'Untitled', body: notifBody.value, image_url: image },
+  }));
+}
+
 /** Load an existing notification into the compose form for editing. */
 function startEdit(n: any) {
   editingId.value = n.id;
+  editingImageUrl.value = n.image_url || n.thumbnail_url || '';
   notifTitle.value = n.title || '';
   notifBody.value = n.body || '';
   notifTargetType.value = n.target_type || 'all';
@@ -1677,7 +1694,7 @@ function practiceWhen(iso: string | null) {
     <div v-if="!standalone" class="nge-admin-subtabs">
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'notifications' }" @click="adminSubTab = 'notifications'">Notifications</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'groups' }" @click="adminSubTab = 'groups'">Groups</button>
-      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
+      <button class="nge-admin-subtab nge-admin-subtab--badges" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
       <!-- Triage lives on its own page: the full board, in a new tab (Ames 2026-10-05). -->
       <a class="nge-admin-subtab nge-admin-subtab--triage" :href="boardUrl" target="_blank" rel="noopener" title="Opens the triage board in a new tab">Triage ↗</a>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
@@ -1790,6 +1807,8 @@ function practiceWhen(iso: string | null) {
             <span v-else-if="editingId != null">Save Changes</span>
             <span v-else>Send Notification</span>
           </button>
+          <button class="nge-admin-cancel-btn nge-admin-preview-btn" type="button" :disabled="!notifTitle.trim() && !notifBody.trim()"
+                  title="See this notification as players will, before it is sent. Nothing is sent or saved." @click="previewNotification">Preview</button>
           <button v-if="editingId != null" class="nge-admin-cancel-btn" @click="cancelEdit">Cancel edit</button>
         </div>
         <!-- While it sends: a neuron that grows a part for each real step. -->
@@ -1927,6 +1946,8 @@ function practiceWhen(iso: string | null) {
       <div class="nge-admin-block">
         <label class="nge-admin-label">Create Special Badge</label>
         <input v-model="badgeName" class="nge-admin-input" placeholder="Badge name" />
+        <input v-model="badgeSlug" class="nge-admin-input" placeholder="Code name (optional; made from the name when empty)"
+               title="How the game finds this one when it gives it out by itself. The Merger Sandbox award is: merger-sandbox" />
         <textarea v-model="badgeDesc" class="nge-admin-textarea" rows="2" placeholder="Description..."></textarea>
         <label class="nge-admin-file-label">
           <input type="file" accept="image/*" @change="onBadgeImageChange" class="nge-admin-file-input" />
@@ -2370,6 +2391,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 /* Triage stands out in red (Ames): it is the tab that needs attention. */
 .nge-admin-subtab--triage,
 .nge-admin-subtab--triage:hover { color: #ff6b6b; }
+/* Special Badges in blue (Ames 2026-10-10), as Triage is in red. */
+.nge-admin-subtab--badges,
+.nge-admin-subtab--badges:hover { color: #5aa9ff; }
+.nge-admin-subtab--badges.nge-admin-subtab--active { color: #8cc4ff; border-bottom-color: #5aa9ff; }
 .nge-admin-subtab--triage.nge-admin-subtab--active { color: #ff8585; border-bottom-color: #ff6b6b; }
 
 .nge-admin-section { display: flex; flex-direction: column; gap: 16px; }
@@ -2650,6 +2675,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   background: rgba(74, 158, 255, 0.06);
 }
 
+.nge-admin-preview-btn { color: #cfe3ff; border-color: rgba(74, 158, 255, 0.45); cursor: pointer; }
+.nge-admin-preview-btn:hover:not(:disabled) { background: rgba(74, 158, 255, 0.12); border-color: rgba(74, 158, 255, 0.7); }
+.nge-admin-preview-btn:disabled { opacity: 0.45; cursor: default; }
 .nge-admin-cancel-btn {
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.18);

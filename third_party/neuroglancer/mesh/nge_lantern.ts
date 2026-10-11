@@ -38,6 +38,27 @@ export function getNgeLantern() {
   return current;
 }
 
+/**
+ * A second, coloured light somewhere else in the scene, on top of the
+ * lantern (the Halloween reaper carries a red one: src/util/spooky.ts). It
+ * only shows while the lantern itself is lit.
+ */
+export interface NgeLanternSecond {
+  /** Where it is, nm. */
+  posNm: Float32Array;
+  /** How far it reaches, nm. */
+  radiusNm: number;
+  /** Its colour, rgb 0..1. */
+  color: [number, number, number];
+}
+let second: NgeLanternSecond|null = null;
+export function setNgeLanternSecond(light: NgeLanternSecond|null) {
+  second = light;
+}
+export function getNgeLanternSecond() {
+  return second;
+}
+
 const a = vec3.create(), b = vec3.create();
 const ZERO = vec3.fromValues(0, 0, 0), TOWARD_EYE = vec3.fromValues(0, 0, 1);
 

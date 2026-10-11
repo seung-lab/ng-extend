@@ -41,6 +41,7 @@ import {ShaderBuilder} from 'neuroglancer/webgl/shader';
 import {MultipleScaleBarTextures, ScaleBarOptions} from 'neuroglancer/widget/scale_bar';
 import {RPC, SharedObject} from 'neuroglancer/worker_rpc';
 import {PerspectiveViewAnnotationLayer} from 'neuroglancer/annotation/renderlayer';
+import {drawNgeProps, ngeHasProps} from 'neuroglancer/perspective_view/nge_props';
 
 export interface PerspectiveViewerState extends RenderedDataViewerState {
   wireFrame: WatchableValueInterface<boolean>;
@@ -592,6 +593,14 @@ export class PerspectivePanel extends RenderedDataPanel {
       }
       gl.depthFunc(WebGL2RenderingContext.LESS);
       gl.disable(WebGL2RenderingContext.BLEND);
+    }
+
+    // EyeWire II props (the Halloween ghost): small models drawn against the
+    // same depth as the cells, so a branch in front hides them. No picking.
+    if (ngeHasProps()) {
+      disablePicking();
+      drawNgeProps(gl, projectionParameters.viewProjectionMat);
+      renderContext.bindFramebuffer();
     }
 
     if (this.viewer.showAxisLines.value) {

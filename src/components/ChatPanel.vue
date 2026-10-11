@@ -7,6 +7,7 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { richPieces, plainChatText, toggleMark, parseChatQuery, matchesChatQuery } from '../util/chat_text';
+import { booGhost, isBoo, inSeason } from '../util/spooky';
 import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
@@ -612,6 +613,14 @@ onMounted(() => { document.addEventListener('visibilitychange', onVisibilityForS
 onUnmounted(() => document.removeEventListener('visibilitychange', onVisibilityForSeen));
 watch(connected, on => { if (on) void chatStore.loadPin(); });
 
+// Someone else's boo! in Halloween week brings a ghost to your screen too.
+watch(() => chatMessages.value.length, () => {
+  const m = chatMessages.value[chatMessages.value.length - 1];
+  if (!m || m.type !== 'message' || m.rank === 'pin' || m.userId === backendStore.userId) return;
+  if (Date.now() - m.dateTime.getTime() > 8000 || !inSeason()) return;
+  if (isBoo(m.parts.filter(p => p.type !== 'sender').map(p => p.text).join(''))) booGhost();
+});
+
 // ── Send message ──
 function send() {
   // New lines are kept, but never a wall of blank ones.
@@ -619,6 +628,7 @@ function send() {
   if (!text || messageTooLong.value) return;
   chatStore.sendMessage(text, null, replyingTo.value?.id != null ? String(replyingTo.value.id) : null);
   newMarker.value = 0;             // caught up: no "new since you left" line
+  if (isBoo(text)) booGhost();     // an easter egg: a ghost pops up and flies off (util/spooky.ts)
   replyingTo.value = null;
   messageInput.value = '';
   mentionQuery.value = null;

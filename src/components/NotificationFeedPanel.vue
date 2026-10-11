@@ -38,6 +38,20 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
  * Open a specific notification's detail view, e.g. after clicking the chat
  * announcement that links to it. Loads first in case it isn't in the list yet.
  */
+/**
+ * Preview from the Admin Hub's composer (Ames 2026-10-10): show a draft in
+ * this same window, exactly as players will see it, before anything is sent.
+ * Nothing is saved and nothing is marked read; it is only on this screen.
+ */
+function onPreview(e: Event) {
+  const d = (e as CustomEvent).detail ?? {};
+  openNotif.value = {
+    id: null, preview: true, target_type: 'all',
+    title: String(d.title ?? ''), body: String(d.body ?? ''),
+    image_url: d.image_url || '', thumbnail_url: '', send_at: new Date().toISOString(),
+  };
+}
+
 async function onShowDetail(e: Event) {
   const id = (e as CustomEvent).detail?.id;
   if (id == null) return;
@@ -54,6 +68,7 @@ onMounted(() => {
   backend.subscribeToNotifications();
   document.addEventListener('mousedown', onDocClick, true);
   document.addEventListener('nge:show-notification-detail', onShowDetail as EventListener);
+  document.addEventListener('nge:preview-notification', onPreview as EventListener);
   pollTimer = setInterval(() => {
     // Skip while the tab is hidden — it'll refresh on the next visible tick.
     if (document.hidden) return;
@@ -68,6 +83,7 @@ onUnmounted(() => {
   backend.unsubscribeFromNotifications();
   document.removeEventListener('mousedown', onDocClick, true);
   document.removeEventListener('nge:show-notification-detail', onShowDetail as EventListener);
+  document.removeEventListener('nge:preview-notification', onPreview as EventListener);
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 });
 
@@ -474,7 +490,7 @@ function padRank(rank: number): string {
   <!-- ═══ Detail overlay (separate Teleport so it's not clipped by panel) ═══ -->
   <Teleport to="body">
     <Transition name="nge-notif-detail">
-      <div v-if="openNotif" class="nge-notif-detail-backdrop" @click.self="closeDetail">
+      <div v-if="openNotif" class="nge-notif-detail-backdrop" :class="{ 'nge-notif-detail-backdrop--preview': openNotif.preview }" @click.self="closeDetail">
         <div
           class="nge-notif-detail"
           :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
@@ -495,7 +511,7 @@ function padRank(rank: number): string {
               <span class="nge-notif-detail-kicker-dot" aria-hidden="true"></span>
               <span class="nge-notif-detail-kicker-label">{{ champions ? 'Broadcast' : 'Notification' }}</span>
               <span class="nge-notif-detail-kicker-sep" aria-hidden="true">/</span>
-              <span class="nge-notif-detail-time">{{ relativeTime(openNotif.send_at) }}</span>
+              <span class="nge-notif-detail-time">{{ openNotif.preview ? 'Preview, not sent' : relativeTime(openNotif.send_at) }}</span>
             </span>
             <button class="nge-notif-detail-close" @click="closeDetail" aria-label="Close">×</button>
           </div>
@@ -919,6 +935,8 @@ function padRank(rank: number): string {
        The old top edge sweep here looped forever; only ambient things loop.
    Palette is the app's own: dark navy, accent rgb(74 158 255), cyan
    rgb(126 224 255), and one warm accent (gold) for the champions podium. */
+/* A draft previewed from the Admin Hub sits over the Admin Hub itself. */
+.nge-notif-detail-backdrop--preview { z-index: 30000 !important; }
 .nge-notif-detail-backdrop {
   position: fixed;
   inset: 0;

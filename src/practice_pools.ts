@@ -16,6 +16,15 @@ export const SANDBOX_CELLS: SandboxCell[] = [
   { id: '66069c79-0014-438a-a52a-484d6ece8ecb', title: 'Merger 3', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6015779153641472' },
   { id: '844165a8-5b97-40b0-afba-42125d343dcf', title: 'Merger 4', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5102292558675968' },
   { id: 'f11ad22b-8043-4223-9b7e-264eb5d6d0a3', title: 'Merger 5', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5666160561356800' },
+  // Celia's Admin Hub cells, added 2026-10-10. The hint views were saved
+  // after the cut, with the points as Keep and Remove annotation layers.
+  { id: 'c04eed2c-4204-4b3d-a25d-2f7aa880c1aa', title: 'Merger 6', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4904321879638016' },
+  { id: '0482d846-0c16-4393-ab8a-0d1212b9520f', title: 'Merger 7', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5905993078669312' },
+  { id: '814be870-9149-4474-876f-195e0af0bd08', title: 'Merger 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5747243973869568' },
 ];
+
+/** How many mergers the sandbox holds. Every "all N mergers" a player reads
+ *  comes from this, so adding a cell above is the whole change. */
+export const SANDBOX_TOTAL = SANDBOX_CELLS.length;
 
 export const SANDBOX_IDS: string[] = SANDBOX_CELLS.map(c => c.id);
