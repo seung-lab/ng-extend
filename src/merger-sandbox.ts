@@ -11,6 +11,7 @@
 import { ref } from 'vue';
 import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
+import imgSandboxComplete from './images/sandbox-complete.jpg';
 import { beginPractice, cellIsCut, endPractice, ensureTool } from './practice';
 import { SANDBOX_CELLS } from './practice_pools';
 import { supabase } from './supabase';
@@ -107,7 +108,12 @@ export function sandboxContinue(): boolean {
   // Not cut: the same merger again.
   if (!thisOneCut()) { startSandbox(current); return true; }
   const i = nextUndone();
-  if (i < 0 || doneCount() >= TOTAL) return false;
+  if (i < 0 || doneCount() >= TOTAL) {
+    // "Complete the Sandbox": the box closes and the Achievement is given,
+    // once the last cut is on the account.
+    void recorded.then(() => awardIfAllCut());
+    return false;
+  }
   startSandbox(i);
   return true;
 }
@@ -141,6 +147,8 @@ function progressBar(): string {
 /** The done box asks the cell itself whether it was cut; until that answer
  *  is in, it says so instead of guessing. */
 const checking = ref(false);
+/** The last cut being written to the account. */
+let recorded: Promise<unknown> = Promise.resolve();
 const thisOneCut = () => sandboxDone.value.includes(cell().id);
 
 /**
@@ -209,9 +217,9 @@ Press **Try again** to have another go, or **Help me** there to see where the po
       }
       if (left <= 0) {
         return `
-<span class="nge-done-lead">Congratulations, you found and cut all ${TOTAL} mergers. That is real proofreading: nobody marked the spots for you.</span>
+<span class="nge-done-lead">Congratulations, you found and cut all ${TOTAL} mergers. That is real proofreading.</span>
 
-` + BLACK_BOX_NOTE + `
+<span class="nge-sbx-caption">Above: pyramidal neurons from the hippocampus, with mossy fiber axons (yellow), traced by citizen scientists. Up close: a synapse.</span>
 
 The cells go back to their merged state for the next person. You can cut any of them again from the burger menu.`;
       }
@@ -228,11 +236,12 @@ ${progressBar()}
     get nextLabel() {
       if (checking.value) return 'one moment';
       if (!thisOneCut()) return 'Try again';
-      return nextUndone() >= 0 && doneCount() < TOTAL ? 'Next merger' : 'done';
+      return nextUndone() >= 0 && doneCount() < TOTAL ? 'Next merger' : 'Complete the Sandbox';
     },
     position: OVER_3D,
     width: "440px",
-    image: imgBravoNurro,
+    // The last box of the set shows what all this is for (Ames's picture).
+    get image() { return !checking.value && thisOneCut() && doneCount() >= TOTAL ? imgSandboxComplete : imgBravoNurro; },
     onEnter: async () => {
       // Done means the cut was made, not that Next was pressed. Asked of the
       // cell itself too, so a cut the watch missed still counts.
@@ -243,8 +252,9 @@ ${progressBar()}
         markDone(id); celebrateStep();
         // Recorded on the account first: the server looks there before it
         // lets the Achievement through.
-        await Promise.resolve(recordTutorialDone(SANDBOX_TUTORIAL, id)).catch(() => {});
-        awardIfAllCut();
+        // The Achievement itself waits for "Complete the Sandbox" on the
+        // last box (Ames, 2026-10-11: it popped up before that box did).
+        recorded = Promise.resolve(recordTutorialDone(SANDBOX_TUTORIAL, id)).catch(() => {});
       }
       stopWatching();
       endPractice();

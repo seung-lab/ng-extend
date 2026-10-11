@@ -401,3 +401,5 @@
 }
 @keyframes nge-sbx-sweep { to { left: 110%; } }
 @media (prefers-reduced-motion: reduce) { .nge-sbx-cell--now::after { animation: none; display: none; } }
+
+.nge-sbx-caption { display: block; font-size: 0.86em; line-height: 1.45; color: #9fb4cc; }
