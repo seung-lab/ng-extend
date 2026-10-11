@@ -2331,7 +2331,7 @@ function practiceWhen(iso: string | null) {
                 <button v-if="triageGroupOf(row) === 'decide'" class="nge-admin-action-btn"
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
                         title="Sends this to the submitter, then moves the card to In progress, marked by hand so the robot does not build it."
-                        @click="sendReporterUpdate(row, false, true)">▶ Send and mark in progress</button>
+                        @click="sendReporterUpdate(row, false, true)">▶ Send: mark in progress</button>
                 <button class="nge-admin-action-btn" :disabled="reporterSending === row.id" @click="closeReporterDraft(row)">Not now</button>
               </div>
             </template>
