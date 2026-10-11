@@ -165,6 +165,8 @@ export interface Step {
   /** Glow-ring around the targeted element + hide the chip arrow.
    *  Used by the Site Tour (Tutorial 4); existing tutorials keep arrows. */
   highlight?: boolean;
+  /** No confetti on the last box's button (a failed test is not a party). */
+  noConfetti?: boolean;
 }
 
 export const useTutorialStore = defineStore("tutorial", () => {
@@ -219,6 +221,10 @@ export const useTutorialStore = defineStore("tutorial", () => {
     parseInt(localStorage.getItem(`nge-tutorial-10-step`) ?? "-1")
   );
 
+  // Tutorial 11, the Proofreading Test (src/proofreading-test.ts): the hold
+  // lives on the server, so a reload starts from the menu and resumes there.
+  const tutorialStep11: Ref<number> = ref(-1);
+
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
@@ -234,6 +240,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 8) return tutorialStep8.value;
     if (activeTutorial.value === 9) return tutorialStep9.value;
     if (activeTutorial.value === 10) return tutorialStep10.value;
+    if (activeTutorial.value === 11) return tutorialStep11.value;
     return tutorialStep4.value;
   }
 
@@ -247,6 +254,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 8) tutorialStep8.value = val;
     else if (activeTutorial.value === 9) tutorialStep9.value = val;
     else if (activeTutorial.value === 10) tutorialStep10.value = val;
+    else if (activeTutorial.value === 11) tutorialStep11.value = val;
     else tutorialStep4.value = val;
   }
 

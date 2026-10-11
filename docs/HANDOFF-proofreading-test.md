@@ -1,246 +1,275 @@
-# Handoff: an automated proofreading test that grants production access
+# Handoff: the automated proofreading test
 
-Written 2026-10-10 from the tutorial worktree (`C:\Users\amyle\ng-extend-tutorial`,
-branch `claude/tutorial-audit`, merged into `eyewire-ii-community`). Paste this
-into a new chat to start the work.
+Updated 2026-10-11 (UTC) on branch `claude/proofreading-test` (worktree
+`C:\Users\amyle\ng-extend-prooftest`, kanban card t_53a6c12d). The first
+version of this file (2026-10-10, commit 7c43513) described the tutorials
+and what the test would need; this one says what is built, what was found
+out about the demo cell, and what is left for Ames.
+
+**State: built and tested, not deployed, no test registered.** Nothing a
+player can see changes until the SQL is run, the secret is set, the
+functions are deployed and a test row is enabled.
 
 ## The goal
 
-A test a player takes after the tutorials. They are given one demo cell that
-has several errors on it, some false merges (need a cut) and some missing
-pieces (need a merge), and they proofread it fully. The game scores the result
-by itself and, on a pass, grants access to the production dataset(s).
+A player who has done the tutorials takes a test: one Sandbox cell with
+several mistakes on it, nothing marked. They cut off what belongs to other
+cells, merge on what is missing and mark the end of every branch with a
+point annotation, then submit. The server scores the cell from the
+chunkedgraph itself, records the attempt, puts the cell back for the next
+person and, on a pass, opens production access.
 
-Ames will supply, for the demo cell: the location of every error, whether it
-is a cut or a merge, and coordinates of the segments that should end up cut
-off or merged on.
+## How production access is given today (found 2026-10-10, reads only)
 
-Nothing of the test exists yet. Everything below is what the Merge and Cut
-tutorials already built, which the test can stand on, and what they do not
-cover.
+Two gates, both must be open:
 
-## What exists
+1. **CAVE edit permission** on the dataset, from middleauth
+   (`https://global.daf-apis.com/auth/api/v1`). The app marks a dataset
+   "View only" from `GET /user/cache` → `permissions_v2` (`src/util/dataset_access.ts`);
+   the server's `ewHasProduction` in `functions/index.js` reads the same for
+   chat name colours and Team access. Permissions come from groups:
+   - Retina (`stroeh-mouse-retina`, auth dataset 21): **Eyewire_2_Edit, group 203**
+     carries view+edit (63 members on 2026-10-10). **Eyewire_2_View, 202** is view
+     only (148 members). Group admins of both: M Sorek, Simone Ebert, Jan Lause,
+     Julia Fadjukov.
+   - MEC (`HiMC`, 24): no citizen group at all. Edit = Seung_Lab, 611, Fiete_Lab,
+     Zetta_AI, Zheng_mouse_hippocampus, Dorkenwald Lab. Opening MEC to passers
+     needs a HiMC dataset admin (Eric) to give a group edit there.
+   - The Sandbox (`pinky100`, 4): group `default` has edit, so every signed in
+     account can make the test's edits.
+   - Adding a member: `POST /auth/api/v1/group/203/user` with `{"user_id": <CAVE id>}`,
+     allowed for a group admin of 203 or a middleauth superadmin
+     (`requires_group_admin` in github.com/CAVEconnectome/middle_auth,
+     `neuroglancer_auth/server.py`). 422 means already a member. Ames's own
+     account (CAVE id 122) is a superadmin (`admin: true`), so her token can
+     do it. The server function holds no CAVE token today.
+2. **The app's pilot list**, `pilot_members` (Admin Hub > Pilot testers).
+   `requirePilot` (`functions/pilot-access.js`) gates every secure write
+   except profile creation and personal edits, practice cells included. The
+   test's own actions sit before that gate: passing is how a player joins.
 
-| # | Tutorial | File | What the player does |
-|---|---|---|---|
-| 1 | Get Started | `src/tutorial-1.ts` | Navigation, selecting, no edits |
-| 2 | Advanced Interface | `src/tutorial-2.ts` | Layers, coordinates, no edits |
-| 3 | Merge | `src/tutorial-3.ts` | Two real merges on a practice cell |
-| 4 | Site Tour | `src/site-tour.ts` | No edits |
-| 5 | Cut | `src/tutorial-cut.ts` | Two real cuts, one in 3D, one in 2D |
-| 9 | Merger Sandbox | `src/merger-sandbox.ts` | Five cuts with no preset points |
+Today's human process is connectome.quest/access.html: email to ask,
+Sandbox, make 10 annotated example links (7 mergers, 3 splits), email them,
+get invited. The test replaces the last three steps.
 
-`src/components/Tutorial.vue` switches between them (`STEPS_MAP`,
-`PRACTICE_TUTORIALS = [3, 5, 9]`), and `TutorialStep.vue` draws the box.
-The shared helpers for anything that edits live in `src/tutorial-3.ts` and
-`src/practice.ts`.
+## What is built
 
-### Merge (tutorial 3), 8 boxes
+### Database: `supabase-proofreading-test.sql`
 
-1. Welcome.
-2. An example of a missing branch.
-3. How to Merge: press M. Claims the practice cell.
-4. Make the merge, in 3D. Pink gems mark the two spots. Ctrl+click each piece, Submit.
-5. Success.
-6. A second merge, in 2D, on the same neuron.
-7. Success.
-8. Done. Awards the **Mini Michelangelo** achievement if both merges landed.
+Run it in the Supabase SQL editor (print it from the file). Idempotent.
 
-### Cut (tutorial 5), 10 boxes
+- `proofreading_tests`: one row per test cell. Where it is (Pinky only), its
+  start view (`state_url`), `anchor_supervoxel` (on the soma), `baseline_at`
+  (every graph operation on the cell after this instant is undone at reset),
+  the rules (`hold_minutes` 60, `pass_mark` 100, `damage_fails` true,
+  `attempts_allowed` NULL = unlimited, `retry_hours` 0, `feedback`
+  none/summary/detail, default summary), what a pass grants (`grant_pilot`
+  true, `cave_groups` {203}), the claim columns as for practice cells, and
+  `enabled` (default false).
+- `proofreading_test_checks`: the answers. `kind` is `cut` (a and b start fused,
+  must end apart), `merge` (start apart, must end together), `keep` (a real
+  part of the cell, must stay with it), `apart` (a neighbour, must stay off)
+  or `endpoint` (a branch end: a point annotation within `radius_nm` of
+  `point_a`). Two supervoxels, their viewer coordinates, a label, a weight.
+- `proofreading_test_attempts`: one row per try, server written: outcome
+  pass/fail/abandoned/expired/error, found, errors, damaged, percent, every
+  check's result, the player's points, what was granted.
+- `pilot_test_action(p_user, p_action, p_args)`: `status`, `claim`,
+  `heartbeat`, `cleaned`, `record`. Service role only. No pilot membership
+  needed, only a profile. One player at a time; a reload resumes the same
+  hold; an expired hold closes the attempt as `expired` and the cell waits
+  for a reset; a pass upserts the player's email into `pilot_members` in the
+  same transaction; three failed resets in a row mark the cell `broken`.
+- Only `proofreading_tests_public` (id, title, status, claimed_by,
+  expires_at, hold_minutes of enabled tests) is readable with the public
+  key. The checks and attempts are not.
 
-1. Welcome.
-2. What a cut fixes (a yellow axon fused to a purple dendrite). Claims both cells.
-3. How to Cut: press C.
-4. Place a red point.
-5. Press G.
-6. Place a blue point, Submit.
-7. Success.
-8. You can also cut in 2D.
-9. Your turn: a cut in 2D on a second cell.
-10. Done. Awards **Safety Scissors** if both cuts landed, and leads to the sandbox.
+### Server: `functions/proofreading-test.js`
 
-### Merger Sandbox (tutorial 9)
+Wired into `ewSecureWrite` (`functions/index.js`) as `test.status`,
+`test.start`, `test.heartbeat`, `test.submit`, `test.abandon`, before the
+pilot gate. `functions/pcg-history.js` is the CommonJS copy of the practice
+reset job's history rules (a test keeps it in step with
+`scripts/practice-reset-policy.mjs`).
 
-Five fused cells (`SANDBOX_CELLS` in `src/practice_pools.ts`). A player is
-handed one free cell at a time and several players work in parallel, one per
-cell. No preset points, a "Help me" button shows them. The done box checks the
-cell directly and leads to the next one. Which cells a player has cut is kept
-in `tutorial_completions` and in localStorage.
+- `test.start`: claim, then put the cell back to its start (undo every
+  operation after the baseline, with the server's token, then confirm every
+  check is in its start state), then hand over the test row without
+  answers, the hold's session id, the counts of things to find, and the
+  cell's current root. A resumed session skips the reset.
+- `test.submit`: prove the hold, read the current root of every check
+  supervoxel, score (every cut, merge and endpoint check is worth its
+  weight; a broken keep or apart check is damage), on a pass add the player
+  to each CAVE group, put the cell back, record the attempt, clear the
+  production access cache, and answer by the test's feedback setting: `none`
+  says pass or fail only; `summary` adds the counts; `detail` adds each
+  check's result and, for a miss, where to look.
+- `test.abandon`: put the cell back, record `abandoned`.
+- New secret **`EW_CAVE_TOKEN`**: a CAVE token whose account has edit on
+  `pinky100` (any account) and is a group admin of Eyewire_2_Edit or a
+  middleauth superadmin (Ames's is). Set it before deploying, or the deploy
+  of `ewSecureWrite` fails:
+  `firebase functions:secrets:set EW_CAVE_TOKEN --project eyewire-ii-e4d52`.
+  The function's timeout is now 120 s (scoring reads the graph and undoes
+  the player's edits).
+- Tests: `functions/proofreading-test.test.js` (a fake chunkedgraph: start,
+  resume, a wrongly registered cell, a pass with grant and reset, damage,
+  feedback levels, an ended hold, abandon), `functions/pcg-history.test.js`,
+  `functions/proofreading-test-sql.test.js` (PGlite: the whole function,
+  tries, waits, expiry, broken, public roles). All 111 function tests pass.
 
-## The practice cell system (the part the test will reuse)
+### Client: `src/proofreading-test.ts`, tutorial 11
 
-### The row
+Three boxes. 1: what the test is, the rules, the player's own record
+(tries, last score, wait), "Start the test". 2: claims the cell behind the
+"Moving you to the Sandbox" card, loads the start view, shows the cell by its
+current root, opens the split view with Sections; renews the hold once a
+minute while the player is active, warns in the last five quiet minutes,
+hands the cell back after the quiet time; "Submit for scoring". 3: scores,
+celebrates a pass (confetti only on a pass: `Step.noConfetti`), explains the
+score by the feedback level, pins the misses for two minutes on `detail`,
+refreshes the dataset permissions, "Try again" or "done".
 
-Table `tutorial_practice_examples` (`supabase-tutorial-practice-schema.sql`).
-One row is one exercise: **two supervoxels and whether they should end up on
-the same segment**.
+Leaving the tutorial (x, menu, another tutorial) hands the cell back
+unscored. The burger menu lists "5 Proofreading Test" under Tutorials once
+the server says a test is enabled, with "(passed)" or "(in use)". Touched:
+`Tutorial.vue`, `TutorialStep.vue`, `ExtensionBar.vue`, `store-pyr.ts`
+(tutorial 11 step, not stored: a reload starts from the menu and resumes the
+hold), `secure_write.ts`, `util/dataset_access.ts` (`refreshDatasetPermissions`),
+`practice.ts` (`showOnly` exported).
 
-- `kind`: `cut` (starts fused, done when the two supervoxels have different
-  roots) or `merge_then_cut` (starts apart, done when they share a root).
-- `supervoxel_a`, `supervoxel_b`: the identity. Segment (root) ids change with
-  every edit, supervoxels never do. Never key anything on a root id.
-- `root_a`, `root_b`: a convenience copy, refreshed at reset. Stale in between.
-- `point_a`, `point_b`: viewer voxel coordinates `[x, y, z]`.
-- `state_url`: the starting view.
-- `baseline_at`: every operation on the neuron after this instant is undone at reset.
-- `status`: `ready`, `in_use`, `needs_reset`, `resetting`, `broken`.
-- `claimed_by`, `claim_nonce`, `expires_at`: the claim.
+Typecheck: no new errors (992 before and after, all pre existing).
+`node scripts/build-prod.js` passes. Not run in a browser: the actions need
+the deployed function and a sign in.
 
-Dataset: all cells are on `pinky_nf_v2` at `https://minnie.microns-daf.com`
-(the Pyr sandbox). Viewer voxels are 4x4x40 nm, the segmentation volume is
-8x8x40.
+### Registering a test: `config/proofreading-test.json` and `scripts/proofreading-test-register.py`
 
-### Claim, renew, release
+The config holds the cell (root, start view, anchor = soma), the rules and
+one line per check as viewer coordinates (a side left out is the anchor).
+The script looks each coordinate up (cloud-volume, layer 1), reads every
+root as of the baseline, checks each check is in its start state, and prints
+the SQL. Reads only. `--inspect` to look without SQL, `--at <ISO or epoch ms>`
+for the baseline (default now), `--anchor x,y,z` for a run without the soma
+in the config.
 
-`src/practice.ts`. `beginPractice(kind, view, {slot, only, avoid, ...})`
-claims a cell through the server (`practiceAction` in `src/pilot_actions.ts`
-calls the `ewSecureWrite` function, which calls the SQL RPC
-`pilot_practice_action` with `claim`, `heartbeat`, `begin_reset`,
-`check_reset`, `finish_reset`). A claim renews once a minute while the player
-is active and is released after idle time (`HOLD_MINUTES`), on exit, or on
-finish. `endPractice()` hands everything back and resets it.
+## The demo cell (Ames, 2026-10-10): what the lookup found
 
-Rules the server enforces: one player per cell, and nobody is given a cell on
-a neuron someone else holds a cell on. That second rule also blocks a player's
-own second cell on the same neuron, which is why the Merge tutorial's second
-merge "rides" on the first cell's claim (`RIDES_WITH` in `src/practice.ts`).
-**A multi error test cell hits exactly this: many exercises on one neuron need
-one claim, not one per error.**
+Cell `648518346354385062`, start view
+`middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5070860612272128`.
+Neither saved view can be read from this machine: the state server takes a
+brain-wire-test.org token, not the daf-apis one, and the Browser pane is not
+signed in. So the **soma coordinate (the anchor) and the endpoint coordinates
+are still needed** (the second link, `4621344067026944`, presumably holds
+the endpoints).
 
-### Detecting an edit
+Every check, looked up on the live graph (`--at 1791680205000`, the instant
+before Ames's edits today):
 
-`piecesMerged()` and `cellIsCut(id)` in `src/practice.ts` ask the chunkedgraph
-for the current root of each supervoxel (`rootOfSupervoxel`, GET
-`/node/{sv}/root`) and compare. `watchPractice(wantMerged, ...)` in
-`src/tutorial-3.ts` polls that and advances the box. It also reads server edit
-errors and notices "a cut went through but the two are still joined".
+| # | kind | a | b | supervoxels | at that instant | now |
+|---|---|---|---|---|---|---|
+| 1 | cut | spine 114845, 43659, 1323 | neighbour 115030, 43688, 1335 | 77406443900505418, 77406443900530593 | together on …385062 | apart (b on …1214033) |
+| 2 | keep | spine | anchor | | together | together |
+| 3 | cut | anchor | neighbour 115058, 43701, 1342 | 77476812644775941 | together | apart (same neighbour, …1214033) |
+| 4 | merge | 70213, 43077, 1372 | 69468, 42916, 1430 | 74380587901009110, 74310219223543039 | **together** (not a missing piece then) | apart (b on …2779742) |
+| 5 | merge | 67130, 53339, 744 | 67448, 53329, 809 | 74170168527749567, 74170168594634695 | apart | apart |
+| 6 | merge | 66310, 53395, 542 | anchor | 74099799716192083 | apart | apart |
+| 7 | merge | 65491, 41642, 525 | anchor | 74028606271584335 | apart | apart |
 
-This is the whole scoring primitive, and it generalises directly: **a test is
-a list of pairs of supervoxels, each with "must be together" or "must be
-apart"**.
+(`--anchor 70213,43077,1372` stood in for the soma in that run.)
 
-### Reset
+**Ames made six edits on this cell today**, all as CAVE user 122, operations
+1863 to 1868 (`tabular_change_log`, `operation_details`):
 
-`resetPracticeExample` (browser, on finish) and
-`scripts/reset-practice-examples.mjs` (GitHub Actions,
-`.github/workflows/tutorial-practice-reset.yml`, every 10 minutes) undo every
-operation after `baseline_at`. The job only touches cells listed in
-`config/practice-reset-manifest.json`, and the manifest values must equal the
-row exactly, `baseline_at` included. A cell is only handed out if it is in
-the manifest.
+- 1863 (00:56:45 UTC) a multicut around 114000 to 115000, 43400 to 43600:
+  the second and third joins (error 2).
+- 1864 (00:57:16) a split at 114826, 43696, 1325 / 115002, 43680, 1328: the
+  first join (error 1). The neighbour is now root `648518346351214033`.
+- 1865 to 1868 (00:59 to 01:01) splits (and one merge back) around 69400 to
+  71000, 42800 to 43700: the piece at 69468, 42916, 1430 is now cut off,
+  root `648518346352779742`.
 
-**Cells on one neuron must share one `baseline_at`.** Two different baselines
-on one neuron made the cells undo each other's starting state in a loop.
+So the cell as it is now has the neighbour already cut off (errors 1 and 2
+done) and the piece for error 3 missing (error 3 created). No single past
+instant has both the neighbour fused and that piece loose. **To get the start
+you described, undo operations 1864 and 1863** (they put the neighbour's
+original edges back; the later operations do not touch those supervoxels),
+then set the baseline to just after. Say the word and I run those two undos
+with your token (`POST …/pinky_nf_v2/undo {"operation_id": 1864}`, then
+1863), re-run the lookup, and print the registration SQL. If instead the
+test should start from the cell as it is now, drop checks 1 to 3 from the
+config and register with `--at` now.
 
-### Turning coordinates into supervoxels
+Also worth a look: the spine point 114845, 43659, 1323 is 90 voxels (360 nm)
+from the cut location 114936, 43650, 1324. Check 1 pairs the spine with the
+neighbour, so a cut on the wrong side of the spine counts as a missed cut
+and as damage (check 2). That is intended.
 
-Ames gives coordinates, the system needs supervoxels. Two ways exist:
+## Rollout order
 
-- Admin Hub practice picker (`src/components/AdminHub.vue`): hover or use the
-  crosshair, press A and B.
-- `scripts/inspect-practice-coords.py` (cloud-volume lookup at layer 1), run
-  through the reset workflow with `inspect=true` and
-  `config/practice-inspect-coords.json`.
+1. SQL: `supabase-proofreading-test.sql` in the Supabase editor.
+2. Secret: `firebase functions:secrets:set EW_CAVE_TOKEN --project eyewire-ii-e4d52`
+   (an account that is group admin of Eyewire_2_Edit or superadmin). Then
+   `npm ci --prefix functions --legacy-peer-deps`, `node --test functions/*.test.js`,
+   `firebase deploy --only functions:ewSecureWrite --project eyewire-ii-e4d52`.
+3. Register: put the soma and the endpoints in `config/proofreading-test.json`,
+   fix the cell's start (above), run the script, paste its SQL. The row is
+   `enabled = false` until the last line.
+4. App: merge `origin/eyewire-ii-community`, `node scripts/build-prod.js`,
+   push `amy`, then `origin HEAD:eyewire-ii-community` when Ames says deploy.
+   A changelog entry is needed when the test goes live (not before: nothing
+   shows until a test is enabled), for example: "Proofreading Test: one
+   Sandbox cell with several mistakes, scored by the server. Pass it and the
+   retina opens to you." in `static/changelog.json`.
+5. First real run by Ames (an admin may take it any time, and again after
+   passing): the cell loads at its start, cuts and merges go through, Submit
+   scores, the attempt row, the `pilot_members` row, `GET /user/cache` shows
+   `stroeh-mouse-retina` edit, the dataset switcher drops "View only" (maybe
+   after a sign out and in: middleauth caches permissions).
 
-Lesson from the 2D cut cell: the two check points must sit right beside the
-join, one on each side. Arbitrary points elsewhere in each neuron left a
-correct cut uncounted (`CHECK_SUPERVOXELS` in `src/practice.ts` is the patch).
+## Decisions still open (defaults are in the SQL and the config)
 
-### Hints
+- Pass mark 100 percent and damage fails outright; tries unlimited, no wait
+  between tries; feedback `summary` (counts, no locations); 60 quiet minutes.
+- Which datasets a pass opens: Retina (group 203) only. MEC needs Eric.
+- Whether the counts of things to find are shown during the test (they are,
+  unless feedback is `none`).
+- Whether a stray endpoint annotation (near no branch end) should cost
+  anything (it is counted and reported, not penalised).
 
-`CUT_HINT_STATES`, `MERGE_HINT_STATES`, `cutHintFor`, `showWhereToCut`,
-`showWhereToClick` in `src/tutorial-3.ts`; markers in `src/markers.ts`. A test
-presumably shows none, but the same marker code can show a player their
-mistakes afterwards.
+## Known limits
 
-### Records
+- One cell, one player at a time, no queue: the menu says "(in use)".
+- Scoring is the root relation of each registered pair, so a cut at a
+  slightly different place with the same effect passes; a cut that strands a
+  registered point fails. Endpoints are a distance test in nm (viewer voxels
+  are 4 x 4 x 40).
+- The undo at start and at submit runs inside one request (120 s). Many
+  operations could still time out; the attempt is then recorded as `error`
+  (not counted as a try), the cell waits for the next start to retry, and
+  after three failures it is `broken` for an admin.
+- Real edits were not made from a headless browser (no sign in); the server
+  is tested against a fake graph, the SQL in PGlite.
+- `tutorial_completions` is not written for the test; its record is
+  `proofreading_test_attempts` (service role only; no Admin Hub page yet).
+- A player who passes and later edits badly keeps access: no revocation.
 
-- `tutorial_completions` (`supabase-tutorial-completions.sql`): one row per
-  finish, `tutorial`, `item`, `practice_asked`, `practice_made`, written by
-  `recordTutorialDone()` through the server, which stamps the player. Built as
-  the base for this test. Not yet seen filled by a real run.
-- Achievements: `special_badge_awards`; players may self award only the names
-  in the allowlist in `functions/index.js`.
+## What the tutorials already provide (from the 2026-10-10 handoff, still true)
 
-## What the test needs that does not exist
-
-1. **A cell with many checks.** Today one row is one pair. The test needs one
-   cell with N checks, each a pair of supervoxels and an expected relation,
-   plus one claim and one baseline for the lot. Suggested shape: a
-   `proofreading_tests` row (cell, start view, baseline, pass mark) and a
-   `proofreading_test_checks` table (test, type `cut` or `merge`,
-   supervoxel pair, coordinates, label). Reuse claim, heartbeat and reset
-   rather than rewriting them.
-2. **Damage checks.** Finding every error is half of it. A player who cuts a
-   real branch off, or merges a neighbour on, must not pass. Add "must stay
-   together" pairs along the true cell and "must stay apart" pairs for close
-   neighbours, or compare the final segment against a reference list of
-   supervoxels.
-3. **Scoring on the server.** Everything today is checked in the browser and
-   the record is written by the player's own client, which is fine for an
-   achievement and not for an access grant. The roots must be read by a server
-   function (`functions/`, Firebase `eyewire-ii-e4d52`) with its own
-   chunkedgraph token, and the grant written there. The list of error
-   locations should also stay out of the client bundle, or the answers ship
-   with the app.
-4. **The grant itself.** I do not know how production access is given today
-   (middleauth group, CAVE permission, or a flag in `users`). Find that first,
-   it decides what "pass" can actually do.
-5. **Throughput.** Edits are real edits on a shared graph, so one cell serves
-   one player at a time, and a full proofread is long. Either several copies
-   of the test (different cells) or a queue (`joinWaitlist`,
-   `waitForTutorial` in `src/practice.ts` already queue for Merge and Cut).
-6. **Time.** The idle release is tuned for a five minute exercise. A test
-   needs a longer hold and a clear "you will lose your place" warning.
-7. **Attempts.** How many tries, and what a failed player sees. Not decided.
-
-## Known weak spots to design around
-
-- **Session loss.** Claims and renewals failed intermittently under several
-  testers, most likely the write limiter in `functions/index.js`
-  (`rateLimit`, a Firestore transaction on one shared counter that fails
-  closed). Since 2026-10-09 the client retries and no longer drops the cell on
-  a busy answer. Not yet confirmed fixed by a real run. A test that grants
-  access cannot lose a player's hour to this.
-- **Mesh lag.** After an edit the new mesh takes a while (the "black box").
-  Roots are right at once, the picture is not.
-- **Headless testing cannot edit.** Practice views need real auth, so real
-  merges and cuts have only ever been tested by Ames and testers by hand.
-- **Other sessions.** Many sessions push to `eyewire-ii-community`. Work in
-  your own worktree, commit explicit paths, never touch
-  `C:\Users\amyle\ng-extend`.
-
-## Is the demo cell free?
-
-Checked 2026-10-10 for `648518346354385062` (pinky sandbox): it is a current
-root, and none of the 21 rows in `tutorial_practice_examples` has a supervoxel
-on it, nor do the 8 segment ids written into the tutorial code. Not checked:
-the segments inside the tutorials' saved view links (they could not be read
-with the local token). The check is cheap to repeat: current root of every
-row's two supervoxels against the cell's root.
-
-Before registering it, pick its `baseline_at` after the cell is in its
-intended broken state, and keep every check on it under that one baseline.
+Merge (`src/tutorial-3.ts`), Cut (`src/tutorial-cut.ts`) and the Merger
+Sandbox (`src/merger-sandbox.ts`) run on resettable practice cells
+(`src/practice.ts`, `supabase-tutorial-practice-schema.sql`,
+`pilot_practice_action` in `supabase-pilot-access.sql`): one row is two
+supervoxels and whether they should end up together. The test generalises
+that to many pairs on one cell under one claim and one baseline, scored on
+the server. The practice reset job (`scripts/reset-practice-examples.mjs`)
+is untouched; the test cell has its own reset in the server function.
 
 ## Working rules
 
 - Player text: the game is **Pyr**, the word is **Achievement** never badge,
   no em or en dashes.
-- Deploy: merge `origin/eyewire-ii-community`, `node scripts/build-prod.js`,
-  push `amy`, then `origin HEAD:eyewire-ii-community`. A deploy players can
-  notice needs a new entry at the top of `static/changelog.json`. Verify from
-  the served bundle, never from the push.
-- Functions: `npm ci --prefix functions --legacy-peer-deps`,
-  `node --test functions/*.test.js`, then
-  `firebase deploy --only functions --project eyewire-ii-e4d52`.
-- Database: sessions have read access only. Give Ames complete SQL to run in
-  the Supabase SQL Editor, printed from the file, never retyped.
+- Database: sessions have read access only; give Ames complete SQL printed
+  from the file.
 - `npm install` needs `--legacy-peer-deps` on this machine.
-
-## What to ask Ames for
-
-1. The demo cell's start view and, per error: type, the coordinate on the
-   piece to cut off or merge on, and a coordinate on the main cell beside it.
-2. Which datasets a pass unlocks, and how access is given today.
-3. The pass mark, whether damage fails the test outright, and how many tries.
-4. Whether hints or feedback are shown during or after.
+- Other sessions push `eyewire-ii-community` constantly: fetch and merge
+  before pushing; commit explicit paths.

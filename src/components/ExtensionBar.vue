@@ -109,6 +109,10 @@ document.addEventListener('animationend', (e) => {
 // Merger Sandbox examples (src/merger-sandbox.ts).
 import { SANDBOX_CELLS } from '../practice_pools';
 import { sandboxDone } from '../merger-sandbox';
+// The Proofreading Test (src/proofreading-test.ts): listed once the server
+// says a test is open; its line says passed or in use.
+import { testStatus } from '../proofreading-test';
+function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
 
@@ -1141,6 +1145,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startTutorial(5); closeHamburger()">
             <span class="nge-menu-num">4</span><span>Cut</span>
+          </div>
+        </li>
+        <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
+             mistakes, scored by the server; a pass opens production. Shown
+             once a test is registered and enabled. -->
+        <li v-if="testStatus && testStatus.test">
+          <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
+            <span>Proofreading Test{{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
         <!-- Standalone cut exercises (Ames, 2026-10-06): each opens on its

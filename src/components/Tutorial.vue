@@ -16,6 +16,7 @@ import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9, sandboxContinue } from '../merger-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
+import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
@@ -28,7 +29,7 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11 };
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
@@ -163,13 +164,16 @@ const next = () => {
     const tutorialNum = store.activeTutorial;
     // The Merger Sandbox's last box leads to the next merger.
     if (isLastStep && tutorialNum === 9 && sandboxContinue()) return;
+    // The test's last box: "Try again" starts over.
+    if (isLastStep && tutorialNum === TEST_TUTORIAL && testContinue()) return;
     // The last box closes the tutorial outright, by its length, so nothing
     // that moves the step at the same moment can leave it showing.
     store.setTutorialStep(isLastStep ? steps.value.length : store.getTutorialStep() + 1);
     if (isLastStep) {
         console.info(`[tutorial] finished tutorial ${tutorialNum}; step is now ${store.getTutorialStep()} of ${steps.value.length}`);
         // The sandbox records each merger as it is cut, not the box closing.
-        if (tutorialNum !== 9) recordTutorialDone(tutorialNum);
+        // The sandbox and the test record themselves (the test on the server).
+        if (tutorialNum !== 9 && tutorialNum !== TEST_TUTORIAL) recordTutorialDone(tutorialNum);
         // Say so if anything puts a box back in the next few seconds.
         const stop = watch(currentStep, (now) => {
             if (store.activeTutorial === tutorialNum && now < steps.value.length) {
@@ -199,6 +203,8 @@ const next = () => {
 const PRACTICE_TUTORIALS = [3, 5, 9];
 watch(() => store.activeTutorial, (now, before) => {
   if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) endPractice();
+  // Leaving the test hands its cell back, unscored.
+  if (before === TEST_TUTORIAL && now !== TEST_TUTORIAL) abandonTest();
 });
 // A practice step advances by itself when the edit lands (Amy: straight
 // to the success box).
@@ -212,7 +218,7 @@ const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() -
 // opened Retina. A tutorial found partway at load now waits behind a small
 // Continue / Exit card and loads nothing until you choose. Starting a
 // tutorial from the menu (step 0) needs no prompt.
-const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox' };
+const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox', 11: 'Proofreading Test' };
 const resumeDecided = ref(false);
 watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu
@@ -227,6 +233,7 @@ const exitIntro = () => {
     // Leaving the merge or cut tutorial mid practice hands the cell back.
     const leaving = store.activeTutorial;
     if (PRACTICE_TUTORIALS.includes(leaving)) { stopWatching(); endPractice(); }
+    if (leaving === TEST_TUTORIAL) abandonTest();
     store.setTutorialStep(steps.value.length);
     // Exit is reported as not always closing the tutorial, and it closes in
     // every test: say what puts a box back, if anything does.

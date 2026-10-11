@@ -198,7 +198,7 @@ function showOnlyAndKeep(ex: PracticeExample, rootIds: string[], colors: Array<[
   }
 }
 
-function showOnly(dataset: string, rootIds: string[]) {
+export function showOnly(dataset: string, rootIds: string[]) {
   const layer = segLayer(dataset);
   const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments
     ?? layer?.displayState?.rootSegments;

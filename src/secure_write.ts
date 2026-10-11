@@ -21,6 +21,7 @@ export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update' | 'triage.release'
   | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log' | 'activity.visit'
+  | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */

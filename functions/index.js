@@ -8,6 +8,11 @@ const path = require("path");
 admin.initializeApp();
 const db = admin.firestore();
 const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
+// A CAVE token for the proofreading test (functions/proofreading-test.js): it
+// reads and undoes on the Pinky sandbox and adds a passing player to the
+// Eyewire_2_Edit group, so its account must be a group admin there (or a
+// middleauth superadmin). Set with: firebase functions:secrets:set EW_CAVE_TOKEN
+const ewCaveToken = defineSecret("EW_CAVE_TOKEN");
 const {pilotContext, requirePilot} = require("./pilot-access");
 const {authorizePilotData, conflicts:pilotConflicts} = require("./pilot-data");
 const {recordActivity, serverCounts, stripCounters, stripDayCounters} = require("./activity");
@@ -1701,7 +1706,8 @@ const ewIsStreakMilestone = (d) => {
 };
 
 exports.ewSecureWrite = onRequest(
-  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
+  // 120 s: scoring the proofreading test reads the graph and undoes the player's edits.
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20, timeoutSeconds: 120 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({error:"Input too large"});
@@ -1729,6 +1735,20 @@ exports.ewSecureWrite = onRequest(
       const ctx = await pilotContext(sb,who);
       const {me,isAdmin} = ctx;
       if(action === "pilot.status") return res.json({ok:true,data:{invited:!!(isAdmin||ctx.isPilot),admin:isAdmin}});
+      // The proofreading test (Ames 2026-10-10) is open to every signed in
+      // player with a profile: passing it is how a player joins the pilot,
+      // so it sits before the pilot gate. Rules in proofreading-test.js.
+      if (typeof action === "string" && action.startsWith("test.")) {
+        const { handle: testHandle } = require("./proofreading-test");
+        const data = await testHandle({ action, args, who, me, io: {
+          fetch, caveToken: ewCaveToken.value().trim(), sb,
+          rpc: (a, p) => sb("rpc/pilot_test_action", { method: "POST", body: JSON.stringify({ p_user: me && me.id, p_action: a, p_args: p || {} }) }),
+          // Chat colour and team access read the production flag from a
+          // cache: a fresh pass must show at once.
+          onGranted: () => ewProductionCache.delete(token),
+        } });
+        return res.json({ ok: true, data });
+      }
       requirePilot(ctx);
       const needAdmin = () => { if (!isAdmin) throw ewErr(403, "Admins only"); };
       let out = null;

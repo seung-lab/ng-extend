@@ -53,6 +53,14 @@ export function loadDatasetPermissions(): Promise<void> {
   return inflight;
 }
 
+/** Forget what CAVE said and ask again: after the proofreading test opens a
+ *  dataset, the switcher's "View only" mark must go. */
+export function refreshDatasetPermissions(): Promise<void> {
+  permissions.value = null;
+  loadedFor = '';
+  return loadDatasetPermissions();
+}
+
 export function datasetAccess(caveDataset?: string): DatasetAccess {
   // Whoever asks first (switcher, profile) starts the lookup; the answer is
   // reactive, so the cards update when it arrives.
