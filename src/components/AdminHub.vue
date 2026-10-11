@@ -711,7 +711,7 @@ function relTime(iso: string): string {
  *  with that same text as its note, so there is no second question to answer
  *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
  *  not be sent, the report is left where it is. */
-async function sendReporterUpdate(row: TriageRow, andDone = false) {
+async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
   let sent = false;
@@ -746,13 +746,15 @@ async function sendReporterUpdate(row: TriageRow, andDone = false) {
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
     sent = true;
-    if (!andDone) await loadTriage();
+    if (!andDone && !andProgress) await loadTriage();
   } catch (e: any) {
     triageError.value = `Could not send the update: ${e?.message ?? String(e)}`;
   } finally {
     reporterSending.value = null;
   }
   if (sent && andDone) await setTriageStatus(row, 'done', false, false, text.replace(/\s+/g, ' ').slice(0, 300));
+  // The submitter has been told it is being looked into: move it to In progress, by hand (Ames 2026-10-11).
+  if (sent && andProgress) await markInProgress(row);
 }
 
 /** Build ID of the preview waiting to go live: the tested preview, or one
@@ -2326,6 +2328,10 @@ function practiceWhen(iso: string | null) {
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
                         title="Sends this to the submitter, then moves the card to Done with the same text as its note."
                         @click="sendReporterUpdate(row, true)">✓ Send and mark done</button>
+                <button v-if="triageGroupOf(row) === 'decide'" class="nge-admin-action-btn"
+                        :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
+                        title="Sends this to the submitter, then moves the card to In progress, marked by hand so the robot does not build it."
+                        @click="sendReporterUpdate(row, false, true)">▶ Send and mark in progress</button>
                 <button class="nge-admin-action-btn" :disabled="reporterSending === row.id" @click="closeReporterDraft(row)">Not now</button>
               </div>
             </template>
