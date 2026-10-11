@@ -50,6 +50,7 @@ let viewer: any = null;
 const state: NgeLantern = {
   center: new Float32Array(3), scaleNm: new Float32Array([1, 1, 1]),
   radiusNm: 0, heightNm: 0, intensity: 1, shadow: SHADOW,
+  sweep: {edge: 3, dousing: false, band: 0},
 };
 
 function readView() {
@@ -64,34 +65,40 @@ function readView() {
   } catch { /* the view is not up yet */ }
 }
 
-// ── Lighting it, and putting it out (Ames 2026-10-10: "a cool load in/out") ──
-// `lit` runs from 0 (off) to 1 (burning). Lighting: the dark closes in while
-// the light swells out from the centre, a little past its size and back, with
-// a flare that settles. Putting it out: the light shrinks to a point and the
-// daylight comes back. Under "reduce motion" it simply switches.
-const LIGHT_MS = 720, DOUSE_MS = 480;
-let lit = 0;
+// ── Lighting it, and putting it out ─────────────────────────────────────
+// A line of light crosses the screen from left to right (Ames 2026-10-10:
+// "it should maybe be a left-to-right light sweep"; the first version, a
+// light swelling out from the centre, was not right). Lighting: behind the
+// line the dark has closed in and the Lantern is burning. Putting out: the
+// line crosses again and behind it the cells are as they were. Under "reduce
+// motion" it simply switches.
+const SWEEP_MS = 900;
+const OFFSCREEN = 1.35;            // the line starts and ends this far out, in screen units
+let lit = 0;                       // 0 off, 1 burning; in between, the line is crossing
 let tween: number | null = null;
 const reducedMotion = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
-const easeOutBack = (t: number) => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
-const smooth = (t: number) => t * t * (3 - 2 * t);
+const easeInOut = (t: number) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
 function apply() {
-  const on = lantern.on;
-  // how far through lighting (or dousing) it is
-  const swell = on ? easeOutBack(lit) : lit * lit;
-  const flare = on ? 1 + 0.9 * Math.pow(1 - lit, 2) * (lit > 0 ? 1 : 0) : 1;
-  state.radiusNm = lantern.sizeUm * 1000 * Math.max(0, swell);
+  state.radiusNm = lantern.sizeUm * 1000;
   state.heightNm = 0;
-  state.intensity = (lantern.flame / 100) * flare;
-  // the dark closes in a little ahead of the light
-  state.shadow = 1 - (1 - SHADOW) * smooth(Math.min(1, lit * 1.25));
+  state.intensity = lantern.flame / 100;
+  state.shadow = SHADOW;
+  // where the line is: how far through lighting (lit rising) or putting out (lit falling)
+  const crossing = lit > 0 && lit < 1;
+  const through = lantern.on ? lit : 1 - lit;
+  state.sweep.dousing = !lantern.on;
+  state.sweep.edge = crossing ? -OFFSCREEN + 2 * OFFSCREEN * easeInOut(through) : OFFSCREEN;
+  state.sweep.band = crossing ? Math.sin(Math.PI * through) * 0.9 + 0.1 : 0;
+  // Fully lit with nothing sweeping, the Lantern holds the whole screen.
+  if (!crossing) { state.sweep.dousing = false; state.sweep.edge = OFFSCREEN * 2; }
   readView();
   setNgeLantern(lit > 0 ? state : null);
   try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   // For checking from the console and in tests.
   (window as any).__ngeLantern = lit > 0
-    ? {centerNm: Array.from(state.center, (v, i) => v * state.scaleNm[i]), radiusNm: state.radiusNm, heightNm: state.heightNm, intensity: state.intensity, shadow: state.shadow, lit}
+    ? {centerNm: Array.from(state.center, (v, i) => v * state.scaleNm[i]), radiusNm: state.radiusNm, heightNm: state.heightNm, intensity: state.intensity, shadow: state.shadow, lit,
+       sweepEdge: state.sweep.edge, dousing: state.sweep.dousing}
     : null;
 }
 
@@ -100,7 +107,7 @@ function run() {
   if (tween !== null) { cancelAnimationFrame(tween); tween = null; }
   const target = lantern.on ? 1 : 0;
   if (reducedMotion() || document.hidden) { lit = target; apply(); return; }
-  const from = lit, t0 = performance.now(), ms = (lantern.on ? LIGHT_MS : DOUSE_MS) * Math.abs(target - from);
+  const from = lit, t0 = performance.now(), ms = SWEEP_MS * Math.abs(target - from);
   if (ms <= 0) { apply(); return; }
   const step = (now: number) => {
     const t = Math.min(1, (now - t0) / ms);

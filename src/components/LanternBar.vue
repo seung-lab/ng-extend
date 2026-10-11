@@ -104,27 +104,49 @@ function resetPlace() {
 
 <style scoped>
 .nge-lantern {
+  /* The same cut as the layer tabs (ng-override.css): a circuit board part,
+     with a long diagonal on the top right, a short one top left, a third on
+     the bottom left and one corner left square, so no two corners match
+     (Ames 2026-10-10: "a cool scifi circuit vibe like the layers tabs"). A
+     clipped box cannot carry a border, so the edge is the box's own
+     background showing round a slightly smaller fill (::before). In the
+     Lantern's amber, where the layer tabs are blue. */
+  --lan-edge: rgba(255, 196, 110, 0.62);
+  --lan-fill: #0a1120;
   position: fixed; left: 50%; top: 46px; transform: translateX(-50%); z-index: 900;
   display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); box-sizing: border-box;
-  padding: 5px 6px 5px 4px; border-radius: 10px;
-  background: linear-gradient(158deg, rgba(15, 18, 24, 0.95), rgba(6, 10, 18, 0.97));
-  border: 1px solid rgba(255, 196, 110, 0.34);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(196, 228, 255, 0.08);
+  padding: 6px 18px 8px 8px; border: 0; border-radius: 0;
+  background: linear-gradient(180deg, var(--lan-edge) 0%, rgba(255, 196, 110, 0.4) 55%, rgba(255, 196, 110, 0.16) 100%);
+  clip-path: polygon(6px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px);
   font: 500 12px/1.2 'Inter', system-ui, sans-serif; color: rgba(239, 244, 251, 0.9);
   user-select: none;
 }
-.nge-lantern--folded { gap: 4px; }
-/* The bar comes in as the lantern lights: out of a bright blur, once. */
-.nge-lantern-bar-enter-active { animation: nge-lantern-bar-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nge-lantern::before {
+  content: ''; position: absolute; inset: 1px; z-index: 0; pointer-events: none;
+  background: linear-gradient(168deg, #0d1628 0%, var(--lan-fill) 60%, #070c18 100%);
+  clip-path: polygon(5.6px 0, calc(100% - 13.4px) 0, 100% 13.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
+}
+/* a trace along the foot that ends in a solder point, as on the lit layer tab */
+.nge-lantern::after {
+  content: ''; position: absolute; left: 14px; bottom: 2px; width: 38%; max-width: 190px; height: 5px; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(circle 2px at calc(100% - 2.5px) 50%, #ffd08a 96%, transparent 100%),
+    linear-gradient(90deg, rgba(255, 196, 110, 0.15), rgba(255, 196, 110, 0.75)) left center / calc(100% - 4px) 1px no-repeat;
+}
+.nge-lantern > * { position: relative; z-index: 1; }
+.nge-lantern--folded { gap: 4px; padding-right: 14px; }
+.nge-lantern--folded::after { width: 46%; }
+/* The bar comes in as the lantern lights: a light runs across it from the
+   left, once, like the one crossing the cells. */
+.nge-lantern-bar-enter-active { animation: nge-lantern-bar-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .nge-lantern-bar-leave-active { animation: nge-lantern-bar-out 0.26s ease-in both; }
 @keyframes nge-lantern-bar-in {
-  0%   { opacity: 0; filter: blur(8px) brightness(2.4); box-shadow: 0 0 0 0 rgba(255, 200, 120, 0.9); }
-  55%  { opacity: 1; filter: blur(0) brightness(1.2); box-shadow: 0 0 26px 4px rgba(255, 200, 120, 0.45); }
-  100% { opacity: 1; filter: none; }
+  0%   { opacity: 0; filter: brightness(2.6); clip-path: polygon(6px 0, 6px 0, 6px 0, 6px 100%, 9px 100%, 0 calc(100% - 9px), 0 6px); }
+  100% { opacity: 1; filter: none; clip-path: polygon(6px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px); }
 }
 @keyframes nge-lantern-bar-out {
   0%   { opacity: 1; filter: none; }
-  100% { opacity: 0; filter: blur(6px) brightness(0.6); }
+  100% { opacity: 0; filter: brightness(0.5); }
 }
 @media (prefers-reduced-motion: reduce) { .nge-lantern-bar-enter-active, .nge-lantern-bar-leave-active { animation: none; } }
 .nge-lantern-grip { margin-right: -8px; padding: 3px 4px; border-radius: 5px; cursor: grab; font-size: 13px; line-height: 1; color: rgba(255, 200, 120, 0.55); touch-action: none; }
@@ -132,10 +154,11 @@ function resetPlace() {
 .nge-lantern-grip:active { cursor: grabbing; }
 .nge-lantern-name {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px;
-  background: none; cursor: pointer; font: inherit; font-weight: 600; letter-spacing: 0.04em; color: #ffc878;
+  background: none; cursor: pointer; font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #ffc878;
 }
 .nge-lantern-name:hover, .nge-lantern-name:focus-visible { border-color: rgba(255, 196, 110, 0.45); outline: none; }
 .nge-lantern-set { display: inline-flex; align-items: center; gap: 7px; color: rgba(190, 205, 225, 0.85); }
+.nge-lantern-set > span:first-child { font: 500 10px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 208, 138, 0.72); }
 .nge-lantern-set input[type='range'] { width: 92px; accent-color: #ffc878; }
 .nge-lantern-set output { min-width: 44px; font-variant-numeric: tabular-nums; color: #f3f6fb; }
 /* a unit symbol is never upper-cased by a parent */

@@ -28,6 +28,14 @@ export interface NgeLantern {
   intensity: number;
   /** Brightness of the part left in shadow, 0 to 1. */
   shadow: number;
+  /**
+   * Lighting and putting out: a line of light crossing the screen from left
+   * to right. `edge` is where it is, in screen units from -1 (left) to 1
+   * (right); it is outside that range when nothing is sweeping. Lighting,
+   * the Lantern takes hold behind the line; putting out, it lets go behind
+   * it. `band` is how bright the line itself is, 0 to 1.
+   */
+  sweep: {edge: number; dousing: boolean; band: number};
 }
 
 let current: NgeLantern|null = null;

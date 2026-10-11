@@ -233,6 +233,7 @@ export class MeshShaderManager {
       gl.uniform4f(
           shader.uniform('uNgeLantern'), ngeLanternPos[0], ngeLanternPos[1], ngeLanternPos[2], lantern.radiusNm);
       gl.uniform3f(shader.uniform('uNgeLanternLight'), 1, lantern.intensity, lantern.shadow);
+      gl.uniform3f(shader.uniform('uNgeLanternSweep'), lantern.sweep.edge, lantern.sweep.dousing ? -1 : 1, lantern.sweep.band);
       const second = getNgeLanternSecond();
       if (second !== null && second.radiusNm > 0) {
         gl.uniform4f(shader.uniform('uNgeLantern2'), second.posNm[0], second.posNm[1], second.posNm[2], second.radiusNm);
@@ -311,6 +312,9 @@ export class MeshShaderManager {
         builder.addUniform('highp mat4', 'uNgeLanternModel');
         builder.addUniform('highp vec4', 'uNgeLantern');
         builder.addUniform('highp vec3', 'uNgeLanternLight');
+        // Lighting and putting out: x where the line of light is on screen (-1 left,
+        // 1 right), y +1 lighting or -1 putting out, z how bright the line is.
+        builder.addUniform('highp vec3', 'uNgeLanternSweep');
         // A second, coloured light (the reaper's red lantern): xyz nm, w reach.
         builder.addUniform('highp vec4', 'uNgeLantern2');
         builder.addUniform('highp vec3', 'uNgeLantern2Color');
@@ -364,7 +368,16 @@ if (uNgeLanternLight.x > 0.5) {
   highp float lit = 1.0 - smoothstep(0.8 * uNgeLantern.w, 1.2 * uNgeLantern.w, length(lanternFrom));
   // In shadow a cell keeps its shape and loses its colour.
   highp float grey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
-  vColor.rgb = mix(vec3(grey) * uNgeLanternLight.z, min(vColor.rgb * uNgeLanternLight.y, vec3(1.0)), lit);
+  // The line of light crossing the screen: lighting, the Lantern holds
+  // everything the line has passed (to its left); putting out, everything it
+  // has not reached yet (to its right).
+  highp float screenX = gl_Position.x / gl_Position.w;
+  highp float passed = 1.0 - smoothstep(uNgeLanternSweep.x - 0.05, uNgeLanternSweep.x + 0.01, screenX);
+  highp float held = uNgeLanternSweep.y > 0.0 ? passed : 1.0 - passed;
+  highp vec3 lanternLit = mix(vec3(grey) * uNgeLanternLight.z, min(vColor.rgb * uNgeLanternLight.y, vec3(1.0)), lit);
+  highp float line = uNgeLanternSweep.z * exp(-pow((screenX - uNgeLanternSweep.x) / 0.045, 2.0));
+  vColor.rgb = mix(vColor.rgb, lanternLit, held);
+  vColor.rgb = min(vColor.rgb + line * vec3(1.0, 0.86, 0.6) * (0.35 + 0.9 * grey), vec3(1.0));
   if (uNgeLantern2.w > 0.0) {
     // The second light colours what it reaches, whatever colour the cell is.
     highp float lit2 = 1.0 - smoothstep(0.3 * uNgeLantern2.w, uNgeLantern2.w, length(lanternFrom + uNgeLantern.xyz - uNgeLantern2.xyz));

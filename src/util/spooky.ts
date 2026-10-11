@@ -9,7 +9,7 @@
  *   The reaper    Rare. He arrives the same way, further off, carrying his
  *                 own red lantern: the cell near him is lit red. He stands
  *                 still, and is gone in an instant if you come near. He comes
- *                 by himself on 31 October only.
+ *                 by himself on 30 and 31 October only.
  *   boo!          Say  boo!  in chat and a ghost pops up in front of you and
  *                 flies off the screen. Your own boo! works all year; in
  *                 Halloween week everyone who sees it gets one.
@@ -37,11 +37,33 @@ import {lantern} from './lantern';
 import {loadGlbModel} from './glb';
 
 const TEST_KEY = 'nge-spooky';
-/** 24 October to 1 November, in the player's own time. */
+// WHEN (Ames 2026-10-10)
+//   The ghost   from Friday 23 October, 10:00 in New York, for everyone at
+//               the same moment (so she is online to see it start), through
+//               1 November in the player's own time.
+//   The reaper  30 and 31 October in the player's own time: the day before
+//               Halloween, and Halloween.
+// The start is "the 23rd at 10:00 New York time" in any year, not a fixed
+// instant, so it needs no editing next year.
+function newYorkNow(now: Date): { month: number; day: number; hour: number } | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric', hour: 'numeric', hourCycle: 'h23' }).formatToParts(now);
+    const get = (type: string) => Number(parts.find(x => x.type === type)?.value);
+    const v = { month: get('month'), day: get('day'), hour: get('hour') };
+    return Number.isFinite(v.month) && Number.isFinite(v.day) && Number.isFinite(v.hour) ? v : null;
+  } catch { return null; }
+}
 export function inSeason(now = new Date()): boolean {
   const m = now.getMonth(), d = now.getDate();
-  return (m === 9 && d >= 24) || (m === 10 && d <= 1);
+  if (m === 10) return d <= 1;                     // 1 November, the player's own day
+  if (m !== 9) return false;
+  if (d >= 24) return true;                        // from the 24th it has started everywhere
+  const ny = newYorkNow(now);
+  // before that: has it turned 10:00 on the 23rd in New York?
+  return ny ? ny.month === 10 && (ny.day > 23 || (ny.day === 23 && ny.hour >= 10)) : false;
 }
+/** The reaper's days: 30 and 31 October, the player's own time. */
+export function reaperDay(now = new Date()): boolean { return now.getMonth() === 9 && (now.getDate() === 30 || now.getDate() === 31); }
 const testOn = () => { try { return localStorage.getItem(TEST_KEY) === '1'; } catch { return false; } };
 /** What the ghost button shows: is the haunting on, and is it the season. */
 export const spooky = reactive({ on: inSeason() || testOn(), season: inSeason() });
@@ -77,7 +99,7 @@ const KINDS: Record<Kind, {
   // lantern beats slowly. He comes up out of the dark slowly and is gone in
   // an instant. (Ames: "he should not float/move ... he should not always
   // turn to look at you ... more ominous ... he looks too big".)
-  reaper: { model: 'reaper', sizeUm: [5, 10], sizeOfView: 0.07, near: 1.15, far: 1.4, scared: 1.5, tooBig: 0.3, appearS: 3.2, vanishS: 0.3, stayS: [18, 30], gapS: [6, 14], still: true,
+  reaper: { model: 'reaper', sizeUm: [4, 7.5], sizeOfView: 0.055, near: 1.15, far: 1.4, scared: 3.2, tooBig: 0.16, appearS: 3.2, vanishS: 0.3, stayS: [18, 30], gapS: [6, 14], still: true,
             alpha: 1, shade: 0.7, glow: [0.03, 0.0, 0.0], rim: [1.0, 0.1, 0.06] },
   boo:    { model: 'ghost',  sizeOfView: 0.15, near: 0, far: 0, scared: 0, tooBig: 0, appearS: 0.34, vanishS: 1.15, stayS: [1.0, 1.0], gapS: [0, 0], still: false,
             alpha: 0.95, shade: 1, glow: [0.2, 0.24, 0.3], rim: [0.6, 0.92, 1.0] },
@@ -88,12 +110,9 @@ const KINDS: Record<Kind, {
 // never less than about its own height.
 const SCARED_OF_VIEW = 0.11;
 const FIRST_S: [number, number] = [0.4, 0.9];  // the first, after the Lantern is lit (it was up to 6 s: too long)
-// The reaper comes by himself on Halloween itself, 31 October, and on no
-// other day (Ames 2026-10-10: "we should plan to deploy grim on halloween
-// only"). On that day about one visitor in eight is him. Admins can call him
+// On his days about one visitor in eight is the reaper. Admins can call him
 // from the Lantern bar on any day, to try him out.
 const REAPER_ODDS = 0.12;
-export function isHalloween(now = new Date()): boolean { return now.getMonth() === 9 && now.getDate() === 31; }
 const BOO_EVERY_MS = 6000;
 const between = ([a, b]: [number, number]) => a + Math.random() * (b - a);
 
@@ -274,7 +293,7 @@ function frame() {
 
   // someone new?
   if (haunting && !visitors.some(v => v.kind !== 'boo') && (summon || now >= nextAt)) {
-    const kind: Kind = callReaper || (!nextIsGhost && isHalloween() && Math.random() < REAPER_ODDS) ? 'reaper' : 'ghost';
+    const kind: Kind = callReaper || (!nextIsGhost && reaperDay() && Math.random() < REAPER_ODDS) ? 'reaper' : 'ghost';
     const model = KINDS[kind].model;
     if (meshes[model]) { arrive(kind, f, now); callReaper = false; nextIsGhost = false; summon = false; }
     else if (failedModel[model]) { callReaper = false; summon = false; nextAt = now + 4000; }
@@ -324,18 +343,16 @@ function frame() {
     v.prop.dissolve = dissolve;
     v.prop.seed = v.seed;
     if (v.kind === 'reaper') {
-      // His lantern: the cell near him is lit red, in a slow double beat like
-      // a heart, for as long as he is there.
-      const beat = (age * 0.62) % 1;
-      const pulse = Math.exp(-Math.pow((beat - 0.08) / 0.07, 2)) + 0.7 * Math.exp(-Math.pow((beat - 0.3) / 0.08, 2));
-      red = (1 - dissolve) * (0.5 + 0.5 * pulse);
+      // His lantern: the cell near him is lit red, and it breathes, slowly
+      // and only a little. (It beat like a heart at first; Ames: "grim's
+      // flickering is a bit too much".)
+      const breath = 0.5 + 0.5 * Math.sin(age * 1.15);
+      red = (1 - dissolve) * (0.82 + 0.18 * breath);
       redLight.posNm.set(pos);
-      redLight.radiusNm = v.sizeNm * 3.4 * (1 - dissolve) * (0.82 + 0.18 * pulse);
-      redLight.color = [1.0 * (0.55 + 0.45 * pulse), 0.1, 0.06];
-      // The same lantern lights the front of him, so the figure can be made out
-      // (Ames: "the model seems impossible to see, maybe it needs a light on
-      // the front of him"): steadily, and brighter on each beat.
-      v.prop.shade = 0.62 + 0.3 * pulse;
+      redLight.radiusNm = v.sizeNm * 3.4 * (1 - dissolve) * (0.95 + 0.05 * breath);
+      redLight.color = [0.88 + 0.12 * breath, 0.1, 0.06];
+      // The same lantern lights the front of him, so the figure can be made out.
+      v.prop.shade = 0.74 + 0.08 * breath;
     }
     live.push(v);
   }
@@ -398,6 +415,14 @@ export function startSpooky(v: any) {
   viewer = v;
   watch(() => lantern.on, sync, {immediate: true});
   document.addEventListener('visibilitychange', sync);
+  // The season can begin (or end) while the game is open.
+  setInterval(() => {
+    const season = inSeason();
+    if (season === spooky.season) return;
+    spooky.season = season;
+    spooky.on = season || testOn();
+    sync();
+  }, 60_000);
 }
 
 /** The ghost button: switch the haunting on if it is not, and bring a ghost now. */
