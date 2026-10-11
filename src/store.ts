@@ -5131,8 +5131,53 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   function announceAchievement(track: string, badgeId: number, forUserId?: string) {
     if (!userId.value) return;
     // forUserId: a special award an admin has just given to someone else.
-    secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
+    if (forUserId || track === 'special') {
+      secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
+      return;
+    }
+    // The game counts an edit or a cell a moment before the server has, so
+    // the server can answer "Not earned yet" to an achievement that is
+    // earned (Nseraf's 6,000 edits, 2026-10-11: saved, never announced). It
+    // is kept and asked again, across a reload too, until the server agrees.
+    const wait = waitingAnnouncements();
+    if (!wait.some(w => w.track === track && w.badgeId === badgeId)) wait.push({ track, badgeId, tries: 0 });
+    keepAnnouncements(wait);
+    void sendAnnouncements();
   }
+  const ANNOUNCE_KEY = 'nge_announce_waiting_v1';
+  type WaitingAnnouncement = { track: string; badgeId: number; tries: number };
+  function waitingAnnouncements(): WaitingAnnouncement[] {
+    try {
+      const all = JSON.parse(localStorage.getItem(ANNOUNCE_KEY) || '{}') || {};
+      const mine = all[userId.value || ''];
+      return Array.isArray(mine) ? mine.filter(w => w && typeof w.track === 'string' && Number.isFinite(w.badgeId)) : [];
+    } catch { return []; }
+  }
+  function keepAnnouncements(list: WaitingAnnouncement[]) {
+    if (!userId.value) return;
+    try { localStorage.setItem(ANNOUNCE_KEY, JSON.stringify({ [userId.value]: list })); } catch { /* not remembered */ }
+  }
+  let announceTimer: ReturnType<typeof setTimeout> | null = null;
+  let announcing = false;
+  async function sendAnnouncements() {
+    if (announcing || !userId.value) return;
+    announcing = true;
+    if (announceTimer) { clearTimeout(announceTimer); announceTimer = null; }
+    try {
+      const still: WaitingAnnouncement[] = [];
+      for (const w of waitingAnnouncements()) {
+        try { await secureWrite('chat.achievement', { track: w.track, badgeId: w.badgeId }); }   // posted, or already there
+        catch (e: any) {
+          // Only "not yet" is worth asking again, and not for ever (8 tries, about 15 minutes).
+          if (/not earned yet/i.test(String(e?.message || '')) && w.tries < 7) still.push({ ...w, tries: w.tries + 1 });
+        }
+      }
+      keepAnnouncements(still);
+      if (still.length) announceTimer = setTimeout(() => { void sendAnnouncements(); }, Math.min(240000, 20000 * 2 ** Math.min(still[0].tries - 1, 4)));
+    } finally { announcing = false; }
+  }
+  // Anything still waiting from before a reload is asked again once signed in.
+  watch(userId, id => { if (id && waitingAnnouncements().length) setTimeout(() => { void sendAnnouncements(); }, 8000); }, { immediate: true });
 
   async function createSelfNotification(data: {
     title: string; body: string;

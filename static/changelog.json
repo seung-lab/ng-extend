@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T22:16:00Z",
+      "title": "Achievements always reach chat",
+      "items": [
+        "An Achievement you earn is now always announced in chat. Sometimes the line was missed when the count was confirmed a moment late."
+      ]
+    },
+    {
       "at": "2026-10-11T16:15:45Z",
       "title": "The segment list keeps its place",
       "items": [
