@@ -78,7 +78,7 @@ async function preview(layer: any) {
  *  with ?cutpreview=1 in the address switches it on in this browser, and
  *  ?cutpreview=0 switches it off again. */
 const TEST_KEY = 'nge-cut-preview-test';
-function testSwitchedOn(): boolean {
+export function cutPreviewTestOn(): boolean {
   try {
     const asked = new URLSearchParams(window.location.search).get('cutpreview');
     if (asked === '1') localStorage.setItem(TEST_KEY, '1');
@@ -88,7 +88,7 @@ function testSwitchedOn(): boolean {
 }
 
 export function startCutPreview() {
-  (window as any).ngeCutPreviewTest = testSwitchedOn();
+  (window as any).ngeCutPreviewTest = cutPreviewTestOn();
   window.addEventListener('nge-cut-preview', (e: Event) => { void preview((e as CustomEvent).detail?.layer); });
   window.addEventListener('nge-cut-preview-clear', clear);
 }

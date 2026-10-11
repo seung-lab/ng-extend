@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cutPreviewTestOn } from '../util/cut_preview';
 import { computed, ref, watch } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
 import { useTutorialStore } from '../store-pyr';
@@ -118,6 +119,13 @@ function swapGroup() {
 }
 
 /** Click NG's Clear button to reset all placed points */
+/** The cut preview test: the tool's own Preview button does the work. It is
+ *  found by its class, not its place in the row, so it never presses another. */
+const cutPreviewTest = cutPreviewTestOn();
+function previewCut() {
+  (document.querySelector('.graphene-multicut .nge-cut-preview-button') as HTMLElement | null)?.click();
+}
+
 function clearPoints() {
   // Flag the clear FIRST so the DOM scanner doesn't misread the points
   // resetting to 0 as a split submit ("Submitting split...").
@@ -292,6 +300,9 @@ function cancelTool() {
                2026-10-07); the hint takes the rest of the bar. -->
           <div class="nge-smo-actions nge-smo-actions--left" v-if="!isSubmitting">
             <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': cutReady }" @click="submitTool('multicut')" title="Submit the cut (or press Enter)">Submit cut</button>
+            <!-- A test, hidden until switched on with ?cutpreview=1 (src/util/cut_preview.ts). -->
+            <button v-if="cutPreviewTest" class="nge-smo-action-btn clear-btn" :disabled="!cutReady" @click="previewCut"
+                    :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">Preview</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
           </div>
