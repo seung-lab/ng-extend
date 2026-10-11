@@ -231,7 +231,7 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
       }
       // Watch only once the cell is held: with nothing held, the watch
       // would queue for the Cut tutorial's cells.
-      watchPractice(false, 'Waiting for your cut: red on one neuron, G, blue on the other, Submit cut.', '', { advance: true });
+      watchPractice(false, 'Ctrl+click to add points. Remember to press G to switch the cut colour group.', '', { advance: true });
       // 3D only to start (Ames, 2026-10-11, reversing the split view of
       // 2026-10-08): the whole cell is easier to read, and Space brings the
       // 2D images back when the join needs a closer look.

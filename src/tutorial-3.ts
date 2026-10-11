@@ -423,6 +423,16 @@ function openStuckPanel() {
   row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));
   row.appendChild(smallButton('nge-practice-stuck-ai', 'Ask Nurro', () => (document.querySelector('.nge-ask-btn') as HTMLElement | null)?.click()));
   panel.appendChild(row);
+  // A way to put it away again (Ames, 2026-10-11: once open it stayed).
+  const close = document.createElement('button');
+  close.className = 'nge-practice-stuck-x';
+  close.type = 'button';
+  close.textContent = '\u00d7';
+  close.title = 'Close';
+  close.setAttribute('aria-label', 'Close help');
+  close.addEventListener('click', () => { panel.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); });
+  panel.style.position = 'relative';
+  panel.appendChild(close);
   chip.appendChild(panel);
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }

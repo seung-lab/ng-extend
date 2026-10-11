@@ -399,3 +399,14 @@
   opacity: 0; transform: translateY(6px); transition: opacity 0.25s, transform 0.25s; pointer-events: none;
 }
 .nge-sbx-figure:hover .nge-sbx-figcap, .nge-sbx-figure:focus .nge-sbx-figcap { opacity: 1; transform: none; }
+
+/* The x that closes the "Still stuck?" panel. */
+.nge-practice-stuck-x {
+  position: absolute; top: 6px; right: 8px; width: 22px; height: 22px; padding: 0;
+  border: 0; background: none; color: #8fa9c4; font-size: 18px; line-height: 1; cursor: pointer;
+}
+.nge-practice-stuck-x:hover { color: #fff; }
+/* Merger Sandbox boxes: the chain of gems is the ornament, so the title
+   goes without its rule and its diamond (Ames, 2026-10-11). */
+.introductionStepAnchor .chip:has(.nge-sbx-progress) .title { border-bottom: 0 !important; border-image: none !important; padding-bottom: 2px !important; }
+.introductionStepAnchor .chip:has(.nge-sbx-progress) .title::before { display: none !important; }
