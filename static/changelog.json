@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T01:28:00Z",
+      "title": "A new look for the Lantern box",
+      "items": [
+        "The Lantern box now has the same circuit board look as the layer tabs, with a line of light along its top that runs down the sides.",
+        "The Lantern box slides open from the left when you light the Lantern (Shift+N)."
+      ]
+    },
+    {
       "at": "2026-10-11T00:19:00Z",
       "title": "A builder's counter on Amy's profile",
       "items": [
