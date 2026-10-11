@@ -13,7 +13,7 @@ import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPracti
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
-import { useSplitMergeOverlayStore } from './store';
+import { useSplitMergeOverlayStore, useUserPreferencesStore } from './store';
 import { watch } from 'vue';
 import { hidePyrMarkers, showGemMarkers, showPyrMarkers } from './markers';
 import { drawSearchLine } from './tutorial_pointer';
@@ -382,14 +382,21 @@ async function helpMe() {
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }
 
+/** How a layer chip is selected: a plain click, unless the player turned on
+ *  classic layer tabs in Settings, where it is a right-click (Ames,
+ *  2026-10-11: the boxes still said right-click after the default changed). */
+function selectClick(): string {
+  try { return useUserPreferencesStore().prefs.classicLayerClicks === true ? 'Right-click' : 'Click'; } catch { return 'Click'; }
+}
+
 /** The other ways out: the layer, the chat, the guide. */
 function openStuckPanel() {
   const chip = chipBody();
   if (!chip || chip.querySelector('.nge-practice-stuck')) return;
   const panel = notePanel('nge-practice-stuck',
     '<div class="nge-hud-panel-title">Still stuck? Three ways out.</div>'
-    + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer named <b>3D segmentation</b>. Right-click it to select it.</div>'
-    + '<div class="nge-hud-panel-row">2. Ask people in the community chat. Someone is usually around.</div>'
+    + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer named <b>3D segmentation</b>. ' + selectClick() + ' it to select it.</div>'
+    + '<div class="nge-hud-panel-row">2. Ask people in the community chat, and share your view there (the pin button beside the message box) so they see exactly what you see. Someone is usually around.</div>'
     + '<div class="nge-hud-panel-row">3. Ask Nurro, the AI guide. It knows this tutorial and the tools.</div>');
   const row = document.createElement('div');
   row.className = 'nge-hud-btnrow';
@@ -804,7 +811,7 @@ document.addEventListener('nge:tutorial-layer-note', () => {
   if (!chip.querySelector('.nge-practice-layer-note')) {
     const note = notePanel('nge-practice-layer-note',
       'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, named <b>3D segmentation</b>, next to <b>2D EM</b>. '
-      + 'Right-click that chip to select it. Tools like merge and cut only work on the selected layer.');
+      + selectClick() + ' that chip to select it. Tools like merge and cut only work on the selected layer.');
     chip.appendChild(note);
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
   }

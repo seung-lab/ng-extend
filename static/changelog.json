@@ -2,6 +2,22 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T13:35:00Z",
+      "title": "Tutorial help says the right click",
+      "items": [
+        "The help in the Merge and Cut tutorials now says to click the 3D segmentation tab to select it, which is how it works now.",
+        "It also suggests sharing your view in chat when you ask for help."
+      ]
+    },
+    {
+      "at": "2026-10-11T13:35:00Z",
+      "title": "Share my view waits for your message",
+      "items": [
+        "Share my view in chat now puts a My view chip on the message box instead of posting at once, so you can type a few words first and then send.",
+        "The x on the chip removes it."
+      ]
+    },
+    {
       "at": "2026-10-11T13:16:00Z",
       "title": "Cell Completion Achievements at round numbers",
       "items": [
