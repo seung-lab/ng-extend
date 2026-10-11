@@ -354,17 +354,17 @@
    the row of boxes was ugly). A solved merger is a lit gem, and the line
    between two solved ones lights up; the one in hand is a pale gem with
    a slow ring. No frame, no fill. */
-.nge-sbx-progress { display: flex; align-items: center; gap: 22px; margin: 10px 0 20px; padding: 0 4px 0 8px; }
+.nge-sbx-progress { display: flex; align-items: center; gap: 16px; margin: 6px 0 16px; padding: 0 4px 0 8px; }
 .nge-sbx-track { position: relative; flex: 1; display: flex; align-items: center; height: 30px; }
-.nge-sbx-node { position: relative; flex: none; width: 15px; height: 19px; display: flex; align-items: center; justify-content: center; }
+.nge-sbx-node { position: relative; flex: none; width: 12px; height: 15px; display: flex; align-items: center; justify-content: center; }
 .nge-sbx-node img { display: block; width: 100%; height: 100%; object-fit: contain; transition: filter 0.4s, opacity 0.4s; }
 /* Not solved yet: the gem's outline in grey, barely there. */
 .nge-sbx-node--todo img { filter: grayscale(1) brightness(0.75); opacity: 0.22; }
-.nge-sbx-node--done img { filter: drop-shadow(0 0 4px rgba(120, 235, 255, 0.95)) drop-shadow(0 0 11px rgba(110, 190, 255, 0.5)); }
-.nge-sbx-node--now { width: 19px; height: 24px; }
+.nge-sbx-node--done img { filter: drop-shadow(0 0 3px rgba(120, 235, 255, 0.55)); }
+.nge-sbx-node--now { width: 14px; height: 18px; }
 .nge-sbx-node--now img { filter: grayscale(0.55) brightness(1.25) drop-shadow(0 0 5px rgba(200, 240, 255, 0.7)); animation: nge-sbx-breathe 2.4s ease-in-out infinite; }
 .nge-sbx-node--now::after {
-  content: ''; position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+  content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
   border: 1px solid rgba(190, 240, 255, 0.85);
   animation: nge-sbx-ring 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
 }
@@ -373,19 +373,29 @@
 .nge-sbx-link { flex: 1; height: 1px; margin: 0 6px; background: rgba(150, 215, 255, 0.14); }
 .nge-sbx-link--lit {
   background: linear-gradient(90deg, rgba(201, 243, 255, 0.95), rgba(140, 200, 255, 0.75));
-  box-shadow: 0 0 5px rgba(140, 228, 255, 0.75), 0 0 14px rgba(110, 180, 255, 0.3);
+  box-shadow: 0 0 4px rgba(140, 228, 255, 0.4);
 }
 .nge-sbx-count { flex: none; display: flex; align-items: baseline; gap: 5px; font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1; }
-.nge-sbx-count b { font-size: 2.2em; font-weight: 200; letter-spacing: -0.02em; color: #f1fbff; text-shadow: 0 0 18px rgba(140, 228, 255, 0.45); }
-.nge-sbx-count i { font-style: normal; font-size: 0.95em; font-weight: 400; color: rgba(160, 190, 220, 0.6); }
+.nge-sbx-count b { font-size: 1.15em; font-weight: 500; color: #dff4fb; }
+.nge-sbx-count i { font-style: normal; font-size: 0.9em; font-weight: 400; color: rgba(160, 190, 220, 0.6); }
 .nge-sbx-count em { font-style: normal; margin-left: 6px; font-size: 0.6em; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(160, 190, 220, 0.55); }
 /* Every merger solved: a slow glint runs along the chain. */
 .nge-sbx-progress--all .nge-sbx-track::after {
   content: ''; position: absolute; top: 50%; left: -12%; width: 12%; height: 9px; margin-top: -4.5px;
   background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.85), rgba(160, 230, 255, 0) 70%);
-  animation: nge-sbx-glint 3.4s ease-in-out infinite;
+  animation: nge-sbx-glint 1.6s ease-in-out 0.3s 1 both;
 }
-@keyframes nge-sbx-glint { 0% { left: -12%; } 60%, 100% { left: 100%; } }
+@keyframes nge-sbx-glint { 0% { left: -12%; opacity: 1; } 90% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .nge-sbx-node--now img, .nge-sbx-node--now::after, .nge-sbx-progress--all .nge-sbx-track::after { animation: none; display: none; } }
 
-.nge-sbx-caption { display: block; font-size: 0.86em; line-height: 1.45; color: #9fb4cc; }
+/* The last box's picture: its caption slides up over the foot of the image
+   on hover or focus, so it takes no room in the box. */
+.nge-sbx-figure { position: relative; display: block; overflow: hidden; border-radius: 4px; margin: 0 0 10px; }
+.nge-sbx-figure img { display: block; width: 100%; height: auto; }
+.nge-sbx-figcap {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 12px 9px;
+  font-size: 0.8em; line-height: 1.4; color: #e6f2fb;
+  background: linear-gradient(180deg, rgba(4, 10, 20, 0), rgba(4, 10, 20, 0.9) 45%);
+  opacity: 0; transform: translateY(6px); transition: opacity 0.25s, transform 0.25s; pointer-events: none;
+}
+.nge-sbx-figure:hover .nge-sbx-figcap, .nge-sbx-figure:focus .nge-sbx-figcap { opacity: 1; transform: none; }

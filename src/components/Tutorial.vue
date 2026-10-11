@@ -14,7 +14,7 @@ import { steps as steps5 } from '../tutorial-cut';
 import { steps as steps6 } from '../tutorial-mec-tour';
 import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
-import { steps as steps9, sandboxContinue } from '../merger-sandbox';
+import { steps as steps9, sandboxContinue, sandboxRestart } from '../merger-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
@@ -163,6 +163,8 @@ const next = () => {
     const tutorialNum = store.activeTutorial;
     // The Merger Sandbox's last box leads to the next merger.
     if (isLastStep && tutorialNum === 9 && sandboxContinue()) return;
+    // Its first box, shown to a player who has solved them all, starts over.
+    if (!isLastStep && tutorialNum === 9 && sandboxRestart()) return;
     // The last box closes the tutorial outright, by its length, so nothing
     // that moves the step at the same moment can leave it showing.
     store.setTutorialStep(isLastStep ? steps.value.length : store.getTutorialStep() + 1);

@@ -24,7 +24,7 @@ import { supabase } from './supabase';
 import { practiceBase, practiceToken } from './util/practice_destination';
 import { practiceOperationsAfter, remainingPracticeOperations } from './util/practice_history';
 export { parsePcgStamp } from './util/practice_history';
-import { useLayersStore, useProofreadingBackendStore } from './store';
+import { setStateRewriter, useLayersStore, useProofreadingBackendStore } from './store';
 
 export type PracticeKind = 'merge_then_cut' | 'cut';
 
@@ -952,7 +952,15 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     const wasOn = toolActive();
     pausePracticeTools();
     const staged = STAGED_VIEW[ex.id];
-    await useLayersStore().loadState(staged?.state ?? ex.state_url);
+    // The saved views were made with neuroglancer's side panels open. Shut
+    // them in the view itself before it loads, so they never flash open and
+    // closed in front of the learner (Ames, 2026-10-11).
+    setStateRewriter(async (state: any) => {
+      if (state?.selectedLayer) state.selectedLayer = { ...state.selectedLayer, visible: false };
+      if (state?.selection) state.selection = { ...state.selection, visible: false };
+      return state;
+    });
+    try { await useLayersStore().loadState(staged?.state ?? ex.state_url); } finally { setStateRewriter(null); }
     // A saved view can bring the layer side panel with it, and switching a
     // tool on can open it. It is a third of the screen the exercise does
     // not use (Ames, 2026-10-11). Shut it as the view settles, and not after

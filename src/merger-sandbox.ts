@@ -39,6 +39,27 @@ function markDone(id: string) {
 }
 
 /**
+ * Starting over (Ames, 2026-10-11). The account's record of cut mergers is
+ * kept for good (it is what the Achievement and any later scoring read), so
+ * a new run is a line drawn in time: only cuts made after it count toward
+ * the chain on screen. The line is kept in this browser.
+ */
+const RUN_KEY = 'nge-merger-sandbox-run-from';
+function runFrom(): string | null { try { return localStorage.getItem(RUN_KEY); } catch { return null; } }
+/** True while the first box is asking a player who has solved them all
+ *  whether to go again. */
+const askAgain = ref(false);
+/** For Tutorial.vue: the main button on that box starts a new run. */
+export function sandboxRestart(): boolean {
+  if (!askAgain.value) return false;
+  askAgain.value = false;
+  sandboxDone.value = [];
+  try { localStorage.setItem(DONE_KEY, '[]'); localStorage.setItem(RUN_KEY, new Date().toISOString()); } catch { /* private mode */ }
+  startSandbox(0);
+  return true;
+}
+
+/**
  * Every merger in the sandbox cut: a special Achievement (Ames 2026-10-10).
  * An admin makes it in the Admin Hub with the code name below, under any
  * name and art; until then this does nothing, and it is checked again on
@@ -65,8 +86,11 @@ async function loadDoneFromAccount() {
   try {
     const uid = useProofreadingBackendStore().userId;
     if (!uid) return;
-    const { data, error } = await supabase.from('tutorial_completions')
-      .select('item').eq('user_id', uid).eq('tutorial', SANDBOX_TUTORIAL).gt('practice_made', 0).limit(500);
+    let q = supabase.from('tutorial_completions')
+      .select('item').eq('user_id', uid).eq('tutorial', SANDBOX_TUTORIAL).gt('practice_made', 0);
+    const from = runFrom();
+    if (from) q = q.gt('completed_at', from);
+    const { data, error } = await q.limit(500);
     if (error || !data) return;
     for (const row of data as Array<{ item: string | null }>) if (row.item && SANDBOX_CELLS.some(c => c.id === row.item)) markDone(row.item);
     // Asked from the account's record, so it also reaches players who cut
@@ -132,6 +156,8 @@ function nextUndone(after = current): number {
 // From the Cut tutorial's last box: start with the first merger not cut yet.
 document.addEventListener('nge:sandbox-next', () => {
   const i = nextUndone(-1);
+  // All solved already: ask before handing out a cell again.
+  askAgain.value = i < 0;
   startSandbox(i < 0 ? 0 : i);
 });
 
@@ -166,8 +192,15 @@ const thisOneCut = () => sandboxDone.value.includes(cell().id);
 export const steps: Step[] = [
   // 1: The exercise
   {
-    get title() { return `Can you solve all ${TOTAL} merger mysteries?`; },
+    get title() { return askAgain.value ? `All ${TOTAL} merger mysteries solved` : `Can you solve all ${TOTAL} merger mysteries?`; },
+    get nextLabel() { return askAgain.value ? 'Start again' : undefined; },
     get text() {
+      if (askAgain.value) {
+        return `
+${progressBar()}
+
+You have solved every one. Want to go again from the start? Your Achievement stays yours.`;
+      }
       return `
 ${progressBar()}
 
@@ -178,6 +211,8 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
     onEnter: async () => {
       closeSidePanel();
       stopWatching();
+      // Asking whether to go again: no cell is taken until they say yes.
+      if (askAgain.value) return;
       // One merger is assigned at a time, and players work in parallel
       // (Ames, 2026-10-08): if this one is taken, the next free one this
       // player has not cut is given instead, then any free one.
@@ -223,11 +258,11 @@ Press **Try again** to have another go, or **Help me** there to see where the po
       }
       if (left <= 0) {
         return `
+<span class="nge-sbx-figure" tabindex="0"><img src="${imgSandboxComplete}" alt="Pyramidal neurons from the hippocampus"><span class="nge-sbx-figcap">Pyramidal neurons from the hippocampus, with mossy fiber axons (yellow), traced by citizen scientists. Up close: a synapse.</span></span>
+
 <span class="nge-done-lead">Congratulations, you found and cut all ${TOTAL} mergers. That is real proofreading.</span>
 
-<span class="nge-sbx-caption">Above: pyramidal neurons from the hippocampus, with mossy fiber axons (yellow), traced by citizen scientists. Up close: a synapse.</span>
-
-The cells go back to their merged state for the next person. You can cut any of them again from the burger menu.`;
+To go again, open the Merger Sandbox from the burger menu.`;
       }
       return `
 <span class="nge-done-lead">Congratulations, that is ${done} of ${TOTAL}. ${left} ${left === 1 ? 'remains' : 'remain'}!</span>
@@ -242,12 +277,14 @@ ${progressBar()}
     get nextLabel() {
       if (checking.value) return 'one moment';
       if (!thisOneCut()) return 'Try again';
-      return nextUndone() >= 0 && doneCount() < TOTAL ? 'Next merger' : 'Complete the Sandbox';
+      return nextUndone() >= 0 && doneCount() < TOTAL ? 'Next merger' : 'Finish';
     },
     position: OVER_3D,
     width: "440px",
     // The last box of the set shows what all this is for (Ames's picture).
-    get image() { return !checking.value && thisOneCut() && doneCount() >= TOTAL ? imgSandboxComplete : imgBravoNurro; },
+    // The last box of the set carries its own picture in the text, with its
+    // caption on hover; the others have Nurro.
+    get image() { return !checking.value && thisOneCut() && doneCount() >= TOTAL ? undefined : imgBravoNurro; },
     onEnter: async () => {
       // Done means the cut was made, not that Next was pressed. Asked of the
       // cell itself too, so a cut the watch missed still counts.
