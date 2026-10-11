@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T14:48:00Z",
+      "title": "Pyr gems count your mergers",
+      "items": [
+        "The Merger Sandbox count is now a chain of Pyr gems, one per merger, lit as you solve them."
+      ]
+    },
+    {
       "at": "2026-10-11T14:36:00Z",
       "title": "A new look for the Merger Sandbox count",
       "items": [
