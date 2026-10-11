@@ -115,7 +115,7 @@ function resetPlace() {
   --lan-fill: #0a1120;
   position: fixed; left: 50%; top: 46px; transform: translateX(-50%); z-index: 900;
   display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); box-sizing: border-box;
-  padding: 6px 18px 8px 8px; border: 0; border-radius: 0;
+  padding: 8px 18px 6px 8px; border: 0; border-radius: 0;
   background: linear-gradient(180deg, var(--lan-edge) 0%, rgba(255, 196, 110, 0.4) 55%, rgba(255, 196, 110, 0.16) 100%);
   clip-path: polygon(6px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px);
   font: 500 12px/1.2 'Inter', system-ui, sans-serif; color: rgba(239, 244, 251, 0.9);
@@ -126,9 +126,10 @@ function resetPlace() {
   background: linear-gradient(168deg, #0d1628 0%, var(--lan-fill) 60%, #070c18 100%);
   clip-path: polygon(5.6px 0, calc(100% - 13.4px) 0, 100% 13.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
 }
-/* a trace along the foot that ends in a solder point, as on the lit layer tab */
+/* a trace along the top that ends in a solder point, as on the lit layer tab
+   (Ames 2026-10-10: at the TOP of the box, not the bottom) */
 .nge-lantern::after {
-  content: ''; position: absolute; left: 14px; bottom: 2px; width: 38%; max-width: 190px; height: 5px; z-index: 0; pointer-events: none;
+  content: ''; position: absolute; left: 14px; top: 2px; width: 38%; max-width: 190px; height: 5px; z-index: 0; pointer-events: none;
   background:
     radial-gradient(circle 2px at calc(100% - 2.5px) 50%, #ffd08a 96%, transparent 100%),
     linear-gradient(90deg, rgba(255, 196, 110, 0.15), rgba(255, 196, 110, 0.75)) left center / calc(100% - 4px) 1px no-repeat;
