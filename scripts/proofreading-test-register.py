@@ -17,6 +17,9 @@ the graph or the database.
       every operation after it is undone when the test is reset (default now)
   python scripts/proofreading-test-register.py --anchor 70213,43077,1372
       a soma coordinate for this run only, when the config has none
+  python scripts/proofreading-test-register.py --endpoints-only
+      only the endpoint checks, as an INSERT for the test already registered
+      under the config's title (no graph lookups)
 
 The CAVE token comes from CAVE_SERVICE_TOKEN, else cloud-volume's own secret
 file (~/.cloudvolume/secrets/cave-secret.json).
@@ -25,8 +28,6 @@ import datetime
 import json
 import os
 import sys
-
-from cloudvolume import CloudVolume
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(HERE, "..", "config", "proofreading-test.json")
@@ -61,11 +62,62 @@ def parse_when(text):
     return datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
+def endpoint_rows(cfg, first_ordinal):
+    """The endpoint checks from the config: a point each, a radius in nm."""
+    radius = int(cfg.get("endpoint_radius_nm", 1500))
+    rows, problems = [], []
+    for j, e in enumerate(cfg.get("endpoints", [])):
+        pt = e if isinstance(e, list) else e.get("point")
+        if not pt or len(pt) != 3:
+            problems.append(f"endpoint {j + 1}: no point")
+            continue
+        rows.append({"ordinal": first_ordinal + j, "kind": "endpoint",
+                     "label": (e.get("label") if isinstance(e, dict) else "") or f"Branch end {j + 1}",
+                     "sv_a": "", "sv_b": "", "point_a": [int(v) for v in pt], "point_b": None,
+                     "radius": int(e.get("radius_nm", radius)) if isinstance(e, dict) else radius})
+    return rows, problems
+
+
+def check_values(rows):
+    lines = []
+    for r in rows:
+        lines.append("  (" + ", ".join([
+            str(r["ordinal"]), sql_str(r["kind"]), sql_str(r["label"]), sql_str(r["sv_a"]), sql_str(r["sv_b"]),
+            sql_str(json.dumps(r["point_a"])), sql_str(json.dumps(r["point_b"])) if r["point_b"] else "NULL",
+            "NULL" if r["radius"] is None else str(r["radius"])]) + ")")
+    return ",\n".join(lines)
+
+
+CHECK_COLUMNS = "(test_id, ordinal, kind, label, supervoxel_a, supervoxel_b, point_a, point_b, radius_nm)"
+CHECK_SELECT = "SELECT t.id, v.ordinal, v.kind, v.label, v.sv_a, v.sv_b, v.point_a::jsonb, v.point_b::jsonb, v.radius"
+
+
+def print_endpoints_only(cfg):
+    rows, problems = endpoint_rows(cfg, len(cfg["checks"]) + 1)
+    if problems or not rows:
+        sys.exit("PROBLEMS: " + "; ".join(problems or ["no endpoints in the config"]))
+    title = sql_str(cfg["title"])
+    print("-- Endpoint checks for the test " + title + ", generated " + datetime.datetime.now(datetime.timezone.utc).isoformat())
+    print("-- Run in the Supabase SQL editor after the test is registered. Re-running replaces the endpoints.")
+    print("BEGIN;")
+    print("DELETE FROM public.proofreading_test_checks WHERE kind = 'endpoint' AND test_id = (SELECT id FROM public.proofreading_tests WHERE title = " + title + ");")
+    print("INSERT INTO public.proofreading_test_checks " + CHECK_COLUMNS)
+    print(CHECK_SELECT)
+    print("FROM (SELECT id FROM public.proofreading_tests WHERE title = " + title + ") t, (VALUES")
+    print(check_values(rows))
+    print(") AS v(ordinal, kind, label, sv_a, sv_b, point_a, point_b, radius);")
+    print("COMMIT;")
+
+
 def main():
     inspect_only = "--inspect" in sys.argv
     cfg = json.load(open(CONFIG, encoding="utf-8"))
+    if "--endpoints-only" in sys.argv:
+        print_endpoints_only(cfg)
+        return
     if cfg["pcg_server"] != "https://minnie.microns-daf.com" or cfg["pcg_table"] != "pinky_nf_v2":
         sys.exit("Only the Pinky sandbox is approved for the test cell.")
+    from cloudvolume import CloudVolume
     token = os.environ.get("CAVE_SERVICE_TOKEN")
     kwargs = {"secrets": {"token": token}} if token else {}
     cv = CloudVolume(f"graphene://{cfg['pcg_server']}/segmentation/table/{cfg['pcg_table']}",
@@ -98,7 +150,7 @@ def main():
         print(f"anchor from the command line (not the config): {anchor}", file=sys.stderr)
     if not anchor:
         problems.append("No anchor (the soma) in the config: every one sided check needs it.")
-        anchor_sv = anchor_root = None
+        anchor_sv = anchor_root = anchor_now = None
     else:
         anchor_sv, anchor_root, anchor_now, vol = lookup(anchor)
         print(f"anchor {anchor} -> volume {vol}, supervoxel {anchor_sv}, root at baseline {anchor_root}, now {anchor_now}", file=sys.stderr)
@@ -148,16 +200,9 @@ def main():
         rows.append({"ordinal": i + 1, "kind": kind, "label": c.get("label", ""), "sv_a": sva, "sv_b": svb,
                      "point_a": list(pa), "point_b": list(pb), "radius": None})
 
-    radius = int(cfg.get("endpoint_radius_nm", 1500))
-    for j, e in enumerate(cfg.get("endpoints", [])):
-        pt = e if isinstance(e, list) else e.get("point")
-        if not pt:
-            problems.append(f"endpoint {j + 1}: no point")
-            continue
-        rows.append({"ordinal": len(cfg["checks"]) + j + 1, "kind": "endpoint",
-                     "label": (e.get("label") if isinstance(e, dict) else "") or f"Branch end {j + 1}",
-                     "sv_a": "", "sv_b": "", "point_a": list(pt), "point_b": None,
-                     "radius": int(e.get("radius_nm", radius)) if isinstance(e, dict) else radius})
+    end_rows, end_problems = endpoint_rows(cfg, len(cfg["checks"]) + 1)
+    rows.extend(end_rows)
+    problems.extend(end_problems)
 
     if problems:
         print("\nPROBLEMS:", file=sys.stderr)
@@ -185,15 +230,9 @@ def main():
     print(f"  VALUES ({', '.join(vals)})")
     print("  RETURNING id")
     print(")")
-    print("INSERT INTO public.proofreading_test_checks (test_id, ordinal, kind, label, supervoxel_a, supervoxel_b, point_a, point_b, radius_nm)")
-    print("SELECT t.id, v.ordinal, v.kind, v.label, v.sv_a, v.sv_b, v.point_a::jsonb, v.point_b::jsonb, v.radius FROM t, (VALUES")
-    lines = []
-    for r in rows:
-        lines.append("  (" + ", ".join([
-            str(r["ordinal"]), sql_str(r["kind"]), sql_str(r["label"]), sql_str(r["sv_a"]), sql_str(r["sv_b"]),
-            sql_str(json.dumps(r["point_a"])), sql_str(json.dumps(r["point_b"])) if r["point_b"] else "NULL",
-            "NULL" if r["radius"] is None else str(r["radius"])]) + ")")
-    print(",\n".join(lines))
+    print("INSERT INTO public.proofreading_test_checks " + CHECK_COLUMNS)
+    print(CHECK_SELECT + " FROM t, (VALUES")
+    print(check_values(rows))
     print(") AS v(ordinal, kind, label, sv_a, sv_b, point_a, point_b, radius);")
     print("COMMIT;")
     print("-- When ready: UPDATE public.proofreading_tests SET enabled = true WHERE title = " + sql_str(cfg["title"]) + ";")

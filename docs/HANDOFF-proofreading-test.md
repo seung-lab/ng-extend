@@ -6,9 +6,16 @@ version of this file (2026-10-10, commit 7c43513) described the tutorials
 and what the test would need; this one says what is built, what was found
 out about the demo cell, and what is left for Ames.
 
-**State: built and tested, not deployed, no test registered.** Nothing a
-player can see changes until the SQL is run, the secret is set, the
-functions are deployed and a test row is enabled.
+**State (2026-10-11 02:00 UTC): built and tested, not deployed.** The demo
+cell is back in its start state (Ames said to run the undos; operations 1878
+and 1879 undid 1864 and 1863, the current root is `648518346354883702`), the
+soma was found from the mesh (viewer 80868, 52282, 1637, supervoxel
+75084893952345677, inside the cell) and the registration SQL is generated.
+Still to come from Ames: the branch end coordinates (put them in
+`config/proofreading-test.json` under `endpoints` and run the script with
+`--endpoints-only`), the `EW_CAVE_TOKEN` secret, running the SQL, and the
+word to deploy. Nothing a player can see changes until the SQL is run, the
+secret is set, the functions are deployed and the test row is enabled.
 
 ## The goal
 

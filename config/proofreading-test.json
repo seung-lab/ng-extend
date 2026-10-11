@@ -4,10 +4,18 @@
   "dataset": "pinky_nf_v2",
   "pcg_server": "https://minnie.microns-daf.com",
   "pcg_table": "pinky_nf_v2",
-  "view_resolution": [4, 4, 40],
+  "view_resolution": [
+    4,
+    4,
+    40
+  ],
   "state_url": "middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5070860612272128",
-  "root": "648518346354385062",
-  "anchor": null,
+  "root": "648518346354883702",
+  "anchor": [
+    80868,
+    52282,
+    1637
+  ],
   "hold_minutes": 60,
   "pass_mark": 100,
   "damage_fails": true,
@@ -16,13 +24,96 @@
   "feedback": "summary",
   "endpoint_radius_nm": 1500,
   "checks": [
-    { "kind": "cut", "label": "Cut off the neighbour at the first join", "a": [114845, 43659, 1323], "b": [115030, 43688, 1335], "near": [114936, 43650, 1324] },
-    { "kind": "keep", "label": "Keep the spine with the synapse", "a": [114845, 43659, 1323] },
-    { "kind": "cut", "label": "Cut off the neighbour at its other two joins", "b": [115058, 43701, 1342], "near": [114268, 43465, 1298] },
-    { "kind": "merge", "label": "Merge the missing piece near 70213, 43077", "a": [70213, 43077, 1372], "b": [69468, 42916, 1430] },
-    { "kind": "merge", "label": "Merge the missing piece near 67130, 53339", "a": [67130, 53339, 744], "b": [67448, 53329, 809] },
-    { "kind": "merge", "label": "Continue that branch to its end", "a": [66310, 53395, 542] },
-    { "kind": "merge", "label": "Merge the missing piece near 65491, 41642", "a": [65491, 41642, 525] }
+    {
+      "kind": "cut",
+      "label": "Cut off the neighbour at the first join",
+      "a": [
+        114845,
+        43659,
+        1323
+      ],
+      "b": [
+        115030,
+        43688,
+        1335
+      ],
+      "near": [
+        114936,
+        43650,
+        1324
+      ]
+    },
+    {
+      "kind": "keep",
+      "label": "Keep the spine with the synapse",
+      "a": [
+        114845,
+        43659,
+        1323
+      ]
+    },
+    {
+      "kind": "cut",
+      "label": "Cut off the neighbour at its other two joins",
+      "b": [
+        115058,
+        43701,
+        1342
+      ],
+      "near": [
+        114268,
+        43465,
+        1298
+      ]
+    },
+    {
+      "kind": "merge",
+      "label": "Merge the missing piece near 70213, 43077",
+      "a": [
+        70213,
+        43077,
+        1372
+      ],
+      "b": [
+        69468,
+        42916,
+        1430
+      ]
+    },
+    {
+      "kind": "merge",
+      "label": "Merge the missing piece near 67130, 53339",
+      "a": [
+        67130,
+        53339,
+        744
+      ],
+      "b": [
+        67448,
+        53329,
+        809
+      ]
+    },
+    {
+      "kind": "merge",
+      "label": "Continue that branch to its end",
+      "a": [
+        66310,
+        53395,
+        542
+      ]
+    },
+    {
+      "kind": "merge",
+      "label": "Merge the missing piece near 65491, 41642",
+      "a": [
+        65491,
+        41642,
+        525
+      ]
+    }
   ],
-  "endpoints": []
+  "endpoints": [],
+  "_anchor_note": "The soma: the densest 6 um region of the cell mesh (17,643 vertices, 90th percentile radius 3.8 um), its centroid inside the segmentation of the cell (supervoxel 75084893952345677), found 2026-10-11 by scripts/find-soma logic; confirm it is the soma in the app.",
+  "_root_note": "The root after the two undos of 2026-10-11 (operations 1878 and 1879 put the neighbour back): 648518346354385062 was the root before Ames's edits that day."
 }
