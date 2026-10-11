@@ -30,6 +30,9 @@ export interface TestInfo {
   id: string; title: string; dataset: string; state_url: string; status: string; claimed_by: string | null;
   expires_at: string | null; hold_minutes: number; pass_mark: number; damage_fails: boolean;
   attempts_allowed: number | null; retry_hours: number; feedback: 'none' | 'summary' | 'detail';
+  /** Whether a pass opens anything (the pilot list, CAVE groups). A trial
+   *  run records the pass and grants nothing. */
+  grants?: boolean;
 }
 export interface TestStatus {
   test: TestInfo | null; free?: boolean; mine?: boolean; attempts?: number; passed?: boolean; admin?: boolean;
@@ -247,7 +250,7 @@ async function startWork() {
 async function submitWork() {
   const store = useTutorialStore();
   // "Try again" from a refused start: back to the cell box, which claims again.
-  if (session.phase === 'busy') { store.setTutorialStep(1); return; }
+  if (session.phase === 'busy') { store.setTutorialStep(2); return; }
   if (session.phase !== 'working' || !session.nonce || !session.test) { session.result = null; return; }
   session.phase = 'scoring';
   stopHold();
@@ -295,8 +298,10 @@ function resultText(): string {
   if (r.passed) {
     parts.push('<span class="nge-done-lead">You found and fixed what was wrong. That is real proofreading.</span>');
     const groups = r.granted?.groups ?? [];
-    const opened = groups.length === 0 || groups.every(g => g.ok);
-    parts.push(opened
+    const asked = !!r.granted && (r.granted.pilot || groups.length > 0);
+    const opened = asked && (r.granted!.pilot || groups.some(g => g.ok));
+    if (!asked) parts.push('**Your pass is recorded.** This is a trial run of the test: access to the real datasets is switched on by hand for now.');
+    else parts.push(opened
       ? '**Production is open to you.** Open the dataset switcher (Data, at the top) and pick the retina: your edits there count for science. If it still says View only, sign out and back in once.'
       : 'Your pass is recorded. Opening the production dataset did not go through on the server side; an admin will finish it, and the retina will show in the dataset switcher once they have.');
   } else {
@@ -335,10 +340,13 @@ export const steps: Step[] = [
       const st = testStatus.value;
       const t = st?.test;
       const hold = t?.hold_minutes ?? 60;
+      const grants = t ? t.grants !== false : true;
       const lines = [
         'This is the real thing: one cell from the Sandbox with **several mistakes** on it, and nothing marked. Find and fix every one. Cut off what belongs to another cell, merge on what is missing, and mark the end of every branch with a point annotation.',
-        'Pass, and Pyr opens the production dataset to you: the real retina, where your edits count for science.',
-        `**How it works.** The cell is yours alone while you work. After ${hold} quiet minutes it goes to the next person. Cuts and merges are real edits on the Sandbox and are put back afterwards. When the cell is right, press **Submit for scoring**: the server checks the cell itself.`,
+        grants
+          ? 'Pass, and Pyr opens the production dataset to you: the real retina, where your edits count for science.'
+          : 'This is a trial run of the test: a pass is recorded, and access to the real datasets is switched on by hand for now.',
+        `**How it works.** One player at a time: the cell is yours alone while you work, and after ${hold} quiet minutes it goes to the next person. Cuts and merges are real edits on the Sandbox and are put back afterwards. When the cell is right, press **Submit for scoring**: the server checks the cell itself.`,
       ];
       if (!st) lines.push('Sign in to take the test.');
       else if (!t) lines.push('There is no test open right now. Check back later.');
@@ -360,7 +368,25 @@ export const steps: Step[] = [
     onEnter: () => { closeSidePanel(); stopWatching(); refreshTestStatus(); },
   } as Step,
 
-  // 2: The cell
+  // 2: How to work the cell (Ames, 2026-10-11: say to mark ends with
+  // annotations and to keep track with Highlight, in a box of its own)
+  {
+    title: 'How to work the cell',
+    text: `
+**Follow every branch to its end.** Use **Highlight** to paint each stretch you have checked, so you can see where you have been: press the highlighter in the top bar, or hold **H** and click two points on a branch.
+
+**Where a branch truly ends, mark it.** Click **+** at the end of the layer tabs to make an annotation layer (the point tool is already picked), then click the last bit of the cell. One point per end; a point anywhere on the end is fine.
+
+**Fix what is wrong as you go.** A branch that belongs to another cell: press **C**, red points on one side of the join, **G**, blue on the other, then Submit cut. A piece that is missing: press **M**, Ctrl+click the cell and the piece, then Submit.
+
+Check the 2D images before every cut: that is where a false join shows.`,
+    position: MIDDLE,
+    width: '620px',
+    nextLabel: 'Give me the cell',
+    onEnter: () => { closeSidePanel(); stopWatching(); },
+  } as Step,
+
+  // 3: The cell
   {
     get title() {
       if (session.phase === 'busy') return 'Not right now';
@@ -393,7 +419,7 @@ Take your time. When the cell is right, press **Submit for scoring**.`;
     onEnter: startWork,
   } as Step,
 
-  // 3: The result
+  // 4: The result
   {
     get title() {
       if (session.phase === 'scoring') return 'Scoring your cell';

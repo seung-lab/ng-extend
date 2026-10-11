@@ -120,7 +120,8 @@ LANGUAGE sql IMMUTABLE AS $$
   SELECT jsonb_build_object('id', t.id, 'title', t.title, 'dataset', t.dataset, 'state_url', t.state_url,
     'status', t.status, 'claimed_by', t.claimed_by, 'expires_at', t.expires_at, 'hold_minutes', t.hold_minutes,
     'pass_mark', t.pass_mark, 'damage_fails', t.damage_fails, 'attempts_allowed', t.attempts_allowed,
-    'retry_hours', t.retry_hours, 'feedback', t.feedback, 'cave_groups', to_jsonb(t.cave_groups));
+    'retry_hours', t.retry_hours, 'feedback', t.feedback, 'cave_groups', to_jsonb(t.cave_groups),
+    'grants', (t.grant_pilot OR cardinality(t.cave_groups) > 0));
 $$;
 
 CREATE OR REPLACE FUNCTION public.pilot_test_action(p_user uuid, p_action text, p_args jsonb DEFAULT '{}')

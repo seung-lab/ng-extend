@@ -32,6 +32,10 @@ test('pilot_test_action: one player at a time, holds, tries, the pass opens the 
     let s = await call(A, 'status');
     assert.equal(s.test.id, id); assert.equal(s.free, true); assert.equal(s.can_start, true); assert.equal(s.attempts, 0);
     assert.ok(!('anchor_supervoxel' in s.test) && !('baseline_at' in s.test), 'the public shape carries no answers');
+    assert.equal(s.test.grants, true, 'a pass grants by default');
+    await db.exec(`UPDATE proofreading_tests SET grant_pilot = false, cave_groups = '{}' WHERE id = '${id}'`);
+    assert.equal((await call(A, 'status')).test.grants, false, 'a trial run grants nothing');
+    await db.exec(`UPDATE proofreading_tests SET grant_pilot = true, cave_groups = '{203}' WHERE id = '${id}'`);
     // The public view shows only the enabled test, with no answers.
     const view = await db.query('SELECT * FROM proofreading_tests_public');
     assert.equal(view.rows.length, 1); assert.deepEqual(Object.keys(view.rows[0]).sort(), ['claimed_by', 'expires_at', 'hold_minutes', 'id', 'status', 'title']);
