@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T23:18:54Z",
+      "title": "A warning before Ctrl+W closes Pyr",
+      "items": [
+        "If you press Ctrl+W by mistake, for example reaching for Ctrl+2 or Ctrl+3, your browser now asks before it closes the tab. Refreshing the page does not ask."
+      ]
+    },
+    {
       "at": "2026-10-11T23:07:22Z",
       "title": "Choose what you see when you complete a cell",
       "items": [
