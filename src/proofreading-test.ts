@@ -420,7 +420,8 @@ function resultText(): string {
     if (typeof r.errors === 'number') bits.push(`${r.found} of ${r.errors} mistake${r.errors === 1 ? '' : 's'} fixed`);
     if (r.endpoints) bits.push(`${r.endpointsFound} of ${r.endpoints} branch end${r.endpoints === 1 ? '' : 's'} marked`);
     if (r.damaged) bits.push(`<strong style="color:#e06060">${r.damaged} part${r.damaged === 1 ? '' : 's'} of the real cell cut off or wrongly joined</strong>`);
-    if (r.stray) bits.push(`${r.stray} point${r.stray === 1 ? '' : 's'} placed where no branch ends`);
+    if (r.stray && r.endpoints) bits.push(`${r.stray} point${r.stray === 1 ? '' : 's'} placed where no branch ends`);
+    if (!r.endpoints) bits.push('branch ends are not scored yet');
     parts.push(`**Score: ${percentWord(r)}.** ${bits.join('; ')}.`);
     if (!r.passed && r.damaged) parts.push('Damage to the real cell fails the test on its own, however many mistakes you found. Cut only where two different cells touch, and look at the 2D images before you place a point.');
     if (r.checks) {
