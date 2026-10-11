@@ -885,6 +885,14 @@ const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
   // the two supervoxels either side of Ames's own cut of 2026-10-11
   // (operation 1871): the small branch, and the cell beside it.
   'c04eed2c-4204-4b3d-a25d-2f7aa880c1aa': ['75719174185485322', '75719174185482374'],
+  // Merger Sandbox 7 and 8: the row's points are micrometres apart, so a cut
+  // well away from the join still parted them and counted (Ames's test cut
+  // on Merger 8, operation 1893, 2026-10-11). These are two supervoxels that
+  // touch across the join, from the edges her reference cuts removed
+  // (operations 1872 and 1873). Checked against history: parted by the
+  // reference cut, still together after the stray one.
+  '0482d846-0c16-4393-ab8a-0d1212b9520f': ['75508549324873021', '75508549324879021'],
+  '814be870-9149-4474-876f-195e0af0bd08': ['74593068321675225', '74593068321697468'],
 };
 /**
  * Split view (2D images beside 3D), with the 2D panel rebuilt once the view
