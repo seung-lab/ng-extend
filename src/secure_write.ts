@@ -8,6 +8,10 @@ import { functionUrl } from './functions_base';
  */
 const ENDPOINT = (window as any).__NGE_SECURE_WRITE_URL
   || functionUrl('ewSecureWrite');
+// The proofreading test has a function of its own (functions/index.js,
+// ewProofreadingTest): the shared one is redeployed from many checkouts.
+const TEST_ENDPOINT = (window as any).__NGE_TEST_WRITE_URL
+  || functionUrl('ewProofreadingTest');
 const STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
 export function caveToken(): string | null {
@@ -28,7 +32,7 @@ export type SecureAction =
 export async function secureWrite<T = any>(action: SecureAction, args: Record<string, any> = {}): Promise<T> {
   const token = caveToken();
   if (!token) throw new Error('Sign in to EyeWire II first.');
-  const res = await fetch(ENDPOINT, {
+  const res = await fetch(action.startsWith('test.') ? TEST_ENDPOINT : ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...args, action, token }),

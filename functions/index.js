@@ -1705,12 +1705,8 @@ const ewIsStreakMilestone = (d) => {
   return d % 25 === 0 || d % 365 === 0;
 };
 
-// Bump when index.js changes in a way a deploy must prove: health answers it.
-const EW_CODE_VERSION = "2026-10-11-proofreading-test";
-
 exports.ewSecureWrite = onRequest(
-  // 120 s: scoring the proofreading test reads the graph and undoes the player's edits.
-  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20, timeoutSeconds: 120 },
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({error:"Input too large"});
@@ -1726,11 +1722,8 @@ exports.ewSecureWrite = onRequest(
       else if (k.split(".").length === 3) {
         try { kind = "legacy_" + JSON.parse(Buffer.from(k.split(".")[1], "base64url").toString()).role; } catch (e) { kind = "unreadable_jwt"; }
       }
-      // `code`: which build of this file is live, so a deploy can be checked
-      // from outside (the proofreading test deploy of 2026-10-11 answered
-      // with the old code and nothing said which revision was serving).
-      try { await ewSb(k)("admins?select=id&limit=1"); res.json({ ok: true, db: true, kind, code: EW_CODE_VERSION }); }
-      catch (e) { res.status(500).json({ ok: false, db: false, kind, code: EW_CODE_VERSION }); }
+      try { await ewSb(k)("admins?select=id&limit=1"); res.json({ ok: true, db: true, kind }); }
+      catch (e) { res.status(500).json({ ok: false, db: false, kind }); }
       return;
     }
     const who = await ewVerify(token);
@@ -1741,20 +1734,6 @@ exports.ewSecureWrite = onRequest(
       const ctx = await pilotContext(sb,who);
       const {me,isAdmin} = ctx;
       if(action === "pilot.status") return res.json({ok:true,data:{invited:!!(isAdmin||ctx.isPilot),admin:isAdmin}});
-      // The proofreading test (Ames 2026-10-10) is open to every signed in
-      // player with a profile: passing it is how a player joins the pilot,
-      // so it sits before the pilot gate. Rules in proofreading-test.js.
-      if (typeof action === "string" && action.startsWith("test.")) {
-        const { handle: testHandle } = require("./proofreading-test");
-        const data = await testHandle({ action, args, who, me, io: {
-          fetch, caveToken: ewCaveToken.value().trim(), sb,
-          rpc: (a, p) => sb("rpc/pilot_test_action", { method: "POST", body: JSON.stringify({ p_user: me && me.id, p_action: a, p_args: p || {} }) }),
-          // Chat colour and team access read the production flag from a
-          // cache: a fresh pass must show at once.
-          onGranted: () => ewProductionCache.delete(token),
-        } });
-        return res.json({ ok: true, data });
-      }
       requirePilot(ctx);
       const needAdmin = () => { if (!isAdmin) throw ewErr(403, "Admins only"); };
       let out = null;
@@ -1999,6 +1978,55 @@ exports.ewSecureWrite = onRequest(
   }
 );
 
+
+// ── The proofreading test (Ames 2026-10-10): a function of its own ────────
+// Open to every signed in player with a profile: passing it is how a player
+// joins the pilot, so there is no pilot gate here. Rules in
+// proofreading-test.js; client in src/proofreading-test.ts, which sends the
+// test.* actions here through secure_write.ts.
+//
+// Why not inside ewSecureWrite: several checkouts on Ames's machine deploy
+// that function, and each deploy replaces it with that checkout's code. On
+// 2026-10-11 the test's code was deployed twice and overwritten within two
+// minutes both times. This function is deployed only from the branch that
+// has it, and it alone binds the CAVE token:
+//   firebase deploy --only functions:ewProofreadingTest --project eyewire-ii-e4d52
+const EW_TEST_CODE_VERSION = "2026-10-11-proofreading-test-2";
+exports.ewProofreadingTest = onRequest(
+  // 120 s: scoring reads the graph and undoes the player's edits.
+  { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, timeoutSeconds: 120 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    // Health: the database is reachable, and which code is live.
+    if (action === "health") {
+      try { await ewSb(ewServiceKey.value().trim())("admins?select=id&limit=1"); res.json({ ok: true, db: true, code: EW_TEST_CODE_VERSION }); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_TEST_CODE_VERSION }); }
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("test.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to EyeWire II again, then retry." }); return; }
+    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait before sending another change." });
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me } = await pilotContext(sb, who);
+      const { handle: testHandle } = require("./proofreading-test");
+      const data = await testHandle({ action, args, who, me, io: {
+        fetch, caveToken: ewCaveToken.value().trim(), sb,
+        rpc: (a, p) => sb("rpc/pilot_test_action", { method: "POST", body: JSON.stringify({ p_user: me && me.id, p_action: a, p_args: p || {} }) }),
+        // ewSecureWrite keeps its own production access cache in its own
+        // process: a fresh pass shows in chat colour within ten minutes.
+        onGranted: () => {},
+      } });
+      res.json({ ok: true, data });
+    } catch (e) {
+      console.warn("[ewProofreadingTest]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "The operation could not be completed." });
+    }
+  }
+);
 
 exports.ewCommunityData = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },

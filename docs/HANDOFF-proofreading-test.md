@@ -93,9 +93,15 @@ Run it in the Supabase SQL editor (print it from the file). Idempotent.
 
 ### Server: `functions/proofreading-test.js`
 
-Wired into `ewSecureWrite` (`functions/index.js`) as `test.status`,
-`test.start`, `test.heartbeat`, `test.submit`, `test.abandon`, before the
-pilot gate. `functions/pcg-history.js` is the CommonJS copy of the practice
+Served by **its own function, `ewProofreadingTest`** (`functions/index.js`), as
+`test.status`, `test.start`, `test.heartbeat`, `test.submit`, `test.abandon`,
+with no pilot gate. It is not inside `ewSecureWrite` on purpose: several
+checkouts on Ames's machine deploy that shared function, and on 2026-10-11
+the test's code was deployed there twice and overwritten within two minutes
+both times (the audit log in `firebase functions:log` showed the second
+UpdateFunction 86 s after the first). Deploy the test's function with
+`firebase deploy --only functions:ewProofreadingTest --project eyewire-ii-e4d52`;
+its health answer carries `code`, so a deploy can be checked from outside. `functions/pcg-history.js` is the CommonJS copy of the practice
 reset job's history rules (a test keeps it in step with
 `scripts/practice-reset-policy.mjs`).
 
@@ -114,11 +120,9 @@ reset job's history rules (a test keeps it in step with
 - `test.abandon`: put the cell back, record `abandoned`.
 - New secret **`EW_CAVE_TOKEN`**: a CAVE token whose account has edit on
   `pinky100` (any account) and is a group admin of Eyewire_2_Edit or a
-  middleauth superadmin (Ames's is). Set it before deploying, or the deploy
-  of `ewSecureWrite` fails:
-  `firebase functions:secrets:set EW_CAVE_TOKEN --project eyewire-ii-e4d52`.
-  The function's timeout is now 120 s (scoring reads the graph and undoes
-  the player's edits).
+  middleauth superadmin (Ames's is). Set on 2026-10-11 (version 1). The
+  function's timeout is 120 s (scoring reads the graph and undoes the
+  player's edits).
 - Tests: `functions/proofreading-test.test.js` (a fake chunkedgraph: start,
   resume, a wrongly registered cell, a pass with grant and reset, damage,
   feedback levels, an ended hold, abandon), `functions/pcg-history.test.js`,
