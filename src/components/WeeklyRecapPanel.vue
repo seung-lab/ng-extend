@@ -195,7 +195,8 @@ const nextBadges = computed<NextBadgeInfo[]>(() => {
 const nextBadgeFor = computed(() => {
   function nextFor(badges: typeof BUILDING_BADGES, current: number, track: BadgeTrack): NextBadgeInfo | null {
     const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
-    const idx = sorted.findIndex(b => current < b.threshold);
+    // the next one not held: a saved Achievement can sit above the count
+    const idx = sorted.findIndex(b => current < b.threshold && !backendW.holdsSaved(backendW.userId, track, b.id));
     if (idx === -1) return null;
     const target = sorted[idx];
     const prev = idx > 0 ? sorted[idx - 1].threshold : 0;
@@ -211,7 +212,8 @@ const nextBadgeFor = computed(() => {
 const nextBadge = computed<NextBadgeInfo | null>(() => {
   function nextFor(badges: typeof BUILDING_BADGES, current: number, track: BadgeTrack): NextBadgeInfo | null {
     const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
-    const idx = sorted.findIndex(b => current < b.threshold);
+    // the next one not held: a saved Achievement can sit above the count
+    const idx = sorted.findIndex(b => current < b.threshold && !backendW.holdsSaved(backendW.userId, track, b.id));
     if (idx === -1) return null;
     const target = sorted[idx];
     const prev = idx > 0 ? sorted[idx - 1].threshold : 0;

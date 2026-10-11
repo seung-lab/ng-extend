@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T13:41:00Z",
+      "title": "Cell Completion Achievements at round numbers",
+      "items": [
+        "The Cell Completion Achievements now come at round numbers: 1, 5, 10, 15, 20, 30, 40, 50, 75, 100, and on from there, up to 55,000 cells.",
+        "Every Achievement you already earned is yours to keep, even where its number went up."
+      ]
+    },
+    {
       "at": "2026-10-11T13:45:00Z",
       "title": "A progress strip in the Merger Sandbox",
       "items": [

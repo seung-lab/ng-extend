@@ -147,6 +147,7 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
   for (const badge of BUILDING_BADGES) {
     if (badge.threshold <= 0) continue;
     if (prevEdits < badge.threshold && newEdits >= badge.threshold) {
+      if (backend.holdsSaved(backend.userId, 'building', badge.id)) continue;
       if (!claimBadgeOnce(badge.id != null ? `b:${badge.id}` : `b:${badge.slug}`)) continue;
       // Persist the earn so it survives a stat drop / new device (item 11).
       if (badge.id != null) backend.recordBadgeAward('building', badge.id);
@@ -192,6 +193,9 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
   for (const badge of EXPLORATION_BADGES) {
     if (badge.threshold <= 0) continue;
     if (prevCells < badge.threshold && newCells >= badge.threshold) {
+      // Already held as a saved record (its number was raised after it was
+      // earned): reaching the new number is not earning it a second time.
+      if (backend.holdsSaved(backend.userId, 'exploration', badge.id)) continue;
       if (!claimBadgeOnce(badge.id != null ? `e:${badge.id}` : `e:${badge.slug}`)) continue;
       // Persist the earn so it survives a stat drop / new device (item 11).
       if (badge.id != null) backend.recordBadgeAward('exploration', badge.id);

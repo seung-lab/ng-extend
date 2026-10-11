@@ -211,6 +211,7 @@ const rankedUsers = computed(() => {
 // 2026-10-05: "always add your own row with your true rank").
 const BOARD_SIZE = 50;
 const isYou = (user: DemoUser) => user.id === backendStore.userId;
+watch(() => supabaseUsers.value.map(u => u.id).join(), () => { void backendStore.loadSavedAwards(supabaseUsers.value.map(u => u.id)); }, { immediate: true });
 const rankingColumn = computed(() => {
   const span = activeTab.value === 'week' ? 'week' : activeTab.value === 'day' ? '24h' : 'alltime';
   return `${metric.value === 'completions' ? 'completions' : 'edits'}_${span}`;
@@ -253,7 +254,8 @@ function editCountForTab(user: DemoUser): number {
 function isBadgeEarnedByUser(badge: BadgeDefinition, user: DemoUser): boolean {
   if (badge.threshold === 0) return false;
   const stat = badge.track === 'building' ? user.stats.editsAllTime : badge.track === 'loyalty' ? 0 /* total days is not on the board */ : user.stats.cellsSubmitted;
-  return stat >= badge.threshold;
+  // or saved: an earned Achievement is kept when its number is raised
+  return stat >= badge.threshold || backendStore.holdsSaved(user.id, badge.track, badge.id);
 }
 
 // Legacy compat wrapper

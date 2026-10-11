@@ -82,6 +82,7 @@ async function loadOtherUser() {
     // must not stand in while the second loads.
     if (otherUserProfile.value && otherUserProfile.value.id !== props.viewUserId) otherUserProfile.value = null;
     otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
+    void backendStore.loadSavedAwards([props.viewUserId]);
     otherSilver.value = [];
     void backendStore.loadSilverBadges(props.viewUserId).then(l => { otherSilver.value = l; });
     otherBronze.value = [];
@@ -522,11 +523,9 @@ function statForTrack(track: BadgeTrack): number {
 function isBadgeEarned(badge: BadgeDefinition): boolean {
   if (badge.threshold === 0) return false;
   if (statForTrack(badge.track) >= badge.threshold) return true;
-  // Persisted earn: once crossed, a badge stays earned even if the stat later
-  // drops. myBadgeAwards is the CURRENT user's, so only apply it to own profile.
-  if (!viewingOtherUser.value && badge.id != null &&
-      backendStore.myBadgeAwards.has(`${badge.track}:${badge.id}`)) return true;
-  return false;
+  // Saved earn: once earned, an Achievement stays earned, even if the count
+  // later drops or the tier's number is raised. True on anyone's profile.
+  return backendStore.holdsSaved(props.viewUserId || backendStore.userId, badge.track, badge.id);
 }
 
 function onBadgeClick(badge: BadgeDefinition) {
@@ -810,7 +809,8 @@ function thresholdLabel(badge: BadgeDefinition): string {
 // ── Per-track achievement countdowns ─────────────────────────────────────────
 function nextForTrack(badges: BadgeDefinition[], current: number) {
   const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
-  const next = sorted.find(b => current < b.threshold);
+  // The next one not held: a saved Achievement can sit above the count.
+  const next = sorted.find(b => current < b.threshold && !isBadgeEarned(b));
   if (!next) return null;
   const prev = sorted[sorted.indexOf(next) - 1]?.threshold ?? 0;
   const remaining = next.threshold - current;
