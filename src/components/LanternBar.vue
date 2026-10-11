@@ -113,37 +113,52 @@ function resetPlace() {
      Lantern's amber, where the layer tabs are blue. */
   --lan-edge: rgba(255, 196, 110, 0.62);
   --lan-fill: #0a1120;
-  position: fixed; left: 50%; top: 46px; transform: translateX(-50%); z-index: 900;
+  --lan-trace: #ffd08a;
+  /* where the two pads sit, measured along the top edge (6px in, 14px short) */
+  --lan-pad-x: calc(6px + (100% - 20px) * 0.75);
+  --lan-cut: polygon(
+    6px 3px, calc(var(--lan-pad-x) - 8px) 3px, calc(var(--lan-pad-x) - 8px) 0,
+    calc(var(--lan-pad-x) + 8px) 0, calc(var(--lan-pad-x) + 8px) 3px,
+    calc(100% - 14px) 3px, 100% 17px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
+  position: fixed; left: 50%; top: 43px; transform: translateX(-50%); z-index: 900;
   display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); box-sizing: border-box;
-  padding: 8px 18px 6px 8px; border: 0; border-radius: 0;
-  background: linear-gradient(180deg, var(--lan-edge) 0%, rgba(255, 196, 110, 0.4) 55%, rgba(255, 196, 110, 0.16) 100%);
-  clip-path: polygon(6px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px);
+  /* 3px of headroom above the shape: the pads sit ON the top edge, half above it */
+  padding: 10px 18px 7px 8px; border: 0; border-radius: 0;
+  /* the edge light down the sides and along the foot; it never paints the headroom */
+  background: linear-gradient(180deg, var(--lan-edge) 0%, rgba(255, 196, 110, 0.4) 55%, rgba(255, 196, 110, 0.16) 100%) no-repeat left bottom / 100% calc(100% - 3px);
+  clip-path: var(--lan-cut);
   font: 500 12px/1.2 'Inter', system-ui, sans-serif; color: rgba(239, 244, 251, 0.9);
   user-select: none;
 }
 .nge-lantern::before {
-  content: ''; position: absolute; inset: 1px; z-index: 0; pointer-events: none;
+  /* reaches the shape's very top, so the trace is the only top edge */
+  content: ''; position: absolute; inset: 3px 1px 1px 1px; z-index: 0; pointer-events: none;
   background: linear-gradient(168deg, #0d1628 0%, var(--lan-fill) 60%, #070c18 100%);
-  clip-path: polygon(5.6px 0, calc(100% - 13.4px) 0, 100% 13.4px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 5.6px);
+  clip-path: polygon(5px 0, calc(100% - 13px) 0, 100% 14px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 6.4px);
 }
-/* a trace along the top that ends in a solder point, as on the lit layer tab
-   (Ames 2026-10-10: at the TOP of the box, not the bottom) */
+/* The top edge IS the circuit trace, as on the selected layer tab (Ames
+   2026-10-10: "the circuit line at the top IS the top bar, not in addition to
+   the top bar"). It runs inward along the edge from either side; the two runs
+   do not join, each ends on a pad, and the pads sit either side of a small
+   gap three quarters of the way across. */
 .nge-lantern::after {
-  content: ''; position: absolute; left: 14px; top: 2px; width: 38%; max-width: 190px; height: 5px; z-index: 0; pointer-events: none;
+  content: ''; position: absolute; z-index: 1; pointer-events: none;
+  left: 6px; right: 14px; top: 0; height: 7px;
   background:
-    radial-gradient(circle 2px at calc(100% - 2.5px) 50%, #ffd08a 96%, transparent 100%),
-    linear-gradient(90deg, rgba(255, 196, 110, 0.15), rgba(255, 196, 110, 0.75)) left center / calc(100% - 4px) 1px no-repeat;
+    radial-gradient(circle at calc(75% - 4.5px) 3.7px, #1a1408 0 0.9px, var(--lan-trace) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at calc(75% + 4.5px) 3.7px, #1a1408 0 0.9px, var(--lan-trace) 1.3px 2.1px, transparent 2.5px),
+    linear-gradient(var(--lan-trace), var(--lan-trace)) left 0 top 3px / calc(75% - 6.8px) 1.4px no-repeat,
+    linear-gradient(var(--lan-trace), var(--lan-trace)) right 0 top 3px / calc(25% - 6.8px) 1.4px no-repeat;
 }
 .nge-lantern > * { position: relative; z-index: 1; }
 .nge-lantern--folded { gap: 4px; padding-right: 14px; }
-.nge-lantern--folded::after { width: 46%; }
 /* The bar comes in as the lantern lights: a light runs across it from the
    left, once, like the one crossing the cells. */
 .nge-lantern-bar-enter-active { animation: nge-lantern-bar-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .nge-lantern-bar-leave-active { animation: nge-lantern-bar-out 0.26s ease-in both; }
 @keyframes nge-lantern-bar-in {
-  0%   { opacity: 0; filter: brightness(2.6); clip-path: polygon(6px 0, 6px 0, 6px 0, 6px 100%, 9px 100%, 0 calc(100% - 9px), 0 6px); }
-  100% { opacity: 1; filter: none; clip-path: polygon(6px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 6px); }
+  0%   { opacity: 0; filter: brightness(2.6); clip-path: polygon(6px 3px, 6px 3px, 6px 0, 6px 0, 6px 3px, 6px 3px, 6px 17px, 6px 100%, 6px 100%, 0 calc(100% - 9px), 0 9px); }
+  100% { opacity: 1; filter: none; clip-path: var(--lan-cut); }
 }
 @keyframes nge-lantern-bar-out {
   0%   { opacity: 1; filter: none; }
