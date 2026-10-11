@@ -23,7 +23,6 @@ import { isMobileRef } from '../util/mobile';
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
-import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
@@ -483,28 +482,10 @@ onMounted(()  => document.addEventListener('click', handleGlobalClick, true));
 onUnmounted(() => document.removeEventListener('click', handleGlobalClick, true));
 
 // ── Canvas cell-dot visualization ─────────────────────────────────────────────
-// ── Demo seeding ─────────────────────────────────────────────────────────────
-onMounted(() => {
-  if (stats.value.editsAllTime === 0) {
-    const amy = DEMO_USERS[0];
-    statsStore.setStats({
-      editsAllTime:            amy.stats.editsAllTime,
-      mergesAllTime:           amy.stats.mergesAllTime,
-      splitsAllTime:           amy.stats.splitsAllTime,
-      editsThisWeek:           amy.stats.editsThisWeek,
-      mergesThisWeek:          amy.stats.mergesThisWeek,
-      splitsThisWeek:          amy.stats.splitsThisWeek,
-      editsThisMonth:          amy.stats.editsThisMonth,
-      mergesThisMonth:         amy.stats.mergesThisMonth,
-      splitsThisMonth:         amy.stats.splitsThisMonth,
-      cellsSubmitted:          amy.stats.cellsSubmitted,
-      currentStreak:           amy.stats.currentStreak,
-      longestStreak:           amy.stats.longestStreak,
-      communityEditsThisWeek:  DEMO_COMMUNITY_EDITS_WEEK,
-      communityEditsThisMonth: DEMO_COMMUNITY_EDITS_MONTH,
-    });
-  }
-});
+// A player with no edits used to get a made-up demo player's stats here (892
+// cells) until the real ones loaded. That was read as the count jumping, and
+// saved 25 cell Achievements for one player on 2026-10-01. Removed 2026-10-11:
+// a profile only ever shows the player's own numbers.
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 function getBadgeUrl(imageKey: string): string {

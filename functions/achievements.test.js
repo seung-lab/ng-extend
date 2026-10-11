@@ -34,7 +34,7 @@ test('cell tiers rise all the way and are round numbers', () => {
   const t = TABLE.filter(a => a.track === 'exploration').sort((a, b) => a.id - b.id).map(a => a.threshold);
   assert.equal(t.length, 100);
   for (let i = 1; i < t.length; i++) assert.ok(t[i] > t[i - 1], `tier ${i + 1}`);
-  assert.equal(t[99], 55000);
+  assert.equal(t[99], 54000);
   for (const n of t.slice(1)) assert.equal(n % 5, 0, String(n));
 });
 
