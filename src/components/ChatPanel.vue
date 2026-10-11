@@ -1252,7 +1252,9 @@ function toggleCollapse() {
                      @click="openAnnouncement(msg.notificationId)"
                      @keydown.enter="openAnnouncement(msg.notificationId)"
                      title="Open this notification">
-                  <span class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
+                  <!-- With a picture the time is left out, so the picture
+                       sits at the left edge (Ames 2026-10-11). -->
+                  <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <img v-if="announcePicture(msg.notificationId)" class="nge-chat-announce-thumb" :src="announcePicture(msg.notificationId)" alt="" loading="lazy" />
                   <span class="nge-chat-announce-text">{{ msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('') }}</span>
                   <!-- Announcements take reactions like any message (Ames
