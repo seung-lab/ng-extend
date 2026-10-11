@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T16:15:45Z",
+      "title": "The segment list keeps its place",
+      "items": [
+        "Removing a segment from a long list no longer makes the list jump up. It stays where you were."
+      ]
+    },
+    {
       "at": "2026-10-11T15:37:00Z",
       "title": "Cell types and completions stay with the cell after an edit",
       "items": [
