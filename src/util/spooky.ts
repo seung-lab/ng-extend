@@ -7,8 +7,8 @@
  *                 bring your view close it dissolves, and turns up somewhere
  *                 else two seconds later.
  *   The reaper    Rare. He arrives the same way, further off, carrying his
- *                 own red lantern: the cell near him is lit red. He drifts,
- *                 and fades when you come near or when his time is up.
+ *                 own red lantern: the cell near him is lit red. He stands
+ *                 still, and is gone in an instant if you come near. Held back for now.
  *   boo!          Say  boo!  in chat and a ghost pops up in front of you and
  *                 flies off the screen. Your own boo! works all year; in
  *                 Halloween week everyone who sees it gets one.
@@ -48,26 +48,38 @@ export const spooky = reactive({ on: inSeason() || testOn(), season: inSeason() 
 const haunted = () => lantern.on && spooky.on;
 
 type Kind = 'ghost' | 'reaper' | 'boo';
-// The ghost and the reaper are sized and placed by the LANTERN: its reach is
-// their yardstick. So they are a fixed size in the data, the same against the
-// cell however far you are zoomed, and they turn up at the edge of the light
-// (Ames 2026-10-10: sized by the view, the ghost was as big as the cell body
-// from far away and bigger than it close up; "he should appear close to the
-// edge of the area lit by lantern"). The boo! ghost is the exception: it pops
-// up in front of you, so it is sized by the view.
+// The ghost and the reaper are a FIXED SIZE in the data, in micrometres, so
+// they are the same against the cell however far you are zoomed, and small
+// beside a cell body (about 10 um across). They turn up at the edge of the
+// Lantern's light. (Ames 2026-10-10. Sized by the view the ghost was as big
+// as the cell body from far away; sized by the Lantern he was still too big.)
+// The boo! ghost is the exception: it pops up in front of you, so its size
+// is a share of the view.
 const KINDS: Record<Kind, {
   model: 'ghost' | 'reaper';
-  by: 'lantern' | 'view';          // what size, near and far are fractions of
-  size: number; near: number; far: number;
+  sizeUm?: number;                 // its height, micrometres
+  sizeOfView?: number;             // or, for boo, its height as a share of the view
+  near: number; far: number;       // where it appears: this many Lantern reaches from the centre
   scared: number;                  // it goes when the view centre is this many of its own heights away (0 = never)
+  tooBig: number;                  // and when zooming in makes it taller than this share of the view
   appearS: number; vanishS: number; stayS: [number, number];
   gapS: [number, number];          // how long after it has gone before the next visitor
-  alpha: number; glow: [number, number, number]; rim: [number, number, number];
+  still: boolean;                  // stands where it is, facing the way it faced when it came
+  alpha: number; shade: number; glow: [number, number, number]; rim: [number, number, number];
 }> = {
-  // The ghost comes back two seconds after it goes, somewhere else.
-  ghost:  { model: 'ghost',  by: 'lantern', size: 0.3,  near: 0.85, far: 1.1, scared: 1.7, appearS: 0.9, vanishS: 0.9, stayS: [22, 40], gapS: [2, 2], alpha: 0.86, glow: [0.16, 0.2, 0.26], rim: [0.55, 0.9, 1.0] },
-  reaper: { model: 'reaper', by: 'lantern', size: 0.7,  near: 1.2,  far: 1.5, scared: 1.0, appearS: 1.8, vanishS: 1.4, stayS: [14, 22], gapS: [6, 14], alpha: 0.96, glow: [0.07, 0.02, 0.02], rim: [1.0, 0.16, 0.1] },
-  boo:    { model: 'ghost',  by: 'view',    size: 0.15, near: 0,    far: 0,   scared: 0,   appearS: 0.34, vanishS: 1.15, stayS: [1.0, 1.0], gapS: [0, 0], alpha: 0.95, glow: [0.2, 0.24, 0.3], rim: [0.6, 0.92, 1.0] },
+  // The ghost bobs, faces you, and comes back two seconds after it goes,
+  // somewhere else. He does not let you zoom right in on him.
+  ghost:  { model: 'ghost',  sizeUm: 2.4, near: 0.85, far: 1.1, scared: 2.6, tooBig: 0.13, appearS: 0.9, vanishS: 0.9, stayS: [22, 40], gapS: [2, 2], still: false,
+            alpha: 0.86, shade: 1, glow: [0.16, 0.2, 0.26], rim: [0.55, 0.9, 1.0] },
+  // The reaper does not move and does not turn to look at you: he stands in
+  // the dark past the edge of the light, a shape with a red edge, and his
+  // lantern beats slowly. He comes up out of the dark slowly and is gone in
+  // an instant. (Ames: "he should not float/move ... he should not always
+  // turn to look at you ... more ominous ... he looks too big".)
+  reaper: { model: 'reaper', sizeUm: 4.2, near: 1.15, far: 1.4, scared: 1.5, tooBig: 0.3, appearS: 3.2, vanishS: 0.3, stayS: [18, 30], gapS: [6, 14], still: true,
+            alpha: 1, shade: 0.34, glow: [0.02, 0.0, 0.0], rim: [1.0, 0.1, 0.06] },
+  boo:    { model: 'ghost',  sizeOfView: 0.15, near: 0, far: 0, scared: 0, tooBig: 0, appearS: 0.34, vanishS: 1.15, stayS: [1.0, 1.0], gapS: [0, 0], still: false,
+            alpha: 0.95, shade: 1, glow: [0.2, 0.24, 0.3], rim: [0.6, 0.92, 1.0] },
 };
 // How near you may come before a visitor goes also depends on how far in you
 // are zoomed: zoomed in, you can get closer (Ames). It is the smaller of its
@@ -83,6 +95,8 @@ const between = ([a, b]: [number, number]) => a + Math.random() * (b - a);
 
 interface Visitor {
   kind: Kind; posNm: number[]; sizeNm: number; viewNm: number;
+  /** For one that stands still: the way it faced when it came (right, up, toward the eye then). */
+  facing: { right: number[]; up: number[]; eye: number[] } | null;
   born: number; leaveAt: number; goneAt: number | null; seed: number;
   drift: number[];                 // nm per second
   prop: NgeProp;
@@ -149,8 +163,9 @@ function load(model: 'ghost' | 'reaper') {
 
 function arrive(kind: Kind, f: Frame, now: number) {
   const k = KINDS[kind], h = f.heightNm;
-  // the yardstick: the lantern's reach, or the height of the view
-  const unit = k.by === 'lantern' ? Math.max(1000, lantern.sizeUm * 1000) : h;
+  // where it appears is measured in Lantern reaches
+  const unit = Math.max(1000, lantern.sizeUm * 1000);
+  const sizeNm = k.sizeUm != null ? k.sizeUm * 1000 : (k.sizeOfView ?? 0.1) * h;
   const at = (x: number, y: number, z: number) => [0, 1, 2].map(i => f.centreNm[i] + f.right[i] * x + f.up[i] * y + f.eye[i] * z);
   let pos: number[] = [], drift = [0, 0, 0];
   if (kind === 'boo') {
@@ -165,28 +180,26 @@ function arrive(kind: Kind, f: Frame, now: number) {
       pos = at(Math.cos(angle) * far, Math.sin(angle) * far, (Math.random() - 0.5) * 0.3 * unit);
       if (!lastSpot || dist(pos, lastSpot) > 0.7 * unit) break;
     }
-    if (kind === 'reaper') {
-      // he drifts slowly round you, not toward you
-      const speed = 0.05 * unit * (Math.random() < 0.5 ? -1 : 1);
-      drift = [0, 1, 2].map(i => (-f.right[i] * Math.sin(angle) + f.up[i] * Math.cos(angle)) * speed);
-    }
   }
   visitors.push({
-    kind, posNm: pos, sizeNm: k.size * unit, viewNm: h, born: now, leaveAt: now + between(k.stayS) * 1000, goneAt: null,
+    kind, posNm: pos, sizeNm, viewNm: h,
+    facing: k.still ? { right: [...f.right], up: [...f.up], eye: [...f.eye] } : null, born: now, leaveAt: now + between(k.stayS) * 1000, goneAt: null,
     seed: Math.random() * 40, drift,
-    prop: { mesh: meshes[k.model]!, modelMat: mat4.create(), alpha: k.alpha, dissolve: 1, seed: 0, glow: k.glow, rim: k.rim },
+    prop: { mesh: meshes[k.model]!, modelMat: mat4.create(), alpha: k.alpha, dissolve: 1, seed: 0, glow: k.glow, rim: k.rim, shade: k.shade },
   });
 }
 
 /** Stand a model at a place, facing the eye, leaning by `tilt`. */
-function stand(m: mat4, f: Frame, posNm: number[], sizeNm: number, tilt: number) {
+function stand(m: mat4, f: Frame, posNm: number[], sizeNm: number, tilt: number, facing: Visitor['facing'] = null) {
   const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
+  // facing the eye now, or the way it faced when it came
+  const b = facing ?? f;
   for (let i = 0; i < 3; i++) {
-    const x = f.right[i] * cosT + f.up[i] * sinT, y = f.up[i] * cosT - f.right[i] * sinT;
+    const x = b.right[i] * cosT + b.up[i] * sinT, y = b.up[i] * cosT - b.right[i] * sinT;
     // nanometres to the viewer's own units, one axis at a time
     m[i] = x * sizeNm / f.s[i];
     m[4 + i] = y * sizeNm / f.s[i];
-    m[8 + i] = f.eye[i] * sizeNm / f.s[i];
+    m[8 + i] = b.eye[i] * sizeNm / f.s[i];
     m[12 + i] = posNm[i] / f.s[i];
   }
   m[3] = m[7] = m[11] = 0; m[15] = 1;
@@ -216,10 +229,11 @@ function frame() {
   for (const v of visitors) {
     const k = KINDS[v.kind];
     const age = (now - v.born) / 1000;
-    for (let i = 0; i < 3; i++) v.posNm[i] += v.drift[i] * 0.033;
     const away = dist(f.centreNm, v.posNm);
     const tooNear = Math.max(0.9 * v.sizeNm, Math.min(k.scared * v.sizeNm, SCARED_OF_VIEW * f.heightNm));
-    if (v.goneAt === null && age > k.appearS && ((k.scared > 0 && away < tooNear) || now > v.leaveAt)) v.goneAt = now;
+    // too near, zoomed in too far on it, or its time is up: it goes
+    const zoomedIn = k.tooBig > 0 && v.sizeNm > k.tooBig * f.heightNm;
+    if (v.goneAt === null && age > Math.min(k.appearS, 1) && ((k.scared > 0 && away < tooNear) || zoomedIn || now > v.leaveAt)) v.goneAt = now;
     const out = v.goneAt === null ? 0 : Math.min(1, (now - v.goneAt) / (k.vanishS * 1000));
     if (out >= 1) {
       if (v.kind !== 'boo') { lastSpot = v.posNm; nextAt = Math.max(quietUntil, now + between(k.gapS) * 1000); }
@@ -236,24 +250,31 @@ function frame() {
       tilt = Math.sin(age * 7) * 0.16 * (1 - out) + side * -2.6 * fly;
       size *= 1 - 0.45 * fly;
       dissolve = 0;
+    } else if (k.still) {
+      // The reaper: comes up out of the dark slowly, does not move, is gone at once.
+      dissolve = v.goneAt === null ? 1 - ease(Math.min(1, age / k.appearS)) : out;
+      tilt = 0;
     } else {
       // forms out of patches; goes the same way, rising a little
       dissolve = v.goneAt === null ? 1 - ease(Math.min(1, age / k.appearS)) : ease(out);
-      const slow = v.kind === 'reaper' ? 0.55 : 1;
-      const bob = Math.sin(age * 1.7 * slow) * 0.06 + 0.35 * out * out, sway = Math.sin(age * 0.9 * slow + v.seed) * 0.05;
+      const bob = Math.sin(age * 1.7) * 0.06 + 0.35 * out * out, sway = Math.sin(age * 0.9 + v.seed) * 0.05;
       pos = [0, 1, 2].map(i => v.posNm[i] + (f.up[i] * bob + f.right[i] * sway) * v.sizeNm);
-      tilt = Math.sin(age * 1.3 * slow + v.seed) * (v.kind === 'reaper' ? 0.05 : 0.12);
+      tilt = Math.sin(age * 1.3 + v.seed) * 0.12;
       size *= 1 + 0.22 * out;
     }
-    stand(v.prop.modelMat, f, pos, size, tilt);
+    stand(v.prop.modelMat, f, pos, size, tilt, v.facing);
     v.prop.mesh = meshes[k.model]!;
     v.prop.dissolve = dissolve;
     v.prop.seed = v.seed;
     if (v.kind === 'reaper') {
-      // his lantern: the cell near him is lit red, flickering, for as long as he is there
-      red = (1 - dissolve) * (0.86 + 0.14 * Math.sin(age * 11 + Math.sin(age * 4.3) * 2));
+      // His lantern: the cell near him is lit red, in a slow double beat like
+      // a heart, for as long as he is there.
+      const beat = (age * 0.62) % 1;
+      const pulse = Math.exp(-Math.pow((beat - 0.08) / 0.07, 2)) + 0.7 * Math.exp(-Math.pow((beat - 0.3) / 0.08, 2));
+      red = (1 - dissolve) * (0.5 + 0.5 * pulse);
       redLight.posNm.set(pos);
-      redLight.radiusNm = v.sizeNm * 2.4 * red;
+      redLight.radiusNm = v.sizeNm * 3.4 * (1 - dissolve) * (0.82 + 0.18 * pulse);
+      redLight.color = [1.0 * (0.55 + 0.45 * pulse), 0.1, 0.06];
     }
     live.push(v);
   }

@@ -46,6 +46,9 @@ export interface NgeProp {
   glow: [number, number, number];
   /** Colour of the rim and of the dissolving edge. */
   rim: [number, number, number];
+  /** How brightly its own colours are lit: 1 as painted, less for a figure
+   *  that should stand in the dark as a shape with a lit edge. */
+  shade: number;
 }
 
 let props: NgeProp[] = [];
@@ -82,6 +85,7 @@ uniform sampler2D uTexture;
 uniform vec4 uLook;      // alpha, dissolve, seed, depthOnly
 uniform vec3 uGlow;
 uniform vec3 uRim;
+uniform float uShade;
 layout(location = 0) out vec4 out_color;
 
 float hash(vec3 p) {
@@ -107,7 +111,7 @@ void main() {
   if (!gl_FrontFacing) normal = -normal;
   // A head light a little above and to the side of the eye (model +z faces the eye).
   float lit = 0.42 + 0.58 * max(dot(normal, normalize(vec3(0.3, 0.45, 1.0))), 0.0);
-  vec3 color = texture(uTexture, vUv).rgb * lit + uGlow;
+  vec3 color = texture(uTexture, vUv).rgb * lit * uShade + uGlow;
   float rim = pow(1.0 - clamp(abs(normal.z), 0.0, 1.0), 2.2);
   color += uRim * rim * 0.9;
   // the edge of what is left burns in the rim colour
@@ -151,7 +155,7 @@ function build(gl: GL): GpuState {
     return state;
   }
   state.program = program;
-  for (const name of ['uModelViewProjection', 'uTexture', 'uLook', 'uGlow', 'uRim']) {
+  for (const name of ['uModelViewProjection', 'uTexture', 'uLook', 'uGlow', 'uRim', 'uShade']) {
     state.uniforms[name] = gl.getUniformLocation(program, name);
   }
   return state;
@@ -231,6 +235,7 @@ export function drawNgeProps(gl: GL, viewProjectionMat: mat4) {
     gl.uniformMatrix4fv(u.uModelViewProjection, false, mat4.multiply(mvp, viewProjectionMat, prop.modelMat));
     gl.uniform3f(u.uGlow, prop.glow[0], prop.glow[1], prop.glow[2]);
     gl.uniform3f(u.uRim, prop.rim[0], prop.rim[1], prop.rim[2]);
+    gl.uniform1f(u.uShade, prop.shade);
     // 1. depth only: where the prop's nearest surface is
     gl.colorMask(false, false, false, false);
     gl.disable(T.BLEND);
