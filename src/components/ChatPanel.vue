@@ -1804,6 +1804,9 @@ function toggleCollapse() {
 /* Your own messages: a bar on the left edge, drawn inside the row so nothing
    moves (Krzysztof 2026-10-09). */
 .nge-chat-msg--mine { box-shadow: inset 2px 0 0 rgba(124, 200, 255, 0.85); }
+/* Room between that bar and the words (Ames 2026-10-11: "too close to the
+   text"). Every message gets it, so yours and everyone else's still line up. */
+.nge-chat-msg { padding-left: 11px; }
 .nge-chat-b { font-weight: 700; color: #f2f6fc; }
 .nge-chat-u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 /* Search */
