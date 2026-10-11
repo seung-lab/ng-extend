@@ -18,8 +18,8 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import { secureWrite } from './secure_write';
 import { useLayersStore, useProofreadingBackendStore } from './store';
 import { refreshDatasetPermissions } from './util/dataset_access';
-import { endPractice, openSplitView, showOnly } from './practice';
-import { showSections } from './tutorial-cut';
+import { endPractice, showOnly } from './practice';
+import { makeLayer } from 'neuroglancer/layer';
 import { MIDDLE, OVER_3D, celebrateStep, closeSidePanel, getViewer, movingToSandbox, stopWatching } from './tutorial-3';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 
@@ -118,6 +118,7 @@ function startHold() {
       });
     }
     const left = quiet - idle;
+    updateTestHud(left);
     if (left > 0 && left <= 5 * 60 * 1000) {
       const m = Math.ceil(left / 60000);
       statusLine(`Still there? The cell goes to the next person after ${m} more quiet minute${m === 1 ? '' : 's'}. Any move keeps it.`);
@@ -130,6 +131,7 @@ function stopHold() {
 }
 function holdLost(why: string) {
   stopHold();
+  hideTestHud();
   session.phase = 'none';
   session.nonce = '';
   session.error = why;
@@ -151,6 +153,105 @@ function statusLine(text: string) {
     el.textContent = text;
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
   }
+}
+
+// ─── The bar at the top left (Ames, 2026-10-11) ───────────────────────────
+// Stays up while the cell is held, in place of a tutorial box: an "i" for
+// the instructions, how many things there are to fix, how long the cell
+// stays yours (the quiet time left; any move resets it), and Submit.
+function helpHtml(): string {
+  const n = session.checks, e = session.endpoints;
+  const what = n ? `There are <strong>${n} things to fix</strong>` : 'Fix everything you find';
+  const ends = e ? ` and <strong>${e} branch end${e === 1 ? '' : 's'}</strong> to mark` : '';
+  return `
+<p>${what}${ends}. Nothing is marked for you.</p>
+<p><strong>Follow every branch to its end.</strong> Use <strong>Highlight</strong> to paint each stretch you have checked, so you can see where you have been: press the highlighter in the top bar, or hold <strong>H</strong> and click two points on a branch.</p>
+<p><strong>At the end of every branch, place an annotation point.</strong> The <strong>End</strong> layer is ready for it: pick it in the layer tabs and click the last bit of the cell.</p>
+<p><strong>Cut off anything that does not belong, and extend any branch that is missing pieces.</strong></p>
+<p>When the cell is right, press <strong>Submit for scoring</strong> up here.</p>`;
+}
+const HUD_ID = 'nge-test-hud', HELP_ID = 'nge-test-help';
+
+function showTestHud() {
+  if (document.getElementById(HUD_ID)) return;
+  const hud = document.createElement('div');
+  hud.id = HUD_ID;
+  hud.setAttribute('role', 'status');
+  hud.style.cssText = 'position:fixed;top:64px;left:12px;z-index:60;display:flex;align-items:center;gap:10px;padding:4px 6px 4px 4px;'
+    + 'border:1px solid rgba(126,224,255,.45);border-radius:999px;background:rgba(8,16,28,.9);color:#d8f3ff;'
+    + 'font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:12px;letter-spacing:.04em;backdrop-filter:blur(4px);';
+  const info = document.createElement('button');
+  info.type = 'button';
+  info.textContent = 'i';
+  info.title = 'How to work the cell';
+  info.setAttribute('aria-label', 'How to work the cell');
+  info.style.cssText = 'width:24px;height:24px;border-radius:50%;border:1px solid #7ee0ff;background:rgba(126,224,255,.14);color:#fff;'
+    + 'font:700 14px/1 Georgia,serif;cursor:pointer;';
+  info.addEventListener('click', openTestHelp);
+  const count = document.createElement('span');
+  count.textContent = session.checks ? `${session.checks} to fix` : 'Proofreading Test';
+  const time = document.createElement('span');
+  time.className = 'nge-test-hud-time';
+  time.title = 'How long the cell stays yours if you stop moving. Any move resets it.';
+  const submit = document.createElement('button');
+  submit.type = 'button';
+  submit.className = 'nge-hud-btn nge-hud-btn--go';
+  submit.textContent = 'Submit for scoring';
+  submit.style.cssText = 'margin:0;padding:3px 10px;font-size:12px;';
+  submit.addEventListener('click', submitFromHud);
+  hud.append(info, count, time, submit);
+  document.body.appendChild(hud);
+}
+function updateTestHud(msLeft: number) {
+  const el = document.querySelector('#' + HUD_ID + ' .nge-test-hud-time') as HTMLElement | null;
+  if (!el) return;
+  const s = Math.max(0, Math.ceil(msLeft / 1000));
+  const m = Math.floor(s / 60), r = s % 60;
+  el.textContent = `${m}:${r < 10 ? '0' : ''}${r}`;
+}
+function hideTestHud() {
+  document.getElementById(HUD_ID)?.remove();
+  document.getElementById(HELP_ID)?.remove();
+}
+function openTestHelp() {
+  if (document.getElementById(HELP_ID)) return;
+  const card = document.createElement('div');
+  card.id = HELP_ID;
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-label', 'How to work the cell');
+  card.style.cssText = 'position:fixed;top:104px;left:12px;z-index:61;max-width:520px;padding:16px 18px;'
+    + 'border:1px solid rgba(126,224,255,.45);border-radius:10px;background:rgba(8,16,28,.96);color:#e8f6ff;'
+    + 'font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);';
+  card.innerHTML = '<div style="font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;color:#7ee0ff;margin-bottom:6px">How to work the cell</div>' + helpHtml();
+  const ok = document.createElement('button');
+  ok.type = 'button';
+  ok.className = 'nge-hud-btn';
+  ok.textContent = 'OK';
+  ok.style.marginTop = '8px';
+  ok.addEventListener('click', () => card.remove());
+  card.appendChild(ok);
+  document.body.appendChild(card);
+}
+/** Submit from the bar: the result box scores the cell on entry. */
+function submitFromHud() {
+  if (session.phase !== 'working') return;
+  const store = useTutorialStore();
+  if (store.activeTutorial !== TEST_TUTORIAL) store.activeTutorial = TEST_TUTORIAL;
+  store.setTutorialStep(RESULT_STEP);
+}
+
+/** An annotation layer named End, ready for the branch end points. */
+function ensureEndLayer() {
+  try {
+    const v = getViewer();
+    if (!v?.layerSpecification) return;
+    const have = (v.layerManager?.managedLayers ?? []).some((l: any) => l.name === 'End');
+    if (have) return;
+    const managed = makeLayer(v.layerSpecification, 'End', {
+      type: 'annotation', source: { url: 'local://annotations' }, annotationColor: '#ffd84a', annotations: [],
+    });
+    v.layerSpecification.add(managed);
+  } catch (e) { console.warn('[test] could not add the End layer:', e); }
 }
 
 /** Every point annotation in the viewer, as [x, y, z] viewer voxels. The
@@ -176,6 +277,7 @@ export async function startTest() {
   const store = useTutorialStore();
   stopWatching();
   hidePyrMarkers();
+  hideTestHud();
   // Any practice cells go back first, as the Merger Sandbox does.
   try { await endPractice(); } catch { /* the practice reset job covers it */ }
   session.result = null;
@@ -205,6 +307,7 @@ export function testContinue(): boolean {
 export async function abandonTest(): Promise<void> {
   const id = session.test?.id, nonce = session.nonce;
   stopHold();
+  hideTestHud();
   hidePyrMarkers();
   if (session.phase === 'scoring') return;
   session.phase = 'none';
@@ -242,18 +345,23 @@ async function startWork() {
   // A reload mid test: the saved view names the cell's old root, so show
   // the root as it is now, with the player's edits.
   if (got.root) { try { showOnly(got.test.dataset, [got.root]); } catch (e) { /* the view still loads */ } }
+  ensureEndLayer();
   session.phase = 'working';
   startHold();
-  setTimeout(() => { openSplitView(); showSections(); }, 500);
+  showTestHud();
+  updateTestHud((got.test.hold_minutes || 60) * 60 * 1000);
+  // The boxes go; the bar at the top left takes over (Ames, 2026-10-11).
+  useTutorialStore().setTutorialStep(steps.length);
 }
 
 async function submitWork() {
   const store = useTutorialStore();
   // "Try again" from a refused start: back to the cell box, which claims again.
-  if (session.phase === 'busy') { store.setTutorialStep(2); return; }
+  if (session.phase === 'busy') { store.setTutorialStep(CLAIM_STEP); return; }
   if (session.phase !== 'working' || !session.nonce || !session.test) { session.result = null; return; }
   session.phase = 'scoring';
   stopHold();
+  hideTestHud();
   hidePyrMarkers();
   const id = session.test.id, nonce = session.nonce;
   const annotations = collectPointAnnotations();
@@ -332,6 +440,9 @@ function resultText(): string {
   return parts.join('\n\n');
 }
 
+/** Box numbers the bar and the retry use: the claim box and the result box. */
+const CLAIM_STEP = 2, RESULT_STEP = 3;
+
 export const steps: Step[] = [
   // 1: What the test is
   {
@@ -375,47 +486,29 @@ export const steps: Step[] = [
     text: `
 **Follow every branch to its end.** Use **Highlight** to paint each stretch you have checked, so you can see where you have been: press the highlighter in the top bar, or hold **H** and click two points on a branch.
 
-**Where a branch truly ends, mark it.** Click **+** at the end of the layer tabs to make an annotation layer (the point tool is already picked), then click the last bit of the cell. One point per end; a point anywhere on the end is fine.
+**At the end of every branch, place an annotation point.** The **End** layer is ready for it: pick it in the layer tabs and click the last bit of the cell.
 
-**Fix what is wrong as you go.** A branch that belongs to another cell: press **C**, red points on one side of the join, **G**, blue on the other, then Submit cut. A piece that is missing: press **M**, Ctrl+click the cell and the piece, then Submit.
+**Cut off anything that does not belong, and extend any branch that is missing pieces.**
 
-Check the 2D images before every cut: that is where a false join shows.`,
+Once you have the cell, the bar at the top left has an **i** for these instructions, how long the cell stays yours, and **Submit for scoring**.`,
     position: MIDDLE,
     width: '620px',
     nextLabel: 'Give me the cell',
     onEnter: () => { closeSidePanel(); stopWatching(); },
   } as Step,
 
-  // 3: The cell
+  // 3: Getting the cell. It closes itself once the cell is on screen; the
+  // bar at the top left takes over. It stays only when the claim is refused.
   {
-    get title() {
-      if (session.phase === 'busy') return 'Not right now';
-      if (session.phase === 'claiming') return 'Getting your cell';
-      return 'Fix this cell';
-    },
+    get title() { return session.phase === 'busy' ? 'Not right now' : 'Getting your cell'; },
     get text() {
       if (session.phase === 'busy') return `${session.error || 'The test is not available right now.'}\n\nPress **Try again** in a moment, or Exit and come back later.`;
-      if (session.phase === 'claiming') return 'Holding the cell for you and putting it back to its start. This can take a minute.';
       if (session.phase === 'none' && session.error) return session.error;
-      const n = session.checks, e = session.endpoints;
-      const what = n ? `There are **${n} things to fix**` : 'Fix everything you find';
-      const ends = e ? ` and **${e} branch end${e === 1 ? '' : 's'}** to mark` : '';
-      return `
-${session.resumed ? 'Welcome back: your edits so far are still on the cell.' : 'The cell is yours.'} ${what}${ends}. Nothing is marked for you.
-
-- <strong style="color:#e06060">Cut</strong> off anything that belongs to another cell: press **C**, red points on one side, **G**, blue on the other, then Submit cut.
-- <strong style="color:#60c060">Merge</strong> on any piece that is missing: press **M**, Ctrl+click the cell and the piece, then Submit.
-- Mark where each branch ends: with the point tool in an annotation layer, click the last bit of segmentation.
-
-Take your time. When the cell is right, press **Submit for scoring**.`;
+      return 'Holding the cell for you and putting it back to its start. This can take a minute.';
     },
     position: OVER_3D,
     width: '460px',
-    get nextLabel() {
-      if (session.phase === 'working') return 'Submit for scoring';
-      if (session.phase === 'busy') return 'Try again';
-      return 'one moment';
-    },
+    get nextLabel() { return session.phase === 'busy' ? 'Try again' : 'one moment'; },
     onEnter: startWork,
   } as Step,
 
