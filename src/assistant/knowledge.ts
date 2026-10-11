@@ -75,6 +75,19 @@ function buildStaticReference(): string {
   }
 
   return [
+    // First, so it is never cut off by the length limit on this reference.
+    // Nurro told a player stuck in the Merger Sandbox to merge two pieces
+    // (Ames, 2026-10-11): a "merger" there is the opposite job.
+    "## Practice tutorials and the Merger Sandbox",
+    "- A MERGER is an error where two different neurons are wrongly fused into one segment. It is fixed with a CUT, never with a merge. A missing branch is the opposite error and is fixed with a merge.",
+    "- Merge tutorial (burger menu, top right): two real merges on a practice cell. Press M, Ctrl+click each of the two pieces, then Submit merge.",
+    "- Cut tutorial (burger menu): two real cuts. Press C, Ctrl+click a red point on one neuron, press G to switch to blue, Ctrl+click a blue point on the other neuron right where they touch, then Submit cut.",
+    "- Merger Sandbox (burger menu, 'Cut the mergers'): a set of fused cells, one at a time, shown as 'N / total solved'. Each opens in 3D with two neurons fused into one purple segment. The player finds where they touch and cuts them apart with the Cut tool (C, red points, G, blue points, Submit cut). Space brings up the 2D images.",
+    "- In the Merge and Cut tutorials and the Merger Sandbox, the 'Help me' button in the tutorial box shows red and blue gems where the points go. 'Still need help?' offers chat and this guide.",
+    "- If a cut goes through but the box still waits, the cut was not at the join: the two neurons are still one segment. Cut again where they touch.",
+    "- Someone stuck in the Merger Sandbox needs cutting advice. Do not send them to the Cell Library, Find Path or the merge tool, and do not offer the merge tutorial.",
+    "- Practice cells are a spare copy. Edits there never touch real data and are undone for the next person.",
+    "",
     "## Toolbar buttons (the icon row)",
     toolbar,
     "",

@@ -23,7 +23,6 @@ import { isMobileRef } from '../util/mobile';
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
-import {DEMO_USERS, DEMO_COMMUNITY_EDITS_WEEK, DEMO_COMMUNITY_EDITS_MONTH} from '../data/demo-users';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
@@ -82,6 +81,7 @@ async function loadOtherUser() {
     // must not stand in while the second loads.
     if (otherUserProfile.value && otherUserProfile.value.id !== props.viewUserId) otherUserProfile.value = null;
     otherUserProfile.value = await backendStore.loadUserProfile(props.viewUserId);
+    void backendStore.loadSavedAwards([props.viewUserId]);
     otherSilver.value = [];
     void backendStore.loadSilverBadges(props.viewUserId).then(l => { otherSilver.value = l; });
     otherBronze.value = [];
@@ -482,28 +482,10 @@ onMounted(()  => document.addEventListener('click', handleGlobalClick, true));
 onUnmounted(() => document.removeEventListener('click', handleGlobalClick, true));
 
 // ── Canvas cell-dot visualization ─────────────────────────────────────────────
-// ── Demo seeding ─────────────────────────────────────────────────────────────
-onMounted(() => {
-  if (stats.value.editsAllTime === 0) {
-    const amy = DEMO_USERS[0];
-    statsStore.setStats({
-      editsAllTime:            amy.stats.editsAllTime,
-      mergesAllTime:           amy.stats.mergesAllTime,
-      splitsAllTime:           amy.stats.splitsAllTime,
-      editsThisWeek:           amy.stats.editsThisWeek,
-      mergesThisWeek:          amy.stats.mergesThisWeek,
-      splitsThisWeek:          amy.stats.splitsThisWeek,
-      editsThisMonth:          amy.stats.editsThisMonth,
-      mergesThisMonth:         amy.stats.mergesThisMonth,
-      splitsThisMonth:         amy.stats.splitsThisMonth,
-      cellsSubmitted:          amy.stats.cellsSubmitted,
-      currentStreak:           amy.stats.currentStreak,
-      longestStreak:           amy.stats.longestStreak,
-      communityEditsThisWeek:  DEMO_COMMUNITY_EDITS_WEEK,
-      communityEditsThisMonth: DEMO_COMMUNITY_EDITS_MONTH,
-    });
-  }
-});
+// A player with no edits used to get a made-up demo player's stats here (892
+// cells) until the real ones loaded. That was read as the count jumping, and
+// saved 25 cell Achievements for one player on 2026-10-01. Removed 2026-10-11:
+// a profile only ever shows the player's own numbers.
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 function getBadgeUrl(imageKey: string): string {
@@ -522,11 +504,9 @@ function statForTrack(track: BadgeTrack): number {
 function isBadgeEarned(badge: BadgeDefinition): boolean {
   if (badge.threshold === 0) return false;
   if (statForTrack(badge.track) >= badge.threshold) return true;
-  // Persisted earn: once crossed, a badge stays earned even if the stat later
-  // drops. myBadgeAwards is the CURRENT user's, so only apply it to own profile.
-  if (!viewingOtherUser.value && badge.id != null &&
-      backendStore.myBadgeAwards.has(`${badge.track}:${badge.id}`)) return true;
-  return false;
+  // Saved earn: once earned, an Achievement stays earned, even if the count
+  // later drops or the tier's number is raised. True on anyone's profile.
+  return backendStore.holdsSaved(props.viewUserId || backendStore.userId, badge.track, badge.id);
 }
 
 function onBadgeClick(badge: BadgeDefinition) {
@@ -810,7 +790,8 @@ function thresholdLabel(badge: BadgeDefinition): string {
 // ── Per-track achievement countdowns ─────────────────────────────────────────
 function nextForTrack(badges: BadgeDefinition[], current: number) {
   const sorted = [...badges].filter(b => b.threshold > 0).sort((a, b) => a.threshold - b.threshold);
-  const next = sorted.find(b => current < b.threshold);
+  // The next one not held: a saved Achievement can sit above the count.
+  const next = sorted.find(b => current < b.threshold && !isBadgeEarned(b));
   if (!next) return null;
   const prev = sorted[sorted.indexOf(next) - 1]?.threshold ?? 0;
   const remaining = next.threshold - current;

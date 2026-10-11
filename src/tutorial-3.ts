@@ -13,7 +13,7 @@ import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPracti
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
-import { useSplitMergeOverlayStore } from './store';
+import { useSplitMergeOverlayStore, useUserPreferencesStore } from './store';
 import { watch } from 'vue';
 import { hidePyrMarkers, showGemMarkers, showPyrMarkers } from './markers';
 import { drawSearchLine } from './tutorial_pointer';
@@ -144,8 +144,7 @@ export function practiceStatus(text: string, done = false) {
   if (!help) {
     help = smallButton('nge-practice-help', 'Help me', () => helpMe());
     help.title = 'Show me where to click';
-    help.style.cssText = 'float:right;margin:10px 0 0;position:relative;z-index:3;';
-    chip.appendChild(help);
+    helpRow(chip).appendChild(help);
   }
   help.style.display = (done || !helpWanted) ? 'none' : '';
   const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;
@@ -154,6 +153,27 @@ export function practiceStatus(text: string, done = false) {
   if (place) place.style.display = done ? 'none' : '';
   // The chip just grew; keep it on screen.
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+
+/** The row the help buttons sit in, right aligned under the status line.
+ *  A row, not floats: floated buttons left a band of empty space at the
+ *  bottom of the box (Ames, 2026-10-11). */
+function helpRow(chip: Element): HTMLElement {
+  let row = chip.querySelector('.nge-practice-helprow') as HTMLElement | null;
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'nge-practice-helprow';
+    row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin:8px 0 0;position:relative;z-index:3;';
+    chip.appendChild(row);
+  }
+  return row;
+}
+
+/** Take down what Help me opened. A box that comes back with the same text
+ *  keeps its extra parts, so "Still need help?" stayed up on the next try
+ *  of a merger without Help me being pressed (Ames, 2026-10-11). */
+function clearHelp() {
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-more, .introductionStepAnchor .nge-practice-stuck').forEach(el => el.remove());
 }
 
 function notePanel(cls: string, html: string): HTMLElement {
@@ -377,9 +397,15 @@ async function helpMe() {
   }
   if (!shown) { openStuckPanel(); return; }
   const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); });
-  more.style.cssText = 'float:right;clear:right;margin:8px 0 0;';
-  chip.appendChild(more);
+  helpRow(chip).appendChild(more);
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+
+/** How a layer chip is selected: a plain click, unless the player turned on
+ *  classic layer tabs in Settings, where it is a right-click (Ames,
+ *  2026-10-11: the boxes still said right-click after the default changed). */
+function selectClick(): string {
+  try { return useUserPreferencesStore().prefs.classicLayerClicks === true ? 'Right-click' : 'Click'; } catch { return 'Click'; }
 }
 
 /** The other ways out: the layer, the chat, the guide. */
@@ -388,8 +414,8 @@ function openStuckPanel() {
   if (!chip || chip.querySelector('.nge-practice-stuck')) return;
   const panel = notePanel('nge-practice-stuck',
     '<div class="nge-hud-panel-title">Still stuck? Three ways out.</div>'
-    + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer named <b>3D segmentation</b>. Right-click it to select it.</div>'
-    + '<div class="nge-hud-panel-row">2. Ask people in the community chat. Someone is usually around.</div>'
+    + '<div class="nge-hud-panel-row">1. The merge and cut tools act on the <b>segmentation layer</b>, the chip at the top of the viewer named <b>3D segmentation</b>. ' + selectClick() + ' it to select it.</div>'
+    + '<div class="nge-hud-panel-row">2. Ask people in the community chat, and share your view there (the pin button beside the message box) so they see exactly what you see. Someone is usually around.</div>'
     + '<div class="nge-hud-panel-row">3. Ask Nurro, the AI guide. It knows this tutorial and the tools.</div>');
   const row = document.createElement('div');
   row.className = 'nge-hud-btnrow';
@@ -397,6 +423,16 @@ function openStuckPanel() {
   row.appendChild(smallButton('nge-practice-stuck-chat', 'Ask in chat', () => document.dispatchEvent(new CustomEvent('nge:open-chat'))));
   row.appendChild(smallButton('nge-practice-stuck-ai', 'Ask Nurro', () => (document.querySelector('.nge-ask-btn') as HTMLElement | null)?.click()));
   panel.appendChild(row);
+  // A way to put it away again (Ames, 2026-10-11: once open it stayed).
+  const close = document.createElement('button');
+  close.className = 'nge-practice-stuck-x';
+  close.type = 'button';
+  close.textContent = '\u00d7';
+  close.title = 'Close';
+  close.setAttribute('aria-label', 'Close help');
+  close.addEventListener('click', () => { panel.remove(); document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp')); });
+  panel.style.position = 'relative';
+  panel.appendChild(close);
   chip.appendChild(panel);
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }
@@ -637,7 +673,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     // through one of them instead of between them. Say so, or the learner
     // sees a piece come off and the box still "waiting".
     if (!wantMerged && !failed && startRoot && p.rootA && p.rootA !== startRoot && useSplitMergeOverlayStore().redPointCount === 0) {
-      practiceStatus('A cut went through, but the two neurons are still joined: it cut across one of them. Put red on one neuron and blue on the other, right where they touch, and submit again.');
+      practiceStatus('Good job, that cut went through! But you did not get it all: the two neurons are still joined somewhere. Follow where they touch a little further, put red on one neuron and blue on the other there, and submit again. Help me shows the spot.');
       setTimeout(tick, 1500);
       return;
     }
@@ -665,7 +701,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); helpWanted = true; }
+export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); clearHelp(); helpWanted = true; }
 
 function toolIsOn(): boolean {
   const viewer = getViewer();
@@ -804,7 +840,7 @@ document.addEventListener('nge:tutorial-layer-note', () => {
   if (!chip.querySelector('.nge-practice-layer-note')) {
     const note = notePanel('nge-practice-layer-note',
       'The <b>segmentation layer</b> is the chip at the top of the viewer that is flashing now, named <b>3D segmentation</b>, next to <b>2D EM</b>. '
-      + 'Right-click that chip to select it. Tools like merge and cut only work on the selected layer.');
+      + selectClick() + ' that chip to select it. Tools like merge and cut only work on the selected layer.');
     chip.appendChild(note);
     document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
   }
@@ -853,7 +889,7 @@ const FRIENDLY_TIPS: Record<string, string> = {
   '3D neurons': 'The 3D reconstruction of every cell in the images',
 };
 function friendlyLayerNames() {
-  const inTutorial = [3, 5].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  const inTutorial = [3, 5, 9].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
   // Which dataset is on screen decides the shown names. The Sandbox and the
   // tutorials say "2D EM" and "3D segmentation", the Retina "2D EM" and
   // "3D Retina Cells" (Ames 2026-10-06). Every other dataset says

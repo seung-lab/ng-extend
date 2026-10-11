@@ -2,6 +2,126 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T15:28:00Z",
+      "title": "A Proofreading Test, on trial",
+      "items": [
+        "A Proofreading Test is coming to the Tutorials menu: one Sandbox cell with several mistakes on it, and the server checks your work and tells you what you found and what you missed.",
+        "It is being tried out by Ames first. When it appears in your menu, please leave it to her for a few days; passing it grants nothing yet."
+      ]
+    },
+    {
+      "at": "2026-10-11T15:01:00Z",
+      "title": "Nurro knows the Merger Sandbox",
+      "items": [
+        "Nurro, the guide, now knows that a merger is fixed with a cut, and how the Merger Sandbox works.",
+        "The extra help in the tutorials has an x to close it.",
+        "The Merger Sandbox box has a plainer title, and its hint now reads: Ctrl+click to add points, and remember to press G to switch the cut colour group."
+      ]
+    },
+    {
+      "at": "2026-10-11T15:00:00Z",
+      "title": "Editor Achievements come closer together",
+      "items": [
+        "The Achievements you earn by editing now come at steadier steps: every 100 edits up to 500, then 750 and 1,000, every 500 up to 5,000, every 1,000 up to 10,000, every 2,000 up to 20,000, every 5,000 up to 100,000, and every 10,000 after that.",
+        "Nobody loses an Achievement. If your count already passes a new mark, it shows as earned in your Trophy Case."
+      ]
+    },
+    {
+      "at": "2026-10-11T14:55:00Z",
+      "title": "Start the Merger Sandbox again",
+      "items": [
+        "Once you have solved every merger, opening the Merger Sandbox asks whether you want to start again, and counts from zero if you do. Your Achievement stays yours.",
+        "The count of mergers is smaller and quieter, and its glint of light runs once.",
+        "The last box shows its caption when you hover over the picture, and its button now says Finish."
+      ]
+    },
+    {
+      "at": "2026-10-11T14:48:00Z",
+      "title": "Pyr gems count your mergers",
+      "items": [
+        "The Merger Sandbox count is now a chain of Pyr gems, one per merger, lit as you solve them."
+      ]
+    },
+    {
+      "at": "2026-10-11T14:36:00Z",
+      "title": "A new look for the Merger Sandbox count",
+      "items": [
+        "Your progress in the Merger Sandbox is now a chain of small diamonds, one per merger, that light up as you solve them.",
+        "The Selection panel on the right stays closed while you are in the Merger Sandbox."
+      ]
+    },
+    {
+      "at": "2026-10-11T14:24:00Z",
+      "title": "Mergers 7 and 8 check the cut more closely",
+      "items": [
+        "Mergers 7 and 8 in the Merger Sandbox now count a cut only when it is made at the join. A cut somewhere else on the cell no longer passes."
+      ]
+    },
+    {
+      "at": "2026-10-11T14:19:00Z",
+      "title": "Complete the Sandbox",
+      "items": [
+        "The last box of the Merger Sandbox has a new picture and a Complete the Sandbox button.",
+        "The Achievement for cutting every merger now arrives when you press that button, not before the box."
+      ]
+    },
+    {
+      "at": "2026-10-11T14:13:00Z",
+      "title": "A smaller box in the Merger Sandbox",
+      "items": [
+        "The Merger Sandbox box is shorter, with the title Can you solve all 8 merger mysteries?",
+        "The layer side panel closes when a practice cell opens, so there is more room to work.",
+        "Each merger now opens in 3D. Press Space for the 2D images.",
+        "Still need help? no longer shows before you have pressed Help me, and the empty band at the bottom of the box is gone."
+      ]
+    },
+    {
+      "at": "2026-10-11T14:08:00Z",
+      "title": "A calmer progress strip in the Merger Sandbox",
+      "items": [
+        "The strip that counts your mergers is dimmer and reads like an instrument: a thin lit edge for each one cut, and a sweep of light on the one in hand."
+      ]
+    },
+    {
+      "at": "2026-10-11T13:50:00Z",
+      "title": "Cell Completion Achievements at round numbers",
+      "items": [
+        "The Cell Completion Achievements now come at round numbers: 1, 5, 10, 15, 20, 30, 40, 50, 75, 100, and on from there, up to 54,000 cells.",
+        "Every Achievement you already earned is yours to keep, even where its number went up."
+      ]
+    },
+    {
+      "at": "2026-10-11T13:45:00Z",
+      "title": "A progress strip in the Merger Sandbox",
+      "items": [
+        "The Merger Sandbox shows a strip with one cell per merger: lit for each one you have cut, glowing on the one in hand.",
+        "Merger 6 now notices your cut. It was checking two spots on the same neuron, so no cut could count."
+      ]
+    },
+    {
+      "at": "2026-10-11T13:30:00Z",
+      "title": "A kinder note when a cut is not the whole job",
+      "items": [
+        "When your cut goes through but the two neurons are still joined, the Cut tutorial and the Merger Sandbox now say so plainly: good job, but there is more to cut."
+      ]
+    },
+    {
+      "at": "2026-10-11T13:35:00Z",
+      "title": "Tutorial help says the right click",
+      "items": [
+        "The help in the Merge and Cut tutorials now says to click the 3D segmentation tab to select it, which is how it works now.",
+        "It also suggests sharing your view in chat when you ask for help."
+      ]
+    },
+    {
+      "at": "2026-10-11T13:35:00Z",
+      "title": "Share my view waits for your message",
+      "items": [
+        "Share my view in chat now puts a My view chip on the message box instead of posting at once, so you can type a few words first and then send.",
+        "The x on the chip removes it."
+      ]
+    },
+    {
       "at": "2026-10-11T01:51:00Z",
       "title": "A new Achievement in the Merger Sandbox",
       "items": [

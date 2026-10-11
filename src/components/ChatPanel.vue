@@ -624,8 +624,12 @@ watch(() => chatMessages.value.length, () => {
 // ── Send message ──
 function send() {
   // New lines are kept, but never a wall of blank ones.
-  const text = messageInput.value.trim().replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
-  if (!text || messageTooLong.value) return;
+  let text = messageInput.value.trim().replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+  // A view waiting on the message box goes out with the message.
+  const view = pendingView.value;
+  if ((!text && !view) || messageTooLong.value) return;
+  if (view) text = [text || '📍 My view', view.link, view.shotUrl].filter(Boolean).join(' ');
+  pendingView.value = null;
   chatStore.sendMessage(text, null, replyingTo.value?.id != null ? String(replyingTo.value.id) : null);
   newMarker.value = 0;             // caught up: no "new since you left" line
   if (isBoo(text)) booGhost();     // an easter egg: a ghost pops up and flies off (util/spooky.ts)
@@ -747,8 +751,11 @@ function onBeforeInput(e: Event) {
 }
 
 // ── Share my view (Ames 2026-09-28) ──
-// Posts a short link to exactly what you're looking at, optionally with a
-// screenshot. Anything typed in the box rides along as the caption.
+// Makes a short link to exactly what you're looking at, optionally with a
+// screenshot, and holds it on the message box as a "My view" chip. It goes
+// out with the next message, so a few words can be typed first (Ames,
+// 2026-10-11: it used to post at once). The x on the chip drops it.
+const pendingView = ref<{ link: string; shotUrl: string | null } | null>(null);
 const shareMenuOpen = ref(false);
 const sharing = ref(false);
 const shareError = ref('');
@@ -761,11 +768,10 @@ async function postView(shotUrl: string | null) {
   try {
     const link = await mintShortStateLink();
     if (!link) { shareError.value = 'Could not make a link to your view. Try again in a moment.'; return; }
-    const caption = messageInput.value.trim();
-    chatStore.sendMessage([caption || '📍 My view', link, shotUrl].filter(Boolean).join(' '));
-    if (caption) messageInput.value = '';
+    pendingView.value = { link, shotUrl };
   } finally {
     sharing.value = false;
+    nextTick(() => inputEl.value?.focus());
   }
 }
 function shareView(withShot: boolean) {
@@ -1420,6 +1426,12 @@ function toggleCollapse() {
           </div>
           <div v-if="joinNote" class="nge-chat-join-note" role="status">{{ joinNote }}</div>
           <div v-if="shareError" class="nge-chat-share-error" @click="shareError = ''">{{ shareError }}</div>
+          <div v-if="pendingView && !searchOpen" class="nge-chat-pending-view">
+            <span class="nge-chat-view-chip nge-chat-view-chip--pending">📍 My view<template v-if="pendingView.shotUrl"> + 📷</template>
+              <button type="button" class="nge-chat-pending-x" title="Remove the view" aria-label="Remove the view" @click.stop="pendingView = null">×</button>
+            </span>
+            <span class="nge-chat-pending-hint">Type a message, then press Enter to send.</span>
+          </div>
           <div v-if="searchOpen" class="nge-chat-input-row nge-chat-search-row">
             <svg class="nge-chat-search-glyph" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.2" y2="16.2" />
@@ -2359,6 +2371,12 @@ function toggleCollapse() {
 }
 .nge-chat-view-chip:hover { background: rgba(74, 158, 255, 0.25); color: #fff; }
 .nge-chat-view-chip { text-decoration: none; }
+.nge-chat-pending-view { display: flex; align-items: center; gap: 8px; padding: 2px 6px 5px; }
+.nge-chat-view-chip--pending { cursor: default; margin: 0; }
+.nge-chat-view-chip--pending:hover { background: rgba(74, 158, 255, 0.12); color: #9cc8ff; }
+.nge-chat-pending-x { border: 0; background: none; color: inherit; font: inherit; font-size: 15px; line-height: 1; padding: 0 0 0 4px; cursor: pointer; }
+.nge-chat-pending-x:hover { color: #fff; }
+.nge-chat-pending-hint { font-size: 12px; color: #8fa3bd; }
 .nge-chat-join-chip { border-color: rgba(93, 255, 160, 0.45); background: rgba(93, 255, 160, 0.12); color: #9fe8c0; }
 .nge-chat-join-chip:disabled { opacity: 0.6; cursor: default; }
 .nge-chat-join-note { font-size: 12px; color: #ffd08a; padding: 2px 10px; }

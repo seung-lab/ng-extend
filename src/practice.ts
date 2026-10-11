@@ -24,7 +24,7 @@ import { supabase } from './supabase';
 import { practiceBase, practiceToken } from './util/practice_destination';
 import { practiceOperationsAfter, remainingPracticeOperations } from './util/practice_history';
 export { parsePcgStamp } from './util/practice_history';
-import { useLayersStore, useProofreadingBackendStore } from './store';
+import { setStateRewriter, useLayersStore, useProofreadingBackendStore } from './store';
 
 export type PracticeKind = 'merge_then_cut' | 'cut';
 
@@ -880,6 +880,19 @@ function toolActive(): boolean {
 const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
   // Axon fused to a dendrite, 2D cut: axon (86830, 59380, 846), dendrite (86418, 59244, 814)
   '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': ['75507587050992924', '75507587050897753'],
+  // Merger Sandbox 6 (Celia's "Small branch merger on cell"): both of the
+  // row's points are on the main cell, so no cut could ever count. These are
+  // the two supervoxels either side of Ames's own cut of 2026-10-11
+  // (operation 1871): the small branch, and the cell beside it.
+  'c04eed2c-4204-4b3d-a25d-2f7aa880c1aa': ['75719174185485322', '75719174185482374'],
+  // Merger Sandbox 7 and 8: the row's points are micrometres apart, so a cut
+  // well away from the join still parted them and counted (Ames's test cut
+  // on Merger 8, operation 1893, 2026-10-11). These are two supervoxels that
+  // touch across the join, from the edges her reference cuts removed
+  // (operations 1872 and 1873). Checked against history: parted by the
+  // reference cut, still together after the stray one.
+  '0482d846-0c16-4393-ab8a-0d1212b9520f': ['75508549324873021', '75508549324879021'],
+  '814be870-9149-4474-876f-195e0af0bd08': ['74593068321675225', '74593068321697468'],
 };
 /**
  * Split view (2D images beside 3D), with the 2D panel rebuilt once the view
@@ -939,7 +952,20 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     const wasOn = toolActive();
     pausePracticeTools();
     const staged = STAGED_VIEW[ex.id];
-    await useLayersStore().loadState(staged?.state ?? ex.state_url);
+    // The saved views were made with neuroglancer's side panels open. Shut
+    // them in the view itself before it loads, so they never flash open and
+    // closed in front of the learner (Ames, 2026-10-11).
+    setStateRewriter(async (state: any) => {
+      if (state?.selectedLayer) state.selectedLayer = { ...state.selectedLayer, visible: false };
+      if (state?.selection) state.selection = { ...state.selection, visible: false };
+      return state;
+    });
+    try { await useLayersStore().loadState(staged?.state ?? ex.state_url); } finally { setStateRewriter(null); }
+    // A saved view can bring the layer side panel with it, and switching a
+    // tool on can open it. It is a third of the screen the exercise does
+    // not use (Ames, 2026-10-11). Shut it as the view settles, and not after
+    // that, so a player who opens it on purpose keeps it.
+    for (const ms of [200, 1600, 3600]) setTimeout(() => { try { getViewer().selectedLayer.visible = false; } catch { /* no viewer */ } }, ms);
     // The staged panel layout for this cell (3D only, or split with 2D).
     if (staged?.layout === 'xy-3d') openSplitView();
     else if (staged?.layout) {

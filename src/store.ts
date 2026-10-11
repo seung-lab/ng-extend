@@ -5416,6 +5416,35 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Only a list that was really read may be used to decide what is new.
     if (!err && data) badgeAwardsLoaded.value = true;
   }
+  // Saved Achievements of OTHER players, for their profile and the
+  // leaderboard (Ames 2026-10-11: a tier's number can change, an earned
+  // Achievement cannot be lost). Read once per player per session.
+  const savedAwards = ref<Record<string, Set<string>>>({});
+  async function loadSavedAwards(ids: Array<string | null | undefined>) {
+    const want = [...new Set(ids)].filter((id): id is string => !!id && !savedAwards.value[id]);
+    for (let i = 0; i < want.length; i += 40) {
+      const part = want.slice(i, i + 40);
+      const next: Record<string, Set<string>> = {};
+      let read = true;
+      for (let from = 0; ; from += 500) {
+        const { data, error: err } = await supabase.from('badge_awards').select('user_id,track,badge_id')
+          .in('user_id', part).order('user_id').order('track').order('badge_id').range(from, from + 499);
+        if (err || !data) { read = false; break; }   // not read: ask again next time
+        for (const r of data as any[]) (next[r.user_id] ||= new Set()).add(badgeAwardKey(r.track, r.badge_id));
+        if (data.length < 500) break;
+      }
+      if (!read) continue;
+      for (const id of part) if (!next[id]) next[id] = new Set();
+      savedAwards.value = { ...savedAwards.value, ...next };
+    }
+  }
+  /** This player holds this Achievement as a saved record. */
+  function holdsSaved(who: string | null | undefined, track: string, badgeId: number | null | undefined): boolean {
+    if (!who || badgeId == null) return false;
+    const key = badgeAwardKey(track, badgeId);
+    if (who === userId.value && myBadgeAwards.value.has(key)) return true;
+    return !!savedAwards.value[who]?.has(key);
+  }
   async function recordBadgeAward(track: string, badgeId: number) {
     if (!userId.value || badgeId == null) return;
     const key = badgeAwardKey(track, badgeId);
@@ -5671,7 +5700,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
-    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward,
+    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload

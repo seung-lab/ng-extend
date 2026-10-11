@@ -20,10 +20,22 @@ test('an achievement is announced only once the counter has reached it', () => {
   assert.throws(() => achievementRow('building', mallet.id, {cells_completed: 5000}), /Not earned yet/);
 });
 
-test('cell achievements 2, 3 and 4 stay quiet; 1 and 5 are announced', () => {
-  const cell = n => TABLE.find(a => a.track === 'exploration' && a.threshold === n);
-  for (const n of [2, 3, 4]) assert.deepEqual(achievementRow('exploration', cell(n).id, {cells_completed: 50}), {quiet: true});
-  for (const n of [1, 5]) assert.equal(achievementRow('exploration', cell(n).id, {cells_completed: 50}).name, cell(n).name);
+// Cells 2, 3 and 4 used to be earned without a chat line. Since 2026-10-11
+// the first cell tiers are 1, 5, 10, 15, 20: there is no 2, 3 or 4 to keep
+// quiet, and every cell tier is announced.
+test('the first cell achievements are 1, 5, 10, 15, 20 and each is announced', () => {
+  const cells = TABLE.filter(a => a.track === 'exploration').sort((a, b) => a.id - b.id);
+  assert.deepEqual(cells.slice(0, 5).map(a => a.threshold), [1, 5, 10, 15, 20]);
+  for (const a of cells.slice(0, 5)) assert.equal(achievementRow('exploration', a.id, {cells_completed: 50}).name, a.name);
+  assert.throws(() => achievementRow('exploration', cells[1].id, {cells_completed: 4}), /Not earned yet/);
+});
+
+test('cell tiers rise all the way and are round numbers', () => {
+  const t = TABLE.filter(a => a.track === 'exploration').sort((a, b) => a.id - b.id).map(a => a.threshold);
+  assert.equal(t.length, 100);
+  for (let i = 1; i < t.length; i++) assert.ok(t[i] > t[i - 1], `tier ${i + 1}`);
+  assert.equal(t[99], 54000);
+  for (const n of t.slice(1)) assert.equal(n % 5, 0, String(n));
 });
 
 test('made up achievements and tracks are refused', () => {
@@ -51,4 +63,12 @@ test('a Loyalty achievement is announced once the total days have reached it', (
   // edits and cells do not stand in for days
   assert.throws(() => achievementRow('loyalty', day(40).id, {total_edits: 5000, cells_completed: 5000, total_days: 39}), /Not earned yet/);
   assert.equal(achievementRow('loyalty', day(40).id, {total_days: 41}).name, 'Forty Days');
+});
+
+test('edit tiers rise all the way, in the steps Ames set', () => {
+  const t = TABLE.filter(a => a.track === 'building').sort((a, b) => a.id - b.id).map(a => a.threshold);
+  assert.equal(t.length, 100);
+  for (let i = 1; i < t.length; i++) assert.ok(t[i] > t[i - 1], `tier ${i + 1}`);
+  assert.deepEqual(t.slice(0, 12), [1, 10, 25, 50, 100, 200, 300, 400, 500, 750, 1000, 1500]);
+  assert.equal(t[99], 650000);
 });
