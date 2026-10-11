@@ -5095,6 +5095,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * actually appear (the intended cron never ran — see createNotification).
    */
   async function postDueChatAnnouncements() {
+    // Only an admin's game may post one (the server refuses anyone else), so
+    // nobody else asks: every other open game was being told "Admins only"
+    // once a minute while an announcement waited (seen 2026-10-11).
+    if (!isAdmin.value) return;
     const chatStore = useChatStore();
     // Need a live channel to broadcast to other users. If no one is connected
     // yet, leave the rows unposted; the next connected poller picks them up.
@@ -5142,7 +5146,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const wait = waitingAnnouncements();
     if (!wait.some(w => w.track === track && w.badgeId === badgeId)) wait.push({ track, badgeId, tries: 0 });
     keepAnnouncements(wait);
-    void sendAnnouncements();
+    // Asked 3 seconds after it is earned (Ames 2026-10-11), which gives the
+    // server time to count the edit or cell; asked again if it still says no.
+    setTimeout(() => { void sendAnnouncements(); }, 3000);
   }
   const ANNOUNCE_KEY = 'nge_announce_waiting_v1';
   type WaitingAnnouncement = { track: string; badgeId: number; tries: number };
