@@ -111,6 +111,15 @@
         41642,
         525
       ]
+    },
+    {
+      "kind": "cut",
+      "label": "Cut off the piece near 82147, 58813",
+      "b": [
+        82147,
+        58813,
+        523
+      ]
     }
   ],
   "endpoints": [],

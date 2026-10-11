@@ -20,6 +20,9 @@ the graph or the database.
   python scripts/proofreading-test-register.py --endpoints-only
       only the endpoint checks, as an INSERT for the test already registered
       under the config's title (no graph lookups)
+  python scripts/proofreading-test-register.py --add 8,9
+      only those checks (by their number in the config), looked up and
+      verified as usual, as an INSERT for the test already registered
 
 The CAVE token comes from CAVE_SERVICE_TOKEN, else cloud-volume's own secret
 file (~/.cloudvolume/secrets/cave-secret.json).
@@ -214,6 +217,24 @@ def main():
         print("\nNo SQL: the anchor came from the command line. Put the soma in the config to register.", file=sys.stderr)
     if inspect_only or problems or override:
         sys.exit(2 if problems else 0)
+
+    if arg("--add"):
+        wanted = {int(v) for v in arg("--add").split(",")}
+        chosen = [r for r in rows if r["ordinal"] in wanted and r["kind"] != "endpoint"]
+        if not chosen:
+            sys.exit("PROBLEMS: none of the checks " + arg("--add") + " exist")
+        title = sql_str(cfg["title"])
+        print("-- Checks " + ", ".join(str(r["ordinal"]) for r in chosen) + " for the test " + title + ", generated " + datetime.datetime.now(datetime.timezone.utc).isoformat())
+        print("-- Verified in their start state on the live graph at " + baseline + ". Run in the Supabase SQL editor.")
+        print("BEGIN;")
+        print("DELETE FROM public.proofreading_test_checks WHERE ordinal IN (" + ", ".join(str(r["ordinal"]) for r in chosen) + ") AND test_id = (SELECT id FROM public.proofreading_tests WHERE title = " + title + ");")
+        print("INSERT INTO public.proofreading_test_checks " + CHECK_COLUMNS)
+        print(CHECK_SELECT)
+        print("FROM (SELECT id FROM public.proofreading_tests WHERE title = " + title + ") t, (VALUES")
+        print(check_values(chosen))
+        print(") AS v(ordinal, kind, label, sv_a, sv_b, point_a, point_b, radius);")
+        print("COMMIT;")
+        return
 
     cols = ["title", "dataset", "pcg_server", "pcg_table", "state_url", "anchor_supervoxel", "root_at_baseline",
             "baseline_at", "hold_minutes", "pass_mark", "damage_fails", "attempts_allowed", "retry_hours", "feedback"]
