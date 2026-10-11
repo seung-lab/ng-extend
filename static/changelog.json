@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T14:05:00Z",
+      "title": "A kinder note when a cut is not the whole job",
+      "items": [
+        "When your cut goes through but the two neurons are still joined, the Cut tutorial and the Merger Sandbox now say so plainly: good job, but there is more to cut."
+      ]
+    },
+    {
       "at": "2026-10-11T13:35:00Z",
       "title": "Tutorial help says the right click",
       "items": [

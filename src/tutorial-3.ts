@@ -644,7 +644,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     // through one of them instead of between them. Say so, or the learner
     // sees a piece come off and the box still "waiting".
     if (!wantMerged && !failed && startRoot && p.rootA && p.rootA !== startRoot && useSplitMergeOverlayStore().redPointCount === 0) {
-      practiceStatus('A cut went through, but the two neurons are still joined: it cut across one of them. Put red on one neuron and blue on the other, right where they touch, and submit again.');
+      practiceStatus('Good job, that cut went through! But you did not get it all: the two neurons are still joined somewhere. Follow where they touch a little further, put red on one neuron and blue on the other there, and submit again. Help me shows the spot.');
       setTimeout(tick, 1500);
       return;
     }
