@@ -89,7 +89,9 @@ def check_values(rows):
 
 
 CHECK_COLUMNS = "(test_id, ordinal, kind, label, supervoxel_a, supervoxel_b, point_a, point_b, radius_nm)"
-CHECK_SELECT = "SELECT t.id, v.ordinal, v.kind, v.label, v.sv_a, v.sv_b, v.point_a::jsonb, v.point_b::jsonb, v.radius"
+# Every value is cast: a column of the VALUES list that is NULL throughout is
+# typed text by Postgres, which the integer radius column refused (2026-10-11).
+CHECK_SELECT = "SELECT t.id, v.ordinal::integer, v.kind, v.label, v.sv_a, v.sv_b, v.point_a::jsonb, v.point_b::jsonb, v.radius::integer"
 
 
 def print_endpoints_only(cfg):
