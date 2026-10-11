@@ -6199,13 +6199,16 @@ export const useChatStore = defineStore('chat', () => {
 
   // Which dataset you have open goes with the heartbeat, for the online list
   // (Krzysztof Kruk 2026-10-11). If the server does not take it yet, the
-  // plain heartbeat is used from then on, so being online never depends on it.
-  let presenceTakesDataset = true;
+  // plain heartbeat is used for a few minutes and then it is tried again, so
+  // being online never depends on it and a tab left open picks it up by itself.
+  let presenceRetryAt = 0;
+  const presenceTakesDataset = () => Date.now() >= presenceRetryAt;
+  const presenceWithoutDataset = () => { presenceRetryAt = Date.now() + 5 * 60_000; };
   async function heartbeat() {
-    if (presenceTakesDataset) {
+    if (presenceTakesDataset()) {
       const { error } = await supabase.from('chat_presence').upsert({ dataset: currentDatasetTag() }, { onConflict: 'user_id' });
       if (!error) return;
-      presenceTakesDataset = false;
+      presenceWithoutDataset();
     }
     const { error } = await supabase.from('chat_presence').upsert({}, { onConflict: 'user_id' });
     if (error) console.warn('[chat] presence heartbeat failed:', error.message);
@@ -6214,9 +6217,9 @@ export const useChatStore = defineStore('chat', () => {
   async function loadOnline() {
     const since = new Date(Date.now() - ONLINE_MS).toISOString();
     let { data, error } = await supabase.from('chat_presence')
-      .select(presenceTakesDataset ? 'user_id,name,last_seen_at,dataset' : 'user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
-    if (error && presenceTakesDataset) {
-      presenceTakesDataset = false;
+      .select(presenceTakesDataset() ? 'user_id,name,last_seen_at,dataset' : 'user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
+    if (error && presenceTakesDataset()) {
+      presenceWithoutDataset();
       ({ data, error } = await supabase.from('chat_presence').select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500));
     }
     if (error || !data) return;
