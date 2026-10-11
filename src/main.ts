@@ -5,6 +5,7 @@ import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
+import { startCloseGuard } from './util/close_guard';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
 import GrowingCell from 'components/GrowingCell.vue';
 import { watchPhoneEmptyView } from './widgets/widget_utils';
@@ -384,6 +385,7 @@ function setupViewer() {
   startSpooky(viewer);
   startInvalidSegmentWatch(viewer);
   startAnnotationClickSelect(viewer);
+  startCloseGuard();
   // Phones: never leave the 3D only view with nothing in it.
   watchPhoneEmptyView(() => phoneRef.value);
   // Undelete: remember the cells that leave the view, to bring them back.
