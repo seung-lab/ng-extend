@@ -945,6 +945,11 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     pausePracticeTools();
     const staged = STAGED_VIEW[ex.id];
     await useLayersStore().loadState(staged?.state ?? ex.state_url);
+    // A saved view can bring the layer side panel with it, and switching a
+    // tool on can open it. It is a third of the screen the exercise does
+    // not use (Ames, 2026-10-11). Shut it as the view settles, and not after
+    // that, so a player who opens it on purpose keeps it.
+    for (const ms of [200, 1600, 3600]) setTimeout(() => { try { getViewer().selectedLayer.visible = false; } catch { /* no viewer */ } }, ms);
     // The staged panel layout for this cell (3D only, or split with 2D).
     if (staged?.layout === 'xy-3d') openSplitView();
     else if (staged?.layout) {

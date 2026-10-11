@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-11T14:13:00Z",
+      "title": "A smaller box in the Merger Sandbox",
+      "items": [
+        "The Merger Sandbox box is shorter, with the title Can you solve all 8 merger mysteries?",
+        "The layer side panel closes when a practice cell opens, so there is more room to work.",
+        "Each merger now opens in 3D. Press Space for the 2D images.",
+        "Still need help? no longer shows before you have pressed Help me, and the empty band at the bottom of the box is gone."
+      ]
+    },
+    {
       "at": "2026-10-11T14:08:00Z",
       "title": "A calmer progress strip in the Merger Sandbox",
       "items": [

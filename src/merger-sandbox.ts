@@ -16,8 +16,7 @@ import { SANDBOX_CELLS } from './practice_pools';
 import { supabase } from './supabase';
 import { awardSpecialOnce } from './util/special_award';
 import { useProofreadingBackendStore } from './store';
-import { show2D, showSections } from './tutorial-cut';
-import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
+import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, getViewer, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
 
 export const SANDBOX_TUTORIAL = 9;
 
@@ -153,16 +152,12 @@ const thisOneCut = () => sandboxDone.value.includes(cell().id);
 export const steps: Step[] = [
   // 1: The exercise
   {
-    get title() { return `Merger ${current + 1} of ${TOTAL}`; },
+    get title() { return `Can you solve all ${TOTAL} merger mysteries?`; },
     get text() {
       return `
-**Can you find and cut all ${TOTAL} mergers?**
-
 ${progressBar()}
 
-Two neurons are fused into one segment here. Find where they touch and cut them apart, the way you did in the Cut tutorial: <strong style="color:#ff5c5c">red</strong> points on one neuron, **G**, <strong style="color:#5c8cff">blue</strong> points on the other, then **Submit cut**.
-
-No preset points this time. Stuck? Press **Help me**.`;
+Two neurons are fused into one segment here. Find where they touch and cut them apart.`;
     },
     position: OVER_3D,
     width: "440px",
@@ -188,9 +183,10 @@ No preset points this time. Stuck? Press **Help me**.`;
       // Watch only once the cell is held: with nothing held, the watch
       // would queue for the Cut tutorial's cells.
       watchPractice(false, 'Waiting for your cut: red on one neuron, G, blue on the other, Submit cut.', '', { advance: true });
-      // Split view with Sections on: the merged views were saved 3D only,
-      // and finding where two neurons touch needs the 2D images (Ames).
-      setTimeout(() => { show2D(); showSections(); }, 500);
+      // 3D only to start (Ames, 2026-10-11, reversing the split view of
+      // 2026-10-08): the whole cell is easier to read, and Space brings the
+      // 2D images back when the join needs a closer look.
+      setTimeout(() => { try { getViewer()?.layout?.restoreState('3d'); } catch { /* no viewer */ } }, 500);
       setTimeout(() => ensureTool('multicut'), 1100);
     },
   } as Step,

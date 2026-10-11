@@ -144,8 +144,7 @@ export function practiceStatus(text: string, done = false) {
   if (!help) {
     help = smallButton('nge-practice-help', 'Help me', () => helpMe());
     help.title = 'Show me where to click';
-    help.style.cssText = 'float:right;margin:10px 0 0;position:relative;z-index:3;';
-    chip.appendChild(help);
+    helpRow(chip).appendChild(help);
   }
   help.style.display = (done || !helpWanted) ? 'none' : '';
   const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;
@@ -154,6 +153,27 @@ export function practiceStatus(text: string, done = false) {
   if (place) place.style.display = done ? 'none' : '';
   // The chip just grew; keep it on screen.
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+
+/** The row the help buttons sit in, right aligned under the status line.
+ *  A row, not floats: floated buttons left a band of empty space at the
+ *  bottom of the box (Ames, 2026-10-11). */
+function helpRow(chip: Element): HTMLElement {
+  let row = chip.querySelector('.nge-practice-helprow') as HTMLElement | null;
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'nge-practice-helprow';
+    row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin:8px 0 0;position:relative;z-index:3;';
+    chip.appendChild(row);
+  }
+  return row;
+}
+
+/** Take down what Help me opened. A box that comes back with the same text
+ *  keeps its extra parts, so "Still need help?" stayed up on the next try
+ *  of a merger without Help me being pressed (Ames, 2026-10-11). */
+function clearHelp() {
+  document.querySelectorAll('.introductionStepAnchor .nge-practice-more, .introductionStepAnchor .nge-practice-stuck').forEach(el => el.remove());
 }
 
 function notePanel(cls: string, html: string): HTMLElement {
@@ -377,8 +397,7 @@ async function helpMe() {
   }
   if (!shown) { openStuckPanel(); return; }
   const more = smallButton('nge-practice-more', 'Still need help?', () => { more.remove(); openStuckPanel(); });
-  more.style.cssText = 'float:right;clear:right;margin:8px 0 0;';
-  chip.appendChild(more);
+  helpRow(chip).appendChild(more);
   document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
 }
 
@@ -672,7 +691,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); helpWanted = true; }
+export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); clearHelp(); helpWanted = true; }
 
 function toolIsOn(): boolean {
   const viewer = getViewer();
