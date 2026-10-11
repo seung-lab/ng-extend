@@ -1705,6 +1705,9 @@ const ewIsStreakMilestone = (d) => {
   return d % 25 === 0 || d % 365 === 0;
 };
 
+// Bump when index.js changes in a way a deploy must prove: health answers it.
+const EW_CODE_VERSION = "2026-10-11-proofreading-test";
+
 exports.ewSecureWrite = onRequest(
   // 120 s: scoring the proofreading test reads the graph and undoes the player's edits.
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20, timeoutSeconds: 120 },
@@ -1723,8 +1726,11 @@ exports.ewSecureWrite = onRequest(
       else if (k.split(".").length === 3) {
         try { kind = "legacy_" + JSON.parse(Buffer.from(k.split(".")[1], "base64url").toString()).role; } catch (e) { kind = "unreadable_jwt"; }
       }
-      try { await ewSb(k)("admins?select=id&limit=1"); res.json({ ok: true, db: true, kind }); }
-      catch (e) { res.status(500).json({ ok: false, db: false, kind }); }
+      // `code`: which build of this file is live, so a deploy can be checked
+      // from outside (the proofreading test deploy of 2026-10-11 answered
+      // with the old code and nothing said which revision was serving).
+      try { await ewSb(k)("admins?select=id&limit=1"); res.json({ ok: true, db: true, kind, code: EW_CODE_VERSION }); }
+      catch (e) { res.status(500).json({ ok: false, db: false, kind, code: EW_CODE_VERSION }); }
       return;
     }
     const who = await ewVerify(token);
