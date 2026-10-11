@@ -129,6 +129,16 @@ document.addEventListener('nge:sandbox-next', () => {
   startSandbox(i < 0 ? 0 : i);
 });
 
+/** The run of mergers as a row of cells: lit for each one cut, a pulse on
+ *  the one in hand, dim for the rest, with the count beside it. */
+function progressBar(): string {
+  const cells = SANDBOX_CELLS.map((c, i) => {
+    const state = sandboxDone.value.includes(c.id) ? 'done' : i === current ? 'now' : 'todo';
+    return `<span class="nge-sbx-cell nge-sbx-cell--${state}" title="Merger ${i + 1}${state === 'done' ? ', cut' : state === 'now' ? ', this one' : ''}">${i + 1}</span>`;
+  }).join('');
+  return `<div class="nge-sbx-progress" role="img" aria-label="${doneCount()} of ${TOTAL} mergers cut"><span class="nge-sbx-count"><b>${doneCount()}</b>/${TOTAL}</span><span class="nge-sbx-label">cut</span><span class="nge-sbx-cells">${cells}</span></div>`;
+}
+
 /** The done box asks the cell itself whether it was cut; until that answer
  *  is in, it says so instead of guessing. */
 const checking = ref(false);
@@ -145,9 +155,10 @@ export const steps: Step[] = [
   {
     get title() { return `Merger ${current + 1} of ${TOTAL}`; },
     get text() {
-      const done = doneCount();
       return `
-**Can you find and cut all ${TOTAL} mergers?** ${done === 0 ? 'This is the first.' : `You have cut ${done} so far.`}
+**Can you find and cut all ${TOTAL} mergers?**
+
+${progressBar()}
 
 Two neurons are fused into one segment here. Find where they touch and cut them apart, the way you did in the Cut tutorial: <strong style="color:#ff5c5c">red</strong> points on one neuron, **G**, <strong style="color:#5c8cff">blue</strong> points on the other, then **Submit cut**.
 
@@ -210,6 +221,8 @@ The cells go back to their merged state for the next person. You can cut any of 
       }
       return `
 <span class="nge-done-lead">Congratulations, that is ${done} of ${TOTAL}. ${left} ${left === 1 ? 'remains' : 'remain'}!</span>
+
+${progressBar()}
 
 ` + BLACK_BOX_NOTE;
     },

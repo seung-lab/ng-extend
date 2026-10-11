@@ -2,7 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-11T14:05:00Z",
+      "at": "2026-10-11T13:45:00Z",
+      "title": "A progress strip in the Merger Sandbox",
+      "items": [
+        "The Merger Sandbox shows a strip with one cell per merger: lit for each one you have cut, glowing on the one in hand.",
+        "Merger 6 now notices your cut. It was checking two spots on the same neuron, so no cut could count."
+      ]
+    },
+    {
+      "at": "2026-10-11T13:30:00Z",
       "title": "A kinder note when a cut is not the whole job",
       "items": [
         "When your cut goes through but the two neurons are still joined, the Cut tutorial and the Merger Sandbox now say so plainly: good job, but there is more to cut."

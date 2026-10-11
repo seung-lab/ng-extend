@@ -348,3 +348,30 @@
 @media (prefers-reduced-motion: reduce) {
   .nge-status-pop, .introductionStepAnchor .chip button.next.nge-next-ready { animation: none; box-shadow: 0 0 0 2px rgba(111, 227, 165, 0.8); }
 }
+
+/* Merger Sandbox progress: one cell per merger. Cut ones are lit, the one in
+   hand pulses, the rest wait dim. */
+.nge-sbx-progress {
+  display: flex; align-items: center; gap: 10px;
+  margin: 2px 0 4px; padding: 9px 12px;
+  border: 1px solid rgba(126, 224, 255, 0.22);
+  border-left: 2px solid #7ee0ff;
+  background: linear-gradient(90deg, rgba(126, 224, 255, 0.09), rgba(126, 224, 255, 0.02));
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+.nge-sbx-count { font-family: 'Orbitron', 'Rajdhani', ui-monospace, monospace; font-size: 0.95em; letter-spacing: 0.06em; color: #8fa9c4; white-space: nowrap; }
+.nge-sbx-count b { font-size: 1.5em; color: #7ee0ff; text-shadow: 0 0 10px rgba(126, 224, 255, 0.55); }
+.nge-sbx-label { font-size: 0.72em; letter-spacing: 0.18em; text-transform: uppercase; color: #8fa9c4; }
+.nge-sbx-cells { display: flex; flex: 1; gap: 4px; }
+.nge-sbx-cell {
+  flex: 1; height: 1.9em; min-width: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.72em; font-weight: 700;
+  transform: skewX(-14deg);
+  border: 1px solid rgba(126, 224, 255, 0.2);
+  color: rgba(143, 169, 196, 0.6); background: rgba(126, 224, 255, 0.03);
+}
+.nge-sbx-cell--done { border-color: #7ee0ff; color: #06202c; background: #7ee0ff; box-shadow: 0 0 9px rgba(126, 224, 255, 0.5); }
+.nge-sbx-cell--now { border-color: #ffd08a; color: #ffd08a; background: rgba(255, 208, 138, 0.1); animation: nge-sbx-now 1.4s ease-in-out infinite; }
+@keyframes nge-sbx-now { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 208, 138, 0); } 50% { box-shadow: 0 0 10px 1px rgba(255, 208, 138, 0.55); } }
+@media (prefers-reduced-motion: reduce) { .nge-sbx-cell--now { animation: none; box-shadow: 0 0 6px rgba(255, 208, 138, 0.5); } }

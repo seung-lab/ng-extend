@@ -880,6 +880,11 @@ function toolActive(): boolean {
 const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
   // Axon fused to a dendrite, 2D cut: axon (86830, 59380, 846), dendrite (86418, 59244, 814)
   '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': ['75507587050992924', '75507587050897753'],
+  // Merger Sandbox 6 (Celia's "Small branch merger on cell"): both of the
+  // row's points are on the main cell, so no cut could ever count. These are
+  // the two supervoxels either side of Ames's own cut of 2026-10-11
+  // (operation 1871): the small branch, and the cell beside it.
+  'c04eed2c-4204-4b3d-a25d-2f7aa880c1aa': ['75719174185485322', '75719174185482374'],
 };
 /**
  * Split view (2D images beside 3D), with the 2D panel rebuilt once the view
