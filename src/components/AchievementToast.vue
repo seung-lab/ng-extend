@@ -414,8 +414,26 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 let lastCelebratedCount: number | null = null;
 const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean } | null>(null);
 
+/** How much a completed cell shows (Settings): the full congratulations, a
+ *  small note at the top, or nothing. Read when a cell is completed, so a
+ *  change in Settings applies to the next one. */
+const cellMessageMode = ref<'full' | 'small' | 'off'>('full');
+function cellMessagePref(): 'full' | 'small' | 'off' {
+  try {
+    const v = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').cellCompleteMessage;
+    return v === 'small' || v === 'off' ? v : 'full';
+  } catch { return 'full'; }
+}
+
 watch(() => backend.pendingCellCelebration, (pending) => {
   if (!pending) return;
+  const mode = cellMessageMode.value = cellMessagePref();
+  if (mode === 'off') {
+    // Nothing on screen: the cell's menu and its row say Proofread.
+    backend.pendingCellCelebration = null;
+    cellCelebration.value = null;
+    return;
+  }
   const shown = { ...pending };
   cellCelebration.value = shown;
   backend.pendingCellCelebration = null;
@@ -449,7 +467,10 @@ watch(() => backend.pendingCellCelebration, (pending) => {
   // Batch completions get the hero treatment: cascading confetti bursts
   // (cyan → gold → magenta → cyan) and a longer dwell so the user can take
   // it in. Single-cell stays as the original quick cyan pop.
-  if (pending.batchCount && pending.batchCount > 1) {
+  if (mode === 'small') {
+    // The note: no confetti, no sound, and it goes away by itself.
+    setTimeout(() => { if (cellCelebration.value && cellCelebration.value.segId === shown.segId && cellCelebration.value.imageUrl === shown.imageUrl) cellCelebration.value = null; }, 5000);
+  } else if (pending.batchCount && pending.batchCount > 1) {
     fireConfetti('cyan', 2.2);
     setTimeout(() => fireConfetti('gold', 2.0), 500);
     setTimeout(() => fireConfetti('cyan', 1.6), 1100);
@@ -596,9 +617,23 @@ function playBatchChime() {
       </div>
     </Transition>
 
+    <!-- The small note (Settings: "A small note at the top"): one line under
+         the top bar that covers nothing and takes no clicks from the view. -->
+    <Transition name="nge-cell-chip">
+      <button v-if="cellCelebration && cellMessageMode === 'small'" type="button" class="nge-cell-chip" title="Click to dismiss" @click="dismissCellCelebration">
+        <span class="nge-cell-chip-check" aria-hidden="true">✓</span>
+        <span class="nge-cell-chip-title">{{ cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
+        <span v-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
+        <template v-else-if="cellCelebration.counted">
+          <span v-if="cellCelebration.datasetLabel" class="nge-cell-chip-count">{{ cellCelebration.datasetLabel }} <b>{{ cellCelebration.datasetCells }}</b></span>
+          <span v-else class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
+        </template>
+      </button>
+    </Transition>
+
     <!-- Single-cell celebration overlay (compact) -->
     <Transition name="nge-cell-celebrate">
-      <div v-if="cellCelebration && (!cellCelebration.batchCount || cellCelebration.batchCount <= 1)" class="nge-cell-overlay" @click="dismissCellCelebration">
+      <div v-if="cellCelebration && cellMessageMode === 'full' && (!cellCelebration.batchCount || cellCelebration.batchCount <= 1)" class="nge-cell-overlay" @click="dismissCellCelebration">
         <div class="nge-cell-card">
           <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
           <div class="nge-cell-text">
@@ -620,7 +655,7 @@ function playBatchChime() {
 
     <!-- Batch celebration overlay — Asgardian hero treatment -->
     <Transition name="nge-batch-celebrate">
-      <div v-if="cellCelebration && cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-batch-overlay" @click="dismissCellCelebration">
+      <div v-if="cellCelebration && cellMessageMode === 'full' && cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-batch-overlay" @click="dismissCellCelebration">
         <div class="nge-batch-vignette"></div>
         <div class="nge-batch-hexgrid"></div>
         <div class="nge-batch-rays">
@@ -1354,6 +1389,55 @@ function playBatchChime() {
   from { transform: translateY(0); }
   to { transform: translateY(-6px); }
 }
+
+/* The small note at the top. Cut like the Lantern's bar and the layer tabs
+   (a circuit board part whose top edge is the trace, ending on two pads),
+   in the green of a finished cell where the Lantern is amber (Ames
+   2026-10-11: "use Lantern mode UI load in as inspiration ... just not
+   orange"). It sits below where the Lantern's bar goes, so both can show. */
+.nge-cell-chip {
+  --chip-trace: #8df0a4;
+  --chip-fill: #0a1120;
+  --chip-pad-x: calc(6px + (100% - 20px) * 0.75);
+  --chip-cut: polygon(
+    6px 3px, calc(var(--chip-pad-x) - 8px) 3px, calc(var(--chip-pad-x) - 8px) 0,
+    calc(var(--chip-pad-x) + 8px) 0, calc(var(--chip-pad-x) + 8px) 3px,
+    calc(100% - 14px) 3px, 100% 17px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
+  position: fixed; top: 88px; left: 50%; transform: translateX(-50%); z-index: 100000;
+  display: inline-flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px); box-sizing: border-box;
+  padding: 11px 20px 8px 12px; border: 0; border-radius: 0; cursor: pointer;
+  background: linear-gradient(180deg, var(--chip-trace) 0%, rgba(141, 240, 164, 0.8) 30%, rgba(141, 240, 164, 0.28) 72%, rgba(141, 240, 164, 0.05) 100%) no-repeat left bottom / 100% calc(100% - 3px);
+  clip-path: var(--chip-cut);
+  font: 500 13px/1.2 'Inter', system-ui, sans-serif; color: rgba(239, 244, 251, 0.94); white-space: nowrap;
+}
+.nge-cell-chip::before {
+  content: ''; position: absolute; inset: 3px 1px 1px 1px; z-index: 0; pointer-events: none;
+  background: linear-gradient(168deg, #0d1a22 0%, var(--chip-fill) 60%, #070c18 100%);
+  clip-path: polygon(5px 0, calc(100% - 13px) 0, 100% 14px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 6.4px);
+}
+.nge-cell-chip::after {
+  content: ''; position: absolute; z-index: 1; pointer-events: none;
+  left: 6px; right: 14px; top: 0; height: 7px;
+  background:
+    radial-gradient(circle at calc(75% - 4.5px) 3.7px, #08160c 0 0.9px, var(--chip-trace) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at calc(75% + 4.5px) 3.7px, #08160c 0 0.9px, var(--chip-trace) 1.3px 2.1px, transparent 2.5px),
+    linear-gradient(var(--chip-trace), var(--chip-trace)) left 0 top 3px / calc(75% - 6.8px) 1.4px no-repeat,
+    linear-gradient(var(--chip-trace), var(--chip-trace)) right 0 top 3px / calc(25% - 6.8px) 1.4px no-repeat;
+}
+.nge-cell-chip > * { position: relative; z-index: 1; }
+.nge-cell-chip-check { font-size: 13px; font-weight: 800; color: var(--chip-trace); }
+.nge-cell-chip-title { font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--chip-trace); }
+.nge-cell-chip-count { padding-left: 10px; border-left: 1px solid rgba(141, 240, 164, 0.28); font-variant-numeric: tabular-nums; }
+.nge-cell-chip-count b { font-weight: 700; color: #fff; }
+/* It comes in the way the Lantern's bar does: a light runs across from the left, once. */
+.nge-cell-chip-enter-active { animation: nge-cell-chip-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nge-cell-chip-leave-active { animation: nge-cell-chip-out 0.3s ease-in both; }
+@keyframes nge-cell-chip-in {
+  0%   { opacity: 0; filter: brightness(2.6); clip-path: polygon(6px 3px, 6px 3px, 6px 0, 6px 0, 6px 3px, 6px 3px, 6px 17px, 6px 100%, 6px 100%, 0 calc(100% - 9px), 0 9px); }
+  100% { opacity: 1; filter: none; clip-path: var(--chip-cut); }
+}
+@keyframes nge-cell-chip-out { 0% { opacity: 1; filter: none; } 100% { opacity: 0; filter: brightness(0.5); } }
+@media (prefers-reduced-motion: reduce) { .nge-cell-chip-enter-active, .nge-cell-chip-leave-active { animation: none; } }
 
 /* Transition */
 .nge-cell-celebrate-enter-active { transition: opacity 0.4s ease-out; }

@@ -993,6 +993,11 @@ export interface UserPreferences {
   /** Show neuroglancer's "?" controls button in the top bar. Off by default
    *  (Amy 2026-09-30); the controls panel is still in the command palette. */
   showNgControlsButton?: boolean;
+  /** What a completed cell shows: the full congratulations in the middle of
+   *  the screen (the default), a small note at the top that does not cover
+   *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
+   *  distracting from the workflow"). */
+  cellCompleteMessage?: 'full' | 'small' | 'off';
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
