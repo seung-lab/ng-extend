@@ -866,14 +866,34 @@ export async function setCellComplete(
 /**
  * Save (or update) the cell-type annotation for a root ID.
  */
+/** Why the last cell type was refused, in plain words ('' if it wasn't). */
+let lastCellTypeProblem = '';
+export function getLastCellTypeProblem(): string { return lastCellTypeProblem; }
+
 export async function saveCellType(
     caveServer: string, rootId: string, cellType: string,
-    existingAnnotationId?: number): Promise<boolean> {
+    existingAnnotationId?: number,
+    /** The batch tool types many cells from one view and cannot move the
+     *  crosshairs into each of them. */
+    skipCrosshairCheck = false): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellTypeTable, cellTypeSchema, alignedVolume} = dsCfg;
+  lastCellTypeProblem = '';
   if (!caveServer) {
     console.warn('[lightbulb] No CAVE server — cannot save cell type.');
     return false;
+  }
+  // A cell type is saved at a POINT, like a completion, and CAVE files it
+  // under whatever cell is at that point. So the crosshairs must be inside
+  // this cell (Ames 2026-10-11): then the type lands on the right cell, and
+  // the spot says which cell it belongs to after later edits.
+  if (!skipCrosshairCheck && !dsCfg.annotationLog) {
+    const problem = (await crosshairProblem(rootId)).replace('then mark it again', 'then save the type again');
+    if (problem) {
+      lastCellTypeProblem = problem;
+      console.warn('[lightbulb] cell type refused:', problem);
+      return false;
+    }
   }
 
   const baseUrl = annotationBaseUrl(caveServer, cellTypeTable, alignedVolume);

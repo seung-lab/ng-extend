@@ -6,7 +6,7 @@ import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
-import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem} from './lightbulb_service';
+import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem} from './lightbulb_service';
 import {getDatasetCaveConfig} from '../config';
 import {currentSegLayerName} from '../datasets';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
@@ -527,6 +527,10 @@ export class ButtonService {
     });
     cellTypeSection.appendChild(freeText);
 
+    // Why a type was not saved (crosshairs outside the cell), above the button.
+    const typeNote = document.createElement('div');
+    typeNote.classList.add('nge-lb-status-line', 'nge-lb-type-note');
+    typeNote.style.display = 'none';
     const saveTypeBtn = document.createElement('button');
     saveTypeBtn.classList.add('nge-lb-section-button', 'nge-lb-save-btn');
     saveTypeBtn.textContent = 'Save Cell Type';
@@ -537,8 +541,11 @@ export class ButtonService {
       saveTypeBtn.textContent = 'Saving…';
       const ok = await saveCellType(
           localServerURL, segmentIDString, cellType, cachedStatus?.cellTypeAnnotationId);
-      saveTypeBtn.textContent = ok ? 'Saved ✓' :
-          (!localServerURL ? 'No CAVE server configured' : 'Error — retry');
+      const typeProblem = ok ? '' : getLastCellTypeProblem();
+      saveTypeBtn.textContent = ok ? 'Saved ✓' : typeProblem ? 'Save Cell Type' :
+          (!localServerURL ? 'No CAVE server configured' : 'Error, try again');
+      typeNote.textContent = typeProblem;
+      typeNote.style.display = typeProblem ? '' : 'none';
       saveTypeBtn.disabled = false;
       if (ok && cachedStatus) {
         cachedStatus.cellType = cellType;
@@ -550,6 +557,7 @@ export class ButtonService {
         }));
       }
     });
+    cellTypeSection.appendChild(typeNote);
     cellTypeSection.appendChild(saveTypeBtn);
     if (roCfg.cellTypeReadOnly) { freeText.style.display = 'none'; saveTypeBtn.style.display = 'none'; }
 
