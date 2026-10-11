@@ -99,6 +99,7 @@ interface Visitor {
   facing: { right: number[]; up: number[]; eye: number[] } | null;
   born: number; leaveAt: number; goneAt: number | null; seed: number;
   drift: number[];                 // nm per second
+  nearCell: boolean;               // it was put beside a cell (not just at the edge of the light)
   prop: NgeProp;
 }
 
@@ -161,30 +162,79 @@ function load(model: 'ghost' | 'reaper') {
   ).finally(() => { loadingModel[model] = false; });
 }
 
+/**
+ * Points on the cells that are on screen right now, in nanometres.
+ *
+ * A visitor should be beside a cell, not out in the empty dark (Ames
+ * 2026-10-10, on a retina bipolar cell: "he shouldn't be too far away from
+ * the cells"). The 3D view keeps the depth of everything it last drew, so a
+ * scatter of screen points that have something drawn at them, turned back
+ * into places in the data, is a scatter of points on the visible surfaces.
+ * Read once, when someone is about to arrive.
+ */
+function surfacePoints(f: Frame): number[][] {
+  const p = panel3d();
+  if (!p || typeof p.getDepthArray !== 'function') return [];
+  let depth: Float32Array | undefined, w = 0, h = 0;
+  try { depth = p.getDepthArray(); w = p.renderViewport.width; h = p.renderViewport.height; } catch { return []; }
+  if (!depth || !(w > 8) || !(h > 8) || depth.length < w * h) return [];
+  const inv = p.projectionParameters.value.invViewProjectionMat;
+  const step = Math.max(3, Math.round(Math.min(w, h) / 90));
+  const at = (x: number, y: number) => depth![y * w + x];
+  const out: number[][] = [];
+  for (let y = step; y < h - step; y += step) {
+    for (let x = step; x < w - step; x += step) {
+      const z = at(x, y);
+      // something drawn here, and beside it too: a branch, not a one pixel line
+      if (!(z > 0) || !(at(x + 1, y) > 0) || !(at(x, y + 1) > 0) || !(at(x + 1, y + 1) > 0)) continue;
+      // the view stores 1 minus the window depth
+      const g = tm(inv, [(x + 0.5) / w * 2 - 1, (y + 0.5) / h * 2 - 1, 2 * (1 - z) - 1]);
+      out.push(g.map((v, i) => v * f.s[i]));
+    }
+  }
+  return out;
+}
+
 function arrive(kind: Kind, f: Frame, now: number) {
   const k = KINDS[kind], h = f.heightNm;
   // where it appears is measured in Lantern reaches
   const unit = Math.max(1000, lantern.sizeUm * 1000);
   const sizeNm = k.sizeUm != null ? k.sizeUm * 1000 : (k.sizeOfView ?? 0.1) * h;
   const at = (x: number, y: number, z: number) => [0, 1, 2].map(i => f.centreNm[i] + f.right[i] * x + f.up[i] * y + f.eye[i] * z);
-  let pos: number[] = [], drift = [0, 0, 0];
+  let pos: number[] = [], drift = [0, 0, 0], nearCell = false;
   if (kind === 'boo') {
     // right in front of you, a little below the middle
     pos = at(0, -0.1 * h, 0.14 * h);
   } else {
-    // somewhere round the centre, and not where the last one was
-    let angle = 0;
-    for (let tries = 0; tries < 8; tries++) {
-      angle = Math.random() * Math.PI * 2;
-      const far = (k.near + Math.random() * (k.far - k.near)) * unit;
+    // Beside a cell: a point on a visible surface about as far from the
+    // centre as this visitor likes to be (the ghost at the edge of the light,
+    // the reaper out past it), and not where the last one was.
+    const want = (k.near + k.far) / 2 * unit, slack = (k.far - k.near) / 2 * unit + 0.25 * unit;
+    const points = surfacePoints(f);
+    const fresh = lastSpot ? points.filter(q => dist(q, lastSpot!) > Math.max(0.7 * unit, 3 * sizeNm)) : points;
+    const pool = fresh.length ? fresh : points;
+    const ring = pool.filter(q => Math.abs(dist(q, f.centreNm) - want) <= slack);
+    let on: number[] | null = null;
+    if (ring.length) on = ring[Math.floor(Math.random() * ring.length)];
+    else if (pool.length) {
+      // nothing at that distance: the nearest to it, from a handful picked at random
+      const few = Array.from({ length: Math.min(24, pool.length) }, () => pool[Math.floor(Math.random() * pool.length)]);
+      on = few.reduce((best, q) => Math.abs(dist(q, f.centreNm) - want) < Math.abs(dist(best, f.centreNm) - want) ? q : best);
+    }
+    if (on) {
+      // just in front of the cell there, and a little above it, never inside it
+      pos = [0, 1, 2].map(i => on![i] + f.eye[i] * 0.8 * sizeNm + f.up[i] * 0.45 * sizeNm);
+      nearCell = true;
+    } else {
+      // no cell on screen at all: at the edge of the light
+      const angle = Math.random() * Math.PI * 2, far = (k.near + Math.random() * (k.far - k.near)) * unit;
       pos = at(Math.cos(angle) * far, Math.sin(angle) * far, (Math.random() - 0.5) * 0.3 * unit);
-      if (!lastSpot || dist(pos, lastSpot) > 0.7 * unit) break;
     }
   }
   visitors.push({
     kind, posNm: pos, sizeNm, viewNm: h,
     facing: k.still ? { right: [...f.right], up: [...f.up], eye: [...f.eye] } : null, born: now, leaveAt: now + between(k.stayS) * 1000, goneAt: null,
-    seed: Math.random() * 40, drift,
+    seed: Math.random() * 40, drift, nearCell,
     prop: { mesh: meshes[k.model]!, modelMat: mat4.create(), alpha: k.alpha, dissolve: 1, seed: 0, glow: k.glow, rim: k.rim, shade: k.shade },
   });
 }
@@ -284,7 +334,7 @@ function frame() {
   redraw();
   // for checking from the console and in tests
   const main = visitors.find(v => v.kind !== 'boo');
-  (window as any).__ngeGhost = main ? { kind: main.kind, posNm: main.posNm, sizeNm: main.sizeNm, dissolve: main.prop.dissolve, leaving: main.goneAt !== null,
+  (window as any).__ngeGhost = main ? { kind: main.kind, nearCell: main.nearCell, posNm: main.posNm, sizeNm: main.sizeNm, dissolve: main.prop.dissolve, leaving: main.goneAt !== null,
     awayNm: dist(f.centreNm, main.posNm), tooNearNm: Math.max(0.9 * main.sizeNm, Math.min(KINDS[main.kind].scared * main.sizeNm, SCARED_OF_VIEW * f.heightNm)) } : null;
   (window as any).__ngeVisitors = visitors.map(v => v.kind);
   // and for putting one somewhere on purpose (tests: in front of, or behind, a surface)
