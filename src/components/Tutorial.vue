@@ -42,6 +42,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 8) return store.tutorialStep8;
     if (store.activeTutorial === 9) return store.tutorialStep9;
     if (store.activeTutorial === 10) return store.tutorialStep10;
+    if (store.activeTutorial === 11) return store.tutorialStep11;
     return store.tutorialStep4;
 });
 

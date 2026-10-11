@@ -391,6 +391,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep8,
     tutorialStep9,
     tutorialStep10,
+    tutorialStep11,
     hydrateFromSupabase,
   };
 });
