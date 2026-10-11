@@ -8,7 +8,8 @@
  *                 else two seconds later.
  *   The reaper    Rare. He arrives the same way, further off, carrying his
  *                 own red lantern: the cell near him is lit red. He stands
- *                 still, and is gone in an instant if you come near. Held back for now.
+ *                 still, and is gone in an instant if you come near. He comes
+ *                 by himself on 31 October only.
  *   boo!          Say  boo!  in chat and a ghost pops up in front of you and
  *                 flies off the screen. Your own boo! works all year; in
  *                 Halloween week everyone who sees it gets one.
@@ -77,7 +78,7 @@ const KINDS: Record<Kind, {
   // an instant. (Ames: "he should not float/move ... he should not always
   // turn to look at you ... more ominous ... he looks too big".)
   reaper: { model: 'reaper', sizeUm: [5, 10], sizeOfView: 0.07, near: 1.15, far: 1.4, scared: 1.5, tooBig: 0.3, appearS: 3.2, vanishS: 0.3, stayS: [18, 30], gapS: [6, 14], still: true,
-            alpha: 1, shade: 0.34, glow: [0.02, 0.0, 0.0], rim: [1.0, 0.1, 0.06] },
+            alpha: 1, shade: 0.7, glow: [0.03, 0.0, 0.0], rim: [1.0, 0.1, 0.06] },
   boo:    { model: 'ghost',  sizeOfView: 0.15, near: 0, far: 0, scared: 0, tooBig: 0, appearS: 0.34, vanishS: 1.15, stayS: [1.0, 1.0], gapS: [0, 0], still: false,
             alpha: 0.95, shade: 1, glow: [0.2, 0.24, 0.3], rim: [0.6, 0.92, 1.0] },
 };
@@ -87,9 +88,12 @@ const KINDS: Record<Kind, {
 // never less than about its own height.
 const SCARED_OF_VIEW = 0.11;
 const FIRST_S: [number, number] = [0.4, 0.9];  // the first, after the Lantern is lit (it was up to 6 s: too long)
-// The reaper does not come by himself yet (Ames 2026-10-10: "hold off on
-// reaper for now"). Admins can call him from the Lantern bar to try him out.
-const REAPER_ODDS = 0;
+// The reaper comes by himself on Halloween itself, 31 October, and on no
+// other day (Ames 2026-10-10: "we should plan to deploy grim on halloween
+// only"). On that day about one visitor in eight is him. Admins can call him
+// from the Lantern bar on any day, to try him out.
+const REAPER_ODDS = 0.12;
+export function isHalloween(now = new Date()): boolean { return now.getMonth() === 9 && now.getDate() === 31; }
 const BOO_EVERY_MS = 6000;
 const between = ([a, b]: [number, number]) => a + Math.random() * (b - a);
 
@@ -270,7 +274,7 @@ function frame() {
 
   // someone new?
   if (haunting && !visitors.some(v => v.kind !== 'boo') && (summon || now >= nextAt)) {
-    const kind: Kind = callReaper || (!nextIsGhost && Math.random() < REAPER_ODDS) ? 'reaper' : 'ghost';
+    const kind: Kind = callReaper || (!nextIsGhost && isHalloween() && Math.random() < REAPER_ODDS) ? 'reaper' : 'ghost';
     const model = KINDS[kind].model;
     if (meshes[model]) { arrive(kind, f, now); callReaper = false; nextIsGhost = false; summon = false; }
     else if (failedModel[model]) { callReaper = false; summon = false; nextAt = now + 4000; }
@@ -328,6 +332,10 @@ function frame() {
       redLight.posNm.set(pos);
       redLight.radiusNm = v.sizeNm * 3.4 * (1 - dissolve) * (0.82 + 0.18 * pulse);
       redLight.color = [1.0 * (0.55 + 0.45 * pulse), 0.1, 0.06];
+      // The same lantern lights the front of him, so the figure can be made out
+      // (Ames: "the model seems impossible to see, maybe it needs a light on
+      // the front of him"): steadily, and brighter on each beat.
+      v.prop.shade = 0.62 + 0.3 * pulse;
     }
     live.push(v);
   }
