@@ -281,6 +281,7 @@ async function cutHintFor(ex: any): Promise<{ hint: CutHint | null; trusted: boo
   const urls = [CUT_HINT_STATES[ex.id], ...Object.values(CUT_HINT_STATES).filter(u => u !== CUT_HINT_STATES[ex.id])].filter(Boolean);
   if (anchor) {
     let best: { hint: CutHint; nm: number; note: string } | null = null;
+    let own = false;
     for (const url of urls) {
       const raw = await cutPointsInState(url);
       if (!raw) continue;
@@ -290,8 +291,12 @@ async function cutHintFor(ex: any): Promise<{ hint: CutHint | null; trusted: boo
         const nm = nmApart(centroid([...h.red, ...h.blue]), anchor);
         if (!best || nm < best.nm) best = { hint: h, nm, note: `${url.split('/').pop()} x[${f.join(',')}]` };
       }
+      // The cell's own view comes first and is taken on a looser test: an
+      // Admin Hub cell's two registered points can sit several micrometres
+      // from the join, so the tight test below would turn its own hints away.
+      if (url === CUT_HINT_STATES[ex.id] && best && best.nm < 25000) { own = true; break; }
     }
-    if (best && best.nm < 4000) {
+    if (best && (own || best.nm < 4000)) {
       console.info(`[tutorial] cut hints for ${ex.id}: ${best.note}, ${Math.round(best.nm)} nm from the cell`);
       out = { hint: best.hint, trusted: true };
     } else {

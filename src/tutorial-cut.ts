@@ -1,4 +1,5 @@
 import { Step } from "./store-pyr";
+import { SANDBOX_TOTAL } from './practice_pools';
 import imgBravoNurro from './images/bravo-nurro.png';
 // Amy's sandbox cell 648518346350730372 before and after she cut a fused
 // axon off it (2026-09-26). Web-sized JPEGs; originals in her images.
@@ -244,9 +245,9 @@ The red and blue dots on the images show where the points go.`,
 
 The cells you practised on are put back for the next person. Happy proofreading!
 
-Good, you've learned the basics of cut. Now see if you can find and cut **all 5 mergers** in the Merger Sandbox, without the preset points.
+Good, you've learned the basics of cut. Now see if you can find and cut **all ${SANDBOX_TOTAL} mergers** in the Merger Sandbox, without the preset points.
 
-<button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the 5 mergers</button>
+<button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the ${SANDBOX_TOTAL} mergers</button>
 
 **Coming soon:** a harder Cut tutorial, where you use **Find Path** to track down where two neurons were fused.
 
