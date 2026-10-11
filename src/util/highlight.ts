@@ -541,6 +541,16 @@ export function setHighlightsShown(on: boolean) {
   scheduleTint();
 }
 
+/** Lines painted on the cell that are not highlights: the cut preview
+ *  (src/util/cut_preview.ts) colours the two sides of a cut this way. In
+ *  nanometres. They are never saved and go when it clears them. */
+export interface ExtraTintLine { a: number[]; b: number[]; rgb: number[]; }
+let extraTintLines: ExtraTintLine[] = [];
+export function setExtraTintLines(lines: ExtraTintLine[] | null) {
+  extraTintLines = lines ?? [];
+  scheduleTint();
+}
+
 const MAX_VOXELS = 6e6;   // 24 MB of RGBA at most
 const hexRgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 
@@ -566,6 +576,8 @@ function buildTint(): NgeMeshTint | null {
       });
     }
   }
+  // The cut preview's two sides, over any highlight on the same stretch.
+  for (const l of extraTintLines) segs.push({ a: l.a, b: l.b, rgb: l.rgb });
   if (!segs.length) return null;
   const r = tintRadiusNm();
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];

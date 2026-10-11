@@ -1615,6 +1615,56 @@ class GrapheneGraphServerInterface {
   // links between a cell's pieces, and a point inside each piece, which is
   // all it takes to know what lies on which side of a click.
 
+  /** What a cut WOULD do, without making it: the smallest bits of the cell
+   *  (supervoxels) that would end up on each side, near the points. Same
+   *  request as the cut itself; the first group given comes back first.
+   *  `illegal` is the server saying these points cannot be cut apart. */
+  async ngeSplitPreview(
+      first: SegmentSelection[], second: SegmentSelection[],
+      annotationToNanometers: Float64Array): Promise<{sides: string[][], illegal: boolean}> {
+    const {url} = this;
+    if (url === '') return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
+    const row = (x: SegmentSelection) =>
+        [String(x.segmentId), ...x.position.map((val, i) => val * annotationToNanometers[i])];
+    const response = await cancellableFetchSpecialOk(
+        this.credentialsProvider, `${url}/graph/split_preview?int64_as_str=1`,
+        {method: 'POST', body: JSON.stringify({'sources': first.map(row), 'sinks': second.map(row)})},
+        responseIdentity);
+    // The ids are larger than a JavaScript number holds. If the server sent
+    // them as bare numbers, quote them before the text is read as JSON.
+    const text = (await response.text()).replace(/([\[,:\s])(\d{16,})(?=[\s,\]}])/g, '$1"$2"');
+    const json = JSON.parse(text);
+    const groups = json['supervoxel_connected_components'];
+    if (!Array.isArray(groups)) throw new Error('The server did not return a preview of this cut.');
+    return {
+      sides: groups.map((g: any) => Array.isArray(g) ? g.map(String) : []),
+      illegal: json['illegal_split'] === true,
+    };
+  }
+
+  /** The piece of the cell each of many supervoxels belongs to, in one
+   *  request per few thousand. A supervoxel the server did not answer for is
+   *  left out. */
+  async ngePiecesOfMany(supervoxelIds: string[]): Promise<Map<string, string>> {
+    const {url} = this;
+    if (url === '') return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
+    const out = new Map<string, string>();
+    const wanted = supervoxelIds.filter(id => /^\d+$/.test(id));
+    const BATCH = 4000;
+    for (let i = 0; i < wanted.length; i += BATCH) {
+      const batch = wanted.slice(i, i + BATCH);
+      const response = await cancellableFetchSpecialOk(
+          this.credentialsProvider, `${url}/roots?stop_layer=2&int64_as_str=1`,
+          {method: 'POST', headers: {'Content-Type': 'application/json'}, body: `{"node_ids":[${batch.join(',')}]}`},
+          responseIdentity);
+      // Read as text: the answers are ids too, in the order asked.
+      const ids = ((await response.text()).match(/\d{6,}/g)) ?? [];
+      if (ids.length !== batch.length) throw new Error('The server answered for a different number of pieces than were asked.');
+      batch.forEach((sv, k) => out.set(sv, ids[k]));
+    }
+    return out;
+  }
+
   /** The links between the pieces of a cell, as pairs of piece ids. */
   async ngeBranchEdges(rootId: string): Promise<[string, string][]> {
     const {url} = this;
@@ -2047,6 +2097,23 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       }
     });
     body.appendChild(submitIcon);
+    // nge (a test, Nseraf 2026-10-11): colour the cell in 3D by the side each
+    // part would fall on, before anything is cut. The app does the work
+    // (src/util/cut_preview.ts); the colours go when the points change, when
+    // the cut is sent, and when the tool closes.
+    const previewIcon = makeIcon({
+      text: 'Preview',
+      title: 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.',
+      onClick: () => {
+        window.dispatchEvent(new CustomEvent('nge-cut-preview', {detail: {layer: this.layer}}));
+      }
+    });
+    previewIcon.classList.add('nge-cut-preview-button');
+    // While it is a test, only for those who switched it on (cut_preview.ts).
+    if ((window as any).ngeCutPreviewTest === true) body.appendChild(previewIcon);
+    const clearPreview = () => window.dispatchEvent(new CustomEvent('nge-cut-preview-clear'));
+    activation.registerDisposer(multicutState.changed.add(clearPreview));
+    activation.registerDisposer(clearPreview);
     const activeGroupIndicator = document.createElement('div');
     activeGroupIndicator.className = 'activeGroupIndicator';
     activeGroupIndicator.innerHTML = 'Active Group: ';
@@ -2619,6 +2686,40 @@ export async function ngeGrapheneBranchGraph(layer: SegmentationUserLayer, rootI
   for (const [a, b] of edges) { ids.add(a); ids.add(b); }
   const points: Map<string, number[]> = await server.ngePiecePoints([...ids]);
   return {edges, points};
+}
+
+/** For the cut preview (src/util/cut_preview.ts): the red and blue points
+ *  placed so far, and what the server says a cut between them would do.
+ *  Red is the group the cut request sends first. Nothing is cut. */
+export async function ngeGrapheneCutPreview(layer: SegmentationUserLayer): Promise<{
+  rootId: string, redPicks: string[], bluePicks: string[], redBits: string[], blueBits: string[], illegal: boolean,
+  pieceOf: Map<string, string>, mappedAll: boolean,
+}> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const {multicutState} = connection.state;
+  const red = [...multicutState.sinks], blue = [...multicutState.sources];
+  if (!red.length || !blue.length) throw new Error('Place at least one red and one blue point first.');
+  const loadedSubsource = getGraphLoadedSubsource(layer)!;
+  const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
+  const server = connection.graph.graphServer as any;
+  const preview: {sides: string[][], illegal: boolean} = await server.ngeSplitPreview(red, blue, toNm);
+  const redPicks = red.map(x => x.segmentId.toString()), bluePicks = blue.map(x => x.segmentId.toString());
+  const redBits = preview.sides[0] ?? [], blueBits = preview.sides[1] ?? [];
+  // Which piece each bit is in. A very large preview is sampled: a piece is
+  // decided by where most of its bits are, and a sample says that as well.
+  const LIMIT = 24000;
+  const thin = (bits: string[], keep: number) => {
+    if (bits.length <= keep) return bits;
+    const step = bits.length / keep;
+    return Array.from({length: keep}, (_, k) => bits[Math.floor(k * step)]);
+  };
+  const asked = [...new Set([...redPicks, ...bluePicks, ...thin(redBits, LIMIT / 2), ...thin(blueBits, LIMIT / 2)])];
+  const pieceOf: Map<string, string> = await server.ngePiecesOfMany(asked);
+  return {
+    rootId: red[0].rootId.toString(), redPicks, bluePicks, redBits, blueBits, illegal: preview.illegal, pieceOf,
+    mappedAll: redBits.length + blueBits.length <= LIMIT,
+  };
 }
 
 /** The piece of its cell that a pick landed in, or undefined. */
