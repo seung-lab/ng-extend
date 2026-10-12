@@ -30,6 +30,14 @@ export function ngeDefaultPointSize(): number {
   try { const v = Number(localStorage.getItem(DEFAULT_KEY)); return ok(v) ? v : 1; } catch { return 1; }
 }
 
+/** Has the player ever set a size, for this name or anywhere? */
+export function ngeHasPointSize(layerName: string|undefined): boolean {
+  try {
+    if (ok(Number(localStorage.getItem(DEFAULT_KEY)))) return true;
+  } catch { return false; }
+  return !!layerName && ok(byName()[layerName]);
+}
+
 /** The size a layer with no size of its own in the view should open at. */
 export function ngePointSizeFor(layerName: string|undefined): number {
   const named = layerName ? byName()[layerName] : undefined;

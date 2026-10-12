@@ -18,7 +18,7 @@
  * @file User interface for display and editing annotations.
  */
 
-import {ngeRememberPointSize} from 'neuroglancer/annotation/nge_point_size';
+import {ngeRememberPointSize, ngeHasPointSize, ngePointSizeFor} from 'neuroglancer/annotation/nge_point_size';
 import './annotations.css';
 
 // @ts-ignore (image import, bundled by esbuild)
@@ -310,7 +310,9 @@ export class AnnotationLayerView extends Tab {
       title: 'Annotate point',
       onClick: () => {
         displayState.ngeMarker.value = 'dot';
-        displayState.ngeSize.value = 1;
+        // The regular dot is the size the player set on the slider, if they
+        // ever set one (Ames 2026-10-12); it was always put back to 1.
+        displayState.ngeSize.value = ngePointSizeFor(this.layer.managedLayer?.name);
         this.layer.tool.value = new PlacePointTool(this.layer, {});
       },
     });
@@ -910,7 +912,11 @@ function armNewAnnotationLayer(managedLayer: any, triesLeft = 20) {
     return;
   }
   displayState.ngeMarker.value = 'dot';
-  displayState.ngeSize.value = NEW_LAYER_POINT_SIZE;
+  // 1.5 only until the player has set a size of their own on a slider: a new
+  // layer was always forced to 1.5, which undid the remembered size the
+  // moment the layer was made (Ames 2026-10-12: "not working").
+  const name = managedLayer?.name;
+  displayState.ngeSize.value = ngeHasPointSize(name) ? ngePointSizeFor(name) : NEW_LAYER_POINT_SIZE;
   // A layer the player has just made shows through the cells in 3D, so its
   // points are not lost inside the branch they mark.
   displayState.ngeOnTop.value = true;
