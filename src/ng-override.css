@@ -107,6 +107,10 @@
    bar while it shows a message, and the cut and merge bar (Ames 2026-10-02). */
 .neuroglancer-position-widget { bottom: calc(6px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
 .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-bottom-bar, 0px)); }
+/* The 3D view's "Sections" switch sits in its bottom corner, where a bar
+   along the bottom of the screen covered it (Ames 2026-10-12). It rises with
+   the bar like the coordinates do. */
+label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 .neuroglancer-mouse-position-widget:empty {
