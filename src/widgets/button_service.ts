@@ -13,6 +13,7 @@ import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from 
 import {getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
 import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
+import {labSheetRowsFor, labSheetLines} from '../util/lab_sheet';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -561,6 +562,55 @@ export class ButtonService {
     cellTypeSection.appendChild(saveTypeBtn);
     if (roCfg.cellTypeReadOnly) { freeText.style.display = 'none'; saveTypeBtn.style.display = 'none'; }
 
+    // ── From the lab's sheet (Retina) ────────────────────────────────────
+    // What the lab's own sheet says about this cell (src/util/lab_sheet.ts).
+    // Shown, never saved: it does not touch cachedStatus, the pip, the type
+    // picker or anything a player's numbers are counted from. Hidden unless
+    // the sheet has a row for this cell. Sheet text goes in as textContent.
+    const sheetSection = document.createElement('div');
+    sheetSection.classList.add('nge-lb-section', 'nge-lb-sheet');
+    sheetSection.hidden = true;
+    const sheetTitle = document.createElement('div');
+    sheetTitle.classList.add('nge-lb-section-title');
+    sheetTitle.textContent = "From the lab's sheet";
+    sheetSection.appendChild(sheetTitle);
+    void labSheetRowsFor(segmentIDString).then(rows => {
+      const shown = rows.map(r => ({r, lines: labSheetLines(r)})).filter(x => x.lines.length);
+      if (!shown.length) return;
+      for (const {r, lines} of shown) {
+        const card = document.createElement('div');
+        card.classList.add('nge-lb-sheet-row');
+        for (const [label, value] of lines) {
+          const line = document.createElement('div');
+          line.classList.add('nge-lb-sheet-line');
+          const k = document.createElement('span');
+          k.classList.add('nge-lb-sheet-key');
+          k.textContent = label;
+          const v = document.createElement('span');
+          v.classList.add('nge-lb-sheet-value');
+          v.textContent = value;
+          v.title = value;
+          line.append(k, v);
+          card.appendChild(line);
+        }
+        if (shown.length > 1) {
+          const which = document.createElement('div');
+          which.classList.add('nge-lb-sheet-which');
+          which.textContent = `Row ${r.sheet_index}`;
+          card.prepend(which);
+        }
+        sheetSection.appendChild(card);
+      }
+      const note = document.createElement('div');
+      note.classList.add('nge-lb-readonly-note');
+      note.textContent = (shown.length > 1
+          ? `This cell has ${shown.length} rows in the lab's retina sheet. `
+          : `Row ${shown[0].r.sheet_index} of the lab's retina sheet. `) +
+          'For reference only: Pyr did not save this and it does not count toward your stats.';
+      sheetSection.appendChild(note);
+      sheetSection.hidden = false;
+    }).catch(() => { /* nothing to show */ });
+
     // ── Section 3: Segment Color ─────────────────────────────────────────
     const colorSection = document.createElement('div');
     colorSection.classList.add('nge-lb-section');
@@ -891,7 +941,7 @@ export class ButtonService {
       exploreSection.append(exploreTitle, exploreNote);
       menu.append(br(), exploreSection, br(), colorSection, br());
     } else {
-      menu.append(br(), completionSection, br(), cellTypeSection, br(), colorSection, br(), claimSection, br(), helpSection, br());
+      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection, colorSection, br(), claimSection, br(), helpSection, br());
     }
     return contextMenu;
   }
