@@ -14,8 +14,8 @@
 -- into ew_cell_completions or any view a player number is read from.
 --
 -- No names and no free text notes are mirrored: this table is readable by
--- anyone with the public key, so a column is added here only once Ames has
--- said players may see it.
+-- anyone with the public key. Proofreader names stay out for good (Ames,
+-- 2026-10-12); a notes column is added only once she says players may see it.
 --
 -- Safe to re-run. Changes no existing table.
 

@@ -9,9 +9,13 @@
  * Columns are found by their header text, never by position, so a column the
  * lab inserts does not shift anything.
  *
- * WHAT IS COPIED is the list below and nothing else. The sheet also holds
- * proofreaders' names and free text notes; the mirror is readable by anyone,
- * so those stay out until Ames says players may see them. To add a column:
+ * WHAT IS COPIED is the list below and nothing else. The mirror is readable
+ * by anyone, so:
+ *   - proofreaders' names (Proofreader 1, Proofreader 2, Cell Typer Name,
+ *     Updater) are never copied. Ames, 2026-10-12: "we can exclude
+ *     proofreader names from this spreadsheet".
+ *   - free text notes stay out until Ames says players may see them.
+ * To add a column:
  * add it here, to supabase-retina-lab-sheet.sql, and to src/util/lab_sheet.ts.
  */
 
