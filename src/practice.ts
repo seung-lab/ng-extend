@@ -222,6 +222,14 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   await ensureSupervoxels(ex);
   // Both lineages, since a cut can leave the pieces on different roots with
   // the merge in each history.
+  // In passes, until one finds nothing left. A cut that takes a piece off
+  // without either registered spot on it lives in that piece's history, not
+  // in the history of the roots looked at here, so one pass can miss it; it
+  // comes into view once the cuts around it are undone. A single pass left
+  // Merger 8 marked ready with a learner's cut still on it (operation 1969,
+  // 2026-10-12).
+  let undoneCount = 0;
+  for (let pass = 0; pass < 8; pass++) {
   const roots = new Set<string>();
   for (const sv of [ex.supervoxel_a, ex.supervoxel_b]) {
     const r = await rootOfSupervoxel(ex, sv);
@@ -242,6 +250,10 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   }
   const activeOps = remainingPracticeOperations(ops, details);
   for (const op of activeOps) { await assertLease(); await undoOp(ex, op.operationId); }
+  undoneCount += activeOps.length;
+  if (!activeOps.length) break;
+  }
+  const activeOps = { length: undoneCount };
   await assertLease();
   const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
   const b = await rootOfSupervoxel(ex, ex.supervoxel_b);

@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T14:55:00Z",
+      "title": "Practice cells are put back completely",
+      "items": [
+        "A practice cell could be handed to the next player with a stray cut from the last one still on it. Putting a cell back now keeps going until nothing is left to undo."
+      ]
+    },
+    {
       "at": "2026-10-12T14:49:00Z",
       "title": "Merger Sandbox: a good cut counts, and no more going round in circles",
       "items": [
