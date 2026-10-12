@@ -200,6 +200,7 @@ async function switchTo(ds: DatasetEntry) {
                       <div class="nge-ds-variant-text">
                         <div class="nge-ds-variant-label">{{ ds.variantLabel || ds.label }}</div>
                         <div class="nge-ds-card-desc">{{ ds.description }}</div>
+                        <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
                       </div>
                       <div v-if="ds.id === currentDatasetId" class="nge-ds-tag">Active</div>
                       <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-tag nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
@@ -224,6 +225,7 @@ async function switchTo(ds: DatasetEntry) {
                   <div class="nge-ds-card-text">
                   <div class="nge-ds-card-label">{{ ds.label }}</div>
                   <div class="nge-ds-card-desc">{{ ds.description }}</div>
+                  <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
                   </div>
                   <div v-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
                   <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-badge nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
@@ -522,6 +524,13 @@ async function switchTo(ds: DatasetEntry) {
   margin-bottom: 3px;
 }
 
+/* Where the dataset came from (Ames 2026-10-12). */
+.nge-ds-origin {
+  margin-top: 3px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: rgba(143, 184, 232, 0.9);
+}
 .nge-ds-card-desc {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.45);
