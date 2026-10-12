@@ -679,10 +679,13 @@ async function openInClaude(row: TriageRow) {
 const reporterDrafts = ref<Record<string, string>>({});
 const reporterSending = ref<string | null>(null);
 
-/** Draft from the card's state. Never includes the internal reviewer comment. */
+/** Draft from the card's state. Never includes the internal reviewer comment.
+ *  The quote is the whole submission, as the card shows it (the report's full
+ *  message once loaded, else the stored excerpt), never cut short: Ames was
+ *  pasting the rest in by hand every time (2026-10-12). */
 function draftReporterUpdate(row: TriageRow): string {
-  const t = (row.source_excerpt || '').trim();
-  const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
+  const t = fullTextOf(row).trim();
+  const q = t ? `You reported: "${t}".` : 'Thanks for your report.';
   if (row.status === 'done' || row.impl_state === 'deployed') {
     // Same wording as the bridge's fixedNote: thanks, their words, what was built.
     const fix = String(row.result_note || row.impl_summary || '')
@@ -691,7 +694,7 @@ function draftReporterUpdate(row: TriageRow): string {
       .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '')
       // "QUESTION: ..." is Claude asking the approver, not a fix: never sent on.
       .replace(/^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:[\s\S]*$/i, '');
-    const thanks = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';
+    const thanks = t ? `Thank you for submitting: "${t}".` : 'Thank you for your report.';
     return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
   }
   if (row.status === 'dismissed') {

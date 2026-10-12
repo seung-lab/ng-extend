@@ -155,6 +155,17 @@ letters mostly belong to neuroglancer; check before taking one.
   never loads, so pressing C does nothing. Stand in for the tool with a
   hidden `<div class="graphene-multicut">` and the bar stays up and behaves
   (2026-10-12).
+- **Testing the triage board headless:** open `?triage=board` with a fake
+  sign in (localStorage `auth_token_v2_https://global.daf-apis.com/sticky_auth`
+  = `{"accessToken":"x"}`, and answer `daf-apis.com/auth/api/v1/user/me` with
+  an email). Private tables never hit Supabase directly: `src/community_fetch.ts`
+  POSTs `{table, method, query}` to the `ewCommunityData` function and expects
+  `{status, headers, body}` back, with `body` the JSON **text** of the rows.
+  Answer that in the test. On the board a card shows its buttons only once it
+  is selected (click its meta row first), the Done and Later columns start
+  folded, and the decision comment box shares the class
+  `nge-triage-comment` with the submitter draft, so find the draft inside
+  `.nge-triage-reporter` (2026-10-12).
 - **A column's last section loses its border and bottom margin** (the
   profile's stylesheet strips them from `:last-child`). Stamp sections in
   as direct children of the column; a wrapper `div` around two of them
