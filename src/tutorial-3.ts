@@ -148,7 +148,11 @@ export function practiceStatus(text: string, done = false, quiet = false) {
   if (!help) {
     help = smallButton('nge-practice-help', 'Help me', () => helpMe());
     help.title = 'Show me where to click';
-    helpRow(chip).appendChild(help);
+    const row = helpRow(chip);
+    row.appendChild(help);
+    // A tutorial can put its own button beside Help me (the Merger
+    // Sandbox's Skip sits to its left).
+    document.dispatchEvent(new CustomEvent('nge:practice-helprow', { detail: { row, help } }));
   }
   help.style.display = (done || !helpWanted) ? 'none' : '';
   const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;

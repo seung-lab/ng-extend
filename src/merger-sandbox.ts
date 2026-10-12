@@ -184,6 +184,19 @@ document.addEventListener('nge:sandbox-slim', () => {
 });
 /** Whether there is another unsolved merger to skip to. */
 const canSkip = () => { const other = nextUndone(); return other >= 0 && other !== current; };
+// In the working box, Skip is a button to the left of Help me (Ames,
+// 2026-10-12). Only when there is another merger to go to.
+document.addEventListener('nge:practice-helprow', ((e: CustomEvent) => {
+  const { row, help } = e.detail || {};
+  if (!row || useTutorialStore().activeTutorial !== SANDBOX_TUTORIAL || !canSkip() || row.querySelector('.nge-sbx-skipbtn')) return;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'nge-hud-btn nge-hud-btn--sm nge-sbx-skipbtn';
+  b.textContent = 'Skip';
+  b.title = 'Leave this merger for later and go to another';
+  b.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:sandbox-skip')));
+  row.insertBefore(b, help ?? null);
+}) as EventListener);
 const SKIP = `<button type="button" class="nge-sbx-skip" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-skip'))">Skip this one</button>`;
 const FOLD = `<button type="button" class="nge-sbx-fold" title="Smaller or larger box" aria-label="Make this box smaller or larger" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-slim'))"></button>`;
 
@@ -268,7 +281,7 @@ You have solved every one. Want to go again from the start? Your Achievement sta
       return `
 ${progressBar(true)}
 
-Two neurons are fused into one segment here. Find where they touch and cut them apart. ${canSkip() ? SKIP : ''}`;
+Two neurons are fused into one segment here. Find where they touch and cut them apart.`;
     },
     position: OVER_3D,
     width: "440px",
