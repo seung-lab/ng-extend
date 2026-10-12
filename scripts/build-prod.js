@@ -117,6 +117,31 @@ const DATASETS_CONFIG = {
       },
     ],
   },
+  // Retina (EyeWire II), for headless tests of retina only features such as
+  // the Cell Library's Quests tab (2026-10-12). Layers as in src/datasets.ts;
+  // the position is a starburst amacrine cell's soma from the Cilia sheet.
+  stroeh_mouse_retina: {
+    dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] },
+    position: [37166, 16688, 1973],
+    crossSectionScale: 2,
+    projectionScale: 30000,
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: {
+          url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/stroeh_mouse_retina',
+          subsources: { default: true, mesh: true, graph: true },
+          enableDefaultSubsources: true,
+        },
+        name: 'stroeh_mouse_retina',
+      },
+    ],
+  },
   pni_mec: {
     dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4.5e-8, 'm'] },
     position: [158487, 128036, 5061],

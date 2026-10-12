@@ -265,6 +265,49 @@ Three larger things Ames has asked to be reminded of on Wednesday
 server and database, one file per changelog entry, and type checking the
 Vue files.
 
+## Annotation Quests (prototype, 2026-10-12)
+
+Ames: "Make annotating a cell a Quest in addition to completing a cell."
+Retina first: find and mark every cilium on a starburst amacrine cell. Built
+on `claude/annotation-quests`, not deployed.
+
+- **The record is the lab's Cilia sheet**
+  (`1CXRPE4rmH1SRQ3nqdyp9ULsMdQygJ-Ldjn3jN_jcqRU`, tab gid 0, 93 cells). Its
+  "Input for Website" tab says what each column is for: J Start Link is read;
+  K Cilium status and L Cilium split or merged? are chosen at submit from the
+  sheet's own dropdowns; M Annotation share link, P Date and Q Annotator Notes
+  are written at submit; O Annotator Name is written at claim; N is skipped.
+  No game table is involved: whose cell it is comes from column O.
+- **Server:** `functions/sheet-policy.js` (`QUESTS`, `questRows`,
+  `planQuestUpdate`, tests in `sheet-policy.test.js`), `functions/sheet-sync.js`
+  (`questList`, `syncQuest`), and the `input.quest` branch of `ewSheetSync` in
+  `functions/index.js`. Actions `quest_list`, `quest_claim`, `quest_release`,
+  `quest_submit`. The dropdown lists are copied character for character; the
+  server refuses anything else.
+- **Client:** `src/annotation_quests.ts` (the calls and the same lists),
+  `src/components/AnnotationQuestsTab.vue`, a Quests tab in the Cell Library
+  (`questsHere`: retina only). Take writes the name and opens the Start Link
+  in place; Submit mints a share link of the view (`mintShortStateLink`) and
+  sends status, split or merged, notes and the link.
+- **To go live, in this order:** (1) Ames shares the sheet with the Sheets
+  identity `eyewire-ii-spreadsheet@eyewire-ii.iam.gserviceaccount.com` as an
+  editor (it is not on the sheet as of 2026-10-12, so reads and writes fail);
+  (2) deploy the function:
+  `firebase deploy --only functions:ewSheetSync --project eyewire-ii-e4d52`
+  from a rebased checkout, then `action: 'health'` still passes and a
+  `quest_list` returns rows; (3) deploy the UI with a changelog entry marked
+  headline. The UI before the function shows an error in the tab.
+- **Testing the tab headless:** `scripts/quests-tab.test.cjs` (build with
+  `DATASET=stroeh_mouse_retina node scripts/build-prod.js`, serve `dist/min`
+  on 3488). It answers every server: the gateway, the state servers, and
+  every middleauth host. **One 401 with a fake token wedges the middleauth
+  provider:** it then waits for a login for good and every later signed
+  request (the share link included) hangs with no error. Stub every
+  middleauth host with a catch-all registered first, and keep the
+  segmentation server unreachable (abort), never 401.
+- Not done: the Slack bridge, the Guide's knowledge and the Slack bot do not
+  know about quests yet; no stats or Achievement count a quest.
+
 ## When you stop
 
 Leave the kanban card with what shipped (commit and live build id), what is

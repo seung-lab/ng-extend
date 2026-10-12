@@ -31,6 +31,8 @@ import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
+import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
+import { QUEST_DATASET } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
@@ -142,7 +144,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -1675,6 +1677,10 @@ const teamAllowed = computed(() => teamAccess() !== false);
 /** Team play shows only on the dataset it is being tried on (util/teams.ts). */
 const teamsHere = computed(() => teamAllowed.value && teamsOnDataset(activeDataset.value || getCurrentDatasetName()));
 watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value = 'mine'; });
+/** Annotation Quests live on one dataset for now (Retina: cilia on starburst
+ *  amacrine cells, Ames 2026-10-12). Elsewhere the tab is not drawn. */
+const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
+watch(questsHere, here => { if (!here && filter.value === 'quests') filter.value = 'mine'; });
 
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
  *  looked like a button and did nothing). Switch datasets and open the group. */
@@ -2176,6 +2182,8 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'tags',      label: 'Tags' },
   { key: 'ai',        label: 'AI' },
   { key: 'links',     label: 'My Links' },
+  // Annotation Quests (Ames 2026-10-12): shown on datasets that have one.
+  { key: 'quests',    label: 'Quests' },
 ];
 /** Hidden by default (still in the gear picker): the tab bar was cropping
  *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
@@ -2191,6 +2199,11 @@ const visibleTabs = ref<string[]>((() => {
       if (!localStorage.getItem('nge_cl_tabs_teams_added_v1')) {
         localStorage.setItem('nge_cl_tabs_teams_added_v1', '1');
         if (!saved.includes('teams')) { saved.push('teams'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
+      }
+      // Quests arrived 2026-10-12: a tab list saved before then gets it once.
+      if (!localStorage.getItem('nge_cl_tabs_quests_added_v1')) {
+        localStorage.setItem('nge_cl_tabs_quests_added_v1', '1');
+        if (!saved.includes('quests')) { saved.push('quests'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
       }
       if (!localStorage.getItem('nge_cl_tabs_ai_hidden_v1')) {
         localStorage.setItem('nge_cl_tabs_ai_hidden_v1', '1');
@@ -2560,6 +2573,10 @@ const panelStyle = computed(() => ({
               <button v-if="teamsHere && tabShown('teams')" :class="{ active: filter === 'teams', 'nge-cl-teams-tab': true }" @click="filter = 'teams'"
                       title="Two to four players on one cell, each working when they can">
                 Teams <b v-if="teamInvites">{{ teamInvites }}</b>
+              </button>
+              <button v-if="questsHere && tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
+                      title="Annotation quests: mark every cilium on a starburst amacrine cell, without completing it">
+                Quests
               </button>
               <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'"
                       title="Scout tags: spots someone flagged to cut or extend">
@@ -2960,6 +2977,11 @@ const panelStyle = computed(() => ({
         <!-- ═══ TEAMS TAB (saved teams: two to four players on one cell) ═══ -->
         <div v-else-if="filter === 'teams' && teamsHere" class="nge-cl-list">
           <teams-tab />
+        </div>
+
+        <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
+        <div v-else-if="filter === 'quests' && questsHere" class="nge-cl-list">
+          <annotation-quests-tab />
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->

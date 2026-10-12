@@ -2239,6 +2239,21 @@ exports.ewSheetSync = onRequest(
    }
    const who=await ewVerify(input.token);
    if(!who) throw ewErr(401,"Sign in before syncing a cell.");
+   // Annotation Quests (Ames 2026-10-12): the quest's own sheet tab is the
+   // record. No proofreading task is involved: the row's Annotator Name says
+   // whose cell it is, and sheet-policy.js decides what each action may write.
+   if(input.quest!=null) {
+    const {questFor}=require('./sheet-policy'),{questList,syncQuest}=require('./sheet-sync');
+    questFor(input);
+    const listing=input.action==='quest_list';
+    if(!(await rateLimit({ip:who.email},true,listing?"read:quests":"write:sheets")).ok) throw ewErr(429,listing?"Please wait a moment.":"Please wait before syncing another cell.");
+    const sb=ewSb(ewServiceKey.value().trim());
+    const me=(await sb('users?middleauth_email=eq.'+encodeURIComponent(who.email)+'&select=id,display_name,username&limit=1'))[0];
+    requirePilot(await pilotContext(sb,who));
+    if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
+    if(listing) return res.json({ok:true,rows:await questList(input.quest,admin.credential.applicationDefault())});
+    return res.json(await syncQuest(input,me,admin.credential.applicationDefault()));
+   }
    require('./sheet-policy').sourceFor(input);
    if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");
    const sb=ewSb(ewServiceKey.value().trim());

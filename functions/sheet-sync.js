@@ -83,4 +83,39 @@ async function syncSheet(input,me,task,credential,api=(path,init)=>sheetsApi(cre
   if(plan.userEnteredData.length) await api(source.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'USER_ENTERED',data:plan.userEnteredData})});
   return {ok:true,updated:plan.data.length+plan.userEnteredData.length};
 }
-module.exports={syncSheet,sheetsApi};
+// ── Annotation Quests (Ames 2026-10-12) ──────────────────────────────────
+const {QUESTS,questRows,planQuestUpdate}=require('./sheet-policy');
+/** The quest tab's title, from the sheet (the tab is found by its gid, so a
+ *  rename does not break it). */
+async function questTab(api,quest) {
+  const meta=await api(quest.id+'?fields=sheets.properties');
+  const sheet=meta.sheets.find(s=>s.properties.sheetId===quest.gid);
+  if(!sheet) throw new Error('Quest sheet tab missing');
+  return sheet.properties.title;
+}
+const listCache=new Map();
+/** Every row of the quest tab, read whole (a quest tab is a few hundred rows,
+ *  columns A to Q) and kept for a minute, so a panel opening twice reads once. */
+async function questList(questKey,credential,api=(path,init)=>sheetsApi(credential,path,init)) {
+  const quest=QUESTS[questKey];
+  const hit=listCache.get(questKey);
+  if(hit && hit.expires>Date.now()) return hit.rows;
+  const title=await questTab(api,quest);
+  const q="'"+title.replace(/'/g,"''")+"'";
+  const grid=(await api(quest.id+'/values/'+encodeURIComponent(q+'!A1:Q2000')+'?valueRenderOption=FORMATTED_VALUE')).values||[];
+  const rows=questRows(grid);
+  listCache.set(questKey,{rows,expires:Date.now()+60000});
+  return rows;
+}
+async function syncQuest(input,me,credential,api=(path,init)=>sheetsApi(credential,path,init)) {
+  const quest=QUESTS[input.quest];
+  const today=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric'}).format(new Date());
+  const title=await questTab(api,quest);
+  const grid=await readRowsForMatch(api,quest.id,title,false,String(input.segmentId));
+  const plan=planQuestUpdate(grid,title,quest,input,me,today);
+  if(plan.data.length) await api(quest.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data:plan.data})});
+  if(plan.userEnteredData.length) await api(quest.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'USER_ENTERED',data:plan.userEnteredData})});
+  listCache.delete(input.quest);  // the next list shows this write
+  return {ok:true,updated:plan.data.length+plan.userEnteredData.length};
+}
+module.exports={syncSheet,sheetsApi,questList,syncQuest};

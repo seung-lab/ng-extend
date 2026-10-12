@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T20:27:00Z",
+      "title": "The Cilia Quest",
+      "digest": "headline",
+      "items": [
+        "The Cell Library has a Quests tab. On Retina, claim a starburst cell, mark its basal body, daughter centriole and cilium centerline in the layers that open with it, and press Submit. The cell does not need to be proofread. You can hold three cells at a time.",
+        "Your answer, your notes and a share link of your view go to the lab's sheet with your name and the date. Submitting brings a celebration and your count, and your profile shows how many quests you have completed.",
+        "Annotation layers have a new tool, the polyline: hold Ctrl and click along a line, press Enter to finish, Backspace to take a point back, Esc to cancel. It is the same polyline the lab's own viewer draws.",
+        "The quest's Instructions link the lab's guide, its training video and a reference: three real example cells, annotated by the lab, each saying which status it shows and when to use it. In any annotation list, a description now shows in full where it used to be cut at one line."
+      ]
+    },
+    {
       "at": "2026-10-13T20:23:59Z",
       "title": "Reply to the team with a screenshot",
       "digest": "minor",

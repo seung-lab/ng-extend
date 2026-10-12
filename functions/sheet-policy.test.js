@@ -49,6 +49,60 @@ test('completion replaces a Proofreader left by an earlier claim, but never on a
  const claim=planSheetUpdate([header,['123','Amy R. Sterling','','']],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina',action:'claim'},celia,{...t,status:'assigned'},'now'));
  assert.equal(claim.data.find(x=>x.range.endsWith('!B2')),undefined);
 });
+// ── Annotation Quests (the Cilia sheet, read 2026-10-12) ──────────────────
+const {QUESTS,questFor,questRows,planQuestUpdate}=require('./sheet-policy');
+const QH=['Index','Soma Coords','Latest SegID','Cell Class','Cell Class (machine)','Confidence Cell Class (machine)','Cell Type','Cell Type (machine)','Confidence Cell Type (machine)','Start Link','Cilium status','Cilium split or merged?','Annotation share link','Share link missing annotation?','Annotator Name','Date (MM/DD/YYYY)','Annotator Notes','Review Notes & Feedback','Annotations reviewed by','Updated link'];
+const qrow=(over={})=>{const r=['A5','37166, 16688, 1973','720575940561794892','AC','AC','0.99','OFF SAC','','','https://spelunker.cave-explorer.org/#!middleauth+https://global.daf-apis.com/nglstate/api/v1/5309136999809024','','','','','','','','','',''];for(const [k,v] of Object.entries(over)) r[QH.indexOf(k)]=v;return r;};
+const quest=QUESTS.retina_cilia, qme={id:'mine',display_name:'Amy Sterling',username:'amy'};
+const cols=plan=>Object.fromEntries([...plan.data,...plan.userEnteredData].map(x=>{const c=x.range.split('!')[1].replace(/\d+$/,'');return [QH[c.charCodeAt(0)-65],x.values[0][0]];}));
+test('quests: only registered quests and actions, with a segment ID',()=>{
+ assert.throws(()=>questFor({quest:'https://evil',action:'quest_list'}));
+ assert.throws(()=>questFor({quest:'retina_cilia',action:'complete',segmentId:'1'}));
+ assert.throws(()=>questFor({quest:'retina_cilia',action:'quest_claim',segmentId:'abc'}));
+ assert.doesNotThrow(()=>questFor({quest:'retina_cilia',action:'quest_list'}));
+});
+test('quests: the list carries the shown columns only, by header, and skips rows without an ID',()=>{
+ const rows=questRows([['Cilia Test Spreadsheet'],QH,qrow(),qrow({'Latest SegID':'','Index':'A6'}),qrow({'Index':'A7','Latest SegID':'5','Annotator Name':'Nseraf','Cilium status':'No cilium','Review Notes & Feedback':'secret'})]);
+ assert.equal(rows.length,2);
+ assert.deepEqual(Object.keys(rows[0]).sort(),['annotator','cellClass','cellType','date','index','link','notes','segmentId','soma','splitMerged','startLink','status']);
+ assert.equal(rows[0].cellType,'OFF SAC');
+ assert.equal(rows[0].startLink.startsWith('https://spelunker'),true);
+ assert.equal(rows[1].annotator,'Nseraf');
+ assert.equal(JSON.stringify(rows).includes('secret'),false);
+});
+test('quests: a claim writes only Annotator Name, and never over someone else or a finished row',()=>{
+ const plan=planQuestUpdate([QH,qrow()],'All Cells',quest,{action:'quest_claim',segmentId:'720575940561794892'},qme,'10/12/2026');
+ assert.deepEqual(cols(plan),{'Annotator Name':'Amy Sterling'});
+ assert.equal(plan.data[0].range,"'All Cells'!O2");
+ assert.throws(()=>planQuestUpdate([QH,qrow({'Annotator Name':'Nseraf'})],'s',quest,{action:'quest_claim',segmentId:'720575940561794892'},qme,'now'),/Someone else/);
+ assert.throws(()=>planQuestUpdate([QH,qrow({'Cilium status':'No cilium'})],'s',quest,{action:'quest_claim',segmentId:'720575940561794892'},qme,'now'),/already done/);
+ // Claiming again is harmless: the name is there, nothing is written.
+ assert.equal(planQuestUpdate([QH,qrow({'Annotator Name':'amy sterling'})],'s',quest,{action:'quest_claim',segmentId:'720575940561794892'},qme,'now').data.length,0);
+ assert.throws(()=>planQuestUpdate([QH,qrow()],'s',quest,{action:'quest_claim',segmentId:'1'},qme,'now'),/not in the quest sheet/);
+});
+test('quests: a release clears only the player\'s own name, only before a submit',()=>{
+ const own=planQuestUpdate([QH,qrow({'Annotator Name':'Amy Sterling'})],'s',quest,{action:'quest_release',segmentId:'720575940561794892'},qme,'now');
+ assert.deepEqual(cols(own),{'Annotator Name':''});
+ assert.throws(()=>planQuestUpdate([QH,qrow({'Annotator Name':'Nseraf'})],'s',quest,{action:'quest_release',segmentId:'720575940561794892'},qme,'now'),/not yours/);
+ assert.throws(()=>planQuestUpdate([QH,qrow({'Annotator Name':'Amy Sterling','Cilium status':'No cilium'})],'s',quest,{action:'quest_release',segmentId:'720575940561794892'},qme,'now'),/keeps its annotator/);
+});
+test('quests: a submit writes K, L, M, P, Q (and O when empty) from the sheet\'s own options, dates as real dates',()=>{
+ const link='https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/1';
+ const input={action:'quest_submit',segmentId:'720575940561794892',status:'Cilium annotated',splitMerged:'Split',link,notes:' two  cilia\nfound '};
+ const plan=planQuestUpdate([QH,qrow()],'All Cells',quest,input,qme,'10/12/2026');
+ assert.deepEqual(cols(plan),{'Annotator Name':'Amy Sterling','Cilium status':'Cilium annotated','Cilium split or merged?':'Split','Annotation share link':link,'Date (MM/DD/YYYY)':'10/12/2026','Annotator Notes':'two cilia found'});
+ assert.deepEqual(plan.userEnteredData.map(x=>x.values[0][0]),['10/12/2026']);
+ assert.equal(plan.valueInputOption,'RAW');
+ // A resubmit on the player's own row replaces the earlier answer.
+ const again=planQuestUpdate([QH,qrow({'Annotator Name':'amysterling','Cilium status':'Need help','Annotation share link':'https://old'})],'s',quest,{...input,status:'No cilium',splitMerged:''},qme,'10/13/2026');
+ assert.equal(cols(again)['Cilium status'],'No cilium');
+ assert.equal(cols(again)['Annotation share link'],link);
+ assert.equal(cols(again)['Annotator Name'],undefined);
+ for(const bad of [{status:'Done'},{status:''},{splitMerged:'Both'},{link:'http://x'},{link:''},{link:'=IMPORTXML("https://a","b")'},{notes:'x'.repeat(1001)}]) assert.throws(()=>planQuestUpdate([QH,qrow()],'s',quest,{...input,...bad},qme,'now'));
+ assert.throws(()=>planQuestUpdate([QH,qrow({'Annotator Name':'Nseraf'})],'s',quest,input,qme,'now'),/Someone else/);
+ const odd=planQuestUpdate([QH,qrow()],'s',quest,input,qme,'=NOW()');
+ assert.equal(odd.userEnteredData.length,0);
+});
 test('the completion date is entered as a real date only when it is a plain M/D/YYYY value',()=>{
  const header=['Start SegID','Status','Date Complete'];
  const ok=planSheetUpdate([header,['123','','']],'s','123',sheetValues(input,me,task,'9/28/2026'));
