@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T13:13:54Z",
+      "title": "A cell type that did not save now says so",
+      "items": [
+        "If the server does not save a cell type, the menu now shows an error and asks you to try again. Before, it could say Saved when the type had not been saved.",
+        "The Batch Processor counts a cell type the server refused as failed."
+      ]
+    },
+    {
       "at": "2026-10-12T00:28:00Z",
       "title": "The profile fills the window",
       "items": [
