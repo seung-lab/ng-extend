@@ -874,3 +874,11 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   margin-bottom: 2px;
 }
 .nge-lb-sheet .nge-lb-readonly-note { margin: 7px 0 2px; }
+
+/* The menu's title when it is the cell's class and type, not its ID. */
+.nge-lb-header-segid.nge-lb-header-label {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+}

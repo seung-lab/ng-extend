@@ -13,7 +13,7 @@ import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from 
 import {getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
 import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
-import {labSheetRowsFor, labSheetLines} from '../util/lab_sheet';
+import {labSheetRowsFor, labSheetLines, labSheetSummary, type LabSheetRow} from '../util/lab_sheet';
 
 const br = () => document.createElement('br');
 type InteracblesArray = (string|((e: MouseEvent) => void)|undefined)[][];
@@ -34,6 +34,14 @@ export class ButtonService {
 
     // Async: fetch CAVE status and update the pip accordingly
     this._refreshButtonStatus(button, localServerURL, segmentIDString);
+
+    // Retina: what the lab's sheet says about this cell fills in its mark and
+    // its label (see _paint). Kept beside _cellStatus, never inside it.
+    void labSheetRowsFor(segmentIDString).then(rows => {
+      if (!rows.length) return;
+      (button as any)._labSheet = rows;
+      this._paint(button, (button as any)._cellStatus ?? null);
+    }).catch(() => { /* nothing to show */ });
 
     // Is this ID still the cell's current one? An edit by anyone gives the
     // cell a new ID, and an old one in the list kept looking fine. The old
@@ -103,6 +111,35 @@ export class ButtonService {
    *    - complete (purple): complete AND cell type set
    */
   private _applyStatus(button: HTMLButtonElement, status: CellStatus): void {
+    (button as any)._cellStatus = status;
+    this._paint(button, status);
+  }
+
+  /**
+   * What a cell is SHOWN as: its status saved in the game, with the gaps
+   * filled in from the lab's sheet (Ames 2026-10-12: "Lab sheet should FILL
+   * IN the delta menu - like populate it with proofread, typed, done and
+   * replace segID with class"). The game's own answer always wins.
+   *
+   * Drawn only. The saved status (_cellStatus, the menu's cachedStatus) is
+   * never changed by the sheet, so nothing here is written to the game's
+   * tables or counted for a player.
+   */
+  static shownStatus(status: CellStatus|null, sheet: LabSheetRow[]|null|undefined): CellStatus|null {
+    const lab = labSheetSummary(sheet);
+    if (!lab) return status;
+    const fromSheet = !status?.cellType;
+    return {
+      ...(status ?? {isComplete: false}),
+      isComplete: !!status?.isComplete || lab.proofread,
+      cellType: status?.cellType || lab.cellType || undefined,
+      classificationSystem: fromSheet ? (lab.cellClass || undefined) : status?.classificationSystem,
+    };
+  }
+
+  /** Draw the pip and the label for a saved status (or none yet). */
+  private _paint(button: HTMLButtonElement, saved: CellStatus|null): void {
+    const status = ButtonService.shownStatus(saved, (button as any)._labSheet) ?? {isComplete: false};
     button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated', 'nge-lb-claimed');
     if (status.isComplete && status.cellType) {
       button.classList.add('nge-lb-complete');        // green: done (proofread AND typed)
@@ -120,7 +157,6 @@ export class ButtonService {
     if (claim.claimed) {
       button.classList.add('nge-lb-claimed');
     }
-    (button as any)._cellStatus = status;
     const row = button.closest('.neuroglancer-segment-list-entry') as HTMLElement | null;
     if (row) this.updateLabelBadge(row, status);
   }
@@ -134,12 +170,10 @@ export class ButtonService {
       if (status) {
         this._applyStatus(button, status);
       } else {
-        button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated');
-        button.classList.add('nge-lb-incomplete');
+        this._paint(button, null);
       }
     } catch {
-      button.classList.remove('nge-lb-incomplete', 'nge-lb-done-unlabeled', 'nge-lb-complete', 'nge-lb-annotated');
-      button.classList.add('nge-lb-incomplete');
+      this._paint(button, null);
     }
   }
 
@@ -176,7 +210,7 @@ export class ButtonService {
     const idEl = row.querySelector('.neuroglancer-segment-list-entry-id') as HTMLElement|null;
     const label = status?.cellType
       ? (status.classificationSystem ? `${status.classificationSystem} - ${status.cellType}` : status.cellType)
-      : '';
+      : (status?.classificationSystem || '');
     if (idEl) {
       const segId = (idEl.textContent || '').trim();
       if (label) {
@@ -195,7 +229,7 @@ export class ButtonService {
       badge.className = 'nge-label-badge';
       badge.textContent = '';
       badge.title = '';
-    } else if (status.cellType) {
+    } else if (label) {
       // The label now lives in the chip: no second badge row. The pip still
       // shows done (green) vs typed only (yellow).
       badge.className = 'nge-label-badge';
@@ -340,6 +374,23 @@ export class ButtonService {
     });
 
     let cachedStatus: CellStatus|null = (parent as any)._cellStatus ?? null;
+    // What the lab's sheet says, for the lines below. Shown, never saved:
+    // cachedStatus stays the game's own answer, and every button acts on that.
+    let lab = labSheetSummary((parent as any)._labSheet);
+    const progressText = () => cachedStatus?.isComplete ? '✓ Proofread'
+        : lab?.proofread ? "✓ Proofread, from the lab's sheet" : '○ In Progress';
+    // The title reads as the row does: class and type in place of the ID
+    // (which stays in the tooltip and on the row's copy button).
+    const showTitle = () => {
+      const st = ButtonService.shownStatus(cachedStatus, (parent as any)._labSheet);
+      const label = st?.cellType
+        ? (st.classificationSystem ? `${st.classificationSystem} - ${st.cellType}` : st.cellType)
+        : (st?.classificationSystem || '');
+      segIdLabel.textContent = label || segmentIDString;
+      segIdLabel.title = label ? `${label}. ID ${segmentIDString}` : segmentIDString;
+      segIdLabel.classList.toggle('nge-lb-header-label', !!label);
+    };
+    showTitle();
 
     // ── Section 1: Completion Status ──────────────────────────────────────
     const completionSection = document.createElement('div');
@@ -352,9 +403,7 @@ export class ButtonService {
 
     const statusLine = document.createElement('div');
     statusLine.classList.add('nge-lb-status-line');
-    statusLine.textContent = cachedStatus ?
-        (cachedStatus.isComplete ? '✓ Proofread' : '○ In Progress') :
-        '… Loading';
+    statusLine.textContent = cachedStatus ? progressText() : '… Loading';
     completionSection.appendChild(statusLine);
     // The menu used to show only a status fetched earlier for the pip, so if
     // that fetch had not finished (or found nothing) it said Loading forever.
@@ -370,10 +419,12 @@ export class ButtonService {
             (parent as any)._cellStatus = st;
             this._applyStatus(parent as HTMLButtonElement, st);
           }
-          statusLine.textContent = st?.isComplete ? '✓ Proofread' : '○ In Progress';
+          statusLine.textContent = progressText();
           if (!toggleBtn.disabled) toggleBtn.textContent = st?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
           if (st?.cellType && !select.value) select.value = st.cellType;
           if (typeLine) typeLine.textContent = st?.cellType || 'No type yet';
+          showLabType();
+          showTitle();
         }).catch(() => {
           if (statusLine.isConnected) statusLine.textContent = 'Could not load status. Reopen to retry.';
         });
@@ -427,9 +478,9 @@ export class ButtonService {
           localServerURL, plan?.cellRoot ?? segmentIDString, willBeComplete, plan?.cellRoot ? undefined : cachedStatus?.annotationId,
           undefined, undefined, plan?.cellRoot ? [segmentIDString] : []);
       if (ok) {
-        statusLine.textContent = willBeComplete ? '✓ Proofread' : '○ In Progress';
-        toggleBtn.textContent = willBeComplete ? 'Unmark Proofread' : 'Mark as Proofread';
         if (cachedStatus) cachedStatus.isComplete = willBeComplete;
+        statusLine.textContent = willBeComplete ? '✓ Proofread' : progressText();
+        toggleBtn.textContent = willBeComplete ? 'Unmark Proofread' : 'Mark as Proofread';
         this._refreshButtonStatus(parent as HTMLButtonElement, localServerURL, segmentIDString);
 
         if (!willBeComplete) {
@@ -502,6 +553,17 @@ export class ButtonService {
       select.appendChild(opt);
     }
     cellTypeSection.appendChild(select);
+    const labTypeLine = document.createElement('div');
+    labTypeLine.classList.add('nge-lb-status-line', 'nge-lb-lab-type');
+    labTypeLine.hidden = true;
+    cellTypeSection.insertBefore(labTypeLine, select);
+    const showLabType = () => {
+      const text = lab && !cachedStatus?.cellType
+        ? (lab.cellType ? (lab.cellClass ? `${lab.cellClass} - ${lab.cellType}` : lab.cellType) : lab.cellClass) : '';
+      labTypeLine.textContent = text ? `${text}, from the lab's sheet` : '';
+      labTypeLine.hidden = !text;
+    };
+    showLabType();
     let typeLine: HTMLDivElement | null = null;
     if (roCfg.cellTypeReadOnly) {
       select.style.display = 'none';
@@ -550,6 +612,8 @@ export class ButtonService {
       saveTypeBtn.disabled = false;
       if (ok && cachedStatus) {
         cachedStatus.cellType = cellType;
+        showLabType();
+        showTitle();
         // Update pip/badge in the sidebar row
         this._applyStatus(parent as HTMLButtonElement, cachedStatus);
         // Notify AnnotationPanel and other listeners
@@ -563,10 +627,10 @@ export class ButtonService {
     if (roCfg.cellTypeReadOnly) { freeText.style.display = 'none'; saveTypeBtn.style.display = 'none'; }
 
     // ── From the lab's sheet (Retina) ────────────────────────────────────
-    // What the lab's own sheet says about this cell (src/util/lab_sheet.ts).
-    // Shown, never saved: it does not touch cachedStatus, the pip, the type
-    // picker or anything a player's numbers are counted from. Hidden unless
-    // the sheet has a row for this cell. Sheet text goes in as textContent.
+    // What the lab's own sheet says about this cell (src/util/lab_sheet.ts),
+    // in full. Shown, never saved: it does not touch cachedStatus or anything
+    // a player's numbers are counted from. Hidden unless the sheet has a row
+    // for this cell. Sheet text goes in as textContent.
     const sheetSection = document.createElement('div');
     sheetSection.classList.add('nge-lb-section', 'nge-lb-sheet');
     sheetSection.hidden = true;
@@ -577,6 +641,14 @@ export class ButtonService {
     void labSheetRowsFor(segmentIDString).then(rows => {
       const shown = rows.map(r => ({r, lines: labSheetLines(r)})).filter(x => x.lines.length);
       if (!shown.length) return;
+      lab = labSheetSummary(rows);
+      if (cachedStatus || lab?.proofread) statusLine.textContent = progressText();
+      showLabType();
+      if (!(parent as any)._labSheet) {
+        (parent as any)._labSheet = rows;
+        this._paint(parent as HTMLButtonElement, (parent as any)._cellStatus ?? null);
+      }
+      showTitle();
       for (const {r, lines} of shown) {
         const card = document.createElement('div');
         card.classList.add('nge-lb-sheet-row');
@@ -606,7 +678,7 @@ export class ButtonService {
       note.textContent = (shown.length > 1
           ? `This cell has ${shown.length} rows in the lab's retina sheet. `
           : `Row ${shown[0].r.sheet_index} of the lab's retina sheet. `) +
-          'For reference only: Pyr did not save this and it does not count toward your stats.';
+          'It fills in the lines above where nothing is saved in Pyr yet, and does not count toward your stats.';
       sheetSection.appendChild(note);
       sheetSection.hidden = false;
     }).catch(() => { /* nothing to show */ });
