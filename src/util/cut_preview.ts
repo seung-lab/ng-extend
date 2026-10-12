@@ -67,7 +67,7 @@ async function preview(layer: any) {
         'Preview: red stays with the red points, blue goes with the blue ones. Nothing has been cut.', 7000);
   } catch (e: any) {
     if (mine !== run) return;
-    console.warn('[cut preview]', e);
+    console.warn('[cut preview]', e?.message || e);
     StatusMessage.showTemporaryMessage(`No preview: ${e?.message || 'the server did not answer'}. The cut itself is not affected.`, 9000);
   } finally {
     status.dispose();

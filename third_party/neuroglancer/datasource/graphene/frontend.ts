@@ -1626,10 +1626,23 @@ class GrapheneGraphServerInterface {
     if (url === '') return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     const row = (x: SegmentSelection) =>
         [String(x.segmentId), ...x.position.map((val, i) => val * annotationToNanometers[i])];
-    const response = await cancellableFetchSpecialOk(
-        this.credentialsProvider, `${url}/graph/split_preview?int64_as_str=1`,
-        {method: 'POST', body: JSON.stringify({'sources': first.map(row), 'sinks': second.map(row)})},
-        responseIdentity);
+    let response: Response;
+    try {
+      response = await cancellableFetchSpecialOk(
+          this.credentialsProvider, `${url}/graph/split_preview?int64_as_str=1`,
+          {method: 'POST', body: JSON.stringify({'sources': first.map(row), 'sinks': second.map(row)})},
+          responseIdentity);
+    } catch (e) {
+      // The server says why in its answer (points that cannot be told apart,
+      // a point off the cell...): pass that on, not just the error number.
+      if (e instanceof HttpError && e.response) {
+        let why: string|undefined;
+        try { why = await parseGrapheneError(e); } catch { why = undefined; }
+        const text = String(why ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+        throw new Error(text ? `the server said "${text}" (error ${e.status})` : `the server refused it (error ${e.status})`);
+      }
+      throw e;
+    }
     // The ids are larger than a JavaScript number holds. If the server sent
     // them as bare numbers, quote them before the text is read as JSON.
     const text = (await response.text()).replace(/([\[,:\s])(\d{16,})(?=[\s,\]}])/g, '$1"$2"');
