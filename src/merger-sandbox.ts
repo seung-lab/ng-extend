@@ -12,7 +12,6 @@ import { ref } from 'vue';
 import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
 import imgWheresNurro from './images/wheres-nurro.png';
-import imgPyrGem from './images/pyr-icon.png';
 import imgSandboxComplete from './images/sandbox-complete.jpg';
 import { beginPractice, cellIsCut, endPractice, ensureTool } from './practice';
 import { SANDBOX_CELLS } from './practice_pools';
@@ -205,7 +204,7 @@ function progressBar(fold = false): string {
   let chain = '';
   done.forEach((d, i) => {
     const state = d ? 'done' : i === current ? 'now' : 'todo';
-    chain += `<span class="nge-sbx-node nge-sbx-node--${state}" title="Merger ${i + 1}${d ? ', solved' : state === 'now' ? ', this one' : ''}"><img src="${imgPyrGem}" alt=""></span>`;
+    chain += `<span class="nge-sbx-node nge-sbx-node--${state}" title="Merger ${i + 1}${d ? ', solved' : state === 'now' ? ', this one' : ''}"></span>`;
     // The line between two solved mergers lights up.
     if (i < TOTAL - 1) chain += `<span class="nge-sbx-link${d && done[i + 1] ? ' nge-sbx-link--lit' : ''}"></span>`;
   });

@@ -462,3 +462,13 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--now::after { display: none !important; }
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-link { margin: 0 5px; }
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-track { height: 30px; }
+
+/* Progress as plain dots everywhere, full box and slim bar alike (Ames,
+   2026-10-12: they look better than the gems). These come last, so they
+   stand over the gem rules above. */
+.nge-sbx-track { height: 26px; }
+.nge-sbx-node, .nge-sbx-node--now { width: 8px; height: 8px; border-radius: 50%; background: rgba(150, 215, 255, 0.16); }
+.nge-sbx-node--done { background: #7ee0ff; box-shadow: 0 0 5px rgba(126, 224, 255, 0.55); }
+.nge-sbx-node--now { background: none; box-shadow: 0 0 0 1.5px #dff4fb; }
+.nge-sbx-node--now::after { display: none !important; }
+.nge-sbx-link { margin: 0 5px; }
