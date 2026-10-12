@@ -728,19 +728,39 @@ async function batchAnnotate(group: SegmentGroup) {
   batchProgress.value = { groupId: group.id, action: 'annotate', current: 0, total, errors: [] };
   annotateGroupId.value = null;
 
+  // Each cell is typed at ITS OWN point (Ames 2026-10-12). CAVE files a type
+  // under whatever cell is at the point it is saved at, and every cell used
+  // to be saved at the one crosshair position, so they all landed on the
+  // single cell under the crosshairs. The point is the one the player saved
+  // inside the cell (Save point, or the completion walk), checked just now to
+  // still be inside it. Nothing is guessed: a cell with no saved point is
+  // left untyped and counted.
+  let points: Record<string, [number, number, number]> = {};
+  try { points = await pointsInsideCells(group.segmentIds); }
+  catch (e) { console.warn('[batch] checking your saved points failed:', e); }
+  const walked = guide.value?.groupId === group.id ? guide.value.points : {};
+
+  let typed = 0, noPoint = 0;
   for (let i = 0; i < total; i++) {
     batchProgress.value.current = i + 1;
+    const segId = group.segmentIds[i];
+    const pt = points[segId] ?? walked[segId];
+    if (!pt) { noPoint++; continue; }
     try {
       // A save CAVE refused comes back false, not as an error: count it as failed.
-      if (!(await saveCellType(caveServer, group.segmentIds[i], cellType, undefined, true))) batchProgress.value.errors.push(group.segmentIds[i]);
+      if (await saveCellType(caveServer, segId, cellType, undefined, true, pt)) typed++;
+      else batchProgress.value.errors.push(segId);
     } catch (e: any) {
-      batchProgress.value.errors.push(group.segmentIds[i]);
+      batchProgress.value.errors.push(segId);
     }
   }
   const errCount = batchProgress.value.errors.length;
-  flash(`Annotated ${total - errCount}/${total} as "${cellType}"${errCount ? ` (${errCount} failed)` : ''}`);
+  const parts = [`Typed ${typed} of ${total} as "${cellType}".`];
+  if (noPoint) parts.push(`${noPoint} ${noPoint === 1 ? 'has' : 'have'} no saved point: put the crosshairs inside each one, press Save point, then apply again.`);
+  if (errCount) parts.push(`${errCount} did not save. Try those again.`);
+  flash(parts.join(' '));
   batchProgress.value = null;
-  selectedCellType.value = '';
+  if (!noPoint && !errCount) selectedCellType.value = '';
 }
 
 // ── UI helpers ──────────────────────────────────────────────────────
@@ -781,7 +801,13 @@ async function previewBatchCelebration() {
 function flash(msg: string) {
   flashMessage.value = msg;
   if (flashTimer) clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { flashMessage.value = ''; }, 2500);
+  // Long enough to read: a short line 2.5 s, a long one up to 12 s.
+  flashTimer = setTimeout(() => { flashMessage.value = ''; }, Math.min(12000, Math.max(2500, msg.length * 70)));
+}
+/** How many of a group's cells have a point saved inside them (as last known). */
+function pointCount(group: SegmentGroup): number {
+  const walked = guide.value?.groupId === group.id ? guide.value.points : {};
+  return group.segmentIds.filter(id => savedCellPoints[id] || walked[id]).length;
 }
 
 // ── Drag ────────────────────────────────────────────────────────────
@@ -956,6 +982,10 @@ const panelStyle = computed(() => ({
                   <option v-for="ct in currentCellTypes()" :key="ct" :value="ct">{{ ct }}</option>
                 </select>
                 <button class="nge-bp-btn nge-bp-btn--go" @click="batchAnnotate(group)" :disabled="!selectedCellType">Apply</button>
+                <!-- Each cell is typed at its own saved point; say how many have one. -->
+                <div class="nge-bp-sub-note">
+                  {{ pointCount(group) }} of {{ group.segmentIds.length }} have a saved point. A cell is typed at its own point, so one without a point is skipped: put the crosshairs inside it and press Save point.
+                </div>
               </div>
 
               <!-- Confirm dialog (used for 'remove' only — 'complete' uses the guided wizard) -->
@@ -1423,6 +1453,7 @@ const panelStyle = computed(() => ({
   flex-wrap: wrap;
 }
 .nge-bp-sub-label { font-size: 0.85em; color: #889; font-weight: 600; }
+.nge-bp-sub-note { flex-basis: 100%; font-size: 0.82em; line-height: 1.35; color: #9aa7bd; }
 
 .nge-bp-swatches { display: flex; gap: 3px; flex-wrap: wrap; }
 .nge-bp-swatch {

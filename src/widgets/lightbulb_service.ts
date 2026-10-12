@@ -931,9 +931,11 @@ export function getLastCellTypeProblem(): string { return lastCellTypeProblem; }
 export async function saveCellType(
     caveServer: string, rootId: string, cellType: string,
     existingAnnotationId?: number,
-    /** The batch tool types many cells from one view and cannot move the
-     *  crosshairs into each of them. */
-    skipCrosshairCheck = false): Promise<boolean> {
+    /** Set when the point is already known to be inside the cell. */
+    skipCrosshairCheck = false,
+    /** The point to save the type at, in place of the crosshairs: the batch
+     *  tool gives each cell the point the player saved inside it. */
+    pointOverride?: [number, number, number]): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellTypeTable, cellTypeSchema, alignedVolume} = dsCfg;
   lastCellTypeProblem = '';
@@ -955,7 +957,7 @@ export async function saveCellType(
   }
 
   const baseUrl = annotationBaseUrl(caveServer, cellTypeTable, alignedVolume);
-  const pos = getViewerPosition();
+  const pos = pointOverride ?? getViewerPosition();
 
   // annotationLog: no CAVE table to write; the edit_log path below is the record.
   if (!dsCfg.annotationLog) try {
