@@ -31,24 +31,7 @@ export interface CutSidesResult {
 export function cutSides(
     edges: readonly (readonly [string, string])[], points: ReadonlyMap<string, number[]>,
     known: ReadonlyMap<string, Side>, maxSteps = 120): CutSidesResult {
-  const next = new Map<string, string[]>();
-  const link = (a: string, b: string) => { (next.get(a) ?? next.set(a, []).get(a)!).push(b); };
-  for (const [a, b] of edges) { if (a !== b) { link(a, b); link(b, a); } }
-
-  const side = new Map<string, Side>(known);
-  let frontier = [...known.keys()];
-  for (let step = 0; step < maxSteps && frontier.length; step++) {
-    const reached: string[] = [];
-    for (const piece of frontier) {
-      const s = side.get(piece)!;
-      for (const n of next.get(piece) ?? []) {
-        if (side.has(n)) continue;       // taken already, by either colour: the cut lies between
-        side.set(n, s);
-        reached.push(n);
-      }
-    }
-    frontier = reached;
-  }
+  const side = spreadSides(edges, known, maxSteps);
 
   const lines: CutSideLine[] = [];
   const drawn = new Set<string>();
@@ -69,6 +52,53 @@ export function cutSides(
   let red = 0, blue = 0;
   for (const s of side.values()) { if (s === 'red') red++; else blue++; }
   return { lines, red, blue };
+}
+
+/** The side of every piece the colour reaches, spreading from the known ones. */
+export function spreadSides(
+    edges: readonly (readonly [string, string])[], known: ReadonlyMap<string, Side>, maxSteps = 120): Map<string, Side> {
+  const next = new Map<string, string[]>();
+  const link = (a: string, b: string) => { (next.get(a) ?? next.set(a, []).get(a)!).push(b); };
+  for (const [a, b] of edges) { if (a !== b) { link(a, b); link(b, a); } }
+
+  const side = new Map<string, Side>(known);
+  let frontier = [...known.keys()];
+  for (let step = 0; step < maxSteps && frontier.length; step++) {
+    const reached: string[] = [];
+    for (const piece of frontier) {
+      const s = side.get(piece)!;
+      for (const n of next.get(piece) ?? []) {
+        if (side.has(n)) continue;       // taken already, by either colour: the cut lies between
+        side.set(n, s);
+        reached.push(n);
+      }
+    }
+    frontier = reached;
+  }
+  return side;
+}
+
+/** A block of the volume and what to paint it: one side's colour, or 'both'
+ *  where pieces of both sides lie in it, which is where the cut falls. */
+export interface CutSideBlock { box: number[]; side: Side | 'both'; }
+
+/**
+ * The cell block by block. Every piece lies in one block of the volume, and
+ * a block is small, so painting whole blocks colours the whole surface of
+ * the cell with nothing left out. `boxes` gives each piece's block as
+ * [x0, y0, z0, x1, y1, z1] in nanometres.
+ */
+export function cutSideBlocks(side: ReadonlyMap<string, Side>, boxes: ReadonlyMap<string, number[]>): CutSideBlock[] {
+  const blocks = new Map<string, CutSideBlock>();
+  for (const [piece, s] of side) {
+    const box = boxes.get(piece);
+    if (!box) continue;
+    const key = box.join(',');
+    const have = blocks.get(key);
+    if (!have) blocks.set(key, { box, side: s });
+    else if (have.side !== s) have.side = 'both';
+  }
+  return [...blocks.values()];
 }
 
 /**

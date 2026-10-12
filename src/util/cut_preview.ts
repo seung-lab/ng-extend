@@ -16,12 +16,14 @@
  * both sides at once, never across the cut (cut_sides.ts).
  */
 import { StatusMessage } from 'neuroglancer/status';
-import { ngeGrapheneCutPreview, ngeGrapheneBranchGraph } from 'neuroglancer/datasource/graphene/frontend';
-import { cutSides, piecesFromPreview, type Side } from './cut_sides';
-import { setExtraTintLines } from './highlight';
+import { ngeGrapheneCutPreview, ngeGrapheneCutGraph } from 'neuroglancer/datasource/graphene/frontend';
+import { spreadSides, cutSideBlocks, piecesFromPreview, type Side } from './cut_sides';
+import { setExtraTintBoxes } from './highlight';
 
-const RED = [255, 72, 72];
-const BLUE = [72, 120, 255];
+const RED = [255, 64, 64];
+const BLUE = [64, 110, 255];
+/** A block that holds parts of both sides: the cut passes through it. */
+const BOTH = [255, 232, 150];
 
 /** Bumped by every new preview and every clear, so a slow answer that is no
  *  longer wanted is dropped when it arrives. */
@@ -32,7 +34,7 @@ function clear() {
   run++;
   if (!showing) return;
   showing = false;
-  setExtraTintLines(null);
+  setExtraTintBoxes(null);
 }
 
 async function preview(layer: any) {
@@ -43,28 +45,32 @@ async function preview(layer: any) {
     const got = await ngeGrapheneCutPreview(layer);
     if (mine !== run) return;
     if (got.illegal) {
-      setExtraTintLines(null);
+      setExtraTintBoxes(null);
       showing = false;
       StatusMessage.showTemporaryMessage('The server says these points cannot be cut apart. Try moving them or adding more.', 9000);
       return;
     }
-    const graph = await ngeGrapheneBranchGraph(layer, got.rootId);
+    const graph = await ngeGrapheneCutGraph(layer, got.rootId);
     if (mine !== run) return;
     const known: Map<string, Side> = piecesFromPreview(got.redBits, got.blueBits, got.pieceOf);
     // Where the points themselves sit is certain, whatever the counting said.
     for (const bit of got.redPicks) { const p = got.pieceOf.get(bit); if (p) known.set(p, 'red'); }
     for (const bit of got.bluePicks) { const p = got.pieceOf.get(bit); if (p && known.get(p) !== 'red') known.set(p, 'blue'); }
-    const sides = cutSides(graph.edges, graph.points, known);
-    if (!sides.lines.length) {
+    const side = spreadSides(graph.edges, known);
+    const blocks = cutSideBlocks(side, graph.boxes);
+    if (!blocks.length) {
       StatusMessage.showTemporaryMessage('Could not place the preview on this cell. The cut itself is not affected.', 8000);
       return;
     }
-    setExtraTintLines(sides.lines.map(l => ({ a: l.a, b: l.b, rgb: l.side === 'red' ? RED : BLUE })));
+    setExtraTintBoxes(blocks.map(b => ({ box: b.box, rgb: b.side === 'red' ? RED : b.side === 'blue' ? BLUE : BOTH })));
     showing = true;
     // For checking from the console and in tests.
-    (window as any).__ngeCutPreview = { red: sides.red, blue: sides.blue, lines: sides.lines.length, knownPieces: known.size, mappedAll: got.mappedAll };
+    (window as any).__ngeCutPreview = {
+      pieces: side.size, blocks: blocks.length, both: blocks.filter(x => x.side === 'both').length,
+      knownPieces: known.size, mappedAll: got.mappedAll,
+    };
     StatusMessage.showTemporaryMessage(
-        'Preview: red stays with the red points, blue goes with the blue ones. Nothing has been cut.', 7000);
+        'Preview: red stays with the red points, blue goes with the blue ones, and the pale stretch is where the cut falls. Nothing has been cut.', 8000);
   } catch (e: any) {
     if (mine !== run) return;
     console.warn('[cut preview]', e?.message || e);
@@ -89,6 +95,9 @@ export function cutPreviewTestOn(): boolean {
 
 export function startCutPreview() {
   (window as any).ngeCutPreviewTest = cutPreviewTestOn();
+  // While it is a test: paint blocks by hand from the console, to look at the
+  // colouring itself without a cut (boxes in nanometres, rgb 0 to 255).
+  if ((window as any).ngeCutPreviewTest) (window as any).__ngeCutPreviewPaint = (boxes: { box: number[]; rgb: number[] }[] | null) => setExtraTintBoxes(boxes);
   window.addEventListener('nge-cut-preview', (e: Event) => { void preview((e as CustomEvent).detail?.layer); });
   window.addEventListener('nge-cut-preview-clear', clear);
 }

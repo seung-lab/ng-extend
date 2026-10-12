@@ -1710,7 +1710,11 @@ class GrapheneGraphServerInterface {
     if (!m) throw new Error('This dataset has no map of its branches.');
     const out = new Map<string, number[]>();
     const wanted = ids.filter(id => /^\d+$/.test(id));
+    // A dataset with no store of piece positions answers with an error every
+    // time (the Sandbox): ask it once, not on every use.
+    const storeKey = `${m[1]}/${m[2]}`;
     try {
+      if (this.ngeNoPiecePoints.has(storeKey)) throw new Error('known to have none');
       const BATCH = 2000;
       for (let i = 0; i < wanted.length; i += BATCH) {
         const batch = wanted.slice(i, i + BATCH);
@@ -1727,7 +1731,8 @@ class GrapheneGraphServerInterface {
         }
       }
     } catch (e) {
-      console.info('[highlight] no stored piece positions for this dataset, using chunk middles:', (e as any)?.message);
+      if (!this.ngeNoPiecePoints.has(storeKey)) console.info('[highlight] no stored piece positions for this dataset, using chunk middles:', (e as any)?.message);
+      this.ngeNoPiecePoints.add(storeKey);
     }
     if (out.size < wanted.length) {
       const middle = await this.ngeChunkMiddle(m[1], m[2]);
@@ -1735,6 +1740,28 @@ class GrapheneGraphServerInterface {
     }
     return out;
   }
+
+  private ngeNoPiecePoints = new Set<string>();
+
+  /** The block of the volume each piece lies in, in NANOMETERS, as
+   *  [x0, y0, z0, x1, y1, z1]. Read from the piece's id, so it asks the
+   *  server nothing beyond the dataset's own description (asked once). */
+  async ngeChunkBoxes(ids: string[]): Promise<Map<string, number[]>> {
+    const {url} = this;
+    const m = url.match(/^(https:\/\/[^/]+)\/segmentation\/(?:api\/v1\/)?table\/([^/?#]+)/);
+    if (!m) throw new Error('This dataset has no map of its branches.');
+    const middle = await this.ngeChunkMiddle(m[1], m[2]);
+    const half = this.ngeChunkHalf.get(`${m[1]}/${m[2]}`);
+    const out = new Map<string, number[]>();
+    if (!half) return out;
+    for (const id of ids) {
+      const p = middle(id);
+      if (p) out.set(id, [p[0] - half[0], p[1] - half[1], p[2] - half[2], p[0] + half[0], p[1] + half[1], p[2] + half[2]]);
+    }
+    return out;
+  }
+  /** Half the size of a level 2 chunk, in nanometers, per dataset. */
+  private ngeChunkHalf = new Map<string, number[]>();
 
   /** Where a piece's chunk of the volume is, read from the piece's id. A
    *  level 2 id is, from the top bit down: the layer, then the chunk's x, y
@@ -1757,6 +1784,7 @@ class GrapheneGraphServerInterface {
         }
         const offset: number[] = info?.['chunks_start_at_voxel_offset'] && Array.isArray(scale?.['voxel_offset']) ? scale['voxel_offset'] : [0, 0, 0];
         const mask = (BigInt(1) << BigInt(bits)) - BigInt(1);
+        this.ngeChunkHalf.set(key, [0, 1, 2].map(k => chunk[k] * res[k] / 2));
         return (id: string) => {
           let n: bigint;
           try { n = BigInt(id); } catch { return undefined; }
@@ -2699,6 +2727,20 @@ export async function ngeGrapheneBranchGraph(layer: SegmentationUserLayer, rootI
   for (const [a, b] of edges) { ids.add(a); ids.add(b); }
   const points: Map<string, number[]> = await server.ngePiecePoints([...ids]);
   return {edges, points};
+}
+
+/** For the cut preview: the links between a cell's pieces, and the block of
+ *  the volume each piece lies in (nanometres, [x0, y0, z0, x1, y1, z1]). */
+export async function ngeGrapheneCutGraph(layer: SegmentationUserLayer, rootId: string):
+    Promise<{edges: [string, string][], boxes: Map<string, number[]>}> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const server = connection.graph.graphServer as any;
+  const edges: [string, string][] = await server.ngeBranchEdges(rootId);
+  const ids = new Set<string>();
+  for (const [a, b] of edges) { ids.add(a); ids.add(b); }
+  const boxes: Map<string, number[]> = await server.ngeChunkBoxes([...ids]);
+  return {edges, boxes};
 }
 
 /** For the cut preview (src/util/cut_preview.ts): the red and blue points

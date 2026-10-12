@@ -11,7 +11,7 @@ import ts from 'typescript';
 const src = fs.readFileSync(new URL('../src/util/cut_sides.ts', import.meta.url), 'utf8');
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cut-sides-')), 'cut_sides.mjs');
 fs.writeFileSync(out, ts.transpileModule(src, { compilerOptions: { module: 'ESNext', target: 'ES2020' } }).outputText);
-const { cutSides, piecesFromPreview } = await import(pathToFileURL(out).href);
+const { cutSides, piecesFromPreview, spreadSides, cutSideBlocks } = await import(pathToFileURL(out).href);
 
 // A cell shaped like a Y: a trunk t0..t4, then two arms from t4: a0..a3 and b0..b3.
 const chain = (ids) => ids.slice(1).map((id, i) => [ids[i], id]);
@@ -57,4 +57,23 @@ test('the preview decides each piece by where most of its bits are', () => {
   assert.equal(m.get('a0'), 'blue');   // 1 red, 2 blue
   assert.equal(m.get('a1'), 'red');
   assert.equal(m.has('t4'), false);    // a tie is left for the spread to decide
+});
+
+test('block by block: one colour per block, and "both" where the cut passes through one', () => {
+  const side = spreadSides(edges, new Map([['a1', 'red'], ['a0', 'blue']]));
+  assert.equal(side.size, 13);
+  // t0..t4 and b0..b3 each in a block of their own; a0 and a1 share one; a2 and a3 share one.
+  const box = (k) => [k * 100, 0, 0, k * 100 + 100, 100, 100];
+  const boxes = new Map([...trunk, ...armB].map((id, i) => [id, box(i)]));
+  boxes.set('a0', box(50)); boxes.set('a1', box(50)); boxes.set('a2', box(51)); boxes.set('a3', box(51));
+  const blocks = cutSideBlocks(side, boxes);
+  assert.equal(blocks.length, 11);
+  const at = (k) => blocks.find(b => b.box[0] === k * 100).side;
+  assert.equal(at(50), 'both');
+  assert.equal(at(51), 'red');
+  assert.equal(at(0), 'blue');
+});
+test('a piece with no block is left out and nothing breaks', () => {
+  const blocks = cutSideBlocks(new Map([['x', 'red'], ['y', 'blue']]), new Map([['x', [0, 0, 0, 1, 1, 1]]]));
+  assert.deepEqual(blocks, [{ box: [0, 0, 0, 1, 1, 1], side: 'red' }]);
 });
