@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T15:13:58Z",
+      "title": "Batch Processor: each cell is typed at its own point",
+      "items": [
+        "When you set a cell type for a group, each cell is now saved at the point you saved inside it, so the type lands on the right cell.",
+        "A cell with no saved point is skipped and counted. Put the crosshairs inside it, press Save point, then apply again."
+      ]
+    },
+    {
       "at": "2026-10-12T15:07:00Z",
       "title": "Hemibrain joins the datasets",
       "digest": "headline",
