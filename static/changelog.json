@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T17:27:00Z",
+      "title": "Cells the lab finished are not offered again",
+      "items": [
+        "On Retina, a cell the lab's own sheet marks as complete no longer offers Mark as Proofread or Claim in its Delta menu. The menu says the lab has already proofread it.",
+        "A cell you completed in Pyr keeps its Unmark, and a cell you already hold keeps its Release."
+      ]
+    },
+    {
       "at": "2026-10-12T17:17:00Z",
       "title": "Dots for your Merger Sandbox progress",
       "items": [

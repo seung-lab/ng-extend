@@ -887,3 +887,4 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   font-weight: 600;
   letter-spacing: 0;
 }
+.nge-lb-readonly-note[hidden] { display: none; }

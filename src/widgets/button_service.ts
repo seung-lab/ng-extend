@@ -391,6 +391,13 @@ export class ButtonService {
       segIdLabel.classList.toggle('nge-lb-header-label', !!label);
     };
     showTitle();
+    // A cell the lab has completed is not offered for proofreading in the
+    // game (Ames 2026-10-12: "if lab completed, it should not be offered for
+    // proofreading in the game"): no Mark as Proofread and no Claim. A cell
+    // already completed in Pyr keeps its Unmark, and a claim someone already
+    // holds keeps its Release. Filled in at the end, once the buttons exist.
+    const labDone = () => !!lab?.proofread && !cachedStatus?.isComplete;
+    let showLabDone = () => {};
 
     // ── Section 1: Completion Status ──────────────────────────────────────
     const completionSection = document.createElement('div');
@@ -425,6 +432,7 @@ export class ButtonService {
           if (typeLine) typeLine.textContent = st?.cellType || 'No type yet';
           showLabType();
           showTitle();
+          showLabDone();
         }).catch(() => {
           if (statusLine.isConnected) statusLine.textContent = 'Could not load status. Reopen to retry.';
         });
@@ -450,6 +458,7 @@ export class ButtonService {
       toggleBtn.disabled = true;
       toggleBtn.textContent = 'Saving…';
       const willBeComplete = !(cachedStatus?.isComplete ?? false);
+      if (willBeComplete && labDone()) { toggleBtn.disabled = false; toggleBtn.textContent = 'Mark as Proofread'; showLabDone(); return; }
       // The Delta menu is where cells get completed (Amy 2026-09-28): a Cell
       // Library sheet cell is also claimed, completed and written to the sheet.
       // Plan first, so a cell someone else holds stops before CAVE is written.
@@ -518,8 +527,14 @@ export class ButtonService {
         toggleBtn.textContent = !localServerURL ? 'No CAVE server configured' : 'Error, try again';
       }
       toggleBtn.disabled = false;
+      showLabDone();
     });
     completionSection.appendChild(toggleBtn);
+    const labDoneNote = document.createElement('div');
+    labDoneNote.classList.add('nge-lb-readonly-note');
+    labDoneNote.textContent = 'The lab has already proofread this cell, so there is nothing to mark here.';
+    labDoneNote.hidden = true;
+    completionSection.appendChild(labDoneNote);
 
     // ── Section 2: Cell Type ──────────────────────────────────────────────
     const cellTypeSection = document.createElement('div');
@@ -649,6 +664,7 @@ export class ButtonService {
         this._paint(parent as HTMLButtonElement, (parent as any)._cellStatus ?? null);
       }
       showTitle();
+      showLabDone();
       for (const {r, lines} of shown) {
         const card = document.createElement('div');
         card.classList.add('nge-lb-sheet-row');
@@ -774,11 +790,14 @@ export class ButtonService {
         : 'Log in to claim cells';
     }
     claimSection.appendChild(claimStatus);
+    const claimOpenText = claimStatus.textContent;
+    let claimBtnEl: HTMLButtonElement | null = null;
 
     if (backend.userId) {
       if (!claimInfo.claimed) {
         // Claim button
         const claimBtn = document.createElement('button');
+        claimBtnEl = claimBtn;
         claimBtn.classList.add('nge-lb-section-button', 'nge-lb-claim-btn');
         claimBtn.textContent = '🔒 Claim Cell';
         if (backend.myActiveClaimCount() >= backend.claimLimitFor()) {
@@ -998,6 +1017,22 @@ export class ButtonService {
       helpBtn.style.borderColor = 'rgba(127,255,136,0.3)';
     });
     helpSection.appendChild(helpBtn);
+
+    showLabDone = () => {
+      if (roCfg.cellStatusReadOnly) return;   // nothing is offered there anyway
+      const off = labDone();
+      // The menu's stylesheet sets display with !important, so a plain
+      // style.display = 'none' would leave the button showing.
+      const hide = (el: HTMLElement) => off ? el.style.setProperty('display', 'none', 'important') : el.style.removeProperty('display');
+      hide(toggleBtn);
+      labDoneNote.hidden = !off;
+      // Only an unclaimed cell: a claim already held keeps its line and Release.
+      if (!backend.isClaimedSegment(segmentIDString).claimed) {
+        if (claimBtnEl) hide(claimBtnEl);
+        claimStatus.textContent = off ? 'Proofread by the lab, so there is nothing to claim.' : claimOpenText;
+      }
+    };
+    showLabDone();
 
     if (roCfg.exploreOnly) {
       // Published files, no CAVE: nothing to proofread, label, claim or ask
