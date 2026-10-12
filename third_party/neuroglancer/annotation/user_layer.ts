@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import {ngePointSizeFor, ngeDefaultPointSize} from 'neuroglancer/annotation/nge_point_size';
 import './user_layer.css';
 
 import {AnnotationPropertySpec, annotationPropertySpecsToJson, AnnotationType, LocalAnnotationSource, parseAnnotationPropertySpecs} from 'neuroglancer/annotation';
@@ -386,7 +387,8 @@ export class AnnotationUserLayer extends Base {
     const marker = specification['pointMarker'];
     this.annotationDisplayState.ngeMarker.value = marker === 'pyr' ? 'pyr' : 'dot';
     // "big" was the first version's fixed 10x dot; it is a size now.
-    const pointSize = Number(specification['pointSize'] ?? (marker === 'big' ? 10 : 1));
+    // No size in the view: the player's own remembered size (nge_point_size.ts).
+    const pointSize = Number(specification['pointSize'] ?? (marker === 'big' ? 10 : ngePointSizeFor(this.managedLayer?.name)));
     this.annotationDisplayState.ngeSize.value =
         Number.isFinite(pointSize) ? Math.max(0.25, Math.min(20, pointSize)) : 1;
     this.annotationDisplayState.shaderControls.restoreState(
@@ -573,7 +575,9 @@ export class AnnotationUserLayer extends Base {
     const marker = this.annotationDisplayState.ngeMarker.value;
     x['pointMarker'] = marker === 'dot' ? undefined : marker;
     const pointSize = this.annotationDisplayState.ngeSize.value;
-    x['pointSize'] = pointSize === 1 ? undefined : pointSize;
+    // 1 is left out only while 1 is also what a layer with no size opens at;
+    // once the player has a size of their own, a layer kept at 1 says so.
+    x['pointSize'] = pointSize === 1 && ngeDefaultPointSize() === 1 ? undefined : pointSize;
     x['onTop'] = this.annotationDisplayState.ngeOnTop.value ? true : undefined;
     x['hideIn3d'] = this.annotationDisplayState.ngeHideIn3d.value ? true : undefined;
     x[SHADER_CONTROLS_JSON_KEY] = this.annotationDisplayState.shaderControls.toJSON();

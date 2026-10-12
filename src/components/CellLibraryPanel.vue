@@ -2478,7 +2478,7 @@ const panelStyle = computed(() => ({
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <button v-if="!viewOnlyDataset" class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
-          <button class="nge-cl-close" title="Close the Cell Library (Shift+L opens and closes it)" aria-label="Close the Cell Library" @mousedown.stop @click="emit('hide')">×</button>
+          <button class="nge-cl-close" title="Close (Shift+L)" aria-label="Close the Cell Library" @mousedown.stop @click="emit('hide')">×</button>
         </div>
 
         <!-- Resolve celebration -->

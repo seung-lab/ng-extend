@@ -18,6 +18,7 @@
  * @file User interface for display and editing annotations.
  */
 
+import {ngeRememberPointSize} from 'neuroglancer/annotation/nge_point_size';
 import './annotations.css';
 
 // @ts-ignore (image import, bundled by esbuild)
@@ -408,8 +409,14 @@ export class AnnotationLayerView extends Tab {
       if (!Number.isFinite(v) || v <= 0) return;
       displayState.ngeSize.value = Math.max(0.25, Math.min(20, v));
     };
-    sizeSlider.addEventListener('input', () => setSize(sizeSlider.value));
-    sizeNumber.addEventListener('input', () => setSize(sizeNumber.value));
+    // Only the player's own hand on the slider or the box is remembered,
+    // not a size a view or a button set.
+    const setByHand = (raw: string) => {
+      setSize(raw);
+      ngeRememberPointSize(this.layer.managedLayer?.name, displayState.ngeSize.value);
+    };
+    sizeSlider.addEventListener('input', () => setByHand(sizeSlider.value));
+    sizeNumber.addEventListener('input', () => setByHand(sizeNumber.value));
     sizeNumber.addEventListener('blur', showSize);
     // Typing here must not reach the viewer's key bindings.
     sizeNumber.addEventListener('keydown', e => e.stopPropagation());
