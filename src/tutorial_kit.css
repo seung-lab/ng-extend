@@ -472,3 +472,8 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-trac
 .nge-sbx-node--now { background: none; box-shadow: 0 0 0 1.5px #dff4fb; }
 .nge-sbx-node--now::after { display: none !important; }
 .nge-sbx-link { margin: 0 5px; }
+/* Merger Sandbox boxes carry no step rail at the bottom: the dots are the
+   progress (Ames, 2026-10-12). */
+.introductionStepAnchor .chip:has(.nge-sbx-progress) .progressBarContainer,
+.introductionStepAnchor .chip:has(.nge-sbx-nurro) .progressBarContainer,
+.introductionStepAnchor .chip:has(.nge-sbx-figure) .progressBarContainer { display: none !important; }
