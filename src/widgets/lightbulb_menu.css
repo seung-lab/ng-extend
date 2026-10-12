@@ -696,6 +696,11 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   opacity: 0.92;
   transition: opacity 0.2s;
 }
+/* A bar along the bottom of the screen (a notice like "At this zoom level...",
+   Find Path, a tool's bar) used to lie over the legend. The legend rises to
+   sit on top of it while it is there, as the chat and the coordinates do
+   (Ames 2026-10-12). --nge-bottom-bar is that bar's height (util/bottom_bar.ts). */
+.nge-seg-legend { margin-bottom: var(--nge-bottom-bar, 0px); transition: opacity 0.2s, margin-bottom 0.2s ease; }
 .neuroglancer-segment-list:hover .nge-seg-legend,
 .nge-seg-legend:hover {
   opacity: 1;

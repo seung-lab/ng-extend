@@ -2,11 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-12T16:49:00Z",
+      "at": "2026-10-12T16:50:00Z",
       "title": "Merger Sandbox: Next is the main button again",
       "items": [
         "The main button in the Merger Sandbox is Next, which checks your cut. Skip this one is a small link in the full box.",
-        "The slim bar now opens a line of text when there is news, such as a cut that went through but did not finish the job."
+        "The slim bar opens a line of text when there is news, such as a cut that went through but did not finish the job.",
+        "The slim bar shows your progress as plain dots."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:50:06Z",
+      "title": "Notices at the bottom no longer cover the legend",
+      "items": [
+        "When a notice or tool bar runs along the bottom of the screen, the segment list legend and the Sections switch in the 3D view move up so you can still see and use them."
       ]
     },
     {

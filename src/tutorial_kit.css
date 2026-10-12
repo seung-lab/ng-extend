@@ -453,3 +453,12 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foo
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html > .nge-practice-status:not(.nge-practice-status--quiet) { display: block !important; margin: 10px 0 2px !important; font-size: 0.86em; line-height: 1.4; }
 /* With news showing, Help me comes with it. */
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html:has(> .nge-practice-status:not(.nge-practice-status--quiet)) > .nge-practice-helprow { display: flex !important; margin: 6px 0 0 !important; }
+/* Slim bar: progress as plain dots (Ames, 2026-10-12: the gems sat oddly at
+   this size). */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node img { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node { width: 7px; height: 7px; border-radius: 50%; background: rgba(150, 215, 255, 0.16); }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--done { background: #7ee0ff; box-shadow: 0 0 5px rgba(126, 224, 255, 0.55); }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--now { width: 7px; height: 7px; background: none; box-shadow: 0 0 0 1.5px #dff4fb; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--now::after { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-link { margin: 0 5px; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-track { height: 30px; }
