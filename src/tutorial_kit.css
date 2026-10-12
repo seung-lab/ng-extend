@@ -443,3 +443,13 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .progressBarC
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-count em { display: none !important; }
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot::before { display: none !important; }
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot button { pointer-events: auto; }
+
+/* "Skip this one": a quiet text button after the sentence. */
+.nge-sbx-skip { border: 0; background: none; padding: 0; margin-left: 4px; font: inherit; font-size: 0.9em; color: #8fb8d8; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.nge-sbx-skip:hover { color: #fff; }
+/* Slim bar: Next is pinned to the bar's own row, so news can open below it.
+   A status line that is news (not the standing hint) shows even when slim. */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot { position: absolute !important; top: 13px; right: 44px; margin: 0 !important; width: auto !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html > .nge-practice-status:not(.nge-practice-status--quiet) { display: block !important; margin: 10px 0 2px !important; font-size: 0.86em; line-height: 1.4; }
+/* With news showing, Help me comes with it. */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html:has(> .nge-practice-status:not(.nge-practice-status--quiet)) > .nge-practice-helprow { display: flex !important; margin: 6px 0 0 !important; }

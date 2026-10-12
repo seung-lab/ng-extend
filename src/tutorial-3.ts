@@ -128,7 +128,7 @@ function smallButton(cls: string, label: string, onClick: () => void): HTMLButto
  *  asks for a key press does not). */
 let helpWanted = true;
 
-export function practiceStatus(text: string, done = false) {
+export function practiceStatus(text: string, done = false, quiet = false) {
   const chip = chipBody();
   if (!chip) return;
   let el = chip.querySelector('.nge-practice-status') as HTMLElement | null;
@@ -139,6 +139,10 @@ export function practiceStatus(text: string, done = false) {
   }
   el.textContent = text;
   el.classList.toggle('nge-hud-note--ok', done);
+  // Quiet: the standing hint or a step-by-step prompt. Anything else is news
+  // (a cut that missed, a cell being put back) and shows even on the slim
+  // Merger Sandbox bar.
+  el.classList.toggle('nge-practice-status--quiet', quiet);
   // Stuck? A "?" on the right opens a small panel with the ways out (Amy).
   let help = chip.querySelector('.nge-practice-help') as HTMLElement | null;
   if (!help) {
@@ -687,13 +691,13 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
         cutStage = 'Both colours placed. Press Submit cut, or Enter.';
       }
     }
-    if (cutStage) { practiceStatus(cutStage); setTimeout(tick, 700); return; }
+    if (cutStage) { practiceStatus(cutStage, false, true); setTimeout(tick, 700); return; }
     practiceStatus(failed
       ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
         + (wantMerged
           ? 'Ctrl+click once on each of the two pieces, then submit again.'
           : 'Keep every point on the one fused segment, red on one side of the join and blue on the other, then submit again. Clear on the bar starts over.')
-      : waiting);
+      : waiting, false, !failed);
     if (wantMerged) offerPlacePoints();
     // Cuts are watched closely so the first point is noticed at once.
     setTimeout(tick, failed ? 1500 : wantMerged ? 3000 : 800);

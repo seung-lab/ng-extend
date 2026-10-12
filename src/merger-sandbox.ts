@@ -182,6 +182,7 @@ document.addEventListener('nge:sandbox-slim', () => {
   applySlim(on);
   try { localStorage.setItem(SLIM_KEY, on ? '1' : '0'); } catch { /* private mode */ }
 });
+const SKIP = `<button type="button" class="nge-sbx-skip" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-skip'))">Skip this one</button>`;
 const FOLD = `<button type="button" class="nge-sbx-fold" title="Smaller or larger box" aria-label="Make this box smaller or larger" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-slim'))"></button>`;
 
 function progressBar(fold = false): string {
@@ -216,7 +217,16 @@ const thisOneCut = () => cutNow.value;
 /** Which attempt to take a cell is the current one. */
 let taking = 0;
 let skipping = false;
-export function sandboxSkip(): boolean {
+// Skip is its own small button, in the full box and on the "still fused"
+// box. The main button is Next (Ames, 2026-10-12): it checks the cut.
+document.addEventListener('nge:sandbox-skip', () => {
+  const store = useTutorialStore();
+  if (store.activeTutorial !== SANDBOX_TUTORIAL) return;
+  // From the "still fused" box: straight on to another merger.
+  if (store.getTutorialStep() === 1) { const other = nextUndone(); startSandbox(other >= 0 ? other : current); return; }
+  sandboxSkip();
+});
+function sandboxSkip(): boolean {
   if (askAgain.value) return false;
   if (skipping) return true;
   skipping = true;
@@ -242,7 +252,7 @@ export const steps: Step[] = [
   // 1: The exercise
   {
     get title() { return askAgain.value ? `All ${TOTAL} merger mysteries solved` : `Can you solve all ${TOTAL} merger mysteries?`; },
-    get nextLabel() { return askAgain.value ? 'Start again' : 'Skip'; },
+    get nextLabel() { return askAgain.value ? 'Start again' : undefined; },
     get text() {
       if (askAgain.value) {
         return `
@@ -253,7 +263,7 @@ You have solved every one. Want to go again from the start? Your Achievement sta
       return `
 ${progressBar(true)}
 
-Two neurons are fused into one segment here. Find where they touch and cut them apart.`;
+Two neurons are fused into one segment here. Find where they touch and cut them apart. ${SKIP}`;
     },
     position: OVER_3D,
     width: "440px",
@@ -320,7 +330,7 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
         return `
 <img class="nge-sbx-nurro" src="${imgWheresNurro}" alt="">
 
-The two neurons are still one segment, so this one is not cut yet. Press **Try again** to have another go. **Help me** there shows where the points go.`;
+The two neurons are still one segment, so this one is not cut yet. Press **Try again** to have another go. **Help me** there shows where the points go. ${SKIP}`;
       }
       if (left <= 0) {
         return `
