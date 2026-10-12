@@ -396,11 +396,17 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments: ['10001', '10010'] },
   optic_lobe_v1_1:  { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
     defaultSegments: ['10015', '10016', '10023'] },
+  // Hemibrain starts on three neurons named in its own segment properties:
+  // APL (the one giant inhibitory neuron of the mushroom body), an EPG
+  // compass neuron and a DA1 olfactory projection neuron.
+  hemibrain_v1_2:   { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
+    defaultSegments: ['425790257', '1002507159', '1734350788'] },
   // The same configs under each dataset's switcher id: some callers look a
   // dataset up by id rather than by layer name (switchToDataset does), and
   // these ids are too short for the substring match (MIN_SUBSTRING_MATCH).
   get h01() { return this.h01_c3; },
   get manc() { return this.manc_v1_2; },
+  get hemibrain() { return this.hemibrain_v1_2; },
   get mcns() { return this.malecns_v1_0; },
   get maol() { return this.optic_lobe_v1_1; },
   fly_v26: {
