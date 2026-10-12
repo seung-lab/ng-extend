@@ -57,7 +57,7 @@ async function preview(layer: any) {
     };
     (window as any).__ngeCutPreview = say;
     if (sides.how === 'none') {
-      console.warn('[cut preview] could not tell the sides apart', JSON.stringify(say));
+      console.error('[cut preview] could not tell the sides apart', JSON.stringify(say));
       StatusMessage.showTemporaryMessage('The server answered, but its answer does not say which side is red and which is blue. The cut itself is not affected.', 9000);
       return;
     }
@@ -66,12 +66,15 @@ async function preview(layer: any) {
     if (mine !== run) return;
     const near = localBlocks(sides.red, sides.blue, boxes);
     // The rest of the cell: colour spreads from pieces whose side is certain.
-    const asked = [...new Set([...sampleBits(sides.red, sides.blue, boxes), ...got.redPicks, ...got.bluePicks])];
+    // A point placed in 3D carries the cell's ID, not a supervoxel's, and has
+    // no block of its own: only points that are supervoxels are asked about.
+    const redPicks = got.redPicks.filter(x => boxes.has(x)), bluePicks = got.bluePicks.filter(x => boxes.has(x));
+    const asked = [...new Set([...sampleBits(sides.red, sides.blue, boxes), ...redPicks, ...bluePicks])];
     const pieceOf = await ngeGraphenePiecesOf(layer, asked);
     if (mine !== run) return;
     const askedSet = new Set(asked);
     const known = certainPieces(
-        [...sides.red.filter(x => askedSet.has(x)), ...got.redPicks], [...sides.blue.filter(x => askedSet.has(x)), ...got.bluePicks], pieceOf);
+        [...sides.red.filter(x => askedSet.has(x)), ...redPicks], [...sides.blue.filter(x => askedSet.has(x)), ...bluePicks], pieceOf);
     const graph = await ngeGrapheneCutGraph(layer, got.rootId);
     if (mine !== run) return;
     const side = spreadSides(graph.edges, known);

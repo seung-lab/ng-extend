@@ -129,9 +129,14 @@ export function piecesFromPreview(
  * The preview answers with groups of supervoxels the cut would leave apart.
  * A group holding red points is the red side, one holding blue points the
  * blue side; that is certain whatever order they come in. A group holding
- * points of both colours says nothing and is left out. Only if no group
- * holds any point at all (the server may pick a neighbouring supervoxel for
- * a point) is the order trusted, and then only for exactly two groups.
+ * points of both colours says nothing and is left out.
+ *
+ * Often no group holds any point: a point placed on the 3D surface carries
+ * the cell's ID, not a supervoxel's, and the server finds the supervoxel
+ * itself from where the point is (Ames's first run, 2026-10-12). Then the
+ * order is all there is: the server puts the side of the first points sent
+ * first and the side of the others second, and any further groups are loose
+ * bits that belong to neither and are left uncoloured.
  */
 export interface GroupSides {
   red: string[];
@@ -156,7 +161,7 @@ export function sidesOfGroups(
     else if (d.blue && !d.red) blue.push(...g);
   });
   if (red.length && blue.length) return { red, blue, how: 'points', groups: detail };
-  if (groups.length === 2 && detail.every(d => !d.red && !d.blue)) {
+  if (groups.length >= 2 && detail.every(d => !d.red && !d.blue) && groups[0].length && groups[1].length) {
     return { red: [...groups[0]], blue: [...groups[1]], how: 'order', groups: detail };
   }
   return { red: [], blue: [], how: 'none', groups: detail };

@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T15:43:00Z",
+      "title": "The lab's notes in the Delta menu",
+      "items": [
+        "On Retina, the Delta menu of a cell now shows what the lab's own retina sheet says about it: its status, cell class and type. It is there to read, and it does not change your stats."
+      ]
+    },
+    {
       "at": "2026-10-12T15:23:00Z",
       "title": "Your profile: a range for the curves, and cells identified",
       "items": [

@@ -94,10 +94,14 @@ test('a group holding points of both colours says nothing', () => {
   const g = sidesOfGroups([['rp', 'bp', 'a'], ['b']], ['rp'], ['bp']);
   assert.equal(g.how, 'none');
 });
-test('no group holds a point: two groups are taken in order, any other number is not guessed', () => {
-  assert.equal(sidesOfGroups([['a'], ['b']], ['rp'], ['bp']).how, 'order');
-  assert.deepEqual(sidesOfGroups([['a'], ['b']], ['rp'], ['bp']).red, ['a']);
-  assert.equal(sidesOfGroups([['a'], ['b'], ['c']], ['rp'], ['bp']).how, 'none');
+test('no group holds a point (points placed in 3D): the first group is red, the second blue, the rest loose bits', () => {
+  assert.equal(sidesOfGroups([['a'], ['b']], ['root'], ['root']).how, 'order');
+  const g = sidesOfGroups([['a', 'a2'], ['b'], ['loose1'], ['loose2']], ['root'], ['root']);
+  assert.equal(g.how, 'order');
+  assert.deepEqual(g.red, ['a', 'a2']);
+  assert.deepEqual(g.blue, ['b']);
+  assert.equal(sidesOfGroups([['a']], ['root'], ['root']).how, 'none');
+  assert.equal(sidesOfGroups([['a'], []], ['root'], ['root']).how, 'none');
 });
 test('near the cut: a block of one side is that colour, a block with both is where the cut passes', () => {
   const B = (k) => [k, 0, 0, k + 1, 1, 1];

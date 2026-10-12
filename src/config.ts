@@ -62,6 +62,11 @@ export interface DatasetCaveConfig {
    *  Set on pinky_sandbox so Tutorial 1 (which drives sandbox state per-step)
    *  isn't disrupted. Stroeh isn't part of any tutorial so leave this false. */
   skipStateUrlIfTutorialActive?: boolean;
+  /** The lab keeps its own sheet about this dataset's cells, mirrored into
+   *  Supabase (supabase-retina-lab-sheet.sql); this is the function that
+   *  finds a cell's rows. The Delta menu shows them, labelled as the lab's.
+   *  READ ONLY and information only: never written, never counted. */
+  labSheetRpc?: string;
   /** Google Sheet (cell list) for THIS dataset's Cell Library. Each dataset
    *  keeps its own sheet; the Cell Library loads the one for the active dataset.
    *  Include the gid in the URL for multi-tab sheets. */
@@ -109,6 +114,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
+    labSheetRpc:      'ew_retina_lab_sheet_match',
   },
   // Alias — neuroglancer layer name used in the viewer
   eyewire_ii: {
@@ -127,6 +133,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
+    labSheetRpc:      'ew_retina_lab_sheet_match',
   },
 
   // ── Pinky sandbox (dev / testing) ────────────────────────────────────────
