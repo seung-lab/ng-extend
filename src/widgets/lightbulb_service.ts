@@ -901,14 +901,9 @@ export async function saveCellType(
 
   // annotationLog: no CAVE table to write; the edit_log path below is the record.
   if (!dsCfg.annotationLog) try {
-    // Delete old annotation if updating
-    if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
-      await fetch(baseUrl, {
-        method: 'DELETE',
-        headers: authHeaders(caveServer),
-        body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
-      }).catch(() => {});
-    }
+    // The old type is removed only AFTER the new one is saved (below). It
+    // used to be removed first, so a save that failed left the cell with no
+    // type in CAVE at all.
 
     // Create new annotation — schema-aware payload.
     //   - cell_type_local: classification_system carries the interim user
@@ -954,6 +949,13 @@ export async function saveCellType(
     }
     if (res.ok) {
       console.info(`[lightbulb] ✓ Cell type saved to CAVE`);
+      if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
+        await fetch(baseUrl, {
+          method: 'DELETE',
+          headers: authHeaders(caveServer),
+          body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
+        }).catch(() => {});
+      }
       // Mirror to localStorage so the lightbulb shows the write immediately,
       // before the next materialization cron run.
       setLocalAnnotation(segKey(rootId), {cellType});
@@ -980,8 +982,17 @@ export async function saveCellType(
     const errText = await res.text().catch(() => '');
     console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
     reportWriteFailure('cave_write', `cell type ${res.status} on ${getActiveDatasetConfig().cellTypeTable}`, errText.slice(0, 500));
+    // CAVE did not save it, so the cell is NOT typed. This used to fall
+    // through to "saved in this browser only": the menu said Saved, the type
+    // was logged and counted, and CAVE and every other browser had nothing
+    // (the same fault completions had until 2026-10-09; Ames 2026-10-12).
+    lastCellTypeProblem = `CAVE did not save this (error ${res.status}), so the cell type is not saved. Try again in a moment.`;
+    return false;
   } catch (e) {
     console.error('[lightbulb] saveCellType — CAVE network error:', e);
+    reportWriteFailure('cave_write', `cell type network error on ${getActiveDatasetConfig().cellTypeTable}`, String((e as any)?.message || e).slice(0, 500));
+    lastCellTypeProblem = 'Could not reach CAVE, so the cell type is not saved. Check your connection and try again.';
+    return false;
   }
 
   // localStorage fallback — save locally so UI still works (keyed by rootId)

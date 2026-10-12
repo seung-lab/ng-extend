@@ -731,7 +731,8 @@ async function batchAnnotate(group: SegmentGroup) {
   for (let i = 0; i < total; i++) {
     batchProgress.value.current = i + 1;
     try {
-      await saveCellType(caveServer, group.segmentIds[i], cellType, undefined, true);
+      // A save CAVE refused comes back false, not as an error: count it as failed.
+      if (!(await saveCellType(caveServer, group.segmentIds[i], cellType, undefined, true))) batchProgress.value.errors.push(group.segmentIds[i]);
     } catch (e: any) {
       batchProgress.value.errors.push(group.segmentIds[i]);
     }
