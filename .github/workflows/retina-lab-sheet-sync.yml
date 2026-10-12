@@ -1,0 +1,50 @@
+name: Retina Lab Sheet Sync
+
+# Hourly: copy what the lab's retina sheet says about each cell into the
+# Supabase table ew_retina_lab_sheet, which the Delta menu reads for the cell
+# it is open on (scripts/sync-retina-lab-sheet.mjs). The sheet is only read,
+# by its public CSV export; nothing is ever written to it. Only changed rows
+# are written to the table.
+#
+# Must also exist on main (with a [skip ci] commit) for the cron to fire.
+# Until supabase-retina-lab-sheet.sql has been run, a run reports that the
+# table does not exist and writes nothing.
+
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report what would change without writing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retina-lab-sheet-sync
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Copy the lab's retina sheet into its read only table
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node scripts/sync-retina-lab-sheet.mjs "${args[@]}"
