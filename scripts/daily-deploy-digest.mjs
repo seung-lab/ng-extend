@@ -125,6 +125,9 @@ const SUMMARY_SYSTEM = [
   'importance: an entry from the morning matters as much as one from the evening.',
   'An entry marked "headline": true was picked by the game\'s maker as one players must hear about: it',
   'MUST be named in the tldr and have a highlight (headlines about the same feature may share one).',
+  // Ames 2026-10-12, of Hemibrain: "in the headline, it just shouldn't be first".
+  'An entry marked "not_first": true is still named, but it never opens the tldr and it is never the',
+  'first highlight when there is anything else to say that day.',
   'Rules: call the game Pyr, never EyeWire; say Achievement, never badge; use no dashes of any',
   'kind (no hyphens between words, no en or em dashes), write commas and periods instead; no emoji, no',
   'exclamation marks, no file names or code words; do not mention the date; do not invent anything that',
@@ -234,7 +237,7 @@ const isMinor = e => e.digest === 'minor';
 /** The day in a few lines, in player words, or null when it cannot be had. */
 async function writeSummary(entries) {
   if (!ANTHROPIC_API_KEY) { console.log('[digest] no ANTHROPIC_API_KEY; using the one line fallback'); return null; }
-  const input = JSON.stringify(entries.map(e => ({ title: e.title, items: e.items, ...(isHeadline(e) ? { headline: true } : {}) })), null, 1);
+  const input = JSON.stringify(entries.map(e => ({ title: e.title, items: e.items, ...(isHeadline(e) ? { headline: true } : {}), ...(e.lead === false ? { not_first: true } : {}) })), null, 1);
   const messages = [{ role: 'user', content: `Today's changelog entries:\n${input}` }];
   try {
     let reply = await askClaude(messages);

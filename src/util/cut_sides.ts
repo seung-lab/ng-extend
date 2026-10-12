@@ -122,3 +122,119 @@ export function piecesFromPreview(
   for (const [piece, [r, b]] of count) if (r !== b) out.set(piece, r > b ? 'red' : 'blue');
   return out;
 }
+
+/**
+ * Which of the server's groups is the red side and which the blue.
+ *
+ * The preview answers with groups of supervoxels the cut would leave apart.
+ * A group holding red points is the red side, one holding blue points the
+ * blue side; that is certain whatever order they come in. A group holding
+ * points of both colours says nothing and is left out. Only if no group
+ * holds any point at all (the server may pick a neighbouring supervoxel for
+ * a point) is the order trusted, and then only for exactly two groups.
+ */
+export interface GroupSides {
+  red: string[];
+  blue: string[];
+  /** How the sides were told apart: by the points, by the order, or not at all. */
+  how: 'points' | 'order' | 'none';
+  /** Per group: its size and how many red and blue points it holds. */
+  groups: { size: number; red: number; blue: number }[];
+}
+export function sidesOfGroups(
+    groups: readonly (readonly string[])[], redPicks: readonly string[], bluePicks: readonly string[]): GroupSides {
+  const redSet = new Set(redPicks), blueSet = new Set(bluePicks);
+  const detail = groups.map(g => {
+    let red = 0, blue = 0;
+    for (const bit of g) { if (redSet.has(bit)) red++; if (blueSet.has(bit)) blue++; }
+    return { size: g.length, red, blue };
+  });
+  const red: string[] = [], blue: string[] = [];
+  groups.forEach((g, i) => {
+    const d = detail[i];
+    if (d.red && !d.blue) red.push(...g);
+    else if (d.blue && !d.red) blue.push(...g);
+  });
+  if (red.length && blue.length) return { red, blue, how: 'points', groups: detail };
+  if (groups.length === 2 && detail.every(d => !d.red && !d.blue)) {
+    return { red: [...groups[0]], blue: [...groups[1]], how: 'order', groups: detail };
+  }
+  return { red: [], blue: [], how: 'none', groups: detail };
+}
+
+/**
+ * The blocks near the cut, from the supervoxels themselves: a block with
+ * supervoxels of one side only is that side's colour, and a block with both
+ * is where the cut passes. `boxes` gives each supervoxel's block.
+ */
+export function localBlocks(
+    red: readonly string[], blue: readonly string[], boxes: ReadonlyMap<string, number[]>): CutSideBlock[] {
+  const blocks = new Map<string, CutSideBlock>();
+  const add = (bits: readonly string[], s: Side) => {
+    for (const bit of bits) {
+      const box = boxes.get(bit);
+      if (!box) continue;
+      const key = box.join(',');
+      const have = blocks.get(key);
+      if (!have) blocks.set(key, { box, side: s });
+      else if (have.side !== s) have.side = 'both';
+    }
+  };
+  add(red, 'red'); add(blue, 'blue');
+  return [...blocks.values()];
+}
+
+/** A few supervoxels of each side from each block, to ask which piece of the
+ *  cell they are in: enough to start the colour spreading from every block
+ *  the preview covers, without asking about thousands. */
+export function sampleBits(
+    red: readonly string[], blue: readonly string[], boxes: ReadonlyMap<string, number[]>, perBlock = 2, limit = 160): string[] {
+  const out: string[] = [];
+  for (const bits of [red, blue]) {
+    const taken = new Map<string, number>();
+    for (const bit of bits) {
+      const box = boxes.get(bit);
+      if (!box) continue;
+      const key = box.join(',');
+      const n = taken.get(key) ?? 0;
+      if (n >= perBlock) continue;
+      taken.set(key, n + 1);
+      out.push(bit);
+    }
+  }
+  return out.slice(0, limit);
+}
+
+/** The pieces whose side is certain: every sampled supervoxel of a piece is
+ *  on the same side. A piece seen on both sides has the cut inside it and
+ *  starts nothing. */
+export function certainPieces(
+    red: readonly string[], blue: readonly string[], pieceOf: ReadonlyMap<string, string>): Map<string, Side> {
+  const seen = new Map<string, Side | 'both'>();
+  const add = (bits: readonly string[], s: Side) => {
+    for (const bit of bits) {
+      const piece = pieceOf.get(bit);
+      if (!piece) continue;
+      const have = seen.get(piece);
+      seen.set(piece, have === undefined || have === s ? s : 'both');
+    }
+  };
+  add(red, 'red'); add(blue, 'blue');
+  const out = new Map<string, Side>();
+  for (const [piece, s] of seen) if (s !== 'both') out.set(piece, s);
+  return out;
+}
+
+/** Far blocks from the spread, near blocks from the supervoxels: where the
+ *  two disagree about a block, both sides are in it. */
+export function mergeBlocks(far: readonly CutSideBlock[], near: readonly CutSideBlock[]): CutSideBlock[] {
+  const blocks = new Map<string, CutSideBlock>();
+  for (const b of far) blocks.set(b.box.join(','), { box: b.box, side: b.side });
+  for (const b of near) {
+    const key = b.box.join(',');
+    const have = blocks.get(key);
+    if (!have) blocks.set(key, { box: b.box, side: b.side });
+    else if (have.side !== b.side) have.side = 'both';
+  }
+  return [...blocks.values()];
+}

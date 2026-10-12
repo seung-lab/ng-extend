@@ -16,8 +16,8 @@
  * both sides at once, never across the cut (cut_sides.ts).
  */
 import { StatusMessage } from 'neuroglancer/status';
-import { ngeGrapheneCutPreview, ngeGrapheneCutGraph } from 'neuroglancer/datasource/graphene/frontend';
-import { spreadSides, cutSideBlocks, piecesFromPreview, type Side } from './cut_sides';
+import { ngeGrapheneCutPreview, ngeGrapheneCutGraph, ngeGrapheneBoxesOf, ngeGraphenePiecesOf } from 'neuroglancer/datasource/graphene/frontend';
+import { spreadSides, cutSideBlocks, sidesOfGroups, localBlocks, sampleBits, certainPieces, mergeBlocks } from './cut_sides';
 import { setExtraTintBoxes } from './highlight';
 
 const RED = [255, 64, 64];
@@ -50,27 +50,48 @@ async function preview(layer: any) {
       StatusMessage.showTemporaryMessage('The server says these points cannot be cut apart. Try moving them or adding more.', 9000);
       return;
     }
+    // Which group is which side: by the points each group holds.
+    const sides = sidesOfGroups(got.groups, got.redPicks, got.bluePicks);
+    const say: Record<string, unknown> = {
+      groups: sides.groups, toldApartBy: sides.how, redPoints: got.redPicks.length, bluePoints: got.bluePicks.length,
+    };
+    (window as any).__ngeCutPreview = say;
+    if (sides.how === 'none') {
+      console.warn('[cut preview] could not tell the sides apart', JSON.stringify(say));
+      StatusMessage.showTemporaryMessage('The server answered, but its answer does not say which side is red and which is blue. The cut itself is not affected.', 9000);
+      return;
+    }
+    // Near the cut, straight from the supervoxels: the block each is in.
+    const boxes = await ngeGrapheneBoxesOf(layer, [...sides.red, ...sides.blue]);
+    if (mine !== run) return;
+    const near = localBlocks(sides.red, sides.blue, boxes);
+    // The rest of the cell: colour spreads from pieces whose side is certain.
+    const asked = [...new Set([...sampleBits(sides.red, sides.blue, boxes), ...got.redPicks, ...got.bluePicks])];
+    const pieceOf = await ngeGraphenePiecesOf(layer, asked);
+    if (mine !== run) return;
+    const askedSet = new Set(asked);
+    const known = certainPieces(
+        [...sides.red.filter(x => askedSet.has(x)), ...got.redPicks], [...sides.blue.filter(x => askedSet.has(x)), ...got.bluePicks], pieceOf);
     const graph = await ngeGrapheneCutGraph(layer, got.rootId);
     if (mine !== run) return;
-    const known: Map<string, Side> = piecesFromPreview(got.redBits, got.blueBits, got.pieceOf);
-    // Where the points themselves sit is certain, whatever the counting said.
-    for (const bit of got.redPicks) { const p = got.pieceOf.get(bit); if (p) known.set(p, 'red'); }
-    for (const bit of got.bluePicks) { const p = got.pieceOf.get(bit); if (p && known.get(p) !== 'red') known.set(p, 'blue'); }
     const side = spreadSides(graph.edges, known);
-    const blocks = cutSideBlocks(side, graph.boxes);
+    const blocks = mergeBlocks(cutSideBlocks(side, graph.boxes), near);
+    Object.assign(say, {
+      redSupervoxels: sides.red.length, blueSupervoxels: sides.blue.length, supervoxelsPlaced: boxes.size,
+      nearBlocks: { red: near.filter(x => x.side === 'red').length, blue: near.filter(x => x.side === 'blue').length, both: near.filter(x => x.side === 'both').length },
+      piecesAsked: asked.length, piecesAnswered: pieceOf.size, certainPieces: known.size,
+      cellPieces: new Set(graph.edges.flat()).size, piecesColoured: side.size,
+      blocks: { red: blocks.filter(x => x.side === 'red').length, blue: blocks.filter(x => x.side === 'blue').length, both: blocks.filter(x => x.side === 'both').length },
+    });
+    console.info('[cut preview]', JSON.stringify(say));
     if (!blocks.length) {
       StatusMessage.showTemporaryMessage('Could not place the preview on this cell. The cut itself is not affected.', 8000);
       return;
     }
     setExtraTintBoxes(blocks.map(b => ({ box: b.box, rgb: b.side === 'red' ? RED : b.side === 'blue' ? BLUE : BOTH })));
     showing = true;
-    // For checking from the console and in tests.
-    (window as any).__ngeCutPreview = {
-      pieces: side.size, blocks: blocks.length, both: blocks.filter(x => x.side === 'both').length,
-      knownPieces: known.size, mappedAll: got.mappedAll,
-    };
     StatusMessage.showTemporaryMessage(
-        'Preview: red stays with the red points, blue goes with the blue ones, and the pale stretch is where the cut falls. Nothing has been cut.', 8000);
+        'Preview: red stays with the red points, blue goes with the blue ones. The pale stretch holds both, so the cut falls inside it. Nothing has been cut.', 9000);
   } catch (e: any) {
     if (mine !== run) return;
     console.warn('[cut preview]', e?.message || e);

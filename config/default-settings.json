@@ -20,6 +20,13 @@
     "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
     "projectionScale": 300000.0
   },
+  "hemibrain_v1_2": {
+    "dimensions": [8e-9, 8e-9, 8e-9],
+    "position": [17216.0, 19776.0, 20704.0],
+    "crossSectionScale": 4.0,
+    "projectionOrientation": [0.0, 0.0, 0.0, 1.0],
+    "projectionScale": 60000.0
+  },
   "manc_v1_2": {
     "dimensions": [8e-9, 8e-9, 8e-9],
     "position": [21472.0, 28032.0, 41152.0],

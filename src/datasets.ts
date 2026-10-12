@@ -20,6 +20,7 @@ import thumbFlywire from '../static/images/datasets/flywire.jpg';
 // their largest named neurons), 2026-10-06.
 import thumbH01 from '../static/images/datasets/h01.jpg';
 import thumbManc from '../static/images/datasets/manc.jpg';
+import thumbHemibrain from '../static/images/datasets/hemibrain.jpg';
 import thumbMcns from '../static/images/datasets/mcns.jpg';
 import thumbMaol from '../static/images/datasets/maol.jpg';
 import { useLayersStore, useUserPreferencesStore } from './store';
@@ -66,6 +67,9 @@ export interface DatasetEntry {
   group?: string;
   /** This version's name in its group's list. */
   variantLabel?: string;
+  /** Where the dataset came from, shown on its card as "From Princeton"
+   *  (Ames 2026-10-12). Only the ones Ames named carry it. */
+  origin?: string;
   /** The dataset's own published size, for scale beside what EyeWire II
    *  players did there (Dataset Stats). A fixed figure from a named release,
    *  not a live count: update it when a new release is published. */
@@ -117,6 +121,7 @@ export function isDatasetShown(ds: DatasetEntry): boolean {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    origin: 'Princeton',
     section: 'production',
     caveDataset: 'stroeh-mouse-retina',
     thumbnail: thumbRetina,
@@ -264,6 +269,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'banc',
+    origin: 'Princeton and Harvard',
     // Codex, BANC v888 (Ames 2026-10-06).
     published: { cells: 158_262, source: 'Codex, BANC v888', url: 'https://codex.flywire.ai/?dataset=banc' },
     section: 'viewonly',
@@ -294,6 +300,7 @@ export const DATASETS: DatasetEntry[] = [
   {
     // Same as its layer name, so a lookup by id finds the CAVE config.
     id: 'flywire_public',
+    origin: 'Princeton',
     section: 'viewonly',
     caveDataset: 'flywire_public',
     thumbnail: thumbFlywire,
@@ -323,6 +330,7 @@ export const DATASETS: DatasetEntry[] = [
     // The live FlyWire graph (fly_v31), for accounts with FAFB edit access
     // only. Edits made here are real FlyWire edits. Id = layer name.
     id: 'flywire_fafb_production',
+    origin: 'Princeton',
     section: 'production',
     caveDataset: 'fafb',
     needsEdit: true,
@@ -371,6 +379,36 @@ export const DATASETS: DatasetEntry[] = [
         type: 'segmentation',
         source: 'precomputed://gs://h01-release/data/20210601/c3',
         name: 'h01_c3',
+      },
+    ],
+  },
+  {
+    // The hemibrain (Scheffer et al. 2020): the first dense connectome of a
+    // large part of a fly brain, and the dataset the later fly connectomes
+    // are measured against. Asked for by Krzysztof Kruk (report 115, 2026-10-12)
+    // "to see the more complete landscape of today's research". Janelia's
+    // published v1.2 files, no CAVE.
+    id: 'hemibrain',
+    origin: 'Janelia',
+    thumbnail: thumbHemibrain,
+    section: 'viewonly',
+    optional: true,
+    exploreOnly: true,
+    label: 'Hemibrain: Fly Central Brain',
+    shortLabel: 'Hemibrain',
+    abbrev: 'Hemibrain',
+    species: 'fly',
+    description: 'About half of a female fruit fly central brain, FlyEM v1.2 (8 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://neuroglancer-janelia-flyem-hemibrain/emdata/clahe_yz/jpeg',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: 'precomputed://gs://neuroglancer-janelia-flyem-hemibrain/v1.2/segmentation',
+        name: 'hemibrain_v1_2',
       },
     ],
   },
@@ -480,6 +518,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    origin: 'Princeton',
     section: 'production',
     highlightOff: 'Highlight is not available on this dataset yet: its server cannot trace paths along a cell.',
     caveDataset: 'HiMC',
@@ -614,6 +653,7 @@ export function canonicalDataset(name: string | undefined | null): string {
   // Explore only volumes (published files, no CAVE).
   if (n.startsWith('h01')) return 'h01_c3';
   if (n.startsWith('manc')) return 'manc_v1_2';
+  if (n.startsWith('hemibrain')) return 'hemibrain_v1_2';
   if (n.startsWith('malecns')) return 'malecns_v1_0';
   if (n.startsWith('optic_lobe')) return 'optic_lobe_v1_1';
   if (n.startsWith('pni_mec') || n === 'mec') return 'pni_mec';

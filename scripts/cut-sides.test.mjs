@@ -11,7 +11,7 @@ import ts from 'typescript';
 const src = fs.readFileSync(new URL('../src/util/cut_sides.ts', import.meta.url), 'utf8');
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cut-sides-')), 'cut_sides.mjs');
 fs.writeFileSync(out, ts.transpileModule(src, { compilerOptions: { module: 'ESNext', target: 'ES2020' } }).outputText);
-const { cutSides, piecesFromPreview, spreadSides, cutSideBlocks } = await import(pathToFileURL(out).href);
+const { cutSides, piecesFromPreview, spreadSides, cutSideBlocks, sidesOfGroups, localBlocks, sampleBits, certainPieces, mergeBlocks } = await import(pathToFileURL(out).href);
 
 // A cell shaped like a Y: a trunk t0..t4, then two arms from t4: a0..a3 and b0..b3.
 const chain = (ids) => ids.slice(1).map((id, i) => [ids[i], id]);
@@ -76,4 +76,56 @@ test('block by block: one colour per block, and "both" where the cut passes thro
 test('a piece with no block is left out and nothing breaks', () => {
   const blocks = cutSideBlocks(new Map([['x', 'red'], ['y', 'blue']]), new Map([['x', [0, 0, 0, 1, 1, 1]]]));
   assert.deepEqual(blocks, [{ box: [0, 0, 0, 1, 1, 1], side: 'red' }]);
+});
+
+test('the side of a group comes from the points it holds, not from its place in the list', () => {
+  const g = sidesOfGroups([['b1', 'b2', 'bp'], ['r1', 'rp', 'r2']], ['rp'], ['bp']);
+  assert.equal(g.how, 'points');
+  assert.deepEqual(g.red, ['r1', 'rp', 'r2']);
+  assert.deepEqual(g.blue, ['b1', 'b2', 'bp']);
+});
+test('more than two groups: each goes with its points, and one with no points is left out', () => {
+  const g = sidesOfGroups([['rp', 'a'], ['x', 'y'], ['bp'], ['rp2']], ['rp', 'rp2'], ['bp']);
+  assert.deepEqual(g.red, ['rp', 'a', 'rp2']);
+  assert.deepEqual(g.blue, ['bp']);
+  assert.equal(g.groups[1].size, 2);
+});
+test('a group holding points of both colours says nothing', () => {
+  const g = sidesOfGroups([['rp', 'bp', 'a'], ['b']], ['rp'], ['bp']);
+  assert.equal(g.how, 'none');
+});
+test('no group holds a point: two groups are taken in order, any other number is not guessed', () => {
+  assert.equal(sidesOfGroups([['a'], ['b']], ['rp'], ['bp']).how, 'order');
+  assert.deepEqual(sidesOfGroups([['a'], ['b']], ['rp'], ['bp']).red, ['a']);
+  assert.equal(sidesOfGroups([['a'], ['b'], ['c']], ['rp'], ['bp']).how, 'none');
+});
+test('near the cut: a block of one side is that colour, a block with both is where the cut passes', () => {
+  const B = (k) => [k, 0, 0, k + 1, 1, 1];
+  const boxes = new Map([['r1', B(0)], ['r2', B(0)], ['r3', B(1)], ['b1', B(1)], ['b2', B(2)]]);
+  const blocks = localBlocks(['r1', 'r2', 'r3'], ['b1', 'b2', 'nobox'], boxes);
+  const at = (k) => blocks.find(b => b.box[0] === k).side;
+  assert.equal(at(0), 'red'); assert.equal(at(1), 'both'); assert.equal(at(2), 'blue');
+});
+test('the sample takes a few of each side from each block', () => {
+  const B = (k) => [k, 0, 0, k + 1, 1, 1];
+  const boxes = new Map(); const red = [], blue = [];
+  for (let i = 0; i < 50; i++) { red.push('r' + i); boxes.set('r' + i, B(i % 2)); blue.push('b' + i); boxes.set('b' + i, B(5)); }
+  const s = sampleBits(red, blue, boxes, 2);
+  assert.equal(s.length, 6);   // 2 red from each of two blocks, 2 blue from one
+});
+test('a piece seen on both sides has the cut inside it and starts nothing', () => {
+  const pieceOf = new Map([['r1', 'P'], ['b1', 'P'], ['r2', 'Q'], ['b2', 'R']]);
+  const k = certainPieces(['r1', 'r2'], ['b1', 'b2'], pieceOf);
+  assert.equal(k.has('P'), false); assert.equal(k.get('Q'), 'red'); assert.equal(k.get('R'), 'blue');
+});
+test('the points in one block: that block is pale, never one colour', () => {
+  // red and blue points close together in block 1, the cut somewhere in it
+  const B = (k) => [k, 0, 0, k + 1, 1, 1];
+  const boxes = new Map([['rp', B(1)], ['bp', B(1)], ['r1', B(0)], ['b1', B(2)]]);
+  const g = sidesOfGroups([['rp', 'r1'], ['bp', 'b1']], ['rp'], ['bp']);
+  const near = localBlocks(g.red, g.blue, boxes);
+  const far = [{ box: B(1), side: 'red' }, { box: B(9), side: 'blue' }];
+  const all = mergeBlocks(far, near);
+  const at = (k) => all.find(b => b.box[0] === k).side;
+  assert.equal(at(1), 'both'); assert.equal(at(0), 'red'); assert.equal(at(2), 'blue'); assert.equal(at(9), 'blue');
 });
