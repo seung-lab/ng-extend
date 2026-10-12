@@ -148,6 +148,13 @@ letters mostly belong to neuroglancer; check before taking one.
   For a headless test that needs a dataset, build with
   `DATASET=pinky_sandbox node scripts/build-prod.js`, which bakes the
   config and the default state into `dist/min` (2026-10-11).
+- **A cut or merge bar set through the store alone vanishes within half a
+  second.** `observeSplitMergeTools` in `src/main.ts` polls for the tool's
+  own box (`.graphene-multicut`, `.graphene-merge-segments`) and resets the
+  store when it is missing. In a headless test without a sign in the graph
+  never loads, so pressing C does nothing. Stand in for the tool with a
+  hidden `<div class="graphene-multicut">` and the bar stays up and behaves
+  (2026-10-12).
 - **A column's last section loses its border and bottom margin** (the
   profile's stylesheet strips them from `:last-child`). Stamp sections in
   as direct children of the column; a wrapper `div` around two of them
