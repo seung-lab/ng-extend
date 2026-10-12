@@ -8,10 +8,12 @@ import AdminHub from 'components/AdminHub.vue';
 import BlogEditor from 'components/BlogEditor.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { loadContribution, showsAllStats, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
+import { datasetKey } from '../util/completion_rule';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
 import RollUp from 'components/RollUp.vue';
+import EffortCurve from 'components/EffortCurve.vue';
 import {loadRepoStats, BUILDER_USER_ID, type RepoStats} from '../util/repo_stats';
 import {getToolbarIconDef} from '../data/toolbar-icons';
 // The same drawing the top bar uses for Week in Science (Ames 2026-10-05).
@@ -544,6 +546,25 @@ const earnedLoyaltyBadges = computed(() => {
 /** Most recently earned badge (highest threshold among earned). Loyalty is
  *  left out: its thresholds are days, not edits or cells, so they do not
  *  compare. */
+/** Short screens (laptops): the rows draw smaller so the list under them
+ *  is reachable (Ames 2026-10-11: "did you leave room for the my cells list
+ *  on laptop screens?"). */
+const compactMq = window.matchMedia('(max-height: 960px)');
+const tinyMq = window.matchMedia('(max-height: 760px)');
+const compactRows = ref(compactMq.matches);
+const tinyRows = ref(tinyMq.matches);
+const onCompactChange = (e: MediaQueryListEvent) => { compactRows.value = e.matches; };
+const onTinyChange = (e: MediaQueryListEvent) => { tinyRows.value = e.matches; };
+compactMq.addEventListener('change', onCompactChange);
+tinyMq.addEventListener('change', onTinyChange);
+onUnmounted(() => { compactMq.removeEventListener('change', onCompactChange); tinyMq.removeEventListener('change', onTinyChange); });
+
+/** The latest Achievement of each track, featured beside that track's
+ *  numbers in the left column (Ames 2026-10-11). Each list is newest first. */
+const latestLoyaltyBadge = computed<BadgeDefinition | null>(() => earnedLoyaltyBadges.value.earned[0] ?? null);
+const latestExplorationBadge = computed<BadgeDefinition | null>(() => earnedExplorationBadges.value.earned[0] ?? null);
+const latestBuildingBadge = computed<BadgeDefinition | null>(() => earnedBuildingBadges.value.earned[0] ?? null);
+
 const latestEarnedBadge = computed(() => {
   const allEarned = BADGE_DEFINITIONS.filter(b => b.track !== 'loyalty' && isBadgeEarned(b));
   if (allEarned.length === 0) return null;
@@ -746,19 +767,20 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// The latest of each track is featured beside its numbers in the left
+// column, so these rows start with the one before it (Ames 2026-10-11).
 const displayedBuildingBadges = computed(() => {
-  const all = earnedBuildingBadges.value.earned;
+  const all = earnedBuildingBadges.value.earned.slice(1);
   if (showAllBuilding.value) return all;
-  // When earned >= 8: show 7 + "View All" tile (8 total slots).
   return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
 });
 const displayedExplorationBadges = computed(() => {
-  const all = earnedExplorationBadges.value.earned;
+  const all = earnedExplorationBadges.value.earned.slice(1);
   if (showAllExploration.value) return all;
   return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
 });
-const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length >= BADGE_PREVIEW_LIMIT);
-const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length >= BADGE_PREVIEW_LIMIT);
+const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
+const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
 
 // ── Special Awards "View all" preview ───────────────────────────────────────
 const displayedSpecialBadges = computed(() => {
@@ -772,7 +794,7 @@ const showSpecialViewAll = computed(() => profileSpecialBadges.value.length > SP
 function badgeTooltip(badge: BadgeDefinition): string {
   // Loyalty (Ames 2026-10-06): "Earned for n days of science", on its own line.
   if (badge.track === 'loyalty') return `${badge.name}\nEarned for ${badge.threshold.toLocaleString()} ${unitForTrack('loyalty', badge.threshold)}`;
-  return `${badge.name} — Earned for ${badge.threshold.toLocaleString()} ${unitForTrack(badge.track, badge.threshold)}`;
+  return `${badge.name}, earned for ${badge.threshold.toLocaleString()} ${unitForTrack(badge.track, badge.threshold)}`;
 }
 function specialBadgeTooltip(award: any): string {
   const name = award.badge?.name || 'Award';
@@ -839,14 +861,61 @@ const scopedEdits = ref<{ today: EditWindow; week: EditWindow; all: EditWindow }
 const scopedEditsFailed = ref(false);
 let scopedEditsReq = 0;
 
+// The same rows as a line (Ames 2026-10-11): one entry per day from the
+// first edit on this dataset to today, for the curve under the numbers.
+interface EffortDay { date: string; n: number }
+const scopedEditDays = ref<EffortDay[] | null>(null);
+
+// Cells completed on this dataset, the same three windows as edits, read
+// from the completions list (ew_cell_completions, one row per cell with the
+// moment it was completed, by the completed cell rule). Only the game's own
+// log: cells marked in other tools never count (Ames 2026-10-07).
+const scopedCells = ref<{ today: number; week: number; all: number } | null>(null);
+const scopedCellDays = ref<EffortDay[] | null>(null);
+/** The matched completion rows, newest first, for the recent cells list. */
+const scopedCompletionRows = ref<Array<{ cell: string; done_at: string; dataset: string }> | null>(null);
+const scopedCellsFailed = ref(false);
+let scopedCellsReq = 0;
+/** Zeros while loading, never another dataset's numbers. */
+const overviewCells = computed(() => scopedCells.value ?? { today: 0, week: 0, all: 0 });
+
+/** 'yyyy-mm-dd' on the player's own calendar: the day boundary the Today
+ *  window uses (start of today, local). */
+function localDay(t: number): string {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+/** A dense run of days from the first stamp to today, zeros where nothing happened. */
+function denseDays(stamps: number[]): EffortDay[] {
+  if (!stamps.length) return [];
+  const counts = new Map<string, number>();
+  let first = Infinity;
+  for (const t of stamps) {
+    first = Math.min(first, t);
+    const k = localDay(t);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  const out: EffortDay[] = [];
+  const d = new Date(first); d.setHours(0, 0, 0, 0);
+  const end = new Date(); end.setHours(0, 0, 0, 0);
+  for (; d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
+    const k = localDay(d.getTime());
+    out.push({ date: k, n: counts.get(k) ?? 0 });
+  }
+  return out;
+}
+
 async function loadScopedEdits() {
   refreshActiveDatasetCanon();
   const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
   const canon = activeDatasetCanon.value;
   const req = ++scopedEditsReq;
   scopedEditsFailed.value = false;
-  if (!uid || !canon) { scopedEdits.value = null; return; }
-  const tags = scopeDataset.value ? datasetTagVariants(scopeDataset.value) : [canon];
+  // Every Pyr dataset (Ames 2026-10-11: the profile is your work in Pyr,
+  // not the dataset on screen; her 118 cells were on other datasets and the
+  // Sandbox profile said 0). Only the game's own log, as before.
+  void canon;
+  if (!uid) { scopedEdits.value = null; scopedEditDays.value = null; return; }
   try {
     const { supabase } = await import('../supabase');
     const rows: Array<{ operation: string; timestamp: string; success: boolean | null }> = [];
@@ -854,7 +923,7 @@ async function loadScopedEdits() {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase.from('edit_log')
         .select('operation, timestamp, success')
-        .eq('user_id', uid).in('dataset', tags).in('operation', ['merge', 'split'])
+        .eq('user_id', uid).in('operation', ['merge', 'split'])
         .order('id', { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) throw error;
@@ -866,9 +935,11 @@ async function loadScopedEdits() {
     const weekAgo = Date.now() - 7 * 86400000;
     const blank = (): EditWindow => ({ edits: 0, merges: 0, splits: 0 });
     const out = { today: blank(), week: blank(), all: blank() };
+    const stamps: number[] = [];
     for (const r of rows) {
       if (r.success === false) continue;  // failed edits never counted toward users.total_edits
       const t = new Date(r.timestamp).getTime();
+      stamps.push(t);
       const wins = [out.all];
       if (t >= weekAgo) wins.push(out.week);
       if (t >= startOfToday.getTime()) wins.push(out.today);
@@ -878,24 +949,78 @@ async function loadScopedEdits() {
       }
     }
     scopedEdits.value = out;
+    scopedEditDays.value = denseDays(stamps);
   } catch (e) {
     if (req !== scopedEditsReq) return;
     console.warn('[profile] per-dataset edits failed, showing all datasets:', e);
     scopedEdits.value = null;
+    scopedEditDays.value = null;
     scopedEditsFailed.value = true;
   }
 }
+/** Cells completed on this dataset, in the game, in the same windows as the
+ *  edits above, with one row per day for the curve. The list is the view the
+ *  leaderboard and the career counter are built on, so the three numbers
+ *  here can not disagree with them. */
+async function loadScopedCompletions() {
+  refreshActiveDatasetCanon();
+  const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
+  const canon = activeDatasetCanon.value;
+  const req = ++scopedCellsReq;
+  scopedCellsFailed.value = false;
+  void canon;
+  if (!uid) { scopedCells.value = null; scopedCellDays.value = null; scopedCompletionRows.value = null; return; }
+  try {
+    const { supabase } = await import('../supabase');
+    const rows: Array<{ dataset: string; cell: string; done_at: string }> = [];
+    const PAGE = 1000;  // PostgREST's default row cap per request
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell,done_at')
+        .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + PAGE - 1);
+      if (error) throw error;
+      rows.push(...(data ?? []));
+      if (!data || data.length < PAGE) break;
+    }
+    if (req !== scopedCellsReq) return;  // a newer load superseded this one
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const weekAgo = Date.now() - 7 * 86400000;
+    const out = { today: 0, week: 0, all: 0 };
+    const stamps: number[] = [];
+    const kept: Array<{ cell: string; done_at: string; dataset: string; t: number }> = [];
+    for (const r of rows) {
+      const t = new Date(r.done_at).getTime();
+      if (!Number.isFinite(t)) continue;
+      stamps.push(t);
+      kept.push({ cell: String(r.cell), done_at: r.done_at, dataset: String(r.dataset ?? ''), t });
+      out.all++;
+      if (t >= weekAgo) out.week++;
+      if (t >= startOfToday.getTime()) out.today++;
+    }
+    scopedCells.value = out;
+    scopedCellDays.value = denseDays(stamps);
+    scopedCompletionRows.value = kept.sort((a, b) => b.t - a.t).map(r => ({ cell: r.cell, done_at: r.done_at, dataset: r.dataset }));
+  } catch (e) {
+    if (req !== scopedCellsReq) return;
+    console.warn('[profile] per-dataset completions failed:', e);
+    scopedCells.value = null;
+    scopedCellDays.value = null;
+    scopedCompletionRows.value = null;
+    scopedCellsFailed.value = true;
+  }
+}
+
 loadScopedEdits();
-watch(() => backendStore.userId, () => loadScopedEdits());
+loadScopedCompletions();
+watch(() => backendStore.userId, () => { loadScopedEdits(); loadScopedCompletions(); });
 // Re-scope when coming back to Overview (the Datasets tab can switch datasets).
-watch(activeTab, tab => { if (tab === 'overview') loadScopedEdits(); });
+watch(activeTab, tab => { if (tab === 'overview') { loadScopedEdits(); loadScopedCompletions(); } });
 
 /** Edits section numbers: this dataset's, or career-wide if edit_log failed. */
 const overviewEdits = computed(() => {
   const s = scopedEdits.value;
   if (s) return s;
   const p = profileStats.value;
-  if (scopedEditsFailed.value || !activeDatasetCanon.value) {
+  if (scopedEditsFailed.value) {
     return {
       today: { edits: p.editsToday, merges: p.mergesToday, splits: p.splitsToday },
       week:  { edits: p.editsThisWeek, merges: p.mergesThisWeek, splits: p.splitsThisWeek },
@@ -929,8 +1054,20 @@ const filteredCellHistory = computed(() => {
   return cellHistory.value.filter(c => !!c.dataset && inScope(c.dataset));
 });
 
-const completedCells = computed(() => filteredCellHistory.value.filter(c => c.isComplete));
-const identifiedCells = computed(() => filteredCellHistory.value.filter(c => c.cellType && !c.isComplete));
+
+/** Recent cells: the browser's own history of cells worked on here, or, when
+ *  that is empty (a new device, a build on another address), the cells
+ *  completed on this dataset from the server's list, the same rows as the
+ *  Cells completed numbers (Ames 2026-10-11: "what happened to the list of my
+ *  recently completed cells?"). Server rows carry no type, name or favorite. */
+const recentCells = computed<Array<CellHistoryEntry & { serverOnly?: boolean }>>(() => {
+  const done = cellHistory.value.filter(c => c.isComplete);
+  if (done.length) return done;
+  return (scopedCompletionRows.value ?? []).map(r => ({
+    segId: r.cell, isComplete: true, cellType: '', position: [0, 0, 0] as [number, number, number],
+    updatedAt: r.done_at, dataset: r.dataset, serverOnly: true,
+  }));
+});
 
 // ── 14-day activity chart data ───────────────────────────────────────────────
 const last14Days = computed(() => {
@@ -1023,15 +1160,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                up here, in the bar's own style, instead of a box in the column
                and the username, which is already shown below). Clicking opens
                the Datasets tab, where every dataset's totals sit side by side. -->
-          <button
-            v-if="activeTab === 'overview' && activeDatasetCanon"
-            class="nge-profile-topbar-scope"
-            :class="{ 'nge-profile-topbar-scope--fallback': !editsScoped }"
-            :title="editsScoped ? 'The numbers on this page are for this dataset only. Click to compare datasets.' : 'Per-dataset edits could not be loaded, so Edits shows all datasets.'"
-            @click="activeTab = 'datasets'"
-          ><span class="nge-profile-topbar-sep">·</span> {{ editsScoped ? 'Stats for' : 'Cells for' }}
-            <span class="nge-profile-topbar-scope-icon">{{ scopeDataset ? SPECIES_ICONS[scopeDataset.species] : '🧬' }}</span>
-            <span class="nge-profile-topbar-scope-name">{{ scopeLabel }}</span> ›</button>
+          <!-- the dataset scope button went with the per dataset Overview (Ames 2026-10-11) -->
         </span>
         <button class="nge-profile-exit" @click="handleClose">×</button>
       </div>
@@ -1099,10 +1228,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       <div v-if="activeTab === 'overview'" class="nge-profile-body">
 
         <!-- LEFT: stats + recent cells -->
-        <div class="nge-profile-col nge-profile-col--left">
+        <!-- MAIN: the old left and middle columns as one area of rows, one per
+             track, so the rows line up across: a track's stats and curve beside
+             its Achievements (Ames 2026-10-11, "make sure the rows are aligned,
+             like across cells, edits, loyalty"). The last row holds the rest. -->
+        <div class="nge-profile-col nge-profile-col--left nge-profile-col--main" :class="{ 'is-compact': compactRows, 'is-tiny': tinyRows }">
 
           <!-- Header -->
           <div class="nge-profile-header" v-if="sessions.length > 0 || viewingOtherUser">
+            <div class="nge-profile-header-main">
             <div class="nge-profile-name-row">
 
               <!-- Flag (editable only for own profile) -->
@@ -1133,16 +1267,15 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <img v-else-if="flagImgUrl(profileFlag)" :src="flagImgUrl(profileFlag)" class="nge-flag-img" style="width:28px;height:20px;" />
               </div>
 
-              <div class="nge-profile-name">{{ profileName }}</div>
+              <!-- The username, when there is one: it is the name players know
+                   you by in chat (Ames 2026-10-11). The display name is the tooltip. -->
+              <div class="nge-profile-name" :title="profileUsername ? profileName : undefined">{{ profileUsername || profileName }}</div>
 
               <button v-if="!viewingOtherUser" class="nge-profile-edit-btn"
                       @click="activeTab = 'settings'"
                       title="Edit Profile — set bio, flag, and more">⚙</button>
             </div>
 
-            <!-- The handle people actually use to tag you in chat, so it
-                 belongs on the profile next to the name. -->
-            <div v-if="profileUsername" class="nge-profile-username">@{{ profileUsername }}</div>
 
             <!-- Email is deliberately NOT shown. It was rendered for whoever's
                  profile was open, which exposed other users' addresses to
@@ -1156,50 +1289,44 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 + Add a bio
               </button>
             </template>
-          </div>
-
-          <!-- Edits stats -->
-          <div class="nge-profile-section nge-profile-section--edits">
-            <!-- Ames 2026-10-05: these count edits made in the game only.
-                 A player with months of earlier work elsewhere read a small
-                 number here as their work having gone missing. -->
-            <div class="nge-profile-section-label"
-                 title="Splits and merges you made in EyeWire II on this dataset. Edits made in other tools, or before you joined EyeWire II, are not counted.">▌ Edits in EyeWire II</div>
-            <div class="nge-profile-stat-row">
-              <div class="nge-profile-stat-col" v-for="(col, i) in [
-                {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
-                {label:'Past 7d',  val:overviewEdits.week.edits,  merges:overviewEdits.week.merges,  splits:overviewEdits.week.splits},
-                {label:'All Time', val:overviewEdits.all.edits,   merges:overviewEdits.all.merges,   splits:overviewEdits.all.splits},
-              ]" :key="i">
-                <div class="nge-profile-stat-label">{{ col.label }}</div>
-                <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
-                <div class="nge-profile-stat-breakdown">
-                  <span class="nge-profile-stat-bp" title="Merges">
-                    <svg class="nge-profile-stat-icon nge-profile-stat-icon--merge" viewBox="0 0 16 16" fill="none">
-                      <path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                      <circle cx="4" cy="2.5" r="1.5" fill="currentColor"/>
-                      <circle cx="12" cy="2.5" r="1.5" fill="currentColor"/>
-                      <circle cx="8" cy="13" r="1.5" fill="currentColor"/>
-                      <path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                    </svg>
-                    {{ col.merges }}
-                  </span>
-                  <span class="nge-profile-stat-bp" title="Splits">
-                    <svg class="nge-profile-stat-icon nge-profile-stat-icon--split" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                      <path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                      <circle cx="8" cy="2.5" r="1.5" fill="currentColor"/>
-                      <circle cx="4" cy="13" r="1.5" fill="currentColor"/>
-                      <circle cx="12" cy="13" r="1.5" fill="currentColor"/>
-                      <path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                    </svg>
-                    {{ col.splits }}
-                  </span>
+            </div>
+            <!-- Special Awards and, for the builder, Building Pyr sit beside the
+                 name (Ames 2026-10-11: "special awards are too far down", "move
+                 building Pyr to the top row"). -->
+            <div class="nge-profile-header-side">
+          <!-- Special Awards (admin-awarded badges) -->
+          <template v-if="profileSpecialBadges.length > 0">
+            <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
+              <div class="nge-profile-section-label">★ Special Awards</div>
+              <div class="nge-profile-badges-grid">
+                <div
+                  v-for="award in displayedSpecialBadges"
+                  :key="award.id"
+                  class="nge-profile-badge"
+                  :class="{ 'nge-profile-badge--selected': selectedSpecialBadge?.id === award.id }"
+                  :title="specialBadgeTooltip(award)"
+                  @click="onSpecialBadgeClick(award)"
+                >
+                  <div class="nge-profile-badge-img">
+                    <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
+                  </div>
+                  <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
+                </div>
+                <!-- View All tile when overflow -->
+                <div
+                  v-if="showSpecialViewAll"
+                  class="nge-profile-badge nge-profile-badge--viewall"
+                  title="View all special awards"
+                  @click="showAllSpecialModal = true"
+                >
+                  <div class="nge-profile-badge-img">
+                    <svg class="nge-profile-badge-viewall-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </div>
+                  <div class="nge-profile-badge-name">View all</div>
                 </div>
               </div>
             </div>
-          </div>
-
+          </template>
           <!-- Building Pyr: how much has been built, from GitHub. Only on
                the profile of the person building it (Ames 2026-10-10). -->
           <div v-if="showsBuilding && repoStats" class="nge-profile-section nge-profile-section--building">
@@ -1215,163 +1342,59 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
             </div>
           </div>
-
-          <!-- Days: total days shown up (never resets), the streaks, and the
-               ladder of milestones (Ames 2026-10-06). -->
-          <div v-if="totalDays > 0" class="nge-profile-section nge-profile-section--days">
-            <div class="nge-profile-section-label">▌ Days as a citizen scientist</div>
-            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Every day you have shown up, ever. This never resets.">
-                <div class="nge-profile-stat-label">Total days</div>
-                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="totalDays" /></div>
-              </div>
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Days in a row right now, on your own calendar">
-                <div class="nge-profile-stat-label">Streak</div>
-                <div class="nge-profile-stat-val"><RollUp :value="dayStreak" /></div>
-              </div>
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="The longest run of days in a row">
-                <div class="nge-profile-stat-label">Best streak</div>
-                <div class="nge-profile-stat-val"><RollUp :value="bestDayStreak" /></div>
-              </div>
-            </div>
-            <div class="nge-days-ladder" :title="`Next milestone: day ${nextDay}`">
-              <!-- no pills and no bar (Ames 2026-10-06: "unnecessary", "too much"): the count says it -->
-              <div class="nge-days-next">{{ (nextDay - totalDays).toLocaleString() }} {{ nextDay - totalDays === 1 ? 'day' : 'days' }} to day {{ nextDay.toLocaleString() }}</div>
             </div>
           </div>
 
-          <!-- Someone else's profile: their annotations. Their cells completed
-               total is in the Cell Completions column (Ames 2026-10-07). Your
-               own profile has the fuller Cells block below, built from your
-               cell history on this dataset. -->
-          <div v-if="viewingOtherUser" class="nge-profile-section nge-profile-section--cells">
-            <div class="nge-profile-section-label">▌ Cells</div>
-            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
-                <div class="nge-profile-stat-label">Annotations</div>
-                <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
-              </div>
-            </div>
-          </div>
 
-          <!-- Cells stats -->
-          <div v-if="!viewingOtherUser" class="nge-profile-section nge-profile-section--cells">
-            <div class="nge-profile-section-label">▌ Cells</div>
-            <!-- Sub-label row removed (Amy): tooltips carry the definitions,
-                 and each stat sits in its own highlighted tile. -->
-            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Cells you proofread all the way to completion">
-                <div class="nge-profile-stat-label">Completed</div>
-                <div class="nge-profile-stat-val nge-profile-stat-val--hero">
-                  <RollUp :value="completedCells.length" />
-                </div>
-              </div>
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Cells you identified (typed) without proofreading edits">
-                <div class="nge-profile-stat-label">Identified</div>
-                <div class="nge-profile-stat-val"><RollUp :value="identifiedCells.length" /></div>
-              </div>
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Every cell you have worked on in any way">
-                <div class="nge-profile-stat-label">Total</div>
-                <div class="nge-profile-stat-val"><RollUp :value="filteredCellHistory.length" /></div>
-              </div>
-              <!-- Annotations sit with the editing numbers (Ames 2026-10-01); the
-                   count can run to many thousands, which this tile has room for. -->
-              <div class="nge-profile-stat-col nge-profile-stat-tile" title="Points, lines and boxes you placed in annotation layers, on every dataset">
-                <div class="nge-profile-stat-label">Annotations</div>
-                <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
-              </div>
-            </div>
+          <div class="nge-track-rows">
 
-            <!-- Scout Report: tags placed and fixed -->
-            <div class="nge-profile-section-label" style="margin-top: 12px;">▌ Scout Report</div>
-            <div class="nge-profile-stat-row nge-profile-stat-row--scout" style="margin-bottom: 12px;">
-              <div class="nge-profile-stat-col" title="Tags you placed for others to fix">
-                <div class="nge-profile-stat-label">Tags Placed</div>
-                <div class="nge-profile-stat-val" style="color: #f5d142;"><RollUp :value="myTagsPlaced.length" /></div>
+            <div class="nge-track-row nge-track-row--cells">
+              <!-- One head for the row (Ames 2026-10-11): the label, a circuit
+                   trace to a pad, a second pad the same small distance away in
+                   every row, and from it the bar toward the next Achievement,
+                   lit as far as the count has come, with how many to go at its
+                   end. The layer tabs' language, where a trace breaks at a
+                   component; the break lands where each label ends. -->
+              <div class="nge-track-head" :style="{ '--frac': (nextExplorationAchievement) ? (nextExplorationAchievement).pct / 100 : 1 }">
+                <div class="nge-profile-section-label" title="Cells proofread all the way to completion in Pyr, on any of its datasets; a cell completed again after an edit counts once. Cells marked in other tools are not counted. At the right, your Cell Completion Achievements.">▌ Cells completed</div>
+                <div class="nge-track-wire" aria-hidden="true"></div>
+                <div class="nge-track-pads" aria-hidden="true"></div>
+                <div class="nge-track-bar" :title="(nextExplorationAchievement) ? (nextExplorationAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
+                <div v-if="nextExplorationAchievement" class="nge-track-count" :title="(nextExplorationAchievement).remaining.toLocaleString() + ' more cells to your next Achievement'"><RollUp :value="(nextExplorationAchievement).remaining" /> to go</div>
               </div>
-              <div class="nge-profile-stat-col" title="Tags of yours that someone fixed">
-                <div class="nge-profile-stat-label">Confirmed</div>
-                <div class="nge-profile-stat-val"><RollUp :value="myTagsFixed.length" /></div>
+              <div class="nge-track-stats">
+          <!-- Cells completed on this dataset, in the game, by the completed
+               cell rule: the same three windows as edits, from the completions
+               list with each cell's completion moment, and the same curve
+               under them (Ames 2026-10-11). Shown on every profile. -->
+          <div class="nge-profile-section nge-profile-section--completions nge-profile-section--windows">
+            <div v-if="scopedCellsFailed" class="nge-profile-stat-unavailable">Not available right now</div>
+            <div v-else class="nge-profile-feature-row">
+              <!-- the latest Cell Completions Achievement; its name is the tooltip -->
+              <div v-if="latestExplorationBadge" class="nge-profile-feature" :title="badgeTooltip(latestExplorationBadge)" @click="onBadgeClick(latestExplorationBadge)">
+                <img :src="getBadgeUrl(latestExplorationBadge.imageKey)" :alt="latestExplorationBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestExplorationBadge.slug}`" />
               </div>
-              <div class="nge-profile-stat-col" title="Tags you fixed for others">
-                <div class="nge-profile-stat-label">You Fixed</div>
-                <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
-              </div>
-              <div class="nge-profile-stat-col" title="Cells where you helped answer another player's request">
-                <div class="nge-profile-stat-label">Assists</div>
-                <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
-              </div>
-            </div>
-
-            <!-- Cell history list -->
-            <div class="nge-cell-list" v-if="filteredCellHistory.length > 0">
-              <div class="nge-cell-list-header">
-                <span class="nge-cell-list-title">Recent Cells</span>
-                <span v-if="activeDatasetCanon" class="nge-cell-list-dataset" :title="'Filtered to ' + scopeLabel">{{ scopeDataset?.shortLabel || activeDatasetCanon }}</span>
-                <button class="nge-cell-list-all" @click="activeTab = 'myCells'" title="Every cell, by dataset">{{ viewingOtherUser ? 'All cells' : 'My cells' }} →</button>
-              </div>
-              <div class="nge-cell-list-columns">
-                <span class="nge-cell-col-label nge-cell-col-label--id">Segment</span>
-                <span class="nge-cell-col-label nge-cell-col-label--type">Type</span>
-                <span class="nge-cell-col-label nge-cell-col-label--time">When</span>
-              </div>
-              <div class="nge-cell-list-scroll">
-                <div
-                  v-for="cell in filteredCellHistory.slice(0, 50)"
-                  :key="cell.segId"
-                  class="nge-cell-row"
-                  :title="cell.nickname ? `${cell.nickname} (${cell.segId})` : `Jump to ${cell.segId}`"
-                >
-                  <button
-                    class="nge-cell-fav"
-                    :class="{ 'nge-cell-fav--active': cell.isFavorite }"
-                    @click.stop="historyStore.toggleFavorite(cell.segId)"
-                    title="Toggle favorite"
-                  >{{ cell.isFavorite ? '★' : '☆' }}</button>
-                  <span class="nge-cell-pip" :class="cellStatusClass(cell)">{{ cellStatusIcon(cell) }}</span>
-                  <span class="nge-cell-id" @click="handleJumpToCell(cell.segId)">
-                    {{ cell.nickname || truncateId(cell.segId) }}
-                  </span>
-                  <span class="nge-cell-type" v-if="cell.cellType" @click="handleJumpToCell(cell.segId)">{{ cell.cellType }}</span>
-                  <span class="nge-cell-time" @click="handleJumpToCell(cell.segId)">{{ relativeTime(cell.updatedAt) }}</span>
-                  <button
-                    class="nge-cell-rename"
-                    @click.stop="promptNickname(cell.segId)"
-                    title="Rename this cell"
-                  >✎</button>
+            <div class="nge-profile-windows">
+              <EffortCurve v-if="scopedCellDays && scopedCellDays.length" :days="scopedCellDays" color="144 255 242" unit="cells" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
+              <div class="nge-profile-stat-row">
+                <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
+                  {label:'Today',    val:overviewCells.today},
+                  {label:'Past 7d',  val:overviewCells.week},
+                  {label:'All Time', val:overviewCells.all},
+                ]" :key="i">
+                  <div class="nge-profile-stat-label">{{ col.label }}</div>
+                  <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
                 </div>
               </div>
             </div>
-            <div class="nge-cell-empty" v-else>
-              <template v-if="activeDatasetCanon">No cells on {{ scopeDataset?.shortLabel || activeDatasetCanon }} yet. </template>Select segments and mark complete or set cell type to build your history.
             </div>
           </div>
 
-        </div><!-- end left column -->
-
-        <!-- CENTER: countdown + badges + streak -->
-        <div class="nge-profile-col nge-profile-col--center">
-
-          <!-- The left column is one dataset; achievements are a career. -->
-          <div v-if="activeDatasetCanon" class="nge-profile-career-note">Totals and achievements here count every dataset</div>
-
+              </div>
+              <div class="nge-track-achievements">
           <!-- Cell Completions (exploration track): first, above Editor
                Achievements (Ames 2026-10-08) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-track-head">
-              <div class="nge-profile-section-label" style="color: #90fff2;">▌ Cell Completions</div>
-              <div class="nge-profile-track-total" style="--track: #90fff2;" title="Every cell completed, on every dataset">
-                <b><RollUp :value="profileStats.cellsSubmitted ?? 0" /></b> {{ (profileStats.cellsSubmitted ?? 0) === 1 ? 'cell completed' : 'cells completed' }}
-              </div>
-            </div>
-            <div class="nge-profile-countdown-inline" v-if="nextExplorationAchievement">
-              <div class="nge-profile-countdown-row">
-                <div class="nge-profile-countdown-remaining">{{ nextExplorationAchievement.remaining.toLocaleString() }} cells to go</div>
-              </div>
-              <div class="nge-profile-countdown-track">
-                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--exploration" :style="{ width: nextExplorationAchievement.pct + '%' }"></div>
-              </div>
-            </div>
             <div class="nge-profile-badges-grid">
               <div
                 v-for="badge in displayedExplorationBadges"
@@ -1405,41 +1428,95 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div
                 v-if="showExplorationViewAll && !showAllExploration"
                 class="nge-profile-badge nge-profile-badge--viewall"
-                title="View all badges in Trophy Case"
+                title="View all Achievements in the Trophy Case"
                 @click="activeTab = 'trophyCase'"
               >
                 <div class="nge-profile-badge-img">
-                  <div class="nge-profile-badge-viewall-icon">→</div>
+                  <svg class="nge-profile-badge-viewall-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <div class="nge-profile-badge-name">View all</div>
               </div>
             </div>
             <div v-if="earnedExplorationBadges.earned.length === 0" class="nge-profile-badges-empty">
-              Complete your first cell to earn a badge!
+              Complete your first cell to earn an Achievement!
             </div>
           </div>
 
           <!-- Divider between achievement tracks -->
-          <div class="nge-profile-badges-divider"></div>
+              </div>
+            </div>
 
+            <div class="nge-track-row nge-track-row--edits">
+              <!-- One head for the row (Ames 2026-10-11): the label, a circuit
+                   trace to a pad, a second pad the same small distance away in
+                   every row, and from it the bar toward the next Achievement,
+                   lit as far as the count has come, with how many to go at its
+                   end. The layer tabs' language, where a trace breaks at a
+                   component; the break lands where each label ends. -->
+              <div class="nge-track-head" :style="{ '--frac': (nextBuildingAchievement) ? (nextBuildingAchievement).pct / 100 : 1 }">
+                <div class="nge-profile-section-label" title="Splits and merges you made in Pyr, on any of its datasets; edits made in other tools, or before you joined, are not counted. At the right, your Editor Achievements.">▌ Edits in Pyr</div>
+                <div class="nge-track-wire" aria-hidden="true"></div>
+                <div class="nge-track-pads" aria-hidden="true"></div>
+                <div class="nge-track-bar" :title="(nextBuildingAchievement) ? (nextBuildingAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
+                <div v-if="nextBuildingAchievement" class="nge-track-count" :title="(nextBuildingAchievement).remaining.toLocaleString() + ' more edits to your next Achievement'"><RollUp :value="(nextBuildingAchievement).remaining" /> to go</div>
+              </div>
+              <div class="nge-track-stats">
+          <!-- Edits stats -->
+          <div class="nge-profile-section nge-profile-section--edits nge-profile-section--windows">
+            <!-- Ames 2026-10-05: these count edits made in the game only.
+                 A player with months of earlier work elsewhere read a small
+                 number here as their work having gone missing. -->
+            <div class="nge-profile-feature-row">
+              <!-- the latest Editor Achievement; its name is the tooltip -->
+              <div v-if="latestBuildingBadge" class="nge-profile-feature" :title="badgeTooltip(latestBuildingBadge)" @click="onBadgeClick(latestBuildingBadge)">
+                <img :src="getBadgeUrl(latestBuildingBadge.imageKey)" :alt="latestBuildingBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestBuildingBadge.slug}`" />
+              </div>
+            <div class="nge-profile-windows">
+            <!-- The same rows as the three numbers, as a line from the first
+                 day to today (Ames 2026-10-11). Nothing while they load, and
+                 nothing for the career fallback, which has no days. -->
+            <EffortCurve v-if="scopedEditDays && scopedEditDays.length" :days="scopedEditDays" color="255 208 138" unit="edits" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
+            <div class="nge-profile-stat-row">
+              <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
+                {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
+                {label:'Past 7d',  val:overviewEdits.week.edits,  merges:overviewEdits.week.merges,  splits:overviewEdits.week.splits},
+                {label:'All Time', val:overviewEdits.all.edits,   merges:overviewEdits.all.merges,   splits:overviewEdits.all.splits},
+              ]" :key="i">
+                <div class="nge-profile-stat-label">{{ col.label }}</div>
+                <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
+                <div class="nge-profile-stat-breakdown">
+                  <span class="nge-profile-stat-bp" title="Merges">
+                    <svg class="nge-profile-stat-icon nge-profile-stat-icon--merge" viewBox="0 0 16 16" fill="none">
+                      <path d="M4 3v4a4 4 0 0 0 4 4h0a4 4 0 0 0 4-4V3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                      <circle cx="4" cy="2.5" r="1.5" fill="currentColor"/>
+                      <circle cx="12" cy="2.5" r="1.5" fill="currentColor"/>
+                      <circle cx="8" cy="13" r="1.5" fill="currentColor"/>
+                      <path d="M8 11v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    {{ col.merges }}
+                  </span>
+                  <span class="nge-profile-stat-bp" title="Splits">
+                    <svg class="nge-profile-stat-icon nge-profile-stat-icon--split" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 3v2a4 4 0 0 1-4 4H4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                      <path d="M8 3v2a4 4 0 0 0 4 4h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                      <circle cx="8" cy="2.5" r="1.5" fill="currentColor"/>
+                      <circle cx="4" cy="13" r="1.5" fill="currentColor"/>
+                      <circle cx="12" cy="13" r="1.5" fill="currentColor"/>
+                      <path d="M4 9v4M12 9v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    {{ col.splits }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            </div>
+            </div>
+          </div>
+
+              </div>
+              <div class="nge-track-achievements">
           <!-- Editor Achievements (building track) -->
           <div class="nge-profile-section nge-profile-section--badges">
-            <!-- The career total lives here, beside what it earns (Ames
-                 2026-10-07); the left column is the breakdown. -->
-            <div class="nge-profile-track-head">
-              <div class="nge-profile-section-label" style="color: #ffd08a;">▌ Editor Achievements</div>
-              <div class="nge-profile-track-total" style="--track: #ffd08a;" title="Every merge and cut made in EyeWire II, on every dataset">
-                <b><RollUp :value="profileStats.editsAllTime ?? 0" /></b> {{ (profileStats.editsAllTime ?? 0) === 1 ? 'edit' : 'edits' }}
-              </div>
-            </div>
-            <div class="nge-profile-countdown-inline" v-if="nextBuildingAchievement">
-              <div class="nge-profile-countdown-row">
-                <div class="nge-profile-countdown-remaining">{{ nextBuildingAchievement.remaining.toLocaleString() }} edits to go</div>
-              </div>
-              <div class="nge-profile-countdown-track">
-                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--building" :style="{ width: nextBuildingAchievement.pct + '%' }"></div>
-              </div>
-            </div>
             <div class="nge-profile-badges-grid">
               <div
                 v-for="badge in displayedBuildingBadges"
@@ -1473,36 +1550,66 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               <div
                 v-if="showBuildingViewAll && !showAllBuilding"
                 class="nge-profile-badge nge-profile-badge--viewall"
-                title="View all badges in Trophy Case"
+                title="View all Achievements in the Trophy Case"
                 @click="activeTab = 'trophyCase'"
               >
                 <div class="nge-profile-badge-img">
-                  <div class="nge-profile-badge-viewall-icon">→</div>
+                  <svg class="nge-profile-badge-viewall-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <div class="nge-profile-badge-name">View all</div>
               </div>
             </div>
             <div v-if="earnedBuildingBadges.earned.length === 0" class="nge-profile-badges-empty">
-              Make your first edit to earn a badge!
+              Make your first edit to earn an Achievement!
             </div>
           </div>
 
-          <!-- Loyalty Achievements: total days, not in a row (Ames 2026-10-06).
-               Hidden while the set is switched off (LOYALTY_ENABLED). -->
-          <div v-if="LOYALTY_BADGES.length" class="nge-profile-badges-divider"></div>
-          <div v-if="LOYALTY_BADGES.length" class="nge-profile-section nge-profile-section--badges">
-            <div class="nge-profile-section-label" style="color: #c9a8ff;">▌ Loyalty Achievements</div>
-            <div class="nge-profile-countdown-inline" v-if="nextLoyaltyAchievement">
-              <div class="nge-profile-countdown-row">
-                <div class="nge-profile-countdown-remaining">{{ nextLoyaltyAchievement.remaining }} {{ nextLoyaltyAchievement.remaining === 1 ? 'day' : 'days' }} to go</div>
-              </div>
-              <div class="nge-profile-countdown-track">
-                <div class="nge-profile-countdown-fill nge-profile-countdown-fill--loyalty" :style="{ width: nextLoyaltyAchievement.pct + '%' }"></div>
               </div>
             </div>
+
+            <div v-if="totalDays > 0 || LOYALTY_BADGES.length" class="nge-track-row nge-track-row--days">
+              <!-- One head for the row (Ames 2026-10-11): the label, a circuit
+                   trace to a pad, a second pad the same small distance away in
+                   every row, and from it the bar toward the next Achievement,
+                   lit as far as the count has come, with how many to go at its
+                   end. The layer tabs' language, where a trace breaks at a
+                   component; the break lands where each label ends. -->
+              <div class="nge-track-head" :style="{ '--frac': (nextLoyaltyAchievement) ? (nextLoyaltyAchievement).pct / 100 : 1 }">
+                <div class="nge-profile-section-label" title="Every day you have shown up, ever. At the right, your Days Achievements.">▌ Days helping science in Pyr</div>
+                <div class="nge-track-wire" aria-hidden="true"></div>
+                <div class="nge-track-pads" aria-hidden="true"></div>
+                <div class="nge-track-bar" :title="(nextLoyaltyAchievement) ? (nextLoyaltyAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
+                <div v-if="nextLoyaltyAchievement" class="nge-track-count" :title="(nextLoyaltyAchievement).remaining.toLocaleString() + ' more days to your next Achievement'"><RollUp :value="(nextLoyaltyAchievement).remaining" /> to go</div>
+              </div>
+              <div class="nge-track-stats">
+          <!-- Days: total days shown up (never resets), the streaks, and the
+               ladder of milestones (Ames 2026-10-06). Three plain columns, no
+               boxes (Ames 2026-10-11). -->
+          <div v-if="totalDays > 0" class="nge-profile-section nge-profile-section--days">
+            <div class="nge-profile-days-row">
+              <!-- The latest Days Achievement, at the left. Streak and best
+                   streak are not repeated here: they sit on the right under
+                   Streak (Ames 2026-10-11). -->
+              <div v-if="latestLoyaltyBadge" class="nge-profile-feature" :title="badgeTooltip(latestLoyaltyBadge)" @click="onBadgeClick(latestLoyaltyBadge)">
+                <img :src="getBadgeUrl(latestLoyaltyBadge.imageKey)" :alt="latestLoyaltyBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestLoyaltyBadge.slug}`" />
+              </div>
+              <div class="nge-profile-stat-col" title="Every day you have shown up, ever. This never resets.">
+                <div class="nge-profile-stat-label">Total days</div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="totalDays" /></div>
+                <!-- no pills and no bar (Ames 2026-10-06: "unnecessary", "too much"): the count says it -->
+                <div class="nge-days-next" :title="`Next milestone: day ${nextDay}`">{{ (nextDay - totalDays).toLocaleString() }} {{ nextDay - totalDays === 1 ? 'day' : 'days' }} to day {{ nextDay.toLocaleString() }}</div>
+              </div>
+            </div>
+          </div>
+
+              </div>
+              <div class="nge-track-achievements">
+          <!-- Loyalty Achievements: total days, not in a row (Ames 2026-10-06).
+               Hidden while the set is switched off (LOYALTY_ENABLED). -->
+          <div v-if="LOYALTY_BADGES.length" class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-badges-grid">
               <div
-                v-for="badge in earnedLoyaltyBadges.earned.slice(0, 4)"
+                v-for="badge in earnedLoyaltyBadges.earned.slice(1, 5)"
                 :key="badge.id"
                 class="nge-profile-badge nge-profile-badge--loyalty"
                 :class="{ 'nge-profile-badge--selected': selectedBadge?.id === badge.id }"
@@ -1515,7 +1622,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
               <div
-                v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length < 4"
+                v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length < 5"
                 class="nge-profile-badge nge-profile-badge--locked"
                 :title="`Next: ${earnedLoyaltyBadges.next.threshold} days of science`"
               >
@@ -1526,13 +1633,13 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 </div>
               </div>
               <div
-                v-if="earnedLoyaltyBadges.earned.length >= 4"
+                v-if="earnedLoyaltyBadges.earned.length >= 5"
                 class="nge-profile-badge nge-profile-badge--viewall"
                 title="View all achievements in Trophy Case"
                 @click="activeTab = 'trophyCase'"
               >
                 <div class="nge-profile-badge-img">
-                  <div class="nge-profile-badge-viewall-icon">→</div>
+                  <svg class="nge-profile-badge-viewall-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <div class="nge-profile-badge-name">View all</div>
               </div>
@@ -1542,42 +1649,107 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             </div>
           </div>
 
-          <!-- Special Awards (admin-awarded badges) -->
-          <template v-if="profileSpecialBadges.length > 0">
-            <div class="nge-profile-badges-divider"></div>
-            <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
-              <div class="nge-profile-section-label">★ Special Awards</div>
-              <div class="nge-profile-badges-grid">
+              </div>
+            </div>
+
+            <div class="nge-track-row nge-track-row--rest">
+              <div class="nge-track-stats">
+          <!-- Your recently completed cells: the browser's own history, or,
+               when that is empty, the server's completions (recentCells). The
+               row takes the height left under the three above and the list
+               scrolls inside it, so the profile never scrolls as a whole
+               (Ames 2026-10-11). -->
+          <div class="nge-profile-section nge-profile-section--cells">
+            <div class="nge-cell-list" v-if="recentCells.length > 0">
+              <div class="nge-cell-list-header">
+                <span class="nge-cell-list-title">{{ viewingOtherUser ? 'Recently completed cells' : 'My recently completed cells' }}</span>
+                <button class="nge-cell-list-all" @click="activeTab = 'myCells'" title="Every cell, by dataset">{{ viewingOtherUser ? 'All cells' : 'My cells' }} →</button>
+              </div>
+              <div class="nge-cell-list-columns">
+                <span class="nge-cell-col-label nge-cell-col-label--id">Segment</span>
+                <span class="nge-cell-col-label nge-cell-col-label--type">Type</span>
+                <span class="nge-cell-col-label nge-cell-col-label--time">When</span>
+              </div>
+              <div class="nge-cell-list-scroll">
                 <div
-                  v-for="award in displayedSpecialBadges"
-                  :key="award.id"
-                  class="nge-profile-badge"
-                  :class="{ 'nge-profile-badge--selected': selectedSpecialBadge?.id === award.id }"
-                  :title="specialBadgeTooltip(award)"
-                  @click="onSpecialBadgeClick(award)"
+                  v-for="cell in recentCells.slice(0, 50)"
+                  :key="cell.segId"
+                  class="nge-cell-row"
+                  :title="cell.nickname ? `${cell.nickname} (${cell.segId})` : `Jump to ${cell.segId}`"
                 >
-                  <div class="nge-profile-badge-img">
-                    <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
-                  </div>
-                  <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
-                </div>
-                <!-- View All tile when overflow -->
-                <div
-                  v-if="showSpecialViewAll"
-                  class="nge-profile-badge nge-profile-badge--viewall"
-                  title="View all special awards"
-                  @click="showAllSpecialModal = true"
-                >
-                  <div class="nge-profile-badge-img">
-                    <div class="nge-profile-badge-viewall-icon">→</div>
-                  </div>
-                  <div class="nge-profile-badge-name">View all</div>
+                  <button
+                    v-if="!cell.serverOnly"
+                    class="nge-cell-fav"
+                    :class="{ 'nge-cell-fav--active': cell.isFavorite }"
+                    @click.stop="historyStore.toggleFavorite(cell.segId)"
+                    title="Toggle favorite"
+                  >{{ cell.isFavorite ? '★' : '☆' }}</button>
+                  <span class="nge-cell-pip" :class="cellStatusClass(cell)">{{ cellStatusIcon(cell) }}</span>
+                  <span class="nge-cell-id" @click="handleJumpToCell(cell.segId)">
+                    {{ cell.nickname || truncateId(cell.segId) }}
+                  </span>
+                  <span class="nge-cell-type" v-if="cell.cellType" @click="handleJumpToCell(cell.segId)">{{ cell.cellType }}</span>
+                  <span class="nge-cell-time" @click="handleJumpToCell(cell.segId)">{{ relativeTime(cell.updatedAt) }}</span>
+                  <button
+                    v-if="!cell.serverOnly"
+                    class="nge-cell-rename"
+                    @click.stop="promptNickname(cell.segId)"
+                    title="Rename this cell"
+                  >✎</button>
                 </div>
               </div>
             </div>
-          </template>
+            <div class="nge-cell-empty" v-else>
+No cells completed yet. <template v-if="!viewingOtherUser">Your recently completed cells will show here.</template>
+            </div>
+          </div>
+              </div>
+              <div class="nge-track-achievements nge-track-achievements--rest">
+          <!-- the Scout report (your tags), or another player's annotations -->
+          <div class="nge-profile-section nge-profile-section--scout">
+            <template v-if="!viewingOtherUser">
+            <!-- Scout Report: tags placed and fixed -->
+            <div class="nge-profile-section-label">▌ Scout Report</div>
+            <div class="nge-profile-stat-row nge-profile-stat-row--scout" style="margin-bottom: 12px;">
+              <div class="nge-profile-stat-col" title="Tags you placed for others to fix">
+                <div class="nge-profile-stat-label">Tags Placed</div>
+                <div class="nge-profile-stat-val" style="color: #f5d142;"><RollUp :value="myTagsPlaced.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Tags of yours that someone fixed">
+                <div class="nge-profile-stat-label">Confirmed</div>
+                <div class="nge-profile-stat-val"><RollUp :value="myTagsFixed.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Tags you fixed for others">
+                <div class="nge-profile-stat-label">You Fixed</div>
+                <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Cells where you helped answer another player's request">
+                <div class="nge-profile-stat-label">Assists</div>
+                <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
+              </div>
+              <!-- Annotations placed, on every dataset: a column here rather than
+                   a row of its own (Ames 2026-10-11). -->
+              <div class="nge-profile-stat-col" title="Points, lines and boxes you placed in annotation layers, on every dataset">
+                <div class="nge-profile-stat-label">Annotations</div>
+                <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
+              </div>
+            </div>
+            </template>
+            <template v-else>
+            <div class="nge-profile-section-label">▌ Annotations</div>
+            <div class="nge-profile-stat-row" style="margin-bottom: 12px;">
+              <div class="nge-profile-stat-col" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
+                <div class="nge-profile-stat-label">All Time</div>
+                <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
+              </div>
+            </div>
+            </template>
+          </div>
+              </div>
+            </div>
 
-        </div><!-- end center column -->
+          </div>
+        </div><!-- end main area -->
 
         <!-- RIGHT: latest badge highlight  <->  badge detail -->
         <div class="nge-profile-col nge-profile-col--right">
@@ -1603,7 +1775,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <!-- Default view: favorite badge → favorite special badge → latest earned -->
             <div v-else-if="!selectedBadge" key="latest" class="nge-profile-viz-panel nge-profile-viz-badge">
               <template v-if="favoriteBadge">
-                <div class="nge-profile-viz-title">⭐ Favorite Badge</div>
+                <div class="nge-profile-viz-title">⭐ Favorite Achievement</div>
                 <img
                   :src="getBadgeUrl(favoriteBadge.imageKey)"
                   :alt="favoriteBadge.name"
@@ -1617,7 +1789,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 </div>
               </template>
               <template v-else-if="favoriteSpecialBadge">
-                <div class="nge-profile-viz-title">⭐ Favorite Badge</div>
+                <div class="nge-profile-viz-title">⭐ Favorite Achievement</div>
                 <img
                   :src="favoriteSpecialBadge.badge?.image_url || favoriteSpecialBadge.badge?.thumbnail_url"
                   :alt="favoriteSpecialBadge.badge?.name"
@@ -1630,7 +1802,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 </div>
               </template>
               <template v-else-if="latestEarnedBadge">
-                <div class="nge-profile-viz-title">▌ Latest Badge</div>
+                <div class="nge-profile-viz-title">▌ Latest Achievement</div>
                 <img
                   :src="getBadgeUrl(latestEarnedBadge.imageKey)"
                   :alt="latestEarnedBadge.name"
@@ -1644,9 +1816,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 </div>
               </template>
               <template v-else>
-                <div class="nge-profile-viz-title">▌ Badges</div>
+                <div class="nge-profile-viz-title">▌ Achievements</div>
                 <div class="nge-profile-viz-badge-desc" style="margin-top: 40px;">
-                  Make edits and complete cells to earn badges!
+                  Make edits and complete cells to earn Achievements!
                 </div>
               </template>
             </div>
@@ -2207,6 +2379,9 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
 .nge-profile-modal { font-size: 0.9em; }
+/* a size up on desktop now that the window is the frame (Ames 2026-10-11:
+   "the text is all a bit small"); phones keep mobile.css's sizes */
+body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
    OPEN ANIMATION — panel materializes fast, then sections stagger in
@@ -3054,11 +3229,14 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-chart-bar--edit {
-  background: linear-gradient(to top, rgba(74, 158, 255, 0.5), rgba(74, 158, 255, 0.8));
+  /* gold, the Editor Achievements colour (Ames 2026-10-11: one colour key) */
+  background: linear-gradient(to top, rgba(255, 208, 138, 0.5), rgba(255, 208, 138, 0.85));
 }
 
 .nge-profile-chart-bar--completion {
-  background: linear-gradient(to top, rgba(255, 180, 50, 0.5), rgba(255, 180, 50, 0.85));
+  /* teal like the Cell Completions track and the cells pill, one colour for
+     one quantity (was amber, the trophies' colour) */
+  background: linear-gradient(to top, rgba(144, 255, 242, 0.45), rgba(144, 255, 242, 0.85));
   border-radius: 2px;
 }
 
@@ -3091,11 +3269,11 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 }
 
 .nge-profile-chart-legend-dot--edit {
-  background: rgba(74, 158, 255, 0.7);
+  background: rgba(255, 208, 138, 0.7);
 }
 
 .nge-profile-chart-legend-dot--completion {
-  background: rgba(255, 180, 50, 0.7);
+  background: rgba(144, 255, 242, 0.7);
 }
 
 /* ── Badges ── */
@@ -4335,4 +4513,322 @@ const emit = defineEmits({hide: null, 'open-settings': null});
 /* The featured art is a tap target on phones. */
 body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
 
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   FULL SCREEN (Ames 2026-10-11): the profile fills the window on desktop, as
+   it already did on phones (mobile.css). The three Overview columns keep
+   their 460 : 460 : 360 proportions and grow with the window; the narrower
+   tabs (Datasets, Settings, Admin Hub, Blog) keep their widths, centred.
+   Bodies that capped themselves at 90vh minus a guess are bounded by the
+   shell instead. Test page: experimental-UI/components/profile.html.
+───────────────────────────────────────────────────────────────────────────── */
+.nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
+  width: 100vw;
+  height: 100vh;
+  /* ng-override caps every modal at 100vw - 24px, with !important */
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0;
+  box-sizing: border-box;
+}
+.nge-profile-modal .nge-profile-shell,
+.nge-profile-modal .nge-profile-shell--trophy,
+.nge-profile-modal .nge-profile-shell--admin,
+.nge-profile-modal .nge-profile-shell--week,
+.nge-profile-modal .nge-profile-shell--dstats,
+.nge-profile-modal .nge-profile-shell--datasets,
+.nge-profile-modal .nge-profile-shell--settings {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: 100vh;
+}
+.nge-profile-modal .nge-profile-col--main { flex: 1 1 0; min-width: 0; }
+.nge-profile-modal .nge-profile-col--right  { flex: 0 1 420px; min-width: 300px; }
+/* room at the edges on desktop: full screen is not a reason to sit on them
+   (Ames 2026-10-11). Phones keep mobile.css's safe area padding. */
+body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
+  padding: 22px 40px 26px;
+}
+/* the tabs that were narrower boxes keep their widths, centred in the frame */
+.nge-profile-modal .nge-profile-body--datasets,
+.nge-profile-modal .nge-profile-body.nge-ds-more { width: 100%; max-width: 640px; align-self: center; }
+/* sized to its list, not to the whole frame, so More datasets follows it
+   instead of sitting at the foot of the screen */
+.nge-profile-modal .nge-profile-body--datasets { flex: 0 1 auto; }
+.nge-profile-modal .nge-profile-body--settings { width: 100%; max-width: 1120px; align-self: center; }
+.nge-profile-modal .nge-profile-body--admin { width: 100%; max-width: 720px; align-self: center; max-height: none; }
+.nge-profile-modal .nge-profile-body--week { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
+.nge-profile-modal .nge-profile-body--dstats { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
+.nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1200px; align-self: center; }
+.nge-profile-modal .nge-trophy-scroll { max-height: none; }
+
+/* ── Cells completed and Edits: the curve, then the three windows ──────────
+   The curve sits under the label and the numbers under it, whatever the
+   column's width (Ames 2026-10-11: "put the animated chart above the
+   stats"). */
+.nge-profile-section--completions { animation: ngeSectionRollIn 0.2s ease-out 0.16s both; }
+.nge-profile-windows { display: grid; gap: 10px; min-width: 0; }
+.nge-profile-windows :deep(.nge-effort) { margin-top: 2px; }
+
+/* ── Days: the latest Days Achievement beside the total ─────────────────── */
+.nge-profile-days-row { display: flex; align-items: center; gap: 20px; }
+.nge-profile-days-row > .nge-profile-stat-col { flex: 1 1 0; min-width: 0; }
+.nge-profile-feature {
+  flex: none; width: 92px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  cursor: pointer; border-radius: 8px; padding: 4px 2px;
+  transition: background 0.15s, transform 0.15s;
+}
+.nge-profile-feature:hover { background: rgba(74, 158, 255, 0.06); transform: translateY(-1px); }
+.nge-profile-feature-icon { width: 64px; height: 64px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(201, 168, 255, 0.35)); }
+/* the same beside the cells and edits numbers: the art at the left, the
+   curve and the three windows to its right */
+.nge-profile-feature-row { display: flex; align-items: center; gap: 20px; }
+.nge-profile-feature-row > .nge-profile-windows { flex: 1 1 0; min-width: 0; }
+
+/* ── Achievement names are tooltips, not labels (Ames 2026-10-11) ─────────
+   The Overview's rows show the art alone; the name shows on hover. The
+   rows are shorter for it, with the shelf line redrawn under the art. */
+:is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge .nge-profile-badge-name { display: none; }
+.nge-track-achievements .nge-profile-badges-grid {
+  grid-auto-rows: 56px;
+  /* no shelf line: with the names gone it read as a stray border under
+     each row (Ames 2026-10-11); the section's own border is enough */
+  background-image: none;
+}
+
+/* ── View all: a round button with a drawn arrow, not a dashed box with a
+   text arrow (Ames 2026-10-11) ── */
+:is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge--viewall,
+:is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge--viewall:hover { background: none; border: none; transform: none; }
+:is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge--viewall .nge-profile-badge-img {
+  width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid rgba(140, 195, 255, 0.35);
+  background: rgba(74, 158, 255, 0.06);
+  color: rgba(170, 210, 255, 0.9);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+}
+:is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge--viewall:hover .nge-profile-badge-img {
+  border-color: rgba(170, 210, 255, 0.9);
+  background: rgba(74, 158, 255, 0.14);
+  box-shadow: 0 0 14px rgba(74, 158, 255, 0.35);
+  color: #fff;
+}
+:is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge-viewall-icon { width: 20px; height: 20px; opacity: 1; transition: transform 0.15s; }
+:is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge--viewall:hover .nge-profile-badge-viewall-icon { transform: translateX(2px); }
+
+/* ── One row per track (Ames 2026-10-11) ────────────────────────────────
+   The stats and curve at the left, that track's Achievements at the right,
+   in one grid so the rows line up. The achievements cell keeps the look of
+   the old middle column: the hairline and the faint tint. */
+.nge-track-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 22px;
+  padding: 16px 0 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+/* ── The row's head ────────────────────────────────────────────────────────
+   The label, a 1.4px circuit trace drawn out to a pad, a second pad 9px
+   further on (the same small distance in every row, as on the layer tabs,
+   where a trace breaks at a component), and from it the bar toward the
+   next Achievement, lit as far as the count has come, ending at a quiet
+   count of how many to go (Ames 2026-10-11). The break lands where each
+   label's wire ends, not at one shared spot. */
+@property --nge-track-run  { syntax: '<number>'; inherits: false; initial-value: 1; }
+@property --nge-track-fill { syntax: '<number>'; inherits: false; initial-value: 1; }
+.nge-track-row--cells { --track: #90fff2; }
+.nge-track-row--edits { --track: #ffd08a; }
+.nge-track-row--days  { --track: #c9a8ff; }
+.nge-track-head {
+  grid-column: 1 / -1;
+  display: flex; align-items: center;
+  margin-bottom: 12px; min-width: 0;
+}
+.nge-track-head .nge-profile-section-label { margin: 0 10px 0 0; white-space: nowrap; color: var(--track); }
+/* the head's lines sit at about half strength so the curve below, in the
+   same colour, stays the figure (Ames 2026-10-11: "they need distinction") */
+.nge-track-wire, .nge-track-pads, .nge-track-bar { height: 9px; --trace: color-mix(in srgb, var(--track) 52%, transparent); --pad: color-mix(in srgb, var(--track) 55%, transparent); }
+.nge-track-wire {
+  flex: 0 1 120px; min-width: 16px;
+  --nge-track-run: 1;
+  background: linear-gradient(var(--trace), var(--trace)) left 50% / calc(100% * var(--nge-track-run)) 1.4px no-repeat;
+  animation: ngeTrackRun 420ms cubic-bezier(0.3, 0, 0.2, 1) 1 both;
+}
+.nge-track-pads {
+  flex: none; width: 22px;
+  background:
+    radial-gradient(circle at 4.5px 50%, #0a1223 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at 13.5px 50%, #0a1223 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px);
+  animation: ngeTrackPads 180ms linear 420ms 1 both;
+}
+.nge-track-bar {
+  flex: 1 1 0; min-width: 24px;
+  --nge-track-fill: 1;
+  cursor: help;
+  background:
+    linear-gradient(var(--trace), var(--trace)) left 50% / calc(100% * var(--frac, 1) * var(--nge-track-fill)) 1.4px no-repeat,
+    linear-gradient(rgba(201, 228, 255, 0.14), rgba(201, 228, 255, 0.14)) left 50% / 100% 1.4px no-repeat;
+  animation: ngeTrackFill 560ms cubic-bezier(0.3, 0, 0.2, 1) 560ms 1 both;
+}
+.nge-track-row--edits .nge-track-wire { animation-delay: 120ms; }
+.nge-track-row--edits .nge-track-pads { animation-delay: 540ms; }
+.nge-track-row--edits .nge-track-bar  { animation-delay: 680ms; }
+.nge-track-row--days  .nge-track-wire { animation-delay: 240ms; }
+.nge-track-row--days  .nge-track-pads { animation-delay: 660ms; }
+.nge-track-row--days  .nge-track-bar  { animation-delay: 800ms; }
+@keyframes ngeTrackRun  { 0% { --nge-track-run: 0; }  100% { --nge-track-run: 1; } }
+@keyframes ngeTrackPads { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes ngeTrackFill { 0% { --nge-track-fill: 0; } 100% { --nge-track-fill: 1; } }
+@media (prefers-reduced-motion: reduce) { .nge-track-wire, .nge-track-pads, .nge-track-bar { animation: none; } }
+/* quiet: it is a note at the end of the bar, not a number to read first */
+.nge-track-count {
+  margin-left: 10px;
+  font-size: 0.7em; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  white-space: nowrap; cursor: help;
+  color: color-mix(in srgb, var(--track) 72%, transparent);
+}
+
+/* ── All time is the number that counts: the display face the career totals
+   used, in the track's colour (Ames 2026-10-11) ── */
+.nge-profile-stat-col--all .nge-profile-stat-label { color: var(--track); opacity: 0.85; }
+.nge-profile-stat-col--all .nge-profile-stat-val,
+.nge-track-row--days .nge-profile-stat-val--hero {
+  font-family: 'Orbitron', 'Rajdhani', ui-monospace, 'Cascadia Code', monospace;
+  font-size: 1.6em; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--track);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--track) 35%, transparent);
+}
+.is-compact .nge-profile-stat-col--all .nge-profile-stat-val,
+.is-compact .nge-track-row--days .nge-profile-stat-val--hero { font-size: 1.4em; }
+
+/* the Achievements sit in the middle of their row's height */
+.nge-track-achievements { display: flex; flex-direction: column; justify-content: center; }
+.nge-track-achievements--rest { justify-content: flex-start; }
+
+/* ── No scroll on the Overview (Ames 2026-10-11) ──────────────────────────
+   The three rows take their natural height, the last row takes what is
+   left, and the list scrolls inside its own box. Phones keep scrolling as
+   one page (mobile.css). */
+body:not(.nge-mobile) .nge-profile-col--main { overflow: hidden; display: flex; flex-direction: column; }
+body:not(.nge-mobile) .nge-track-rows { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+body:not(.nge-mobile) .nge-track-row { flex: none; }
+body:not(.nge-mobile) .nge-track-row--rest { flex: 1 1 0; min-height: 0; }
+body:not(.nge-mobile) .nge-track-row--rest > .nge-track-stats { display: flex; flex-direction: column; min-height: 0; }
+body:not(.nge-mobile) .nge-track-row--rest .nge-profile-section--cells { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+body:not(.nge-mobile) .nge-track-row--rest .nge-cell-list { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: 0; }
+body:not(.nge-mobile) .nge-track-row--rest .nge-cell-list-scroll { flex: 1 1 0; min-height: 0; max-height: none; overflow-y: auto; }
+
+/* ── The header: name and bio at the left; Special Awards and, for the
+   builder, Building Pyr at the right ── */
+.nge-profile-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 14px 28px; }
+.nge-profile-header-main { flex: 1 1 260px; min-width: 0; }
+.nge-profile-header-side { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 26px; padding-top: 4px; }
+.nge-profile-header-side .nge-profile-section { border: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 12px; animation: none; }
+.nge-profile-header-side .nge-profile-section-label { margin: 0; white-space: nowrap; }
+.nge-profile-header-side .nge-profile-badges-grid { display: flex; gap: 8px; grid-auto-rows: auto; background: none; padding: 0; }
+.nge-profile-header-side .nge-profile-badge { padding: 0; }
+.nge-profile-header-side .nge-profile-stat-row--tiles { flex-wrap: nowrap; }
+/* room inside the tiles: the number sat on the box edge (Ames 2026-10-11) */
+.nge-profile-header-side .nge-profile-stat-tile { padding: 4px 16px; min-width: 140px; gap: 14px; }
+
+/* ── Short screens (laptops): smaller rows so the list under them is in
+   reach without much scrolling. The curves draw at 56px (a prop). ── */
+.is-compact .nge-track-row { padding: 6px 0 8px; }
+.is-compact .nge-track-head { margin-bottom: 4px; }
+.is-compact .nge-profile-header { padding-bottom: 2px; margin-bottom: 0; }
+.is-compact .nge-profile-header-side .nge-profile-stat-tile { padding: 2px 12px; min-width: 120px; }
+.is-compact .nge-profile-stat-label { margin-bottom: 2px; }
+.is-compact .nge-profile-stat-breakdown { margin-top: 3px; }
+/* in the compact tiers the curve stays above the numbers and shrinks (36 px,
+   then 30), which is what keeps the list in reach without a scroll
+   (Ames 2026-10-11: no vertical scroll) */
+.is-compact .nge-profile-windows { gap: 3px; }
+.is-compact .nge-profile-windows :deep(.nge-effort) { margin-top: 0; }
+/* the awards side stacks its two sections at the right, so the header stays
+   as tall as the name and bio and never wraps under them */
+.is-compact .nge-profile-header-main { flex: 0 1 auto; max-width: 40%; }
+.is-compact .nge-profile-header-side { flex: 1 1 auto; flex-direction: column; align-items: flex-end; gap: 4px; padding-top: 0; }
+.is-compact .nge-profile-header-side .nge-profile-stat-tile { min-width: 112px; }
+.is-compact .nge-track-row { padding: 4px 0 6px; }
+.is-compact .nge-track-head { margin-bottom: 3px; }
+.is-compact .nge-track-row--days .nge-profile-stat-val--hero { font-size: 1.25em; }
+.is-compact .nge-track-row--days .nge-days-next { margin-top: 1px; }
+.is-compact .nge-cell-list-title { white-space: normal; }
+.is-compact .nge-profile-header-side .nge-profile-badge-img { width: 36px; height: 36px; }
+.is-compact .nge-profile-header-side .nge-profile-badge-icon { width: 32px; height: 32px; }
+.is-compact .nge-profile-stat-label { margin-bottom: 1px; }
+.is-compact .nge-profile-stat-breakdown { margin-top: 2px; }
+.is-tiny .nge-track-row { padding: 3px 0 5px; }
+/* the curve's caption goes on laptops; hovering the curve still reads any day */
+.is-compact :deep(.nge-effort-cap) { display: none; }
+/* on a small laptop the merge and split breakdown goes too; the tooltip keeps it */
+.is-tiny .nge-profile-stat-breakdown { display: none; }
+/* the Scout report's five numbers wrap in the last row's narrow right half */
+.nge-track-achievements--rest .nge-profile-stat-row--scout { flex-wrap: wrap; gap: 8px 18px; }
+.nge-track-achievements--rest .nge-profile-stat-row--scout .nge-profile-stat-col { flex: 0 1 auto; min-width: 64px; }
+/* under 760 px (a small laptop): smaller still, and the bio goes */
+.is-tiny .nge-track-row { padding: 4px 0 6px; }
+.is-tiny .nge-track-head { margin-bottom: 3px; }
+.is-tiny .nge-profile-feature { width: 64px; }
+.is-tiny .nge-profile-feature-icon { width: 40px; height: 40px; }
+.is-tiny .nge-track-row--cells .nge-profile-feature-icon, .is-tiny .nge-track-row--edits .nge-profile-feature-icon { width: 52px; height: 52px; }
+.is-tiny .nge-profile-stat-val { font-size: 1em; }
+.is-tiny .nge-profile-stat-col--all .nge-profile-stat-val, .is-tiny .nge-track-row--days .nge-profile-stat-val--hero { font-size: 1.2em; }
+.is-tiny .nge-profile-stat-label { font-size: 0.68em; margin-bottom: 1px; }
+.is-tiny .nge-profile-stat-breakdown { margin-top: 2px; }
+.is-tiny .nge-profile-bio { display: none; }
+.is-tiny .nge-profile-name { font-size: 1.1em; }
+.is-tiny .nge-track-achievements .nge-profile-badges-grid { grid-auto-rows: 40px; }
+.is-tiny .nge-track-achievements .nge-profile-badge-icon { width: 32px; height: 32px; }
+.is-tiny .nge-profile-windows { gap: 3px; }
+.is-tiny .nge-days-next { margin-top: 2px; }
+.is-compact .nge-profile-name { font-size: 1.25em; }
+.is-compact .nge-profile-bio { margin-top: 0; }
+.is-compact .nge-cell-list { margin-top: 10px; }
+.is-compact .nge-track-row--cells .nge-profile-feature, .is-compact .nge-track-row--edits .nge-profile-feature { width: 96px; }
+.is-compact .nge-track-row--cells .nge-profile-feature-icon, .is-compact .nge-track-row--edits .nge-profile-feature-icon { width: 72px; height: 72px; }
+.is-compact .nge-profile-feature-icon { width: 56px; height: 56px; }
+.is-compact .nge-track-row--cells .nge-profile-feature-icon, .is-compact .nge-track-row--edits .nge-profile-feature-icon { width: 72px; height: 72px; }
+.is-compact .nge-profile-stat-val { font-size: 1.08em; }
+.is-compact .nge-profile-stat-val--hero { font-size: 1.35em; }
+.is-compact .nge-track-achievements .nge-profile-badges-grid { grid-auto-rows: 48px; }
+.is-compact .nge-profile-header { padding-bottom: 12px; }
+.is-compact .nge-profile-windows { gap: 6px; }
+.nge-profile-career-note--foot { margin: 10px 0 0; }
+.nge-track-row:last-child { border-bottom: none; }
+.nge-track-stats, .nge-track-achievements { min-width: 0; }
+.nge-track-achievements {
+  padding-left: 22px;
+  border-left: 1px solid rgba(74, 158, 255, 0.08);
+  background: rgba(74, 158, 255, 0.01);
+}
+.nge-track-row .nge-profile-section { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.nge-track-stats > .nge-profile-section + .nge-profile-section { margin-top: 22px; }
+.nge-track-achievements .nge-profile-badges-grid { max-width: 440px; }
+/* the art in the top two rows is larger: those blocks are taller */
+.nge-track-row--cells .nge-profile-feature, .nge-track-row--edits .nge-profile-feature { width: 120px; }
+.nge-track-row--cells .nge-profile-feature-icon, .nge-track-row--edits .nge-profile-feature-icon { width: 96px; height: 96px; }
+body.nge-mobile .nge-track-row { grid-template-columns: minmax(0, 1fr); gap: 14px 0; }
+body.nge-mobile .nge-track-achievements { padding-left: 0; border-left: none; }
+
+/* ── The track colours, one per block (Ames 2026-10-11): cells sky blue,
+   edits gold, days purple, the colours the Achievement sections use ── */
+.nge-profile-section--completions > .nge-profile-section-label { color: #90fff2; }
+.nge-profile-section--edits > .nge-profile-section-label { color: #ffd08a; }
+.nge-profile-section--days > .nge-profile-section-label { color: #c9a8ff; }
+.nge-profile-section--days .nge-profile-stat-val--hero { color: #c9a8ff; text-shadow: 0 0 20px rgba(201, 168, 255, 0.3); }
+.nge-profile-section--completions .nge-profile-feature-icon { filter: drop-shadow(0 0 10px rgba(144, 255, 242, 0.35)); }
+.nge-profile-section--edits .nge-profile-feature-icon { filter: drop-shadow(0 0 10px rgba(255, 208, 138, 0.35)); }
+
+/* ── The right column's sections share one left edge ──────────────────────
+   Top of the Week and Streak sat as narrow blocks centred under the art,
+   so their labels floated (Ames 2026-10-11). */
+.nge-profile-col--right > .nge-profile-section--podium,
+.nge-profile-col--right > .nge-profile-section--streak,
+.nge-profile-col--right > .nge-profile-right-divider { align-self: stretch; }
+.nge-profile-col--right .nge-profile-activity-chart { max-width: 340px; }
+/* A number that can not be read says so; it is never shown as zero. */
+.nge-profile-stat-unavailable { font-size: 0.82em; color: rgba(200, 215, 240, 0.55); }
 </style>

@@ -2,6 +2,21 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T00:28:00Z",
+      "title": "The profile fills the window",
+      "items": [
+        "Your profile now fills the whole window, with more room for everything in it.",
+        "Your profile counts your work in Pyr on all of its datasets, not only the dataset on screen. Only work done in Pyr counts.",
+        "Cells completed shows today, the past 7 days and all time, the same three windows as edits, and above each a small curve draws your running total from your first day to today. Point at it to read any day.",
+        "Each of cells, edits and days is one row: the latest Achievement you earned, your numbers and curve, and the rest of that track's Achievements beside them. A circuit line runs across the top of each row, breaks at two pads, and from the second one fills toward your next Achievement, with how many to go at its end. Your all time number stands out in its own type. Achievement names show when you point at them.",
+        "Days helping science in Pyr shows your latest Days Achievement beside your total. Your streak stays on the right.",
+        "Your recently completed cells are listed even on a new device.",
+        "If you have a username, your profile is titled with it.",
+        "Cells, edits and days each have their own colour on the profile, the same as their Achievement sections: sky blue, gold and purple. The Last 14 Days chart uses the same two.",
+        "Your Special Awards sit beside your name. The profile fits the window without scrolling; your recently completed cells scroll in their own box."
+      ]
+    },
+    {
       "at": "2026-10-11T23:52:20Z",
       "title": "More reactions in chat",
       "items": [

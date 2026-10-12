@@ -142,6 +142,16 @@ letters mostly belong to neuroglancer; check before taking one.
 - **The Browser pane's tabs can be hidden**, and then
   `requestAnimationFrame` never fires. Test anything animated with
   Playwright instead.
+- **`npm run build` alone gives a bundle with no dataset.** It leaves
+  `CONFIG` undefined, so the page opens with no segmentation layer, the
+  profile has no dataset scope, and every per dataset number stays zero.
+  For a headless test that needs a dataset, build with
+  `DATASET=pinky_sandbox node scripts/build-prod.js`, which bakes the
+  config and the default state into `dist/min` (2026-10-11).
+- **A column's last section loses its border and bottom margin** (the
+  profile's stylesheet strips them from `:last-child`). Stamp sections in
+  as direct children of the column; a wrapper `div` around two of them
+  makes the second one "last" and it sits tight on whatever follows.
 
 ## Building and testing
 
