@@ -56,7 +56,10 @@ export function cutSides(
 
 /** The side of every piece the colour reaches, spreading from the known ones. */
 export function spreadSides(
-    edges: readonly (readonly [string, string])[], known: ReadonlyMap<string, Side>, maxSteps = 120): Map<string, Side> {
+    edges: readonly (readonly [string, string])[], known: ReadonlyMap<string, Side>, maxSteps = 120,
+    /** Pieces the cut passes through: never coloured, and colour never
+     *  spreads through them, or one side would flood the other. */
+    barriers: ReadonlySet<string> = new Set()): Map<string, Side> {
   const next = new Map<string, string[]>();
   const link = (a: string, b: string) => { (next.get(a) ?? next.set(a, []).get(a)!).push(b); };
   for (const [a, b] of edges) { if (a !== b) { link(a, b); link(b, a); } }
@@ -68,6 +71,7 @@ export function spreadSides(
     for (const piece of frontier) {
       const s = side.get(piece)!;
       for (const n of next.get(piece) ?? []) {
+        if (barriers.has(n)) continue;   // the cut is in this piece: the colour stops here
         if (side.has(n)) continue;       // taken already, by either colour: the cut lies between
         side.set(n, s);
         reached.push(n);
@@ -230,16 +234,56 @@ export function certainPieces(
   return out;
 }
 
-/** Far blocks from the spread, near blocks from the supervoxels: where the
- *  two disagree about a block, both sides are in it. */
+/** Far blocks from the spread, near blocks from the supervoxels. A near
+ *  block is the server's own answer and a far one is worked out from it, so
+ *  where both speak of a block the near one stands. */
 export function mergeBlocks(far: readonly CutSideBlock[], near: readonly CutSideBlock[]): CutSideBlock[] {
   const blocks = new Map<string, CutSideBlock>();
   for (const b of far) blocks.set(b.box.join(','), { box: b.box, side: b.side });
-  for (const b of near) {
-    const key = b.box.join(',');
-    const have = blocks.get(key);
-    if (!have) blocks.set(key, { box: b.box, side: b.side });
-    else if (have.side !== b.side) have.side = 'both';
-  }
+  for (const b of near) blocks.set(b.box.join(','), { box: b.box, side: b.side });
   return [...blocks.values()];
+}
+
+/**
+ * Start the spread from the blocks near the cut, with no further questions
+ * to the server: a piece of the cell lying in a block that is all one side
+ * is that side, and a piece in a block holding both sides is where the cut
+ * passes (a barrier). `pieceBoxes` gives each piece's block.
+ */
+export function piecesFromBlocks(near: readonly CutSideBlock[], pieceBoxes: ReadonlyMap<string, number[]>):
+    { known: Map<string, Side>; barriers: Set<string> } {
+  const sideOfBlock = new Map<string, Side | 'both'>();
+  for (const b of near) sideOfBlock.set(b.box.join(','), b.side);
+  const known = new Map<string, Side>(), barriers = new Set<string>();
+  for (const [piece, box] of pieceBoxes) {
+    const s = sideOfBlock.get(box.join(','));
+    if (s === 'both') barriers.add(piece);
+    else if (s) known.set(piece, s);
+  }
+  return { known, barriers };
+}
+
+/**
+ * When every block of one side also holds the other (a cut close to the
+ * points on a thin branch), that side has nowhere to start from, and what
+ * lies beyond the cut would stay uncoloured. A cut has two sides, so what
+ * hangs off the cut's own pieces and was not reached by the side that does
+ * have a start is the other side. Only done when exactly one side has no
+ * start at all; otherwise nothing is guessed.
+ */
+export function fillMissingSide(
+    edges: readonly (readonly [string, string])[], side: Map<string, Side>, barriers: ReadonlySet<string>, maxSteps = 120): Side | null {
+  let red = 0, blue = 0;
+  for (const s of side.values()) { if (s === 'red') red++; else blue++; }
+  if (!barriers.size || (red > 0) === (blue > 0)) return null;
+  const missing: Side = red ? 'blue' : 'red';
+  const starts = new Map<string, Side>();
+  for (const [a, b] of edges) {
+    if (barriers.has(a) && !barriers.has(b) && !side.has(b)) starts.set(b, missing);
+    if (barriers.has(b) && !barriers.has(a) && !side.has(a)) starts.set(a, missing);
+  }
+  if (!starts.size) return null;
+  const taken = new Set([...barriers, ...side.keys()]);
+  for (const [piece, s] of spreadSides(edges, starts, maxSteps, taken)) side.set(piece, s);
+  return missing;
 }

@@ -16,8 +16,8 @@
  * both sides at once, never across the cut (cut_sides.ts).
  */
 import { StatusMessage } from 'neuroglancer/status';
-import { ngeGrapheneCutPreview, ngeGrapheneCutGraph, ngeGrapheneBoxesOf, ngeGraphenePiecesOf } from 'neuroglancer/datasource/graphene/frontend';
-import { spreadSides, cutSideBlocks, sidesOfGroups, localBlocks, sampleBits, certainPieces, mergeBlocks } from './cut_sides';
+import { ngeGrapheneCutPreview, ngeGrapheneCutGraph, ngeGrapheneBoxesOf } from 'neuroglancer/datasource/graphene/frontend';
+import { spreadSides, cutSideBlocks, sidesOfGroups, localBlocks, mergeBlocks, piecesFromBlocks, fillMissingSide } from './cut_sides';
 import { setExtraTintBoxes } from './highlight';
 
 const RED = [255, 64, 64];
@@ -65,26 +65,23 @@ async function preview(layer: any) {
     const boxes = await ngeGrapheneBoxesOf(layer, [...sides.red, ...sides.blue]);
     if (mine !== run) return;
     const near = localBlocks(sides.red, sides.blue, boxes);
-    // The rest of the cell: colour spreads from pieces whose side is certain.
-    // A point placed in 3D carries the cell's ID, not a supervoxel's, and has
-    // no block of its own: only points that are supervoxels are asked about.
-    const redPicks = got.redPicks.filter(x => boxes.has(x)), bluePicks = got.bluePicks.filter(x => boxes.has(x));
-    const asked = [...new Set([...sampleBits(sides.red, sides.blue, boxes), ...redPicks, ...bluePicks])];
-    const pieceOf = await ngeGraphenePiecesOf(layer, asked);
-    if (mine !== run) return;
-    const askedSet = new Set(asked);
-    const known = certainPieces(
-        [...sides.red.filter(x => askedSet.has(x)), ...redPicks], [...sides.blue.filter(x => askedSet.has(x)), ...bluePicks], pieceOf);
+    // The rest of the cell: colour spreads from the pieces lying in those
+    // blocks, and never through a piece the cut passes through. Nothing
+    // more is asked of the server than the cell's own map of pieces.
     const graph = await ngeGrapheneCutGraph(layer, got.rootId);
     if (mine !== run) return;
-    const side = spreadSides(graph.edges, known);
+    const { known, barriers } = piecesFromBlocks(near, graph.boxes);
+    const side = spreadSides(graph.edges, known, 120, barriers);
+    const filled = fillMissingSide(graph.edges, side, barriers);
     const blocks = mergeBlocks(cutSideBlocks(side, graph.boxes), near);
+    const count = (list: { side: string }[]) => ({ red: list.filter(x => x.side === 'red').length, blue: list.filter(x => x.side === 'blue').length, both: list.filter(x => x.side === 'both').length });
+    let redPieces = 0, bluePieces = 0;
+    for (const v of side.values()) { if (v === 'red') redPieces++; else bluePieces++; }
     Object.assign(say, {
       redSupervoxels: sides.red.length, blueSupervoxels: sides.blue.length, supervoxelsPlaced: boxes.size,
-      nearBlocks: { red: near.filter(x => x.side === 'red').length, blue: near.filter(x => x.side === 'blue').length, both: near.filter(x => x.side === 'both').length },
-      piecesAsked: asked.length, piecesAnswered: pieceOf.size, certainPieces: known.size,
-      cellPieces: new Set(graph.edges.flat()).size, piecesColoured: side.size,
-      blocks: { red: blocks.filter(x => x.side === 'red').length, blue: blocks.filter(x => x.side === 'blue').length, both: blocks.filter(x => x.side === 'both').length },
+      nearBlocks: count(near), startPieces: count([...known.values()].map(v => ({ side: v }))), cutPieces: barriers.size,
+      cellPieces: graph.boxes.size, piecesColoured: { red: redPieces, blue: bluePieces }, sideFilledIn: filled,
+      blocks: count(blocks),
     });
     console.info('[cut preview]', JSON.stringify(say));
     if (!blocks.length) {

@@ -11,7 +11,7 @@ import ts from 'typescript';
 const src = fs.readFileSync(new URL('../src/util/cut_sides.ts', import.meta.url), 'utf8');
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cut-sides-')), 'cut_sides.mjs');
 fs.writeFileSync(out, ts.transpileModule(src, { compilerOptions: { module: 'ESNext', target: 'ES2020' } }).outputText);
-const { cutSides, piecesFromPreview, spreadSides, cutSideBlocks, sidesOfGroups, localBlocks, sampleBits, certainPieces, mergeBlocks } = await import(pathToFileURL(out).href);
+const { cutSides, piecesFromPreview, spreadSides, cutSideBlocks, sidesOfGroups, localBlocks, sampleBits, certainPieces, mergeBlocks, piecesFromBlocks, fillMissingSide } = await import(pathToFileURL(out).href);
 
 // A cell shaped like a Y: a trunk t0..t4, then two arms from t4: a0..a3 and b0..b3.
 const chain = (ids) => ids.slice(1).map((id, i) => [ids[i], id]);
@@ -128,8 +128,48 @@ test('the points in one block: that block is pale, never one colour', () => {
   const boxes = new Map([['rp', B(1)], ['bp', B(1)], ['r1', B(0)], ['b1', B(2)]]);
   const g = sidesOfGroups([['rp', 'r1'], ['bp', 'b1']], ['rp'], ['bp']);
   const near = localBlocks(g.red, g.blue, boxes);
-  const far = [{ box: B(1), side: 'red' }, { box: B(9), side: 'blue' }];
+  const far = [{ box: B(1), side: 'red' }, { box: B(2), side: 'red' }, { box: B(9), side: 'blue' }];
   const all = mergeBlocks(far, near);
   const at = (k) => all.find(b => b.box[0] === k).side;
   assert.equal(at(1), 'both'); assert.equal(at(0), 'red'); assert.equal(at(2), 'blue'); assert.equal(at(9), 'blue');
+});
+
+// A thin axon, one piece per block: p0 .. p9 in a row, blocks 0 .. 9.
+const row = Array.from({ length: 10 }, (_, i) => 'p' + i);
+const rowEdges = row.slice(1).map((id, i) => [row[i], id]);
+const rowBoxes = new Map(row.map((id, i) => [id, [i, 0, 0, i + 1, 1, 1]]));
+const blockAt = (k, side) => ({ box: [k, 0, 0, k + 1, 1, 1], side });
+const paint = (near) => {
+  const { known, barriers } = piecesFromBlocks(near, rowBoxes);
+  const side = spreadSides(rowEdges, known, 120, barriers);
+  const filled = fillMissingSide(rowEdges, side, barriers);
+  const blocks = mergeBlocks(cutSideBlocks(side, rowBoxes), near);
+  return { at: (k) => blocks.find(b => b.box[0] === k)?.side, filled, barriers };
+};
+test('Ames 2026-10-12: red must not flood past the cut to the far end of the branch', () => {
+  // the server: blocks 3 and 4 blue, block 5 holds both (the cut), block 6 red
+  const r = paint([blockAt(3, 'blue'), blockAt(4, 'blue'), blockAt(5, 'both'), blockAt(6, 'red')]);
+  for (const k of [0, 1, 2, 3, 4]) assert.equal(r.at(k), 'blue', 'block ' + k);
+  assert.equal(r.at(5), 'both');
+  for (const k of [6, 7, 8, 9]) assert.equal(r.at(k), 'red', 'block ' + k);
+});
+test('a cut so close to the points that blue has no block of its own: beyond the cut is still blue', () => {
+  const r = paint([blockAt(5, 'both'), blockAt(6, 'red')]);
+  assert.equal(r.filled, 'blue');
+  for (const k of [0, 1, 2, 3, 4]) assert.equal(r.at(k), 'blue', 'block ' + k);
+  assert.equal(r.at(5), 'both');
+  for (const k of [6, 7, 8, 9]) assert.equal(r.at(k), 'red', 'block ' + k);
+});
+test('both sides have a start: nothing is guessed', () => {
+  const r = paint([blockAt(4, 'blue'), blockAt(5, 'both'), blockAt(6, 'red')]);
+  assert.equal(r.filled, null);
+});
+test('the whole preview is one block holding both: only that block is painted, pale', () => {
+  const r = paint([blockAt(5, 'both')]);
+  assert.equal(r.filled, null);
+  assert.equal(r.at(5), 'both'); assert.equal(r.at(4), undefined); assert.equal(r.at(6), undefined);
+});
+test('near blocks are the server\'s answer and stand over what was worked out', () => {
+  const all = mergeBlocks([blockAt(1, 'red')], [blockAt(1, 'blue')]);
+  assert.deepEqual(all, [blockAt(1, 'blue')]);
 });
