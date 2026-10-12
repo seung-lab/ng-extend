@@ -120,7 +120,7 @@ export const TOOLBAR_ICON_DEFS: ToolbarIconDef[] = [
   { id: 'datasetStats', emoji: '🧭', svg: DATASET_STATS_SVG, label: 'Dataset Stats' },
   { id: 'quest',       emoji: '🧠', svg: QUEST_SVG,       label: 'Brain Quest' },
   // Blue (Amy 2026-09-30): the white neuron PNG used as a mask over sky blue.
-  { id: 'cells',       emoji: '🧬', svg: CELLS_ICON,      label: 'Cell Library (Shift+L)' },
+  { id: 'cells',       emoji: '🧬', svg: CELLS_ICON,      label: 'Cell Library (Shift+L): press Shift+L to open and close it' },
   { id: 'batch',       emoji: '📦', svg: BATCH_SVG,       label: 'Batch Processor' },
   { id: 'screenshot',  emoji: '📷', svg: CAMERA_SVG,      label: 'Take a screenshot' },
   { id: 'undelete',    emoji: '↩️', svg: UNDELETE_SVG,    label: 'Undelete: bring back a cell you removed from view (Ctrl+Z)' },

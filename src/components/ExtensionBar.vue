@@ -1090,7 +1090,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           'nge-icon-btn--dragging': dragId === icon.id,
           'nge-icon-btn--drag-over': dragOverId === icon.id && dragId !== icon.id,
         }"
-        :title="icon.id === 'highlight' && highlightOff ? highlightOff : icon.label + ' — drag to reorder'"
+        :title="icon.id === 'highlight' && highlightOff ? highlightOff : icon.label + '. Drag to reorder.'"
         :aria-disabled="icon.id === 'highlight' && highlightOff ? 'true' : undefined"
         draggable="true"
         @dragstart="onIconDragStart($event, icon.id)"
