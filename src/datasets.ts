@@ -20,6 +20,7 @@ import thumbFlywire from '../static/images/datasets/flywire.jpg';
 // their largest named neurons), 2026-10-06.
 import thumbH01 from '../static/images/datasets/h01.jpg';
 import thumbManc from '../static/images/datasets/manc.jpg';
+import thumbHemibrain from '../static/images/datasets/hemibrain.jpg';
 import thumbMcns from '../static/images/datasets/mcns.jpg';
 import thumbMaol from '../static/images/datasets/maol.jpg';
 import { useLayersStore, useUserPreferencesStore } from './store';
@@ -381,6 +382,7 @@ export const DATASETS: DatasetEntry[] = [
     // "to see the more complete landscape of today's research". Janelia's
     // published v1.2 files, no CAVE.
     id: 'hemibrain',
+    thumbnail: thumbHemibrain,
     section: 'viewonly',
     optional: true,
     exploreOnly: true,
