@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T20:17:01Z",
+      "title": "Shift+L opens and closes the Cell Library",
+      "digest": "minor",
+      "items": [
+        "Press Shift+L to open and close the Cell Library. The shortcut is now shown when you hover its icon in the top bar and its close button."
+      ]
+    },
+    {
       "at": "2026-10-12T17:27:00Z",
       "title": "Cells the lab finished are not offered again",
       "items": [
