@@ -30,20 +30,25 @@ async function roots(ex) {
 function checkBaseline(ex,[a,b]) {
  if((a===b)!==(ex.kind==='cut'))throw Error('Practice pieces do not match their registered starting state');
 }
-// In passes, until one finds nothing left to undo. A cut that takes a piece
-// off without either registered supervoxel on it is in that piece's history,
-// not in the history of the roots read here, so a single pass can miss it;
-// it comes into view once the cuts around it are undone. One pass per run
-// left a cell marked ready with a learner's cut still on it (2026-10-12).
+// In passes, while a pass still changes something. A cut that takes a piece
+// off without either registered supervoxel on it can be missing from the
+// history of the roots read here until the cuts around it are undone, so a
+// second look is worth having. But an operation can also stay listed as
+// active for good: undoing a cut whose edges an earlier undo already put
+// back does nothing and records nothing (operations 1939 and 1969,
+// 2026-10-12, both checked edge by edge: nothing was still apart). So a pass
+// that finds the same operations as the one before is the end, and the
+// starting state is then checked as it always was.
 async function reset(ex,assertLease=async()=>{}) {
- let result=null;
+ let before='';
  for(let pass=0;pass<8;pass++) {
-  const {undone,roots:r}=await resetPass(ex,assertLease);
-  result=r;
-  if(dryRun||!undone)break;
+  const active=await resetPass(ex,assertLease);
+  if(dryRun)return null;
+  const now=active.join(',');
+  if(!active.length||now===before)break;
+  before=now;
  }
- if(!dryRun&&!result)throw Error('Operations kept turning up after 8 passes; manual review required');
- return result;
+ const result=await roots(ex);checkBaseline(ex,result);return result;
 }
 async function resetPass(ex,assertLease) {
  const ops=new Map();
@@ -61,10 +66,7 @@ async function resetPass(ex,assertLease) {
   if(dryRun)console.log('[reset] would undo '+op.operationId);
   else { await assertLease(); await cave(ex,'/undo?int64_as_str=1',{operation_id:op.operationId}); }
  }
- if(dryRun)return {undone:0,roots:null};
- // The starting state is checked on the pass that finds nothing left.
- if(active.length)return {undone:active.length,roots:null};
- const result=await roots(ex);checkBaseline(ex,result);return {undone:0,roots:result};
+ return active.map(op=>op.operationId);
 }
 async function main() {
  const path='tutorial_practice_examples?enabled=eq.true';
