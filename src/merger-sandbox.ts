@@ -11,6 +11,7 @@
 import { ref } from 'vue';
 import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
+import imgWheresNurro from './images/wheres-nurro.png';
 import imgPyrGem from './images/pyr-icon.png';
 import imgSandboxComplete from './images/sandbox-complete.jpg';
 import { beginPractice, cellIsCut, endPractice, ensureTool } from './practice';
@@ -113,6 +114,7 @@ export function startSandbox(index: number) {
     // went elsewhere meanwhile, do not pop a sandbox box up over them.
     if (store.activeTutorial !== from || store.getTutorialStep() !== fromStep) return;
     resetPracticeLog();
+    cutNow.value = false;
     current = index;
     store.activeTutorial = SANDBOX_TUTORIAL;
     // Past the end, then to the start: the step is keyed by its index, so
@@ -181,7 +183,33 @@ function progressBar(): string {
 const checking = ref(false);
 /** The last cut being written to the account. */
 let recorded: Promise<unknown> = Promise.resolve();
-const thisOneCut = () => sandboxDone.value.includes(cell().id);
+/** Whether this attempt cut the merger. Not "was it ever cut": on a second
+ *  go at a solved merger, a miss used to read as a success. */
+const cutNow = ref(false);
+const thisOneCut = () => cutNow.value;
+
+/**
+ * Skip (Ames, 2026-10-12): the first box's button moves on to another merger
+ * that is not solved yet. If this one turns out to be cut after all (the
+ * watch can miss it), it goes to the success box instead. With no other
+ * merger left to try, it goes to the check box as before.
+ */
+let skipping = false;
+export function sandboxSkip(): boolean {
+  if (askAgain.value) return false;
+  if (skipping) return true;
+  skipping = true;
+  const store = useTutorialStore();
+  const id = cell().id, at = current;
+  void cellIsCut(id).catch(() => null).then((cut) => {
+    skipping = false;
+    if (store.activeTutorial !== SANDBOX_TUTORIAL || current !== at || store.getTutorialStep() !== 0) return;
+    const other = nextUndone();
+    if (cut || other < 0 || other === at) { store.setTutorialStep(1); return; }
+    startSandbox(other);
+  });
+  return true;
+}
 
 /**
  * The sandbox reads as one challenge, "cut all 5 mergers" (Nseraf,
@@ -193,7 +221,7 @@ export const steps: Step[] = [
   // 1: The exercise
   {
     get title() { return askAgain.value ? `All ${TOTAL} merger mysteries solved` : `Can you solve all ${TOTAL} merger mysteries?`; },
-    get nextLabel() { return askAgain.value ? 'Start again' : undefined; },
+    get nextLabel() { return askAgain.value ? 'Start again' : 'Skip'; },
     get text() {
       if (askAgain.value) {
         return `
@@ -250,9 +278,9 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
       if (checking.value) return `Checking your cut.`;
       if (!thisOneCut()) {
         return `
-The two neurons are still one segment, so this one is not cut yet. Place <strong style="color:#ff5c5c">red</strong> points on one neuron, press **G**, place <strong style="color:#5c8cff">blue</strong> points on the other, then **Submit cut**.
+<img class="nge-sbx-nurro" src="${imgWheresNurro}" alt="">
 
-Press **Try again** to have another go, or **Help me** there to see where the points go.`;
+The two neurons are still one segment, so this one is not cut yet. Press **Try again** to have another go. **Help me** there shows where the points go.`;
       }
       if (left <= 0) {
         return `
@@ -263,6 +291,8 @@ Press **Try again** to have another go, or **Help me** there to see where the po
 To go again, open the Merger Sandbox from the burger menu.`;
       }
       return `
+<img class="nge-sbx-nurro" src="${imgBravoNurro}" alt="">
+
 <span class="nge-done-lead">Congratulations, that is ${done} of ${TOTAL}. ${left} ${left === 1 ? 'remains' : 'remain'}!</span>
 
 ${progressBar()}
@@ -279,17 +309,18 @@ ${progressBar()}
     },
     position: OVER_3D,
     width: "440px",
-    // The last box of the set shows what all this is for (Ames's picture).
-    // The last box of the set carries its own picture in the text, with its
-    // caption on hover; the others have Nurro.
-    get image() { return !checking.value && thisOneCut() && doneCount() >= TOTAL ? undefined : imgBravoNurro; },
+    // Pictures sit in the text, small, so the box fits a laptop screen.
+    // Confetti is thrown once, by celebrateStep, when the cut is confirmed:
+    // the button itself throws none (it used to, even on Try again).
+    noConfetti: true,
     onEnter: async () => {
       // Done means the cut was made, not that Next was pressed. Asked of the
       // cell itself too, so a cut the watch missed still counts.
       const id = cell().id;
       checking.value = true;
-      try { if (await cellIsCut(id)) creditPractice(id); } finally { checking.value = false; }
-      if (practiceEarned()) {
+      let earned = false;
+      try { if (await cellIsCut(id)) creditPractice(id); earned = practiceEarned(); } finally { cutNow.value = earned; checking.value = false; }
+      if (earned) {
         markDone(id); celebrateStep();
         // Recorded on the account first: the server looks there before it
         // lets the Achievement through.

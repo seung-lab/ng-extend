@@ -14,7 +14,7 @@ import { steps as steps5 } from '../tutorial-cut';
 import { steps as steps6 } from '../tutorial-mec-tour';
 import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
-import { steps as steps9, sandboxContinue, sandboxRestart } from '../merger-sandbox';
+import { steps as steps9, sandboxContinue, sandboxRestart, sandboxSkip } from '../merger-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue } from '../proofreading-test';
 import { endPractice } from '../practice';
@@ -160,13 +160,18 @@ watch(() => useProofreadingBackendStore().userId, async id => {
     }
 }, { immediate: true });
 
-const next = () => {
+// `auto` is true when a step moved itself on (the practice watch); only a
+// press of the button can mean Skip.
+const next = (auto?: unknown) => {
+    const fromButton = auto !== true;
     const isLastStep = activeStep.value?.last;
     const tutorialNum = store.activeTutorial;
     // The Merger Sandbox's last box leads to the next merger.
     if (isLastStep && tutorialNum === 9 && sandboxContinue()) return;
     // Its first box, shown to a player who has solved them all, starts over.
     if (!isLastStep && tutorialNum === 9 && sandboxRestart()) return;
+    // Otherwise that button is Skip: on to another merger.
+    if (!isLastStep && tutorialNum === 9 && fromButton && sandboxSkip()) return;
     // The test's last box: "Try again" starts over.
     if (isLastStep && tutorialNum === TEST_TUTORIAL && testContinue()) return;
     // The last box closes the tutorial outright, by its length, so nothing
@@ -212,7 +217,7 @@ watch(() => store.activeTutorial, (now, before) => {
 // A practice step advances by itself when the edit lands (Amy: straight
 // to the success box).
 // Never on the last box: finishing a tutorial is the learner's own click.
-document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(); });
+document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(true); });
 const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
 // ── Resuming on page load (Nseraf 2026-09-29) ──
 // Progress follows the account, so a tutorial left partway used to restart

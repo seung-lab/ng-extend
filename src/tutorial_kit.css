@@ -410,3 +410,6 @@
    goes without its rule and its diamond (Ames, 2026-10-11). */
 .introductionStepAnchor .chip:has(.nge-sbx-progress) .title { border-bottom: 0 !important; border-image: none !important; padding-bottom: 2px !important; }
 .introductionStepAnchor .chip:has(.nge-sbx-progress) .title::before { display: none !important; }
+
+/* Nurro on the sandbox's result boxes: small, so the box fits a laptop. */
+.nge-sbx-nurro { display: block; height: 92px; width: auto; margin: 0 auto 6px; }

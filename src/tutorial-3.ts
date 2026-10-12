@@ -758,7 +758,8 @@ function submitInsteadOfNext(): boolean {
 document.addEventListener('click', e => {
   const btn = (e.target as HTMLElement | null)?.closest?.('.introductionStepAnchor .chip button') as HTMLElement | null;
   if (!btn) return;
-  if (btn.classList.contains('next') && submitInsteadOfNext()) {
+  // Not when the button says Skip: skipping must never submit a cut.
+  if (btn.classList.contains('next') && !/^skip/i.test((btn.textContent || '').trim()) && submitInsteadOfNext()) {
     e.preventDefault();
     e.stopPropagation();
     return;
