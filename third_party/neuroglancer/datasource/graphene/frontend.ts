@@ -1655,29 +1655,6 @@ class GrapheneGraphServerInterface {
     };
   }
 
-  /** The piece of the cell each of many supervoxels belongs to, in one
-   *  request per few thousand. A supervoxel the server did not answer for is
-   *  left out. */
-  async ngePiecesOfMany(supervoxelIds: string[]): Promise<Map<string, string>> {
-    const {url} = this;
-    if (url === '') return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
-    const out = new Map<string, string>();
-    const wanted = supervoxelIds.filter(id => /^\d+$/.test(id));
-    const BATCH = 4000;
-    for (let i = 0; i < wanted.length; i += BATCH) {
-      const batch = wanted.slice(i, i + BATCH);
-      const response = await cancellableFetchSpecialOk(
-          this.credentialsProvider, `${url}/roots?stop_layer=2&int64_as_str=1`,
-          {method: 'POST', headers: {'Content-Type': 'application/json'}, body: `{"node_ids":[${batch.join(',')}]}`},
-          responseIdentity);
-      // Read as text: the answers are ids too, in the order asked.
-      const ids = ((await response.text()).match(/\d{6,}/g)) ?? [];
-      if (ids.length !== batch.length) throw new Error('The server answered for a different number of pieces than were asked.');
-      batch.forEach((sv, k) => out.set(sv, ids[k]));
-    }
-    return out;
-  }
-
   /** The links between the pieces of a cell, as pairs of piece ids. */
   async ngeBranchEdges(rootId: string): Promise<[string, string][]> {
     const {url} = this;
@@ -1778,6 +1755,8 @@ class GrapheneGraphServerInterface {
         const graph = info?.['graph'], scale = info?.['scales']?.[0];
         const layerBits = Number(graph?.['n_bits_for_layer_id']);
         const bits = Number(graph?.['spatial_bit_masks']?.['2']);
+        // Supervoxels (layer 1) sit in the same blocks as the pieces (layer 2).
+        const bits1 = Number(graph?.['spatial_bit_masks']?.['1']);
         const chunk: number[] = graph?.['chunk_size'], res: number[] = scale?.['resolution'];
         if (!Number.isFinite(layerBits) || !Number.isFinite(bits) || !Array.isArray(chunk) || !Array.isArray(res)) {
           throw new Error('This dataset has no map of its branches.');
@@ -1788,7 +1767,8 @@ class GrapheneGraphServerInterface {
         return (id: string) => {
           let n: bigint;
           try { n = BigInt(id); } catch { return undefined; }
-          if (Number(n >> BigInt(64 - layerBits)) !== 2) return undefined;
+          const layer = Number(n >> BigInt(64 - layerBits));
+          if (layer !== 2 && !(layer === 1 && bits1 === bits)) return undefined;
           const at = (k: number) => Number((n >> BigInt(64 - layerBits - bits * (k + 1))) & mask);
           return [0, 1, 2].map(k => (offset[k] + (at(k) + 0.5) * chunk[k]) * res[k]);
         };
@@ -2744,11 +2724,12 @@ export async function ngeGrapheneCutGraph(layer: SegmentationUserLayer, rootId: 
 }
 
 /** For the cut preview (src/util/cut_preview.ts): the red and blue points
- *  placed so far, and what the server says a cut between them would do.
- *  Red is the group the cut request sends first. Nothing is cut. */
+ *  placed so far, and the groups of supervoxels the server says a cut between
+ *  them would leave. Which group is which side is decided by the app, from
+ *  the points each group holds, not from the order they come in. Nothing is
+ *  cut. */
 export async function ngeGrapheneCutPreview(layer: SegmentationUserLayer): Promise<{
-  rootId: string, redPicks: string[], bluePicks: string[], redBits: string[], blueBits: string[], illegal: boolean,
-  pieceOf: Map<string, string>, mappedAll: boolean,
+  rootId: string, redPicks: string[], bluePicks: string[], groups: string[][], illegal: boolean,
 }> {
   const connection = layer.graphConnection.value;
   if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
@@ -2759,22 +2740,39 @@ export async function ngeGrapheneCutPreview(layer: SegmentationUserLayer): Promi
   const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
   const server = connection.graph.graphServer as any;
   const preview: {sides: string[][], illegal: boolean} = await server.ngeSplitPreview(red, blue, toNm);
-  const redPicks = red.map(x => x.segmentId.toString()), bluePicks = blue.map(x => x.segmentId.toString());
-  const redBits = preview.sides[0] ?? [], blueBits = preview.sides[1] ?? [];
-  // Which piece each bit is in. A very large preview is sampled: a piece is
-  // decided by where most of its bits are, and a sample says that as well.
-  const LIMIT = 24000;
-  const thin = (bits: string[], keep: number) => {
-    if (bits.length <= keep) return bits;
-    const step = bits.length / keep;
-    return Array.from({length: keep}, (_, k) => bits[Math.floor(k * step)]);
-  };
-  const asked = [...new Set([...redPicks, ...bluePicks, ...thin(redBits, LIMIT / 2), ...thin(blueBits, LIMIT / 2)])];
-  const pieceOf: Map<string, string> = await server.ngePiecesOfMany(asked);
   return {
-    rootId: red[0].rootId.toString(), redPicks, bluePicks, redBits, blueBits, illegal: preview.illegal, pieceOf,
-    mappedAll: redBits.length + blueBits.length <= LIMIT,
+    rootId: red[0].rootId.toString(),
+    redPicks: red.map(x => x.segmentId.toString()), bluePicks: blue.map(x => x.segmentId.toString()),
+    groups: preview.sides, illegal: preview.illegal,
   };
+}
+
+/** The block of the volume each id lies in ([x0, y0, z0, x1, y1, z1] in
+ *  nanometres), for supervoxels and for pieces alike. Read from the id. */
+export async function ngeGrapheneBoxesOf(layer: SegmentationUserLayer, ids: string[]): Promise<Map<string, number[]>> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  return (connection.graph.graphServer as any).ngeChunkBoxes(ids);
+}
+
+/** The piece each of a FEW supervoxels belongs to, one request each, a few
+ *  at a time (the same request Highlight mode makes for a click). One the
+ *  server does not answer for is left out. */
+export async function ngeGraphenePiecesOf(layer: SegmentationUserLayer, supervoxelIds: string[]): Promise<Map<string, string>> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const server = connection.graph.graphServer as any;
+  const out = new Map<string, string>();
+  const todo = [...new Set(supervoxelIds)];
+  const next = async () => {
+    for (;;) {
+      const sv = todo.pop();
+      if (!sv) return;
+      try { out.set(sv, await server.ngePieceOf(sv)); } catch { /* left out */ }
+    }
+  };
+  await Promise.all([next(), next(), next(), next(), next(), next()]);
+  return out;
 }
 
 /** The piece of its cell that a pick landed in, or undefined. */
