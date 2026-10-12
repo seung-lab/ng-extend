@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T16:01:00Z",
+      "title": "Cut mode can stay open after a cut",
+      "items": [
+        "Tick Keep open after a cut, at the right end of the cut bar, and cut mode stays on after each cut, ready for the next one. Esc or C closes it. It is off unless you turn it on, and your choice is remembered.",
+        "A cut the server refuses no longer leaves the bar waiting: the spinner stops and you can try again."
+      ]
+    },
+    {
       "at": "2026-10-12T15:43:00Z",
       "title": "The lab's notes in the Delta menu",
       "items": [

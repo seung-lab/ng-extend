@@ -1057,6 +1057,30 @@ function observeSplitMergeTools() {
     checkStatusMessages();
   }
 
+  // The cut tool says how a submit went (graphene frontend.ts dispatches
+  // 'nge-cut-submitted'). With "Keep open after a cut" on, the tool stays
+  // after a successful cut, so the close path above never runs: the result
+  // shows in place, as a merge's does, and the bar is back to "Ctrl+Click"
+  // for the next cut. Off, the tool closes next and the close path shows
+  // "Split complete" as before. A failed cut stops the spinner either way;
+  // the status scanner shows the server's words when there are any.
+  window.addEventListener('nge-cut-submitted', (e: Event) => {
+    if (!store.toolActive || store.pendingClose) return;
+    const ok = !!(e as CustomEvent).detail?.success;
+    if (ok && !store.keepCutOpen) return;
+    // Not a new submit: the points were reset by the cut itself, and a cut
+    // that is already done must not be celebrated again when the tool closes.
+    splitSubmitted = false;
+    if (ok) {
+      prevSinkCount = 0;
+      prevSourceCount = 0;
+      store.showResult('success', 'Cut complete', 1500);
+    } else if (!store.resultFlash) {
+      store.submitting = false;
+      store.setStatusMessage('');
+    }
+  });
+
   // Debounce with requestAnimationFrame to avoid thrashing
   function debouncedScan() {
     if (rafId !== null) return;

@@ -30,6 +30,7 @@ import pinOtherVtkUrl from '../static/tags/pin-other.vtk';
 import scytheVtkUrl from '../static/tags/scythe.vtk';
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
+import {NGE_KEEP_CUT_OPEN_KEY, ngeKeepCutOpen} from 'neuroglancer/datasource/graphene/frontend';
 import {setStatedColor} from "./widgets/widget_utils";
 import {mintShortStateLink} from "./util/state_link";
 
@@ -3187,6 +3188,14 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
    *  distinguish a Clear (points reset to 0, no submit) from an actual split
    *  submit (points also reset to 0, but the operation is processing). */
   const clearedAt = ref(0);
+  /** "Keep open after a cut" (Nseraf 2026-10-12). Off by default: the cut
+   *  tool closes after a cut. On, it stays for the next one. Kept in this
+   *  browser; the cut tool itself reads the same key at each submit. */
+  const keepCutOpen = ref(ngeKeepCutOpen());
+  function setKeepCutOpen(on: boolean) {
+    keepCutOpen.value = on;
+    try { localStorage.setItem(NGE_KEEP_CUT_OPEN_KEY, on ? '1' : '0'); } catch { /* a private window: it holds for this page only */ }
+  }
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -3303,9 +3312,9 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   return {
     toolActive, activeGroup, redPointCount, bluePointCount,
     mergeSubmissionCount, mergeSegments, mergeRows, autoSubmit, submitting, statusMessage, resultFlash, resultText,
-    pendingClose, closingTool, clearedAt,
+    pendingClose, closingTool, clearedAt, keepCutOpen,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
-    showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared,
+    showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared, setKeepCutOpen,
   };
 });
 

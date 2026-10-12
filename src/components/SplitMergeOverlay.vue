@@ -205,6 +205,12 @@ const rowRemovable = (i: number) => store.mergeRows[i]?.removable ?? true;
 /** Why a merge failed, in the server's words: shown under its row. */
 const rowWhy = (i: number) => store.mergeRows[i]?.why || '';
 
+/** "Keep open after a cut" (Nseraf 2026-10-12): off, the bar closes after a
+ *  cut, as Ames likes it; on, it stays for the next cut. Remembered. */
+function toggleKeepCutOpen() {
+  store.setKeepCutOpen(!store.keepCutOpen);
+}
+
 /** Toggle NG's native auto-submit checkbox */
 function toggleAutoSubmit() {
   const mergeEl = document.querySelector('.graphene-merge-segments');
@@ -308,6 +314,14 @@ function cancelTool() {
           </div>
 
           <div class="nge-smo-hint nge-smo-hint--left" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
+
+          <!-- At the right end: whether the bar stays after a cut. Off by
+               default (Ames: one cut, then move on); on for a run of cuts on
+               one cell (Nseraf). -->
+          <label class="nge-smo-auto-submit nge-smo-keep-open" title="Keep cut mode open after a cut, ready for the next one. Esc or C closes it. Off, cut mode closes after each cut." @click.prevent="toggleKeepCutOpen">
+            <span class="nge-smo-checkbox" :class="{ checked: store.keepCutOpen }">{{ store.keepCutOpen ? '☑' : '☐' }}</span>
+            Keep open after a cut
+          </label>
         </template>
 
         <!-- MERGE MODE -->
@@ -1268,6 +1282,12 @@ function cancelTool() {
   color: rgb(154 162 177);
 }
 .nge-smo-auto-submit:hover { color: #a6ffd6; }
+/* the cut bar's one option sits at the right end, after the hint */
+.nge-smo-keep-open { margin-left: auto; margin-right: 0; flex-shrink: 0; }
+/* On a phone the cut bar already runs off the right edge (the hint is
+   squeezed to nothing), and a cut needs Ctrl+click and C, so the option
+   would be off screen and unusable there: not drawn. */
+body.nge-mobile .nge-smo-keep-open { display: none; }
 /* a drawn box in place of the box characters */
 .nge-smo-checkbox {
   position: relative; display: inline-block; width: 14px; height: 14px; font-size: 0; border-radius: 3px;

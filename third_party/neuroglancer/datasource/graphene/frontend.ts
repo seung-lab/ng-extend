@@ -2069,6 +2069,17 @@ const MULTICUT_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
 });
 
+/** nge: "Keep open after a cut", the preference at the right end of the cut
+ *  bar (Nseraf 2026-10-12: merge stayed open after a merge, cut closed after a
+ *  cut). Off by default, so the cut tool closes after a successful cut, as it
+ *  always has. On, it stays for the next cut. Kept in this browser; the bar
+ *  (src/components/SplitMergeOverlay.vue) writes it, the tool reads it at
+ *  each submit. */
+export const NGE_KEEP_CUT_OPEN_KEY = 'nge-keep-cut-open';
+export function ngeKeepCutOpen(): boolean {
+  try { return localStorage.getItem(NGE_KEEP_CUT_OPEN_KEY) === '1'; } catch { return false; }
+}
+
 class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
   toJSON() {
     return GRAPHENE_MULTICUT_SEGMENTS_TOOL_ID;
@@ -2105,9 +2116,18 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
           loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
       graphConnection.submitMulticut(annotationToNanometers).then(success => {
         submitIcon.classList.toggle('disabled', false);
-        if (success) {
+        // nge: the cut bar shows how it went (in place, when the tool stays).
+        window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success}}));
+        // With "Keep open after a cut" on, the tool stays for the next cut,
+        // as merge does. Off, it closes after a cut, as it always has.
+        if (success && !ngeKeepCutOpen()) {
           activation.cancel();
         }
+      }, () => {
+        // The server refused or failed: the status bar has said why. The
+        // Submit icon comes back so the next try can go.
+        submitIcon.classList.toggle('disabled', false);
+        window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success: false}}));
       });
     }
     const submitIcon = makeIcon({
