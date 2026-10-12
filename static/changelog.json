@@ -2,10 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-12T16:15:00Z",
+      "at": "2026-10-12T16:34:00Z",
       "title": "The slim Merger Sandbox box is one bar",
       "items": [
         "Folded, the Merger Sandbox box is now a single bar: your progress and Skip. Open it again with the small arrow for the hint and Help me."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:15:00Z",
+      "title": "Retina cells show what the lab knows",
+      "items": [
+        "On Retina, a cell the lab's own sheet lists now shows it in the segment list: its mark says proofread, typed or done, and its class and type stand in for its ID.",
+        "The Delta menu fills in the same way. Completion Status and Cell Type say what the lab's sheet says wherever nothing is saved in Pyr yet, and the menu's title is the cell's class and type.",
+        "What you save in Pyr always wins, and the lab's sheet does not change your stats."
       ]
     },
     {
