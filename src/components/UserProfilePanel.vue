@@ -875,6 +875,69 @@ const scopedCellDays = ref<EffortDay[] | null>(null);
 /** The matched completion rows, newest first, for the recent cells list. */
 const scopedCompletionRows = ref<Array<{ cell: string; done_at: string; dataset: string }> | null>(null);
 const scopedCellsFailed = ref(false);
+
+// The curves' range: one choice for both curves (Ames 2026-10-12: "a way for
+// me to set the date range"), kept in this browser. 0 is the whole record.
+const CURVE_SPANS = [0, 90, 30, 7];
+const CURVE_SPAN_KEY = 'nge-profile-curve-span';
+function loadCurveSpan(): number {
+  try { const v = Number(localStorage.getItem(CURVE_SPAN_KEY)); return CURVE_SPANS.includes(v) ? v : 0; } catch { return 0; }
+}
+const curveSpan = ref<number>(loadCurveSpan());
+function setCurveSpan(days: number) {
+  curveSpan.value = days;
+  try { localStorage.setItem(CURVE_SPAN_KEY, String(days)); } catch { /* private mode */ }
+}
+
+// Cells identified: the cells whose type this player set in Pyr (the game's
+// own log, 'set_cell_type' rows stamped by the server), on its real
+// datasets; the Sandbox does not count. A cell counts once, by the type it
+// was given last; Unknown or Unsure does not count. Open text types count
+// for now. (Ames's rules for the planned Identification track, 2026-10-07;
+// the count on the profile, 2026-10-12.) Not annotation points.
+const scopedIdentified = ref<number | null>(null);
+const scopedIdentifiedFailed = ref(false);
+let scopedIdentifiedReq = 0;
+const SANDBOX_CANON = new Set(DATASETS.filter(d => d.section === 'sandbox').map(d => canonicalDataset(d.id)));
+const NOT_A_TYPE = /^\s*$|unknown|unsure|not sure|unclear/i;
+async function loadScopedIdentifications() {
+  const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
+  const req = ++scopedIdentifiedReq;
+  scopedIdentifiedFailed.value = false;
+  if (!uid) { scopedIdentified.value = null; return; }
+  try {
+    const { supabase } = await import('../supabase');
+    const rows: Array<{ segment_after: string | null; dataset: string | null; success: boolean | null; metadata: any }> = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase.from('edit_log')
+        .select('segment_after, dataset, success, metadata')
+        .eq('user_id', uid).eq('operation', 'set_cell_type')
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      rows.push(...(data ?? []));
+      if (!data || data.length < PAGE) break;
+    }
+    if (req !== scopedIdentifiedReq) return;
+    const latest = new Map<string, string>();  // oldest first, so the last word on a cell wins
+    for (const r of rows) {
+      if (r.success === false) continue;
+      if (SANDBOX_CANON.has(canonicalDataset(r.dataset))) continue;
+      const cell = String(r.metadata?.root_id ?? r.segment_after ?? '');
+      if (!cell) continue;
+      latest.set(cell, String(r.metadata?.cell_type ?? ''));
+    }
+    let n = 0;
+    for (const t of latest.values()) if (!NOT_A_TYPE.test(t)) n++;
+    scopedIdentified.value = n;
+  } catch (e) {
+    if (req !== scopedIdentifiedReq) return;
+    console.warn('[profile] cells identified unavailable', e);
+    scopedIdentified.value = null;
+    scopedIdentifiedFailed.value = true;
+  }
+}
 let scopedCellsReq = 0;
 /** Zeros while loading, never another dataset's numbers. */
 const overviewCells = computed(() => scopedCells.value ?? { today: 0, week: 0, all: 0 });
@@ -1011,9 +1074,10 @@ async function loadScopedCompletions() {
 
 loadScopedEdits();
 loadScopedCompletions();
-watch(() => backendStore.userId, () => { loadScopedEdits(); loadScopedCompletions(); });
+loadScopedIdentifications();
+watch(() => backendStore.userId, () => { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); });
 // Re-scope when coming back to Overview (the Datasets tab can switch datasets).
-watch(activeTab, tab => { if (tab === 'overview') { loadScopedEdits(); loadScopedCompletions(); } });
+watch(activeTab, tab => { if (tab === 'overview') { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); } });
 
 /** Edits section numbers: this dataset's, or career-wide if edit_log failed. */
 const overviewEdits = computed(() => {
@@ -1327,18 +1391,17 @@ const emit = defineEmits({hide: null, 'open-settings': null});
               </div>
             </div>
           </template>
-          <!-- Building Pyr: how much has been built, from GitHub. Only on
-               the profile of the person building it (Ames 2026-10-10). -->
-          <div v-if="showsBuilding && repoStats" class="nge-profile-section nge-profile-section--building">
-            <div class="nge-profile-section-label">▌ Building Pyr</div>
+          <!-- Cells identified: cells whose type this player set, each once.
+               Beside the name until the Identification track has a row of
+               its own (Ames 2026-10-12: "put cells identified where Building
+               Pyr is; eventually it will be a new row"). -->
+          <div class="nge-profile-section nge-profile-section--identified">
+            <div class="nge-profile-section-label">▌ Cells identified</div>
             <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
-              <div class="nge-profile-stat-col nge-profile-stat-tile nge-profile-stat-tile--build" title="Changes saved to Pyr's code">
-                <div class="nge-profile-stat-label">Commits</div>
-                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="repoStats.commits" /></div>
-              </div>
-              <div class="nge-profile-stat-col nge-profile-stat-tile nge-profile-stat-tile--build" title="Times a new version of Pyr has gone live">
-                <div class="nge-profile-stat-label">Deploys</div>
-                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="repoStats.deploys" /></div>
+              <div class="nge-profile-stat-col nge-profile-stat-tile nge-profile-stat-tile--identified" :title="(viewingOtherUser ? 'Cells whose type this player set' : 'Cells whose type you set') + ' in Pyr, on its real datasets (the Sandbox does not count). A cell counts once, by its latest type; Unknown or Unsure does not count. Not annotation points.'">
+                <div class="nge-profile-stat-label">All time</div>
+                <div v-if="scopedIdentifiedFailed" class="nge-profile-stat-val nge-profile-stat-val--na" title="Not available right now">n/a</div>
+                <div v-else class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="scopedIdentified ?? 0" /></div>
               </div>
             </div>
           </div>
@@ -1375,7 +1438,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
                 <img :src="getBadgeUrl(latestExplorationBadge.imageKey)" :alt="latestExplorationBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestExplorationBadge.slug}`" />
               </div>
             <div class="nge-profile-windows">
-              <EffortCurve v-if="scopedCellDays && scopedCellDays.length" :days="scopedCellDays" color="144 255 242" unit="cells" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
+              <EffortCurve v-if="scopedCellDays && scopedCellDays.length" :days="scopedCellDays" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
               <div class="nge-profile-stat-row">
                 <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                   {label:'Today',    val:overviewCells.today},
@@ -1475,7 +1538,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
             <!-- The same rows as the three numbers, as a line from the first
                  day to today (Ames 2026-10-11). Nothing while they load, and
                  nothing for the career fallback, which has no days. -->
-            <EffortCurve v-if="scopedEditDays && scopedEditDays.length" :days="scopedEditDays" color="255 208 138" unit="edits" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
+            <EffortCurve v-if="scopedEditDays && scopedEditDays.length" :days="scopedEditDays" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                 {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
@@ -1744,6 +1807,23 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               </div>
             </div>
             </template>
+          </div>
+          <!-- Building Pyr: how much has been built, from GitHub. Only on
+               the profile of the person building it (Ames 2026-10-10). Under
+               the Scout report since the count of cells identified took its
+               place beside the name (Ames 2026-10-12). -->
+          <div v-if="showsBuilding && repoStats" class="nge-profile-section nge-profile-section--building">
+            <div class="nge-profile-section-label">▌ Building Pyr</div>
+            <div class="nge-profile-stat-row nge-profile-stat-row--tiles">
+              <div class="nge-profile-stat-col nge-profile-stat-tile nge-profile-stat-tile--build" title="Changes saved to Pyr's code">
+                <div class="nge-profile-stat-label">Commits</div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="repoStats.commits" /></div>
+              </div>
+              <div class="nge-profile-stat-col nge-profile-stat-tile nge-profile-stat-tile--build" title="Times a new version of Pyr has gone live">
+                <div class="nge-profile-stat-label">Deploys</div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="repoStats.deploys" /></div>
+              </div>
+            </div>
           </div>
               </div>
             </div>
@@ -4625,7 +4705,9 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
    the old middle column: the hairline and the faint tint. */
 .nge-track-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* the stats take the larger share: three windows with merge/split
+     breakdowns need the room, the tile grid is capped at 440 px */
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   gap: 0 22px;
   padding: 16px 0 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -4697,9 +4779,42 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 .nge-profile-stat-col--all .nge-profile-stat-val,
 .nge-track-row--days .nge-profile-stat-val--hero {
   font-family: 'Orbitron', 'Rajdhani', ui-monospace, 'Cascadia Code', monospace;
-  font-size: 1.6em; font-weight: 700; letter-spacing: 0.02em;
+  font-size: 1.6em; font-weight: 700; letter-spacing: 0.02em; line-height: 1.15;
   color: var(--track);
   text-shadow: 0 0 16px color-mix(in srgb, var(--track) 35%, transparent);
+}
+
+/* ── The three windows share their lines (Ames 2026-10-12: "all time is out
+   of alignment with the other stats") ──────────────────────────────────────
+   One grid for the nine cells, not three stacked columns: the labels on one
+   line, the three numbers on ONE BASELINE whatever their face and size, and
+   the merge/split breakdowns on one line under them. The columns are sized
+   to their content, so the bigger All time number takes what it needs and
+   the row never runs past its box into the Achievements (Ames: "edit badges
+   are very close to the edge of the graph"); a breakdown short of room for
+   one line wraps to two instead. */
+.nge-profile-windows .nge-profile-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(min-content, 1fr));
+  gap: 0 16px;  /* the flex rule's gap would open 16 px between the lines */
+  align-items: baseline;
+}
+.nge-profile-windows .nge-profile-stat-col { display: contents; }
+.nge-profile-windows .nge-profile-stat-col:nth-child(1) > * { grid-column: 1; }
+.nge-profile-windows .nge-profile-stat-col:nth-child(2) > * { grid-column: 2; }
+.nge-profile-windows .nge-profile-stat-col:nth-child(3) > * { grid-column: 3; }
+.nge-profile-windows .nge-profile-stat-label { grid-row: 1; }
+.nge-profile-windows .nge-profile-stat-val { grid-row: 2; }
+.nge-profile-windows .nge-profile-stat-breakdown { grid-row: 3; flex-wrap: wrap; row-gap: 2px; min-width: 0; }
+/* the laptop tiers keep the breakdowns to one line a little longer, and
+   where the windows are too narrow for that (a 1366 px laptop) all three
+   stack as two lines together, not whichever happens to run out of room */
+.is-compact .nge-profile-windows .nge-profile-stat-bp { font-size: 0.84em; gap: 3px; }
+.is-compact .nge-profile-windows .nge-profile-stat-icon { width: 16px; height: 16px; }
+.is-compact .nge-profile-windows .nge-profile-stat-breakdown { column-gap: 8px; }
+.nge-profile-windows { container-type: inline-size; }
+@container (max-width: 360px) {
+  .nge-profile-stat-breakdown { flex-direction: column; align-items: flex-start; row-gap: 1px; }
 }
 .is-compact .nge-profile-stat-col--all .nge-profile-stat-val,
 .is-compact .nge-track-row--days .nge-profile-stat-val--hero { font-size: 1.4em; }
@@ -4763,7 +4878,22 @@ body:not(.nge-mobile) .nge-track-row--rest .nge-cell-list-scroll { flex: 1 1 0; 
 .is-compact .nge-profile-stat-breakdown { margin-top: 2px; }
 .is-tiny .nge-track-row { padding: 3px 0 5px; }
 /* the curve's caption goes on laptops; hovering the curve still reads any day */
-.is-compact :deep(.nge-effort-cap) { display: none; }
+.is-compact :deep(.nge-effort-cap-start), .is-compact :deep(.nge-effort-cap-end) { display: none; }
+.is-compact :deep(.nge-effort-cap) { margin-top: 1px; }
+.nge-profile-stat-val--na { color: rgba(200, 215, 240, 0.4); font-size: 0.9em; }
+/* Cells identified beside the name: the tile the Building Pyr numbers used,
+   in the plain number colour until the Identification track has a colour */
+.nge-profile-stat-tile--identified .nge-profile-stat-val { color: #d8dde8; text-shadow: none; }
+.nge-track-achievements--rest .nge-profile-section--building { margin-top: 16px; }
+/* on laptops it is one line, the label and the two numbers side by side
+   with no tiles, so the last row still fits without a scroll */
+.is-compact .nge-track-achievements--rest .nge-profile-section--building { margin-top: 4px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
+.is-compact .nge-track-achievements--rest .nge-profile-section--building .nge-profile-section-label { margin: 0; }
+.is-compact .nge-track-achievements--rest .nge-profile-section--building .nge-profile-stat-row--tiles { display: flex; gap: 12px; flex-wrap: nowrap; }
+.is-compact .nge-track-achievements--rest .nge-profile-section--building .nge-profile-stat-tile { flex: none; min-width: 0; padding: 0; gap: 6px; background: none; border: none; box-shadow: none; }
+.is-compact .nge-track-achievements--rest .nge-profile-section--building .nge-profile-stat-val--hero { font-size: 1em; }
+.is-compact .nge-track-achievements--rest .nge-profile-section--building .nge-profile-section-label { font-size: 0.7em; }
+.is-compact .nge-track-achievements--rest .nge-profile-section--building .nge-profile-stat-label { font-size: 0.62em; }
 /* on a small laptop the merge and split breakdown goes too; the tooltip keeps it */
 .is-tiny .nge-profile-stat-breakdown { display: none; }
 /* the Scout report's five numbers wrap in the last row's narrow right half */

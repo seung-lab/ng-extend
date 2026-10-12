@@ -9,7 +9,9 @@
  * carries the total read off the curve at the pen, and one ring marks the
  * arrival. Two shaded bands at the right end are the past 7 days and
  * today, so the three numbers above are also three places on the line.
- * Hover or touch reads any day.
+ * Hover or touch reads any day. A range (All, 90d, 30d, 7d; Ames
+ * 2026-10-12) cuts the record to its last days and the line is the running
+ * total from that day, so at 7d it ends on the Past 7d number above it.
  *
  * Plays once, on mount and again if the record changes (a dataset switch).
  * A resize redraws it finished, without a replay. Under
@@ -37,7 +39,13 @@ const props = defineProps<{
   unit: string;
   /** Drawn height in px; 76 by default, less on a short screen. */
   height?: number;
+  /** Days to show, counted back from today; 0 or unset is the whole record. */
+  span?: number;
+  /** The ranges to offer, in days; 0 is all. Shown when given. */
+  spans?: number[];
 }>();
+const emit = defineEmits<{ (e: 'update:span', days: number): void }>();
+function spanLabel(s: number): string { return s ? s + 'd' : 'All'; }
 
 const fig = ref<HTMLElement | null>(null);
 const done = ref(false);
@@ -75,15 +83,19 @@ function render(animate: boolean) {
   const host = fig.value;
   clear();
   if (!host) return;
-  const days = props.days;
+  const all = props.days;
+  const span = props.span ?? 0;
+  // the past N days and today, as the 7D band counts them
+  const cut = span > 0 && all.length > span + 1;
+  const days = cut ? all.slice(-(span + 1)) : all;
   const N = days.length;
   if (!N) { startLabel.value = ''; summary.value = ''; return; }
-  startLabel.value = monthLabel(days[0].date);
+  startLabel.value = cut ? dayLabel(days[0].date) : monthLabel(days[0].date);
 
   const cum: number[] = []; let s = 0;
   for (let i = 0; i < N; i++) { s += days[i].n; cum.push(s); }
   const total = s, max = Math.max(1, total);
-  summary.value = `${total.toLocaleString()} ${props.unit} since ${startLabel.value}`;
+  summary.value = cut ? `${total.toLocaleString()} ${props.unit} in the past ${span} days` : `${total.toLocaleString()} ${props.unit} since ${startLabel.value}`;
 
   const W = Math.max(120, Math.round(host.getBoundingClientRect().width)) || 400, H = props.height ?? 76;
   drawnWidth = W;
@@ -106,12 +118,16 @@ function render(animate: boolean) {
 
   // the windows, as bands: the past 7 days, and today on top of it
   const w0 = Math.max(0, N - 8), t0 = Math.max(0, N - 2);
-  svg.appendChild(el('rect', { class: 'nge-effort-band', x: X(w0), y: P.t - 8, width: Math.max(1, X(N - 1) - X(w0)), height: ih + 8 + P.b }));
+  if (w0 > 0) {
+    svg.appendChild(el('rect', { class: 'nge-effort-band', x: X(w0), y: P.t - 8, width: Math.max(1, X(N - 1) - X(w0)), height: ih + 8 + P.b }));
+  }
   svg.appendChild(el('rect', { class: 'nge-effort-band nge-effort-band--today', x: X(t0), y: P.t - 8, width: Math.max(1, X(N - 1) - X(t0)), height: ih + 8 + P.b }));
-  svg.appendChild(el('line', { class: 'nge-effort-band-edge', x1: X(w0), y1: P.t - 8, x2: X(w0), y2: base }));
-  const bandLabel = el('text', { class: 'nge-effort-band-label', x: X(w0) + 3, y: base - 3, 'text-anchor': 'start' });
-  bandLabel.textContent = '7D';
-  svg.appendChild(bandLabel);
+  if (w0 > 0) {
+    svg.appendChild(el('line', { class: 'nge-effort-band-edge', x1: X(w0), y1: P.t - 8, x2: X(w0), y2: base }));
+    const bandLabel = el('text', { class: 'nge-effort-band-label', x: X(w0) + 3, y: base - 3, 'text-anchor': 'start' });
+    bandLabel.textContent = '7D';
+    svg.appendChild(bandLabel);
+  }
   svg.appendChild(el('line', { class: 'nge-effort-base', x1: P.l, y1: base, x2: W - P.r, y2: base }));
 
   // the area and the line
@@ -206,13 +222,21 @@ onMounted(() => {
   }
 });
 watch(() => props.days, () => render(true));
+watch(() => props.span, () => render(true));
 watch(() => props.height, () => render(false));
 onBeforeUnmount(() => { clear(); ro?.disconnect(); ro = null; });
 </script>
 
 <template>
   <figure ref="fig" class="nge-effort" :class="{ 'is-done': done }" :style="{ '--c': color, '--h': (height ?? 76) + 'px' }" :aria-label="summary">
-    <figcaption class="nge-effort-cap"><span>{{ startLabel }}</span><span v-if="startLabel">Today</span></figcaption>
+    <figcaption class="nge-effort-cap">
+      <span class="nge-effort-cap-start">{{ startLabel }}</span>
+      <!-- the range: one choice shared by every curve on the page (the parent holds it) -->
+      <span v-if="spans && spans.length" class="nge-effort-spans" role="group" aria-label="Range">
+        <button v-for="s in spans" :key="s" type="button" class="nge-effort-span" :class="{ 'is-on': (span ?? 0) === s }" :aria-pressed="(span ?? 0) === s" :title="s ? 'The past ' + s + ' days' : 'Since your first day'" @click="emit('update:span', s)">{{ spanLabel(s) }}</button>
+      </span>
+      <span v-if="startLabel" class="nge-effort-cap-end">Today</span>
+    </figcaption>
   </figure>
 </template>
 
@@ -252,10 +276,21 @@ onBeforeUnmount(() => { clear(); ro?.disconnect(); ro = null; });
 .nge-effort :deep(.nge-effort-cursor text) { font-size: 10.5px; fill: #cfd8e8; }
 .nge-effort :deep(.nge-effort-cursor circle) { fill: #fff; }
 .nge-effort-cap {
-  display: flex; justify-content: space-between; gap: 8px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
   margin: 3px 0 0; font-size: 0.62em; letter-spacing: .04em;
   color: rgba(200, 215, 240, .45);
 }
+/* the range: four small words in the curve's colour, the chosen one lit */
+.nge-effort-spans { display: inline-flex; gap: 1px; margin: 0 auto; }
+.nge-effort-span {
+  appearance: none; background: none; border: 0; margin: 0; padding: 1px 6px;
+  font: inherit; letter-spacing: .08em; text-transform: uppercase; line-height: 1.4;
+  color: rgb(var(--c) / .5); border-radius: 3px; cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.nge-effort-span:hover { color: rgb(var(--c) / .9); }
+.nge-effort-span.is-on { color: rgb(var(--c)); background: rgb(var(--c) / .12); }
+.nge-effort-span:focus-visible { outline: 1px solid rgb(var(--c) / .8); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
   .nge-effort.is-done :deep(.nge-effort-halo) { animation: none; }
 }
