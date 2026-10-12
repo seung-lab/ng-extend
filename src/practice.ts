@@ -894,8 +894,15 @@ const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
   // touch across the join, from the edges her reference cuts removed
   // (operations 1872 and 1873). Checked against history: parted by the
   // reference cut, still together after the stray one.
-  '0482d846-0c16-4393-ab8a-0d1212b9520f': ['75508549324873021', '75508549324879021'],
-  '814be870-9149-4474-876f-195e0af0bd08': ['74593068321675225', '74593068321697468'],
+  // Widened 2026-10-12: the pair that touched across the join was too
+  // strict. A cut with its points a few voxels over takes a slightly
+  // different plane, and a player made the right cut on Merger 8 several
+  // times without it counting (AzureJay, operation 1966). These are the
+  // supervoxels under the reference cut's own red and blue points, about
+  // 300 nm apart with the join between them. Replayed against every cut in
+  // the history: the cuts at the join part them, the stray ones do not.
+  '0482d846-0c16-4393-ab8a-0d1212b9520f': ['75508549324873021', '75508549324875952'],
+  '814be870-9149-4474-876f-195e0af0bd08': ['74593068321697409', '74593068321720790'],
 };
 /**
  * Split view (2D images beside 3D), with the 2D panel rebuilt once the view

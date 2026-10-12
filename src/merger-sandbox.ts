@@ -194,6 +194,8 @@ const thisOneCut = () => cutNow.value;
  * watch can miss it), it goes to the success box instead. With no other
  * merger left to try, it goes to the check box as before.
  */
+/** Which attempt to take a cell is the current one. */
+let taking = 0;
 let skipping = false;
 export function sandboxSkip(): boolean {
   if (askAgain.value) return false;
@@ -242,21 +244,40 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
       // Asking whether to go again: no cell is taken until they say yes.
       if (askAgain.value) return;
       // One merger is assigned at a time, and players work in parallel
-      // (Ames, 2026-10-08): if this one is taken, the next free one this
-      // player has not cut is given instead, then any free one.
-      const order = [current, ...SANDBOX_CELLS.map((_, i) => i).filter(i => i !== current)]
-        .sort((a, b) => Number(sandboxDone.value.includes(SANDBOX_CELLS[a].id)) - Number(sandboxDone.value.includes(SANDBOX_CELLS[b].id)));
-      const got = await movingToSandbox('Merger Sandbox', async () => {
+      // (Ames, 2026-10-08): if this one is taken, another this player has
+      // NOT solved is given instead. Never a solved one while unsolved ones
+      // remain: a player whose last merger was being reset was handed the
+      // one before it, solved it again, and was sent round in a loop
+      // (AzureJay, 2026-10-12). With none free, the box says so and keeps
+      // trying by itself.
+      const solved = (i: number) => sandboxDone.value.includes(SANDBOX_CELLS[i].id);
+      const everyone = [current, ...SANDBOX_CELLS.map((_, i) => i).filter(i => i !== current)];
+      const unsolved = everyone.filter(i => !solved(i));
+      const order = unsolved.length ? unsolved : everyone;
+      const mine = ++taking;
+      const store = useTutorialStore();
+      const take = async () => {
         for (const i of order) {
           const cellRow = await beginPractice('cut', 'start', { only: SANDBOX_CELLS[i].id });
           if (cellRow) { current = i; return cellRow; }
         }
         return null;
-      });
+      };
+      let got = await movingToSandbox('Merger Sandbox', take);
+      for (let tries = 0; !got && tries < 40; tries++) {
+        practiceStatus(order.length === 1
+          ? 'This merger is being put back to its starting state. It will open by itself in a moment.'
+          : 'The mergers you have left are in use or being put back to their starting state. One will open by itself in a moment.');
+        await new Promise(r => setTimeout(r, 15000));
+        // The player closed the box or moved on meanwhile.
+        if (mine !== taking || store.activeTutorial !== SANDBOX_TUTORIAL || store.getTutorialStep() !== 0) return;
+        got = await take();
+      }
       if (!got) {
-        practiceStatus(`Every merger is being worked on by someone else right now, or is being reset. Try again in a few minutes.`);
+        practiceStatus('No merger came free. Try again in a few minutes.');
         return;
       }
+      if (mine !== taking) return;
       // Watch only once the cell is held: with nothing held, the watch
       // would queue for the Cut tutorial's cells.
       watchPractice(false, 'Ctrl+click to add points. Remember to press G to switch the cut colour group.', '', { advance: true });
