@@ -68,7 +68,8 @@ export interface DatasetEntry {
   /** This version's name in its group's list. */
   variantLabel?: string;
   /** Where the dataset came from, shown on its card as "From Princeton"
-   *  (Ames 2026-10-12). Only the ones Ames named carry it. */
+   *  (Ames 2026-10-12). Only the ones Ames named carry it: MCNS has none
+   *  until she says. */
   origin?: string;
   /** The dataset's own published size, for scale beside what EyeWire II
    *  players did there (Dataset Stats). A fixed figure from a named release,
@@ -88,11 +89,12 @@ export interface DatasetEntry {
 export type DatasetSection = 'sandbox' | 'viewonly' | 'production';
 
 /** Switcher cards for grouped datasets. */
-export const DATASET_GROUPS: Record<string, { label: string; description: string; thumbnail?: string; section?: DatasetSection }> = {
+export const DATASET_GROUPS: Record<string, { label: string; description: string; thumbnail?: string; section?: DatasetSection; origin?: string }> = {
   microns: {
     section: 'viewonly',
     label: 'MICrONS: Mouse Visual Cortex',
     description: '1 mm³ of mouse visual cortex (8×8×40 nm)',
+    origin: 'MICrONS Consortium',
     thumbnail: thumbMicrons,
   },
 };
@@ -149,6 +151,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pinky_sandbox',
+    origin: 'MICrONS Consortium',
     section: 'sandbox',
     caveDataset: 'pinky100',
     thumbnail: thumbMicrons,
@@ -177,6 +180,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65',
+    origin: 'MICrONS Consortium',
     group: 'microns',
     variantLabel: 'Public release (v117)',
     caveDataset: 'microns_public',
@@ -205,6 +209,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'minnie65_live',
+    origin: 'MICrONS Consortium',
     group: 'microns',
     variantLabel: 'Live public graph',
     caveDataset: 'microns_public',
@@ -239,6 +244,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'microns_proofread',
+    origin: 'MICrONS Consortium',
     group: 'microns',
     variantLabel: 'Proofreading (private graph, edits save)',
     caveDataset: 'minnie65',
@@ -360,6 +366,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'h01',
+    origin: 'Harvard',
     thumbnail: thumbH01,
     section: 'viewonly',
     optional: true,
@@ -414,6 +421,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'manc',
+    origin: 'Janelia',
     thumbnail: thumbManc,
     section: 'viewonly',
     optional: true,
@@ -462,6 +470,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'maol',
+    origin: 'Janelia and Cambridge University',
     thumbnail: thumbMaol,
     section: 'viewonly',
     optional: true,
@@ -491,6 +500,7 @@ export const DATASETS: DatasetEntry[] = [
     // access see the card locked. It has no proofread or cell type table and
     // no cell list, so it is a place to look and to tour. Id = layer name.
     id: 'zheng_ca3',
+    origin: 'Princeton',
     section: 'viewonly',
     caveDataset: 'zheng-mouse-hc',
     thumbnail: thumbCa3,

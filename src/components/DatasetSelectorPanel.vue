@@ -177,6 +177,7 @@ async function switchTo(ds: DatasetEntry) {
                     <div class="nge-ds-card-text">
                       <div class="nge-ds-card-label">{{ DATASET_GROUPS[c.key].label }}</div>
                       <div class="nge-ds-card-desc">{{ DATASET_GROUPS[c.key].description }}</div>
+                      <div v-if="DATASET_GROUPS[c.key].origin" class="nge-ds-origin">From {{ DATASET_GROUPS[c.key].origin }}</div>
                     </div>
                     <div v-if="groupActive(c)" class="nge-ds-badge">Active</div>
                     <span class="nge-ds-versions" :title="`${c.members.length} versions`" :aria-label="`${c.members.length} versions`">
@@ -200,7 +201,6 @@ async function switchTo(ds: DatasetEntry) {
                       <div class="nge-ds-variant-text">
                         <div class="nge-ds-variant-label">{{ ds.variantLabel || ds.label }}</div>
                         <div class="nge-ds-card-desc">{{ ds.description }}</div>
-                        <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
                       </div>
                       <div v-if="ds.id === currentDatasetId" class="nge-ds-tag">Active</div>
                       <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-tag nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
