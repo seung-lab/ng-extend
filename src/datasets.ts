@@ -375,6 +375,34 @@ export const DATASETS: DatasetEntry[] = [
     ],
   },
   {
+    // The hemibrain (Scheffer et al. 2020): the first dense connectome of a
+    // large part of a fly brain, and the dataset the later fly connectomes
+    // are measured against. Asked for by Krzysztof Kruk (report 115, 2026-10-12)
+    // "to see the more complete landscape of today's research". Janelia's
+    // published v1.2 files, no CAVE.
+    id: 'hemibrain',
+    section: 'viewonly',
+    optional: true,
+    exploreOnly: true,
+    label: 'Hemibrain: Fly Central Brain',
+    shortLabel: 'Hemibrain',
+    abbrev: 'Hemibrain',
+    species: 'fly',
+    description: 'About half of a female fruit fly central brain, Janelia FlyEM v1.2 (8 nm)',
+    layers: [
+      {
+        type: 'image',
+        source: 'precomputed://gs://neuroglancer-janelia-flyem-hemibrain/emdata/clahe_yz/jpeg',
+        name: 'em',
+      },
+      {
+        type: 'segmentation',
+        source: 'precomputed://gs://neuroglancer-janelia-flyem-hemibrain/v1.2/segmentation',
+        name: 'hemibrain_v1_2',
+      },
+    ],
+  },
+  {
     id: 'manc',
     thumbnail: thumbManc,
     section: 'viewonly',
@@ -614,6 +642,7 @@ export function canonicalDataset(name: string | undefined | null): string {
   // Explore only volumes (published files, no CAVE).
   if (n.startsWith('h01')) return 'h01_c3';
   if (n.startsWith('manc')) return 'manc_v1_2';
+  if (n.startsWith('hemibrain')) return 'hemibrain_v1_2';
   if (n.startsWith('malecns')) return 'malecns_v1_0';
   if (n.startsWith('optic_lobe')) return 'optic_lobe_v1_1';
   if (n.startsWith('pni_mec') || n === 'mec') return 'pni_mec';
