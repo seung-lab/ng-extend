@@ -18,7 +18,7 @@ import { SANDBOX_CELLS } from './practice_pools';
 import { supabase } from './supabase';
 import { awardSpecialOnce } from './util/special_award';
 import { useProofreadingBackendStore } from './store';
-import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, getViewer, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
+import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
 
 export const SANDBOX_TUTORIAL = 9;
 
@@ -232,10 +232,8 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
       // Watch only once the cell is held: with nothing held, the watch
       // would queue for the Cut tutorial's cells.
       watchPractice(false, 'Ctrl+click to add points. Remember to press G to switch the cut colour group.', '', { advance: true });
-      // 3D only to start (Ames, 2026-10-11, reversing the split view of
-      // 2026-10-08): the whole cell is easier to read, and Space brings the
-      // 2D images back when the join needs a closer look.
-      setTimeout(() => { try { getViewer()?.layout?.restoreState('3d'); } catch { /* no viewer */ } }, 500);
+      // The cell loads in 3D (practice.ts sets the layout in the view
+      // itself); Space brings the 2D images back.
       setTimeout(() => ensureTool('multicut'), 1100);
     },
   } as Step,

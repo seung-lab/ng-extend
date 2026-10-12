@@ -305,7 +305,10 @@ export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
   try {
     // By the class's static type: class names are renamed in production.
     const seg = viewer.layerManager?.managedLayers?.find((x: any) => (x.layer?.constructor as any)?.type === 'segmentation');
-    if (seg) { viewer.selectedLayer.layer = seg; viewer.selectedLayer.visible = true; }
+    // Selected, but its side panel is left shut: the tool needs the layer
+    // chosen, not the panel open. Opening it here was what flashed a panel
+    // on every box (Ames, 2026-10-12).
+    if (seg) viewer.selectedLayer.layer = seg;
   } catch { /* non-critical */ }
   const key = tool === 'multicut' ? 'c' : 'm';
   const init: KeyboardEventInit = { key, code: key === 'c' ? 'KeyC' : 'KeyM', bubbles: true, cancelable: true };
@@ -955,17 +958,17 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     // The saved views were made with neuroglancer's side panels open. Shut
     // them in the view itself before it loads, so they never flash open and
     // closed in front of the learner (Ames, 2026-10-11).
+    // Likewise the layout: a cell shown in 3D loads in 3D, so the 2D panels
+    // are never built and torn down (Merger Sandbox cells, and any cell
+    // staged as 3D).
+    const want3d = SANDBOX_IDS.includes(ex.id) || staged?.layout === '3d';
     setStateRewriter(async (state: any) => {
       if (state?.selectedLayer) state.selectedLayer = { ...state.selectedLayer, visible: false };
       if (state?.selection) state.selection = { ...state.selection, visible: false };
+      if (want3d && state) state.layout = '3d';
       return state;
     });
     try { await useLayersStore().loadState(staged?.state ?? ex.state_url); } finally { setStateRewriter(null); }
-    // A saved view can bring the layer side panel with it, and switching a
-    // tool on can open it. It is a third of the screen the exercise does
-    // not use (Ames, 2026-10-11). Shut it as the view settles, and not after
-    // that, so a player who opens it on purpose keeps it.
-    for (const ms of [200, 1600, 3600]) setTimeout(() => { try { getViewer().selectedLayer.visible = false; } catch { /* no viewer */ } }, ms);
     // The staged panel layout for this cell (3D only, or split with 2D).
     if (staged?.layout === 'xy-3d') openSplitView();
     else if (staged?.layout) {
