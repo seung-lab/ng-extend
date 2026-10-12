@@ -182,6 +182,8 @@ document.addEventListener('nge:sandbox-slim', () => {
   applySlim(on);
   try { localStorage.setItem(SLIM_KEY, on ? '1' : '0'); } catch { /* private mode */ }
 });
+/** Whether there is another unsolved merger to skip to. */
+const canSkip = () => { const other = nextUndone(); return other >= 0 && other !== current; };
 const SKIP = `<button type="button" class="nge-sbx-skip" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-skip'))">Skip this one</button>`;
 const FOLD = `<button type="button" class="nge-sbx-fold" title="Smaller or larger box" aria-label="Make this box smaller or larger" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-slim'))"></button>`;
 
@@ -223,7 +225,7 @@ document.addEventListener('nge:sandbox-skip', () => {
   const store = useTutorialStore();
   if (store.activeTutorial !== SANDBOX_TUTORIAL) return;
   // From the "still fused" box: straight on to another merger.
-  if (store.getTutorialStep() === 1) { const other = nextUndone(); startSandbox(other >= 0 ? other : current); return; }
+  if (store.getTutorialStep() === 1) { const other = nextUndone(); if (other >= 0 && other !== current) startSandbox(other); return; }
   sandboxSkip();
 });
 function sandboxSkip(): boolean {
@@ -236,7 +238,10 @@ function sandboxSkip(): boolean {
     skipping = false;
     if (store.activeTutorial !== SANDBOX_TUTORIAL || current !== at || store.getTutorialStep() !== 0) return;
     const other = nextUndone();
-    if (cut || other < 0 || other === at) { store.setTutorialStep(1); return; }
+    if (cut) { store.setTutorialStep(1); return; }
+    // Nothing else to go to: stay put and say so. This used to drop the
+    // player on the "still fused" box (Ames, 2026-10-12).
+    if (other < 0 || other === at) { practiceStatus('This is the only merger you have left, so there is nothing to skip to.'); return; }
     startSandbox(other);
   });
   return true;
@@ -263,7 +268,7 @@ You have solved every one. Want to go again from the start? Your Achievement sta
       return `
 ${progressBar(true)}
 
-Two neurons are fused into one segment here. Find where they touch and cut them apart. ${SKIP}`;
+Two neurons are fused into one segment here. Find where they touch and cut them apart. ${canSkip() ? SKIP : ''}`;
     },
     position: OVER_3D,
     width: "440px",
@@ -330,7 +335,7 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
         return `
 <img class="nge-sbx-nurro" src="${imgWheresNurro}" alt="">
 
-The two neurons are still one segment, so this one is not cut yet. Press **Try again** to have another go. **Help me** there shows where the points go. ${SKIP}`;
+The two neurons are still one segment, so this one is not cut yet. Press **Try again** to have another go. **Help me** there shows where the points go. ${canSkip() ? SKIP : ''}`;
       }
       if (left <= 0) {
         return `
