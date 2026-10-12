@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T15:19:00Z",
+      "title": "A slim Merger Sandbox box",
+      "items": [
+        "The Merger Sandbox box can be folded down to a slim strip: your progress, the hint, Help me and Skip. Press the small arrow at the end of the row of gems. It remembers your choice."
+      ]
+    },
+    {
       "at": "2026-10-12T15:18:00Z",
       "title": "More datasets say where they came from",
       "digest": "minor",

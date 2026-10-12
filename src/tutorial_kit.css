@@ -413,3 +413,32 @@
 
 /* Nurro on the sandbox's result boxes: small, so the box fits a laptop. */
 .nge-sbx-nurro { display: block; height: 92px; width: auto; margin: 0 auto 6px; }
+
+/* Merger Sandbox, slim (Ames, 2026-10-12): the box folded down to the chain
+   of gems, the hint line, and its buttons, for small screens and for players
+   who know the drill. The fold button sits at the end of the chain; the
+   choice is remembered. Set by a class on the body, not on the box, which
+   the app redraws. */
+.nge-sbx-fold {
+  flex: none; width: 20px; height: 20px; padding: 0; margin-left: -6px;
+  border: 1px solid rgba(150, 215, 255, 0.22); border-radius: 3px; background: none;
+  color: #8fa9c4; font-size: 11px; line-height: 1; cursor: pointer;
+}
+.nge-sbx-fold:hover { color: #fff; border-color: rgba(150, 215, 255, 0.6); }
+.nge-sbx-fold::before { content: '\25B4'; }
+body.nge-sbx-slim .nge-sbx-fold::before { content: '\25BE'; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) { width: 400px !important; padding: 20px 16px 12px !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .title,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-readout,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .progressBarContainer,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html > p:not(.nge-practice-status) { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-progress { margin: 0 26px 8px 0; gap: 12px; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-count em { display: none; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-practice-status { margin: 0 0 6px; padding: 6px 10px; font-size: 0.86em; line-height: 1.35; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-practice-helprow { justify-content: flex-start !important; margin: 3px 0 0 !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot { margin-top: 0; padding-top: 0 !important; background: none !important; }
+/* Help me on the left and Skip on the right share one row. */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-practice-helprow):has(.nge-sbx-fold) .nge-chip-foot { margin-top: -41px; padding-top: 0 !important; background: none !important; pointer-events: none; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot button { pointer-events: auto; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot::before { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot .buttonContainer { margin-bottom: 0 !important; }

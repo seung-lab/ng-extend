@@ -165,7 +165,26 @@ document.addEventListener('nge:sandbox-next', () => {
 
 /** The run of mergers as a row of cells: lit for each one cut, a pulse on
  *  the one in hand, dim for the rest, with the count beside it. */
-function progressBar(): string {
+/**
+ * Slim box (Ames, 2026-10-12): the working box folded down to the chain, the
+ * hint line and its buttons. The fold button sits at the end of the chain on
+ * the working box only; the choice is kept in this browser. It is a class on
+ * the body, because the box itself is redrawn by the app.
+ */
+const SLIM_KEY = 'nge-merger-sandbox-slim';
+function applySlim(on: boolean) {
+  document.body.classList.toggle('nge-sbx-slim', on);
+  document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+try { if (localStorage.getItem(SLIM_KEY) === '1') applySlim(true); } catch { /* private mode */ }
+document.addEventListener('nge:sandbox-slim', () => {
+  const on = !document.body.classList.contains('nge-sbx-slim');
+  applySlim(on);
+  try { localStorage.setItem(SLIM_KEY, on ? '1' : '0'); } catch { /* private mode */ }
+});
+const FOLD = `<button type="button" class="nge-sbx-fold" title="Smaller or larger box" aria-label="Make this box smaller or larger" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-slim'))"></button>`;
+
+function progressBar(fold = false): string {
   const done = SANDBOX_CELLS.map(c => sandboxDone.value.includes(c.id));
   let chain = '';
   done.forEach((d, i) => {
@@ -175,7 +194,7 @@ function progressBar(): string {
     if (i < TOTAL - 1) chain += `<span class="nge-sbx-link${d && done[i + 1] ? ' nge-sbx-link--lit' : ''}"></span>`;
   });
   const n = doneCount();
-  return `<div class="nge-sbx-progress${n >= TOTAL ? ' nge-sbx-progress--all' : ''}" role="img" aria-label="${n} of ${TOTAL} mergers solved"><span class="nge-sbx-track">${chain}</span><span class="nge-sbx-count"><b>${n}</b><i>/ ${TOTAL}</i><em>solved</em></span></div>`;
+  return `<div class="nge-sbx-progress${n >= TOTAL ? ' nge-sbx-progress--all' : ''}" role="img" aria-label="${n} of ${TOTAL} mergers solved"><span class="nge-sbx-track">${chain}</span><span class="nge-sbx-count"><b>${n}</b><i>/ ${TOTAL}</i><em>solved</em></span>${fold ? FOLD : ''}</div>`;
 }
 
 /** The done box asks the cell itself whether it was cut; until that answer
@@ -232,7 +251,7 @@ ${progressBar()}
 You have solved every one. Want to go again from the start? Your Achievement stays yours.`;
       }
       return `
-${progressBar()}
+${progressBar(true)}
 
 Two neurons are fused into one segment here. Find where they touch and cut them apart.`;
     },
