@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-12T20:37:03Z",
+      "title": "Your annotation point size is remembered",
+      "items": [
+        "Set the Size slider on an annotation layer once, and new annotation layers and new workspaces open at that size. A layer keeps its own size if you set one for it."
+      ]
+    },
+    {
       "at": "2026-10-12T20:17:01Z",
       "title": "Shift+L opens and closes the Cell Library",
       "digest": "minor",
