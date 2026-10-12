@@ -1288,6 +1288,14 @@ function cancelTool() {
    squeezed to nothing), and a cut needs Ctrl+click and C, so the option
    would be off screen and unusable there: not drawn. */
 body.nge-mobile .nge-smo-keep-open { display: none; }
+/* It takes the cut bar's own colour, red or blue with the active group,
+   not merge's green (Ames 2026-10-12). */
+.nge-smo-keep-open:hover { color: var(--smo-ink, #ffd0d0); }
+.nge-smo-keep-open .nge-smo-checkbox.checked {
+  background: rgb(var(--smo-rgb) / .22); border-color: rgb(var(--smo-rgb) / .95);
+  box-shadow: 0 0 8px rgb(var(--smo-rgb) / .5);
+}
+.nge-smo-keep-open .nge-smo-checkbox.checked::after { border-color: var(--smo-ink, #ffd0d0); }
 /* a drawn box in place of the box characters */
 .nge-smo-checkbox {
   position: relative; display: inline-block; width: 14px; height: 14px; font-size: 0; border-radius: 3px;
