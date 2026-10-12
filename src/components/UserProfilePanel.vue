@@ -2274,7 +2274,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span v-if="canonicalDataset(segLayerName(ds)) === activeDatasetCanon" class="nge-ds-tab-badge">Active</span>
               <span v-else class="nge-ds-tab-switch">Switch ▸</span>
             </div>
-            <div class="nge-ds-tab-desc">{{ ds.description }}</div>
+            <div class="nge-ds-tab-desc">{{ ds.description }}<span v-if="ds.origin" class="nge-ds-origin"> · From {{ ds.origin }}</span></div>
             <div class="nge-ds-tab-stats">
               <template v-if="datasetContribution(ds)">
                 <span v-if="showsAllStats(ds) || datasetContribution(ds)?.edits" class="nge-ds-tab-stat"><b>{{ (datasetContribution(ds)?.edits ?? 0).toLocaleString() }}</b> edits</span>
@@ -2303,7 +2303,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           <span class="nge-ds-more-icon">{{ SPECIES_ICONS[ds.species] }}</span>
           <span class="nge-ds-more-text">
             <span class="nge-ds-more-label">{{ ds.label }}</span>
-            <span class="nge-ds-more-desc">{{ ds.description }}</span>
+            <span class="nge-ds-more-desc">{{ ds.description }}<span v-if="ds.origin" class="nge-ds-origin"> · From {{ ds.origin }}</span></span>
           </span>
         </label>
       </div>
@@ -2552,6 +2552,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-ds-more-icon { font-size: 1.2em; flex: none; }
 .nge-ds-more-text { display: flex; flex-direction: column; min-width: 0; }
 .nge-ds-more-label { color: #e6eefc; font-weight: 600; font-size: 0.92em; }
+.nge-ds-origin { color: rgba(143, 184, 232, 0.9); }
 .nge-ds-more-desc { color: rgba(255, 255, 255, 0.5); font-size: 0.82em; line-height: 1.35; }
 
 .nge-ds-tab-intro {
