@@ -352,6 +352,17 @@ on `claude/annotation-quests`, not deployed.
   on every dataset. Test: `scripts/polyline.test.cjs` (26 checks: load, draw
   counted in pixels against an empty control, the tool and its keys, picking
   beside a point, a line, a box and an ellipsoid, save and reload).
+- **The quest's description and instructions are the lab's own** (Celia,
+  2026-10-13): `QUEST_LEAD` and the six steps in `AnnotationQuestsTab.vue`,
+  with `QUEST_GUIDE_URL` (a SharePoint deck, opens signed out) and
+  `QUEST_REFERENCE_URL` (a sheet anyone with the link can read). One sentence
+  in step 3, on the centerline's keys, is ours. **`QUEST_VIDEO_URL` is empty
+  on purpose:** the training video link given was a Slack direct message,
+  which only its two members can open; while it is empty the steps do not
+  mention a video. Fill it once the video has a home players can open. The
+  Instructions button is lit once per browser, three seconds after the tab
+  first opens (`nge-cilia-quest-intro-seen` in localStorage, `runPanelLap`
+  and one CSS glow; it never loops).
 - **The quest's words:** the action is Submit, never Complete (Ames
   2026-10-13: Complete is proofreading's word). A player holds at most three
   cells at once (`claimLimit` in `QUESTS`, `questClaimRoom` on the server,

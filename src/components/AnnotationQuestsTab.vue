@@ -9,11 +9,12 @@
  * cilia with annotation points, and submits: the sheet's own status choices,
  * split or merged, a note, and a share link of the view as it is.
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
-import { QUEST_TITLE, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
+import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_REFERENCE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { mintShortStateLink } from '../util/state_link';
+import { runPanelLap } from '../util/holo_trace';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { cellAtCrosshair } from '../util/crosshair_cell';
@@ -63,8 +64,39 @@ function label(r: QuestRow) {
   const kind = cellTypeForPlayers(r.cellType || r.cellClass);
   return kind ? `${r.index || r.segmentId}, ${kind}` : (r.index || r.segmentId);
 }
-/** The (i) box with the steps (Ames 2026-10-13). */
+/** The Instructions box with the lab's steps (Ames 2026-10-13). */
 const showHelp = ref(false);
+/** The first time a player opens the tab, the Instructions button is lit
+ *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
+ *  browser: it plays one time and never loops. */
+const INTRO_KEY = 'nge-cilia-quest-intro-seen';
+const infoEl = ref<HTMLElement | null>(null);
+const nudging = ref(false);
+function introSeen(): boolean { try { return localStorage.getItem(INTRO_KEY) === '1'; } catch { return true; } }
+function markIntroSeen() { try { localStorage.setItem(INTRO_KEY, '1'); } catch { /* a private window */ } }
+function toggleHelp() {
+  showHelp.value = !showHelp.value;
+  nudging.value = false;
+  markIntroSeen();
+}
+let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+let nudgeOffTimer: ReturnType<typeof setTimeout> | null = null;
+onMounted(() => {
+  if (introSeen()) return;
+  nudgeTimer = setTimeout(() => {
+    nudgeTimer = null;
+    const el = infoEl.value;
+    if (!el || showHelp.value) return;
+    markIntroSeen();
+    nudging.value = true;
+    try { runPanelLap(el, 900); } catch { /* the light is decoration */ }
+    nudgeOffTimer = setTimeout(() => { nudging.value = false; nudgeOffTimer = null; }, 2600);
+  }, 3000);
+});
+onUnmounted(() => {
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  if (nudgeOffTimer) clearTimeout(nudgeOffTimer);
+});
 function openCell(r: QuestRow) {
   current.value = r.segmentId;
   const before = layerSnapshot();
@@ -172,19 +204,25 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
     <div class="nge-aq-head">
       <div class="nge-aq-titlerow">
         <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
-        <button class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp }" @click="showHelp = !showHelp" title="What to do" aria-label="What to do">i</button>
+        <button ref="infoEl" class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp, 'nge-aq-info--nudge': nudging }" @click="toggleHelp" title="How to do a Cilia Quest">
+          <span class="nge-aq-info-i" aria-hidden="true">i</span><span class="nge-aq-info-word">Instructions</span>
+        </button>
       </div>
-      <div class="nge-aq-lead">Find the cilium on a starburst cell and mark its parts in the layers that open with the cell. The cell does not need to be proofread.</div>
+      <div class="nge-aq-lead">{{ QUEST_LEAD }}</div>
       <div v-if="showHelp" class="nge-aq-help">
         <div class="nge-aq-help-head">
           <span>How to do a Cilia Quest</span>
           <button class="nge-aq-help-close" @click="showHelp = false" title="Close">×</button>
         </div>
+        <!-- The lab's own steps (Celia, 2026-10-13). The sentence on the
+             centerline's keys is ours: the polyline tool is new here. -->
         <ol class="nge-aq-help-steps">
-          <li><b>Claim</b> a cell. Its view opens with three annotation layers: <b>Cilium Centerline</b> (green), <b>Daughter centriole</b> (red) and <b>Basal body</b> (gold).</li>
-          <li>Find the cilium, near the soma. Put a point on the basal body in its layer and a point on the daughter centriole in its layer. In the centerline layer, hold <b>Ctrl</b> and click along the cilium from its base to its tip, then press <b>Enter</b>. Press <b>↗</b> to show only this cell.</li>
-          <li>Press <b>Submit</b>, choose what you found from the list, add a note if anything was odd, and send. Your view goes to the lab as a share link.</li>
-          <li>You can hold three cells at a time. <b>Release</b> hands a cell back untouched.</li>
+          <li><b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body, Daughter centriole, and Cilium Centerline.</b></li>
+          <li>Use <a :href="QUEST_GUIDE_URL" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.<template v-if="QUEST_VIDEO_URL"> Check out this <a :href="QUEST_VIDEO_URL" target="_blank" rel="noopener">training video</a> as well!</template></li>
+          <li>Find the cilium, an appendage that projects from the cell's soma. Annotate its centerline, basal body, and daughter centriole in each of their respective layers. For the centerline, hold <b>Ctrl</b> and click along the cilium, then press <b>Enter</b>.</li>
+          <li>Some cells will not have a visible cilium. You may still be able to find their internal basal body and daughter centriole. <a :href="QUEST_REFERENCE_URL" target="_blank" rel="noopener">Here's a reference</a> for a variety of cilia states you may encounter.</li>
+          <li>Press <b>Submit</b>, and choose a cilium status from the list. The lab will receive your view as a share link.</li>
+          <li>You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.</li>
         </ol>
       </div>
       <div v-if="backend.userId" class="nge-aq-headrow">
@@ -350,13 +388,28 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 /* The (i) and its box, drawn as the Cell Library's own instructions box. */
 .nge-aq-titlerow { display: flex; align-items: center; gap: 8px; }
 .nge-aq-info {
-  width: 18px; height: 18px; border-radius: 50%; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-  font: 700 11px/1 'Inter', sans-serif; color: #7ecaff;
-  background: rgba(126, 202, 255, 0.08); border: 1px solid rgba(126, 202, 255, 0.5);
-  cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px 0 4px; border-radius: 999px;
+  font: 600 12.5px/1 'Inter', sans-serif; letter-spacing: 0.02em; color: #9fd8ff;
+  background: rgba(126, 202, 255, 0.08); border: 1px solid rgba(126, 202, 255, 0.45);
+  cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
-.nge-aq-info:hover, .nge-aq-info--open { color: #06111f; background: #7ecaff; box-shadow: 0 0 10px rgba(126, 202, 255, 0.5); }
+.nge-aq-info-i {
+  width: 16px; height: 16px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 11px/1 'Inter', sans-serif; color: #06111f; background: #7ecaff;
+}
+.nge-aq-info:hover, .nge-aq-info--open { color: #eaf6ff; background: rgba(126, 202, 255, 0.2); border-color: #7ecaff; box-shadow: 0 0 10px rgba(126, 202, 255, 0.4); }
+/* The one time nudge: lit, with a glow that swells and settles once. */
+.nge-aq-info--nudge { color: #eaf6ff; border-color: #7ecaff; background: rgba(126, 202, 255, 0.22); animation: nge-aq-info-nudge 2.4s ease-out 1 both; }
+@keyframes nge-aq-info-nudge {
+  0%   { box-shadow: 0 0 0 0 rgba(126, 202, 255, 0.0); transform: scale(1); }
+  18%  { box-shadow: 0 0 0 5px rgba(126, 202, 255, 0.35), 0 0 22px rgba(126, 202, 255, 0.7); transform: scale(1.08); }
+  45%  { box-shadow: 0 0 0 2px rgba(126, 202, 255, 0.2), 0 0 14px rgba(126, 202, 255, 0.5); transform: scale(1); }
+  100% { box-shadow: 0 0 10px rgba(126, 202, 255, 0.4); transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-aq-info--nudge { animation: none; box-shadow: 0 0 0 2px rgba(126, 202, 255, 0.5); } }
 .nge-aq-help {
   margin: 4px 0 2px;
   padding: 10px 12px 8px;
@@ -378,6 +431,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-help-steps li { margin: 4px 0; padding-left: 2px; }
 .nge-aq-help-steps li::marker { color: #42d5ec; font-weight: 700; }
 .nge-aq-help-steps b { color: #fff; font-weight: 600; }
+.nge-aq-help-steps a { color: #7ecaff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.nge-aq-help-steps a:hover { color: #fff; }
 .nge-aq-section {
   padding: 10px 12px 4px;
   font-family: 'Orbitron', 'Inter', sans-serif;

@@ -139,9 +139,14 @@ const RETINA_LAYERS = [
     console.log('list calls: ' + JSON.stringify(calls));
     console.log('tab text: ' + JSON.stringify((await tabText()).slice(0, 700)));
     await shot('quests-list');
+    // First visit: a few seconds in, the Instructions button is lit once.
+    const nudged = await page.waitForSelector('.nge-aq-info--nudge', { timeout: 6000 }).then(() => true).catch(() => false);
+    console.log('instructions nudge: ' + nudged + ' seen flag: ' + await page.evaluate(() => localStorage.getItem('nge-cilia-quest-intro-seen')) + ' button: ' + JSON.stringify(await page.evaluate(() => document.querySelector('.nge-aq-info').innerText.replace(/\s+/g, ' ').trim())));
+    await shot('quests-nudge');
     await page.click('.nge-aq-info');
     await page.waitForTimeout(300);
     console.log('help box: ' + JSON.stringify(await page.evaluate(() => { const h = document.querySelector('.nge-aq-help'); return h ? { steps: h.querySelectorAll('li').length, head: h.querySelector('.nge-aq-help-head').innerText.trim(), size: getComputedStyle(h.querySelector('.nge-aq-help-steps')).fontSize } : 'none'; })));
+    console.log('help links: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-aq-help a')].map(x => [x.textContent.trim(), x.href.slice(0, 60), x.target]))));
     await shot('quests-help');
     await page.click('.nge-aq-help-close');
 

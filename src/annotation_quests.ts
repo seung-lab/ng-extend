@@ -18,6 +18,16 @@ import { parseRGBColorSpecification } from 'neuroglancer/util/color';
 export const QUEST_KEY = 'retina_cilia';
 export const QUEST_DATASET = 'stroeh_mouse_retina';
 export const QUEST_TITLE = 'Cilia Quest';
+/** The lab's own words for the quest (Celia, 2026-10-13), shown under its name. */
+export const QUEST_LEAD = 'We\'re on the hunt for primary cilia, important cellular appendages that receive and process environmental signals. Cilia serve as “antennas” that cells use to sense the chemistry of their environment. Each cell only has one primary cilium, will you be the one to find it?';
+/** The lab's guide to locating and annotating cilia (opens without a sign in). */
+export const QUEST_GUIDE_URL = 'https://unitc-my.sharepoint.com/:p:/g/personal/ojxjl01_cloud_uni-tuebingen_de/IQDBsH6sbIjZRY5Gc3Flt5iaAUvXSDf4QLsyamGQ72f8rOo?e=hsHF4c';
+/** The lab's reference of cilia states (a sheet anyone with the link can read). */
+export const QUEST_REFERENCE_URL = 'https://docs.google.com/spreadsheets/d/1RPoLl36rx6nl17NTqVsvcC5FBo-wgDmkvszv0sfYigU/edit?usp=sharing';
+/** The training video. Empty until it has a home players can open: the link
+ *  given on 2026-10-13 is a Slack direct message, which only the two people
+ *  in it can see. While this is empty the instructions do not mention a video. */
+export const QUEST_VIDEO_URL = '';
 /** The sheet says "ON SAC" and "OFF SAC"; players read "Starburst" (Ames 2026-10-13). */
 export const cellTypeForPlayers = (t: string) => String(t || '').replace(/\bSACs?\b/g, 'Starburst');
 
