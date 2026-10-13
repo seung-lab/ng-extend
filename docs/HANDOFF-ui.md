@@ -317,6 +317,13 @@ on `claude/annotation-quests`, not deployed.
   the link was opened), colours them (basal body amber, daughter centriole
   cyan) and adds a "Cilium centerline" line layer (green) when the view has
   none. Nothing of the lab's is removed or renamed.
+- **The colour key** is the top bar's icon accents in `src/data/toolbar-icons.ts`:
+  Highlight green `#7CFFB2`, red `#e06060`, gold `#f5d142`, mint `#3ddc97`,
+  purple `#c8a4ff`, sky `#35b5ff`. The quest layers use it, in this order:
+  Cilium Centerline green, Daughter centriole red, Basal body gold
+  (`QUEST_LAYER_COLORS`, reordered with `reorderManagedLayer`); the Quests
+  tab's number is the Highlight green. The lab's own layer names are kept,
+  typo included: the lab's own checks may read them.
 - **The quest's words:** the action is Submit, never Complete (Ames
   2026-10-13: Complete is proofreading's word). A player holds at most three
   cells at once (`claimLimit` in `QUESTS`, `questClaimRoom` on the server,

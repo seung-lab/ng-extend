@@ -101,12 +101,15 @@ export async function submitQuest(segmentId: string, done: { status: string; spl
  * centerline annotation layer added as well, and nicer colours"). Nothing of
  * the lab's is removed or renamed; a share link carries the colours along.
  */
+/** The colour key the top bar uses (src/data/toolbar-icons.ts): Highlight's
+ *  green, the cut tool's red, the trophy gold (Ames 2026-10-13). In the order
+ *  the layers are put in: centerline, daughter centriole, basal body. */
 export const QUEST_LAYER_COLORS: { match: RegExp; color: string }[] = [
-  { match: /basal/i, color: '#ffd24d' },                 // amber, as somas are
-  { match: /centriole/i, color: '#7ee0ff' },             // cyan
-  { match: /cent(er|re)line|cilium/i, color: '#7cffb2' }, // green, as Highlight is
+  { match: /cent(er|re)line|cilium/i, color: '#7CFFB2' }, // green
+  { match: /centriole/i, color: '#e06060' },             // red
+  { match: /basal/i, color: '#f5d142' },                 // gold
 ];
-export const CENTERLINE_LAYER = 'Cilium centerline';
+export const CENTERLINE_LAYER = 'Cilium Centerline';
 /** The layers in the view right now, to tell the Start Link's fresh ones
  *  from what was there before it loaded (see dressQuestLayers). */
 export function layerSnapshot(): Set<any> {
@@ -145,12 +148,25 @@ export async function dressQuestLayers(before?: Set<any>): Promise<{ colored: st
     try {
       const managed = makeLayer(viewer.layerSpecification, CENTERLINE_LAYER, {
         type: 'annotation', source: 'local://annotations', annotations: [],
-        annotationColor: '#7cffb2', tool: 'annotateLine',
+        annotationColor: QUEST_LAYER_COLORS[0].color, tool: 'annotateLine',
       });
       viewer.layerSpecification.add(managed);
       out.added = true;
     } catch (e) { console.warn('[quests] could not add the centerline layer:', e); }
   }
+  // The order of the tabs: centerline, daughter centriole, basal body, from
+  // the first of them onward; every other layer keeps its place.
+  try {
+    const all = layers();
+    const quest = QUEST_LAYER_COLORS.map(q => all.find(ml => isAnnotation(ml) && q.match.test(ml.name))).filter(Boolean);
+    if (quest.length > 1) {
+      const base = Math.min(...quest.map(ml => all.indexOf(ml)));
+      quest.forEach((ml, i) => {
+        const now = viewer.layerManager.managedLayers.indexOf(ml);
+        if (now >= 0 && now !== base + i) viewer.layerManager.reorderManagedLayer(now, base + i);
+      });
+    }
+  } catch (e) { console.warn('[quests] could not order the layers:', e); }
   return out;
 }
 
