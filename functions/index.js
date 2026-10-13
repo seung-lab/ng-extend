@@ -2039,7 +2039,7 @@ exports.ewProofreadingTest = onRequest(
 // reason above: a deploy of that function from an older checkout would
 // silently remove it.
 //   firebase deploy --only functions:ewReportReply --project eyewire-ii-e4d52
-const EW_REPLY_CODE_VERSION = "2026-10-13-report-reply-1";
+const EW_REPLY_CODE_VERSION = "2026-10-13-report-reply-2";
 exports.ewReportReply = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
