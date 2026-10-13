@@ -127,6 +127,10 @@ export async function dressQuestLayers(before?: Set<any>): Promise<{ colored: st
   for (let i = 0; i < 60 && !fresh(); i++) await sleep(100);
   await sleep(300);  // the restore makes its layers in one go; let it finish
   console.info('[quests] dressing layers:', layers().map(ml => `${ml.name}:${ml.layer?.type ?? ml.layer?.constructor?.type ?? '?'}`).join(', '), lab().length ? '' : '(no lab layers found)');
+  // The lab's saved states open the Selection panel on the right (Ames
+  // 2026-10-13: "it's opening a selection side panel when I claim"). Close
+  // it; the layer's own panel, with the annotation list, stays as saved.
+  try { const vis = viewer.selectionDetailsState?.location?.watchableVisible; if (vis && vis.value) vis.value = false; } catch { /* no such panel */ }
   if (!lab().length) return out;
   for (const ml of layers()) {
     if (!isAnnotation(ml)) continue;

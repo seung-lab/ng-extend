@@ -88,7 +88,7 @@ const RETINA_LAYERS = [
   });
   await context.route(/supabase\.co/, r => r.request().method() !== 'GET' ? r.fulfill(json([])) : r.fulfill(json([])));
   // State servers: the start link's state (loaded on Take) and the share link (minted on Submit).
-  await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json({ dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d' })));
+  await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json({ dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d', selectedLayer: { layer: 'Basal body', visible: true }, selection: { visible: true } })));
   await context.route(/global\.brain-wire-test\.org\/nglstate\/api\/v1\/post/, r => { calls.push({ action: 'mint', method: r.request().method() }); return r.fulfill(json('https://global.brain-wire-test.org/nglstate/api/v1/4242')); });
 
   const page = await context.newPage();
@@ -152,6 +152,7 @@ const RETINA_LAYERS = [
     await page.click('.nge-aq-btn--take >> nth=0');
     for (const t of [500, 1500, 3000, 6000]) { await page.waitForTimeout(t === 500 ? 500 : t === 1500 ? 1000 : t === 3000 ? 1500 : 3000); console.log('  layers at ' + t + 'ms: ' + await page.evaluate(() => window.viewer.layerManager.managedLayers.map(l => l.name + (l.layer && l.layer.type === 'annotation' ? '(' + [...l.layer.annotationDisplayState.color.value].map(v => Math.round(v * 255)).join(',') + ')' : '')).join(' | '))); }
     console.log('quest logs: ' + JSON.stringify(questLogs));
+    console.log('panels after claim: ' + JSON.stringify(await page.evaluate(() => { const v = window.viewer; return { selectionPanel: !!(v.selectionDetailsState && v.selectionDetailsState.location && v.selectionDetailsState.location.watchableVisible.value), layerPanel: !!v.selectedLayer.visible, layer: v.selectedLayer.layer ? v.selectedLayer.layer.name : '' }; })));
     console.log('tabs after claim: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-cl-filters button')].map(b => b.textContent.trim().replace(/\s+/g, ' ')))) + ' quests count colour: ' + await page.evaluate(() => { const b = document.querySelector('.nge-cl-quests-tab b'); return b ? getComputedStyle(b).color : 'none'; }));
     console.log('after take, hash: ' + await page.evaluate(() => location.hash.slice(0, 90)));
     console.log('after take, layer colours: ' + await page.evaluate(() => { try { return JSON.stringify(window.viewer.layerManager.managedLayers.filter(l => l.layer && l.layer.type === 'annotation').map(l => ({ name: l.name, color: [...l.layer.annotationDisplayState.color.value].map(v => Math.round(v * 255)), tool: l.layer.tool && l.layer.tool.value ? String(l.layer.tool.value.toJSON ? l.layer.tool.value.toJSON() : l.layer.tool.value) : '' }))); } catch (e) { return String(e); } }));
