@@ -55,19 +55,38 @@ interface Particle {
   shape: 'rect' | 'circle' | 'star';
 }
 
-function createParticles(count: number, palette: string[]) {
+/** Shades of one colour, drawn fresh each time: a random hue, then seven
+ *  variations of lightness and saturation around it (Ames 2026-10-13: "if
+ *  you get blue, lots of blues"). The canvas is in CSS pixels, so a screen
+ *  point can be used as is. */
+function monoPalette(): string[] {
+  const hue = Math.floor(Math.random() * 360);
+  const out: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const light = 42 + Math.round((i / 6) * 40);          // 42 to 82
+    const sat = 70 + Math.round(Math.random() * 25);       // 70 to 95
+    out.push(`hsl(${(hue + Math.round((Math.random() - 0.5) * 16) + 360) % 360}, ${sat}%, ${light}%)`);
+  }
+  return out;
+}
+
+function createParticles(count: number, palette: string[], origin?: { x: number; y: number }) {
   const canvas = canvasRef.value;
   if (!canvas) return;
-  const cx = canvas.width / 2;
-  const cy = canvas.height * 0.35;
+  // From a given point (a button that was pressed), or the usual place.
+  const fromPoint = !!origin && Number.isFinite(origin.x) && Number.isFinite(origin.y);
+  const cx = fromPoint ? origin!.x : canvas.width / 2;
+  const cy = fromPoint ? origin!.y : canvas.height * 0.35;
+  const spreadX = fromPoint ? 24 : 200;
+  const spreadY = fromPoint ? 12 : 100;
 
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = Math.random() * 12 + 4;
     const shapes: Particle['shape'][] = ['rect', 'rect', 'rect', 'circle', 'star'];
     particles.push({
-      x: cx + (Math.random() - 0.5) * 200,
-      y: cy + (Math.random() - 0.5) * 100,
+      x: cx + (Math.random() - 0.5) * spreadX,
+      y: cy + (Math.random() - 0.5) * spreadY,
       vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 4,
       vy: Math.sin(angle) * speed - Math.random() * 6 - 2,
       w: Math.random() * 8 + 4,
@@ -270,16 +289,19 @@ function sparkle(intensity: number = 1) {
 
 /**
  * Fire a confetti burst.
- * @param palette - color palette name: 'default', 'gold', 'purple', 'cyan', 'rainbow'
+ * @param palette - color palette name: 'default', 'gold', 'purple', 'cyan',
+ *   'rainbow', or 'mono' (shades of one colour, a different one each time)
  * @param intensity - particle count multiplier (1 = normal, 2 = big, 3 = epic)
+ * @param origin - a point on screen (CSS pixels) to burst from, e.g. the
+ *   button that was pressed; the usual place when left out
  */
-function trigger(palette: string = 'default', intensity: number = 1) {
+function trigger(palette: string = 'default', intensity: number = 1, origin?: { x: number; y: number }) {
   resizeCanvas();
   underUI.value = false;
   veilT = -1;
-  const colors = PALETTES[palette] || PALETTES.default;
+  const colors = palette === 'mono' ? monoPalette() : (PALETTES[palette] || PALETTES.default);
   const count = Math.round(80 * intensity);
-  createParticles(count, colors);
+  createParticles(count, colors, origin);
   if (!animFrame) {
     animFrame = requestAnimationFrame(animateSparkles);
   }

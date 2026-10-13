@@ -130,8 +130,11 @@ function startSubmit(r: QuestRow) {
   void runCheck(r);
 }
 function recount(r: QuestRow) { points.value = annotationCountInView(); void runCheck(r); }
-async function send(r: QuestRow) {
+async function send(r: QuestRow, e?: Event) {
   if (!form.value.status || busy.value) return;
+  // Where the confetti starts: the Complete button itself (Ames 2026-10-13).
+  let origin: { x: number; y: number } | undefined;
+  try { const b = (e?.currentTarget as HTMLElement | null)?.getBoundingClientRect(); if (b) origin = { x: b.left + b.width / 2, y: b.top + b.height / 2 }; } catch { /* no button */ }
   busy.value = r.segmentId; error.value = ''; message.value = '';
   try {
     // The crosshairs may have moved since the check: check once more.
@@ -146,7 +149,7 @@ async function send(r: QuestRow) {
     message.value = `${r.index || 'The cell'} is complete. Thank you.`;
     await load();
     // The celebration: a toast with the counts, and confetti (AchievementToast.vue).
-    document.dispatchEvent(new CustomEvent('nge:quest-complete', { detail: { index: r.index, points: placed, done: mineDone.value } }));
+    document.dispatchEvent(new CustomEvent('nge:quest-complete', { detail: { index: r.index, points: placed, done: mineDone.value, origin } }));
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -211,7 +214,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
               </div>
             </div>
           </template>
@@ -291,7 +294,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
               </div>
             </div>
           </template>

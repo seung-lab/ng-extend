@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
+import {listQuests, nameKey as questNameKey} from '../annotation_quests';
 import {nextDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
@@ -69,6 +70,20 @@ const totalDays = computed(() => viewingOtherUser.value ? (otherDays.value ?? 0)
 const dayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.current_streak || 0) : (stats.value.currentStreak || 0));
 const bestDayStreak = computed(() => viewingOtherUser.value ? (otherUserProfile.value?.longest_streak || 0) : (stats.value.longestStreak || 0));
 const nextDay = computed(() => nextDayMilestone(totalDays.value));
+// Quests completed (Ames 2026-10-13: "I don't see Quests in Profile"): the
+// quest sheet's rows that carry this player's name and a status, read
+// through the quest sheet function. The sheet is the only record of a quest
+// so far, so this is a count from it, not a game table; null means it could
+// not be read, and the profile then says so rather than showing 0.
+const questsCompleted = ref<number | null>(null);
+async function loadQuestsCompleted(who?: string | null) {
+  questsCompleted.value = null;
+  try {
+    const r = await listQuests();
+    const key = questNameKey(who ?? r.you);
+    questsCompleted.value = key ? r.rows.filter(x => x.status && questNameKey(x.annotator) === key).length : 0;
+  } catch { questsCompleted.value = null; }
+}
 // Annotations placed: their total, or mine plus what this browser has yet to send.
 const otherAnnotations = ref<number | null>(null);
 const annotationsPlaced = computed(() => viewingOtherUser.value ? (otherAnnotations.value ?? 0) : sentAnnotations.value + pendingAnnotations.value);
@@ -94,9 +109,11 @@ async function loadOtherUser() {
     void loadAnnotationTotal(props.viewUserId).then(n => { otherAnnotations.value = n; });
     otherDays.value = null;
     void backendStore.loadDayTotal(props.viewUserId).then(n => { otherDays.value = n; });
+    void loadQuestsCompleted(otherUserProfile.value?.display_name || null);
   } else {
     otherUserProfile.value = null;
     backendStore.loadUserStats();
+    if (backendStore.userId) void loadQuestsCompleted();
   }
   // Load podium counts for whichever user we're showing
   await loadPodium();
@@ -1838,6 +1855,14 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-label">Annotations</div>
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
               </div>
+              <!-- Annotation quests completed, from the quest sheet (2026-10-13). -->
+              <div class="nge-profile-stat-col" title="Annotation quests you completed: cells whose cilia you marked and sent to the lab's sheet">
+                <div class="nge-profile-stat-label">Quests</div>
+                <div class="nge-profile-stat-val" style="color: #7fe0ff; text-shadow: 0 0 14px rgba(127, 224, 255, 0.35);">
+                  <RollUp v-if="questsCompleted !== null" :value="questsCompleted" />
+                  <span v-else class="nge-profile-stat-na" title="The quest sheet could not be read just now">not available</span>
+                </div>
+              </div>
             </div>
             </template>
             <template v-else>
@@ -3562,6 +3587,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-stat-row--tiles .nge-profile-stat-val { margin: 0; font-size: 1.15em; }
 .nge-profile-stat-row--tiles .nge-profile-stat-val--hero { font-size: 1.3em; }
 .nge-profile-stat-row--scout .nge-profile-stat-label { white-space: nowrap; font-size: 0.62em; }
+/* A number that could not be read says so, never 0. */
+.nge-profile-stat-na { font-size: 0.42em; font-weight: 500; letter-spacing: 0.02em; color: #7f8aa0; white-space: nowrap; }
 .nge-profile-stat-tile:hover {
   background: rgba(74, 158, 255, 0.1);
   border-color: rgba(74, 158, 255, 0.35);

@@ -24,9 +24,10 @@ const { stats } = storeToRefs(statsStore);
 const queueStore = useProofreadingQueueStore();
 const confettiRef = ref<InstanceType<typeof ConfettiCelebration> | null>(null);
 
-/** Fire confetti with configurable palette and intensity. */
-function fireConfetti(palette = 'default', intensity = 1) {
-  confettiRef.value?.trigger(palette, intensity);
+/** Fire confetti with configurable palette and intensity, from a point on
+ *  screen when one is given (otherwise from the usual place). */
+function fireConfetti(palette = 'default', intensity = 1, origin?: { x: number; y: number }) {
+  confettiRef.value?.trigger(palette, intensity, origin);
 }
 
 interface Toast {
@@ -54,8 +55,8 @@ function addToast(toast: Omit<Toast, 'id' | 'leaving'>) {
     return;
   }
   toasts.value.push(t);
-  // Auto-dismiss after 5s
-  setTimeout(() => dismiss(t.id), 5000);
+  // Auto-dismiss after 5s (a quest's counts get a little longer to be read)
+  setTimeout(() => dismiss(t.id), toast.type === 'quest' ? 8000 : 5000);
 }
 
 function dismiss(id: number) {
@@ -291,7 +292,7 @@ document.addEventListener('nge:loyalty-days', onLoyaltyDays);
 //    and a counter popup of annotations placed in that cell, number of quests
 //    completed") ─────────────────────────────────────────────────────────
 function onQuestComplete(e: Event) {
-  const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number };
+  const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number; origin?: { x: number; y: number } };
   const points = Math.max(0, Number(d.points) || 0);
   const done = Math.max(0, Number(d.done) || 0);
   addToast({
@@ -301,7 +302,10 @@ function onQuestComplete(e: Event) {
     icon: '📍',
     isImage: false,
   });
-  fireConfetti('rainbow', 2);
+  // From the Complete button, in shades of one colour drawn fresh each time
+  // (Ames 2026-10-13: "if you get blue, lots of blues").
+  const origin = d.origin && Number.isFinite(d.origin.x) && Number.isFinite(d.origin.y) ? d.origin : undefined;
+  fireConfetti('mono', 2.5, origin);
 }
 document.addEventListener('nge:quest-complete', onQuestComplete);
 
@@ -1151,7 +1155,7 @@ function playBatchChime() {
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
-  max-width: 360px;
+  max-width: 480px;
 }
 
 /* ── Toast card ── */
@@ -1179,6 +1183,13 @@ function playBatchChime() {
 .nge-toast--cells  { border-color: rgba(76, 175, 80, 0.3); }
 .nge-toast--edits  { border-color: rgba(74, 158, 255, 0.3); }
 .nge-toast--quest  { border-color: rgba(0, 200, 255, 0.35); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 200, 255, 0.12); }
+/* A completed quest is a bigger moment than a toast (Ames 2026-10-13: the
+   small one was "impossibly tiny"): a wider card, larger type, a longer stay. */
+.nge-toast--quest { width: 460px; max-width: calc(100vw - 32px); padding: 18px 22px; gap: 16px; }
+.nge-toast--quest .nge-toast-icon { width: 60px; height: 60px; border-radius: 12px; }
+.nge-toast--quest .nge-toast-emoji { font-size: 32px; }
+.nge-toast--quest .nge-toast-title { font-size: 20px; line-height: 1.25; }
+.nge-toast--quest .nge-toast-subtitle { font-size: 15px; line-height: 1.4; margin-top: 4px; white-space: normal; }
 
 /* ── Icon ── */
 .nge-toast-icon {

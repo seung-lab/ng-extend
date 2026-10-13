@@ -300,8 +300,13 @@ on `claude/annotation-quests`, not deployed.
   from the client's `backend.userName` (the CAVE name): the two differed
   ("Amy R. Sterling" vs "Amy Sterling") and the count showed 0. The row last
   clicked, opened or jumped to is marked like the Cell Library's last jump.
-  Completing fires `nge:quest-complete` on `document`; `AchievementToast.vue`
-  turns it into a toast with the annotation and quest counts plus confetti.
+  Completing fires `nge:quest-complete` on `document` with the Complete
+  button's screen point; `AchievementToast.vue` turns it into a large quest
+  toast (460 px, 8 s) with the annotation and quest counts, and confetti
+  from that point in shades of one random colour (`ConfettiCelebration.vue`
+  `trigger('mono', 2.5, origin)`). The profile's Scout report has a Quests
+  column: the sheet rows with the player's name and a status, read through
+  `listQuests`; "not available" when the sheet cannot be read.
   The tab shows on every dataset; off Retina it says where quests are and
   offers `switchToDataset` (the standard switch, which may open the dataset's
   intro for a first visit).

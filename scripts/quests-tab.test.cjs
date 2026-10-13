@@ -191,6 +191,7 @@ const RETINA_LAYERS = [
       toastText = await page.evaluate(() => [...document.querySelectorAll('.nge-toast--quest, .nge-toast')].map(t => t.innerText.replace(/\s+/g, ' ').trim()));
     }
     console.log('toast: ' + JSON.stringify(toastText));
+    await page.screenshot({ path: path.join(OUT, 'celebration.png') });
     console.log('confetti canvas: ' + await page.evaluate(() => !!document.querySelector('canvas.nge-confetti, .nge-confetti canvas, canvas[class*=confetti]')));
     await page.waitForTimeout(2500);
     page.off('console', logAll);
@@ -198,6 +199,13 @@ const RETINA_LAYERS = [
     console.log('calls: ' + JSON.stringify(calls.filter(c => c.action !== 'quest_list')));
     console.log('after submit, text: ' + JSON.stringify((await tabText()).slice(0, 600)));
     await shot('quests-submitted');
+    // The profile: the Quests count in the Scout report.
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: {} })));
+    await page.waitForSelector('.nge-profile-stat-row--scout', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    console.log('profile scout row: ' + JSON.stringify(await page.evaluate(() => { const r = document.querySelector('.nge-profile-stat-row--scout'); return r ? r.innerText.replace(/\s+/g, ' ').trim() : 'no scout row'; })));
+    const scout = await page.locator('.nge-profile-stat-row--scout').boundingBox().catch(() => null);
+    if (scout) await page.screenshot({ path: path.join(OUT, 'profile-scout.png'), clip: { x: Math.max(0, scout.x - 8), y: Math.max(0, scout.y - 40), width: Math.min(1400, scout.width + 16), height: Math.min(900, scout.height + 56) } });
     console.log('error box: ' + JSON.stringify(await page.evaluate(() => (document.querySelector('.nge-aq-error') || {}).innerText || '')));
   } finally {
     await browser.close();
