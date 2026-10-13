@@ -46,10 +46,34 @@ const pilotRows = ref<{email:string;enabled:boolean}[]>([]);
 const pilotEmail = ref('');
 const pilotError = ref('');
 const pilotBusy = ref(false);
+/** The Pyr name behind each invited email, for those who have signed in
+ *  (Ames 2026-10-13: "it should also show username"). By email, lower case. */
+const pilotNames = ref<Record<string, string>>({});
+const pilotSearch = ref('');
+const pilotShown = computed(() => {
+  const words = pilotSearch.value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return pilotRows.value;
+  return pilotRows.value.filter(m => {
+    const hay = (m.email + ' ' + (pilotNames.value[m.email.toLowerCase()] || '')).toLowerCase();
+    return words.every(w => hay.includes(w));
+  });
+});
+async function loadPilotNames(emails: string[]) {
+  const found: Record<string, string> = {};
+  for (let i = 0; i < emails.length; i += 60) {
+    const {data} = await supabase.from('users').select('username,display_name,middleauth_email').in('middleauth_email', emails.slice(i, i + 60));
+    for (const u of (data || []) as any[]) {
+      const name = u.username || u.display_name;
+      if (u.middleauth_email && name) found[String(u.middleauth_email).toLowerCase()] = name;
+    }
+  }
+  pilotNames.value = found;
+}
 async function loadPilot() {
   const {data,error} = await supabase.from('pilot_members').select('*').order('email');
   pilotError.value = error?.message || '';
   pilotRows.value = data || [];
+  void loadPilotNames(pilotRows.value.map(m => m.email)).catch(() => { /* the emails still show */ });
 }
 async function invitePilot() {
   pilotBusy.value = true; pilotError.value = '';
@@ -1872,8 +1896,18 @@ function practiceWhen(iso: string | null) {
       </form>
       <p v-if="pilotError" role="alert">{{ pilotError }}</p>
       <p v-if="!pilotRows.length">No additional testers invited yet.</p>
-      <ul><li v-for="member in pilotRows" :key="member.email">
-        <span>{{ member.email }} · {{ member.enabled ? 'Invited' : 'Access paused' }}</span>
+      <div v-else class="nge-pilot-find">
+        <input v-model="pilotSearch" type="search" autocomplete="off" placeholder="Search by name or email" aria-label="Search testers by name or email"
+               @keydown.stop @keyup.stop @keypress.stop />
+        <span>{{ pilotSearch.trim() ? `${pilotShown.length} of ${pilotRows.length}` : `${pilotRows.length} testers` }}</span>
+      </div>
+      <p v-if="pilotRows.length && !pilotShown.length">Nobody matches "{{ pilotSearch.trim() }}".</p>
+      <ul><li v-for="member in pilotShown" :key="member.email">
+        <span>
+          <b v-if="pilotNames[member.email.toLowerCase()]" class="nge-pilot-name">{{ pilotNames[member.email.toLowerCase()] }}</b>
+          <i v-else class="nge-pilot-noname" title="No Pyr account was found under this email. They may not have signed in yet, or they sign in with a different address.">no Pyr name yet</i>
+          · {{ member.email }} · {{ member.enabled ? 'Invited' : 'Access paused' }}
+        </span>
         <button @click="setPilot(member.email,!member.enabled)">{{ member.enabled ? 'Pause access' : 'Restore access' }}</button>
       </li></ul>
     </section>
@@ -3766,5 +3800,9 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-admin input, .nge-pilot-admin button { font:inherit; padding:10px 12px; border:1px solid #74859a; border-radius:6px; background:#152434; color:#f1f5f9; }
 .nge-pilot-admin li span { flex:1 1 220px; overflow-wrap:anywhere; }
 .nge-pilot-admin ul { padding:0; list-style:none; }
+.nge-pilot-find { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:16px 0 4px; }
+.nge-pilot-find span { color:#b6c2d1; font-size:0.9rem; }
+.nge-pilot-name { font-weight:700; color:#fff; }
+.nge-pilot-noname { font-style:normal; color:#93a1b3; }
 .nge-pilot-admin button { cursor:pointer; }
 </style>
