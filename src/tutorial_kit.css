@@ -477,3 +477,21 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-trac
 .introductionStepAnchor .chip:has(.nge-sbx-progress) .progressBarContainer,
 .introductionStepAnchor .chip:has(.nge-sbx-nurro) .progressBarContainer,
 .introductionStepAnchor .chip:has(.nge-sbx-figure) .progressBarContainer { display: none !important; }
+
+/* The dots, second pass (Ames, 2026-10-13: "kind of strange"). Before, the
+   ones still to do were so dim they read as smudges and the one in hand was
+   the only hollow one. Now: to do is a small open ring you can see, the one
+   in hand is a solid white dot with a soft halo, solved is a solid cyan dot.
+   All the same size, on a line that is visible. */
+.nge-sbx-node, .nge-sbx-node--now, .nge-sbx-node--done,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--now {
+  width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box;
+  background: none; border: 1.5px solid rgba(150, 215, 255, 0.45); box-shadow: none;
+}
+.nge-sbx-node.nge-sbx-node--done,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node.nge-sbx-node--done { background: #7ee0ff; border-color: #7ee0ff; box-shadow: 0 0 5px rgba(126, 224, 255, 0.5); }
+.nge-sbx-node.nge-sbx-node--now,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node.nge-sbx-node--now { background: #ffffff; border-color: #ffffff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.14), 0 0 8px rgba(255, 255, 255, 0.45); }
+.nge-sbx-link, body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-link { margin: 0 4px; background: rgba(150, 215, 255, 0.24); }
+.nge-sbx-link.nge-sbx-link--lit { background: rgba(126, 224, 255, 0.85); box-shadow: none; }
