@@ -93,7 +93,7 @@ print(n)
     return hidden;
   }, [x, y]);
   const layerInfo = () => page.evaluate(() => {
-    const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'Cilium Centerline');
+    const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'Cilium centerline');
     if (!ml || !ml.layer) return null;
     const anns = ml.layer.localAnnotations ? ml.layer.localAnnotations.toJSON() : [];
     return { tool: ml.layer.tool && ml.layer.tool.value ? ml.layer.tool.value.toJSON() : null, shaderError: String((ml.layer.annotationDisplayState.shaderError && ml.layer.annotationDisplayState.shaderError.value) || ''), anns: anns.map(a => ({ type: a.type, id: a.id, n: a.points ? a.points.length : undefined, points: a.points, point: a.point, pointA: a.pointA, pointB: a.pointB })) };
@@ -112,16 +112,16 @@ print(n)
     const labPolyline = { type: 'polyline', id: 'lab-polyline-1', points: [[37000, 16600, 1973], [37100, 16760, 1973], [37250, 16640, 1973], [37350, 16800, 1973]] };
     const stateWith = (annotations) => ({
       ...base, position: center, layout: 'xy-3d',
-      selectedLayer: { layer: 'Cilium Centerline', visible: true },
+      selectedLayer: { layer: 'Cilium centerline', visible: true },
       layers: [...(base.layers || []).filter(l => l.type !== 'annotation'), {
-        type: 'annotation', source: 'local://annotations', name: 'Cilium Centerline', tab: 'annotations',
+        type: 'annotation', source: 'local://annotations', name: 'Cilium centerline', tab: 'annotations',
         annotationColor: '#00ff00', annotations,
         shader: 'void main() {\n  setColor(defaultColor());\n  setLineWidth(6.0);\n  setEndpointMarkerSize(10.0);\n}\n',
       }],
     });
     const load = async (state) => {
       await page.evaluate((s) => { window.location.hash = '#!' + encodeURIComponent(JSON.stringify(s)); }, state);
-      await page.waitForFunction(() => { const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'Cilium Centerline'); return !!(ml && ml.layer && ml.layer.localAnnotations); }, null, { timeout: 30000 });
+      await page.waitForFunction(() => { const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'Cilium centerline'); return !!(ml && ml.layer && ml.layer.localAnnotations); }, null, { timeout: 30000 });
       await page.waitForTimeout(2500);
     };
     // Control: the same view with an empty layer.
@@ -231,10 +231,10 @@ print(n)
 
     // ── 4. Save and reload ────────────────────────────────────────────────
     const saved = await page.evaluate(() => window.viewer.state.toJSON());
-    const savedLayer = saved.layers.find(l => l.name === 'Cilium Centerline');
+    const savedLayer = saved.layers.find(l => l.name === 'Cilium centerline');
     const savedPoly = savedLayer.annotations.find(a => a.type === 'polyline');
     check('the saved view holds the polyline as {type: "polyline", points: [...]}', savedPoly && Array.isArray(savedPoly.points) && savedPoly.points.length === 3 && savedPoly.points.every(p => Array.isArray(p) && p.length === 3), savedPoly && { keys: Object.keys(savedPoly), first: savedPoly.points[0] });
-    await page.evaluate((s) => { window.location.hash = '#!' + encodeURIComponent(JSON.stringify(s)); }, { ...saved, layers: saved.layers.map(l => l.name === 'Cilium Centerline' ? { ...l, name: 'Cilium Centerline' } : l) });
+    await page.evaluate((s) => { window.location.hash = '#!' + encodeURIComponent(JSON.stringify(s)); }, { ...saved, layers: saved.layers.map(l => l.name === 'Cilium centerline' ? { ...l, name: 'Cilium centerline' } : l) });
     await page.waitForTimeout(3000);
     info = await layerInfo();
     const again = info && info.anns.find(a => a.type === 'polyline');
@@ -242,7 +242,7 @@ print(n)
 
     // ── 5. The other shapes still compile and draw beside a polyline ──────
     // (every shape's shader now carries the polyline's setters too).
-    const withShapes = { ...saved, layers: saved.layers.map(l => l.name !== 'Cilium Centerline' ? l : { ...l, annotations: [...l.annotations,
+    const withShapes = { ...saved, layers: saved.layers.map(l => l.name !== 'Cilium centerline' ? l : { ...l, annotations: [...l.annotations,
       { type: 'axis_aligned_bounding_box', id: 'box-1', pointA: [36800, 16900, 1965], pointB: [36950, 17000, 1985] },  // a box with depth, so the slice cuts it
       { type: 'ellipsoid', id: 'ell-1', center: [37400, 16300, 1973], radii: [60, 60, 10] }] }) };
     await page.evaluate((s) => { window.location.hash = '#!' + encodeURIComponent(JSON.stringify(s)); }, withShapes);

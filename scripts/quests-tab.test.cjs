@@ -192,7 +192,15 @@ const RETINA_LAYERS = [
     const options = await page.evaluate(() => [...document.querySelectorAll('.nge-aq-form select option')].map(o => o.textContent.trim()));
     console.log('status options: ' + JSON.stringify(options));
     console.log('pills: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-aq-form .nge-aq-pill')].map(b => b.textContent.trim()))));
+    // Under the status: when to use it, in the lab's words (its reference sheet).
+    const hint = () => page.evaluate(() => { const h = document.querySelector('.nge-aq-form .nge-aq-status-hint'); return h ? { text: h.textContent.trim(), size: getComputedStyle(h).fontSize } : null; });
+    await page.selectOption('.nge-aq-form select', 'Cilium annotated');
+    console.log('status hint, Cilium annotated: ' + JSON.stringify(await hint()));
+    await shot('quests-form-hint');
+    await page.selectOption('.nge-aq-form select', 'Need help: One centriole missing');
+    console.log('status hint, Need help: One centriole missing: ' + JSON.stringify(await hint()));
     await page.selectOption('.nge-aq-form select', 'No cilium (one centriole)');
+    console.log('status hint, No cilium (one centriole), which the sheet does not explain: ' + JSON.stringify(await hint()));
     await page.click('.nge-aq-pill:has-text("Split")');
     await page.fill('.nge-aq-notes', 'one centriole, the other side is cut off');
     await page.click('.nge-aq-recheck');

@@ -599,3 +599,22 @@ textarea.neuroglancer-annotation-details-description:focus {
 }
 /* On a narrow window the keys wrap under the count. */
 @media (max-width: 760px) { .nge-polyline-hint { flex-wrap: wrap; white-space: normal; gap: 8px 12px; } }
+
+/* ── A description reads whole in the list (2026-10-13) ─────────────────
+   It was one line, cut with an ellipsis, so "Example: No cilium (BB & DC
+   unclear; int…" was all a row said. The Cilia Quest's examples carry the
+   lab's "when to use" as their descriptions, and the list is where a player
+   reads them. A description now wraps, in a size that can be read. A very
+   long one stops at eight lines; the Selection panel has the rest. The
+   row's buttons sit on the first line, beside the numbers, so they do not
+   lie over the words. (marker: nge-ann-description-whole) */
+.neuroglancer-annotation-list-entry .neuroglancer-annotation-description {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8;
+  overflow: hidden;
+  margin-top: 2px;
+  font: 400 13px/18px 'Inter', 'Roboto', sans-serif !important;
+  color: rgba(204, 222, 244, 0.9);
+}
+.neuroglancer-annotation-list-entry > .nge-ann-row-actions { top: 1px; transform: none; }

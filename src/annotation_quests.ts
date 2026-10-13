@@ -21,13 +21,10 @@ export const QUEST_TITLE = 'Cilia Quest';
 /** The lab's own words for the quest (Celia, 2026-10-13), shown under its name. */
 export const QUEST_LEAD = 'We\'re on the hunt for primary cilia, important cellular appendages that receive and process environmental signals. Cilia serve as “antennas” that cells use to sense the chemistry of their environment. Each cell only has one primary cilium, will you be the one to find it?';
 /** The lab's guide to locating and annotating cilia (opens without a sign in). */
-export const QUEST_GUIDE_URL = 'https://unitc-my.sharepoint.com/:p:/g/personal/ojxjl01_cloud_uni-tuebingen_de/IQDBsH6sbIjZRY5Gc3Flt5iaAUvXSDf4QLsyamGQ72f8rOo?e=hsHF4c';
-/** The lab's reference of cilia states (a sheet anyone with the link can read). */
-export const QUEST_REFERENCE_URL = 'https://docs.google.com/spreadsheets/d/1RPoLl36rx6nl17NTqVsvcC5FBo-wgDmkvszv0sfYigU/edit?usp=sharing';
-/** The training video. Empty until it has a home players can open: the link
- *  given on 2026-10-13 is a Slack direct message, which only the two people
- *  in it can see. While this is empty the instructions do not mention a video. */
-export const QUEST_VIDEO_URL = '';
+export const QUEST_GUIDE_URL = 'https://unitc-my.sharepoint.com/:p:/g/personal/ojxjl01_cloud_uni-tuebingen_de/IQDBsH6sbIjZRY5Gc3Flt5iaAUvXSDf4QLsyamGQ72f8rOo';
+/** The training video, on YouTube, starting where the cilia part begins
+ *  (Ames 2026-10-13). Left empty, the instructions do not mention a video. */
+export const QUEST_VIDEO_URL = 'https://www.youtube.com/watch?v=-l2-R-9vX6o&t=1525s';
 /** The sheet says "ON SAC" and "OFF SAC"; players read "Starburst" (Ames 2026-10-13). */
 export const cellTypeForPlayers = (t: string) => String(t || '').replace(/\bSACs?\b/g, 'Starburst');
 
@@ -119,7 +116,10 @@ export const QUEST_LAYER_COLORS: { match: RegExp; color: string }[] = [
   { match: /centriole/i, color: '#e06060' },             // red
   { match: /basal/i, color: '#f5d142' },                 // gold
 ];
-export const CENTERLINE_LAYER = 'Cilium Centerline';
+/** Spelled as the lab's own views spell it ("Cilium centerline", read from
+ *  its example views 2026-10-13), so whatever of the lab's reads a share link
+ *  by layer name finds the centerline where it expects it. */
+export const CENTERLINE_LAYER = 'Cilium centerline';
 /** The layers in the view right now, to tell the Start Link's fresh ones
  *  from what was there before it loaded (see dressQuestLayers). */
 export function layerSnapshot(): Set<any> {

@@ -11,10 +11,11 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
-import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_REFERENCE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
+import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { mintShortStateLink } from '../util/state_link';
 import { runPanelLap } from '../util/holo_trace';
+import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { cellAtCrosshair } from '../util/crosshair_cell';
@@ -41,6 +42,8 @@ const myKeys = computed(() => new Set([you.value, backend.userName, backend.user
 const isMine = (r: QuestRow) => !!r.annotator && myKeys.value.has(nameKey(r.annotator));
 const isDone = (r: QuestRow) => !!r.status;
 const mine = computed(() => rows.value.filter(r => isMine(r) && !isDone(r)));
+/** When to use the status chosen, in the lab's words (its reference sheet). */
+const statusHint = computed(() => QUEST_STATUS_GUIDE[form.value.status] || '');
 /** At the limit of cells held at once: Claim waits for a Submit or a Release. */
 const atLimit = computed(() => mine.value.length >= QUEST_CLAIM_LIMIT);
 /** Cells this player has completed (Ames 2026-10-13: "a count of how many I
@@ -217,10 +220,10 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         <!-- The lab's own steps (Celia, 2026-10-13). The sentence on the
              centerline's keys is ours: the polyline tool is new here. -->
         <ol class="nge-aq-help-steps">
-          <li><b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body, Daughter centriole, and Cilium Centerline.</b></li>
+          <li><b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body, Daughter centriole, and Cilium centerline.</b></li>
           <li>Use <a :href="QUEST_GUIDE_URL" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.<template v-if="QUEST_VIDEO_URL"> Check out this <a :href="QUEST_VIDEO_URL" target="_blank" rel="noopener">training video</a> as well!</template></li>
           <li>Find the cilium, an appendage that projects from the cell's soma. Annotate its centerline, basal body, and daughter centriole in each of their respective layers. For the centerline, hold <b>Ctrl</b> and click along the cilium, then press <b>Enter</b>.</li>
-          <li>Some cells will not have a visible cilium. You may still be able to find their internal basal body and daughter centriole. <a :href="QUEST_REFERENCE_URL" target="_blank" rel="noopener">Here's a reference</a> for a variety of cilia states you may encounter.</li>
+          <li>Some cells will not have a visible cilium. You may still be able to find their internal basal body and daughter centriole. <a href="#" title="Opens three real example cells, annotated by the lab, in a new tab" @click.prevent="openQuestExamples()">Here's a reference</a> for a variety of cilia states you may encounter.</li>
           <li>Press <b>Submit</b>, and choose a cilium status from the list. The lab will receive your view as a share link.</li>
           <li>You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.</li>
         </ol>
@@ -263,6 +266,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <option value="" disabled>Choose one</option>
                 <option v-for="s in QUEST_STATUSES" :key="s" :value="s">{{ s }}</option>
               </select>
+              <div v-if="statusHint" class="nge-aq-status-hint">{{ statusHint }}</div>
               <div class="nge-aq-form-label">Cilium split or merged?</div>
               <div class="nge-aq-pills">
                 <button v-for="s in QUEST_SPLIT_MERGED" :key="s" class="nge-aq-pill" :class="{ 'nge-aq-pill--on': form.splitMerged === s }" @click="form.splitMerged = form.splitMerged === s ? '' : s">{{ s }}</button>
@@ -344,6 +348,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                 <option value="" disabled>Choose one</option>
                 <option v-for="s in QUEST_STATUSES" :key="s" :value="s">{{ s }}</option>
               </select>
+              <div v-if="statusHint" class="nge-aq-status-hint">{{ statusHint }}</div>
               <div class="nge-aq-form-label">Cilium split or merged?</div>
               <div class="nge-aq-pills">
                 <button v-for="s in QUEST_SPLIT_MERGED" :key="s" class="nge-aq-pill" :class="{ 'nge-aq-pill--on': form.splitMerged === s }" @click="form.splitMerged = form.splitMerged === s ? '' : s">{{ s }}</button>
@@ -512,6 +517,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   cursor: pointer;
 }
 .nge-aq-select option { background: #0c1020; color: #cfdcef; }
+/* when to use the status chosen, in the lab's words */
+.nge-aq-status-hint { font-size: 13px; line-height: 1.45; color: #a9c4dd; padding: 2px 2px 0; }
 .nge-aq-select:hover { border-color: rgba(74, 158, 255, 0.35); }
 .nge-aq-select:focus { outline: none; border-color: rgba(68, 170, 255, 0.5); }
 .nge-aq-pills { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -319,16 +319,20 @@ on `claude/annotation-quests`, not deployed.
   Start Link's own annotation layers (the state load REPLACES every layer with
   a fresh instance, so anything done to the layers on screen at click time is
   undone a moment later; it waits for lab layers that were not there before
-  the link was opened), colours them (basal body amber, daughter centriole
-  cyan) and adds a "Cilium centerline" line layer (green) when the view has
-  none. Nothing of the lab's is removed or renamed.
+  the link was opened), colours them from the colour key (next) and adds a
+  `Cilium centerline` polyline layer when the view has none. Nothing of the
+  lab's is removed or renamed.
 - **The colour key** is the top bar's icon accents in `src/data/toolbar-icons.ts`:
   Highlight green `#7CFFB2`, red `#e06060`, gold `#f5d142`, mint `#3ddc97`,
   purple `#c8a4ff`, sky `#35b5ff`. The quest layers use it, in this order:
-  Cilium Centerline green, Daughter centriole red, Basal body gold
+  Cilium centerline green, Daughter centriole red, Basal body gold
   (`QUEST_LAYER_COLORS`, reordered with `reorderManagedLayer`); the Quests
   tab's number is the Highlight green. The lab's own layer names are kept,
-  typo included: the lab's own checks may read them.
+  typo included: the lab's own checks may read them. The layer we add is
+  spelled as the lab's own views spell it, `Cilium centerline` (lower case
+  c; it was `Cilium Centerline` until 2026-10-13, so views saved from the
+  test site before then carry the capital). Layers are matched by pattern,
+  never by exact name, so both are found.
 - **The polyline annotation** (2026-10-13) is a port from the lab's
   neuroglancer (`seung-lab/neuroglancer`, branch `cj-polyline-test-fix`) into
   our older vendored copy, so a centerline drawn in Pyr is the same
@@ -355,14 +359,58 @@ on `claude/annotation-quests`, not deployed.
 - **The quest's description and instructions are the lab's own** (Celia,
   2026-10-13): `QUEST_LEAD` and the six steps in `AnnotationQuestsTab.vue`,
   with `QUEST_GUIDE_URL` (a SharePoint deck, opens signed out) and
-  `QUEST_REFERENCE_URL` (a sheet anyone with the link can read). One sentence
-  in step 3, on the centerline's keys, is ours. **`QUEST_VIDEO_URL` is empty
-  on purpose:** the training video link given was a Slack direct message,
-  which only its two members can open; while it is empty the steps do not
-  mention a video. Fill it once the video has a home players can open. The
-  Instructions button is lit once per browser, three seconds after the tab
-  first opens (`nge-cilia-quest-intro-seen` in localStorage, `runPanelLap`
-  and one CSS glow; it never loops).
+  `QUEST_VIDEO_URL` (the training video on YouTube, from where the cilia part
+  starts; left empty, step 2 does not mention a video). One sentence in step
+  3, on the centerline's keys, is ours. The Instructions button is lit once
+  per browser, three seconds after the tab first opens
+  (`nge-cilia-quest-intro-seen` in localStorage, `runPanelLap` and one CSS
+  glow; it never loops).
+- **"Here's a reference" opens the lab's real examples in Pyr** (Ames
+  2026-10-13: "a ng link that has layers/annotations and descriptions to
+  demo the various things on real cell with real example annotations"), not
+  the lab's sheet. `src/annotation_quest_examples.ts` holds them and is
+  **generated, never edited**: `python -I scripts/make-quest-examples.py
+  <a folder outside the repo>` reads the lab's reference sheet (Status, When
+  to use, Example) and the saved view of each example, and writes the file.
+  What it gives:
+  - `QUEST_STATUS_GUIDE`, the lab's "when to use" per status. The Submit
+    form shows it under the status chosen (`.nge-aq-status-hint`). The sheet
+    explains eight of the nine statuses; `No cilium (one centriole)` has no
+    line, so it shows none. Nothing is written in its place.
+  - `openQuestExamples()`: one view, in a NEW TAB (the view in hand and its
+    annotations are not replaced), built as a `#!` state link to this site.
+    It holds the three example cells and the lab's own annotations in the
+    quest's three layers, named as the lab names them, in the colour key.
+    Each basal body's description is `Example: <status>. <when to use>`, so
+    the Basal body list, open on arrival, is the index. The arrows over the
+    list step from example to example (they select and move); a click on a
+    row only selects; the row's jump button moves. The view opens on the
+    lab's own framing of the first example, the tip of its cilium.
+  - The sheet gives an example for three statuses only. The other five have
+    no example anywhere, and none is invented.
+  **Where the views live.** The sheet first linked views on the CAVE state
+  server (`global.daf-apis.com`), read with the CAVE token on this machine.
+  On 2026-10-13 the lab re-pointed the Example column at Pyr share links on
+  the TEST site (`annotation-quests-dot-...appspot.com/#!middleauth+https://
+  global.brain-wire-test.org/nglstate/...`). Pyr's state server answers only
+  a signed in player (signed out it returns a sign in page, status 200), and
+  the CAVE token must never be sent there. So the script falls back to the
+  lab's original view of the same status and says so; someone signed in can
+  save a view as `state-<id>.json` in the downloads folder and the script
+  uses that instead (the script's header says how). **The same number is a
+  different view on each state server:** read the server from the link.
+  **Because the lab's sheet links the test site, do not delete the
+  `annotation-quests` test branch at deploy time without telling Ames:** the
+  sheet's links would die, and they need the live address instead.
+  The example cells are named by root id; all three were current on
+  2026-10-13. An edit to one later leaves the example showing the cell as it
+  was annotated.
+- **A description reads whole in every annotation list** (2026-10-13,
+  `annotations_restyle.css`, marker `nge-ann-description-whole`): it wraps,
+  at 13px, up to eight lines, where it used to be one line cut with an
+  ellipsis. This is every annotation layer on every dataset, not only the
+  quest. The row's jump and delete buttons sit on the first line so they do
+  not lie over the words.
 - **The quest's words:** the action is Submit, never Complete (Ames
   2026-10-13: Complete is proofreading's word). A player holds at most three
   cells at once (`claimLimit` in `QUESTS`, `questClaimRoom` on the server,
@@ -387,7 +435,17 @@ on `claude/annotation-quests`, not deployed.
   headline. The UI before the function shows an error in the tab.
 - **Testing the tab headless:** `scripts/quests-tab.test.cjs` (build with
   `DATASET=stroeh_mouse_retina node scripts/build-prod.js`, serve `dist/min`
-  on 3488). It answers every server: the gateway, the state servers, and
+  on 3488), and `scripts/quest-examples.test.cjs` for the examples view (16
+  checks: the links, the new tab, the lab's points and nine point polyline,
+  the descriptions, the arrows, and the centerline and basal body counted in
+  pixels against the same view with the quest layers hidden). **To hide a
+  layer in a test call `managedLayer.setVisible(false)`:** assigning
+  `managedLayer.visible = false` only sets the flag, tells the viewer
+  nothing and raises nothing, so the layer stays drawn and a control built
+  on it compares a picture with itself. A new tab opened by
+  the test's made-up player gets the Welcome tutorial over the view; the
+  test puts away whatever floats over the views before it measures.
+  The tab test answers every server: the gateway, the state servers, and
   every middleauth host. **One 401 with a fake token wedges the middleauth
   provider:** it then waits for a login for good and every later signed
   request (the share link included) hangs with no error. Stub every
