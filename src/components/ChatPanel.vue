@@ -31,6 +31,9 @@ import { currentDatasetTag } from '../datasets';
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
 const { chatMessages, connected, unreadMessages } = storeToRefs(chatStore);
+/** Chat can be used: on its live connection, or, while that is down, by
+ *  asking for new messages every few seconds (store: polling). */
+const chatUsable = computed(() => connected.value || chatStore.polling);
 const backendStore = useProofreadingBackendStore();
 
 const messageInput = ref('');
@@ -1198,9 +1201,10 @@ function toggleCollapse() {
 
       <!-- Tiny drag/control strip -->
       <div class="nge-chat-strip" @mousedown="startDrag" @dblclick="toggleCollapse">
-        <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected }"></span>
+        <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected, 'nge-chat-strip-dot--slow': !connected && chatStore.polling }"
+              :title="connected ? 'Chat is live' : chatStore.polling ? 'Live updates are down. Chat still works: new messages are fetched every few seconds.' : 'Chat is not connected'"></span>
         <span v-if="collapsed" class="nge-chat-strip-label">Chat</span>
-        <span v-if="connected && chatStore.onlineCount > 0" class="nge-chat-online-wrap">
+        <span v-if="chatUsable && chatStore.onlineCount > 0" class="nge-chat-online-wrap">
           <button type="button" class="nge-chat-online" :aria-expanded="showOnline" title="See who is online"
                   @click.stop="showOnline = !showOnline">{{ chatStore.onlineCount }} online</button>
           <!-- Who that is (Ames 2026-10-09). A name opens that player's profile. -->
@@ -1514,7 +1518,7 @@ function toggleCollapse() {
           </div>
           <div v-else class="nge-chat-input-row">
             <span class="nge-chat-share">
-              <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !connected || sharing"
+              <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !chatUsable || sharing"
                       @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M8 15.4S2.6 10.5 2.6 6.3a5.4 5.4 0 0 1 10.8 0C13.4 10.5 8 15.4 8 15.4zM8 8.4a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 0 4.2z"/></svg></button>
               <span v-if="shareMenuOpen" class="nge-chat-share-menu">
                 <button @click="shareView(false)">📍 Share my view</button>
@@ -1527,7 +1531,7 @@ function toggleCollapse() {
               class="nge-chat-input"
               :class="{ 'nge-chat-input--over': messageTooLong }"
               rows="1"
-              :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : 'Message... (@ to mention)'"
+              :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : !chatUsable ? 'Chat is connecting…' : !connected ? 'Message... (new ones arrive every few seconds)' : 'Message... (@ to mention)'"
               title="Enter sends. *bold* and _underline_, or Ctrl+B and Ctrl+U on selected text."
               @keydown.stop="onInputKeydown"
               @keyup.stop
@@ -1539,12 +1543,12 @@ function toggleCollapse() {
               @blur="mentionQuery = null"
               spellcheck="true"
               autocomplete="off"
-              :disabled="!isLoggedIn || !connected"
+              :disabled="!isLoggedIn || !chatUsable"
             ></textarea>
             <span v-if="showLengthCount" class="nge-chat-count" :class="{ 'nge-chat-count--over': messageTooLong }"
                   :title="`Up to ${CHAT_MAX_CHARS} characters, links don't count`">{{ CHAT_MAX_CHARS - messageLength }}</span>
             <span class="nge-chat-emoji">
-              <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !connected"
+              <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !chatUsable"
                       @mousedown.prevent @click.stop="emojiOpen = !emojiOpen" title="Add an emoji">🙂</button>
               <span v-if="emojiOpen" class="nge-chat-emoji-grid">
                 <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
@@ -1744,6 +1748,8 @@ function toggleCollapse() {
   background: #0fb18b;
   box-shadow: 0 0 4px rgba(15, 177, 139, 0.5);
 }
+/* Amber: no live connection, chat is fetching new messages on a timer. */
+.nge-chat-strip-dot--slow { background: #ffb347; box-shadow: 0 0 6px rgba(255, 179, 71, 0.8); }
 
 .nge-chat-strip-label {
   font-size: 10px;

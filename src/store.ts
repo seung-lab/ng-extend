@@ -5093,7 +5093,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (data.post_to_chat && !isScheduledForLater) {
       try {
         const chatStore = useChatStore();
-        if (chatStore.connected) {
+        if (chatStore.connected || chatStore.polling) {
           chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
           // Record that the announcement already went out, so the every-10-min
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
@@ -5126,7 +5126,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const chatStore = useChatStore();
     // Need a live channel to broadcast to other users. If no one is connected
     // yet, leave the rows unposted; the next connected poller picks them up.
-    if (!chatStore.connected) return;
+    if (!chatStore.connected && !chatStore.polling) return;
     const now = new Date().toISOString();
     const { data: due, error: dueErr } = await supabase
       .from('notifications')
@@ -6057,6 +6057,47 @@ export const useChatStore = defineStore('chat', () => {
 
   let channel: ReturnType<typeof supabase.channel> | null = null;
   let connecting = false;
+  // ── Chat without live updates (Ames 2026-10-13) ──────────────────────────
+  // Messages arrive over a live connection (Supabase Realtime). When that
+  // service is down the connection cannot be made, and chat used to go dead:
+  // the box was switched off and nothing could be sent or seen, for everyone,
+  // until the service came back. But SENDING never needed the live
+  // connection (a message is saved through the server), and new messages can
+  // be asked for. So while the live connection is down, chat asks for new
+  // messages every few seconds and stays usable, and it keeps trying to get
+  // the live connection back, a little less often each time.
+  const polling = ref(false);
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let rejoinTimer: ReturnType<typeof setTimeout> | null = null;
+  let rejoinDelay = 5000;
+  let openChannel: (() => void) | null = null;
+  const POLL_MS = 8000;
+  function startPolling() {
+    if (polling.value) return;
+    polling.value = true;
+    void loadMissed();
+    pollTimer = setInterval(() => { void loadMissed(); }, POLL_MS);
+    // Being online, and who else is, never needed the live connection either.
+    void heartbeat().then(loadOnline);
+    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
+    if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; void loadOnline(); }, 30_000);
+  }
+  function stopPolling() {
+    polling.value = false;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+  function rejoinSoon() {
+    if (rejoinTimer || !openChannel) return;
+    rejoinTimer = setTimeout(() => {
+      rejoinTimer = null;
+      if (connected.value || !openChannel) return;
+      const old = channel;
+      channel = null;                       // so the old one's closing is not taken for a new drop
+      if (old) { try { void supabase.removeChannel(old); } catch { /* already gone */ } }
+      rejoinDelay = Math.min(rejoinDelay * 2, 60_000);
+      openChannel();
+    }, rejoinDelay);
+  }
   let lastMessageDate = '';
 
   // ── Presence (Amy 2026-09-28: join notices and "# online" came back) ──────
@@ -6622,9 +6663,11 @@ export const useChatStore = defineStore('chat', () => {
 
     // Only database rows written by the verified backend reach the chat UI.
     // Public broadcast events are never treated as authenticated messages.
-    channel = supabase.channel('eyewire-ii-chat-verified');
     let subscribedOnce = false;
-    channel.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
+    openChannel = () => {
+    const mine = supabase.channel('eyewire-ii-chat-verified');
+    channel = mine;
+    mine.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
       const row = payload.new;
       if (!row.user_id) return;
       notePinRow(row);
@@ -6673,7 +6716,16 @@ export const useChatStore = defineStore('chat', () => {
     }).on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
       .on('postgres_changes', {event:'INSERT', schema:'public', table:'edit_log', filter:'operation=in.(mark_complete,complete_task)'}, onCompletion)
       .subscribe(status => {
+        if (channel !== mine) return;       // an earlier connection, already replaced
         connected.value = status === 'SUBSCRIBED';
+        if (status !== 'SUBSCRIBED') {
+          // The live connection could not be made, or dropped: carry on by
+          // asking for new messages, and try for it again.
+          if (status === 'TIMED_OUT' || status === 'CLOSED' || status === 'CHANNEL_ERROR') { startPolling(); rejoinSoon(); }
+          return;
+        }
+        stopPolling();
+        rejoinDelay = 5000;
         if (status === 'SUBSCRIBED') {
           // A later SUBSCRIBED is a rejoin after a drop: backfill the gap.
           if (subscribedOnce) void loadMissed();
@@ -6684,6 +6736,8 @@ export const useChatStore = defineStore('chat', () => {
           if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; void loadOnline(); }, 30_000);
         }
       });
+    };
+    openChannel();
     window.addEventListener('pagehide', leavePresence);
     connecting = false; // channel is now assigned; the guard above holds
   }
@@ -6694,7 +6748,9 @@ export const useChatStore = defineStore('chat', () => {
    *   telling people to go and find it.
    */
   function sendMessage(text: string, notificationId: number | null = null, replyTo: string | null = null) {
-    if (!channel || !connected.value) return;
+    // Sending goes through the server, not the live connection, so it also
+    // works while chat is asking for messages on a timer.
+    if (!connected.value && !polling.value) return;
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
     // 'eyewirer' with production access, 'explorer' without, 'player' while
@@ -6715,10 +6771,12 @@ export const useChatStore = defineStore('chat', () => {
     // no-ops if the chat_messages table isn't present).
     const row: Record<string, any> = { name, rank, text, dataset: currentDatasetName(), notification_id: notificationId };
     const post = (r: Record<string, any>) => supabase.from('chat_messages').insert(r);
-    if (!replyTo) { post(row).then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); }); return; }
+    // With no live connection the message will not come back by itself: fetch it.
+    const shown = () => { if (polling.value) void loadMissed(); };
+    if (!replyTo) { post(row).then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); else shown(); }); return; }
     // A reply the database cannot hold yet is still sent, as a plain message.
     post({ ...row, reply_to: replyTo }).then(({ error }) => {
-      if (!error) return;
+      if (!error) { shown(); return; }
       console.warn('[chat] reply link not stored, sent as a plain message:', error.message);
       post(row).then(({ error: e2 }) => { if (e2) console.warn('[chat] persist failed:', e2.message); });
     });
@@ -6791,14 +6849,18 @@ export const useChatStore = defineStore('chat', () => {
       if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
       window.removeEventListener('pagehide', leavePresence);
       online.value = {};
-      supabase.removeChannel(channel);
+      const old = channel;
       channel = null;
+      openChannel = null;
+      stopPolling();
+      if (rejoinTimer) { clearTimeout(rejoinTimer); rejoinTimer = null; }
+      supabase.removeChannel(old);
       connected.value = false;
       connecting = false;
     }
   }
 
-  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
