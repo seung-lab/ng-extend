@@ -81,23 +81,53 @@ async function call(action: string, body: Record<string, unknown> = {}): Promise
  *  count and the profile, so one read serves all three. */
 export const questState = reactive({ rows: [] as QuestRow[], you: '', loaded: false });
 /** The rows, and `you`: the name the sheet carries for this player (the
- *  server writes it, so it is the one to match rows against). */
-export async function listQuests(): Promise<{ rows: QuestRow[]; you: string }> {
-  const r = await call('quest_list');
-  const out = { rows: Array.isArray(r.rows) ? r.rows : [], you: typeof r.you === 'string' ? r.you : '' };
-  questState.rows = out.rows;
-  questState.you = out.you;
-  questState.loaded = true;
-  return out;
+ *  server writes it, so it is the one to match rows against).
+ *
+ *  Callers that ask while a read is under way share it. The library's tab
+ *  count and the Quests tab both ask as the library opens, and the server
+ *  allows each player a limited number of reads a day (the anonymous tier,
+ *  60), so one request must serve them all. For the same reason a read
+ *  that finished within the last three seconds answers the next caller (the
+ *  tab mounting just after the library's own read). A write starts the next
+ *  read afresh, and only the newest read sets the shared state. */
+type QuestList = { rows: QuestRow[]; you: string };
+let listing: Promise<QuestList> | null = null;
+let listSeq = 0;
+let lastList: { at: number; value: QuestList } | null = null;
+const LIST_REUSE_MS = 3000;
+export function listQuests(): Promise<QuestList> {
+  if (listing) return listing;
+  if (lastList && Date.now() - lastList.at < LIST_REUSE_MS) return Promise.resolve(lastList.value);
+  const seq = ++listSeq;
+  const mine: Promise<QuestList> = (async () => {
+    const r = await call('quest_list');
+    const out = { rows: Array.isArray(r.rows) ? r.rows : [], you: typeof r.you === 'string' ? r.you : '' };
+    if (seq === listSeq) {
+      questState.rows = out.rows;
+      questState.you = out.you;
+      questState.loaded = true;
+      lastList = { at: Date.now(), value: out };
+    }
+    return out;
+  })();
+  listing = mine;
+  const clear = () => { if (listing === mine) listing = null; };
+  mine.then(clear, clear);
+  return mine;
+}
+/** A read under way was started before this write: the next one starts afresh. */
+async function writing<T>(write: Promise<T>): Promise<T> {
+  listing = null; lastList = null; listSeq++;
+  try { return await write; } finally { listing = null; lastList = null; listSeq++; }
 }
 /** Cells nobody holds and nobody has completed: what there is to claim. */
 export function questOpenCount(): number {
   return questState.rows.filter(r => !r.annotator && !r.status).length;
 }
-export async function claimQuest(segmentId: string) { return call('quest_claim', { segmentId }); }
-export async function releaseQuest(segmentId: string) { return call('quest_release', { segmentId }); }
+export async function claimQuest(segmentId: string) { return writing(call('quest_claim', { segmentId })); }
+export async function releaseQuest(segmentId: string) { return writing(call('quest_release', { segmentId })); }
 export async function submitQuest(segmentId: string, done: { status: string; splitMerged: string; link: string; notes: string }) {
-  return call('quest_submit', { segmentId, ...done });
+  return writing(call('quest_submit', { segmentId, ...done }));
 }
 
 /**

@@ -451,6 +451,27 @@ on `claude/annotation-quests`, not deployed.
   request (the share link included) hangs with no error. Stub every
   middleauth host with a catch-all registered first, and keep the
   segmentation server unreachable (abort), never 401.
+- **Off Retina the Quests tab names the dataset as the top bar does**
+  (Ames 2026-10-13: "this should say Switch to Retina"): `questDatasetName`
+  in `CellLibraryPanel.vue` is `datasetAbbrev(...)`, "Retina". The dataset's
+  `shortLabel` reads "EyeWire II", which is what `datasetDisplayName` gives.
+  **The switch reloads the page** into the dataset's start view
+  (`selectLayers` in `store.ts`), so anything meant to happen afterwards has
+  to be left for the next page: `rememberAfterSwitch(undefined, 'quests')`
+  writes `nge_cl_after_switch` in sessionStorage, `ExtensionBar.vue` reopens
+  the Cell Library on that tab once the player is known, and the panel
+  clears the note when it mounts. The same note carries Help requests across
+  a switch. Test: `scripts/quests-elsewhere.test.cjs` on a
+  `DATASET=pinky_sandbox` build (10 checks, through the reload).
+- **The server allows each player 60 quest list reads a day, 8 a minute**
+  (`rateLimit(..., "read:quests")` in `functions/index.js` falls to the
+  anonymous tier), and 1500 a day for everyone together. Past that the tab
+  shows "Please wait a moment." So `listQuests()` in `annotation_quests.ts`
+  shares one request among callers that ask together, answers from a read
+  that finished within three seconds, and starts afresh after any write.
+  Opening the library on Quests costs one read (it cost two, and four after
+  a switch). **Not changed: the cap itself.** A keen player can still reach
+  60 in a day; raising it is a server change and needs Ames's word.
 - Not done: the Slack bridge, the Guide's knowledge and the Slack bot do not
   know about quests yet; no stats or Achievement count a quest.
 

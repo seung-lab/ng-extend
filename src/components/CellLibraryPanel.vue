@@ -35,7 +35,7 @@ import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -1582,10 +1582,12 @@ async function ensureDataset(raw: string | undefined | null): Promise<boolean> {
  * Library on Help, and carry on to the request that was asked for
  * (Ames 2026-10-07: "switch here should reopen the cell library / jump me to
  * the help request"). Read by ExtensionBar (reopen) and here (the jump).
+ * The Quests tab's own switch leaves `tab: 'quests'`, so the library comes
+ * back open on Quests.
  */
 const AFTER_SWITCH_KEY = 'nge_cl_after_switch';
-function rememberAfterSwitch(reqId?: string) {
-  try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab: 'help', reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
+function rememberAfterSwitch(reqId?: string, tab: string = 'help') {
+  try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab, reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
 }
 function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ } }
 function isOnDataset(raw: string | undefined | null): boolean {
@@ -1683,6 +1685,9 @@ watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value =
  *  tasks don't show up until I realize I'm in the wrong dataset"). */
 const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
+/** The quests' dataset as the top bar names it, "Retina" (Ames 2026-10-13:
+ *  "this should say Switch to Retina"; its longer name reads "EyeWire II"). */
+const questDatasetName = computed(() => (questDatasetEntry.value && datasetAbbrev(questDatasetEntry.value.id)) || 'Retina');
 // The number on the Quests tab (Ames 2026-10-13: "Quests doesn't have any
 // number?"): cells open to claim, read once when the panel opens on Retina
 // signed in; the tab's own reads refresh it through questState.
@@ -1692,6 +1697,9 @@ watch([questsHere, () => backend.userId], ([here, uid]) => {
 async function switchToQuestDataset() {
   const ds = questDatasetEntry.value;
   if (!ds) return;
+  // The switch reloads the page into the dataset's start view: leave word
+  // for the next page to open the library on Quests again.
+  rememberAfterSwitch(undefined, 'quests');
   const ok = await switchToDataset(ds);
   if (ok) {
     activeDataset.value = segLayerName(ds) || '';
@@ -3001,9 +3009,9 @@ const panelStyle = computed(() => ({
         <div v-else-if="filter === 'quests'" class="nge-cl-list">
           <annotation-quests-tab v-if="questsHere" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
-            <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetEntry ? datasetDisplayName(questDatasetEntry.id) : 'Retina' }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
+            <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
             <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
-                    title="Switch this view to the quests' dataset">Switch to {{ datasetDisplayName(questDatasetEntry.id) }}</button>
+                    title="Switch this view to the quests' dataset">Switch to {{ questDatasetName }}</button>
           </div>
         </div>
 
