@@ -96,6 +96,21 @@ test('endpoints: within the radius in nm, one point serves one endpoint, strays 
   const r = endpointResults(CHECKS, [[1000, 1000, 100], [5000, 5000, 500]]);
   assert.equal(r.results[0].ok, true); assert.equal(r.stray, 1);
   assert.deepEqual(cleanAnnotations([[1, 2, 3], ['4', '5', '6'], [1], null, [1e9, 0, 0]]), [[1, 2, 3], [4, 5, 6]]);
+  // Two ends 2000 nm apart (500 voxels in x), each with a 1500 nm radius.
+  const two = [
+    {id: 'a', ordinal: 1, kind: 'endpoint', label: 'A', point_a: [1000, 1000, 100], radius_nm: 1500},
+    {id: 'b', ordinal: 2, kind: 'endpoint', label: 'B', point_a: [1500, 1000, 100], radius_nm: 1500},
+  ];
+  const oks = pts => endpointResults(two, pts).results.map(x => x.ok);
+  // One point between them marks one end, not both.
+  assert.deepEqual(oks([[1250, 1000, 100]]), [true, false]);
+  // Two points between them mark both.
+  assert.deepEqual(oks([[1250, 1000, 100], [1260, 1000, 100]]), [true, true]);
+  // A point only A can use and a point both can use: both ends are marked,
+  // in either order the player placed them.
+  assert.deepEqual(oks([[1250, 1000, 100], [800, 1000, 100]]), [true, true]);
+  assert.deepEqual(oks([[800, 1000, 100], [1250, 1000, 100]]), [true, true]);
+  assert.equal(endpointResults(two, [[1250, 1000, 100], [9000, 9000, 900]]).stray, 1);
 });
 
 test('start: edits since the baseline are undone before the cell is handed over', async () => {
@@ -103,7 +118,7 @@ test('start: edits since the baseline are undone before the cell is handed over'
   g.edit({201: '700'}, Date.parse('2026-10-10T20:10:00Z')); // someone cut the neighbour off after the baseline
   const {rpc, calls} = fakeRpc({});
   const out = await handle({action: 'test.start', args: {}, who, me, io: io(g, rpc)});
-  assert.equal(out.session, SESSION); assert.equal(out.checks, 3); assert.equal(out.endpoints, 1); assert.equal(out.root, '900');
+  assert.equal(out.session, SESSION); assert.equal(out.checks, 2, 'the keep check is not a thing to fix'); assert.equal(out.endpoints, 1); assert.equal(out.root, '900');
   assert.deepEqual(g.undone, [2000]);
   assert.equal(g.roots[201], '900');
   assert.ok(calls.some(c => c.action === 'cleaned'));

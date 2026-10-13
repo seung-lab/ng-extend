@@ -110,22 +110,31 @@ const distance = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
  *  `stray` counts the player's points that are near no endpoint. */
 function endpointResults(checks, annotations) {
   const ends = checks.filter(c => c.kind === 'endpoint' && Array.isArray(c.point_a));
-  const used = new Set();
-  const results = ends.map(c => {
-    const radius = Number(c.radius_nm) > 0 ? Number(c.radius_nm) : 1500;
-    const here = nm(c.point_a);
-    let hit = -1;
-    for (let i = 0; i < annotations.length; i++) if (distance(nm(annotations[i]), here) <= radius) { hit = i; break; }
-    if (hit >= 0) used.add(hit);
-    return {id: c.id, ordinal: c.ordinal, kind: 'endpoint', label: c.label || '', weight: c.weight ?? 1,
-      ok: hit >= 0, radius, point_a: c.point_a, point_b: null};
+  const radiusOf = c => (Number(c.radius_nm) > 0 ? Number(c.radius_nm) : 1500);
+  const pts = annotations.map(nm);
+  // near[e]: the points within this end's radius, nearest first.
+  const near = ends.map(c => {
+    const here = nm(c.point_a), r = radiusOf(c);
+    return pts.map((p, i) => [distance(p, here), i]).filter(([d]) => d <= r).sort((a, b) => a[0] - b[0]).map(([, i]) => i);
   });
-  let stray = 0;
-  for (let i = 0; i < annotations.length; i++) {
-    if (used.has(i)) continue;
-    const near = ends.some(c => distance(nm(annotations[i]), nm(c.point_a)) <= (Number(c.radius_nm) > 0 ? Number(c.radius_nm) : 1500));
-    if (!near) stray++;
-  }
+  // One point marks one end, so two ends close together need two points.
+  // A maximum matching (augmenting paths): the player is credited with as
+  // many ends as their points can cover, whatever order they placed them in.
+  const owner = new Map(); // point index -> end index
+  const take = (e, seen) => {
+    for (const i of near[e]) {
+      if (seen.has(i)) continue;
+      seen.add(i);
+      if (!owner.has(i) || take(owner.get(i), seen)) { owner.set(i, e); return true; }
+    }
+    return false;
+  };
+  const hit = ends.map((_, e) => take(e, new Set()));
+  const results = ends.map((c, e) => ({id: c.id, ordinal: c.ordinal, kind: 'endpoint', label: c.label || '', weight: c.weight ?? 1,
+    ok: hit[e], radius: radiusOf(c), point_a: c.point_a, point_b: null}));
+  // Stray: a point within no end's radius at all.
+  const nearAny = new Set(near.flat());
+  const stray = pts.filter((_, i) => !nearAny.has(i)).length;
   return {results, stray};
 }
 
@@ -272,7 +281,9 @@ async function handle({action, args, who, me, io}) {
       try { root = await rootOf(caveClient(io).get, pcgBase(full), full.anchor_supervoxel); } catch (e) { root = null; }
     }
     return {test: claim.test, session, attempt: claim.attempt, resumed: !!claim.resumed, root,
-      checks: checks.filter(c => c.kind !== 'endpoint').length, endpoints: checks.filter(c => c.kind === 'endpoint').length};
+      // Things to fix are the cuts and merges; a keep or apart check is
+      // something not to break, and is not counted for the player.
+      checks: checks.filter(c => ERROR_KINDS.includes(c.kind)).length, endpoints: checks.filter(c => c.kind === 'endpoint').length};
   }
 
   const id = idOf(args.id), session = sessionOf(args.session);
