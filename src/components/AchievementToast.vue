@@ -16,6 +16,7 @@ import { BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, LOYALTY_TEST_ONLY,
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { streakMilestonesBetween } from '../util/streak_milestones';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
+import { runPanelTrace } from '../util/holo_trace';
 import { celebrationCellCounts } from '../util/dataset_contribution';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -291,21 +292,29 @@ document.addEventListener('nge:loyalty-days', onLoyaltyDays);
 // ── Annotation Quest completion (Ames 2026-10-13: "we need some celebration
 //    and a counter popup of annotations placed in that cell, number of quests
 //    completed") ─────────────────────────────────────────────────────────
-function onQuestComplete(e: Event) {
-  const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number; origin?: { x: number; y: number } };
-  const points = Math.max(0, Number(d.points) || 0);
-  const done = Math.max(0, Number(d.done) || 0);
-  addToast({
-    type: 'quest',
-    title: `🎉 Quest complete${d.index ? ': ' + d.index : ''}`,
-    subtitle: `${points === 1 ? '1 annotation' : points + ' annotations'} placed on this cell. ${done === 1 ? '1 quest' : done + ' quests'} completed by you.`,
-    icon: '📍',
-    isImage: false,
-  });
-  // From the Complete button, in shades of one colour drawn fresh each time
-  // (Ames 2026-10-13: "if you get blue, lots of blues").
+/** The confetti goes on the Complete click itself, from the button, in shades
+ *  of one colour drawn fresh each time (Ames 2026-10-13: "it should appear
+ *  right when I click", "if you get blue, lots of blues"). */
+function onQuestConfetti(e: Event) {
+  const d = ((e as CustomEvent).detail || {}) as { origin?: { x: number; y: number } };
   const origin = d.origin && Number.isFinite(d.origin.x) && Number.isFinite(d.origin.y) ? d.origin : undefined;
+  console.info('[quests] confetti');
   fireConfetti('mono', 2.5, origin);
+}
+document.addEventListener('nge:quest-confetti', onQuestConfetti);
+/** The card with the counts, once the sheet has the quest: a holo card at the
+ *  top, in the site's own style, traced once as it arrives, gone after a few
+ *  seconds or a click. */
+const questCard = ref<{ index: string; points: number; done: number } | null>(null);
+const questCardEl = ref<HTMLElement | null>(null);
+let questCardTimer: ReturnType<typeof setTimeout> | null = null;
+function closeQuestCard() { questCard.value = null; if (questCardTimer) { clearTimeout(questCardTimer); questCardTimer = null; } }
+function onQuestComplete(e: Event) {
+  const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number };
+  questCard.value = { index: String(d.index || ''), points: Math.max(0, Number(d.points) || 0), done: Math.max(0, Number(d.done) || 0) };
+  if (questCardTimer) clearTimeout(questCardTimer);
+  questCardTimer = setTimeout(closeQuestCard, 7000);
+  nextTick(() => { try { if (questCardEl.value) runPanelTrace(questCardEl.value); } catch { /* the trace is decoration */ } });
 }
 document.addEventListener('nge:quest-complete', onQuestComplete);
 
@@ -722,6 +731,24 @@ function playBatchChime() {
           <div class="nge-batch-total-sub">cells mapped</div>
           <div class="nge-batch-thanks">Thank you for mapping the brain!</div>
           <div class="nge-batch-rally">FOR SCIENCE!</div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- A completed quest: the counts, in a holo card at the top. -->
+    <Transition name="nge-qcard">
+      <div v-if="questCard" ref="questCardEl" class="nge-qcard" @click="closeQuestCard" role="status">
+        <div class="nge-qcard-eyebrow">Quest complete</div>
+        <div class="nge-qcard-cell">{{ questCard.index || 'Cell' }}</div>
+        <div class="nge-qcard-stats">
+          <div class="nge-qcard-stat">
+            <div class="nge-qcard-num">{{ questCard.points }}</div>
+            <div class="nge-qcard-label">{{ questCard.points === 1 ? 'annotation' : 'annotations' }} on this cell</div>
+          </div>
+          <div class="nge-qcard-stat">
+            <div class="nge-qcard-num nge-qcard-num--total">{{ questCard.done }}</div>
+            <div class="nge-qcard-label">{{ questCard.done === 1 ? 'quest' : 'quests' }} completed by you</div>
+          </div>
         </div>
       </div>
     </Transition>
@@ -1183,13 +1210,79 @@ function playBatchChime() {
 .nge-toast--cells  { border-color: rgba(76, 175, 80, 0.3); }
 .nge-toast--edits  { border-color: rgba(74, 158, 255, 0.3); }
 .nge-toast--quest  { border-color: rgba(0, 200, 255, 0.35); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 200, 255, 0.12); }
-/* A completed quest is a bigger moment than a toast (Ames 2026-10-13: the
-   small one was "impossibly tiny"): a wider card, larger type, a longer stay. */
-.nge-toast--quest { width: 460px; max-width: calc(100vw - 32px); padding: 18px 22px; gap: 16px; }
-.nge-toast--quest .nge-toast-icon { width: 60px; height: 60px; border-radius: 12px; }
-.nge-toast--quest .nge-toast-emoji { font-size: 32px; }
-.nge-toast--quest .nge-toast-title { font-size: 20px; line-height: 1.25; }
-.nge-toast--quest .nge-toast-subtitle { font-size: 15px; line-height: 1.4; margin-top: 4px; white-space: normal; }
+/* ── A completed quest: the holo card (Ames 2026-10-13: the toast was tiny and
+   ugly). The hero card's surface and glow, the panel labels' Orbitron, the
+   profile's big numbers; the border is traced once by runPanelTrace. ── */
+.nge-qcard {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  padding: 22px 28px 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif;
+  color: #e4eaf5;
+  background: radial-gradient(ellipse at 50% 30%, rgba(0, 60, 120, 0.15) 0%, transparent 70%),
+    linear-gradient(145deg, rgba(8, 12, 24, 0.97) 0%, rgba(14, 18, 32, 0.96) 50%, rgba(6, 10, 22, 0.97) 100%);
+  border: 1px solid rgba(126, 224, 255, 0.32);
+  border-radius: 16px;
+  box-shadow:
+    0 0 60px rgba(0, 220, 255, 0.12),
+    0 18px 50px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(196, 228, 255, 0.10);
+  backdrop-filter: blur(10px) saturate(1.2);
+  cursor: pointer;
+  pointer-events: all;
+}
+.nge-qcard::before {
+  content: ""; position: absolute; left: 10%; right: 10%; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(126, 224, 255, 0.95) 50%, transparent);
+  box-shadow: 0 0 12px rgba(126, 224, 255, 0.6);
+}
+.nge-qcard-eyebrow {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.85);
+  text-shadow: 0 0 10px rgba(126, 224, 255, 0.45);
+}
+.nge-qcard-cell {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 30px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.1;
+  color: #f2f7ff;
+  text-shadow: 0 0 18px rgba(126, 224, 255, 0.35);
+}
+.nge-qcard-stats { display: flex; gap: 14px; width: 100%; margin-top: 6px; }
+.nge-qcard-stat {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 12px 10px 11px; border-radius: 10px;
+  background: rgba(126, 224, 255, 0.05);
+  border: 1px solid rgba(126, 224, 255, 0.14);
+}
+.nge-qcard-num {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 30px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  color: #7cffb2; text-shadow: 0 0 16px rgba(124, 255, 178, 0.45);
+}
+.nge-qcard-num--total { color: #ffd24d; text-shadow: 0 0 16px rgba(255, 210, 77, 0.45); }
+.nge-qcard-label {
+  font-size: 12.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #9fb0c8; text-align: center; line-height: 1.3;
+}
+.nge-qcard-enter-active { transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
+.nge-qcard-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
+.nge-qcard-enter-from { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(0.96); }
+.nge-qcard-leave-to { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.98); }
+@media (prefers-reduced-motion: reduce) {
+  .nge-qcard-enter-active, .nge-qcard-leave-active { transition: opacity 0.2s ease; }
+  .nge-qcard-enter-from, .nge-qcard-leave-to { transform: translateX(-50%); }
+}
 
 /* ── Icon ── */
 .nge-toast-icon {

@@ -76,7 +76,7 @@ const RETINA_LAYERS = [
       if (!hit) return r.fulfill(json({ error: 'This cell is not in the quest sheet.' }, 409));
       if (input.action === 'quest_claim') { if (hit.annotator && hit.annotator !== 'Test R. Player') return r.fulfill(json({ error: 'Someone else has this cell.' }, 409)); hit.annotator = 'Test R. Player'; return r.fulfill(json({ ok: true, updated: 1 })); }
       if (input.action === 'quest_release') { hit.annotator = ''; return r.fulfill(json({ ok: true, updated: 1 })); }
-      if (input.action === 'quest_submit') { Object.assign(hit, { annotator: 'Test R. Player', status: input.status, splitMerged: input.splitMerged || '', link: input.link, notes: input.notes || '', date: '10/12/2026' }); return r.fulfill(json({ ok: true, updated: 6 })); }
+      if (input.action === 'quest_submit') { Object.assign(hit, { annotator: 'Test R. Player', status: input.status, splitMerged: input.splitMerged || '', link: input.link, notes: input.notes || '', date: '10/12/2026' }); return new Promise(res => setTimeout(() => { r.fulfill(json({ ok: true, updated: 6 })); res(); }, 1500)); }
       return r.fulfill(json({ error: 'Invalid quest action.' }, 400));
     }
     // The data gateway: the player's own profile row, nothing else.
@@ -190,14 +190,21 @@ const RETINA_LAYERS = [
     await shot('quests-form');
     const logAll = m => console.log('  send-console[' + m.type() + '] ' + m.text().slice(0, 200));
     page.on('console', logAll);
+    const t0 = Date.now();
+    let confettiAt = -1;
+    const onConfetti = m => { if (/\[quests\] confetti/.test(m.text()) && confettiAt < 0) confettiAt = Date.now() - t0; };
+    page.on('console', onConfetti);
     await page.click('.nge-aq-btn--send');
-    // The celebration toast shows for five seconds: catch it as it appears.
+    await page.waitForTimeout(300);
+    console.log('confetti fired after ms: ' + confettiAt + ' (submit answers at 1500)');
+    // The card with the counts comes once the sheet has the quest.
     let toastText = [];
     for (let i = 0; i < 40 && !toastText.length; i++) {
       await page.waitForTimeout(200);
-      toastText = await page.evaluate(() => [...document.querySelectorAll('.nge-toast--quest, .nge-toast')].map(t => t.innerText.replace(/\s+/g, ' ').trim()));
+      toastText = await page.evaluate(() => [...document.querySelectorAll('.nge-qcard')].map(t => t.innerText.replace(/\s+/g, ' ').trim()));
     }
-    console.log('toast: ' + JSON.stringify(toastText));
+    console.log('card after ms: ' + (Date.now() - t0) + ' text: ' + JSON.stringify(toastText));
+    page.off('console', onConfetti);
     await page.screenshot({ path: path.join(OUT, 'celebration.png') });
     console.log('confetti canvas: ' + await page.evaluate(() => !!document.querySelector('canvas.nge-confetti, .nge-confetti canvas, canvas[class*=confetti]')));
     await page.waitForTimeout(2500);

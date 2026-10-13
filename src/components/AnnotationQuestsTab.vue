@@ -139,6 +139,9 @@ async function send(r: QuestRow, e?: Event) {
   let origin: { x: number; y: number } | undefined;
   try { const b = (e?.currentTarget as HTMLElement | null)?.getBoundingClientRect(); if (b) origin = { x: b.left + b.width / 2, y: b.top + b.height / 2 }; } catch { /* no button */ }
   busy.value = r.segmentId; error.value = ''; message.value = '';
+  // The confetti goes on the click itself (Ames 2026-10-13: it took too long
+  // to appear); the card with the counts follows once the sheet has it.
+  document.dispatchEvent(new CustomEvent('nge:quest-confetti', { detail: { origin } }));
   try {
     // The crosshairs may have moved since the check: check once more.
     await runCheck(r);
