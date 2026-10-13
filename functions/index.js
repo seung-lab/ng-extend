@@ -2235,7 +2235,24 @@ exports.ewSheetSync = onRequest(
      console.info('[ewSheetSync] write probe',JSON.stringify({sheet:source.gid,columns,protections:(sheet.protectedRanges||[]).map(p=>({range:p.range,canEdit:p.requestingUserCanEdit,warningOnly:p.warningOnly,unprotected:p.unprotectedRanges}))}));
      await sheetsApi(admin.credential.applicationDefault(),source.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:columns.map(({i})=>({findReplace:{find:probe,replacement:probe,range:{sheetId:source.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:i,endColumnIndex:i+1},matchCase:true}}))})});
     }
-    return res.json({ok:true,sheets:Object.keys(SOURCES),keyless:true,writable:true});
+    // Annotation Quests: each quest tab is shared with the Sheets identity,
+    // has the columns the game writes, and takes a no-op write.
+    const {QUESTS,questHeader}=require('./sheet-policy');
+    const quests={};
+    for(const [key,quest] of Object.entries(QUESTS)) {
+     const meta=await sheetsApi(admin.credential.applicationDefault(),quest.id+'?fields=sheets.properties');
+     const tab=meta.sheets.find(s=>s.properties.sheetId===quest.gid);
+     if(!tab) throw Error('Quest sheet tab missing: '+key);
+     const range="'"+tab.properties.title.replace(/'/g,"''")+"'!A1:Z10";
+     const grid=(await sheetsApi(admin.credential.applicationDefault(),quest.id+'/values/'+encodeURIComponent(range))).values||[];
+     const {headerRow,cols}=questHeader(grid);
+     const missing=['startLink','status','splitMerged','link','name','date','notes'].filter(k=>cols[k]<0);
+     if(missing.length) throw Error('Quest sheet columns missing: '+key+' '+missing.join(','));
+     const probe='__eyewire_sync_noop_785ea491a19d4f7bab5b__';
+     await sheetsApi(admin.credential.applicationDefault(),quest.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[{findReplace:{find:probe,replacement:probe,range:{sheetId:quest.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:cols.name,endColumnIndex:cols.name+1},matchCase:true}}]})});
+     quests[key]={tab:tab.properties.title,headerRow:headerRow+1};
+    }
+    return res.json({ok:true,sheets:Object.keys(SOURCES),quests,keyless:true,writable:true});
    }
    const who=await ewVerify(input.token);
    if(!who) throw ewErr(401,"Sign in before syncing a cell.");
