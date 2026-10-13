@@ -72,6 +72,10 @@ export interface UserLayerSelectionState {
   annotationBuffer: Uint8Array|undefined;
   annotationIndex: number|undefined;
   annotationCount: number|undefined;
+  // nge (polyline port): the picked instance, which for a polyline is one of
+  // its lines; for every other type it equals annotationIndex.
+  annotationInstanceIndex?: number|undefined;
+  annotationInstanceCount?: number|undefined;
   annotationSourceIndex: number|undefined;
   annotationSubsource: string|undefined;
   annotationSubsubsourceId: string|undefined;
@@ -127,6 +131,8 @@ export class UserLayer extends RefCounted {
     state.annotationBuffer = undefined;
     state.annotationIndex = undefined;
     state.annotationCount = undefined;
+    state.annotationInstanceIndex = undefined;
+    state.annotationInstanceCount = undefined;
     state.annotationSourceIndex = undefined;
     state.annotationSubsource = undefined;
     state.annotationPartIndex = undefined;
@@ -226,6 +232,8 @@ export class UserLayer extends RefCounted {
     dest.annotationBuffer = source.annotationBuffer;
     dest.annotationIndex = source.annotationIndex;
     dest.annotationCount = source.annotationCount;
+    dest.annotationInstanceIndex = source.annotationInstanceIndex;
+    dest.annotationInstanceCount = source.annotationInstanceCount;
     dest.annotationSourceIndex = source.annotationSourceIndex;
     dest.annotationSubsource = source.annotationSubsource;
     dest.annotationPartIndex = source.annotationPartIndex;
@@ -900,6 +908,8 @@ export interface PickState {
   pickedAnnotationBufferBaseOffset: number|undefined;
   pickedAnnotationIndex: number|undefined;
   pickedAnnotationCount: number|undefined;
+  pickedAnnotationInstanceIndex: number|undefined;
+  pickedAnnotationInstanceCount: number|undefined;
   pickedAnnotationType: AnnotationType|undefined;
 }
 
@@ -922,6 +932,11 @@ export class MouseSelectionState implements PickState {
   // Index (out of a total of `pickedAnnotationCount`) of the picked annotation.
   pickedAnnotationIndex: number|undefined = undefined;
   pickedAnnotationCount: number|undefined = undefined;
+  // Index (out of `pickedAnnotationInstanceCount`) of the picked instance:
+  // the same as the annotation's for every type but a polyline, whose
+  // instances are its lines.
+  pickedAnnotationInstanceIndex: number|undefined = undefined;
+  pickedAnnotationInstanceCount: number|undefined = undefined;
   pickedAnnotationType: AnnotationType|undefined = undefined;
   pageX: number;
   pageY: number;

@@ -23,7 +23,7 @@ import './annotations.css';
 
 // @ts-ignore (image import, bundled by esbuild)
 import pyrIconUrl from '../../../static/badges/pyr/pyr-icon.png';
-import {Annotation, AnnotationId, AnnotationPropertySerializer, AnnotationReference, AnnotationSource, annotationToJson, AnnotationType, annotationTypeHandlers, AxisAlignedBoundingBox, Ellipsoid, formatNumericProperty, Line} from 'neuroglancer/annotation';
+import {Annotation, AnnotationId, AnnotationPropertySerializer, AnnotationReference, AnnotationSource, annotationToJson, AnnotationType, annotationTypeHandlers, AxisAlignedBoundingBox, Ellipsoid, formatNumericProperty, Line, PolyLine} from 'neuroglancer/annotation';
 import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
 import {MultiscaleAnnotationSource} from 'neuroglancer/annotation/frontend_source';
 import {AnnotationLayer, PerspectiveViewAnnotationLayer, SliceViewAnnotationLayer, SpatiallyIndexedPerspectiveViewAnnotationLayer, SpatiallyIndexedSliceViewAnnotationLayer} from 'neuroglancer/annotation/renderlayer';
@@ -135,6 +135,15 @@ function getCenterPosition(center: Float32Array, annotation: Annotation) {
       break;
     case AnnotationType.ELLIPSOID:
       center.set(annotation.center);
+      break;
+    case AnnotationType.POLYLINE:
+      // The middle of the polyline's first line, as the lab's viewer does.
+      if (annotation.points.length >= 2) {
+        vector.add(center, annotation.points[0], annotation.points[1]);
+        vector.scale(center, center, 0.5);
+      } else if (annotation.points.length === 1) {
+        center.set(annotation.points[0]);
+      }
       break;
   }
 }
@@ -384,6 +393,23 @@ export class AnnotationLayerView extends Tab {
       },
     });
     mutableControls.appendChild(ellipsoidButton);
+
+    // nge (Ames 2026-10-13): the polyline, for a cilium's centerline. Its
+    // icon is drawn (three joined points), like the other Pyr tool buttons.
+    const polylineButton = makeIcon({
+      title: 'Annotate polyline: Ctrl+click each point along the line, Enter to finish',
+      onClick: () => {
+        this.layer.tool.value = new PlacePolylineTool(this.layer, {});
+      },
+    });
+    polylineButton.textContent = '';
+    polylineButton.classList.add('nge-polyline-tool');
+    polylineButton.innerHTML =
+        '<svg viewBox="0 0 18 18" width="18" height="18" fill="none" aria-hidden="true">' +
+        '<path d="M3 14 L7.5 6.5 L11.5 11 L15 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<circle cx="3" cy="14" r="1.7" fill="currentColor"/><circle cx="7.5" cy="6.5" r="1.4" fill="currentColor"/>' +
+        '<circle cx="11.5" cy="11" r="1.4" fill="currentColor"/><circle cx="15" cy="4" r="1.7" fill="currentColor"/></svg>';
+    mutableControls.appendChild(polylineButton);
     toolbox.appendChild(mutableControls);
     this.element.appendChild(toolbox);
 
@@ -896,6 +922,7 @@ const ANNOTATE_POINT_TOOL_ID = 'annotatePoint';
 const ANNOTATE_LINE_TOOL_ID = 'annotateLine';
 const ANNOTATE_BOUNDING_BOX_TOOL_ID = 'annotateBoundingBox';
 const ANNOTATE_ELLIPSOID_TOOL_ID = 'annotateSphere';
+const ANNOTATE_POLYLINE_TOOL_ID = 'annotatePolyline';
 
 // EyeWire II (Ames 2026-10-06): "when I make an annotation layer it
 // automatically selects an annotation point (and let's select point at
@@ -1177,6 +1204,286 @@ class PlaceEllipsoidTool extends TwoStepAnnotationTool {
   }
 }
 
+// ── Polyline (nge, Ames 2026-10-13) ────────────────────────────────────────
+// Ported from seung-lab/neuroglancer (branch cj-polyline-test-fix): a tool
+// that takes any number of clicks. Each Ctrl+click adds a point and the line
+// follows the mouse to the next one. Enter finishes, Backspace takes the last
+// point back, Esc gives the polyline up; clicking the last point again
+// finishes too. The keys are listened for only while a polyline is being
+// drawn, so nothing else in the game loses Enter or Backspace.
+
+abstract class MultiStepAnnotationTool extends PlaceAnnotationTool {
+  inProgressAnnotation: WatchableValue<
+      {annotationLayer: AnnotationLayerState, reference: AnnotationReference, disposer: () => void}|
+      undefined> = new WatchableValue(undefined);
+
+  abstract getInitialAnnotation(
+      mouseState: MouseSelectionState, annotationLayer: AnnotationLayerState): Annotation;
+  abstract getUpdatedAnnotation(
+      oldAnnotation: Annotation, mouseState: MouseSelectionState,
+      annotationLayer: AnnotationLayerState,
+      triggered: boolean): {newAnnotation: Annotation, finished: boolean};
+  abstract undo(): void;
+
+  /** Called as a polyline starts and as it ends, however it ends. */
+  protected placingChanged(_placing: boolean) {}
+
+  trigger(mouseState: MouseSelectionState) {
+    const {annotationLayer, inProgressAnnotation} = this;
+    if (annotationLayer === undefined) {
+      // Not yet ready.
+      return;
+    }
+    if (mouseState.updateUnconditionally()) {
+      const updateNextPoint = (triggered: boolean = false) => {
+        const state = inProgressAnnotation.value;
+        if (state === undefined) return false;
+        const reference = state.reference;
+        if (reference.value == null) return false;
+        const {newAnnotation, finished} =
+            this.getUpdatedAnnotation(reference.value, mouseState, annotationLayer, triggered);
+        if (JSON.stringify(annotationToJson(newAnnotation, annotationLayer.source)) ===
+            JSON.stringify(annotationToJson(reference.value, annotationLayer.source))) {
+          return finished;
+        }
+        state.annotationLayer.source.update(reference, newAnnotation);
+        this.layer.selectAnnotation(annotationLayer, reference.id, true);
+        return finished;
+      };
+
+      if (inProgressAnnotation.value === undefined) {
+        const reference = annotationLayer.source.add(
+            this.getInitialAnnotation(mouseState, annotationLayer), /*commit=*/ false);
+        this.layer.selectAnnotation(annotationLayer, reference.id, true);
+        const mouseDisposer = mouseState.changed.add(() => { updateNextPoint(false); });
+        const disposer = () => {
+          mouseDisposer();
+          reference.dispose();
+        };
+        inProgressAnnotation.value = {
+          annotationLayer,
+          reference,
+          disposer,
+        };
+        this.placingChanged(true);
+      } else {
+        const finished = updateNextPoint(true);
+        if (finished) this.complete();
+      }
+    }
+  }
+
+  disposed() {
+    this.deactivate();
+    super.disposed();
+  }
+
+  /** Give up the annotation in progress. */
+  deactivate() {
+    const state = this.inProgressAnnotation.value;
+    if (state !== undefined) {
+      state.annotationLayer.source.delete(state.reference);
+      state.disposer();
+      this.inProgressAnnotation.value = undefined;
+      this.placingChanged(false);
+    }
+  }
+
+  /** Keep the annotation in progress as it stands. */
+  complete() {
+    const state = this.inProgressAnnotation.value;
+    if (state === undefined) return;
+    state.annotationLayer.source.commit(state.reference);
+    state.disposer();
+    this.inProgressAnnotation.value = undefined;
+    this.placingChanged(false);
+  }
+}
+
+export class PlacePolylineTool extends MultiStepAnnotationTool {
+  getBaseSegment = false;
+
+  private storedRelationships: Uint64[][]|undefined;
+  private hintElement: HTMLElement|undefined;
+
+  get description() {
+    return `annotate polyline`;
+  }
+
+  getInitialAnnotation(mouseState: MouseSelectionState, annotationLayer: AnnotationLayerState):
+      Annotation {
+    const point = getMousePositionInAnnotationCoordinates(mouseState, annotationLayer);
+    this.storedRelationships = getSelectedAssociatedSegments(annotationLayer, this.getBaseSegment);
+    return <PolyLine>{
+      type: AnnotationType.POLYLINE,
+      id: '',
+      description: '',
+      relatedSegments: this.storedRelationships,
+      // The second point follows the mouse until the next click.
+      points: [point, Float32Array.from(point!)],
+      properties: annotationLayer.source.properties.map(x => x.default),
+    };
+  }
+
+  getUpdatedAnnotation(
+      oldAnnotation: PolyLine, mouseState: MouseSelectionState,
+      annotationLayer: AnnotationLayerState, triggered: boolean) {
+    const point = getMousePositionInAnnotationCoordinates(mouseState, annotationLayer);
+    if (point === undefined) return {newAnnotation: oldAnnotation, finished: false};
+
+    const {points} = oldAnnotation;
+    let newAnnotation: PolyLine;
+    if (!triggered) {
+      // The last point is a preview of the one the next click will place.
+      newAnnotation = {...oldAnnotation, points: [...points.slice(0, -1), point]};
+    } else if (arraysEqual(point, points[points.length - 2])) {
+      // A click on the point just placed: that finishes the polyline when
+      // there is a line to keep, and is otherwise no new point.
+      return {newAnnotation: oldAnnotation, finished: points.length > 2};
+    } else {
+      // The click's own position becomes a point, and a new preview follows.
+      newAnnotation =
+          {...oldAnnotation, points: [...points.slice(0, -1), point, Float32Array.from(point)]};
+    }
+    const finished = false;
+
+    const initialRelationships = this.storedRelationships;
+    const newRelationships = getSelectedAssociatedSegments(annotationLayer, this.getBaseSegment);
+    if (initialRelationships === undefined) {
+      newAnnotation.relatedSegments = newRelationships;
+    } else {
+      newAnnotation.relatedSegments = Array.from(newRelationships, (newSegments, i) => {
+        const initialSegments = initialRelationships[i] ?? [];
+        newSegments =
+            newSegments.filter(x => initialSegments.findIndex(y => Uint64.equal(x, y)) === -1);
+        return [...initialSegments, ...newSegments];
+      });
+    }
+    if (triggered) {
+      // What was under the points placed so far stays with the polyline.
+      this.storedRelationships = newAnnotation.relatedSegments;
+    }
+    return {newAnnotation, finished};
+  }
+
+  toJSON() {
+    return ANNOTATE_POLYLINE_TOOL_ID;
+  }
+
+  /** Take off the last point: the preview point when finishing, or the point
+   *  placed last when undoing. A polyline keeps at least two points. */
+  private removeLastPointFromAnnotation() {
+    const state = this.inProgressAnnotation.value;
+    if (state === undefined) return;
+    const annotation = state.reference.value as PolyLine | null | undefined;
+    if (annotation == null) return;
+    if (annotation.points.length > 2) {
+      state.annotationLayer.source.update(
+          state.reference, {...annotation, points: annotation.points.slice(0, -1)});
+    }
+  }
+
+  /** Points placed by a click so far (the last point is only a preview). */
+  private placedPointCount() {
+    const annotation = this.inProgressAnnotation.value?.reference.value as PolyLine | null | undefined;
+    return annotation == null ? 0 : Math.max(0, annotation.points.length - 1);
+  }
+
+  complete() {
+    // One placed point is not a line: there is nothing to keep.
+    if (this.placedPointCount() < 2) {
+      this.deactivate();
+      return;
+    }
+    this.removeLastPointFromAnnotation();
+    super.complete();
+  }
+
+  undo() {
+    // The first point cannot be taken back; Esc gives the whole polyline up.
+    if (this.placedPointCount() < 2) return;
+    const state = this.inProgressAnnotation.value!;
+    const annotation = state.reference.value as PolyLine;
+    // Drop the point placed last and let the preview point take its place.
+    const points = annotation.points;
+    state.annotationLayer.source.update(
+        state.reference, {...annotation, points: [...points.slice(0, -2), points[points.length - 1]]});
+    this.showHint();
+  }
+
+  // Enter, Backspace and Esc, only while a polyline is being drawn.
+  private onKey = (event: KeyboardEvent) => {
+    if (this.inProgressAnnotation.value === undefined) return;
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' ||
+                   target.tagName === 'SELECT' || target.isContentEditable)) {
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    let handled = true;
+    if (event.key === 'Enter') this.complete();
+    else if (event.key === 'Backspace') this.undo();
+    else if (event.key === 'Escape') this.deactivate();
+    else handled = false;
+    if (handled) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    }
+  };
+
+  private showHint() {
+    const el = this.hintElement;
+    if (el === undefined) return;
+    const n = this.placedPointCount();
+    const count = el.querySelector('.nge-polyline-hint-count');
+    if (count) count.textContent = `${n} ${n === 1 ? 'point' : 'points'}`;
+  }
+
+  protected placingChanged(placing: boolean) {
+    if (placing) {
+      window.addEventListener('keydown', this.onKey, true);
+      if (this.hintElement === undefined) {
+        // A strip at the bottom of the views, styled by Pyr
+        // (src/widgets/annotations_restyle.css).
+        const el = this.hintElement = document.createElement('div');
+        el.className = 'nge-polyline-hint';
+        el.setAttribute('role', 'status');
+        el.innerHTML =
+            '<span class="nge-polyline-hint-badge">Polyline</span>' +
+            '<span class="nge-polyline-hint-count"></span>' +
+            '<span class="nge-polyline-hint-key"><kbd>Ctrl + click</kbd> add a point</span>' +
+            '<span class="nge-polyline-hint-key"><kbd>Enter</kbd> finish</span>' +
+            '<span class="nge-polyline-hint-key"><kbd>Backspace</kbd> undo</span>' +
+            '<span class="nge-polyline-hint-key"><kbd>Esc</kbd> cancel</span>';
+        document.body.appendChild(el);
+      }
+      this.showHint();
+    } else {
+      window.removeEventListener('keydown', this.onKey, true);
+      this.hintElement?.remove();
+      this.hintElement = undefined;
+    }
+  }
+
+  trigger(mouseState: MouseSelectionState) {
+    const {annotationLayer} = this;
+    if (annotationLayer === undefined) return;
+    // A first click that is not on anything the layer can place a point at
+    // starts nothing.
+    if (this.inProgressAnnotation.value === undefined &&
+        (!mouseState.updateUnconditionally() ||
+         getMousePositionInAnnotationCoordinates(mouseState, annotationLayer) === undefined)) {
+      return;
+    }
+    super.trigger(mouseState);
+    this.showHint();
+  }
+}
+
+registerLegacyTool(
+    ANNOTATE_POLYLINE_TOOL_ID,
+    (layer, options) => new PlacePolylineTool(<UserLayerWithAnnotations>layer, options));
 registerLegacyTool(
     ANNOTATE_POINT_TOOL_ID,
     (layer, options) => new PlacePointTool(<UserLayerWithAnnotations>layer, options));
@@ -1457,6 +1764,8 @@ export function UserLayerWithAnnotationsMixin<TBase extends {new (...args: any[]
         mouseState.pickedAnnotationBuffer!, mouseState.pickedAnnotationBufferBaseOffset!);
       state.annotationIndex = mouseState.pickedAnnotationIndex!;
       state.annotationCount = mouseState.pickedAnnotationCount!;
+      state.annotationInstanceIndex = mouseState.pickedAnnotationInstanceIndex!;
+      state.annotationInstanceCount = mouseState.pickedAnnotationInstanceCount!;
       state.annotationPartIndex = mouseState.pickedOffset;
       state.annotationSourceIndex = annotationLayer.sourceIndex;
       state.annotationSubsource = annotationLayer.subsourceId;
@@ -1495,14 +1804,22 @@ export function UserLayerWithAnnotationsMixin<TBase extends {new (...args: any[]
                         const {properties} = annotationLayer.source;
                         const annotationPropertySerializer =
                           new AnnotationPropertySerializer(rank, numGeometryBytes, properties);
-                        const annotationIndex = state.annotationIndex!;
-                        const annotationCount = state.annotationCount!;
+                        // By instance: a polyline's own lines are instances, and the
+                        // one picked is where reading its points begins.
+                        let annotationIndex = state.annotationInstanceIndex ?? state.annotationIndex!;
+                        const annotationCount =
+                            state.annotationInstanceCount ?? state.annotationCount!;
+                        const instanceStride = annotationPropertySerializer.propertyGroupBytes[0];
+                        if (state.annotationType === AnnotationType.POLYLINE) {
+                          // Back to the polyline's first line: each line's uint32
+                          // holds its index within the polyline in the low 31 bits.
+                          const lineIndex = dataView.getUint32(
+                              baseOffset + instanceStride * annotationIndex, isLittleEndian) & 0x7FFFFFFF;
+                          annotationIndex -= lineIndex;
+                        }
                         annotation = handler.deserialize(
-                            dataView,
-                            baseOffset +
-                                annotationPropertySerializer.propertyGroupBytes[0] *
-                                    annotationIndex,
-                            isLittleEndian, rank, state.annotationId!);
+                            dataView, baseOffset + instanceStride * annotationIndex,
+                            isLittleEndian, rank, state.annotationId!, instanceStride);
                         annotationPropertySerializer.deserialize(
                             dataView, baseOffset, annotationIndex, annotationCount, isLittleEndian,
                             annotation.properties = new Array(properties.length));

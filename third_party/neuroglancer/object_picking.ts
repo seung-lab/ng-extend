@@ -95,6 +95,8 @@ export class PickIDManager {
     mouseState.pickedAnnotationBufferBaseOffset = undefined;
     mouseState.pickedAnnotationIndex = undefined;
     mouseState.pickedAnnotationCount = undefined;
+    mouseState.pickedAnnotationInstanceIndex = undefined;
+    mouseState.pickedAnnotationInstanceCount = undefined;
     mouseState.pickedAnnotationType = undefined;
     const data = this.pickData[lower];
     if (pickedRenderLayer !== null) {

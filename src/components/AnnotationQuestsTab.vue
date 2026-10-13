@@ -182,7 +182,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         </div>
         <ol class="nge-aq-help-steps">
           <li><b>Claim</b> a cell. Its view opens with three annotation layers: <b>Cilium Centerline</b> (green), <b>Daughter centriole</b> (red) and <b>Basal body</b> (gold).</li>
-          <li>Find the cilium, near the soma. Put a point on the basal body in its layer, a point on the daughter centriole in its layer, and draw a line along the cilium in the centerline layer. Press <b>↗</b> to show only this cell.</li>
+          <li>Find the cilium, near the soma. Put a point on the basal body in its layer and a point on the daughter centriole in its layer. In the centerline layer, hold <b>Ctrl</b> and click along the cilium from its base to its tip, then press <b>Enter</b>. Press <b>↗</b> to show only this cell.</li>
           <li>Press <b>Submit</b>, choose what you found from the list, add a note if anything was odd, and send. Your view goes to the lab as a share link.</li>
           <li>You can hold three cells at a time. <b>Release</b> hands a cell back untouched.</li>
         </ol>

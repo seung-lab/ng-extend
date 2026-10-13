@@ -720,6 +720,14 @@ function parseAnnotations(
   typeToIds[parameters.type] = ids;
   typeToIdMaps.fill(new Map());
   typeToIdMaps[parameters.type] = new Map(ids.map((id, i) => [id, i]));
+  // nge (polyline port): instances per type. Here every annotation is one.
+  const typeToSize = geometryData.typeToSize = new Array<number>(annotationTypes.length);
+  typeToSize.fill(0);
+  typeToSize[parameters.type] = ids.length;
+  const typeToInstanceCounts = geometryData.typeToInstanceCounts =
+      new Array<number[]>(annotationTypes.length);
+  typeToInstanceCounts.fill([]);
+  typeToInstanceCounts[parameters.type] = ids.map((_, i) => i);
   return geometryData;
 }
 

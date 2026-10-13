@@ -129,7 +129,12 @@ letters mostly belong to neuroglancer; check before taking one.
   2026-10-10). Write edit scripts with the Write tool and run the file, or
   use the Edit tool.
 - **Files mix CRLF and LF.** Keep each file's own line endings when you
-  rewrite it.
+  rewrite it. **Git Bash's `grep` cannot see a CR in a file on disk** (it
+  reads in text mode), so `grep -q $'\r' file` says LF for a CRLF file and a
+  script that matches multi line text then finds nothing (2026-10-13, 31
+  patches missed). The working copy is CRLF for most files (git autocrlf);
+  count bytes with Python (`open(f,'rb').read().count(b'\r\n')`), match on LF
+  and write back what the file had. The Edit tool handles this by itself.
 - **Other sessions are editing at the same time.** Fetch before every
   rebase. If someone already fixed the thing you are fixing, keep theirs.
 - **`static/changelog.json` conflicts on almost every rebase**, because
@@ -324,6 +329,29 @@ on `claude/annotation-quests`, not deployed.
   (`QUEST_LAYER_COLORS`, reordered with `reorderManagedLayer`); the Quests
   tab's number is the Highlight green. The lab's own layer names are kept,
   typo included: the lab's own checks may read them.
+- **The polyline annotation** (2026-10-13) is a port from the lab's
+  neuroglancer (`seung-lab/neuroglancer`, branch `cj-polyline-test-fix`) into
+  our older vendored copy, so a centerline drawn in Pyr is the same
+  annotation the lab's viewer makes (`{"type": "polyline", "points": [...]}`
+  in a share link) and theirs open here. Where it lives:
+  `annotation/index.ts` (the type, its JSON, its buffer: one instance per
+  line, each starting with a uint32 whose low 31 bits are the line's index and
+  whose high bit marks the last line), `annotation/polyline.ts` (the
+  renderer), `annotation/type_handler.ts` (the shader prelude:
+  `setLineColor`, `setLineWidth` and the endpoint setters now fan out to
+  `setSingleLine*` and `setPolyLine*`; user shaders are unchanged),
+  `annotation/renderlayer.ts` and `frontend_source.ts` (draw and pick by
+  instance: `typeToSize`, `typeToInstanceCounts`), `ui/annotations.ts`
+  (`MultiStepAnnotationTool`, `PlacePolylineTool`, the button, the hint).
+  Different from the lab's: Enter, Backspace and Esc are listened for only
+  while a polyline is being drawn (their build binds them for the whole
+  viewer, which would take Enter from the cut and merge bars); the click's
+  own position becomes the point; a polyline of one point is not kept.
+  Not ported: polylines in precomputed sources and in sources edited chunk
+  by chunk (no such source in Pyr). The button is in every annotation layer,
+  on every dataset. Test: `scripts/polyline.test.cjs` (26 checks: load, draw
+  counted in pixels against an empty control, the tool and its keys, picking
+  beside a point, a line, a box and an ellipsoid, save and reload).
 - **The quest's words:** the action is Submit, never Complete (Ames
   2026-10-13: Complete is proofreading's word). A player holds at most three
   cells at once (`claimLimit` in `QUESTS`, `questClaimRoom` on the server,

@@ -148,7 +148,8 @@ export async function dressQuestLayers(before?: Set<any>): Promise<{ colored: st
     try {
       const managed = makeLayer(viewer.layerSpecification, CENTERLINE_LAYER, {
         type: 'annotation', source: 'local://annotations', annotations: [],
-        annotationColor: QUEST_LAYER_COLORS[0].color, tool: 'annotateLine',
+        // The centerline is a polyline, the lab's own annotation for it.
+        annotationColor: QUEST_LAYER_COLORS[0].color, tool: 'annotatePolyline',
       });
       viewer.layerSpecification.add(managed);
       out.added = true;

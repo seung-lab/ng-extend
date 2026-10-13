@@ -37,10 +37,11 @@ export interface AnnotationGeometryChunkSourceOptions extends SliceViewChunkSour
 
 export function computeNumPickIds(serializedAnnotations: SerializedAnnotations) {
   let numPickIds = 0;
-  const {typeToIds} = serializedAnnotations;
+  // Pick ids are per instance: a polyline has one instance per line.
+  const {typeToSize} = serializedAnnotations;
   for (const annotationType of annotationTypes) {
     numPickIds += getAnnotationTypeRenderHandler(annotationType).pickIdsPerInstance *
-        typeToIds[annotationType].length;
+        typeToSize[annotationType];
   }
   return numPickIds;
 }
@@ -52,11 +53,25 @@ export class AnnotationGeometryData {
   numPickIds: number = 0;
 
   constructor(x: SerializedAnnotations) {
+    // A sender that predates the polyline port leaves the instance fields
+    // out: every annotation is then one instance.
+    const typeToIds: string[][] = x.typeToIds;
+    const typeToSize: number[] = x.typeToSize ?? [];
+    const typeToInstanceCounts: number[][] = x.typeToInstanceCounts ?? [];
+    for (const annotationType of annotationTypes) {
+      const ids = typeToIds[annotationType] ?? (typeToIds[annotationType] = []);
+      if (typeToSize[annotationType] === undefined) typeToSize[annotationType] = ids.length;
+      if (typeToInstanceCounts[annotationType] === undefined) {
+        typeToInstanceCounts[annotationType] = ids.map((_, i) => i);
+      }
+    }
     this.serializedAnnotations = {
       data: x.data,
-      typeToIds: x.typeToIds,
+      typeToIds,
       typeToOffset: x.typeToOffset,
-      typeToIdMaps: x.typeToIdMaps
+      typeToIdMaps: x.typeToIdMaps,
+      typeToInstanceCounts,
+      typeToSize,
     };
   }
   freeGPUMemory(gl: GL) {
@@ -246,7 +261,7 @@ function copyOtherAnnotations(
         serializedAnnotations.data.subarray(
             otherTypeOffset,
             otherTypeOffset +
-                serializedAnnotations.typeToIds[otherType].length *
+                serializedAnnotations.typeToSize[otherType] *
                     propertySerializers[otherType].serializedBytes),
         newTypeOffset);
   }
@@ -284,6 +299,12 @@ export function updateAnnotation(
   const {serializedAnnotations} = chunk;
   const ids = serializedAnnotations.typeToIds[type];
   const idMap = serializedAnnotations.typeToIdMaps[type];
+  // As in the code this was ported from, this one-at-a-time path keeps one
+  // instance per annotation. It serves sources that are edited in chunks
+  // (not the local annotation layers, which are serialized whole), and no
+  // such source in Pyr can hold a polyline.
+  const typeToInstanceCount = serializedAnnotations.typeToInstanceCounts[type];
+  const typeToSize = serializedAnnotations.typeToSize;
   const handler = annotationTypeHandlers[type];
   const numBytes = propertySerializers[type].serializedBytes;
   let index = idMap.get(annotation.id);
@@ -297,6 +318,9 @@ export function updateAnnotation(
         serializedAnnotations, propertySerializers, type, newData, /*sourceBeginIndex=*/ 0,
         /*sourceEndIndex=*/ index, /*destBeginIndex=*/ 0, /*destCount=*/ index + 1);
     ids.push(annotation.id);
+    typeToSize[type] = ids.length;
+    typeToInstanceCount.push(
+        typeToInstanceCount.length ? typeToInstanceCount[typeToInstanceCount.length - 1] + 1 : 0);
     serializedAnnotations.data = newData;
   }
   const bufferOffset = serializedAnnotations.typeToOffset![type];
@@ -318,6 +342,8 @@ export function deleteAnnotation(
     propertySerializers: AnnotationPropertySerializer[]): boolean {
   const {serializedAnnotations} = chunk;
   const idMap = serializedAnnotations.typeToIdMaps[type];
+  const typeToSize = serializedAnnotations.typeToSize;
+  const typeToInstanceCount = serializedAnnotations.typeToInstanceCounts[type];
   const index = idMap.get(id);
   if (index === undefined) {
     return false;
@@ -332,9 +358,12 @@ export function deleteAnnotation(
       serializedAnnotations, propertySerializers, type, newData, /*sourceBeginIndex=*/ index + 1,
       /*sourceEndIndex=*/ ids.length, /*destBeginIndex=*/ index, /*destCount=*/ ids.length - 1);
   ids.splice(index, 1);
+  typeToInstanceCount.splice(index, 1);
+  typeToSize[type] = ids.length;
   idMap.delete(id);
   for (let i = index, count = ids.length; i < count; ++i) {
     idMap.set(ids[i], i);
+    typeToInstanceCount[i] -= 1;
   }
   serializedAnnotations.data = newData;
   chunk.bufferValid = false;
@@ -367,14 +396,24 @@ export function makeTemporaryChunk() {
   const typeToIds: string[][] = [];
   const typeToOffset: number[] = [];
   const typeToIdMaps: Map<string, number>[] = [];
+  const typeToInstanceCounts: number[][] = [];
+  const typeToSize: number[] = [];
   for (const annotationType of annotationTypes) {
     typeToIds[annotationType] = [];
     typeToOffset[annotationType] = 0;
     typeToIdMaps[annotationType] = new Map();
+    typeToInstanceCounts[annotationType] = [];
+    typeToSize[annotationType] = 0;
   }
-  return new AnnotationGeometryChunk(
-      <AnnotationGeometryChunkSource><any>undefined,
-      {data: new Uint8Array(0), numPickIds: 0, typeToOffset, typeToIds, typeToIdMaps});
+  return new AnnotationGeometryChunk(<AnnotationGeometryChunkSource><any>undefined, {
+    data: new Uint8Array(0),
+    numPickIds: 0,
+    typeToOffset,
+    typeToIds,
+    typeToIdMaps,
+    typeToInstanceCounts,
+    typeToSize
+  });
 }
 
 export class MultiscaleAnnotationSource extends SharedObject implements
@@ -615,6 +654,22 @@ export class MultiscaleAnnotationSource extends SharedObject implements
             tempUpper[i] = c + r;
           }
           break;
+        case AnnotationType.POLYLINE: {
+          // The box around every point of the polyline.
+          const lower = new Float32Array(rank).fill(Number.POSITIVE_INFINITY);
+          const upper = new Float32Array(rank).fill(Number.NEGATIVE_INFINITY);
+          for (const point of annotation.points) {
+            for (let i = 0; i < rank; ++i) {
+              lower[i] = Math.min(point[i], lower[i]);
+              upper[i] = Math.max(point[i], upper[i]);
+            }
+          }
+          matrix.transformPoint(
+              tempLower, source.multiscaleToChunkTransform, rank + 1, lower, rank);
+          matrix.transformPoint(
+              tempUpper, source.multiscaleToChunkTransform, rank + 1, upper, rank);
+          break;
+        }
       }
       let totalChunks = 1;
       for (let i = 0; i < rank; ++i) {
