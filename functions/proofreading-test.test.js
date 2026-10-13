@@ -1,6 +1,6 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {handle, decide, endpointResults, cleanAnnotations, graphResults} = require('./proofreading-test');
+const {handle, adminNote, decide, endpointResults, cleanAnnotations, graphResults} = require('./proofreading-test');
 
 const T = {id: '11111111-1111-4111-8111-111111111111', title: 'Test', dataset: 'pinky_nf_v2', pcg_server: 'https://minnie.microns-daf.com', pcg_table: 'pinky_nf_v2',
   state_url: 'middleauth+https://x/1', anchor_supervoxel: '100', baseline_at: '2026-10-10T20:00:00Z', hold_minutes: 60, pass_mark: 100, damage_fails: true,
@@ -195,6 +195,26 @@ test('submit: a hold that ended is refused; abandon after it just says so', asyn
   assert.deepEqual(await handle({action: 'test.abandon', args: {id: T.id, session: SESSION}, who, me, io: io(g, rpc)}), {ended: true});
   await assert.rejects(() => handle({action: 'test.submit', args: {id: 'nope', session: SESSION}, who, me, io: io(g, rpc)}), /Unknown test/);
   await assert.rejects(() => handle({action: 'test.status', args: {}, who, me: null, io: io(g, rpc)}), /Sign in/);
+});
+
+test('submit: the admins are told the result, and a failed notice never costs the player theirs', async () => {
+  assert.deepEqual(adminNote({username: 'nseraf'}, {passed: false, found: 3, errors: 7, endpoints: 39, endpointsFound: 12, damaged: 1, percent: 33}),
+    {title: 'Proofreading Test: nseraf did not pass', body: '33 percent. 3 of 7 mistakes fixed, 12 of 39 branch ends marked, 1 real part of the cell damaged.'});
+  assert.deepEqual(adminNote(null, {passed: true, found: 7, errors: 7, endpoints: 0, endpointsFound: 0, damaged: 0, percent: 100}),
+    {title: 'Proofreading Test: A player passed', body: '100 percent. 7 of 7 mistakes fixed, nothing damaged.'});
+  const g = fakeGraph(START);
+  const {rpc} = fakeRpc({});
+  const notes = [];
+  const out = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me: {...me, username: 'ames'}, io: {...io(g, rpc), notifyAdmins: async n => { notes.push(n); }}});
+  assert.equal(out.passed, false);
+  assert.equal(notes.length, 1); assert.match(notes[0].title, /^Proofreading Test: ames did not pass$/); assert.match(notes[0].body, /0 of 2 mistakes fixed, 0 of 1 branch ends marked, nothing damaged/);
+  const g2 = fakeGraph(START);
+  const again = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me, io: {...io(g2, fakeRpc({}).rpc), notifyAdmins: async () => { throw new Error('no table'); }}});
+  assert.equal(again.passed, false, 'the result still comes back');
+  // Nothing is sent when a player only hands the cell back.
+  const quiet = [];
+  await handle({action: 'test.abandon', args: {id: T.id, session: SESSION}, who, me, io: {...io(fakeGraph(START), fakeRpc({}).rpc), notifyAdmins: async n => { quiet.push(n); }}});
+  assert.equal(quiet.length, 0);
 });
 
 test('abandon: the edits come off and the attempt is closed without a score', async () => {

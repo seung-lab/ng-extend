@@ -15,6 +15,7 @@
 //   io.rpc(action, args)   pilot_test_action for the signed in player
 //   io.sb(path, init)      Supabase REST as the service role
 //   io.onGranted()         after a grant (clears the production access cache)
+//   io.notifyAdmins(note)  {title, body} to every admin but the player
 const {operationsAfter, remainingOperations} = require('./pcg-history');
 
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
@@ -170,6 +171,18 @@ function feedback(test, decision, results, granted) {
   return out;
 }
 
+/** What the admins are told when a player submits (Ames, 2026-10-13). */
+function adminNote(me, decision) {
+  const name = String((me && (me.username || me.display_name)) || 'A player').slice(0, 60);
+  const bits = [`${decision.found} of ${decision.errors} mistakes fixed`];
+  if (decision.endpoints) bits.push(`${decision.endpointsFound} of ${decision.endpoints} branch ends marked`);
+  bits.push(decision.damaged ? `${decision.damaged} real part${decision.damaged === 1 ? '' : 's'} of the cell damaged` : 'nothing damaged');
+  return {
+    title: `Proofreading Test: ${name} ${decision.passed ? 'passed' : 'did not pass'}`,
+    body: `${decision.percent} percent. ${bits.join(', ')}.`,
+  };
+}
+
 /** Undo every operation on the cell after the baseline, newest first. The
  *  roots are the current roots of the check supervoxels; every edit that
  *  touched the cell is in one of their histories. Returns how many. */
@@ -318,9 +331,11 @@ async function handle({action, args, who, me, io}) {
         percent: decision.percent, checks: results, endpoints, granted, clean, error}
       : {id, session, outcome: 'abandoned', clean, error});
     if (decision && decision.passed) { try { if (io.onGranted) io.onGranted(); } catch (e) { /* the cache clears itself in time */ } }
+    // A notice to the admins never stands between a player and their result.
+    if (decision && io.notifyAdmins) { try { await io.notifyAdmins(adminNote(me, decision)); } catch (e) { console.warn('[test] the admins were not told:', e && e.message); } }
     return decision ? feedback(full, decision, results, granted) : {ended: true, clean};
   }
   fail(400, 'Unknown test action');
 }
 
-module.exports = {handle, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoAfterBaseline, grantGroups, EXPECT};
+module.exports = {handle, adminNote, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoAfterBaseline, grantGroups, EXPECT};

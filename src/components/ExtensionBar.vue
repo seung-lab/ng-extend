@@ -2231,6 +2231,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   align-items: center;
   gap: 9px;
 }
+/* Numbered rows start at the left edge, so the numbers form one column
+   (Ames, 2026-10-13). */
+#hamburger li:has(> .nge-menu-item) { justify-content: start; }
 .nge-menu-num {
   display: inline-flex;
   align-items: center;

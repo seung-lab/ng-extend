@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T23:56:00Z",
+      "title": "Tutorials menu numbers line up",
+      "items": [
+        "The numbers in the Tutorials menu now line up in one column on the left.",
+        "The Proofreading Test, still a work in progress, shows a loading card while it gets your cell and while it scores, and gives you an End layer with Pyr gems for marking branch ends."
+      ]
+    },
+    {
       "at": "2026-10-13T23:15:00Z",
       "title": "The Proofreading Test is marked WIP",
       "items": [

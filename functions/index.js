@@ -1994,7 +1994,7 @@ exports.ewSecureWrite = onRequest(
 // minutes both times. This function is deployed only from the branch that
 // has it, and it alone binds the CAVE token:
 //   firebase deploy --only functions:ewProofreadingTest --project eyewire-ii-e4d52
-const EW_TEST_CODE_VERSION = "2026-10-13-proofreading-test-3";
+const EW_TEST_CODE_VERSION = "2026-10-13-proofreading-test-4";
 exports.ewProofreadingTest = onRequest(
   // 120 s: scoring reads the graph and undoes the player's edits.
   { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, timeoutSeconds: 120 },
@@ -2022,6 +2022,15 @@ exports.ewProofreadingTest = onRequest(
         // ewSecureWrite keeps its own production access cache in its own
         // process: a fresh pass shows in chat colour within ten minutes.
         onGranted: () => {},
+        // A notification to every admin but the player themself.
+        notifyAdmins: async ({ title, body }) => {
+          const emails = (await sb("admins?select=email")).map(a => String(a.email || "").toLowerCase()).filter(e => e && e !== who.email);
+          if (!emails.length) return;
+          const list = emails.map(e => '"' + e.replace(/["\\]/g, "") + '"').join(",");
+          const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(list) + ")");
+          const rows = people.map(p => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 500), target_type: "user", target_id: p.id, send_at: new Date().toISOString(), created_by: me.id }));
+          if (rows.length) await sb("notifications", { method: "POST", body: JSON.stringify(rows) });
+        },
       } });
       res.json({ ok: true, data });
     } catch (e) {

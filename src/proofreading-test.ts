@@ -16,11 +16,15 @@ import { reactive, ref } from 'vue';
 import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
 import { secureWrite } from './secure_write';
-import { useLayersStore, useProofreadingBackendStore } from './store';
+import imgProfessorNurro from './images/professor-nurro.png';
+import imgInspectorNurro from './images/inspector-nurro.png';
+import { setStateRewriter, useLayersStore, useProofreadingBackendStore } from './store';
 import { refreshDatasetPermissions } from './util/dataset_access';
-import { endPractice, showOnly } from './practice';
+import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
+import { endPractice } from './practice';
 import { makeLayer } from 'neuroglancer/layer';
-import { MIDDLE, OVER_3D, celebrateStep, closeSidePanel, getViewer, movingToSandbox, stopWatching } from './tutorial-3';
+import { Uint64 } from 'neuroglancer/util/uint64';
+import { MIDDLE, OVER_3D, celebrateStep, closeSidePanel, getViewer, stopWatching } from './tutorial-3';
 import { hidePyrMarkers, showPyrMarkers } from './markers';
 
 export const TEST_TUTORIAL = 11;
@@ -68,7 +72,12 @@ function userId(): string | null {
   try { return useProofreadingBackendStore().userId; } catch { return null; }
 }
 // Once the login has settled, so the burger menu knows whether to list it.
-setTimeout(() => { if (userId()) refreshTestStatus(); }, 8000);
+// The sign in can take a while: keep looking for a minute.
+function refreshWhenSignedIn(tries = 0) {
+  if (userId()) { refreshTestStatus(); return; }
+  if (tries < 30) setTimeout(() => refreshWhenSignedIn(tries + 1), 2000);
+}
+setTimeout(refreshWhenSignedIn, 3000);
 document.addEventListener('nge:test-refresh', () => { refreshTestStatus(); });
 
 type Phase = 'none' | 'claiming' | 'working' | 'scoring' | 'done' | 'busy';
@@ -167,7 +176,7 @@ function helpHtml(): string {
 <p>${what}${ends}. Nothing is marked for you.</p>
 <p><strong>Follow every branch to its end.</strong> Use <strong>Highlight</strong> to paint each stretch you have checked, so you can see where you have been: press the highlighter in the top bar, or hold <strong>H</strong> and click two points on a branch.</p>
 <p><strong>At the end of every branch, place an annotation point.</strong> The <strong>End</strong> layer is ready for it: pick it in the layer tabs and click the last bit of the cell.</p>
-<p><strong>Cut off anything that does not belong, and extend any branch that is missing pieces.</strong></p>
+<p><strong>Cut off anything that does not belong, and merge any missing pieces.</strong></p>
 <p>When the cell is right, press <strong>Submit for scoring</strong> up here.</p>`;
 }
 const HUD_ID = 'nge-test-hud', HELP_ID = 'nge-test-help';
@@ -176,6 +185,7 @@ function showTestHud() {
   if (document.getElementById(HUD_ID)) return;
   const hud = document.createElement('div');
   hud.id = HUD_ID;
+  hud.className = 'ng-extend';
   hud.setAttribute('role', 'status');
   hud.style.cssText = 'position:fixed;top:64px;left:12px;z-index:60;display:flex;align-items:center;gap:10px;padding:4px 6px 4px 4px;'
     + 'border:1px solid rgba(126,224,255,.45);border-radius:999px;background:rgba(8,16,28,.9);color:#d8f3ff;'
@@ -195,9 +205,9 @@ function showTestHud() {
   time.title = 'How long the cell stays yours if you stop moving. Any move resets it.';
   const submit = document.createElement('button');
   submit.type = 'button';
-  submit.className = 'nge-hud-btn nge-hud-btn--go';
+  submit.className = 'nge-hud-btn nge-hud-btn--sm nge-hud-btn--arrow';
   submit.textContent = 'Submit for scoring';
-  submit.style.cssText = 'margin:0;padding:3px 10px;font-size:12px;';
+  submit.style.cssText = 'margin:0;border-radius:999px;';
   submit.addEventListener('click', submitFromHud);
   hud.append(info, count, time, submit);
   document.body.appendChild(hud);
@@ -217,6 +227,7 @@ function openTestHelp() {
   if (document.getElementById(HELP_ID)) return;
   const card = document.createElement('div');
   card.id = HELP_ID;
+  card.className = 'ng-extend';
   card.setAttribute('role', 'dialog');
   card.setAttribute('aria-label', 'How to work the cell');
   card.style.cssText = 'position:fixed;top:104px;left:12px;z-index:61;max-width:520px;padding:16px 18px;'
@@ -247,11 +258,43 @@ function ensureEndLayer() {
     if (!v?.layerSpecification) return;
     const have = (v.layerManager?.managedLayers ?? []).some((l: any) => l.name === 'End');
     if (have) return;
-    const managed = makeLayer(v.layerSpecification, 'End', {
-      type: 'annotation', source: { url: 'local://annotations' }, annotationColor: '#ffd84a', annotations: [],
-    });
+    const managed = makeLayer(v.layerSpecification, 'End', endLayerSpec());
     v.layerSpecification.add(managed);
   } catch (e) { console.warn('[test] could not add the End layer:', e); }
+}
+/** The End layer as a view holds it: Pyr gems (Ames, 2026-10-13), pink so
+ *  they show on a cell of any colour. */
+function endLayerSpec(): Record<string, any> {
+  return { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: '#ff4fd8', pointMarker: 'pyr', pointSize: 1.5, annotations: [] };
+}
+
+/**
+ * The cell, and nothing else, in the segment list. The saved start view
+ * names the id the cell had when it was saved; every edit and every undo
+ * since has given the cell a new one. An out of date id left in the list
+ * (even hidden) shows as a second copy of the cell and the cut tool will
+ * not work on it (Ames, 2026-10-13), so the list is emptied first.
+ */
+function showExactly(dataset: string, root: string) {
+  try {
+    for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
+      const url: string = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (!(ml.name === dataset || url.includes(`/table/${dataset}`))) continue;
+      const g = ml.layer?.displayState?.segmentationGroupState?.value;
+      if (!g?.visibleSegments) continue;
+      const ids: string[] = [];
+      for (const s of (g.selectedSegments ?? g.visibleSegments)) ids.push(s.toString());
+      for (const s of g.visibleSegments) { const t = s.toString(); if (!ids.includes(t)) ids.push(t); }
+      for (const id of ids) {
+        if (id === root) continue;
+        const u = Uint64.parseString(id);
+        g.visibleSegments.delete(u);
+        g.selectedSegments?.delete(u);
+      }
+      const want = Uint64.parseString(root);
+      if (!g.visibleSegments.has(want)) g.visibleSegments.add(want);
+    }
+  } catch (e) { console.warn('[test] could not set the cell in the list:', e); }
 }
 
 /** Every point annotation in the viewer, as [x, y, z] viewer voxels. The
@@ -326,11 +369,15 @@ async function startWork() {
   session.phase = 'claiming';
   session.error = '';
   session.result = null;
-  const got = await movingToSandbox('Proofreading Test', async () => {
-    try { return await secureWrite<StartResult>('test.start'); }
-    catch (e: any) { session.error = String(e?.message || e); return null; }
+  // The loading card (Ames, 2026-10-13): up until the cell is on screen.
+  startDatasetTransition({
+    id: 'proofreading-test', label: 'Your cell', eyebrow: 'Proofreading Test · Getting', thumbnail: imgProfessorNurro, contain: true, hold: true,
+    steps: ['Holding the cell for you', 'Putting it back to its start', 'Loading the cell', 'Almost there'],
   });
-  if (!got) { session.phase = 'busy'; return; }
+  let got: StartResult | null = null;
+  try { got = await secureWrite<StartResult>('test.start'); }
+  catch (e: any) { session.error = String(e?.message || e); }
+  if (!got) { session.phase = 'busy'; releaseDatasetTransition(); return; }
   session.test = got.test;
   session.nonce = got.session;
   session.attempt = got.attempt;
@@ -339,13 +386,27 @@ async function startWork() {
   // gives feedback at all.
   session.checks = got.test.feedback === 'none' ? 0 : got.checks;
   session.endpoints = got.test.feedback === 'none' ? 0 : got.endpoints;
+  // The saved view names the id the cell had when it was saved. It is
+  // rewritten on the way in to the id the cell has now, and given the End
+  // layer, so nothing out of date ever reaches the segment list.
+  const root = got.root, dataset = got.test.dataset;
+  setStateRewriter(async (state: any) => {
+    const layers: any[] = Array.isArray(state?.layers) ? state.layers : [];
+    for (const l of layers) {
+      if (l?.type !== 'segmentation') continue;
+      const src = JSON.stringify(l.source ?? '');
+      if (root && (l.name === dataset || src.includes(`/table/${dataset}`))) { l.segments = [root]; delete l.equivalences; }
+    }
+    if (!layers.some(l => l?.type === 'annotation' && l.name === 'End')) layers.push({ name: 'End', ...endLayerSpec() });
+    return state;
+  });
   try { await useLayersStore().loadState(got.test.state_url); }
   catch (e) { console.warn('[test] the start view did not load:', e); }
+  finally { setStateRewriter(null); }
   await new Promise(r => setTimeout(r, 800));
-  // A reload mid test: the saved view names the cell's old root, so show
-  // the root as it is now, with the player's edits.
-  if (got.root) { try { showOnly(got.test.dataset, [got.root]); } catch (e) { /* the view still loads */ } }
+  if (root) showExactly(dataset, root);
   ensureEndLayer();
+  releaseDatasetTransition();
   session.phase = 'working';
   startHold();
   showTestHud();
@@ -365,6 +426,12 @@ async function submitWork() {
   hidePyrMarkers();
   const id = session.test.id, nonce = session.nonce;
   const annotations = collectPointAnnotations();
+  // The loading card (Ames, 2026-10-13): scoring reads the whole cell and
+  // then puts it back, which takes a while.
+  startDatasetTransition({
+    id: 'proofreading-test-score', label: 'Your cell', eyebrow: 'Proofreading Test · Scoring', thumbnail: imgInspectorNurro, contain: true, hold: true,
+    steps: ['Reading the cell from the server', 'Checking every fix', 'Checking the branch ends', 'Putting the cell back for the next person'],
+  });
   try {
     const r = await secureWrite<TestResult>('test.submit', { id, session: nonce, annotations });
     session.result = r;
@@ -380,6 +447,7 @@ async function submitWork() {
     session.result = null;
     session.error = String(e?.message || e);
   }
+  releaseDatasetTransition();
   session.nonce = '';
   session.phase = 'done';
   refreshTestStatus();
@@ -458,7 +526,7 @@ export const steps: Step[] = [
         grants
           ? 'Pass, and Pyr opens the production dataset to you: the real retina, where your edits count for science.'
           : 'This is a trial run of the test: a pass is recorded, and access to the real datasets is switched on by hand for now.',
-        `**How it works.** One player at a time: the cell is yours alone while you work, and after ${hold} quiet minutes it goes to the next person. Cuts and merges are real edits on the Sandbox and are put back afterwards. When the cell is right, press **Submit for scoring**: the server checks the cell itself.`,
+        `**How it works.** One player at a time: the cell is yours alone while you work. There is no time limit, but if you stop for ${hold} minutes the cell goes to the next person and that try is not scored. Cuts and merges are real edits on the Sandbox and are put back afterwards. When the cell is right, press **Submit for scoring**: the server checks the cell itself.`,
       ];
       if (!st) lines.push('Sign in to take the test.');
       else if (!t) lines.push('There is no test open right now. Check back later.');
@@ -489,13 +557,14 @@ export const steps: Step[] = [
 
 **At the end of every branch, place an annotation point.** The **End** layer is ready for it: pick it in the layer tabs and click the last bit of the cell.
 
-**Cut off anything that does not belong, and extend any branch that is missing pieces.**
+**Cut off anything that does not belong, and merge any missing pieces.**
 
 Once you have the cell, the bar at the top left has an **i** for these instructions, how long the cell stays yours, and **Submit for scoring**.`,
     position: MIDDLE,
     width: '620px',
     nextLabel: 'Give me the cell',
-    onEnter: () => { closeSidePanel(); stopWatching(); },
+    // The End layer is there as soon as this box says so (Ames, 2026-10-13).
+    onEnter: () => { closeSidePanel(); stopWatching(); ensureEndLayer(); },
   } as Step,
 
   // 3: Getting the cell. It closes itself once the cell is on screen; the
