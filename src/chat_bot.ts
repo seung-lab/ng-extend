@@ -84,7 +84,7 @@ export const NURRO_ANSWERS: Record<string, string> = {
   about: 'Every cell you proofread becomes part of a real map of brain wiring that scientists use. The AI traces neurons fast but makes mistakes, and you fix them. 🧠',
   faq: 'New here? Take the 🧭 Site Tour in Resources and tutorials (top right). Ask me anything with the AI button (top left). Found a bug? The ! button in the top bar sends it straight to the team.',
   merge: 'A merge joins a branch the AI cut off. Press M, Ctrl+click the branch, Ctrl+click the cell near where it joins, then Submit merge or Enter. Tutorial: Resources and tutorials › Merge.',
-  cut: "A cut separates two cells the AI fused. Press C, Ctrl+click 3 or 4 red points on the piece that doesn't belong, press G, add blue points on the cell, then Submit cut or Enter. No undo key: fix a bad cut with a merge. Tutorial: Resources and tutorials › Cut.",
+  cut: "A cut separates two cells the AI fused. Press C, Ctrl+click 3 or 4 red points on the piece that doesn't belong, press G, add blue points on the cell, then Submit cut or Enter. Preview, on the cut bar, colours the cell red and blue in 3D to show where the cut would fall before you make it. No undo key: fix a bad cut with a merge. Tutorial: Resources and tutorials › Cut.",
   cells: "Open the Cell Library (the neuron button in the top bar) to claim a cell. My Cells shows what you're working on, and Release gives one back.",
   datasets: 'Switch datasets with the Data button (top left): EyeWire II retina, MEC, MICrONS, and the Sandbox for practice. Cell IDs only exist in their own dataset.',
   stats: "Your edits, merges, cuts, finished cells and streaks are on your profile (the person icon, top right), per dataset. Click anyone's name in chat to see theirs.",
