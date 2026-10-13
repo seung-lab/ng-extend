@@ -68,11 +68,12 @@ const RETINA_LAYERS = [
       calls.push({ action: input.action, quest: input.quest, segmentId: input.segmentId, status: input.status, splitMerged: input.splitMerged, link: input.link, notes: input.notes, hasToken: !!input.token });
       const hit = ROWS.find(x => x.segmentId === String(input.segmentId));
       if (input.quest !== 'retina_cilia') return r.fulfill(json({ error: 'There is no such quest.' }, 400));
-      if (input.action === 'quest_list') return r.fulfill(json({ ok: true, rows: ROWS }));
+      // `you`: the sheet's spelling of the player's name, which differs from the game's.
+      if (input.action === 'quest_list') return r.fulfill(json({ ok: true, you: 'Test R. Player', rows: ROWS }));
       if (!hit) return r.fulfill(json({ error: 'This cell is not in the quest sheet.' }, 409));
-      if (input.action === 'quest_claim') { if (hit.annotator && hit.annotator !== 'Test Player') return r.fulfill(json({ error: 'Someone else has this cell.' }, 409)); hit.annotator = 'Test Player'; return r.fulfill(json({ ok: true, updated: 1 })); }
+      if (input.action === 'quest_claim') { if (hit.annotator && hit.annotator !== 'Test R. Player') return r.fulfill(json({ error: 'Someone else has this cell.' }, 409)); hit.annotator = 'Test R. Player'; return r.fulfill(json({ ok: true, updated: 1 })); }
       if (input.action === 'quest_release') { hit.annotator = ''; return r.fulfill(json({ ok: true, updated: 1 })); }
-      if (input.action === 'quest_submit') { Object.assign(hit, { annotator: 'Test Player', status: input.status, splitMerged: input.splitMerged || '', link: input.link, notes: input.notes || '', date: '10/12/2026' }); return r.fulfill(json({ ok: true, updated: 6 })); }
+      if (input.action === 'quest_submit') { Object.assign(hit, { annotator: 'Test R. Player', status: input.status, splitMerged: input.splitMerged || '', link: input.link, notes: input.notes || '', date: '10/12/2026' }); return r.fulfill(json({ ok: true, updated: 6 })); }
       return r.fulfill(json({ error: 'Invalid quest action.' }, 400));
     }
     // The data gateway: the player's own profile row, nothing else.
@@ -140,6 +141,7 @@ const RETINA_LAYERS = [
     await page.evaluate(() => { try { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina').layer.displayState.segmentationGroupState.value; g.visibleSegments.clear(); for (const id of ['1111', '2222', '3333']) g.visibleSegments.add(id); } catch (e) {} });
     await page.click('.nge-aq-row .nge-aq-btn--jump >> nth=0');
     await page.waitForTimeout(400);
+    console.log('current row after jump: ' + await page.evaluate(() => [...document.querySelectorAll('.nge-aq-row--current .nge-aq-row-name')].map(e => e.textContent.trim())));
     console.log('after jump: ' + await page.evaluate(() => { try { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina').layer.displayState.segmentationGroupState.value; return JSON.stringify({ visible: [...g.visibleSegments].map(String), position: [...window.viewer.navigationState.position.value].map(Math.round) }); } catch (e) { return String(e); } }));
     // Claim the first open cell.
     await page.click('.nge-aq-btn--take >> nth=0');
@@ -182,7 +184,15 @@ const RETINA_LAYERS = [
     const logAll = m => console.log('  send-console[' + m.type() + '] ' + m.text().slice(0, 200));
     page.on('console', logAll);
     await page.click('.nge-aq-btn--send');
-    await page.waitForTimeout(6000);
+    // The celebration toast shows for five seconds: catch it as it appears.
+    let toastText = [];
+    for (let i = 0; i < 40 && !toastText.length; i++) {
+      await page.waitForTimeout(200);
+      toastText = await page.evaluate(() => [...document.querySelectorAll('.nge-toast--quest, .nge-toast')].map(t => t.innerText.replace(/\s+/g, ' ').trim()));
+    }
+    console.log('toast: ' + JSON.stringify(toastText));
+    console.log('confetti canvas: ' + await page.evaluate(() => !!document.querySelector('canvas.nge-confetti, .nge-confetti canvas, canvas[class*=confetti]')));
+    await page.waitForTimeout(2500);
     page.off('console', logAll);
     console.log('after submit, status bar: ' + JSON.stringify((await statusText()).slice(0, 300)));
     console.log('calls: ' + JSON.stringify(calls.filter(c => c.action !== 'quest_list')));

@@ -293,9 +293,18 @@ on `claude/annotation-quests`, not deployed.
   `ancestorAmong` for a cell edited since the sheet was made), takes the
   status from a dropdown, mints a share link of the view
   (`mintShortStateLink`) and sends status, split or merged, notes and the
-  link. "Submitted by you" counts the sheet rows with the player's name and a
+  link. "Completed by you" counts the sheet rows with the player's name and a
   status (Ames 2026-10-13 asked for a count; the profile does not have one,
-  that needs a record in the game's own tables).
+  that needs a record in the game's own tables). **Whose row it is comes
+  from the server's `you`** (the name it writes, `users.display_name`), not
+  from the client's `backend.userName` (the CAVE name): the two differed
+  ("Amy R. Sterling" vs "Amy Sterling") and the count showed 0. The row last
+  clicked, opened or jumped to is marked like the Cell Library's last jump.
+  Completing fires `nge:quest-complete` on `document`; `AchievementToast.vue`
+  turns it into a toast with the annotation and quest counts plus confetti.
+  The tab shows on every dataset; off Retina it says where quests are and
+  offers `switchToDataset` (the standard switch, which may open the dataset's
+  intro for a first visit).
 - **To go live, in this order:** (1) Ames shares the sheet with the Sheets
   identity `eyewire-ii-spreadsheet@eyewire-ii.iam.gserviceaccount.com` as an
   editor (it is not on the sheet as of 2026-10-12, so reads and writes fail);

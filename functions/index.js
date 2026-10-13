@@ -2268,7 +2268,9 @@ exports.ewSheetSync = onRequest(
     const me=(await sb('users?middleauth_email=eq.'+encodeURIComponent(who.email)+'&select=id,display_name,username&limit=1'))[0];
     requirePilot(await pilotContext(sb,who));
     if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
-    if(listing) return res.json({ok:true,rows:await questList(input.quest,admin.credential.applicationDefault())});
+    // `you` is the name the sheet would carry for this player, so the game
+    // can tell their rows apart however the sheet spells them.
+    if(listing) return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows:await questList(input.quest,admin.credential.applicationDefault())});
     return res.json(await syncQuest(input,me,admin.credential.applicationDefault()));
    }
    require('./sheet-policy').sourceFor(input);

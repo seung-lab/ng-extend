@@ -30,12 +30,17 @@ const open = ref('');
 const form = ref({ status: '', splitMerged: '', notes: '' });
 const points = ref(0);
 const message = ref('');
+/** The name the sheet carries for this player, from the server. */
+const you = ref('');
+/** The row last clicked, opened or jumped to (Ames 2026-10-13: "I have no
+ *  idea what cell I'm on"). */
+const current = ref('');
 
-const myKeys = computed(() => new Set([backend.userName, backend.username].map(nameKey).filter(Boolean)));
+const myKeys = computed(() => new Set([you.value, backend.userName, backend.username].map(nameKey).filter(Boolean)));
 const isMine = (r: QuestRow) => !!r.annotator && myKeys.value.has(nameKey(r.annotator));
 const isDone = (r: QuestRow) => !!r.status;
 const mine = computed(() => rows.value.filter(r => isMine(r) && !isDone(r)));
-/** Cells this player has submitted (Ames 2026-10-13: "a count of how many I
+/** Cells this player has completed (Ames 2026-10-13: "a count of how many I
  *  have completed"), from the sheet rows that carry their name and a status. */
 const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r)).length);
 const available = computed(() => rows.value.filter(r => !r.annotator && !r.status));
@@ -45,7 +50,7 @@ const done = computed(() => rows.value.filter(isDone).sort((a, b) => Number(isMi
 async function load() {
   loading.value = true;
   error.value = '';
-  try { rows.value = await listQuests(); }
+  try { const r = await listQuests(); rows.value = r.rows; if (r.you) you.value = r.you; }
   catch (e: any) { error.value = e?.message || String(e); }
   finally { loading.value = false; }
 }
@@ -57,6 +62,7 @@ function label(r: QuestRow) {
   return kind ? `${r.index || r.segmentId}, ${kind}` : (r.index || r.segmentId);
 }
 function openCell(r: QuestRow) {
+  current.value = r.segmentId;
   if (!openStartLink(r.startLink)) error.value = 'This cell has no start link in the sheet.';
 }
 /** Show only this cell and go to its soma (Ames 2026-10-13: "hide other
@@ -64,6 +70,7 @@ function openCell(r: QuestRow) {
  *  every other segment in the view is hidden, whatever the jump preference. */
 function showOnly(r: QuestRow) {
   error.value = '';
+  current.value = r.segmentId;
   try {
     const viewer: any = (window as any)['viewer'];
     const groupState = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
@@ -76,13 +83,15 @@ function showOnly(r: QuestRow) {
   } catch (e: any) { error.value = `Could not show this cell: ${e?.message || e}`; }
 }
 function viewDone(r: QuestRow) {
+  current.value = r.segmentId;
   if (!openStartLink(r.link) && !openStartLink(r.startLink)) error.value = 'This cell has no link to open.';
 }
 async function take(r: QuestRow) {
   busy.value = r.segmentId; error.value = ''; message.value = '';
+  current.value = r.segmentId;
   try {
     await claimQuest(r.segmentId);
-    message.value = `${r.index || 'The cell'} is yours. Mark what you find in its layers, then press Submit.`;
+    message.value = `${r.index || 'The cell'} is yours. Mark what you find in its layers, then press Complete.`;
     openCell(r);
     await load();
   } catch (e: any) { error.value = e?.message || String(e); }
@@ -131,10 +140,13 @@ async function send(r: QuestRow) {
     // The share link is the view as it is now, with the annotation layers.
     const link = await mintShortStateLink();
     if (!link) throw new Error('A share link of this view could not be made. Sign in and try again.');
+    const placed = points.value;
     await submitQuest(r.segmentId, { status: form.value.status, splitMerged: form.value.splitMerged, link, notes: form.value.notes });
     open.value = '';
-    message.value = `${r.index || 'The cell'} is submitted. Thank you.`;
+    message.value = `${r.index || 'The cell'} is complete. Thank you.`;
     await load();
+    // The celebration: a toast with the counts, and confetti (AchievementToast.vue).
+    document.dispatchEvent(new CustomEvent('nge:quest-complete', { detail: { index: r.index, points: placed, done: mineDone.value } }));
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -149,7 +161,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div class="nge-aq-lead">Claim a cell and its view opens with the lab's annotation layers, one for each part of a cilium. Put a point in each layer for what you find, then submit. The cell does not need to be complete.</div>
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
-        <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
+        <span v-if="rows.length" class="nge-aq-tally" title="Cells you have completed on this quest">Completed by you: <b>{{ mineDone }}</b></span>
       </div>
     </div>
 
@@ -162,7 +174,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         <template v-if="mine.length">
           <div class="nge-aq-section">Yours</div>
           <template v-for="r in mine" :key="r.segmentId">
-            <div class="nge-aq-row nge-aq-row--mine">
+            <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId }">
               <div class="nge-aq-row-left">
                 <span class="nge-aq-pip nge-aq-pip--claimed"></span>
                 <div class="nge-aq-row-info">
@@ -173,12 +185,12 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-row-actions">
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="openCell(r)" title="Open this cell's start view, with its layers">Open</button>
-                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Send your answer and a share link of this view to the sheet">Submit</button>
+                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Complete this quest: your answer and a share link of this view go to the sheet">Complete</button>
                 <button class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
-              <div class="nge-aq-form-title">Submit {{ r.index || label(r) }}</div>
+              <div class="nge-aq-form-title">Complete {{ r.index || label(r) }}</div>
               <div class="nge-aq-form-label">Cilium status</div>
               <select v-model="form.status" class="nge-aq-select" @keydown.stop @keyup.stop @keypress.stop>
                 <option value="" disabled>Choose one</option>
@@ -199,7 +211,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r)">{{ busy === r.segmentId ? 'Sending…' : 'Submit to the sheet' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
               </div>
             </div>
           </template>
@@ -208,7 +220,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         <!-- Open: nobody's yet -->
         <div class="nge-aq-section">Open <span class="nge-aq-count">{{ available.length }}</span></div>
         <div v-if="!available.length" class="nge-aq-empty nge-aq-empty--tight">Every cell is taken or done.</div>
-        <div v-for="r in available" :key="r.segmentId" class="nge-aq-row">
+        <div v-for="r in available" :key="r.segmentId" class="nge-aq-row" :class="{ 'nge-aq-row--current': current === r.segmentId }">
           <div class="nge-aq-row-left">
             <span class="nge-aq-pip nge-aq-pip--available"></span>
             <div class="nge-aq-row-info">
@@ -225,7 +237,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         <!-- Taken by others -->
         <template v-if="taken.length">
           <div class="nge-aq-section">Taken</div>
-          <div v-for="r in taken" :key="r.segmentId" class="nge-aq-row nge-aq-row--dim">
+          <div v-for="r in taken" :key="r.segmentId" class="nge-aq-row nge-aq-row--dim" :class="{ 'nge-aq-row--current': current === r.segmentId }">
             <div class="nge-aq-row-left">
               <span class="nge-aq-pip nge-aq-pip--claimed"></span>
               <div class="nge-aq-row-info">
@@ -241,9 +253,9 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 
         <!-- Submitted -->
         <template v-if="done.length">
-          <div class="nge-aq-section">Submitted <span class="nge-aq-count">{{ done.length }}</span></div>
+          <div class="nge-aq-section">Completed <span class="nge-aq-count">{{ done.length }}</span></div>
           <template v-for="r in done" :key="r.segmentId">
-            <div class="nge-aq-row nge-aq-row--done" :class="{ 'nge-aq-row--mine': isMine(r) }">
+            <div class="nge-aq-row nge-aq-row--done" :class="{ 'nge-aq-row--mine': isMine(r), 'nge-aq-row--current': current === r.segmentId }">
               <div class="nge-aq-row-left">
                 <span class="nge-aq-pip nge-aq-pip--done"></span>
                 <div class="nge-aq-row-info">
@@ -254,11 +266,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-row-actions">
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="viewDone(r)" title="Open the submitted view">View</button>
-                <button v-if="isMine(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Send a new answer for this cell">Again</button>
+                <button v-if="isMine(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Complete this cell again with a new answer">Again</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
-              <div class="nge-aq-form-title">Submit {{ r.index || label(r) }} again</div>
+              <div class="nge-aq-form-title">Complete {{ r.index || label(r) }} again</div>
               <div class="nge-aq-form-label">Cilium status</div>
               <select v-model="form.status" class="nge-aq-select" @keydown.stop @keyup.stop @keypress.stop>
                 <option value="" disabled>Choose one</option>
@@ -279,7 +291,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r)">{{ busy === r.segmentId ? 'Sending…' : 'Submit to the sheet' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
               </div>
             </div>
           </template>
@@ -321,6 +333,10 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-row:hover { background: rgba(74, 158, 255, 0.04); }
 .nge-aq-row--mine { background: rgba(74, 158, 255, 0.06); }
 .nge-aq-row--done { opacity: 0.8; }
+/* The row last clicked, opened or jumped to, marked as the Cell Library marks
+   the cell you last jumped to. */
+.nge-aq-row--current { background: rgba(0, 220, 160, 0.10); box-shadow: inset 3px 0 0 rgba(0, 230, 160, 0.9); }
+.nge-aq-row--current:hover { background: rgba(0, 220, 160, 0.14); }
 .nge-aq-row--dim { opacity: 0.65; }
 .nge-aq-row-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .nge-aq-pip { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #556; }

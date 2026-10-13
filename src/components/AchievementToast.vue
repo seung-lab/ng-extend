@@ -287,6 +287,24 @@ document.addEventListener('nge:loyalty-days', onLoyaltyDays);
 // The day may have been counted before this component existed.
 { const early = (window as any).__ngeLoyaltyDays; if (early) { (window as any).__ngeLoyaltyDays = null; setTimeout(() => onLoyaltyDays(new CustomEvent('nge:loyalty-days', { detail: early })), 3000); } }
 
+// ── Annotation Quest completion (Ames 2026-10-13: "we need some celebration
+//    and a counter popup of annotations placed in that cell, number of quests
+//    completed") ─────────────────────────────────────────────────────────
+function onQuestComplete(e: Event) {
+  const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number };
+  const points = Math.max(0, Number(d.points) || 0);
+  const done = Math.max(0, Number(d.done) || 0);
+  addToast({
+    type: 'quest',
+    title: `🎉 Quest complete${d.index ? ': ' + d.index : ''}`,
+    subtitle: `${points === 1 ? '1 annotation' : points + ' annotations'} placed on this cell. ${done === 1 ? '1 quest' : done + ' quests'} completed by you.`,
+    icon: '📍',
+    isImage: false,
+  });
+  fireConfetti('rainbow', 2);
+}
+document.addEventListener('nge:quest-complete', onQuestComplete);
+
 // ── Daily Quest completion celebration ──────────────────────────────────
 let prevDailyDone = -1; // -1 = not yet initialized
 const DAILY_QUEST_COUNT = 3;

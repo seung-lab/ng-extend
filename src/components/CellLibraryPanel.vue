@@ -1678,9 +1678,20 @@ const teamAllowed = computed(() => teamAccess() !== false);
 const teamsHere = computed(() => teamAllowed.value && teamsOnDataset(activeDataset.value || getCurrentDatasetName()));
 watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value = 'mine'; });
 /** Annotation Quests live on one dataset for now (Retina: cilia on starburst
- *  amacrine cells, Ames 2026-10-12). Elsewhere the tab is not drawn. */
+ *  amacrine cells, Ames 2026-10-12). The tab shows everywhere; elsewhere it
+ *  says so and offers the switch (Ames 2026-10-13: "it's not clear that my
+ *  tasks don't show up until I realize I'm in the wrong dataset"). */
 const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
-watch(questsHere, here => { if (!here && filter.value === 'quests') filter.value = 'mine'; });
+const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
+async function switchToQuestDataset() {
+  const ds = questDatasetEntry.value;
+  if (!ds) return;
+  const ok = await switchToDataset(ds);
+  if (ok) {
+    activeDataset.value = segLayerName(ds) || '';
+    filter.value = 'quests';
+  }
+}
 
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
  *  looked like a button and did nothing). Switch datasets and open the group. */
@@ -2559,8 +2570,8 @@ const panelStyle = computed(() => ({
                 All <b>{{ datasetScopedCells.length }}</b>
               </button>
               <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
-              <button v-if="questsHere && tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
-                      title="Annotation quests: mark the cilia on a starburst amacrine cell, without completing it">
+              <button v-if="tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
+                      :title="questsHere ? 'Annotation quests: mark the cilia on a starburst amacrine cell, without completing it' : 'Annotation quests are on Retina for now'">
                 Quests
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
@@ -2981,8 +2992,13 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
-        <div v-else-if="filter === 'quests' && questsHere" class="nge-cl-list">
-          <annotation-quests-tab />
+        <div v-else-if="filter === 'quests'" class="nge-cl-list">
+          <annotation-quests-tab v-if="questsHere" />
+          <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
+            <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetEntry ? datasetDisplayName(questDatasetEntry.id) : 'Retina' }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
+            <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
+                    title="Switch this view to the quests' dataset">Switch to {{ datasetDisplayName(questDatasetEntry.id) }}</button>
+          </div>
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
@@ -4104,6 +4120,10 @@ const panelStyle = computed(() => ({
   font-size: 0.82em;
 }
 .nge-cl-hint { font-size: 0.75em; margin-top: 6px; color: #556; }
+/* The Quests tab on a dataset without quests: where they are, and the switch. */
+.nge-cl-quests-elsewhere { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 14px; color: #93a0b6; line-height: 1.5; }
+.nge-cl-quests-elsewhere b { color: #dde; font-weight: 600; }
+.nge-cl-quests-switch { font-size: 13px; padding: 6px 14px; }
 
 .nge-cl-login-hint {
   padding: 8px 14px;

@@ -62,9 +62,11 @@ async function call(action: string, body: Record<string, unknown> = {}): Promise
   return result;
 }
 
-export async function listQuests(): Promise<QuestRow[]> {
+/** The rows, and `you`: the name the sheet carries for this player (the
+ *  server writes it, so it is the one to match rows against). */
+export async function listQuests(): Promise<{ rows: QuestRow[]; you: string }> {
   const r = await call('quest_list');
-  return Array.isArray(r.rows) ? r.rows : [];
+  return { rows: Array.isArray(r.rows) ? r.rows : [], you: typeof r.you === 'string' ? r.you : '' };
 }
 export async function claimQuest(segmentId: string) { return call('quest_claim', { segmentId }); }
 export async function releaseQuest(segmentId: string) { return call('quest_release', { segmentId }); }
