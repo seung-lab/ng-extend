@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T20:58:50Z",
+      "title": "Chat keeps working when live updates are down",
+      "items": [
+        "If the live connection behind chat goes down, you can still read and send messages. New ones arrive every few seconds, and the dot at the top of chat turns amber until the live connection is back."
+      ]
+    },
+    {
       "at": "2026-10-13T20:31:00Z",
       "title": "The Cilia Quest",
       "digest": "headline",
