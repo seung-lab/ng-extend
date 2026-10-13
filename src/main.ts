@@ -554,7 +554,15 @@ function makeLegendItem(legend: HTMLElement, note: LegendNote, spec: typeof LEGE
     rest();
     note.done(`${n} ${n === 1 ? spec.plural.replace(/cells/, 'cell') : spec.plural} hidden.`);
   };
-  item.addEventListener('click', () => { void toggle(); });
+  item.addEventListener('click', (e: MouseEvent) => {
+    void toggle();
+    // A mouse click leaves the item holding the keyboard, and Enter and Space
+    // work a focused item like a click. Enter is also how a merge or a cut is
+    // sent, so the next one sent started a check and hid cells instead (Ames
+    // 2026-10-13: "Checking 34 of 90" after a merge). Let go of the keyboard
+    // after a mouse click; reaching the item with Tab still works as before.
+    if (e.detail > 0) item.blur();
+  });
   return item;
 }
 // Enter or Space on a focused legend item works it like a click. Listened for
