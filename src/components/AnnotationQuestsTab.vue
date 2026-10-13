@@ -11,7 +11,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
-import { QUEST_TITLE, QUEST_STATUSES, QUEST_SPLIT_MERGED, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, type QuestRow } from '../annotation_quests';
+import { QUEST_TITLE, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { mintShortStateLink } from '../util/state_link';
 import { currentSegLayer } from '../datasets';
@@ -40,6 +40,8 @@ const myKeys = computed(() => new Set([you.value, backend.userName, backend.user
 const isMine = (r: QuestRow) => !!r.annotator && myKeys.value.has(nameKey(r.annotator));
 const isDone = (r: QuestRow) => !!r.status;
 const mine = computed(() => rows.value.filter(r => isMine(r) && !isDone(r)));
+/** At the limit of cells held at once: Claim waits for a Submit or a Release. */
+const atLimit = computed(() => mine.value.length >= QUEST_CLAIM_LIMIT);
 /** Cells this player has completed (Ames 2026-10-13: "a count of how many I
  *  have completed"), from the sheet rows that carry their name and a status. */
 const mineDone = computed(() => rows.value.filter(r => isMine(r) && isDone(r)).length);
@@ -94,7 +96,7 @@ async function take(r: QuestRow) {
   current.value = r.segmentId;
   try {
     await claimQuest(r.segmentId);
-    message.value = `${r.index || 'The cell'} is yours. Mark what you find in its layers, then press Complete.`;
+    message.value = `${r.index || 'The cell'} is yours. Mark what you find in its layers, then press Submit.`;
     openCell(r);
     await load();
   } catch (e: any) { error.value = e?.message || String(e); }
@@ -152,7 +154,7 @@ async function send(r: QuestRow, e?: Event) {
     const placed = points.value;
     await submitQuest(r.segmentId, { status: form.value.status, splitMerged: form.value.splitMerged, link, notes: form.value.notes });
     open.value = '';
-    message.value = `${r.index || 'The cell'} is complete. Thank you.`;
+    message.value = `${r.index || 'The cell'} is submitted. Thank you.`;
     await load();
     // The celebration: a toast with the counts, and confetti (AchievementToast.vue).
     document.dispatchEvent(new CustomEvent('nge:quest-complete', { detail: { index: r.index, points: placed, done: mineDone.value, origin } }));
@@ -167,10 +169,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   <div class="nge-aq">
     <div class="nge-aq-head">
       <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
-      <div class="nge-aq-lead">Claim a cell and its view opens with the lab's annotation layers, one for each part of a cilium. Put a point in each layer for what you find, then submit. The cell does not need to be complete.</div>
+      <div class="nge-aq-lead">Claim a cell and its view opens with the lab's annotation layers, one for each part of a cilium. Put a point in each layer for what you find, then submit. The cell does not need to be proofread.</div>
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
-        <span v-if="rows.length" class="nge-aq-tally" title="Cells you have completed on this quest">Completed by you: <b>{{ mineDone }}</b></span>
+        <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
+        <span v-if="rows.length" class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
       </div>
     </div>
 
@@ -194,12 +197,12 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-row-actions">
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="openCell(r)" title="Open this cell's start view, with its layers">Open</button>
-                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Complete this quest: your answer and a share link of this view go to the sheet">Complete</button>
+                <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
                 <button class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
-              <div class="nge-aq-form-title">Complete {{ r.index || label(r) }}</div>
+              <div class="nge-aq-form-title">Submit {{ r.index || label(r) }}</div>
               <div class="nge-aq-form-label">Cilium status</div>
               <select v-model="form.status" class="nge-aq-select" @keydown.stop @keyup.stop @keypress.stop>
                 <option value="" disabled>Choose one</option>
@@ -220,7 +223,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
               </div>
             </div>
           </template>
@@ -239,7 +242,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
           </div>
           <div class="nge-aq-row-actions">
             <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
-            <button class="nge-aq-btn nge-aq-btn--take" :disabled="busy === r.segmentId || !!busy" @click="take(r)" title="Put your name on this cell and open its start view">{{ busy === r.segmentId ? 'Claiming…' : 'Claim' }}</button>
+            <button class="nge-aq-btn nge-aq-btn--take" :disabled="busy === r.segmentId || !!busy || atLimit" @click="take(r)"
+                    :title="atLimit ? `You hold ${QUEST_CLAIM_LIMIT} quests already. Submit or release one first.` : 'Put your name on this cell and open its start view'">{{ busy === r.segmentId ? 'Claiming…' : 'Claim' }}</button>
           </div>
         </div>
 
@@ -262,7 +266,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 
         <!-- Submitted -->
         <template v-if="done.length">
-          <div class="nge-aq-section">Completed <span class="nge-aq-count">{{ done.length }}</span></div>
+          <div class="nge-aq-section">Submitted <span class="nge-aq-count">{{ done.length }}</span></div>
           <template v-for="r in done" :key="r.segmentId">
             <div class="nge-aq-row nge-aq-row--done" :class="{ 'nge-aq-row--mine': isMine(r), 'nge-aq-row--current': current === r.segmentId }">
               <div class="nge-aq-row-left">
@@ -275,11 +279,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-row-actions">
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="viewDone(r)" title="Open the submitted view">View</button>
-                <button v-if="isMine(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Complete this cell again with a new answer">Again</button>
+                <button v-if="isMine(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this cell again with a new answer">Again</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">
-              <div class="nge-aq-form-title">Complete {{ r.index || label(r) }} again</div>
+              <div class="nge-aq-form-title">Submit {{ r.index || label(r) }} again</div>
               <div class="nge-aq-form-label">Cilium status</div>
               <select v-model="form.status" class="nge-aq-select" @keydown.stop @keyup.stop @keypress.stop>
                 <option value="" disabled>Choose one</option>
@@ -300,7 +304,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
               <div class="nge-aq-form-actions">
                 <button class="nge-aq-btn" @click="open = ''">Not now</button>
-                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Completing…' : 'Complete' }}</button>
+                <button class="nge-aq-btn nge-aq-btn--send" :disabled="!form.status || !check.ok || busy === r.segmentId" @click="send(r, $event)">{{ busy === r.segmentId ? 'Submitting…' : 'Submit' }}</button>
               </div>
             </div>
           </template>
@@ -325,6 +329,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-refresh { align-self: flex-start; }
 .nge-aq-tally { font-size: 13px; color: #a9b8cc; }
 .nge-aq-tally b { color: #a6ffd6; font-weight: 700; }
+.nge-aq-tally--full b { color: #ffd24d; }
 .nge-aq-section {
   padding: 10px 12px 4px;
   font-family: 'Orbitron', 'Inter', sans-serif;

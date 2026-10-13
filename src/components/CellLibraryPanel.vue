@@ -32,7 +32,7 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
-import { QUEST_DATASET } from '../annotation_quests';
+import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
@@ -1683,6 +1683,12 @@ watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value =
  *  tasks don't show up until I realize I'm in the wrong dataset"). */
 const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
+// The number on the Quests tab (Ames 2026-10-13: "Quests doesn't have any
+// number?"): cells open to claim, read once when the panel opens on Retina
+// signed in; the tab's own reads refresh it through questState.
+watch([questsHere, () => backend.userId], ([here, uid]) => {
+  if (here && uid && !questState.loaded) void listQuests().catch(() => { /* the tab says why when opened */ });
+}, { immediate: true });
 async function switchToQuestDataset() {
   const ds = questDatasetEntry.value;
   if (!ds) return;
@@ -2571,8 +2577,8 @@ const panelStyle = computed(() => ({
               </button>
               <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
               <button v-if="tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
-                      :title="questsHere ? 'Annotation quests: mark the cilia on a starburst amacrine cell, without completing it' : 'Annotation quests are on Retina for now'">
-                Quests
+                      :title="questsHere ? 'Annotation quests: mark the cilia on a starburst amacrine cell, without completing it. The number is the cells open to claim.' : 'Annotation quests are on Retina for now'">
+                Quests <b v-if="questsHere && questState.loaded">{{ questOpenCount() }}</b>
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
@@ -3870,7 +3876,7 @@ const panelStyle = computed(() => ({
   border-radius: 6px;
   background: rgba(10, 10, 30, 0.5);
   color: #ccd;
-  font-size: 0.78em;
+  font-size: 13.5px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -3941,7 +3947,9 @@ const panelStyle = computed(() => ({
   flex: 1;
 }
 .nge-cl-row-name {
-  font-size: 0.82em;
+  /* Sizes in px from here down (Ames 2026-10-13: "what is the deal with
+     tiny text"): the em chain made the list smaller than it read. */
+  font-size: 14px;
   font-weight: 600;
   color: #dde;
   white-space: nowrap;
@@ -3955,8 +3963,8 @@ const panelStyle = computed(() => ({
   margin-top: 2px;
 }
 .nge-cl-badge {
-  font-size: 0.65em;
-  padding: 1px 6px;
+  font-size: 11px;
+  padding: 2px 7px;
   border-radius: 4px;
   font-weight: 600;
   text-transform: uppercase;
@@ -3967,8 +3975,8 @@ const panelStyle = computed(() => ({
 .nge-cl-badge.nge-cl-status--done { background: rgba(68, 170, 255, 0.15); color: #4af; }
 
 .nge-cl-notes {
-  font-size: 0.68em;
-  color: #667;
+  font-size: 12.5px;
+  color: #8a97ad;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3992,12 +4000,12 @@ const panelStyle = computed(() => ({
   margin-left: 8px;
 }
 .nge-cl-btn {
-  padding: 4px 10px;
+  padding: 5px 11px;
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 5px;
   background: transparent;
   color: #8bf;
-  font-size: 0.72em;
+  font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -4116,13 +4124,15 @@ const panelStyle = computed(() => ({
 .nge-cl-loading, .nge-cl-empty, .nge-cl-no-results {
   padding: 24px 16px;
   text-align: center;
-  color: #667;
-  font-size: 0.82em;
+  color: #8a97ad;
+  font-size: 14px;
 }
-.nge-cl-hint { font-size: 0.75em; margin-top: 6px; color: #556; }
+.nge-cl-hint { font-size: 12.5px; margin-top: 6px; color: #7f8aa0; }
 /* The Quests tab on a dataset without quests: where they are, and the switch. */
 .nge-cl-quests-elsewhere { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 14px; color: #93a0b6; line-height: 1.5; }
 .nge-cl-quests-elsewhere b { color: #dde; font-weight: 600; }
+/* The Quests tab's number in green, apart from the cell counts (Ames 2026-10-13). */
+.nge-cl-filters .nge-cl-quests-tab b, .nge-cl-filters .nge-cl-quests-tab.active b { color: #7cffb2; }
 .nge-cl-quests-switch { font-size: 13px; padding: 6px 14px; }
 
 .nge-cl-login-hint {

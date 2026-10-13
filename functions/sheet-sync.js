@@ -84,7 +84,7 @@ async function syncSheet(input,me,task,credential,api=(path,init)=>sheetsApi(cre
   return {ok:true,updated:plan.data.length+plan.userEnteredData.length};
 }
 // ── Annotation Quests (Ames 2026-10-12) ──────────────────────────────────
-const {QUESTS,questRows,planQuestUpdate}=require('./sheet-policy');
+const {QUESTS,questRows,planQuestUpdate,questClaimRoom}=require('./sheet-policy');
 /** The quest tab's title, from the sheet (the tab is found by its gid, so a
  *  rename does not break it). */
 async function questTab(api,quest) {
@@ -121,6 +121,8 @@ async function syncQuest(input,me,credential,api=(path,init)=>sheetsApi(credenti
   const quest=QUESTS[input.quest];
   const today=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric'}).format(new Date());
   const title=await questTabCached(api,input.quest,quest);
+  // A claim counts the cells the player already holds, from the whole tab.
+  if(input.action==='quest_claim') questClaimRoom(await questList(input.quest,credential,api),me,quest);
   const grid=await readRowsForMatch(api,quest.id,title,false,String(input.segmentId));
   const plan=planQuestUpdate(grid,title,quest,input,me,today);
   if(plan.data.length) await api(quest.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data:plan.data})});

@@ -80,6 +80,16 @@ test('quests: a claim writes only Annotator Name, and never over someone else or
  assert.equal(planQuestUpdate([QH,qrow({'Annotator Name':'amy sterling'})],'s',quest,{action:'quest_claim',segmentId:'720575940561794892'},qme,'now').data.length,0);
  assert.throws(()=>planQuestUpdate([QH,qrow()],'s',quest,{action:'quest_claim',segmentId:'1'},qme,'now'),/not in the quest sheet/);
 });
+test('quests: a player holds at most the quest\'s limit of uncompleted cells',()=>{
+ const {questClaimRoom}=require('./sheet-policy');
+ const held=(n)=>Array.from({length:n},(_,i)=>({annotator:i%2?'Amy Sterling':'amysterling',status:''}));
+ assert.equal(quest.claimLimit,3);
+ assert.doesNotThrow(()=>questClaimRoom([...held(2),{annotator:'Amy Sterling',status:'No cilium'},{annotator:'Nseraf',status:''}],qme,quest));
+ assert.throws(()=>questClaimRoom(held(3),qme,quest),/hold 3 quests/);
+ // Completed cells and other players' cells do not count.
+ assert.doesNotThrow(()=>questClaimRoom([{annotator:'Amy Sterling',status:'Need help'},{annotator:'Nseraf',status:''},{annotator:'Nseraf',status:''},{annotator:'Nseraf',status:''}],qme,quest));
+ assert.doesNotThrow(()=>questClaimRoom(held(3),qme,{...quest,claimLimit:0}));
+});
 test('quests: a release clears only the player\'s own name, only before a submit',()=>{
  const own=planQuestUpdate([QH,qrow({'Annotator Name':'Amy Sterling'})],'s',quest,{action:'quest_release',segmentId:'720575940561794892'},qme,'now');
  assert.deepEqual(cols(own),{'Annotator Name':''});

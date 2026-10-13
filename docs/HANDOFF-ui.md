@@ -317,6 +317,12 @@ on `claude/annotation-quests`, not deployed.
   the link was opened), colours them (basal body amber, daughter centriole
   cyan) and adds a "Cilium centerline" line layer (green) when the view has
   none. Nothing of the lab's is removed or renamed.
+- **The quest's words:** the action is Submit, never Complete (Ames
+  2026-10-13: Complete is proofreading's word). A player holds at most three
+  cells at once (`claimLimit` in `QUESTS`, `questClaimRoom` on the server,
+  `QUEST_CLAIM_LIMIT` in the tab). The Quests tab's number is the cells open
+  to claim, in green; `questState` in `src/annotation_quests.ts` is the one
+  shared read for the tab, that number and the profile.
 - **Server code on a branch gets wiped.** On 2026-10-13 another session's
   `firebase deploy` from the live branch replaced `ewSheetSync` with code
   that had no quest branch, and the tab said "This dataset has no registered

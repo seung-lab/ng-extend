@@ -34,6 +34,9 @@ const QUESTS = Object.freeze({
     title:'Cilia on starburst amacrine cells',
     statuses:['Cilium annotated','Cilium annotated (fixation artifact)','Need help','Need help: One centriole missing','No cilium','No cilium (BB & DC clear)','No cilium (BB & DC unclear; internal centriole pair)','No cilium (one centriole)','Skipped (low quality)'],
     splitMerged:['Split','Merged'],
+    // How many cells a player may hold at once, claimed and not yet
+    // completed (Ames 2026-10-13: "Limit should be 3").
+    claimLimit:3,
   },
 });
 /** The quest tab's columns, by header (letters and digits only, lower case). */
@@ -282,6 +285,15 @@ function questRows(grid) {
   }
   return rows;
 }
+/** A claim is refused once the player holds the quest's limit of cells that
+ *  are claimed and not completed. `rows` is the whole tab (questRows). */
+function questClaimRoom(rows, me, quest) {
+  const limit=Number(quest.claimLimit)||0;
+  if(!limit) return;
+  const mine=[...new Set([me.sheet_name,me.display_name,me.username].map(nameKey).filter(Boolean))];
+  const held=rows.filter(r=>r.annotator && !r.status && mine.includes(nameKey(r.annotator))).length;
+  if(held>=limit) fail(409,`You hold ${limit} quests already. Submit or release one first.`);
+}
 /**
  * The writes for one quest action on one row. Like planSheetUpdate: exact
  * row match on the segment ID, titles quoted, every value RAW except a
@@ -337,4 +349,4 @@ function planQuestUpdate(grid, title, quest, input, me, today) {
   return {valueInputOption:'RAW',data,userEnteredData};
 }
 module.exports={SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS,sourceFor,sheetValues,sheetSpelling,nameKey,planSheetUpdate,pointKey,
-  QUESTS,QUEST_COLUMNS,questFor,questHeader,questRows,planQuestUpdate};
+  QUESTS,QUEST_COLUMNS,questFor,questHeader,questRows,planQuestUpdate,questClaimRoom};

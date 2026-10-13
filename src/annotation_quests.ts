@@ -10,6 +10,7 @@
  * link, date and notes are written when they submit. Nothing here touches
  * the game's tables, stats or Achievements.
  */
+import { reactive } from 'vue';
 import { functionUrl } from './functions_base';
 import { makeLayer } from 'neuroglancer/layer';
 import { parseRGBColorSpecification } from 'neuroglancer/util/color';
@@ -32,6 +33,9 @@ export const QUEST_STATUSES = [
   'Skipped (low quality)',
 ];
 export const QUEST_SPLIT_MERGED = ['Split', 'Merged'];
+/** How many cells a player may hold at once, claimed and not completed
+ *  (Ames 2026-10-13). The server keeps the same number and refuses the next. */
+export const QUEST_CLAIM_LIMIT = 3;
 
 export interface QuestRow {
   index: string;
@@ -64,11 +68,22 @@ async function call(action: string, body: Record<string, unknown> = {}): Promise
   return result;
 }
 
+/** The last list read, shared by the Quests tab, the Cell Library's tab
+ *  count and the profile, so one read serves all three. */
+export const questState = reactive({ rows: [] as QuestRow[], you: '', loaded: false });
 /** The rows, and `you`: the name the sheet carries for this player (the
  *  server writes it, so it is the one to match rows against). */
 export async function listQuests(): Promise<{ rows: QuestRow[]; you: string }> {
   const r = await call('quest_list');
-  return { rows: Array.isArray(r.rows) ? r.rows : [], you: typeof r.you === 'string' ? r.you : '' };
+  const out = { rows: Array.isArray(r.rows) ? r.rows : [], you: typeof r.you === 'string' ? r.you : '' };
+  questState.rows = out.rows;
+  questState.you = out.you;
+  questState.loaded = true;
+  return out;
+}
+/** Cells nobody holds and nobody has completed: what there is to claim. */
+export function questOpenCount(): number {
+  return questState.rows.filter(r => !r.annotator && !r.status).length;
 }
 export async function claimQuest(segmentId: string) { return call('quest_claim', { segmentId }); }
 export async function releaseQuest(segmentId: string) { return call('quest_release', { segmentId }); }
