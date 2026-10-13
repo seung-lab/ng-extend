@@ -447,7 +447,7 @@ const CLAIM_STEP = 2, RESULT_STEP = 3;
 export const steps: Step[] = [
   // 1: What the test is
   {
-    title: 'Proofreading Test',
+    title: 'Proofreading Test (WIP)',
     get text() {
       const st = testStatus.value;
       const t = st?.test;

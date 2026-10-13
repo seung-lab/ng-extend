@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T23:15:00Z",
+      "title": "The Proofreading Test is marked WIP",
+      "items": [
+        "The Proofreading Test in the Tutorials menu now says WIP, for work in progress. It is still being tried out, so please leave it for now."
+      ]
+    },
+    {
       "at": "2026-10-13T22:12:00Z",
       "title": "Cut tutorial: two points on each side",
       "items": [

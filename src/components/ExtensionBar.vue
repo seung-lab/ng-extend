@@ -1153,7 +1153,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
             <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
-            <span>Proofreading Test{{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
+            <span>Proofreading Test (WIP){{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
         <!-- Standalone cut exercises (Ames, 2026-10-06): each opens on its
