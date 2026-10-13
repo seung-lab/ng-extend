@@ -810,10 +810,11 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
     };
     // "Ask for a reply": the same note, sent by the server tied to this card,
     // so the submitter (and only them) gets a reply box under it. If that is
-    // not switched on yet it refuses and says why, and nothing is sent.
+    // not switched on yet it refuses and says why, and nothing is sent. Its
+    // picture is the server's: science Nurro (functions/report-reply.js).
     const ask = !!reporterAsk.value[row.id];
     let asked: { id?: number } | null = null;
-    if (ask) asked = await secureWrite('reply.ask', { triageId: row.id, text, ...art });
+    if (ask) asked = await secureWrite('reply.ask', { triageId: row.id, text });
     else await secureWrite('notification.insert', { row: {
       title: '💬 An update on your report',
       body: text,

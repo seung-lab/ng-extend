@@ -16,8 +16,11 @@
 // can not queue a build or undo a decision. The board shows a card with an
 // unread reply under "Needs your decision" from the log alone.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/';
 const ASK_TITLE = '💬 An update on your report';
+// The picture of a note that asks for a reply (Ames 2026-10-13): science
+// Nurro at the microscope, notebook in paw. It is set here, never taken from
+// the browser. Catalog: static/nurro/README.md.
+const ASK_IMAGE = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/nurro-experiment-recap.png';
 const ASK_MAX = 5000;
 const REPLY_MAX = 1000;
 const NOT_INSTALLED = 'Replies are not switched on yet: run supabase-report-replies.sql in the Supabase SQL editor.';
@@ -36,8 +39,6 @@ function cleanText(value, max, what) {
   return text;
 }
 
-const ownImage = url => (typeof url === 'string' && url.length <= 1024 && url.startsWith(OWN_STORAGE) ? url : null);
-
 /** The signed-in player who filed the report behind a triage card, or null. */
 async function submitterOf(sb, triageId) {
   const row = (await sb(`feedback_triage?id=eq.${triageId}&select=id,source,source_id&limit=1`))[0];
@@ -55,7 +56,7 @@ async function ask(args, {sb, me, isAdmin}) {
   const userId = await submitterOf(sb, triageId);
   // Only ever targeted: an anonymous report gets nothing, never a broadcast.
   if (!userId) fail(409, 'This report has no signed-in submitter, so there is nobody to notify. Nothing was sent.');
-  const row = { title: ASK_TITLE, body, thumbnail_url: ownImage(args.thumbnail_url), image_url: ownImage(args.image_url),
+  const row = { title: ASK_TITLE, body, thumbnail_url: ASK_IMAGE, image_url: ASK_IMAGE,
     target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: (me && me.id) || null,
     reply_triage_id: triageId };
   try { return (await sb('notifications', {method: 'POST', body: JSON.stringify(row)}))[0]; }
@@ -108,4 +109,4 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanText, ASK_TITLE, REPLY_MAX};
+module.exports = {handle, cleanText, ASK_TITLE, ASK_IMAGE, REPLY_MAX};

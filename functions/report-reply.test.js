@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {handle, REPLY_MAX} = require('./report-reply');
+const {handle, REPLY_MAX, ASK_IMAGE} = require('./report-reply');
 
 const U = n => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, '0')}`;
 const T = n => `bbbbbbbb-bbbb-4bbb-8bbb-${String(n).padStart(12, '0')}`;
@@ -81,11 +81,11 @@ test('only admins ask, and never an anonymous or non report card', async () => {
   assert.equal(state.notifications.length, 0);
 });
 
-test('images must be our own uploads', async () => {
+test('the picture is the server\'s own Nurro, whatever the browser sends', async () => {
   const {as} = world();
-  const own = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/nurro/guide-avatar.png';
-  const note = await as(amy, true)('reply.ask', {triageId: T(1), text: 'hi', thumbnail_url: own, image_url: 'https://evil.example/x.png'});
-  assert.equal(note.thumbnail_url, own); assert.equal(note.image_url, null);
+  const note = await as(amy, true)('reply.ask', {triageId: T(1), text: 'hi', thumbnail_url: 'https://evil.example/t.png', image_url: 'https://evil.example/x.png'});
+  assert.equal(note.thumbnail_url, ASK_IMAGE); assert.equal(note.image_url, ASK_IMAGE);
+  assert.match(ASK_IMAGE, /\/static\/nurro\/nurro-experiment-recap\.png$/);
 });
 
 test('a player can only reply to their own report, on a notification that asked', async () => {
