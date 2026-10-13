@@ -2133,7 +2133,7 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       }
     });
     body.appendChild(submitIcon);
-    // nge (a test, Nseraf 2026-10-11): colour the cell in 3D by the side each
+    // nge (Nseraf 2026-10-11; for everyone since 2026-10-13): colour the cell in 3D by the side each
     // part would fall on, before anything is cut. The app does the work
     // (src/util/cut_preview.ts); the colours go when the points change, when
     // the cut is sent, and when the tool closes.
@@ -2145,8 +2145,7 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       }
     });
     previewIcon.classList.add('nge-cut-preview-button');
-    // While it is a test, only for those who switched it on (cut_preview.ts).
-    if ((window as any).ngeCutPreviewTest === true) body.appendChild(previewIcon);
+    body.appendChild(previewIcon);
     const clearPreview = () => window.dispatchEvent(new CustomEvent('nge-cut-preview-clear'));
     activation.registerDisposer(multicutState.changed.add(clearPreview));
     activation.registerDisposer(clearPreview);

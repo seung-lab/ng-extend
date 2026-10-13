@@ -1,5 +1,5 @@
 /**
- * Cut preview, a TEST (Nseraf 2026-10-11: "colour the 3D based on red/blue
+ * Cut preview (Nseraf 2026-10-11; a hidden test until Ames released it on 2026-10-13: "colour the 3D based on red/blue
  * points during split ... easier to see that you have selected appropriate
  * supervoxels").
  *
@@ -72,7 +72,17 @@ async function drawFine(layer: any, red: string[], blue: string[], paleBoxes: nu
   }
 }
 
+/** One preview at a time. A press while one is being worked out is ignored
+ *  (each preview costs the server what a cut does). */
+let busy = false;
+const setBusy = (on: boolean) => {
+  busy = on;
+  window.dispatchEvent(new CustomEvent('nge-cut-preview-busy', { detail: on }));
+};
+
 async function preview(layer: any) {
+  if (busy) return;
+  setBusy(true);
   const mine = ++run;
   const status = new StatusMessage();
   status.setText('Working out where the cut would fall…');
@@ -144,12 +154,13 @@ async function preview(layer: any) {
     StatusMessage.showTemporaryMessage(`No preview: ${e?.message || 'the server did not answer'}. The cut itself is not affected.`, 9000);
   } finally {
     status.dispose();
+    setBusy(false);
   }
 }
 
-/** While this is a test the Preview button is hidden. Opening the game once
- *  with ?cutpreview=1 in the address switches it on in this browser, and
- *  ?cutpreview=0 switches it off again. */
+/** The Preview button is there for everyone. Opening the game once with
+ *  ?cutpreview=1 in the address only adds the two console helpers below, for
+ *  trying the colouring by hand; ?cutpreview=0 takes them away again. */
 const TEST_KEY = 'nge-cut-preview-test';
 export function cutPreviewTestOn(): boolean {
   try {
