@@ -790,8 +790,27 @@ export class ButtonService {
         : 'Log in to claim cells';
     }
     claimSection.appendChild(claimStatus);
-    const claimOpenText = claimStatus.textContent;
+    let claimOpenText = claimStatus.textContent;
     let claimBtnEl: HTMLButtonElement | null = null;
+    // The count above comes from the claims the game has in hand, which
+    // leaves out ones made through the Cell Library and ones on another
+    // dataset: with all ten held it still said "10 claims left" (Nseraf
+    // 2026-10-12, report 120). The server knows them all, so ask it and put
+    // the line right. Never fewer held than the game already knows of.
+    if (backend.userId && !claimInfo.claimed) {
+      void backend.loadMyActiveClaims().then(held => {
+        const limit = backend.claimLimitFor();
+        const count = Math.max(held.length, backend.myActiveClaimCount());
+        const remaining = Math.max(0, limit - count);
+        const line = `Available · ${remaining} of ${limit} claim${limit !== 1 ? 's' : ''} left`;
+        if (claimStatus.textContent === claimOpenText) claimStatus.textContent = line;
+        claimOpenText = line;
+        if (claimBtnEl && count >= limit && !claimBtnEl.disabled) {
+          claimBtnEl.disabled = true;
+          claimBtnEl.textContent = `Max ${limit} claims reached`;
+        }
+      }).catch(() => { /* the first count stays */ });
+    }
 
     if (backend.userId) {
       if (!claimInfo.claimed) {
