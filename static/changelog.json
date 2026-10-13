@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T16:41:19Z",
+      "title": "Preview a cut before you make it",
+      "digest": "headline",
+      "items": [
+        "In cut mode, place your red and blue points and press Preview. The cell is coloured in 3D to show what would stay with the red points and what would go with the blue ones, so you can see where the cut will fall before you make it.",
+        "Around your points the colours follow the supervoxels themselves, so the edge of the cut is exact there. Farther along the cell they show which side each branch ends up on.",
+        "Nothing is cut until you press Submit cut. The colours go away when you move a point, submit, or leave cut mode."
+      ]
+    },
+    {
       "at": "2026-10-13T16:36:28Z",
       "title": "Reply to the team about your report",
       "digest": "minor",
