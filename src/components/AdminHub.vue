@@ -1497,6 +1497,36 @@ const awardGroupId = ref<number | null>(null);
 const awardSuccess = ref('');
 let awardSearchTimeout: any = null;
 
+// Replace an award's picture (Ames 2026-10-13: "I made a better icon"). The
+// award itself stays, so everyone who holds it keeps it and sees the new
+// picture. Making a new award in its place would leave the holders behind.
+const badgeImageBusy = ref(false);
+const badgeImageNote = ref('');
+async function replaceBadgeImage(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  const id = awardBadgeId.value;
+  input.value = '';
+  if (!file || !id) return;
+  const invalid = backend.validateAdminImage(file);
+  if (invalid) { badgeImageNote.value = invalid; return; }
+  badgeImageBusy.value = true; badgeImageNote.value = '';
+  try {
+    const urls = await backend.uploadAdminImage(file, 'badges');
+    const { error } = await supabase.from('special_badges')
+      .update({ image_url: urls.fullUrl, thumbnail_url: urls.thumbUrl || null }).eq('id', id);
+    if (error) throw new Error(error.message);
+    // Read the awards again and look: only say it worked if it did.
+    await backend.loadSpecialBadges();
+    if (backend.specialBadges.find((b: any) => b.id === id)?.image_url !== urls.fullUrl) throw new Error('the server did not accept the change');
+    badgeImageNote.value = 'Picture replaced. Everyone who holds this award now sees the new one.';
+  } catch (err: any) {
+    badgeImageNote.value = `Could not replace the picture: ${err?.message || err}`;
+  } finally {
+    badgeImageBusy.value = false;
+  }
+}
+
 async function createBadge() {
   if (!badgeName.value.trim()) { badgeError.value = 'Badge name is required'; return; }
   if (!badgeImageFile.value) { badgeError.value = 'Badge image is required'; return; }
@@ -2174,6 +2204,13 @@ function practiceWhen(iso: string | null) {
         <div v-if="awardSuccess" class="nge-admin-success">{{ awardSuccess }}</div>
 
         <div v-if="awardBadgeId" class="nge-admin-award-section">
+          <div class="nge-admin-row">
+            <label class="nge-admin-file-label">
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="nge-admin-file-input" :disabled="badgeImageBusy" @change="replaceBadgeImage" />
+              {{ badgeImageBusy ? 'Replacing…' : 'Replace this award’s picture...' }}
+            </label>
+            <span v-if="badgeImageNote" class="nge-admin-note-inline">{{ badgeImageNote }}</span>
+          </div>
           <p class="nge-admin-hint">Award to individual user:</p>
           <div class="nge-admin-row">
             <input v-model="awardUserSearch" @input="onAwardUserSearch" class="nge-admin-input" placeholder="Search by name or email..." />
