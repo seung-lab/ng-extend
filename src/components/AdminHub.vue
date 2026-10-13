@@ -1254,6 +1254,47 @@ function onNotifImageChange(e: Event) {
   notifImageFile.value = file;
 }
 
+// Paste a picture straight into the notification as its feature image (Ames
+// 2026-10-13): a screenshot from the clipboard, with Ctrl+V anywhere in this
+// form. Pasted text is left alone. A screenshot is often a large PNG, so one
+// over the size limit is saved again as WebP, smaller, before it is checked.
+async function shrinkPasted(file: File): Promise<File> {
+  if (!backend.validateAdminImage(file).includes('MB')) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.92, 0.82, 0.7]) {
+      const blob: Blob | null = await new Promise(done => canvas.toBlob(done, 'image/webp', quality));
+      if (!blob) break;
+      const smaller = new File([blob], file.name.replace(/\.\w+$/, '') + '.webp', { type: 'image/webp' });
+      if (!backend.validateAdminImage(smaller)) return smaller;
+    }
+  } catch { /* fall through to the size message */ }
+  return file;
+}
+async function onNotifImagePaste(e: ClipboardEvent) {
+  const item = [...(e.clipboardData?.items ?? [])].find(i => i.kind === 'file' && i.type.startsWith('image/'));
+  const raw = item?.getAsFile();
+  if (!raw) return;                    // text, or nothing: the normal paste goes ahead
+  e.preventDefault();
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const named = new File([raw], `pasted-${stamp}.${(raw.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: raw.type });
+  const file = await shrinkPasted(named);
+  const invalid = backend.validateAdminImage(file);
+  if (invalid) { notifError.value = invalid; return; }
+  notifError.value = '';
+  notifImageFile.value = file;
+}
+/** A small look at the image that will be sent, pasted or picked. */
+const notifImagePreview = ref('');
+watch(notifImageFile, file => {
+  if (notifImagePreview.value) URL.revokeObjectURL(notifImagePreview.value);
+  notifImagePreview.value = file ? URL.createObjectURL(file) : '';
+});
+
 function onNotifIconChange(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -1746,7 +1787,7 @@ function practiceWhen(iso: string | null) {
       </li></ul>
     </section>
 
-    <div v-if="adminSubTab === 'notifications'" class="nge-admin-section">
+    <div v-if="adminSubTab === 'notifications'" class="nge-admin-section" @paste="onNotifImagePaste">
       <div class="nge-admin-block">
         <label class="nge-admin-label">
           {{ editingId != null ? 'Editing Notification' : 'Send Notification' }}
@@ -1827,7 +1868,12 @@ function practiceWhen(iso: string | null) {
             {{ notifIconFile ? notifIconFile.name : 'Feed icon (optional)...' }}
           </label>
         </div>
-        <p class="nge-admin-hint">Images up to 3 MB (PNG, JPEG, WebP, GIF). The feed always loads the small icon, not the full image.</p>
+        <p class="nge-admin-hint">Images up to 3 MB (PNG, JPEG, WebP, GIF). You can also paste a picture here with Ctrl+V. The feed always loads the small icon, not the full image.</p>
+        <div v-if="notifImagePreview" class="nge-admin-pasted">
+          <img :src="notifImagePreview" alt="The image that will be sent" />
+          <span>{{ notifImageFile?.name }} · {{ ((notifImageFile?.size || 0) / 1024).toFixed(0) }} KB</span>
+          <button type="button" class="nge-admin-action-btn" @click="notifImageFile = null">Remove</button>
+        </div>
         <div class="nge-admin-row">
           <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>
@@ -2798,6 +2844,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-admin-check input { accent-color: #4a9eff; }
 
+.nge-admin-pasted { display: flex; align-items: center; gap: 10px; margin: 2px 0 8px; font-size: 12.5px; color: #aab; }
+.nge-admin-pasted img { max-height: 84px; max-width: 220px; border-radius: 6px; border: 1px solid rgba(74, 158, 255, 0.3); }
 .nge-admin-file-label {
   display: inline-flex;
   align-items: center;
