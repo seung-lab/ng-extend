@@ -491,7 +491,10 @@ function isSuggestRequest(text, botId = BOT_USER_ID) {
 }
 
 // Every new report still goes on the triage board at once, as a card with
-// no suggestion on it: no Claude run, nothing posted, nobody notified. The
+// no suggestion on it: no Claude run and nothing posted to Slack. Admins get
+// the in-game bell for it (Ames 2026-10-13: "I'm not getting notifications
+// for new triages"; since reports stopped getting a suggestion by themselves,
+// the only bell was the one for a suggestion, so nothing rang). The
 // card is an ordinary row (so the board, Slack replies, Done and Dismiss all
 // work on it), told apart by its rationale. Asking for a suggestion later
 // fills the same row in. Same words in AdminHub.vue and triage-loop.mjs.
@@ -516,15 +519,33 @@ async function fileNewReports() {
     // suggestion) reach this card. Found, not posted to.
     const threadTs = await findReportTs(row).catch(() => null);
     const res = await sb('feedback_triage?on_conflict=source,source_id', {
-      method: 'POST', headers: { Prefer: 'return=minimal,resolution=ignore-duplicates' },
+      method: 'POST', headers: { Prefer: 'return=representation,resolution=ignore-duplicates' },
       body: JSON.stringify({ ...row, recommendation: 'nothing', status: 'proposed',
         rationale: `${NEW_REPORT_NOTE}. To get one, press Suggest a fix on this card, or tag the bot in the report's Slack thread.`,
         ...(threadTs ? { slack_channel: CHANNEL, slack_ts: threadTs } : {}) }),
     });
-    if (res.ok) filed++; else console.warn(`[bridge] could not file report ${issue.id}: ${res.status}`);
+    if (!res.ok) { console.warn(`[bridge] could not file report ${issue.id}: ${res.status}`); continue; }
+    // Only the pass that really made the card rings the bell: a card another
+    // pass made a moment ago comes back as no rows.
+    const made = await res.json().catch(() => []);
+    if (!Array.isArray(made) || !made.length) continue;
+    filed++;
+    await notifyAdminsOfReport(made[0]).catch(e => console.warn(`[bridge] new report ${issue.id}: admins not notified: ${e.message}`));
   }
   if (filed) console.log(`[bridge] filed ${filed} new report(s) on the board, no suggestion asked`);
   return filed;
+}
+
+/** In-game bell for every admin when a new report lands on the board (the
+ *  feed files a 🗂 title under its Triage tab). Once per card. */
+async function notifyAdminsOfReport(row) {
+  const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" A new report is on the triage board. Click this note to open it. Press Suggest a fix there if you want Claude to look.`;
+  let sent = 0;
+  for (const id of await adminUserIds()) {
+    if (await notifyUser(id, '🗂️ Feedback triage: new report', body)) sent++;
+  }
+  console.log(`[bridge] new report ${row.id}: notified ${sent} admin(s)`);
 }
 
 async function suggestRequests() {
