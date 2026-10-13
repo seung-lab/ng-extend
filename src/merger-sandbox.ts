@@ -326,7 +326,7 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
       if (mine !== taking) return;
       // Watch only once the cell is held: with nothing held, the watch
       // would queue for the Cut tutorial's cells.
-      watchPractice(false, 'Ctrl+click to add points. Remember to press G to switch the cut colour group.', '', { advance: true });
+      watchPractice(false, 'Ctrl+click to add points. Remember to press G to switch the cut color group.', '', { advance: true });
       // The cell loads in 3D (practice.ts sets the layout in the view
       // itself); Space brings the 2D images back.
       setTimeout(() => ensureTool('multicut'), 1100);

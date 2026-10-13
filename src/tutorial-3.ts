@@ -405,7 +405,7 @@ async function helpMe() {
   if (ex?.kind === 'cut') {
     ensureTool('multicut');
     shown = await showWhereToCut();
-    if (shown) practiceStatus('The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch colour, then Submit cut.');
+    if (shown) practiceStatus('The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch color, then Submit cut.');
   } else if (ex?.kind === 'merge_then_cut') {
     ensureTool('merge');
     shown = await showWhereToClick();
@@ -618,7 +618,7 @@ export function finishPracticeTutorial(what: 'merge' | 'cut'): boolean {
  * colour to be switched to blue ('blue'), then move on. The counts and the
  * active colour are the cut tool's own.
  */
-export function watchCutStep(want: 'red' | 'blue', waiting: string) {
+export function watchCutStep(want: 'red' | 'blue', waiting: string, need = 1) {
   pointAtNext(false);
   const token = ++practiceWatch;
   waitingFor = null;
@@ -626,7 +626,7 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string) {
   const bar = useSplitMergeOverlayStore();
   const tick = () => {
     if (token !== practiceWatch) return;
-    const done = want === 'red' ? bar.redPointCount > 0 : bar.activeGroup === 'blue';
+    const done = want === 'red' ? bar.redPointCount >= need : bar.activeGroup === 'blue';
     if (done) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
     practiceStatus(waiting);
     setTimeout(tick, 300);
@@ -696,7 +696,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
         document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
         return;
       }
-      practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built.', true);
+      practiceStatus(finished + ' If an empty space appears where the pieces meet, the new mesh is still being built.', true);
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
     }
@@ -720,7 +720,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
           ? 'Red point placed. Now press G to switch to blue, then Ctrl+click the other side.'
           : 'Blue is on. Ctrl+click a blue point on the other side of the join.';
       } else if (bar.redPointCount > 0 && bar.bluePointCount > 0) {
-        cutStage = 'Both colours placed. Press Submit cut, or Enter.';
+        cutStage = 'Both colors placed. Press Submit cut, or Enter.';
       }
     }
     if (cutStage) { practiceStatus(cutStage, false, true); setTimeout(tick, 700); return; }
@@ -753,7 +753,9 @@ export function celebrateStep() {
   document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
 }
 
-export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the new mesh is still being built.';
+// "Empty space", not "black box": it is a place with no mesh yet, not a
+// box coloured black (tester feedback, 2026-10-13).
+export const BLACK_BOX_NOTE = 'If an empty space appears where the pieces meet, the new mesh is still being built.';
 
 /** A step that only asks for the tool to be switched on: the status line
  *  flips when it is. No help button on such a step (Amy). */
@@ -804,16 +806,20 @@ document.addEventListener('click', e => {
   pointAtNext(false);
 }, true);
 
-export function watchTool(waiting: string, finished: string) {
+export function watchTool(waiting: string, finished: string, offAgain = '') {
   const token = ++practiceWatch;
   helpWanted = false;
   pointAtNext(false);
+  let wasOn = false;
   const tick = () => {
     if (token !== practiceWatch) return;
     const p = currentPractice();
     if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); setTimeout(tick, 2000); return; }
     if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next.'); return; }
-    if (toolIsOn()) { practiceStatus(finished, true); pointAtNext(true); return; }
+    // Keeps looking after the tool comes on: pressing the key again turns
+    // it off, and the box used to go on saying it was on.
+    if (toolIsOn()) { wasOn = true; practiceStatus(finished, true); pointAtNext(true); setTimeout(tick, 500); return; }
+    if (wasOn && offAgain) { pointAtNext(false); practiceStatus(offAgain); setTimeout(tick, 500); return; }
     practiceStatus(waiting);
     setTimeout(tick, 700);
   };
@@ -1037,7 +1043,7 @@ export async function movingToSandbox<T>(tutorial: string, work: () => Promise<T
     thumbnail: imgProfessorNurro,
     contain: true,
     hold: true,
-    steps: ['Finding your practice cells', 'Holding them for you', 'Loading the volume', 'Colouring the pieces', 'Almost there'],
+    steps: ['Finding your practice cells', 'Holding them for you', 'Loading the volume', 'Coloring the pieces', 'Almost there'],
   });
   try { return await work(); } finally { releaseDatasetTransition(); }
 }
@@ -1229,7 +1235,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     width: "450px",
     onEnter: async () => {
       closeSidePanel();
-      watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.');
+      watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.', 'Merge mode is off. Press M again to re-enter merge mode.');
       // Point at the segmentation layer chip without being asked (Amy).
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
       // The whole tutorial runs on both merge cells (Amy): take both now, so
@@ -1304,7 +1310,7 @@ Press next to keep going.`,
 Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` behind this box lost the yellow piece; the AI left it as its own segment.
 
 1. Press **M** if the merge tool is off.
-2. **Ctrl+Click** the yellow piece. This time try it in the 2D images on the left: click inside its coloured outline.
+2. **Ctrl+Click** the yellow piece. This time try it in the 2D images on the left: click inside its colored outline.
 3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 

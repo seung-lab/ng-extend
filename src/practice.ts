@@ -1054,6 +1054,18 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
  * blue points (viewer voxels) show where the rest of the cut goes.
  */
 const LEFTOVER: Record<string, { pair: [string, string]; message: string; red: number[][]; blue: number[][] }> = {
+  // First cut (fusion on a proofread cell). The axon touches the dendrite
+  // along a stretch, and a cut placed at one end takes only the near half
+  // off. The pair is the supervoxel under the far red hint point and the one
+  // under the far blue hint point. Replayed against all 19 cuts in the
+  // cell's history: the five that took the whole axon part them, the
+  // fourteen that left half do not.
+  '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': {
+    pair: ['75155055934384400', '75155055934269534'],
+    message: 'Good cut, but you cut off only half of the merger. The rest of the axon is still on the dendrite. Go back and get it: the gems show where.',
+    red: [[82030, 49104, 529]],
+    blue: [[81910, 49234, 521]],
+  },
   // Axon fused to a dendrite, 2D cut. Supervoxels under (86309, 59613, 786)
   // and (86358, 59125, 806).
   '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': {
