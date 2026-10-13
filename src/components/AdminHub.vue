@@ -262,6 +262,8 @@ function applyTriageFocus() {
 // is what the "New tab" link uses.
 const triageBoard = ref(!!props.standalone);
 const boardUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
+/** The game itself, on this same site. */
+const gameUrl = `${window.location.origin}${window.location.pathname}`;
 function onBoardKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && triageBoard.value && !props.standalone && !(e.target as HTMLElement)?.closest?.('textarea, input')) triageBoard.value = false;
 }
@@ -2094,6 +2096,9 @@ function practiceWhen(iso: string | null) {
       <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard, 'nge-triage-light': triageBoard && triageLight }">
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
+          <!-- The page on its own has no game around it: a way back, in a new
+               tab so the board stays open (Ames 2026-10-12). -->
+          <a v-if="standalone" class="nge-admin-action-btn nge-triage-newtab" :href="gameUrl" target="_blank" rel="noopener" title="Opens Pyr in a new tab. This page stays open.">Open Pyr ↗</a>
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
