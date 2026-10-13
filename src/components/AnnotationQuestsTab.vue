@@ -391,7 +391,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-tally b { color: #a6ffd6; font-weight: 700; }
 .nge-aq-tally--full b { color: #ffd24d; }
 /* The (i) and its box, drawn as the Cell Library's own instructions box. */
-.nge-aq-titlerow { display: flex; align-items: center; gap: 8px; }
+/* the name on the left, Instructions at the right edge (Ames 2026-10-13: "move Instructions to the right") */
+.nge-aq-titlerow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nge-aq-info {
   position: relative;
   display: inline-flex; align-items: center; gap: 6px;
