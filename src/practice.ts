@@ -648,7 +648,9 @@ export async function cellIsCut(id: string): Promise<boolean | null> {
     if (!ex) return null;
     const [sa, sb] = checkSupervoxels(ex);
     const [a, b] = await Promise.all([rootOfSupervoxel(ex, sa), rootOfSupervoxel(ex, sb)]);
-    return a && b ? a !== b : null;
+    if (!a || !b) return null;
+    // Parted, and nothing left behind that should have come off too.
+    return a !== b && !(LEFTOVER[ex.id] && await practiceLeftover(ex.id));
   } catch { return null; }
 }
 
@@ -987,6 +989,12 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
       if (state?.selectedLayer) state.selectedLayer = { ...state.selectedLayer, visible: false };
       if (state?.selection) state.selection = { ...state.selection, visible: false };
       if (want3d && state) state.layout = '3d';
+      // Annotation layers saved in the view (the "remove" and "keep" points
+      // a view was made with) are left out: the tutorial draws its own hint
+      // gems, and both together showed every point twice, with two extra
+      // tabs (Ames, 2026-10-13). The hints are read from the views
+      // separately, so nothing is lost.
+      if (Array.isArray(state?.layers)) state.layers = state.layers.filter((l: any) => l?.type !== 'annotation');
       return state;
     });
     try { await useLayersStore().loadState(staged?.state ?? ex.state_url); } finally { setStateRewriter(null); }
@@ -1034,6 +1042,38 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     session.rootA === session.rootB
       ? [[session.rootA, PURPLE]]
       : [[session.rootA, PURPLE], [session.rootB, YELLOW]]);
+}
+
+/**
+ * A cut that takes off only part of what does not belong.
+ *
+ * The 2D cut cell's axon can be cut partway along, which parts the two
+ * checked spots and used to count, with half the axon still on the dendrite
+ * (Ames, 2026-10-13). `pair` is a spot on that remaining half and a spot on
+ * the dendrite: while they share a segment, the job is half done. The red and
+ * blue points (viewer voxels) show where the rest of the cut goes.
+ */
+const LEFTOVER: Record<string, { pair: [string, string]; message: string; red: number[][]; blue: number[][] }> = {
+  // Axon fused to a dendrite, 2D cut. Supervoxels under (86309, 59613, 786)
+  // and (86358, 59125, 806).
+  '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': {
+    pair: ['75437218239981902', '75437149587202747'],
+    message: 'Good cut, but you cut off only half of the merger. Part of the axon is still on the dendrite. Go back and get the rest: the gems show where.',
+    red: [[86385, 59535, 793]],
+    blue: [[86436, 59597, 806]],
+  },
+};
+
+/** For the cell on screen: what is still attached that should not be, or
+ *  null when there is nothing (or it cannot be told). */
+export async function practiceLeftover(id?: string): Promise<{ message: string; red: number[][]; blue: number[][] } | null> {
+  try {
+    const ex = id ? [...Object.values(session.held), ...Object.values(riders)].find(c => c.id === id) : session.example;
+    const left = ex ? LEFTOVER[ex.id] : undefined;
+    if (!ex || !left) return null;
+    const [a, b] = await Promise.all([rootOfSupervoxel(ex, left.pair[0]), rootOfSupervoxel(ex, left.pair[1])]);
+    return a && b && a === b ? left : null;
+  } catch { return null; }
 }
 
 /** True when the two pieces currently share a root. */

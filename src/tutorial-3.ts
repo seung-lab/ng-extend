@@ -9,7 +9,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
@@ -634,6 +634,8 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string) {
   setTimeout(tick, 500);
 }
 
+/** The watch for which the "half done" gems are already up. */
+let leftoverShown = 0;
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   pointAtNext(false);
   const token = ++practiceWatch;
@@ -668,6 +670,24 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
+      // A cut that took off only part of the piece: say so, show where the
+      // rest goes, and keep waiting.
+      if (!wantMerged) {
+        const left = await practiceLeftover();
+        if (token !== practiceWatch) return;
+        if (left) {
+          practiceStatus(left.message);
+          if (leftoverShown !== token) {
+            leftoverShown = token;
+            showGemMarkers([
+              { name: 'Red points go here', color: RED, points: left.red },
+              { name: 'Blue points go here', color: BLUE, points: left.blue },
+            ]);
+          }
+          setTimeout(tick, 1500);
+          return;
+        }
+      }
       practiceLanded.add(p.example.id);
       hidePyrMarkers();
       if (opts.advance) {
@@ -1337,7 +1357,7 @@ A few things worth knowing:
 
 Next up is the other half of proofreading: a <strong style="color:#e06060">cut</strong> separates two neurons the AI fused together.
 
-<div style="text-align:center">` + startTutorialButton(5, 'Start the Cut tutorial') + `</div>
+<div style="text-align:center;margin:16px 0 18px">` + startTutorialButton(5, 'Start the Cut tutorial') + `</div>
 
 Or press done and explore. The cells you practised on are put back for the next person.
 

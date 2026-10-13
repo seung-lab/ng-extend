@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T22:05:00Z",
+      "title": "Cut tutorial: half a cut is not the whole job",
+      "items": [
+        "In the 2D cut of the Cut tutorial, cutting the axon off only partway no longer counts. The box says half is done and shows where the rest of the cut goes.",
+        "Practice views no longer show every hint point twice."
+      ]
+    },
+    {
       "at": "2026-10-13T21:58:00Z",
       "title": "Merge tutorial: the second merge shows where to click",
       "items": [
