@@ -1531,7 +1531,7 @@ function toggleCollapse() {
               class="nge-chat-input"
               :class="{ 'nge-chat-input--over': messageTooLong }"
               rows="1"
-              :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : !chatUsable ? 'Chat is connecting…' : !connected ? 'Message... (new ones arrive every few seconds)' : 'Message... (@ to mention)'"
+              :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : !chatUsable ? 'Chat is connecting…' : 'Message... (@ to mention)'"
               title="Enter sends. *bold* and _underline_, or Ctrl+B and Ctrl+U on selected text."
               @keydown.stop="onInputKeydown"
               @keyup.stop
