@@ -1150,19 +1150,12 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       if (!added) {
         const segmentCount = [...segmentsState.segmentEquivalences.setElements(segmentId)].length; // Approximation
         segmentsState.segmentEquivalences.deleteSet(segmentId);
-        if (this.lastDeselectionMessage && this.lastDeselectionMessageExists) {
-          this.lastDeselectionMessage.dispose();
-          this.lastDeselectionMessageExists = false;
-        }
-        this.lastDeselectionMessage =
-            StatusMessage.showMessage(`Hid ${segmentCount} segments.`);
-        this.lastDeselectionMessageExists = true;
-        setTimeout(() => {
-          if (this.lastDeselectionMessageExists) {
-            this.lastDeselectionMessage!.dispose();
-            this.lastDeselectionMessageExists = false;
-          }
-        }, 2000);
+        // nge: no "Hid N segments." bar for this. It ran along the bottom of
+        // the screen for two seconds after every single removal, so the
+        // legend, the chat and the coordinates all jumped up and back down
+        // each time (Nseraf 2026-10-12, report 121). The row leaving the list
+        // already says the segment is gone, and Undelete brings it back.
+        void segmentCount;
       }
     }
   }
