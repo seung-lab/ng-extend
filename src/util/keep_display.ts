@@ -77,6 +77,41 @@ function applyOnTop(want: Record<string, boolean>, before: Set<unknown>) {
     try { onTop.value = want[ml.name]; } catch { /* skip */ }
   }
 }
+// The marker of a layer's points, dot or Pyr gem, is carried the same way (a
+// player 2026-10-13: an existing layer set to the Pyr gem went back to dots).
+// Every Cell Library cell opens with its own Soma, True End... layers, saved
+// as dots, so the gem chosen on a layer was lost with each new cell.
+const MARKERS_KEY = 'nge-annotation-markers';
+type Marker = 'dot' | 'pyr';
+const annotationMarker = (ml: any): any => annotationState(ml)?.ngeMarker;
+function storedMarkers(): Record<string, Marker> {
+  try { const v = JSON.parse(localStorage.getItem(MARKERS_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
+function currentMarkers(viewer: any): Record<string, Marker> {
+  const now: Record<string, Marker> = {};
+  for (const ml of viewer.layerManager.managedLayers) {
+    const marker = annotationMarker(ml)?.value;
+    if (ml.archived || !ml.name || (marker !== 'dot' && marker !== 'pyr')) continue;
+    now[ml.name] = marker;
+  }
+  const all = { ...storedMarkers(), ...now };
+  try {
+    const names = Object.keys(all);
+    for (const name of names.slice(0, Math.max(0, names.length - 80))) delete all[name];
+    localStorage.setItem(MARKERS_KEY, JSON.stringify(all));
+  } catch { /* private mode */ }
+  return all;
+}
+function applyMarkers(want: Record<string, Marker>, before: Set<unknown>) {
+  const viewer: any = (window as any).viewer;
+  for (const ml of viewer.layerManager.managedLayers) {
+    if (before.has(ml) || ml.archived) continue;
+    const marker = annotationMarker(ml);
+    const to = want[ml.name];
+    if (!marker || (to !== 'dot' && to !== 'pyr') || marker.value === to) continue;
+    try { marker.value = to; } catch { /* skip */ }
+  }
+}
 function storedSizes(): Sizes {
   try { const v = JSON.parse(localStorage.getItem(SIZES_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }
@@ -111,6 +146,7 @@ function applySizes(sizes: Sizes, before: Set<unknown>) {
 interface Snapshot {
   sizes: Sizes;
   onTop: Record<string, boolean>;
+  markers: Record<string, Marker>;
   viewer: Record<string, unknown>;
   layers: Record<string, Record<string, unknown>>;  // by layer type
   before: Set<unknown>;                             // managed layers before the load
@@ -121,7 +157,7 @@ const layerType = (ml: any): string => ml?.layer?.constructor?.type ?? '';
 export function snapshotDisplay(): Snapshot | null {
   const viewer: any = (window as any).viewer;
   if (!viewer) return null;
-  const snap: Snapshot = { sizes: currentSizes(viewer), onTop: currentOnTop(viewer), viewer: {}, layers: {}, before: new Set(viewer.layerManager.managedLayers) };
+  const snap: Snapshot = { sizes: currentSizes(viewer), onTop: currentOnTop(viewer), markers: currentMarkers(viewer), viewer: {}, layers: {}, before: new Set(viewer.layerManager.managedLayers) };
   for (const [key, get] of VIEWER_KEYS) {
     try { const t = get(viewer); if (t?.toJSON) snap.viewer[key] = t.toJSON(); } catch { /* skip */ }
   }
@@ -153,6 +189,7 @@ function apply(snap: Snapshot, layers: any[]) {
   }
   applySizes(snap.sizes, snap.before);
   applyOnTop(snap.onTop, snap.before);
+  applyMarkers(snap.markers, snap.before);
 }
 
 /** When the new view lands, put the snapshot back (twice: some settings
