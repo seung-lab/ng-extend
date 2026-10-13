@@ -151,7 +151,7 @@ test('releasing a claim takes the player\'s own name off the row, and nothing el
  const plan=(row,who=annkri,t=held)=>planSheetUpdate([head,row],'cells','123',sheetValues(rel,who,t,'now'));
  // Her name, in either spelling, on an open claim: cleared, with the start date.
  assert.deepEqual(plan(['123','Annkri','','10/8/2026','keep me']).data,[{range:"'cells'!B2",values:[['']]},{range:"'cells'!D2",values:[['']]}]);
- assert.deepEqual(plan(['123','annkri','WIP','','']).data,[{range:"'cells'!B2",values:[['']]}]);
+ assert.deepEqual(plan(['123','annkri','WIP','','']).data,[{range:"'cells'!B2",values:[['']]},{range:"'cells'!C2",values:[['']]}]);
  // Someone else's name stays, and so does its start date.
  assert.deepEqual(plan(['123','Nseraf','','10/8/2026','']).data,[]);
  // A row waiting on a gamemaster or already finished keeps its name.
@@ -196,33 +196,32 @@ test('reopening a completed cell puts its row back to WIP, and the next completi
  const r=again(['123','Nseraf','WIP','10/1/2026','111','https://kept.example/link','']);
  assert.equal([...r.data,...r.userEnteredData].some(d=>/[DEF]2$/.test(d.range)),false);
 });
-test('a claim marks the row Claimed on the retina sheet, a completion replaces it, a release clears it',()=>{
+test('a claim marks the row WIP on the retina sheet, a completion replaces it, a release clears it',()=>{
  const who={id:'mine',display_name:'Nseraf',username:'Nseraf'};
  const head=['Start SegID','Proofreader','Status','Date Started','Date Complete','Final SegID','Final Link','Notes'];
  const ds='stroeh_mouse_retina';
  const held={assigned_to:'mine',dataset:ds,segment_id:'123',status:'in_progress',final_segment_id:'456'};
  const run=(action,row,t=held,extra={})=>planSheetUpdate([head,row],'cells','123',sheetValues({dataset:ds,segmentId:'123',action,...extra},who,t,'10/13/2026'));
  const at=(plan,col)=>[...plan.data,...(plan.userEnteredData||[])].find(d=>d.range==="'cells'!"+col+'2')?.values[0][0];
- // Claim: name, Claimed, and the day.
+ // Claim: name, WIP, and the day.
  const c=run('claim',['123','','','','','','','']);
- assert.equal(at(c,'B'),'Nseraf'); assert.equal(at(c,'C'),'Claimed'); assert.equal(at(c,'D'),'10/13/2026');
- // A Status that is already there is never replaced by Claimed.
- for (const st of ['WIP','Need Help','Complete','Complete (cut off)',"Can't Complete"]) assert.equal(at(run('claim',['123','','' + st,'','','','','']),'C'),undefined,st);
- // Completing replaces Claimed with the status chosen.
- const done=run('complete',['123','Nseraf','Claimed','10/13/2026','','','',''],{...held,status:'completed'},{status:'Complete (cut off)'});
+ assert.equal(at(c,'B'),'Nseraf'); assert.equal(at(c,'C'),'WIP'); assert.equal(at(c,'D'),'10/13/2026');
+ // A Status that is already there is never replaced.
+ for (const st of ['Need Help','Complete','Complete (cut off)',"Can't Complete",'Not BC']) assert.equal(at(run('claim',['123','','' + st,'','','','','']),'C'),undefined,st);
+ // Completing replaces WIP with the status chosen.
+ const done=run('complete',['123','Nseraf','WIP','10/13/2026','','','',''],{...held,status:'completed'},{status:'Complete (cut off)'});
  assert.equal(at(done,'C'),'Complete (cut off)');
- // Releasing clears the name, the day, and the Claimed that came with them.
- const rel=run('release',['123','Nseraf','Claimed','10/13/2026','','','','']);
+ // Releasing clears the name, the day, and the WIP that came with them.
+ const rel=run('release',['123','Nseraf','WIP','10/13/2026','','','','']);
  assert.equal(at(rel,'B'),''); assert.equal(at(rel,'C'),''); assert.equal(at(rel,'D'),'');
- // Someone else's Claimed row is left alone.
- assert.deepEqual(run('release',['123','annkri','Claimed','10/13/2026','','','','']).data,[]);
- // A WIP on the player's own row keeps its WIP when the name is cleared.
- const relWip=run('release',['123','Nseraf','WIP','','','','','']);
- assert.equal(at(relWip,'B'),''); assert.equal(at(relWip,'C'),undefined);
+ // Someone else's WIP row is left alone.
+ assert.deepEqual(run('release',['123','annkri','WIP','10/13/2026','','','','']).data,[]);
+ // A row waiting on a gamemaster keeps everything.
+ assert.deepEqual(run('release',['123','Nseraf','Need Help','10/13/2026','','','','']).data,[]);
 });
-test('a sheet without the Claimed option is never written Claimed',()=>{
+test('a sheet not set up for it is never written a status on claim',()=>{
  const who={id:'mine',display_name:'Nseraf'};
  const t={assigned_to:'mine',dataset:'pinky_nf_v2',segment_id:'123',status:'in_progress'};
  const plan=planSheetUpdate([['Segment ID','Proofreader','Status'],['123','','']],'cells','123',sheetValues({dataset:'pinky_nf_v2',segmentId:'123',action:'claim'},who,t,'now'));
- assert.ok(![...plan.data,...(plan.userEnteredData||[])].some(d=>d.values[0][0]==='Claimed'));
+ assert.ok(![...plan.data,...(plan.userEnteredData||[])].some(d=>d.range.endsWith('C2')));
 });

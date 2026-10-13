@@ -7,10 +7,11 @@ const SOURCES = Object.freeze({
   // ever written to Status. A source without the list writes plain Complete.
   // claimedStatus (Ames 2026-10-13): what Status says while a cell is claimed
   // and not yet complete, so a proofreader can see in the sheet which rows
-  // are theirs to do. Only on a sheet whose Status dropdown has that option;
-  // it must match the option character for character.
+  // are theirs to do. WIP, which the sheet's Status dropdown already has
+  // (Celia), so nothing in the sheet had to change. It must match the option
+  // character for character.
   stroeh_mouse_retina: {id:'10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w', gid:37544110,
-    completeStatuses:['Complete','Complete (cut off)','Not BC',"Can't Complete"], claimedStatus:'Claimed'},
+    completeStatuses:['Complete','Complete (cut off)','Not BC',"Can't Complete"], claimedStatus:'WIP'},
   pinky_nf_v2: {id:'1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU', gid:0},
   // MEC (Ames 2026-09-28): no segment IDs in this sheet. Rows are found by
   // "Starting XYZ Coords", which the importer stores as the task's claim point.
@@ -19,9 +20,9 @@ const SOURCES = Object.freeze({
 /** Header patterns for the column a row is matched on. */
 /** Status values that mean "still being worked on": completing the cell
  *  replaces them. Any other existing Status is the sheet owner's and stays. */
-const UNFINISHED_STATUSES = ['WIP','Need Help','Claimed'];
+const UNFINISHED_STATUSES = ['WIP','Need Help'];
 /** A claim that is still open, in the Status column's own words. */
-const OPEN_CLAIM_STATUSES = ['WIP','Claimed'];
+const OPEN_CLAIM_STATUSES = ['WIP'];
 const SEGMENT_HEADERS = ['startseg','segmentid','segment','segid'];
 const START_COORD_HEADERS = ['startingxyz','startingcoord','startcoord'];
 const fail = (status,message) => {throw Object.assign(new Error(message),{status});};
@@ -84,9 +85,9 @@ function sheetValues(input, me, task, now) {
     return [
       [['proofreader','claimedby'],'',{clearIfName:mine}],
       [['datestarted','dateclaimed'],'',{clearWithName:true}],
-      // The Claimed the claim wrote goes with the name. A WIP stays: someone
-      // set that by hand, or the cell was reopened.
-      [['status'],'',{clearWithName:true,onlyValues:['Claimed']}],
+      // The WIP goes with the name: a row left saying WIP with nobody on it
+      // was never offered to anyone again.
+      [['status'],'',{clearWithName:true,onlyValues:['WIP']}],
     ];
   }
   // The player's name as the sheet already spells it (see sheetSpelling), or
@@ -102,8 +103,8 @@ function sheetValues(input, me, task, now) {
   const isDate = {userEntered:/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(now))};
   // "Date Started" is the day the cell was claimed (MEC sheet, Ames 2026-09-28).
   if (input.action === 'claim') fields.push([['datestarted','dateclaimed'],now,isDate]);
-  // Claimed, on a sheet that has the option, and only into an empty Status:
-  // whatever is already there (WIP, Need Help, a finished status) stays.
+  // WIP on claim, on a sheet set up for it, and only into an empty Status:
+  // whatever is already there (Need Help, a finished status) stays.
   if (input.action === 'claim' && SOURCES[input.dataset].claimedStatus) fields.push([['status'],SOURCES[input.dataset].claimedStatus]);
   if (input.action === 'complete') {
     // A plain M/D/YYYY date is entered like a person typing it, so the sheet
