@@ -103,7 +103,9 @@ interface TriageRow {
   preview_url?: string | null;
   feedback_log?: { user?: string; text: string; ts: string; role: string; by?: string; at?: string; via?: string; sent?: boolean; echoed?: boolean;
     /** reporter_update: sent with "Ask for a reply". reporter_reply: not read by an approver yet when seen is false. */
-    ask?: boolean; notification_id?: number; seen?: boolean }[];
+    ask?: boolean; notification_id?: number; seen?: boolean;
+    /** What came with a reporter_reply (supabase-report-reply-parts.sql). */
+    screenshot_url?: string; view_url?: string; dataset?: string; build?: string; console_lines?: number }[];
   result_note?: string | null;
   nag_count?: number;
   approver_slack_id?: string | null;
@@ -737,6 +739,23 @@ function draftReporterUpdate(row: TriageRow): string {
 function closeReporterDraft(row: TriageRow) {
   delete reporterDrafts.value[row.id];
   delete reporterAsk.value[row.id];
+}
+
+/** Console messages that came with a reply. Kept where only the server can
+ *  read them; fetched for an admin when asked for (functions/report-reply.js). */
+const replyConsole = ref<Record<string, string | null>>({});
+const replyConsoleOpen = ref<Record<string, boolean>>({});
+async function toggleReplyConsole(notificationId: number | string | undefined) {
+  const key = String(notificationId ?? '');
+  if (!key) return;
+  replyConsoleOpen.value = { ...replyConsoleOpen.value, [key]: !replyConsoleOpen.value[key] };
+  if (!replyConsoleOpen.value[key] || replyConsole.value[key] !== undefined) return;
+  try {
+    const out: any = await secureWrite('reply.console', { notificationId: Number(key) });
+    replyConsole.value = { ...replyConsole.value, [key]: out?.console_log ?? null };
+  } catch (e: any) {
+    replyConsole.value = { ...replyConsole.value, [key]: `Could not load them: ${e?.message ?? 'try again'}` };
+  }
 }
 
 /** What was sent to the submitter and what they wrote back, oldest first. */
@@ -2465,6 +2484,20 @@ function practiceWhen(iso: string | null) {
                  :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
               <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
               <span class="nge-triage-spec-text nge-triage-thread-text">{{ u.text }}<span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
+              <!-- What came with a reply: a screenshot, their view, console messages. -->
+              <div v-if="u.reply && (u.screenshot_url || u.view_url || u.console_lines || u.dataset)" class="nge-triage-reply-parts">
+                <a v-if="u.screenshot_url" :href="u.screenshot_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the full screenshot">
+                  <img :src="u.screenshot_url" alt="Screenshot sent with the reply" loading="lazy" />
+                </a>
+                <div class="nge-triage-reply-chips">
+                  <a v-if="u.view_url" :href="u.view_url" target="_blank" rel="noopener" class="nge-triage-chip">↗ Open their view</a>
+                  <button v-if="u.console_lines" type="button" class="nge-triage-chip" @click="toggleReplyConsole(u.notification_id)">
+                    {{ replyConsoleOpen[u.notification_id] ? '▾' : '▸' }} Console messages ({{ u.console_lines }})
+                  </button>
+                  <span v-if="u.dataset" class="nge-triage-chip nge-triage-chip--plain">{{ u.dataset }}{{ u.build ? ' · ' + u.build : '' }}</span>
+                </div>
+                <pre v-if="u.console_lines && replyConsoleOpen[u.notification_id]" class="nge-triage-reply-console">{{ replyConsole[u.notification_id] === undefined ? 'Loading…' : (replyConsole[u.notification_id] ?? 'These messages are no longer stored.') }}</pre>
+              </div>
             </div>
             <button v-if="hasNewReply(row)" class="nge-admin-action-btn nge-triage-reporter-open" :disabled="triageActing === row.id"
                     title="Takes the New reply marker off. The card goes back to where it was; nothing else about it changes."
@@ -2476,11 +2509,23 @@ function practiceWhen(iso: string | null) {
                 rows="3"
                 @keydown.stop @keyup.stop @keypress.stop
               ></textarea>
-              <label class="nge-triage-ask" title="They get a reply box under your message. One reply, text only. To hear more, ask again.">
-                <input type="checkbox" v-model="reporterAsk[row.id]" :disabled="reporterSending === row.id" />
-                <span>Ask for a reply</span>
-                <span class="nge-triage-ask-hint">They get a reply box under your message. One reply, text only.</span>
-              </label>
+              <!-- Off / On, as a two way switch in the board's own style (Ames
+                   2026-10-13: "the black check box is weird"). The lit side
+                   is how it is now. -->
+              <div class="nge-triage-ask" title="They get a reply form under your message: text, and if they like a screenshot, their view and their console messages. One reply per message. To hear more, ask again.">
+                <span :id="'nge-triage-ask-' + row.id" class="nge-triage-ask-label">Ask for a reply</span>
+                <div class="nge-triage-switch" role="radiogroup" :aria-labelledby="'nge-triage-ask-' + row.id" :data-on="reporterAsk[row.id] ? 'on' : 'off'">
+                  <button type="button" role="radio" class="nge-triage-switch-opt" :aria-checked="reporterAsk[row.id] ? 'false' : 'true'" :tabindex="reporterAsk[row.id] ? -1 : 0"
+                          :disabled="reporterSending === row.id" @click="reporterAsk[row.id] = false"
+                          @keydown.right.prevent.stop="reporterAsk[row.id] = true" @keydown.left.prevent.stop="reporterAsk[row.id] = false">Off</button>
+                  <button type="button" role="radio" class="nge-triage-switch-opt nge-triage-switch-opt--on" :aria-checked="reporterAsk[row.id] ? 'true' : 'false'" :tabindex="reporterAsk[row.id] ? 0 : -1"
+                          :disabled="reporterSending === row.id" @click="reporterAsk[row.id] = true"
+                          @keydown.right.prevent.stop="reporterAsk[row.id] = true" @keydown.left.prevent.stop="reporterAsk[row.id] = false">On</button>
+                </div>
+                <span class="nge-triage-ask-hint">{{ reporterAsk[row.id]
+                  ? 'They get a reply form under your message: text, a screenshot, their view and console messages. One reply. Ask again to hear more.'
+                  : 'They get your message only.' }}</span>
+              </div>
               <div class="nge-triage-actions">
                 <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
                   {{ reporterSending === row.id ? 'Sending…' : reporterAsk[row.id] ? 'Send and ask for a reply' : 'Send to submitter' }}
@@ -3390,6 +3435,16 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-reporter { color: #46546b; }
 .nge-triage-light .nge-triage-reporter-by { color: #6b788d; }
 .nge-triage-light .nge-triage-ask-hint { color: #6b788d; }
+.nge-triage-light .nge-triage-switch { background: #e6ecf5; border-color: #9fb6d6; }
+.nge-triage-light .nge-triage-switch::before { background: #ffffff; border-color: #b8c6da; }
+.nge-triage-light .nge-triage-switch[data-on="on"]::before { background: #cfecfa; border-color: #1487b8; box-shadow: none; }
+.nge-triage-light .nge-triage-switch-opt { color: #7a8799; }
+.nge-triage-light .nge-triage-switch-opt[aria-checked="true"] { color: #1c2a3d; }
+.nge-triage-light .nge-triage-switch-opt--on[aria-checked="true"] { color: #0c5f85; }
+.nge-triage-light .nge-triage-chip { background: #e9f6fd; border-color: #58b6dc; color: #0c5f85; }
+.nge-triage-light .nge-triage-chip--plain { background: #eef1f6; border-color: #cfd8e5; color: #55647a; }
+.nge-triage-light .nge-triage-reply-console { background: #f4f6fa; border-color: #d5dce8; color: #263347; }
+.nge-triage-light .nge-triage-reply-shot img { border-color: #58b6dc; }
 .nge-triage-light .nge-triage-note--reply { background: #e9f6fd; border-left-color: #58b6dc; }
 .nge-triage-light .nge-triage-note--unread { background: #cfecfa; border-left-color: #1487b8; }
 .nge-triage-light .nge-triage-rec--reply { background: #0f7fae; color: #ffffff; }
@@ -3536,9 +3591,34 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-note--unread { background: rgba(126,224,255,0.16); border-left-color: #7ee0ff; }
 .nge-triage-rec--reply { background: #7ee0ff; color: #06202c; font-weight: 700; }
 .nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px rgba(126,224,255,0.55), 0 0 14px rgba(126,224,255,0.18); }
-.nge-triage-ask { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 12.5px; cursor: pointer; }
-.nge-triage-ask input { margin: 0; align-self: center; }
-.nge-triage-ask-hint { color: rgba(255,255,255,0.45); }
+.nge-triage-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+.nge-triage-ask-label { font-weight: 600; }
+.nge-triage-ask-hint { color: rgba(255,255,255,0.5); flex: 1 1 240px; }
+/* Off / On: a two way switch. The lit side is the current state. */
+.nge-triage-switch { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 2px; border-radius: 7px;
+  background: rgba(0,0,0,0.35); border: 1px solid rgba(126,224,255,0.28); }
+.nge-triage-switch::before { content: ''; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 5px;
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22); transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease; }
+.nge-triage-switch[data-on="on"]::before { transform: translateX(100%); background: rgba(126,224,255,0.2); border-color: rgba(126,224,255,0.75); box-shadow: 0 0 10px rgba(126,224,255,0.25); }
+.nge-triage-switch-opt { position: relative; z-index: 1; min-width: 44px; padding: 3px 10px; border: 0; background: none; cursor: pointer;
+  font-family: 'Orbitron', 'Inter', sans-serif; font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.45); transition: color 0.18s ease; }
+.nge-triage-switch-opt[aria-checked="true"] { color: #ffffff; }
+.nge-triage-switch-opt--on[aria-checked="true"] { color: #bfefff; }
+.nge-triage-switch-opt:focus-visible { outline: 2px solid #7ee0ff; outline-offset: 1px; border-radius: 5px; }
+.nge-triage-switch-opt:disabled { cursor: default; opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) { .nge-triage-switch::before, .nge-triage-switch-opt { transition: none; } }
+/* What came with a reply. */
+.nge-triage-note:has(.nge-triage-reply-parts) { flex-wrap: wrap; }
+.nge-triage-reply-parts { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.nge-triage-reply-shot img { display: block; max-width: 220px; max-height: 140px; border-radius: 6px; border: 1px solid rgba(126,224,255,0.35); }
+.nge-triage-reply-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.nge-triage-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; border: 1px solid rgba(126,224,255,0.4);
+  background: rgba(126,224,255,0.1); color: #bfefff; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.nge-triage-chip:hover { border-color: rgba(126,224,255,0.8); }
+.nge-triage-chip:focus-visible { outline: 2px solid #7ee0ff; outline-offset: 1px; }
+.nge-triage-chip--plain { cursor: default; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.65); }
+.nge-triage-reply-console { flex-basis: 100%; max-height: 220px; overflow: auto; margin: 0; padding: 8px 10px; border-radius: 6px; background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1); color: #cdd6e4; font: 11.5px/1.45 'Consolas', 'SF Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .nge-triage-note {
   display: flex; gap: 8px; align-items: baseline;
   font-size: 12px; line-height: 1.45;

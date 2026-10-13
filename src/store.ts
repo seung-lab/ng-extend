@@ -4851,6 +4851,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     reply_triage_id?: string | null;
     reply_text?: string | null;
     replied_at?: string | null;
+    reply_screenshot_url?: string | null;
+    reply_view_url?: string | null;
   }
 
   const notifications = ref<Notification[]>([]);

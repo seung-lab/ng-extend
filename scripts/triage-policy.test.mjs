@@ -60,5 +60,11 @@ test("a submitter's reply is quoted for people and kept from the robot",()=>{
  assert.doesNotMatch(note,/^(approved?|accept|dismiss|good|ship to test)/im);
  assert.equal(releaseCommand(note),null);
  assert.deepEqual(robotLog([{role:'note',text:'a'},entry,{role:'tester',text:'b'}]).map(e=>e.role),['note','tester']);
+ // What came with it is named, as links only when they are plain https.
+ const full=reporterReplyNote({...entry,screenshot_url:'https://s.example/a.webp',view_url:'https://v.example/#!x',dataset:'pni_mec',console_lines:4});
+ assert.ok(full.includes('With it: <https://s.example/a.webp|Screenshot> · <https://v.example/#!x|Their view> · dataset pni_mec · 4 console lines (Admin Hub, Triage)'));
+ const sly=reporterReplyNote({...entry,screenshot_url:'https://s.example/a|<!channel>',view_url:'javascript:alert(1)',dataset:'<!here>'});
+ assert.doesNotMatch(sly,/<!|javascript:/);
+ assert.equal(releaseCommand(full),null);
  assert.deepEqual(robotLog(null),[]);
 });

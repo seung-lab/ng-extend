@@ -28,7 +28,7 @@ export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update' | 'triage.release'
   | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log' | 'activity.visit'
-  | 'reply.ask' | 'reply.send'
+  | 'reply.ask' | 'reply.send' | 'reply.console'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
 

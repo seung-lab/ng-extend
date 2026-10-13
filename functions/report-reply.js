@@ -7,10 +7,15 @@
 //
 //   reply.ask   admins. Sends "An update on your report" to the report's
 //               submitter with a reply box, tied to the triage card.
-//   reply.send  the submitter. One reply per request, text only. It is
-//               appended to feedback_triage.feedback_log (role
+//   reply.send  the submitter. One reply per request; to hear more, the
+//               approver asks again. A reply carries what a report carries:
+//               text, and optionally a screenshot, the player's view and
+//               their recent console messages (supabase-report-reply-parts.sql).
+//               It is appended to feedback_triage.feedback_log (role
 //               'reporter_reply'), which the triage board and the Slack
 //               bridge read.
+//   reply.console  admins. The console messages a reply came with. They are
+//               kept out of every table the public key can read.
 //
 // A reply never changes the card's status, impl_state or approver_note, so it
 // can not queue a build or undo a decision. The board shows a card with an
@@ -23,6 +28,10 @@ const ASK_TITLE = '💬 An update on your report';
 const ASK_IMAGE = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/nurro-experiment-recap.png';
 const ASK_MAX = 5000;
 const REPLY_MAX = 1000;
+const CONSOLE_MAX = 20000;
+// Screenshots only ever point at our own public storage (ewSecureUpload output).
+const OWN_STORAGE = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/';
+const PARTS = ['reply_screenshot_url', 'reply_view_url', 'reply_dataset', 'reply_build'];
 const NOT_INSTALLED = 'Replies are not switched on yet: run supabase-report-replies.sql in the Supabase SQL editor.';
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 // The database helper throws a bare "supabase 400" for a column that is not
@@ -48,6 +57,22 @@ async function submitterOf(sb, triageId) {
   return (issue && issue.user_id) || null;
 }
 
+/** The optional parts of a reply, each checked; anything else is dropped. */
+function replyParts(args) {
+  const out = {};
+  const shot = args.screenshotUrl;
+  if (typeof shot === 'string' && shot.startsWith(OWN_STORAGE) && shot.length <= 500 && /^[^\s"'<>]+$/.test(shot)) out.reply_screenshot_url = shot;
+  else if (shot != null && shot !== '') fail(400, 'The screenshot must be one taken in the game.');
+  const view = args.viewUrl;
+  if (typeof view === 'string' && /^https:\/\/[^\s"'<>]+$/.test(view) && view.length <= 2000) out.reply_view_url = view;
+  else if (view != null && view !== '') fail(400, 'The view must be a single https link.');
+  if (typeof args.dataset === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(args.dataset)) out.reply_dataset = args.dataset;
+  if (typeof args.build === 'string' && /^[A-Za-z0-9_.:-]{1,40}$/.test(args.build)) out.reply_build = args.build;
+  let consoleLog = '';
+  if (typeof args.consoleLog === 'string') consoleLog = args.consoleLog.replace(/\u0000/g, '').slice(-CONSOLE_MAX).trim();
+  return {parts: out, consoleLog};
+}
+
 async function ask(args, {sb, me, isAdmin}) {
   if (!isAdmin) fail(403, 'Admins only');
   const triageId = String(args.triageId || '');
@@ -68,6 +93,7 @@ async function send(args, {sb, me, wake}) {
   const id = Number(args.notificationId);
   if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown notification.');
   const text = cleanText(args.text, REPLY_MAX, 'Your reply');
+  const {parts, consoleLog} = replyParts(args);
   let note;
   try { note = (await sb(`notifications?id=eq.${id}&select=id,target_type,target_id,reply_triage_id,replied_at&limit=1`))[0]; }
   catch (e) { if (missingColumn(e)) fail(409, 'Replies are not switched on yet.'); throw e; }
@@ -81,9 +107,28 @@ async function send(args, {sb, me, wake}) {
   // Claim the one reply: only while replied_at is still empty, so two sends
   // at the same moment store one.
   const at = new Date().toISOString();
-  const claimed = await sb(`notifications?id=eq.${id}&replied_at=is.null&reply_triage_id=eq.${note.reply_triage_id}`,
-    {method: 'PATCH', body: JSON.stringify({replied_at: at, reply_text: text})});
+  const claim = body => sb(`notifications?id=eq.${id}&replied_at=is.null&reply_triage_id=eq.${note.reply_triage_id}`,
+    {method: 'PATCH', body: JSON.stringify(body)});
+  // The parts need supabase-report-reply-parts.sql. Until it is run the
+  // reply is kept as text and the player is told the rest was not.
+  let kept = parts, partsSaved = true;
+  let claimed;
+  try { claimed = await claim({replied_at: at, reply_text: text, ...parts}); }
+  catch (e) {
+    if (!missingColumn(e) || !Object.keys(parts).length) throw e;
+    kept = {}; partsSaved = false;
+    claimed = await claim({replied_at: at, reply_text: text});
+  }
   if (!claimed.length) fail(409, 'You already replied to this one.');
+  // Console messages go to a table only the server reads.
+  let consoleLines = 0;
+  if (consoleLog && partsSaved) {
+    try {
+      await sb('report_reply_console?on_conflict=notification_id', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify({notification_id: id, console_log: consoleLog})});
+      consoleLines = consoleLog.split('\n').length;
+    } catch (e) { partsSaved = partsSaved && false; }
+  }
   try {
     // Re-read the log right before appending, so a write in between (the
     // bridge, the board) is not overwritten.
@@ -91,22 +136,42 @@ async function send(args, {sb, me, wake}) {
     if (!fresh) fail(404, 'That report is no longer on the board.');
     const log = Array.isArray(fresh.feedback_log) ? [...fresh.feedback_log] : [];
     log.push({role: 'reporter_reply', via: 'game', by: me.display_name || me.username || 'Player', user_id: me.id,
-      notification_id: id, text, ts: at, at, echoed: false, seen: false});
+      notification_id: id, text, ts: at, at, echoed: false, seen: false,
+      ...(kept.reply_screenshot_url ? {screenshot_url: kept.reply_screenshot_url} : {}),
+      ...(kept.reply_view_url ? {view_url: kept.reply_view_url} : {}),
+      ...(kept.reply_dataset ? {dataset: kept.reply_dataset} : {}),
+      ...(kept.reply_build ? {build: kept.reply_build} : {}),
+      ...(consoleLines ? {console_lines: consoleLines} : {})});
     await sb(`feedback_triage?id=eq.${note.reply_triage_id}`, {method: 'PATCH', body: JSON.stringify({feedback_log: log})});
   } catch (e) {
     // Not recorded on the card: give the reply back so the player can retry.
-    await sb(`notifications?id=eq.${id}`, {method: 'PATCH', body: JSON.stringify({replied_at: null, reply_text: null})}).catch(() => {});
+    const undo = {replied_at: null, reply_text: null, ...Object.fromEntries(Object.keys(kept).map(k => [k, null]))};
+    await sb(`notifications?id=eq.${id}`, {method: 'PATCH', body: JSON.stringify(undo)}).catch(() => {});
     throw e;
   }
   // The bridge posts it into the report's Slack thread now, not on its timer.
   if (wake) await Promise.resolve(wake()).catch(() => {});
-  return {id, replied_at: at, reply_text: text};
+  return {id, replied_at: at, reply_text: text, ...kept, console_lines: consoleLines,
+    // False when something the player attached could not be kept.
+    parts_saved: partsSaved};
+}
+
+/** The console messages a reply came with. Admins only. */
+async function consoleOf(args, {sb, isAdmin}) {
+  if (!isAdmin) fail(403, 'Admins only');
+  const id = Number(args.notificationId);
+  if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown notification.');
+  let row;
+  try { row = (await sb(`report_reply_console?notification_id=eq.${id}&select=console_log&limit=1`))[0]; }
+  catch (e) { if (!e.status) return {console_log: null}; throw e; }
+  return {console_log: row ? row.console_log : null};
 }
 
 async function handle(action, args, io) {
   if (action === 'reply.ask') return ask(args || {}, io);
   if (action === 'reply.send') return send(args || {}, io);
+  if (action === 'reply.console') return consoleOf(args || {}, io);
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanText, ASK_TITLE, ASK_IMAGE, REPLY_MAX};
+module.exports = {handle, cleanText, replyParts, ASK_TITLE, ASK_IMAGE, REPLY_MAX, OWN_STORAGE};

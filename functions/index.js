@@ -2039,7 +2039,7 @@ exports.ewProofreadingTest = onRequest(
 // reason above: a deploy of that function from an older checkout would
 // silently remove it.
 //   firebase deploy --only functions:ewReportReply --project eyewire-ii-e4d52
-const EW_REPLY_CODE_VERSION = "2026-10-13-report-reply-2";
+const EW_REPLY_CODE_VERSION = "2026-10-13-report-reply-3-parts";
 exports.ewReportReply = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
@@ -2053,7 +2053,10 @@ exports.ewReportReply = onRequest(
       catch (e) { res.status(500).json({ ok: false, db: false, code: EW_REPLY_CODE_VERSION }); return; }
       let columns = true;
       try { await probe("notifications?select=reply_triage_id,reply_text,replied_at&limit=1"); } catch (e) { columns = false; }
-      res.json({ ok: true, db: true, columns, code: EW_REPLY_CODE_VERSION });
+      // supabase-report-reply-parts.sql: screenshot, view and console on a reply.
+      let parts = true;
+      try { await probe("notifications?select=reply_screenshot_url,reply_view_url,reply_dataset,reply_build&limit=1"); await probe("report_reply_console?select=notification_id&limit=1"); } catch (e) { parts = false; }
+      res.json({ ok: true, db: true, columns, parts, code: EW_REPLY_CODE_VERSION });
       return;
     }
     if (typeof action !== "string" || !action.startsWith("reply.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
