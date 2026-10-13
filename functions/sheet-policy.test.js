@@ -196,3 +196,33 @@ test('reopening a completed cell puts its row back to WIP, and the next completi
  const r=again(['123','Nseraf','WIP','10/1/2026','111','https://kept.example/link','']);
  assert.equal([...r.data,...r.userEnteredData].some(d=>/[DEF]2$/.test(d.range)),false);
 });
+test('a claim marks the row Claimed on the retina sheet, a completion replaces it, a release clears it',()=>{
+ const who={id:'mine',display_name:'Nseraf',username:'Nseraf'};
+ const head=['Start SegID','Proofreader','Status','Date Started','Date Complete','Final SegID','Final Link','Notes'];
+ const ds='stroeh_mouse_retina';
+ const held={assigned_to:'mine',dataset:ds,segment_id:'123',status:'in_progress',final_segment_id:'456'};
+ const run=(action,row,t=held,extra={})=>planSheetUpdate([head,row],'cells','123',sheetValues({dataset:ds,segmentId:'123',action,...extra},who,t,'10/13/2026'));
+ const at=(plan,col)=>[...plan.data,...(plan.userEnteredData||[])].find(d=>d.range==="'cells'!"+col+'2')?.values[0][0];
+ // Claim: name, Claimed, and the day.
+ const c=run('claim',['123','','','','','','','']);
+ assert.equal(at(c,'B'),'Nseraf'); assert.equal(at(c,'C'),'Claimed'); assert.equal(at(c,'D'),'10/13/2026');
+ // A Status that is already there is never replaced by Claimed.
+ for (const st of ['WIP','Need Help','Complete','Complete (cut off)',"Can't Complete"]) assert.equal(at(run('claim',['123','','' + st,'','','','','']),'C'),undefined,st);
+ // Completing replaces Claimed with the status chosen.
+ const done=run('complete',['123','Nseraf','Claimed','10/13/2026','','','',''],{...held,status:'completed'},{status:'Complete (cut off)'});
+ assert.equal(at(done,'C'),'Complete (cut off)');
+ // Releasing clears the name, the day, and the Claimed that came with them.
+ const rel=run('release',['123','Nseraf','Claimed','10/13/2026','','','','']);
+ assert.equal(at(rel,'B'),''); assert.equal(at(rel,'C'),''); assert.equal(at(rel,'D'),'');
+ // Someone else's Claimed row is left alone.
+ assert.deepEqual(run('release',['123','annkri','Claimed','10/13/2026','','','','']).data,[]);
+ // A WIP on the player's own row keeps its WIP when the name is cleared.
+ const relWip=run('release',['123','Nseraf','WIP','','','','','']);
+ assert.equal(at(relWip,'B'),''); assert.equal(at(relWip,'C'),undefined);
+});
+test('a sheet without the Claimed option is never written Claimed',()=>{
+ const who={id:'mine',display_name:'Nseraf'};
+ const t={assigned_to:'mine',dataset:'pinky_nf_v2',segment_id:'123',status:'in_progress'};
+ const plan=planSheetUpdate([['Segment ID','Proofreader','Status'],['123','','']],'cells','123',sheetValues({dataset:'pinky_nf_v2',segmentId:'123',action:'claim'},who,t,'now'));
+ assert.ok(![...plan.data,...(plan.userEnteredData||[])].some(d=>d.values[0][0]==='Claimed'));
+});

@@ -5,8 +5,12 @@ const SOURCES = Object.freeze({
   // Complete (cut off), Need Help, Not BC, Can't Complete; WIP and Need Help
   // are not endings). The Complete form sends one of these; nothing else is
   // ever written to Status. A source without the list writes plain Complete.
+  // claimedStatus (Ames 2026-10-13): what Status says while a cell is claimed
+  // and not yet complete, so a proofreader can see in the sheet which rows
+  // are theirs to do. Only on a sheet whose Status dropdown has that option;
+  // it must match the option character for character.
   stroeh_mouse_retina: {id:'10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w', gid:37544110,
-    completeStatuses:['Complete','Complete (cut off)','Not BC',"Can't Complete"]},
+    completeStatuses:['Complete','Complete (cut off)','Not BC',"Can't Complete"], claimedStatus:'Claimed'},
   pinky_nf_v2: {id:'1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU', gid:0},
   // MEC (Ames 2026-09-28): no segment IDs in this sheet. Rows are found by
   // "Starting XYZ Coords", which the importer stores as the task's claim point.
@@ -15,7 +19,9 @@ const SOURCES = Object.freeze({
 /** Header patterns for the column a row is matched on. */
 /** Status values that mean "still being worked on": completing the cell
  *  replaces them. Any other existing Status is the sheet owner's and stays. */
-const UNFINISHED_STATUSES = ['WIP','Need Help'];
+const UNFINISHED_STATUSES = ['WIP','Need Help','Claimed'];
+/** A claim that is still open, in the Status column's own words. */
+const OPEN_CLAIM_STATUSES = ['WIP','Claimed'];
 const SEGMENT_HEADERS = ['startseg','segmentid','segment','segid'];
 const START_COORD_HEADERS = ['startingxyz','startingcoord','startcoord'];
 const fail = (status,message) => {throw Object.assign(new Error(message),{status});};
@@ -78,6 +84,9 @@ function sheetValues(input, me, task, now) {
     return [
       [['proofreader','claimedby'],'',{clearIfName:mine}],
       [['datestarted','dateclaimed'],'',{clearWithName:true}],
+      // The Claimed the claim wrote goes with the name. A WIP stays: someone
+      // set that by hand, or the cell was reopened.
+      [['status'],'',{clearWithName:true,onlyValues:['Claimed']}],
     ];
   }
   // The player's name as the sheet already spells it (see sheetSpelling), or
@@ -93,6 +102,9 @@ function sheetValues(input, me, task, now) {
   const isDate = {userEntered:/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(now))};
   // "Date Started" is the day the cell was claimed (MEC sheet, Ames 2026-09-28).
   if (input.action === 'claim') fields.push([['datestarted','dateclaimed'],now,isDate]);
+  // Claimed, on a sheet that has the option, and only into an empty Status:
+  // whatever is already there (WIP, Need Help, a finished status) stays.
+  if (input.action === 'claim' && SOURCES[input.dataset].claimedStatus) fields.push([['status'],SOURCES[input.dataset].claimedStatus]);
   if (input.action === 'complete') {
     // A plain M/D/YYYY date is entered like a person typing it, so the sheet
     // stores a real date (9/28/2026), not an ISO timestamp as text.
@@ -168,7 +180,7 @@ function planSheetUpdate(grid, title, match, fields) {
   const statusEmpty=!statusNow || UNFINISHED_STATUSES.includes(statusNow);
   // A release may clear a claim that is still open: no Status yet, or WIP.
   // "Need Help" and every finished Status keep the name they have.
-  const openClaim=!statusNow || statusNow==='WIP';
+  const openClaim=!statusNow || OPEN_CLAIM_STATUSES.includes(statusNow);
   let nameCleared=false;
   // Whose row this is, for the rules that only apply to the player's own.
   const nameCol=firstColumn(header,['proofreader','claimedby','completedby']);
@@ -184,7 +196,8 @@ function planSheetUpdate(grid, title, match, fields) {
       continue;
     }
     if(opts?.clearWithName) {
-      if(existing && nameCleared) data.push({range:rangeOf(col),values:[['']]});
+      // onlyValues: clear it only when it holds one of these.
+      if(existing && nameCleared && (!opts.onlyValues || opts.onlyValues.includes(existing))) data.push({range:rangeOf(col),values:[['']]});
       continue;
     }
     // Preserve the sheet owner's existing data. Retrying a write is harmless.

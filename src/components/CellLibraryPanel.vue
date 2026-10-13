@@ -286,7 +286,8 @@ function mapSheetStatus(s?: string): 'pending' | 'in_progress' | 'completed' {
  *  Available and could be claimed over the player who asked for help,
  *  2026-10-08). It frees up when the status is cleared in the sheet. */
 function sheetHolds(s?: string): boolean {
-  return /needs?.{0,3}help|\bhelp\b|\bwip\b|work in progress/i.test(s || '');
+  // "Claimed" (Ames 2026-10-13): the sheet's word for a cell someone holds.
+  return /needs?.{0,3}help|\bhelp\b|\bwip\b|work in progress|\bclaimed\b/i.test(s || '');
 }
 
 const cells = computed(() => {
