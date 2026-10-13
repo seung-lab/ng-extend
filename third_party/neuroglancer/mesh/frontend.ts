@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {bindNgeMeshTint, getNgeMeshTint} from 'neuroglancer/mesh/nge_tint';
+import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine} from 'neuroglancer/mesh/nge_tint';
 import {getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
@@ -164,6 +164,8 @@ highp vec3 getVertexPosition() {
 // (mesh/nge_tint.ts).
 const ngeTintSamplerSymbol = Symbol('ngeMeshTint');
 const ngeTintMat = mat4.create();
+const ngeFineSamplerSymbol = Symbol('ngeMeshTintFine');
+const ngeFineMat = mat4.create();
 // EyeWire II Lantern mode: the cell is lit around where you are, and left in
 // shadow elsewhere (mesh/nge_lantern.ts).
 const ngeLanternMat = mat4.create();
@@ -222,6 +224,17 @@ export class MeshShaderManager {
       gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
+    }
+    // The fine map of the cut preview, over the map above.
+    const fineTint = renderContext.emitColor ? getNgeMeshTintFine() : null;
+    const fineUnit = shader.textureUnit(ngeFineSamplerSymbol);
+    if (fineTint !== null && bindNgeMeshTintFine(gl, fineUnit)) {
+      gl.uniformMatrix4fv(
+          shader.uniform('uNgeFineMatrix'), false,
+          mat4.multiply(ngeFineMat, fineTint.gridFromGlobal, modelMat));
+      gl.uniform1f(shader.uniform('uNgeFineOn'), 1);
+    } else {
+      gl.uniform1f(shader.uniform('uNgeFineOn'), 0);
     }
     // Lantern: only where colour is drawn (never the picking pass, so a cell
     // in shadow can still be hovered and clicked).
@@ -306,6 +319,9 @@ export class MeshShaderManager {
         builder.addUniform('highp float', 'uNgeTintOn');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
+        builder.addUniform('highp mat4', 'uNgeFineMatrix');
+        builder.addUniform('highp float', 'uNgeFineOn');
+        builder.addTextureSampler('sampler3D', 'uNgeFine', ngeFineSamplerSymbol);
         // Lantern: model to nanometres; where it is (xyz, nm) and how far it
         // reaches (w, nm); x on or off, y brightness of the lit part, z of the rest.
         builder.addUniform('highp mat4', 'uNgeLanternModel');
@@ -356,6 +372,13 @@ if (uNgeTintOn > 0.5) {
       highp float tintLight = mix(lightingFactor, min(1.0, 0.58 + 0.44 * lightingFactor), isGlow);
       vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
     }
+  }
+}
+if (uNgeFineOn > 0.5) {
+  highp vec3 fineCoord = (uNgeFineMatrix * vec4(vertexPosition, 1.0)).xyz;
+  if (all(greaterThanEqual(fineCoord, vec3(0.0))) && all(lessThanEqual(fineCoord, vec3(1.0)))) {
+    highp vec4 fineTint = texture(uNgeFine, fineCoord);
+    if (fineTint.a > 0.5) vColor.rgb = lightingFactor * fineTint.rgb;
   }
 }
 if (uNgeLanternLight.x > 0.5) {

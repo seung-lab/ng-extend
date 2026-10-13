@@ -16,7 +16,10 @@
  * both sides at once, never across the cut (cut_sides.ts).
  */
 import { StatusMessage } from 'neuroglancer/status';
-import { ngeGrapheneCutPreview, ngeGrapheneCutGraph, ngeGrapheneBoxesOf } from 'neuroglancer/datasource/graphene/frontend';
+import { ngeGrapheneCutPreview, ngeGrapheneCutGraph, ngeGrapheneBoxesOf, ngeGrapheneCutVoxels, ngeReadSideVoxels, type NgeCutVoxels } from 'neuroglancer/datasource/graphene/frontend';
+import { setNgeMeshTintFine } from 'neuroglancer/mesh/nge_tint';
+import { mat4 } from 'neuroglancer/util/geom';
+import { buildFineGrid } from './cut_fine';
 import { spreadSides, cutSideBlocks, sidesOfGroups, localBlocks, mergeBlocks, piecesFromBlocks, fillMissingSide } from './cut_sides';
 import { setExtraTintBoxes } from './highlight';
 
@@ -35,6 +38,38 @@ function clear() {
   if (!showing) return;
   showing = false;
   setExtraTintBoxes(null);
+  setNgeMeshTintFine(null);
+  redraw();
+}
+
+const redraw = () => { try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ } };
+
+/** The fine picture: the supervoxels themselves, read from the volume round
+ *  the points, drawn over the blocks. Says what happened; never throws. */
+async function drawFine(layer: any, red: string[], blue: string[], paleBoxes: number[][], stillWanted: () => boolean,
+                        read: () => Promise<NgeCutVoxels> = () => ngeGrapheneCutVoxels(layer, red, blue)): Promise<Record<string, unknown>> {
+  try {
+    const vox = await read();
+    const said: Record<string, unknown> = {
+      stored: vox.stored, files: vox.files, voxelsMarked: vox.marked, voxelNm: vox.voxelNm, voxels: vox.dims, drawn: false, why: vox.why,
+    };
+    if (!stillWanted() || !vox.ok) return said;
+    const grid = buildFineGrid(vox, paleBoxes, RED, BLUE);
+    if (!grid) { said.why = 'None of the voxels round the points belong to a supervoxel in the server\'s answer.'; return said; }
+    const scalesNm: number[] = Array.from((window as any).viewer.coordinateSpace.value.scales as Float64Array).slice(0, 3).map(x => x / 1e-9);
+    // Global coordinates to the grid's own, 0 to 1: (p * scaleNm - lo) / (dims * cell).
+    const m = mat4.create();
+    for (let i = 0; i < 3; i++) {
+      m[i * 5] = scalesNm[i] / (grid.dims[i] * grid.cellNm[i]);
+      m[12 + i] = -grid.loNm[i] / (grid.dims[i] * grid.cellNm[i]);
+    }
+    setNgeMeshTintFine({ data: grid.data, dims: grid.dims, gridFromGlobal: m });
+    redraw();
+    Object.assign(said, { drawn: true, cells: grid.dims, cellNm: grid.cellNm.map(v => Math.round(v)), exact: grid.exact, carried: grid.filled });
+    return said;
+  } catch (e: any) {
+    return { drawn: false, why: String(e?.message || e) };
+  }
 }
 
 async function preview(layer: any) {
@@ -83,13 +118,24 @@ async function preview(layer: any) {
       cellPieces: graph.boxes.size, piecesColoured: { red: redPieces, blue: bluePieces }, sideFilledIn: filled,
       blocks: count(blocks),
     });
-    console.info('[cut preview]', JSON.stringify(say));
     if (!blocks.length) {
+      console.info('[cut preview]', JSON.stringify(say));
       StatusMessage.showTemporaryMessage('Could not place the preview on this cell. The cut itself is not affected.', 8000);
       return;
     }
     setExtraTintBoxes(blocks.map(b => ({ box: b.box, rgb: b.side === 'red' ? RED : b.side === 'blue' ? BLUE : BOTH })));
     showing = true;
+    // The blocks are up; now the supervoxels themselves, where the cut is.
+    const fine = await drawFine(layer, sides.red, sides.blue, blocks.filter(b => b.side === 'both').map(b => b.box), () => mine === run);
+    say.supervoxels = fine;
+    console.info('[cut preview]', JSON.stringify(say));
+    if (mine !== run) { setNgeMeshTintFine(null); return; }
+    if (fine.drawn) {
+      StatusMessage.showTemporaryMessage(
+          'Preview: red stays with the red points, blue goes with the blue ones, drawn from the supervoxels round your points. Nothing has been cut.', 9000);
+      return;
+    }
+    console.warn('[cut preview] the supervoxels could not be drawn:', fine.why);
     StatusMessage.showTemporaryMessage(
         'Preview: red stays with the red points, blue goes with the blue ones. The pale stretch holds both, so the cut falls inside it. Nothing has been cut.', 9000);
   } catch (e: any) {
@@ -119,6 +165,12 @@ export function startCutPreview() {
   // While it is a test: paint blocks by hand from the console, to look at the
   // colouring itself without a cut (boxes in nanometres, rgb 0 to 255).
   if ((window as any).ngeCutPreviewTest) (window as any).__ngeCutPreviewPaint = (boxes: { box: number[]; rgb: number[] }[] | null) => setExtraTintBoxes(boxes);
+  // And the fine picture on any plainly stored volume: read the voxels of a
+  // region, mark two lists of ids red and blue, and draw them.
+  if ((window as any).ngeCutPreviewTest) {
+    (window as any).__ngeCutPreviewVoxels = (dataUrl: string, scales: any[], lo: number[], hi: number[], red: string[], blue: string[], pale: number[][] = []) =>
+        drawFine(null, red, blue, pale, () => true, () => ngeReadSideVoxels(dataUrl, scales, lo, hi, red, blue));
+  }
   window.addEventListener('nge-cut-preview', (e: Event) => { void preview((e as CustomEvent).detail?.layer); });
   window.addEventListener('nge-cut-preview-clear', clear);
 }

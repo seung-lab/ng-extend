@@ -51,7 +51,9 @@ import {Owned, RefCounted} from 'neuroglancer/util/disposable';
 import {makeValueOrError, ValueOrError, valueOrThrow} from 'neuroglancer/util/error';
 import {EventActionMap} from 'neuroglancer/util/event_action_map';
 import {mat4, vec3, vec4} from 'neuroglancer/util/geom';
-import {HttpError, isNotFoundError, responseJson} from 'neuroglancer/util/http_request';
+import {HttpError, isNotFoundError, responseArrayBuffer, responseJson} from 'neuroglancer/util/http_request';
+import {VolumeChunkEncoding} from 'neuroglancer/datasource/precomputed/base';
+import {readSingleChannelValue as ngeReadCompressedUint64} from 'neuroglancer/sliceview/compressed_segmentation/decode_uint64';
 import {parseArray, parseFixedLengthArray, verify3dVec, verifyBoolean, verifyEnumString, verifyFiniteFloat, verifyFinitePositiveFloat, verifyInt, verifyNonnegativeInt, verifyObject, verifyObjectProperty, verifyOptionalObjectProperty, verifyOptionalString, verifyPositiveInt, verifyString} from 'neuroglancer/util/json';
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {NullarySignal} from 'neuroglancer/util/signal';
@@ -2764,6 +2766,161 @@ export async function ngeGrapheneCutPreview(layer: SegmentationUserLayer): Promi
     rootId: red[0].rootId.toString(),
     redPicks: red.map(x => x.segmentId.toString()), bluePicks: blue.map(x => x.segmentId.toString()),
     groups: preview.sides, illegal: preview.illegal,
+  };
+}
+
+/** What ngeGrapheneCutVoxels found: the voxels near the points, each marked
+ *  with the side its supervoxel is on, or why they could not be read. */
+export interface NgeCutVoxels {
+  ok: boolean;
+  /** Why not, in plain words, when ok is false. */
+  why: string;
+  /** How the volume is stored, for the console line that says what happened. */
+  stored: {host: string, scales: {key: string, nm: number[], encoding: string, sharded: boolean}[], used: string};
+  /** Corner of the region in nanometres, the size of one voxel, and how many. */
+  originNm: number[]; voxelNm: number[]; dims: number[];
+  /** x fastest, then y, then z. 0 neither side, 1 red, 2 blue. */
+  labels: Uint8Array;
+  files: {asked: number, read: number, empty: number, failed: number};
+  marked: {red: number, blue: number};
+}
+
+/**
+ * For the cut preview: the supervoxel under every voxel near the points, as
+ * the side the server's preview put that supervoxel on.
+ *
+ * The cell's surface in 3D is not made of supervoxels, so the only way to
+ * say where one is, is the volume itself: the same files the 2D view loads.
+ * They are read here at a coarse scale (about 30 nm a voxel or more), only
+ * around the points, where the server's answer is.
+ */
+export async function ngeGrapheneCutVoxels(
+    layer: SegmentationUserLayer, redSupervoxels: readonly string[], blueSupervoxels: readonly string[]): Promise<NgeCutVoxels> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const info = (connection.graph as any).info as GrapheneMultiscaleVolumeInfo;
+  // Where the points are, in nanometres, and the room round them the server looks at.
+  const {multicutState} = connection.state;
+  const picks = [...multicutState.sinks, ...multicutState.sources];
+  const loadedSubsource = getGraphLoadedSubsource(layer)!;
+  const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
+  const PAD = [2600, 2600, 1500];
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const pick of picks) for (let i = 0; i < 3; i++) {
+    const v = pick.position[i] * toNm[i];
+    lo[i] = Math.min(lo[i], v - PAD[i]); hi[i] = Math.max(hi[i], v + PAD[i]);
+  }
+  return ngeReadSideVoxels(info.dataUrl, info.scales, lo, hi, redSupervoxels, blueSupervoxels);
+}
+
+/** The reading itself, for any volume stored the plain way: every voxel of
+ *  the region lo..hi (nanometres) marked 1 or 2 if its id is in the first or
+ *  the second list. Apart from the graph, so it can be tried on a public
+ *  volume (the cut preview's own test). */
+export async function ngeReadSideVoxels(
+    dataUrl: string, scales: readonly any[], lo: readonly number[], hi: readonly number[],
+    redSupervoxels: readonly string[], blueSupervoxels: readonly string[]): Promise<NgeCutVoxels> {
+  const none = (why: string, stored: NgeCutVoxels['stored']): NgeCutVoxels => ({
+    ok: false, why, stored, originNm: [0, 0, 0], voxelNm: [1, 1, 1], dims: [0, 0, 0], labels: new Uint8Array(0),
+    files: {asked: 0, read: 0, empty: 0, failed: 0}, marked: {red: 0, blue: 0},
+  });
+  const info = {dataUrl, scales};
+  const stored: NgeCutVoxels['stored'] = {
+    host: String(info.dataUrl).replace(/^(\w+:\/\/[^/]+\/[^/]*).*$/, '$1'),
+    scales: info.scales.map(sc => ({
+      key: sc.key, nm: Array.from(sc.resolution).slice(0, 3), encoding: VolumeChunkEncoding[sc.encoding], sharded: sc.sharding !== undefined,
+    })),
+    used: '',
+  };
+  if (!lo.every(Number.isFinite) || !hi.every(Number.isFinite)) return none('There are no points.', stored);
+  // The finest scale that is not finer than about 30 nm a voxel, then coarser
+  // ones if the region would still be too many voxels.
+  const MAX_VOXELS = 9e6;
+  const usable = (sc: any) => sc.sharding === undefined &&
+      (sc.encoding === VolumeChunkEncoding.COMPRESSED_SEGMENTATION || sc.encoding === VolumeChunkEncoding.RAW);
+  let scale: any = undefined, vlo: number[] = [], vhi: number[] = [];
+  for (const sc of info.scales) {
+    if (sc.resolution[0] < 30 && sc !== info.scales[info.scales.length - 1]) continue;
+    const a = [0, 1, 2].map(i => Math.max(sc.voxelOffset[i], Math.floor(lo[i] / sc.resolution[i])));
+    const b = [0, 1, 2].map(i => Math.min(sc.voxelOffset[i] + sc.size[i], Math.ceil(hi[i] / sc.resolution[i])));
+    if (b.some((v, i) => v <= a[i])) continue;
+    if ((b[0] - a[0]) * (b[1] - a[1]) * (b[2] - a[2]) > MAX_VOXELS) continue;
+    scale = sc; vlo = a; vhi = b;
+    break;
+  }
+  if (scale === undefined) return none('No scale of the volume fits the region round the points.', stored);
+  stored.used = scale.key;
+  if (!usable(scale)) {
+    return none(`The volume is stored in a way this preview cannot read yet (${VolumeChunkEncoding[scale.encoding]}${scale.sharding !== undefined ? ', sharded' : ''}).`, stored);
+  }
+  // Each side's supervoxels, as the two halves of their 64 bit ids.
+  const sideOf = new Map<number, Map<number, number>>();
+  const add = (ids: readonly string[], side: number) => {
+    for (const id of ids) {
+      let n: bigint;
+      try { n = BigInt(id); } catch { continue; }
+      const high = Number(n >> BigInt(32)), low = Number(n & BigInt(0xffffffff));
+      (sideOf.get(high) ?? sideOf.set(high, new Map()).get(high)!).set(low, side);
+    }
+  };
+  add(redSupervoxels, 1); add(blueSupervoxels, 2);
+
+  const dims = [vhi[0] - vlo[0], vhi[1] - vlo[1], vhi[2] - vlo[2]];
+  const labels = new Uint8Array(dims[0] * dims[1] * dims[2]);
+  const files = {asked: 0, read: 0, empty: 0, failed: 0};
+  const marked = {red: 0, blue: 0};
+  const cs: ArrayLike<number> = scale.chunkSizes[0];
+  const off: ArrayLike<number> = scale.voxelOffset, size: ArrayLike<number> = scale.size;
+  const g0 = [0, 1, 2].map(i => Math.floor((vlo[i] - off[i]) / cs[i]));
+  const g1 = [0, 1, 2].map(i => Math.floor((vhi[i] - 1 - off[i]) / cs[i]));
+  const todo: number[][] = [];
+  for (let gz = g0[2]; gz <= g1[2]; gz++) for (let gy = g0[1]; gy <= g1[1]; gy++) for (let gx = g0[0]; gx <= g1[0]; gx++) todo.push([gx, gy, gz]);
+  if (todo.length > 400) return none('The region round the points is spread over too many files.', stored);
+  const value = new Uint64();
+  const readOne = async (g: number[]) => {
+    const at = [0, 1, 2].map(i => off[i] + g[i] * cs[i]);
+    const n = [0, 1, 2].map(i => Math.min(cs[i], off[i] + size[i] - at[i]));
+    const url = `${info.dataUrl}/${scale.key}/${at[0]}-${at[0] + n[0]}_${at[1]}-${at[1] + n[1]}_${at[2]}-${at[2] + n[2]}`;
+    files.asked++;
+    let buffer: ArrayBuffer;
+    try {
+      buffer = await cancellableFetchSpecialOk(undefined, url, {}, responseArrayBuffer);
+    } catch (e) {
+      if (isNotFoundError(e)) files.empty++; else files.failed++;
+      return;
+    }
+    files.read++;
+    const compressed = scale.encoding === VolumeChunkEncoding.COMPRESSED_SEGMENTATION;
+    const data = new Uint32Array(buffer, 0, Math.floor(buffer.byteLength / 4));
+    const block: ArrayLike<number> = scale.compressedSegmentationBlockSize ?? [8, 8, 8];
+    const base = compressed ? data[0] : 0;
+    // Only the part of this file inside the region.
+    const x0 = Math.max(at[0], vlo[0]), x1 = Math.min(at[0] + n[0], vhi[0]);
+    const y0 = Math.max(at[1], vlo[1]), y1 = Math.min(at[1] + n[1], vhi[1]);
+    const z0 = Math.max(at[2], vlo[2]), z1 = Math.min(at[2] + n[2], vhi[2]);
+    const pos = [0, 0, 0];
+    for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      let low: number, high: number;
+      if (compressed) {
+        pos[0] = x - at[0]; pos[1] = y - at[1]; pos[2] = z - at[2];
+        ngeReadCompressedUint64(value, data, base, n, block, pos);
+        low = value.low; high = value.high;
+      } else {
+        const k = ((x - at[0]) + n[0] * ((y - at[1]) + n[1] * (z - at[2]))) * 2;
+        low = data[k]; high = data[k + 1];
+      }
+      const side = sideOf.get(high >>> 0)?.get(low >>> 0);
+      if (!side) continue;
+      labels[(x - vlo[0]) + dims[0] * ((y - vlo[1]) + dims[1] * (z - vlo[2]))] = side;
+      if (side === 1) marked.red++; else marked.blue++;
+    }
+  };
+  const worker = async () => { for (;;) { const g = todo.pop(); if (!g) return; await readOne(g); } };
+  await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
+  const res = Array.from(scale.resolution as Float64Array).slice(0, 3);
+  return {
+    ok: files.read > 0, why: files.read > 0 ? '' : 'None of the volume\'s files round the points could be read.',
+    stored, originNm: [0, 1, 2].map(i => vlo[i] * res[i]), voxelNm: res, dims, labels, files, marked,
   };
 }
 
