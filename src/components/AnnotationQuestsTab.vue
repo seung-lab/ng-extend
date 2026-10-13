@@ -11,7 +11,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
-import { QUEST_TITLE, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, type QuestRow } from '../annotation_quests';
+import { QUEST_TITLE, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { mintShortStateLink } from '../util/state_link';
 import { currentSegLayer } from '../datasets';
@@ -58,11 +58,13 @@ async function load() {
 }
 onMounted(() => { if (backend.userId) void load(); });
 
-/** "A5, OFF SAC": the sheet's index and the cell's type. */
+/** "A5, OFF Starburst": the sheet's index and the cell's type, in the players' words. */
 function label(r: QuestRow) {
-  const kind = r.cellType || r.cellClass;
+  const kind = cellTypeForPlayers(r.cellType || r.cellClass);
   return kind ? `${r.index || r.segmentId}, ${kind}` : (r.index || r.segmentId);
 }
+/** The (i) box with the steps (Ames 2026-10-13). */
+const showHelp = ref(false);
 function openCell(r: QuestRow) {
   current.value = r.segmentId;
   const before = layerSnapshot();
@@ -168,8 +170,23 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 <template>
   <div class="nge-aq">
     <div class="nge-aq-head">
-      <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
-      <div class="nge-aq-lead">Claim a cell and its view opens with the lab's annotation layers, one for each part of a cilium. Put a point in each layer for what you find, then submit. The cell does not need to be proofread.</div>
+      <div class="nge-aq-titlerow">
+        <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
+        <button class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp }" @click="showHelp = !showHelp" title="What to do" aria-label="What to do">i</button>
+      </div>
+      <div class="nge-aq-lead">Find the cilium on a starburst cell and mark its parts in the layers that open with the cell. The cell does not need to be proofread.</div>
+      <div v-if="showHelp" class="nge-aq-help">
+        <div class="nge-aq-help-head">
+          <span>How to do a Cilia Quest</span>
+          <button class="nge-aq-help-close" @click="showHelp = false" title="Close">×</button>
+        </div>
+        <ol class="nge-aq-help-steps">
+          <li><b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body</b>, <b>Daughter centriole</b> and <b>Cilium centerline</b>.</li>
+          <li>Find the cilium, near the soma. Put a point on the basal body in its layer, a point on the daughter centriole in its layer, and draw a line along the cilium in the centerline layer. Press <b>↗</b> to show only this cell.</li>
+          <li>Press <b>Submit</b>, choose what you found from the list, add a note if anything was odd, and send. Your view goes to the lab as a share link.</li>
+          <li>You can hold three cells at a time. <b>Release</b> hands a cell back untouched.</li>
+        </ol>
+      </div>
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
         <span v-if="rows.length" class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted by you: <b>{{ mineDone }}</b></span>
@@ -330,6 +347,37 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-tally { font-size: 13px; color: #a9b8cc; }
 .nge-aq-tally b { color: #a6ffd6; font-weight: 700; }
 .nge-aq-tally--full b { color: #ffd24d; }
+/* The (i) and its box, drawn as the Cell Library's own instructions box. */
+.nge-aq-titlerow { display: flex; align-items: center; gap: 8px; }
+.nge-aq-info {
+  width: 18px; height: 18px; border-radius: 50%; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 11px/1 'Inter', sans-serif; color: #7ecaff;
+  background: rgba(126, 202, 255, 0.08); border: 1px solid rgba(126, 202, 255, 0.5);
+  cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.nge-aq-info:hover, .nge-aq-info--open { color: #06111f; background: #7ecaff; box-shadow: 0 0 10px rgba(126, 202, 255, 0.5); }
+.nge-aq-help {
+  margin: 4px 0 2px;
+  padding: 10px 12px 8px;
+  border-radius: 10px;
+  background: rgba(66, 213, 236, 0.06);
+  border: 1px solid rgba(66, 213, 236, 0.28);
+  animation: nge-aq-help-in 0.2s ease-out both;
+}
+@keyframes nge-aq-help-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-aq-help { animation: none; } }
+.nge-aq-help-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #7ee8ff; margin-bottom: 6px;
+}
+.nge-aq-help-close { background: none; border: none; color: #8aa; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.nge-aq-help-close:hover { color: #fff; }
+.nge-aq-help-steps { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.5; color: #cfdcef; }
+.nge-aq-help-steps li { margin: 4px 0; padding-left: 2px; }
+.nge-aq-help-steps li::marker { color: #42d5ec; font-weight: 700; }
+.nge-aq-help-steps b { color: #fff; font-weight: 600; }
 .nge-aq-section {
   padding: 10px 12px 4px;
   font-family: 'Orbitron', 'Inter', sans-serif;

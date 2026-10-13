@@ -17,7 +17,9 @@ import { parseRGBColorSpecification } from 'neuroglancer/util/color';
 
 export const QUEST_KEY = 'retina_cilia';
 export const QUEST_DATASET = 'stroeh_mouse_retina';
-export const QUEST_TITLE = 'Cilia on starburst amacrine cells';
+export const QUEST_TITLE = 'Cilia Quest';
+/** The sheet says "ON SAC" and "OFF SAC"; players read "Starburst" (Ames 2026-10-13). */
+export const cellTypeForPlayers = (t: string) => String(t || '').replace(/\bSACs?\b/g, 'Starburst');
 
 /** The sheet's own dropdown options, character for character (read
  *  2026-10-12). The server keeps the same list and refuses anything else. */
