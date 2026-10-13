@@ -66,10 +66,18 @@ const MERGE_HINT_STATES: Record<string, string> = {
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5193945751486464',
 };
 
+/** Or the two spots themselves, in viewer voxels, where Ames gave them
+ *  directly. Looked at before the saved views. */
+const MERGE_HINT_POINTS: Record<string, number[][]> = {
+  // Second merge (axon), in the 2D images at z 638 (Ames, 2026-10-13: this
+  // box had no points of its own and fell back to the first cell's).
+  'a4bd2f76-67e9-4093-adc7-e670230d1577': [[75014, 62609, 638], [75114, 62629, 638]],
+};
+
 async function showWhereToClick(): Promise<boolean> {
   const ex = currentPractice().example;
-  let pts: number[][] = [];
-  if (ex && MERGE_HINT_STATES[ex.id]) pts = await pointsInState(MERGE_HINT_STATES[ex.id]);
+  let pts: number[][] = ex ? (MERGE_HINT_POINTS[ex.id] ?? []) : [];
+  if (!pts.length && ex && MERGE_HINT_STATES[ex.id]) pts = await pointsInState(MERGE_HINT_STATES[ex.id]);
   if (!pts.length && ex?.point_a && ex?.point_b) {
     try { pts = [JSON.parse(ex.point_a), JSON.parse(ex.point_b)]; } catch { pts = []; }
   }
@@ -1280,7 +1288,7 @@ Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` 
 3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
-You'll see "trying..." and then "done", and the piece turns purple.`,
+The pink gems show where to click. You'll see "trying..." and then "done", and the piece turns purple.`,
     position: OVER_3D,
     width: "420px",
     onEnter: async () => {
@@ -1295,6 +1303,8 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
       await beginPractice('merge_then_cut', 'start', { slot: 'b' });
       watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       setTimeout(() => ensureTool('merge'), 400);
+      // The spots are shown from the start, as on the first merge.
+      setTimeout(() => { showWhereToClick(); }, 1400);
     },
   },
 
