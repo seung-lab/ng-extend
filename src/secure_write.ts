@@ -12,6 +12,9 @@ const ENDPOINT = (window as any).__NGE_SECURE_WRITE_URL
 // ewProofreadingTest): the shared one is redeployed from many checkouts.
 const TEST_ENDPOINT = (window as any).__NGE_TEST_WRITE_URL
   || functionUrl('ewProofreadingTest');
+// Report replies have one too, for the same reason (ewReportReply).
+const REPLY_ENDPOINT = (window as any).__NGE_REPLY_WRITE_URL
+  || functionUrl('ewReportReply');
 const STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
 export function caveToken(): string | null {
@@ -25,6 +28,7 @@ export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
   | 'triage.update' | 'triage.release'
   | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log' | 'activity.visit'
+  | 'reply.ask' | 'reply.send'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
 
@@ -32,7 +36,7 @@ export type SecureAction =
 export async function secureWrite<T = any>(action: SecureAction, args: Record<string, any> = {}): Promise<T> {
   const token = caveToken();
   if (!token) throw new Error('Sign in to EyeWire II first.');
-  const res = await fetch(action.startsWith('test.') ? TEST_ENDPOINT : ENDPOINT, {
+  const res = await fetch(action.startsWith('test.') ? TEST_ENDPOINT : action.startsWith('reply.') ? REPLY_ENDPOINT : ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...args, action, token }),

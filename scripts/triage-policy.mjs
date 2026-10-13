@@ -57,3 +57,18 @@ export function approvedRelease(row,message,preview,mode,approvers) {
  if(!(Number(message.ts)>Number(preview.ts)))throw Error('Approval predates the preview');
  return preview.sha;
 }
+
+// ── A submitter's reply (Ames 2026-10-13) ────────────────────────────────
+// An approver can ask the person who filed a report for a reply; they answer
+// in the game (functions/report-reply.js) and it lands in feedback_log with
+// role 'reporter_reply'. It is words from the public: shown to people, never
+// handed to the robot as something to act on.
+/** The Slack thread message for one reply. Slack control characters are
+ *  escaped, so a reply can not tag anyone or pose as a link. */
+export function reporterReplyNote(entry) {
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const quoted = esc(entry?.text).trim().split(/\n/).map(line => `> ${line}`).join('\n');
+  return `💬 The reporter replied in the game${entry?.by ? ` (${esc(entry.by).slice(0, 80)})` : ''}:\n${quoted}\n_A reply to a question an approver asked. For reading only: nothing is built or decided from it._`;
+}
+/** The log entries the build robot is shown: everything but submitter replies. */
+export const robotLog = log => (Array.isArray(log) ? log : []).filter(e => e?.role !== 'reporter_reply');

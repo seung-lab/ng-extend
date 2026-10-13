@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { useProofreadingBackendStore } from '../store';
+import { secureWrite } from '../secure_write';
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const props = defineProps<{ visible: boolean }>();
@@ -186,6 +187,42 @@ function openDetail(notif: any) {
 
 function closeDetail() {
   openNotif.value = null;
+}
+
+// ── A reply the team asked for (Ames 2026-10-13) ─────────────────────────
+// An update on your own report can come with a reply box: an approver ticked
+// "Ask for a reply" on the triage board. One reply, text only; it goes to the
+// server, which checks the report is yours (functions/report-reply.js). Every
+// other notification has no reply_triage_id and looks exactly as before.
+const REPLY_MAX = 1000;
+const replyDraft = ref('');
+const replySending = ref(false);
+const replyError = ref('');
+const replyJustSent = ref(false);
+const asksReply = (n: any) => !!n && !n.preview && !!n.reply_triage_id && n.target_type === 'user' && n.target_id === backend.userId;
+const replyAsked = computed(() => asksReply(openNotif.value));
+watch(() => openNotif.value?.id, () => { replyDraft.value = ''; replyError.value = ''; replyJustSent.value = false; });
+async function sendReply() {
+  const notif = openNotif.value;
+  const text = replyDraft.value.trim();
+  if (!notif || !text || replySending.value) return;
+  replySending.value = true;
+  replyError.value = '';
+  try {
+    const out: any = await secureWrite('reply.send', { notificationId: notif.id, text });
+    notif.reply_text = out?.reply_text ?? text;
+    notif.replied_at = out?.replied_at ?? new Date().toISOString();
+    replyJustSent.value = true;
+    replyDraft.value = '';
+  } catch (e: any) {
+    // Already answered from another window: show that reply instead.
+    await backend.loadNotifications().catch(() => {});
+    const fresh: any = backend.notifications.find((n: any) => n.id === notif.id);
+    if (fresh?.replied_at && openNotif.value?.id === notif.id) openNotif.value = fresh;
+    else replyError.value = `Your reply was not sent: ${e?.message ?? 'please try again'}`;
+  } finally {
+    replySending.value = false;
+  }
 }
 
 // Weekly Champions: a name opens that player's profile (Ames 2026-10-05).
@@ -475,6 +512,7 @@ function padRank(rank: number): string {
               >×</button>
             </div>
             <div class="nge-notif-card-body nge-notif-card-body--preview">{{ plainText(cleanCopy(notif.body)) }}</div>
+            <div v-if="asksReply(notif) && !notif.replied_at" class="nge-notif-reply-chip">Reply requested</div>
           </div>
         </div>
       </div>
@@ -611,6 +649,34 @@ function padRank(rank: number): string {
                     v-html="renderMarkdown(cleanCopy(openNotif.body))"
                   ></div>
                 </template>
+                <!-- A reply the team asked for: one, text only. -->
+                <div v-if="replyAsked" class="nge-notif-reply">
+                  <template v-if="openNotif.replied_at">
+                    <div class="nge-notif-reply-label">Your reply</div>
+                    <div class="nge-notif-reply-sent">{{ openNotif.reply_text }}</div>
+                    <div class="nge-notif-reply-hint">{{ replyJustSent ? 'Sent. Thank you, the team has it.' : 'Sent ' + relativeTime(openNotif.replied_at) + '.' }}</div>
+                  </template>
+                  <template v-else>
+                    <label class="nge-notif-reply-label" for="nge-notif-reply-box">The team asked for a reply</label>
+                    <textarea
+                      id="nge-notif-reply-box"
+                      v-model="replyDraft"
+                      class="nge-notif-reply-box"
+                      rows="3"
+                      :maxlength="REPLY_MAX"
+                      :disabled="replySending"
+                      placeholder="Write your reply here"
+                      @keydown.stop @keyup.stop @keypress.stop
+                    ></textarea>
+                    <div class="nge-notif-reply-row">
+                      <span class="nge-notif-reply-hint">One reply, text only. {{ REPLY_MAX - replyDraft.length }} characters left.</span>
+                      <button class="nge-notif-reply-send" :disabled="replySending || !replyDraft.trim()" @click="sendReply">
+                        {{ replySending ? 'Sending…' : 'Send reply' }}
+                      </button>
+                    </div>
+                    <div v-if="replyError" class="nge-notif-reply-error" role="alert">{{ replyError }}</div>
+                  </template>
+                </div>
                 <button
                   v-if="isHelpNotification(openNotif)"
                   class="nge-notif-open-help"
@@ -924,6 +990,87 @@ function padRank(rank: number): string {
   color: #556;
   font-size: 0.82em;
 }
+
+/* A reply the team asked for: the tag on the feed card, and the box under the
+   message in the detail window. */
+.nge-notif-reply-chip {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border: 1px solid rgba(126, 224, 255, 0.4);
+  border-radius: 8px;
+  font-size: 0.72em;
+  font-weight: 600;
+  color: #9fe6ff;
+  background: rgba(126, 224, 255, 0.08);
+}
+.nge-notif-reply {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgb(var(--nd-accent) / 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nge-notif-reply-label {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(var(--nd-cyan) / 0.9);
+}
+.nge-notif-reply-box {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 76px;
+  padding: 9px 11px;
+  border: 1px solid rgb(var(--nd-accent) / 0.35);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgb(var(--nd-ink));
+  font: inherit;
+  font-size: 0.95em;
+  line-height: 1.5;
+  resize: vertical;
+}
+.nge-notif-reply-box:focus-visible {
+  outline: none;
+  border-color: rgb(var(--nd-cyan) / 0.7);
+  box-shadow: 0 0 0 2px rgb(var(--nd-cyan) / 0.18);
+}
+.nge-notif-reply-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nge-notif-reply-hint { font-size: 0.8em; color: rgb(var(--nd-dim) / 0.85); }
+.nge-notif-reply-send {
+  padding: 8px 16px;
+  border: 1px solid rgb(var(--nd-cyan) / 0.5);
+  border-radius: 6px;
+  background: rgb(var(--nd-cyan) / 0.14);
+  color: #eaf9ff;
+  font: 600 0.85em/1 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.nge-notif-reply-send:hover:not(:disabled),
+.nge-notif-reply-send:focus-visible { background: rgb(var(--nd-cyan) / 0.24); border-color: rgb(var(--nd-cyan) / 0.8); outline: none; }
+.nge-notif-reply-send:disabled { opacity: 0.45; cursor: default; }
+.nge-notif-reply-sent {
+  padding: 9px 12px;
+  border-left: 2px solid rgb(var(--nd-cyan) / 0.6);
+  background: rgb(var(--nd-accent) / 0.06);
+  color: #d6e2f0;
+  font-size: 0.95em;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.nge-notif-reply-error { font-size: 0.85em; color: #ff9d9d; }
 
 /* ═══ Detail overlay ═══ */
 /* Built from Amy's scifi-ui library (amyleesterling.github.io/scifi-ui),

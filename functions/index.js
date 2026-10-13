@@ -2028,6 +2028,48 @@ exports.ewProofreadingTest = onRequest(
   }
 );
 
+// ── Report replies (Ames 2026-10-13): a function of its own ──────────────
+// An approver asks a report's submitter for a reply (reply.ask, admins) and
+// the submitter answers once in the notification (reply.send). Rules in
+// report-reply.js; client in src/secure_write.ts. No pilot gate: what counts
+// is being the submitter of that report. Kept out of ewSecureWrite for the
+// reason above: a deploy of that function from an older checkout would
+// silently remove it.
+//   firebase deploy --only functions:ewReportReply --project eyewire-ii-e4d52
+const EW_REPLY_CODE_VERSION = "2026-10-13-report-reply-1";
+exports.ewReportReply = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    // Health: the database is reachable, the columns exist, and which code is live.
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_REPLY_CODE_VERSION }); return; }
+      let columns = true;
+      try { await probe("notifications?select=reply_triage_id,reply_text,replied_at&limit=1"); } catch (e) { columns = false; }
+      res.json({ ok: true, db: true, columns, code: EW_REPLY_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("reply.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      const data = await require("./report-reply").handle(action, args, { sb, me, isAdmin,
+        wake: () => wakeWorkflow("slack-triage-bridge.yml", "report reply") });
+      res.json({ ok: true, data });
+    } catch (e) {
+      console.warn("[ewReportReply]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That could not be sent. Please try again." });
+    }
+  }
+);
+
 exports.ewCommunityData = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {

@@ -101,7 +101,9 @@ interface TriageRow {
   impl_run_url?: string | null;
   impl_attempts?: number;
   preview_url?: string | null;
-  feedback_log?: { user?: string; text: string; ts: string; role: string; by?: string; at?: string; via?: string; sent?: boolean; echoed?: boolean }[];
+  feedback_log?: { user?: string; text: string; ts: string; role: string; by?: string; at?: string; via?: string; sent?: boolean; echoed?: boolean;
+    /** reporter_update: sent with "Ask for a reply". reporter_reply: not read by an approver yet when seen is false. */
+    ask?: boolean; notification_id?: number; seen?: boolean }[];
   result_note?: string | null;
   nag_count?: number;
   approver_slack_id?: string | null;
@@ -144,6 +146,7 @@ const IMPL_LABELS: Record<ImplState, string> = {
 const ROLE_LABELS: Record<string, string> = {
   tester: 'Tester', question: 'Question', answer: 'Answer',
   reporter_update: 'To submitter', reporter_draft: 'Draft', reporter_ignored: 'Comment',
+  reporter_reply: 'Submitter reply',
 };
 const roleLabel = (role: string) => ROLE_LABELS[role] || 'Comment';
 const isBuildable = (r: TriageRow) => r.recommendation === 'bug_fix_spec' || r.recommendation === 'new_feature';
@@ -273,7 +276,14 @@ onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
 // 2026-10-10). What "more columns" means is INSIDE them: the chips of a wide
 // category sit in several columns side by side, so more fit on screen. Who
 // has the next move on an in-progress report is said by the tag on its chip.
+// A reply the submitter was asked for and no approver has read yet (Ames
+// 2026-10-13) puts the card back under Needs your decision, wherever it was,
+// Done included. Only where it is SHOWN changes: its status, its build state
+// and its note are untouched, so the robot never builds or rebuilds anything
+// because of a reply. "Reply read" (or writing back) lets it go home.
+const hasNewReply = (r: TriageRow) => (r.feedback_log || []).some(e => e.role === 'reporter_reply' && e.seen === false);
 function triageGroupOf(r: TriageRow): TriageGroupKey {
+  if (hasNewReply(r)) return 'decide';
   if (r.status === 'dismissed') return 'dismissed';
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
   if (r.status === 'proposed') return 'decide';
@@ -288,7 +298,11 @@ const triageGroups = computed(() => {
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
   ];
-  return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r)) }));
+  return defs.map(d => {
+    const rows = triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r));
+    // New replies first: an old card would otherwise land at the bottom.
+    return { ...d, rows: d.key === 'decide' ? [...rows.filter(hasNewReply), ...rows.filter(r => !hasNewReply(r))] : rows };
+  });
 });
 
 // A light page for reading (Ames 2026-10-10: "it's hard to read this much
@@ -525,8 +539,15 @@ async function loadTriage() {
     }
     const { data, error } = await q;
     if (error) throw error;
+    // A card with an unread reply is on the board however long ago it was closed.
+    const rows = (data ?? []) as TriageRow[];
+    if (!triageShowReviewed.value) {
+      const { data: replied } = await supabase.from('feedback_triage').select('*')
+        .contains('feedback_log', JSON.stringify([{ role: 'reporter_reply', seen: false }])).limit(50);
+      for (const r of (replied ?? []) as TriageRow[]) if (hasNewReply(r) && !rows.some(x => x.id === r.id)) rows.push(r);
+    }
     // Discarded reports are off the board unless you ask for older ones.
-    triageRows.value = ((data ?? []) as TriageRow[]).filter(r => triageShowReviewed.value || !isDiscarded(r));
+    triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
     applyTriageFocus();
@@ -680,6 +701,9 @@ async function openInClaude(row: TriageRow) {
 /** Open composers, keyed by row id (absent = closed). */
 const reporterDrafts = ref<Record<string, string>>({});
 const reporterSending = ref<string | null>(null);
+/** "Ask for a reply" ticked in an open composer, keyed by row id (Ames
+ *  2026-10-13). Off unless ticked: an ordinary update is exactly as before. */
+const reporterAsk = ref<Record<string, boolean>>({});
 
 /** Draft from the card's state. Never includes the internal reviewer comment.
  *  The quote is the whole submission, as the card shows it (the report's full
@@ -712,10 +736,44 @@ function draftReporterUpdate(row: TriageRow): string {
 
 function closeReporterDraft(row: TriageRow) {
   delete reporterDrafts.value[row.id];
+  delete reporterAsk.value[row.id];
 }
 
-function reporterUpdatesFor(row: TriageRow) {
-  return (row.feedback_log || []).filter(e => e.role === 'reporter_update' && e.sent !== false);
+/** What was sent to the submitter and what they wrote back, oldest first. */
+function reporterThreadFor(row: TriageRow) {
+  const log = row.feedback_log || [];
+  const when = (e: { at?: string; ts: string }) => Date.parse(e.at || e.ts) || 0;
+  return log
+    .filter(e => (e.role === 'reporter_update' && e.sent !== false) || e.role === 'reporter_reply')
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => (when(a.e) - when(b.e)) || (a.i - b.i))
+    .map(({ e }) => ({
+      ...e,
+      reply: e.role === 'reporter_reply',
+      // Asked, and their reply is not in yet.
+      waiting: e.role === 'reporter_update' && !!e.ask && !log.some(x => x.role === 'reporter_reply' && x.notification_id === e.notification_id),
+    }));
+}
+
+/** "Reply read": the New reply marker comes off and the card goes back to
+ *  where it was. Nothing else about the card changes. */
+async function markRepliesSeen(row: TriageRow) {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    const { supabase } = await import('../supabase');
+    // Re-read the log right before writing, so a bridge write in between is kept.
+    const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
+    const log = (Array.isArray(fresh?.feedback_log) ? fresh!.feedback_log : (row.feedback_log || []))
+      .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
+    await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not mark the reply read: ${e?.message ?? String(e)}`;
+  } finally {
+    triageActing.value = null;
+  }
 }
 
 function relTime(iso: string): string {
@@ -746,11 +804,20 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       return;
     }
     const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
-    await secureWrite('notification.insert', { row: {
-      title: '💬 An update on your report',
-      body: text,
+    const art = {
       thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
       image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 24)}.jpg`,
+    };
+    // "Ask for a reply": the same note, sent by the server tied to this card,
+    // so the submitter (and only them) gets a reply box under it. If that is
+    // not switched on yet it refuses and says why, and nothing is sent.
+    const ask = !!reporterAsk.value[row.id];
+    let asked: { id?: number } | null = null;
+    if (ask) asked = await secureWrite('reply.ask', { triageId: row.id, text, ...art });
+    else await secureWrite('notification.insert', { row: {
+      title: '💬 An update on your report',
+      body: text,
+      ...art,
       target_type: 'user',
       target_id: userId,
       send_at: new Date().toISOString(),
@@ -758,12 +825,16 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
-    const log = Array.isArray(fresh?.feedback_log) ? [...fresh!.feedback_log] : [];
+    // Writing back means their replies so far have been read.
+    const log = (Array.isArray(fresh?.feedback_log) ? [...fresh!.feedback_log] : [])
+      .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
     const at = new Date().toISOString();
-    log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false });
+    log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false,
+      ...(ask ? { ask: true, notification_id: asked?.id } : {}) });
     await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } })
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
+    delete reporterAsk.value[row.id];
     sent = true;
     if (!andDone && !andProgress && !andLater) await loadTriage();
   } catch (e: any) {
@@ -2263,10 +2334,11 @@ function practiceWhen(iso: string | null) {
         </button>
         <template v-if="triageBoard ? !isFolded(g.key) : triageOpen[g.key]">
         <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
-             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }]"
+             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id, 'nge-triage-card--reply': hasNewReply(row) }]"
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
+            <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
             <span class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
@@ -2387,10 +2459,15 @@ function practiceWhen(iso: string | null) {
                the card's state; edit, send, or close it and nothing is sent.
                Slack threads get the same thing via "update reporter". -->
           <div v-if="row.source === 'site_issue'" class="nge-triage-reporter">
-            <div v-for="u in reporterUpdatesFor(row)" :key="u.ts" class="nge-triage-note">
-              <span class="nge-triage-spec-label">Sent to submitter</span>
-              <span class="nge-triage-spec-text">{{ u.text }}<span class="nge-triage-reporter-by"> · {{ u.by || 'Slack' }}{{ u.at ? ', ' + relTime(u.at) : '' }}</span></span>
+            <!-- The thread, oldest first: what was sent, and any reply asked for. -->
+            <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
+                 :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
+              <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
+              <span class="nge-triage-spec-text nge-triage-thread-text">{{ u.text }}<span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
             </div>
+            <button v-if="hasNewReply(row)" class="nge-admin-action-btn nge-triage-reporter-open" :disabled="triageActing === row.id"
+                    title="Takes the New reply marker off. The card goes back to where it was; nothing else about it changes."
+                    @click="markRepliesSeen(row)">✓ Reply read</button>
             <template v-if="reporterDrafts[row.id] !== undefined">
               <textarea
                 v-model="reporterDrafts[row.id]"
@@ -2398,9 +2475,14 @@ function practiceWhen(iso: string | null) {
                 rows="3"
                 @keydown.stop @keyup.stop @keypress.stop
               ></textarea>
+              <label class="nge-triage-ask" title="They get a reply box under your message. One reply, text only. To hear more, ask again.">
+                <input type="checkbox" v-model="reporterAsk[row.id]" :disabled="reporterSending === row.id" />
+                <span>Ask for a reply</span>
+                <span class="nge-triage-ask-hint">They get a reply box under your message. One reply, text only.</span>
+              </label>
               <div class="nge-triage-actions">
                 <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
-                  {{ reporterSending === row.id ? 'Sending…' : 'Send to submitter' }}
+                  {{ reporterSending === row.id ? 'Sending…' : reporterAsk[row.id] ? 'Send and ask for a reply' : 'Send to submitter' }}
                 </button>
                 <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn"
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
@@ -3306,6 +3388,12 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-message::placeholder, .nge-triage-light .nge-triage-comment::placeholder { color: #7b889c; }
 .nge-triage-light .nge-triage-reporter { color: #46546b; }
 .nge-triage-light .nge-triage-reporter-by { color: #6b788d; }
+.nge-triage-light .nge-triage-ask-hint { color: #6b788d; }
+.nge-triage-light .nge-triage-note--reply { background: #e9f6fd; border-left-color: #58b6dc; }
+.nge-triage-light .nge-triage-note--unread { background: #cfecfa; border-left-color: #1487b8; }
+.nge-triage-light .nge-triage-rec--reply { background: #0f7fae; color: #ffffff; }
+.nge-triage-light.nge-triage-board .nge-triage-card.nge-triage-card--reply,
+.nge-triage-light .nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px #1487b8, 0 0 12px rgba(20,135,184,0.22); }
 .nge-triage-light .nge-triage-release { background: #eef3fb; border-color: #c3d3ec; }
 .nge-triage-light .nge-triage-release-why { color: #34425a; }
 .nge-triage-light .nge-triage-claude { border-top-color: #e0e5ee; }
@@ -3441,6 +3529,15 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-reporter-open { align-self: flex-start; }
 .nge-triage-reporter-by { color: rgba(255,255,255,0.45); }
+/* A reply the submitter was asked for (Ames 2026-10-13). */
+.nge-triage-thread-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nge-triage-note--reply { margin-left: 18px; background: rgba(126,224,255,0.07); border-left: 2px solid rgba(126,224,255,0.45); }
+.nge-triage-note--unread { background: rgba(126,224,255,0.16); border-left-color: #7ee0ff; }
+.nge-triage-rec--reply { background: #7ee0ff; color: #06202c; font-weight: 700; }
+.nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px rgba(126,224,255,0.55), 0 0 14px rgba(126,224,255,0.18); }
+.nge-triage-ask { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 12.5px; cursor: pointer; }
+.nge-triage-ask input { margin: 0; align-self: center; }
+.nge-triage-ask-hint { color: rgba(255,255,255,0.45); }
 .nge-triage-note {
   display: flex; gap: 8px; align-items: baseline;
   font-size: 12px; line-height: 1.45;

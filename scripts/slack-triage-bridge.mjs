@@ -45,7 +45,7 @@
  *   TRIAGE_LOOP_SINCE  ISO time; approvals before it are backlog, not auto
  */
 
-import { releaseCommand, SHA } from './triage-policy.mjs';
+import { releaseCommand, reporterReplyNote, SHA } from './triage-policy.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -302,7 +302,7 @@ async function reporterUpdates() {
     // Admin Hub sends that have not been mentioned in the thread yet.
     for (const e of log) {
       if (e.role === 'reporter_update' && e.via === 'admin' && !e.echoed) {
-        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}:\n> ${e.text}`).catch(() => {});
+        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:\n> ${e.text}`).catch(() => {});
         e.echoed = true;
         changed = true;
       }
@@ -347,6 +347,40 @@ async function reporterUpdates() {
     if (changed) await patchRow(row.id, { feedback_log: log });
   }
   return sent;
+}
+
+/**
+ * A submitter's reply (Ames 2026-10-13). An approver ticked "Ask for a reply"
+ * on the triage board, the submitter answered in the game, and the answer is
+ * in feedback_log with role 'reporter_reply' (functions/report-reply.js).
+ * Each one is shown in the report's thread once, whatever state the card is
+ * in. That is all that happens: it is posted by the bot, so readApprovals,
+ * pollThreads and collectNotes never read it as a decision, a verdict or a
+ * note, and nothing here touches status or impl_state.
+ */
+async function reporterReplies() {
+  const waiting = encodeURIComponent(JSON.stringify([{ role: 'reporter_reply', echoed: false }]));
+  const res = await sb(`feedback_triage?slack_ts=not.is.null&feedback_log=cs.${waiting}&select=id,slack_ts,feedback_log&limit=50`);
+  if (!res.ok) { console.warn(`[bridge] reporter replies skipped (${res.status})`); return 0; }
+  let shown = 0;
+  for (const row of await res.json()) {
+    const posted = new Set();
+    for (const e of Array.isArray(row.feedback_log) ? row.feedback_log : []) {
+      if (e.role !== 'reporter_reply' || e.echoed !== false) continue;
+      try { await say(row, reporterReplyNote(e)); posted.add(e.ts); }
+      catch (err) { console.warn(`[bridge] reply for ${row.id} not posted: ${err.message}`); }
+    }
+    if (!posted.size) continue;
+    // Mark them on the log as it is NOW: the board may have written to it
+    // (a reply marked read) while this was posting.
+    const again = await sb(`feedback_triage?id=eq.${row.id}&select=feedback_log`);
+    const log = again.ok ? ((await again.json())[0]?.feedback_log ?? row.feedback_log) : row.feedback_log;
+    for (const e of log) if (e.role === 'reporter_reply' && posted.has(e.ts)) e.echoed = true;
+    await patchRow(row.id, { feedback_log: log });
+    console.log(`[bridge] showed ${posted.size} reporter repl${posted.size === 1 ? 'y' : 'ies'} on ${row.id}`);
+    shown += posted.size;
+  }
+  return shown;
 }
 
 const REC_LABEL = {
@@ -1273,6 +1307,7 @@ let LOOP = false;
   }
   const announced = await announceDone();
   if (COLS) await reporterUpdates().catch(e => console.warn('[bridge] reporter updates failed:', e.message));
+  if (COLS) await reporterReplies().catch(e => console.warn('[bridge] reporter replies failed:', e.message));
   // The workflow runs several passes a minute apart; timed reminders only on
   // the first, or each would post once per pass inside its window.
   if ((process.env.BRIDGE_PASS || '1') === '1') {

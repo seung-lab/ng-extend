@@ -24,7 +24,9 @@ const PUBLIC_USER_COLUMNS = 'id,display_name,flag,bio,total_edits,total_merges,t
 const columns = {
   users: PUBLIC_USER_COLUMNS+',middleauth_email',
   admins: 'id,user_id,email,created_at',
-  notifications: 'id,title,body,image_url,thumbnail_url,send_at,expires_at,target_type,target_id,post_to_chat,created_at,created_by,chat_posted_at',
+  // reply_* (supabase-report-replies.sql): only named here so they may be asked
+  // for by name; a plain read (select *) never depends on them existing.
+  notifications: 'id,title,body,image_url,thumbnail_url,send_at,expires_at,target_type,target_id,post_to_chat,created_at,created_by,chat_posted_at,reply_triage_id,reply_text,replied_at',
   notification_reads: 'id,notification_id,user_id,read_at,dismissed,dismissed_at',
   working_links: 'id,user_id,title,note,starred,url,dataset,position_x,position_y,position_z,visible_segments,is_public,shared_group_id,created_at,updated_at,screenshot_url',
   // Who is in chat right now. Public: usernames are already public in chat.

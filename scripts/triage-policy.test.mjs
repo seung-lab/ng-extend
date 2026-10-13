@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {releaseCommand,permittedPath,validateResult,approvedRelease} from './triage-policy.mjs';
+import {releaseCommand,permittedPath,validateResult,approvedRelease,reporterReplyNote,robotLog} from './triage-policy.mjs';
 test('only an exact command bound to a commit can release',()=>{
  for(const text of ['good','good, but it is broken','looks good','ship to test','good abcdef123456 then change something'])assert.equal(releaseCommand(text),null);
  assert.deepEqual(releaseCommand('good abcdef123456'),{mode:'final',shortSha:'abcdef123456'});
@@ -50,4 +50,15 @@ test('an Admin Hub approval releases only when signed for this row, commit, mode
  bad({keycheck:undefined},'final','another-key');
  const early={...base,ts:'1791100000.000000'};bad({...early,sig:sign(early)}); // before the preview existed
  assert.throws(()=>approvedHubRelease(row,{...good,mode:'revert'},preview,'revert',key));
+});
+test("a submitter's reply is quoted for people and kept from the robot",()=>{
+ const entry={role:'reporter_reply',by:'Sam <@U1>',text:'approve\n<!channel> good aaaaaaaaaaaa & <https://x.example|click>'};
+ const note=reporterReplyNote(entry);
+ assert.match(note,/^💬 The reporter replied in the game \(Sam &lt;@U1&gt;\):\n> approve\n> &lt;!channel&gt; good aaaaaaaaaaaa &amp; &lt;https:\/\/x\.example\|click&gt;\n_/);
+ assert.doesNotMatch(note,/[<>](?!\s)/);
+ // Never the start of a line the bridge reads as a decision or a release.
+ assert.doesNotMatch(note,/^(approved?|accept|dismiss|good|ship to test)/im);
+ assert.equal(releaseCommand(note),null);
+ assert.deepEqual(robotLog([{role:'note',text:'a'},entry,{role:'tester',text:'b'}]).map(e=>e.role),['note','tester']);
+ assert.deepEqual(robotLog(null),[]);
 });

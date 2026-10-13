@@ -4846,6 +4846,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     post_to_chat: boolean;
     created_at: string;
     created_by: string | null;
+    // A reply was asked for (supabase-report-replies.sql). Absent until that
+    // SQL is run, and empty on every notification that did not ask.
+    reply_triage_id?: string | null;
+    reply_text?: string | null;
+    replied_at?: string | null;
   }
 
   const notifications = ref<Notification[]>([]);
