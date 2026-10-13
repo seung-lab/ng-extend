@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T15:10:54Z",
+      "title": "Retina: a claimed cell shows WIP in the sheet",
+      "items": [
+        "When you claim a Retina cell, its Status in the sheet is set to WIP, so you can see in the sheet which cells are yours to do.",
+        "Completing the cell replaces WIP with the status you choose. Releasing it clears WIP along with your name."
+      ]
+    },
+    {
       "at": "2026-10-12T21:36:09Z",
       "title": "New annotation layers open at your point size",
       "digest": "minor",
