@@ -2798,6 +2798,12 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   font-family: inherit;
 }
 .nge-admin-select:focus { border-color: rgba(74, 158, 255, 0.5); }
+/* The open list was pale grey words on white (Ames 2026-10-13: "I can't read
+   these"): the browser draws the list itself and only took the text colour.
+   Give the choices their own dark ground and light words. */
+.nge-admin-select { color-scheme: dark; }
+.nge-admin-select option { background: #131c2c; color: #eef2f8; }
+.nge-admin-select option:disabled { color: #8d99ab; }
 
 .nge-admin-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .nge-admin-row--dates { gap: 12px; }
