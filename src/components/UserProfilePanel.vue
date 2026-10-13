@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted, watch} from 'vue';
+import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
 import {nextDayMilestone} from '../util/day_milestones';
 import {storeToRefs} from 'pinia';
@@ -1206,6 +1206,48 @@ function handleClose() {
 }
 
 const emit = defineEmits({hide: null, 'open-settings': null});
+// ── The row heads end above the Achievements' last tile ──────────────────
+// The arrow to the Trophy Case (or the last tile shown) is the row's right
+// edge, not the frame's (Ames 2026-10-13: "82 to go, 21 to go etc should
+// sit above the arrow"). The arrow's column belongs to the tile grid, so
+// each head's width is measured from it: the count's centre lands on the
+// arrow's centre, and the bar ends just before the count.
+let headsRo: ResizeObserver | null = null;
+let headsTimer = 0;
+function layoutTrackHeads() {
+  const root = shellEl.value;
+  if (!root) return;
+  const mobile = document.body.classList.contains('nge-mobile');
+  for (const row of Array.from(root.querySelectorAll<HTMLElement>('.nge-track-row'))) {
+    const head = row.querySelector<HTMLElement>('.nge-track-head');
+    if (!head) continue;
+    const tiles = row.querySelectorAll<HTMLElement>('.nge-track-achievements .nge-profile-badge');
+    const last = tiles[tiles.length - 1];
+    if (!last || mobile) { head.style.removeProperty('--head-end'); continue; }
+    const art = last.querySelector<HTMLElement>('.nge-profile-badge-img') ?? last;
+    const r = row.getBoundingClientRect(), a = art.getBoundingClientRect();
+    const count = head.querySelector<HTMLElement>('.nge-track-count');
+    const end = a.left + a.width / 2 - r.left + (count ? count.offsetWidth / 2 : 0);
+    head.style.setProperty('--head-end', `${Math.round(end)}px`);
+  }
+}
+function scheduleTrackHeads() {
+  void nextTick(layoutTrackHeads);
+  // the count rolls up for a moment after a load: measure again once it has settled
+  clearTimeout(headsTimer);
+  headsTimer = window.setTimeout(layoutTrackHeads, 1800);
+}
+onMounted(() => {
+  scheduleTrackHeads();
+  if (typeof ResizeObserver !== 'undefined' && shellEl.value) {
+    headsRo = new ResizeObserver(() => layoutTrackHeads());
+    headsRo.observe(shellEl.value);
+  }
+});
+onUnmounted(() => { headsRo?.disconnect(); headsRo = null; clearTimeout(headsTimer); });
+watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
+       () => displayedExplorationBadges.value.length, () => displayedBuildingBadges.value.length,
+       () => earnedLoyaltyBadges.value.earned.length], scheduleTrackHeads);
 </script>
 
 <template>
@@ -1289,7 +1331,7 @@ const emit = defineEmits({hide: null, 'open-settings': null});
       </div>
 
       <!-- ── Three-column body (Overview tab) ────────────────── -->
-      <div v-if="activeTab === 'overview'" class="nge-profile-body">
+      <div v-if="activeTab === 'overview'" class="nge-profile-body nge-profile-body--overview">
 
         <!-- LEFT: stats + recent cells -->
         <!-- MAIN: the old left and middle columns as one area of rows, one per
@@ -4642,6 +4684,11 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 .nge-profile-modal .nge-profile-body--week { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--dstats { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1200px; align-self: center; }
+/* the Overview keeps the proportions it has at 1920 px: on a wider screen
+   (Ames 2026-10-13, a 2560 px window: "look how bad this looks on a super
+   wide screen") the rows no longer stretch, the body is capped and centred
+   in the frame like the other tabs */
+.nge-profile-modal .nge-profile-body--overview { width: 100%; max-width: 1880px; align-self: center; }
 .nge-profile-modal .nge-trophy-scroll { max-height: none; }
 
 /* ── Cells completed and Edits: the curve, then the three windows ──────────
@@ -4728,6 +4775,9 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
   grid-column: 1 / -1;
   display: flex; align-items: center;
   margin-bottom: 12px; min-width: 0;
+  /* ends above the Achievements' last tile (set by layoutTrackHeads), not
+     at the frame's edge (Ames 2026-10-13) */
+  width: var(--head-end, auto); max-width: 100%; justify-self: start; box-sizing: border-box;
 }
 .nge-track-head .nge-profile-section-label { margin: 0 10px 0 0; white-space: nowrap; color: var(--track); }
 /* the head's lines sit at about half strength so the curve below, in the
@@ -4795,7 +4845,7 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
    one line wraps to two instead. */
 .nge-profile-windows .nge-profile-stat-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(min-content, 1fr));
+  grid-template-columns: repeat(3, minmax(min-content, 210px));  /* never spread across a wide cell */
   gap: 0 16px;  /* the flex rule's gap would open 16 px between the lines */
   align-items: baseline;
 }
@@ -4885,6 +4935,12 @@ body:not(.nge-mobile) .nge-track-row--rest .nge-cell-list-scroll { flex: 1 1 0; 
    in the plain number colour until the Identification track has a colour */
 .nge-profile-stat-tile--identified .nge-profile-stat-val { color: #d8dde8; text-shadow: none; }
 .nge-track-achievements--rest .nge-profile-section--building { margin-top: 16px; }
+/* the builder's two tiles are small and sit at the left under the Scout
+   report, not stretched across the cell (Ames 2026-10-13: "make my
+   developer stats smaller so they aren't weirdly sticking out") */
+.nge-track-achievements--rest .nge-profile-section--building .nge-profile-stat-row--tiles { display: flex; flex-wrap: wrap; gap: 8px; }
+.nge-track-achievements--rest .nge-profile-section--building .nge-profile-stat-tile { flex: 0 1 auto; min-width: 136px; padding: 3px 12px; gap: 12px; }
+.nge-track-achievements--rest .nge-profile-section--building .nge-profile-stat-val--hero { font-size: 1.1em; }
 /* on laptops it is one line, the label and the two numbers side by side
    with no tiles, so the last row still fits without a scroll */
 .is-compact .nge-track-achievements--rest .nge-profile-section--building { margin-top: 4px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
