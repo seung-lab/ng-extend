@@ -24,7 +24,7 @@ function openNurroProfile() {
   document.dispatchEvent(new CustomEvent('nge:open-nurro-profile'));
 }
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
-import { LIVE_CHAT_PREFIX } from '../store';
+import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
 
@@ -806,6 +806,30 @@ function isShotLink(u: string): boolean {
 // press Join on it: the asker gets the offer and accepts or declines.
 const joinOffered = ref(new Set<string>());
 const joinNote = ref('');
+// A help request is said in chat by the game, about the player: "New help
+// request from annkri", not a line that reads as if she typed it (Ames
+// 2026-10-13: "I don't like chat posting on behalf of ppl"). The message is
+// still kept under her name, so it is found by how it starts, and that
+// start is left out of the words shown after the notice.
+const HELP_STARTS: [string, string][] = [
+  [HELP_CHAT_PREFIX, 'New help request from'], [OLD_HELP_CHAT_PREFIX, 'New help request from'], [LIVE_CHAT_PREFIX, 'Live help wanted by'],
+];
+function helpStart(msg: any): [string, string] | null {
+  if (msg?.type !== 'message' || msg.rank === 'bot') return null;
+  const first = (msg.parts || []).find((p: any) => p.type !== 'sender');
+  const text = typeof first?.text === 'string' ? first.text.trimStart() : '';
+  return HELP_STARTS.find(([start]) => text.startsWith(start)) ?? null;
+}
+/** "New help request from" (or the live wording), or '' for an ordinary message. */
+const helpLead = (msg: any) => helpStart(msg)?.[1] ?? '';
+/** A part's words, without the start that marks a help request. */
+function partText(msg: any, part: any): string {
+  const start = helpStart(msg);
+  if (!start) return part.text;
+  const first = (msg.parts || []).find((p: any) => p.type !== 'sender');
+  if (part !== first) return part.text;
+  return String(part.text).trimStart().slice(start[0].length).replace(/^\s+/, ' ');
+}
 function isHelpAsk(msg: any): boolean {
   if (msg?.type !== 'message' || !msg.userId || msg.userId === backendStore.userId) return false;
   if (teamAccess() === false) return false;
@@ -1338,7 +1362,7 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery }"
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery, 'nge-chat-msg--help': !!helpLead(msg) }"
                      @click="onMessageClick(msg, $event)"
                      :data-msg-id="msg.id != null ? String(msg.id) : undefined"
                      :title="msg.private ? 'Only you can see this' : undefined">
@@ -1354,8 +1378,11 @@ function toggleCollapse() {
                           @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
                   <span v-else-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
                         :title="'nkem_test: the original EyeWire chat bot, by @nkem (2013). Say \'for science\' and it answers.'">nkem_test<span class="nge-chat-bot-tag">bot</span></span>
-                  <span v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: nameColor(msg) }"
-                        @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
+                  <template v-else>
+                    <span v-if="helpLead(msg)" class="nge-chat-help-lead">{{ helpLead(msg) }}</span>
+                    <span class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: nameColor(msg) }"
+                          @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
+                  </template>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip" :href="part.text" target="_blank" rel="noopener"
@@ -1389,7 +1416,7 @@ function toggleCollapse() {
                         :title="'Copy ' + part.text.slice(1)"
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
                     <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' && msg.name !== 'Nurro' }"><template
-                      v-for="(piece, ri) in richPieces(part.text)" :key="ri"><b v-if="piece.bold" class="nge-chat-b" :class="{ 'nge-chat-u': piece.underline }">{{ piece.text }}</b><u
+                      v-for="(piece, ri) in richPieces(partText(msg, part))" :key="ri"><b v-if="piece.bold" class="nge-chat-b" :class="{ 'nge-chat-u': piece.underline }">{{ piece.text }}</b><u
                       v-else-if="piece.underline" class="nge-chat-u">{{ piece.text }}</u><template v-else>{{ piece.text }}</template></template></span>
                   </template>
                   <button v-if="isHelpAsk(msg)" type="button" class="nge-chat-view-chip nge-chat-join-chip" :disabled="joinOffered.has(joinKey(msg))"
@@ -1840,6 +1867,9 @@ function toggleCollapse() {
 /* Your own messages: a bar on the left edge, drawn inside the row so nothing
    moves (Krzysztof 2026-10-09). */
 .nge-chat-msg--mine { box-shadow: inset 2px 0 0 rgba(124, 200, 255, 0.85); }
+/* A help request: a notice from the game, with the player named in it. */
+.nge-chat-help-lead { margin-right: 4px; font-weight: 600; color: #ffc98a; }
+.nge-chat-msg--help { background: rgba(255, 180, 90, 0.06); border-radius: 4px; }
 /* Room between that bar and the words (Ames 2026-10-11: "too close to the
    text"). Every message gets it, so yours and everyone else's still line up. */
 .nge-chat-msg { padding-left: 11px; }

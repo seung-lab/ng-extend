@@ -1485,8 +1485,11 @@ export const LIVE_HELP = 'Live help';
 /** How each kind reads in chat. Both carry the Open view button; only the
  *  live one carries Join (ChatPanel), so the usual way to help is to open
  *  the view, look, and answer in chat. */
-export const HELP_CHAT_PREFIX = '🆘 Help requested';
+export const HELP_CHAT_PREFIX = 'New help request';
 export const LIVE_CHAT_PREFIX = '🤝 Live help wanted';
+/** How a help request was worded in chat until 2026-10-13 (Ames: no SOS
+ *  emoji). Messages already in chat still start with it. */
+export const OLD_HELP_CHAT_PREFIX = '🆘 Help requested';
 export function isLiveHelp(req: { issueType?: string | null } | null | undefined): boolean {
   return !!req && typeof req.issueType === 'string' && req.issueType.startsWith(LIVE_HELP);
 }
