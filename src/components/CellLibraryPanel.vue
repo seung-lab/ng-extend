@@ -2558,6 +2558,11 @@ const panelStyle = computed(() => ({
               <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'" title="Every cell in this dataset">
                 All <b>{{ datasetScopedCells.length }}</b>
               </button>
+              <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
+              <button v-if="questsHere && tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
+                      title="Annotation quests: mark the cilia on a starburst amacrine cell, without completing it">
+                Quests
+              </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
               </button>
@@ -2573,10 +2578,6 @@ const panelStyle = computed(() => ({
               <button v-if="teamsHere && tabShown('teams')" :class="{ active: filter === 'teams', 'nge-cl-teams-tab': true }" @click="filter = 'teams'"
                       title="Two to four players on one cell, each working when they can">
                 Teams <b v-if="teamInvites">{{ teamInvites }}</b>
-              </button>
-              <button v-if="questsHere && tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
-                      title="Annotation quests: mark every cilium on a starburst amacrine cell, without completing it">
-                Quests
               </button>
               <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'"
                       title="Scout tags: spots someone flagged to cut or extend">

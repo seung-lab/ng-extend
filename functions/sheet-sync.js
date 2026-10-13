@@ -93,24 +93,34 @@ async function questTab(api,quest) {
   if(!sheet) throw new Error('Quest sheet tab missing');
   return sheet.properties.title;
 }
-const listCache=new Map();
+const listCache=new Map(), tabCache=new Map();
 /** Every row of the quest tab, read whole (a quest tab is a few hundred rows,
- *  columns A to Q) and kept for a minute, so a panel opening twice reads once. */
+ *  columns A to Q). Kept for five minutes (Ames 2026-10-13: the list took a
+ *  while), and dropped by every write from this function, which is the only
+ *  writer the game has (one instance, so the cache is the whole picture). The
+ *  tab's title is kept for an hour: finding it is a second round trip. */
 async function questList(questKey,credential,api=(path,init)=>sheetsApi(credential,path,init)) {
   const quest=QUESTS[questKey];
   const hit=listCache.get(questKey);
   if(hit && hit.expires>Date.now()) return hit.rows;
-  const title=await questTab(api,quest);
+  const title=await questTabCached(api,questKey,quest);
   const q="'"+title.replace(/'/g,"''")+"'";
   const grid=(await api(quest.id+'/values/'+encodeURIComponent(q+'!A1:Q2000')+'?valueRenderOption=FORMATTED_VALUE')).values||[];
   const rows=questRows(grid);
-  listCache.set(questKey,{rows,expires:Date.now()+60000});
+  listCache.set(questKey,{rows,expires:Date.now()+300000});
   return rows;
+}
+async function questTabCached(api,questKey,quest) {
+  const hit=tabCache.get(questKey);
+  if(hit && hit.expires>Date.now()) return hit.title;
+  const title=await questTab(api,quest);
+  tabCache.set(questKey,{title,expires:Date.now()+3600000});
+  return title;
 }
 async function syncQuest(input,me,credential,api=(path,init)=>sheetsApi(credential,path,init)) {
   const quest=QUESTS[input.quest];
   const today=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric'}).format(new Date());
-  const title=await questTab(api,quest);
+  const title=await questTabCached(api,input.quest,quest);
   const grid=await readRowsForMatch(api,quest.id,title,false,String(input.segmentId));
   const plan=planQuestUpdate(grid,title,quest,input,me,today);
   if(plan.data.length) await api(quest.id+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data:plan.data})});

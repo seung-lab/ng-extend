@@ -285,10 +285,17 @@ on `claude/annotation-quests`, not deployed.
   `quest_submit`. The dropdown lists are copied character for character; the
   server refuses anything else.
 - **Client:** `src/annotation_quests.ts` (the calls and the same lists),
-  `src/components/AnnotationQuestsTab.vue`, a Quests tab in the Cell Library
-  (`questsHere`: retina only). Take writes the name and opens the Start Link
-  in place; Submit mints a share link of the view (`mintShortStateLink`) and
-  sends status, split or merged, notes and the link.
+  `src/components/AnnotationQuestsTab.vue`, a Quests tab in the Cell Library's
+  Cells row (`questsHere`: retina only). Claim writes the name and opens the
+  Start Link in place (the lab's own annotation layers come with it, one per
+  part of a cilium, typo "Daugther" included); ↗ shows only that cell at its
+  soma; Submit needs the crosshairs inside the cell (`cellAtCrosshair`, with
+  `ancestorAmong` for a cell edited since the sheet was made), takes the
+  status from a dropdown, mints a share link of the view
+  (`mintShortStateLink`) and sends status, split or merged, notes and the
+  link. "Submitted by you" counts the sheet rows with the player's name and a
+  status (Ames 2026-10-13 asked for a count; the profile does not have one,
+  that needs a record in the game's own tables).
 - **To go live, in this order:** (1) Ames shares the sheet with the Sheets
   identity `eyewire-ii-spreadsheet@eyewire-ii.iam.gserviceaccount.com` as an
   editor (it is not on the sheet as of 2026-10-12, so reads and writes fail);

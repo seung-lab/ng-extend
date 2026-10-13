@@ -54,6 +54,9 @@ const RETINA_LAYERS = [
   // The segmentation server would answer the fake token with 401, and one 401
   // makes the middleauth provider wait for a login for good. Keep it out of reach.
   await context.route(/minnie\.microns-daf\.com\/(segmentation|meshing|info)/, r => r.abort());
+  // The crosshair check asks the chunked graph for the root of the supervoxel
+  // under the crosshairs: answer with the quest cell's own ID.
+  await context.route(/minnie\.microns-daf\.com\/segmentation\/api\/v1\/table\/[^/]+\/node\/\d+\/root/, r => r.fulfill(json({ root_id: '720575940561794892', root: '720575940561794892' })));
   // The provider checks a stored token against the login server's user/me.
   await context.route(/sticky_auth\/api\/v1\/user\/me|\/auth\/api\/v1\/user\/cache/, r => r.fulfill(json({ id: 1, email: 't@example.org', name: 'Test Player' })));
   await context.route(/daf-apis\.com\/auth\/api\/v1\/user\/me|microns-daf\.com\/auth\/api\/v1\/user\/me/, r => r.fulfill(json({ email: 't@example.org', name: 'Test Player' })));
@@ -133,7 +136,12 @@ const RETINA_LAYERS = [
     console.log('tab text: ' + JSON.stringify((await tabText()).slice(0, 700)));
     await shot('quests-list');
 
-    // Take the first open cell.
+    // Jump: only that cell stays visible, and the view goes to its soma.
+    await page.evaluate(() => { try { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina').layer.displayState.segmentationGroupState.value; g.visibleSegments.clear(); for (const id of ['1111', '2222', '3333']) g.visibleSegments.add(id); } catch (e) {} });
+    await page.click('.nge-aq-row .nge-aq-btn--jump >> nth=0');
+    await page.waitForTimeout(400);
+    console.log('after jump: ' + await page.evaluate(() => { try { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina').layer.displayState.segmentationGroupState.value; return JSON.stringify({ visible: [...g.visibleSegments].map(String), position: [...window.viewer.navigationState.position.value].map(Math.round) }); } catch (e) { return String(e); } }));
+    // Claim the first open cell.
     await page.click('.nge-aq-btn--take >> nth=0');
     await page.waitForTimeout(2500);
     console.log('after take, hash: ' + await page.evaluate(() => location.hash.slice(0, 90)));
@@ -154,17 +162,22 @@ const RETINA_LAYERS = [
         return src.toJSON().length;
       } catch (e) { return String(e); }
     }));
+    // The segmentation never loads here (no sign in), so stand in for the value
+    // under the crosshairs: a supervoxel of the quest cell.
+    await page.evaluate(() => { const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina'); ml.layer.getValueAt = () => '123456789'; });
     // Submit it.
     await page.click('.nge-aq-row--mine .nge-aq-btn--submit');
     await page.waitForSelector('.nge-aq-form', { timeout: 5000 });
-    const pills = await page.evaluate(() => [...document.querySelectorAll('.nge-aq-form .nge-aq-pill')].map(b => b.textContent.trim()));
-    console.log('pills: ' + JSON.stringify(pills));
-    await page.click('.nge-aq-pill:has-text("No cilium (one centriole)")');
+    const options = await page.evaluate(() => [...document.querySelectorAll('.nge-aq-form select option')].map(o => o.textContent.trim()));
+    console.log('status options: ' + JSON.stringify(options));
+    console.log('pills: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-aq-form .nge-aq-pill')].map(b => b.textContent.trim()))));
+    await page.selectOption('.nge-aq-form select', 'No cilium (one centriole)');
     await page.click('.nge-aq-pill:has-text("Split")');
     await page.fill('.nge-aq-notes', 'one centriole, the other side is cut off');
     await page.click('.nge-aq-recheck');
-    await page.waitForTimeout(200);
-    console.log('form msg: ' + JSON.stringify(await page.evaluate(() => document.querySelector('.nge-aq-form-msg').innerText)));
+    await page.waitForTimeout(1200);
+    console.log('form msgs: ' + JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.nge-aq-form-msg')].map(m => m.innerText))));
+    console.log('send enabled: ' + await page.evaluate(() => !document.querySelector('.nge-aq-btn--send').disabled));
     await shot('quests-form');
     const logAll = m => console.log('  send-console[' + m.type() + '] ' + m.text().slice(0, 200));
     page.on('console', logAll);
