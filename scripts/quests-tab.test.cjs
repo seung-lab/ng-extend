@@ -30,6 +30,9 @@ const RETINA_LAYERS = [
   { type: 'image', source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2', name: 'em' },
   { type: 'segmentation', source: { url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/stroeh_mouse_retina', subsources: { default: true, mesh: true, graph: true }, enableDefaultSubsources: true }, name: 'stroeh_mouse_retina', segments: ['720575940561794892'] },
   { type: 'annotation', source: 'local://annotations', name: 'cilia', annotations: [{ type: 'point', id: 'a', point: [37100, 16600, 1970] }, { type: 'point', id: 'b', point: [37200, 16700, 1975] }] },
+  // The lab's own layers, as its Start Links carry them (its spelling).
+  { type: 'annotation', source: 'local://annotations', name: 'Daugther centriole', annotations: [], annotationColor: '#ff0000' },
+  { type: 'annotation', source: 'local://annotations', name: 'Basal body', annotations: [], annotationColor: '#ffff00' },
 ];
 
 (async () => {
@@ -144,9 +147,13 @@ const RETINA_LAYERS = [
     console.log('current row after jump: ' + await page.evaluate(() => [...document.querySelectorAll('.nge-aq-row--current .nge-aq-row-name')].map(e => e.textContent.trim())));
     console.log('after jump: ' + await page.evaluate(() => { try { const g = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina').layer.displayState.segmentationGroupState.value; return JSON.stringify({ visible: [...g.visibleSegments].map(String), position: [...window.viewer.navigationState.position.value].map(Math.round) }); } catch (e) { return String(e); } }));
     // Claim the first open cell.
+    const questLogs = [];
+    page.on('console', m => { if (/\[quests\]/.test(m.text())) questLogs.push(m.type() + ': ' + m.text().slice(0, 240)); });
     await page.click('.nge-aq-btn--take >> nth=0');
-    await page.waitForTimeout(2500);
+    for (const t of [500, 1500, 3000, 6000]) { await page.waitForTimeout(t === 500 ? 500 : t === 1500 ? 1000 : t === 3000 ? 1500 : 3000); console.log('  layers at ' + t + 'ms: ' + await page.evaluate(() => window.viewer.layerManager.managedLayers.map(l => l.name + (l.layer && l.layer.type === 'annotation' ? '(' + [...l.layer.annotationDisplayState.color.value].map(v => Math.round(v * 255)).join(',') + ')' : '')).join(' | '))); }
+    console.log('quest logs: ' + JSON.stringify(questLogs));
     console.log('after take, hash: ' + await page.evaluate(() => location.hash.slice(0, 90)));
+    console.log('after take, layer colours: ' + await page.evaluate(() => { try { return JSON.stringify(window.viewer.layerManager.managedLayers.filter(l => l.layer && l.layer.type === 'annotation').map(l => ({ name: l.name, color: [...l.layer.annotationDisplayState.color.value].map(v => Math.round(v * 255)), tool: l.layer.tool && l.layer.tool.value ? String(l.layer.tool.value.toJSON ? l.layer.tool.value.toJSON() : l.layer.tool.value) : '' }))); } catch (e) { return String(e); } }));
     console.log('after take, layers: ' + await page.evaluate(() => { try { return window.viewer.layerManager.managedLayers.map(l => l.name).join(','); } catch (e) { return String(e); } }));
     console.log('after take, status bar: ' + JSON.stringify((await statusText()).slice(0, 300)));
     console.log('after take, layer json: ' + await page.evaluate(() => { try { return JSON.stringify(window.viewer.state.toJSON().layers.map(l => ({ type: l.type, name: l.name, n: Array.isArray(l.annotations) ? l.annotations.length : null, keys: Object.keys(l) }))); } catch (e) { return String(e); } }));

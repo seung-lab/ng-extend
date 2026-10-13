@@ -310,6 +310,21 @@ on `claude/annotation-quests`, not deployed.
   The tab shows on every dataset; off Retina it says where quests are and
   offers `switchToDataset` (the standard switch, which may open the dataset's
   intro for a first visit).
+- **The lab's layers:** after Claim or Open, `dressQuestLayers` waits for the
+  Start Link's own annotation layers (the state load REPLACES every layer with
+  a fresh instance, so anything done to the layers on screen at click time is
+  undone a moment later; it waits for lab layers that were not there before
+  the link was opened), colours them (basal body amber, daughter centriole
+  cyan) and adds a "Cilium centerline" line layer (green) when the view has
+  none. Nothing of the lab's is removed or renamed.
+- **Server code on a branch gets wiped.** On 2026-10-13 another session's
+  `firebase deploy` from the live branch replaced `ewSheetSync` with code
+  that had no quest branch, and the tab said "This dataset has no registered
+  source sheet" for Ames mid test. Firebase serves whatever checkout last ran
+  the deploy, so a function changed on an unmerged branch is live only until
+  the next deploy from anywhere else. Merge `functions/` to the live branch
+  (`[no player change]`) before or right after deploying it, even while the
+  UI that uses it stays on the branch.
 - **To go live, in this order:** (1) Ames shares the sheet with the Sheets
   identity `eyewire-ii-spreadsheet@eyewire-ii.iam.gserviceaccount.com` as an
   editor (it is not on the sheet as of 2026-10-12, so reads and writes fail);

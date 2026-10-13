@@ -11,7 +11,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
-import { QUEST_TITLE, QUEST_STATUSES, QUEST_SPLIT_MERGED, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, nameKey, type QuestRow } from '../annotation_quests';
+import { QUEST_TITLE, QUEST_STATUSES, QUEST_SPLIT_MERGED, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import { mintShortStateLink } from '../util/state_link';
 import { currentSegLayer } from '../datasets';
@@ -63,7 +63,10 @@ function label(r: QuestRow) {
 }
 function openCell(r: QuestRow) {
   current.value = r.segmentId;
-  if (!openStartLink(r.startLink)) error.value = 'This cell has no start link in the sheet.';
+  const before = layerSnapshot();
+  if (!openStartLink(r.startLink)) { error.value = 'This cell has no start link in the sheet.'; return; }
+  // Once the link's own layers are in: the game's colours, plus the centerline layer.
+  void dressQuestLayers(before);
 }
 /** Show only this cell and go to its soma (Ames 2026-10-13: "hide other
  *  segIDs in view and show only that one"). The layers stay as they are;

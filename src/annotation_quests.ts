@@ -11,6 +11,8 @@
  * the game's tables, stats or Achievements.
  */
 import { functionUrl } from './functions_base';
+import { makeLayer } from 'neuroglancer/layer';
+import { parseRGBColorSpecification } from 'neuroglancer/util/color';
 
 export const QUEST_KEY = 'retina_cilia';
 export const QUEST_DATASET = 'stroeh_mouse_retina';
@@ -72,6 +74,63 @@ export async function claimQuest(segmentId: string) { return call('quest_claim',
 export async function releaseQuest(segmentId: string) { return call('quest_release', { segmentId }); }
 export async function submitQuest(segmentId: string, done: { status: string; splitMerged: string; link: string; notes: string }) {
   return call('quest_submit', { segmentId, ...done });
+}
+
+/**
+ * The lab's Start Link opens with its own annotation layers (Basal body,
+ * Daugther centriole, the lab's spelling). Once the state is in, the layers
+ * get the game's colours, and a line layer for the cilium's centerline is
+ * added when the view has none (Ames 2026-10-13: "we need the cilium
+ * centerline annotation layer added as well, and nicer colours"). Nothing of
+ * the lab's is removed or renamed; a share link carries the colours along.
+ */
+export const QUEST_LAYER_COLORS: { match: RegExp; color: string }[] = [
+  { match: /basal/i, color: '#ffd24d' },                 // amber, as somas are
+  { match: /centriole/i, color: '#7ee0ff' },             // cyan
+  { match: /cent(er|re)line|cilium/i, color: '#7cffb2' }, // green, as Highlight is
+];
+export const CENTERLINE_LAYER = 'Cilium centerline';
+/** The layers in the view right now, to tell the Start Link's fresh ones
+ *  from what was there before it loaded (see dressQuestLayers). */
+export function layerSnapshot(): Set<any> {
+  try { return new Set((window as any)['viewer']?.layerManager?.managedLayers ?? []); } catch { return new Set(); }
+}
+export async function dressQuestLayers(before?: Set<any>): Promise<{ colored: string[]; added: boolean }> {
+  const out = { colored: [] as string[], added: false };
+  const viewer: any = (window as any)['viewer'];
+  if (!viewer?.layerManager) return out;
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const layers = (): any[] => viewer.layerManager.managedLayers ?? [];
+  const isAnnotation = (ml: any) => ml?.layer?.type === 'annotation' || ml?.layer?.constructor?.type === 'annotation';
+  const lab = () => layers().filter(ml => isAnnotation(ml) && /basal|centriole/i.test(ml.name));
+  // The Start Link's state loads in the background and REPLACES every layer
+  // with a fresh one, so colouring what is on screen at the moment of the
+  // click is undone a moment later. Wait for lab layers that were not there
+  // before the link was opened (or, when the view already had this very
+  // state, give up waiting after six seconds and dress what is there).
+  const fresh = () => { const f = lab(); return f.length > 0 && (!before || f.some(ml => !before.has(ml))); };
+  for (let i = 0; i < 60 && !fresh(); i++) await sleep(100);
+  await sleep(300);  // the restore makes its layers in one go; let it finish
+  console.info('[quests] dressing layers:', layers().map(ml => `${ml.name}:${ml.layer?.type ?? ml.layer?.constructor?.type ?? '?'}`).join(', '), lab().length ? '' : '(no lab layers found)');
+  if (!lab().length) return out;
+  for (const ml of layers()) {
+    if (!isAnnotation(ml)) continue;
+    const rule = QUEST_LAYER_COLORS.find(q => q.match.test(ml.name));
+    if (!rule) continue;
+    try { ml.layer.annotationDisplayState.color.value = parseRGBColorSpecification(rule.color); out.colored.push(ml.name); }
+    catch (e) { console.warn('[quests] could not colour layer', ml.name, e); }
+  }
+  if (!layers().some(ml => isAnnotation(ml) && /cent(er|re)line/i.test(ml.name))) {
+    try {
+      const managed = makeLayer(viewer.layerSpecification, CENTERLINE_LAYER, {
+        type: 'annotation', source: 'local://annotations', annotations: [],
+        annotationColor: '#7cffb2', tool: 'annotateLine',
+      });
+      viewer.layerSpecification.add(managed);
+      out.added = true;
+    } catch (e) { console.warn('[quests] could not add the centerline layer:', e); }
+  }
+  return out;
 }
 
 /** Annotation points in the view right now: the local annotation layers'
