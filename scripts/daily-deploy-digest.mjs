@@ -7,18 +7,28 @@
  *
  * Source of truth is the LIVE site's changelog (static/changelog.json as
  * served), so an entry counts only once it is actually deployed; the CHANGELOG
- * RULE in README.md keeps those entries in player words. The body opens with
- * a TLDR, a short summary of those entries written by Claude (ANTHROPIC_API_KEY)
- * and checked against the house rules, then each entry with its items for the
- * players who want the detail; without a key, or if the model's text breaks a
- * rule twice, the TLDR is the list of titles.
+ * RULE in README.md keeps those entries in player words. The notification is
+ * SHORT whatever the day was like (Ames, 2026-10-11, of a day with 23 entries
+ * that listed all 23 in full: "outrageously long, even the TLDR is too long
+ * for me to read"). It is a TLDR of one or two sentences, then at most five
+ * highlights of one sentence each, written by Claude (ANTHROPIC_API_KEY) and
+ * checked against the house rules. Without a key, or if the model's text
+ * breaks a rule twice, it is one line: how many updates went live and the
+ * names of three of them. It never lists every entry.
+ *
+ * An entry can say how it should be treated here, with an optional "digest"
+ * field (Ames, 2026-10-11): "headline" is always in the note, "minor" is never
+ * in it (it still counts in the day's total). Unmarked entries are left to the
+ * model's judgment.
  *
  * Runs from .github/workflows/daily-deploy-digest.yml every day at 4:30 pm
  * Eastern (Ames, 2026-10-10): the workflow fires at both UTC times that can be
  * 4:30 pm Eastern and DIGEST_LOCAL_TIME=16:30 makes the wrong one exit quietly.
  * By hand:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/daily-deploy-digest.mjs [--dry-run]
- * --dry-run prints the notification instead of sending it (no Supabase needed).
+ * --dry-run prints the notification instead of sending it (no Supabase needed),
+ * and looks at the last 24 hours whatever was already sent, so it has something
+ * to show on a day whose digest has gone out.
  * --preview sends it only to the admins (one copy each, titled "(preview)", no
  * chat line) so the look can be checked without telling every player; a
  * preview never counts as a digest for the daily window.
@@ -99,27 +109,33 @@ async function lastDigestSentAt() {
 // House rules for anything a player reads (README: CHANGELOG-RULE, and the
 // game's own copy rules): the game is Pyr, no dashes, "Achievement", plain
 // words, nothing invented.
+const MAX_HIGHLIGHTS = 5;
 const SUMMARY_SYSTEM = [
-  'You write a short note for players of Pyr, a citizen science game where people trace neurons in',
+  'You write a short daily note for players of Pyr, a citizen science game where people trace neurons in',
   'electron microscope images. You are given the entries of today\'s changelog as JSON, in the order they',
-  'went live. Write what changed today in plain words a player understands.',
-  'Cover EVERY major change of the day, not one of them. A major change is something a player can now do',
-  'that they could not do before: a new mode, a new tool, a new button or shortcut that does something new,',
-  'a new dataset. Name each one and say in a few words what it does. The order of the entries says nothing',
-  'about importance: the last entry is not the headline, and an entry from the morning matters as much as',
-  'one from the evening. When several entries are about the same feature, treat them as one. Fixes and',
-  'small polish get one short closing clause together, or nothing.',
-  'Two to four sentences, at most 90 words.',
+  'went live. Players will not read a long note, so it must be short however many entries there are.',
+  'Reply with JSON only, in this shape: {"tldr": "...", "highlights": [{"title": "...", "text": "..."}]}.',
+  'tldr: one or two sentences, at most 40 words, naming the two or three biggest changes of the day.',
+  `highlights: at most ${MAX_HIGHLIGHTS}, the biggest first. Each has a title of at most five words and a text of one`,
+  'sentence, at most 25 words, saying what a player can now do. When several entries are about the same',
+  'feature, they are ONE highlight. Leave small fixes and polish out, or put them together in one last',
+  'highlight. On a day with one or two small entries, the highlights may be an empty list.',
+  'A big change is something a player can now do that they could not do before: a new mode, a new tool, a',
+  'new button or shortcut, a new Achievement, a new dataset. The order of the entries says nothing about',
+  'importance: an entry from the morning matters as much as one from the evening.',
+  'An entry marked "headline": true was picked by the game\'s maker as one players must hear about: it',
+  'MUST be named in the tldr and have a highlight (headlines about the same feature may share one).',
+  // Ames 2026-10-12, of Hemibrain: "in the headline, it just shouldn't be first".
+  'An entry marked "not_first": true is still named, but it never opens the tldr and it is never the',
+  'first highlight when there is anything else to say that day.',
   'Rules: call the game Pyr, never EyeWire; say Achievement, never badge; use no dashes of any',
   'kind (no hyphens between words, no en or em dashes), write commas and periods instead; no emoji, no',
-  'exclamation marks, no headings, no bullet points, no file names or code words; do not mention the date;',
-  'do not invent anything that is not in the entries; do not list every item. Reply with the note only.',
+  'exclamation marks, no file names or code words; do not mention the date; do not invent anything that',
+  'is not in the entries. No markdown and no code fence round the JSON.',
 ].join(' ');
 
 function houseStyleProblems(text) {
   const problems = [];
-  if (!text || text.length < 20) problems.push('it is empty or too short');
-  if (text.length > 800) problems.push('it is too long');
   if (/[\u2013\u2014]/.test(text) || /\s-\s/.test(text) || /\w-\w/.test(text)) problems.push('it contains a dash');
   if (/badge/i.test(text)) problems.push('it says badge instead of Achievement');
   if (/eyewire/i.test(text)) problems.push('it says EyeWire instead of Pyr');
@@ -165,7 +181,11 @@ async function askClaude(messages) {
     },
     body: JSON.stringify({
       model: SUMMARY_MODEL,
-      max_tokens: 500,
+      // Room for the thinking as well as the note. At 500 a day with 23
+      // entries spent the whole allowance thinking and the note came back
+      // EMPTY, twice, which is how every title ended up in the TLDR
+      // (2026-10-11).
+      max_tokens: 6000,
       // Weighing a day's entries against each other is a judgment: at low effort
       // the note simply echoed the last entry.
       output_config: { effort: 'medium' },
@@ -177,28 +197,62 @@ async function askClaude(messages) {
   if (!res.ok) throw new Error(`claude ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
   if (data.stop_reason === 'refusal') throw new Error('claude declined');
-  return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  if (!text) throw new Error(`claude returned no text (stop reason ${data.stop_reason})`);
+  return text;
 }
 
-/** A short summary of the entries in player words, or null when it cannot be had. */
+const wordCount = text => (String(text).trim().match(/\S+/g) ?? []).length;
+
+/** The model's reply as { tldr, highlights }, or a list of what is wrong with it. */
+function readNote(reply, entries) {
+  let note;
+  try {
+    note = JSON.parse(reply.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+  } catch { return { problems: ['it is not JSON in the shape asked for'] }; }
+  const tldr = typeof note?.tldr === 'string' ? note.tldr.trim() : '';
+  const highlights = (Array.isArray(note?.highlights) ? note.highlights : [])
+      .map(h => ({ title: String(h?.title ?? '').trim().replace(/[.:]+$/, ''), text: String(h?.text ?? '').trim() }))
+      .filter(h => h.title && h.text);
+  const problems = [];
+  if (tldr.length < 20) problems.push('the tldr is empty or too short');
+  if (wordCount(tldr) > 55) problems.push(`the tldr is ${wordCount(tldr)} words; at most 40`);
+  if (highlights.length > MAX_HIGHLIGHTS) problems.push(`there are ${highlights.length} highlights; at most ${MAX_HIGHLIGHTS}`);
+  for (const h of highlights) {
+    if (wordCount(h.title) > 7) problems.push(`the highlight title "${h.title}" is too long; at most five words`);
+    if (wordCount(h.text) > 34) problems.push(`the highlight "${h.title}" is ${wordCount(h.text)} words; at most 25`);
+  }
+  const all = [tldr, ...highlights.flatMap(h => [h.title, h.text])].join('\n');
+  problems.push(...houseStyleProblems(all), ...coverageProblems(all, entries));
+  // Every headline is in the note.
+  for (const e of entries.filter(isHeadline)) {
+    if (entriesTouched(all, [e]) === 0) problems.push(`it leaves out the headline "${e.title}", which must be named`);
+  }
+  return problems.length ? { problems } : { tldr, highlights };
+}
+
+const isHeadline = e => e.digest === 'headline';
+const isMinor = e => e.digest === 'minor';
+
+/** The day in a few lines, in player words, or null when it cannot be had. */
 async function writeSummary(entries) {
-  if (!ANTHROPIC_API_KEY) { console.log('[digest] no ANTHROPIC_API_KEY; using the plain list'); return null; }
-  const input = JSON.stringify(entries.map(e => ({ title: e.title, items: e.items })), null, 1);
+  if (!ANTHROPIC_API_KEY) { console.log('[digest] no ANTHROPIC_API_KEY; using the one line fallback'); return null; }
+  const input = JSON.stringify(entries.map(e => ({ title: e.title, items: e.items, ...(isHeadline(e) ? { headline: true } : {}), ...(e.lead === false ? { not_first: true } : {}) })), null, 1);
   const messages = [{ role: 'user', content: `Today's changelog entries:\n${input}` }];
   try {
-    let text = await askClaude(messages);
-    let problems = [...houseStyleProblems(text), ...coverageProblems(text, entries)];
-    if (problems.length) {
-      console.log(`[digest] summary broke a rule (${problems.join('; ')}); asking once more`);
-      messages.push({ role: 'assistant', content: text });
-      messages.push({ role: 'user', content: `Rewrite it: ${problems.join('; ')}. Reply with the note only.` });
-      text = await askClaude(messages);
-      problems = [...houseStyleProblems(text), ...coverageProblems(text, entries)];
-      if (problems.length) { console.log(`[digest] still ${problems.join('; ')}; using the plain list`); return null; }
+    let reply = await askClaude(messages);
+    let note = readNote(reply, entries);
+    if (note.problems) {
+      console.log(`[digest] summary broke a rule (${note.problems.join('; ')}); asking once more`);
+      messages.push({ role: 'assistant', content: reply });
+      messages.push({ role: 'user', content: `Rewrite it: ${note.problems.join('; ')}. Reply with the JSON only.` });
+      reply = await askClaude(messages);
+      note = readNote(reply, entries);
+      if (note.problems) { console.log(`[digest] still ${note.problems.join('; ')}; using the one line fallback`); return null; }
     }
-    return text;
+    return note;
   } catch (err) {
-    console.log(`[digest] summary unavailable (${err.message}); using the plain list`);
+    console.log(`[digest] summary unavailable (${err.message}); using the one line fallback`);
     return null;
   }
 }
@@ -213,12 +267,25 @@ function buildBody(entries, sinceMs, nowMs, summary) {
   if (nowMs - sinceMs > 30 * 60 * 60 * 1000) {
     parts.push(`Since the last update on ${easternDay(new Date(sinceMs))}:`);
   }
-  const titles = entries.map(e => e.title);
-  parts.push(`**TLDR:** ${summary || `${joinNaturally(titles)}.`}`);
-  // The detail, for the players who want it: each entry as the changelog has it.
-  for (const e of entries) {
-    parts.push(`**${e.title}**\n` + e.items.map(i => `• ${i}`).join('\n'));
+  const n = entries.length;
+  const told = entries.filter(e => !isMinor(e));
+  if (told.length === 0) {
+    // Nothing but entries marked minor.
+    parts.push(`**TLDR:** ${n === 1 ? 'One small fix' : `${n} small fixes`} went live in Pyr today.`);
+    return parts.join('\n\n');
   }
+  if (!summary) {
+    // No note to be had: one line, never the whole list. Headlines first, then the newest.
+    const newestFirst = [...told].reverse();
+    const some = [...newestFirst.filter(isHeadline), ...newestFirst.filter(e => !isHeadline(e))].slice(0, 3).map(e => e.title);
+    parts.push(n <= 3
+      ? `**TLDR:** ${joinNaturally(told.map(e => e.title))}.`
+      : `**TLDR:** ${n} updates went live in Pyr today. Among them: ${some.join('; ')}.`);
+    return parts.join('\n\n');
+  }
+  parts.push(`**TLDR:** ${summary.tldr}`);
+  for (const h of summary.highlights) parts.push(`**${h.title}:** ${h.text}`);
+  if (n > Math.max(3, summary.highlights.length)) parts.push(`${n} updates went live in all.`);
   return parts.join('\n\n');
 }
 
@@ -239,7 +306,8 @@ function easternMinutes(d) {
       return;
     }
   }
-  const last = await lastDigestSentAt();
+  // A dry run is for looking: it takes the last 24 hours whatever has been sent.
+  const last = dryRun ? null : await lastDigestSentAt();
   const sinceMs = Math.max(last ?? (nowMs - DAY_MS), nowMs - MAX_LOOKBACK_MS);
   console.log(`[digest] window ${new Date(sinceMs).toISOString()} to ${now.toISOString()}` +
       (last ? ' (since the last digest)' : ' (no earlier digest found: the last 24 hours)'));
@@ -253,14 +321,16 @@ function easternMinutes(d) {
   }
 
   const title = `${DIGEST_TAG}: ${easternDay(now)}`;
-  const summary = await writeSummary(entries);
+  // Entries marked minor are never in the note; they still count in the total.
+  const told = entries.filter(e => !isMinor(e));
+  const summary = told.length ? await writeSummary(told) : null;
   const body = buildBody(entries, sinceMs, nowMs, summary);
   const row = {
     title, body, target_type: 'all', send_at: now.toISOString(), post_to_chat: postToChat,
     thumbnail_url: THUMBNAIL_URL, image_url: IMAGE_URL,
   };
   console.log(`[digest] ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}: ` +
-      entries.map(e => `"${e.title}" (${e.at})`).join(', '));
+      entries.map(e => `"${e.title}" (${e.at}${e.digest ? `, ${e.digest}` : ''})`).join(', '));
 
   if (dryRun) {
     console.log('[digest] DRY RUN, would send:\n' + JSON.stringify(row, null, 2));

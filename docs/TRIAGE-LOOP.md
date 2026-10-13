@@ -199,6 +199,29 @@ Amy is tagged.
   403 in the function logs means it is not approved yet). Until then the
   bridge's 45 s passes keep replies within about a minute.
 
+## Asking the submitter for a reply
+
+Added 2026-10-13. "Update submitter" on a card has a tick box, "Ask for a
+reply". Ticked, the note goes out through the `ewReportReply` function
+(`functions/report-reply.js`) tied to the card, and the submitter, and only
+they, gets a reply box under it: one reply, text only. To hear more, ask
+again. Needs `supabase-report-replies.sql`; until that is run a ticked send is
+refused with a message and nothing is sent.
+
+- The reply is appended to `feedback_log` with role `reporter_reply`. The
+  card shows the thread under "Sent to submitter", oldest first.
+- A card with a reply nobody has read yet is SHOWN under "Needs your
+  decision" with a "New reply" marker, wherever it was (Done included). Its
+  `status`, `impl_state` and note are not changed, so a reply never queues or
+  restarts a build, and a Later or By hand card stays one. "Reply read", or
+  writing back, sends the card home.
+- The bridge posts each reply into the report's Slack thread once
+  (`reporterReplies`), as the bot, so it is never read as a decision, a
+  verdict or a note. `robotLog` in `triage-policy.mjs` keeps replies out of
+  the build prompt.
+- An ask counts as writing to the submitter by hand: no automatic "Fixed!"
+  note within 12 hours of it.
+
 ## Safety
 
 - Report text is public input. Claude is told to treat it as data. Its

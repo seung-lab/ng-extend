@@ -62,6 +62,13 @@ export interface DatasetCaveConfig {
    *  Set on pinky_sandbox so Tutorial 1 (which drives sandbox state per-step)
    *  isn't disrupted. Stroeh isn't part of any tutorial so leave this false. */
   skipStateUrlIfTutorialActive?: boolean;
+  /** The lab keeps its own sheet about this dataset's cells, mirrored into
+   *  Supabase (supabase-retina-lab-sheet.sql); this is the function that
+   *  finds a cell's rows. The Delta menu and the segment list show them.
+   *  READ ONLY and for showing only: never written, never counted. */
+  labSheetRpc?: string;
+  /** The mirror table itself, for looking up many exact IDs in one request. */
+  labSheetTable?: string;
   /** Google Sheet (cell list) for THIS dataset's Cell Library. Each dataset
    *  keeps its own sheet; the Cell Library loads the one for the active dataset.
    *  Include the gid in the URL for multi-tab sheets. */
@@ -109,6 +116,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
+    labSheetRpc:      'ew_retina_lab_sheet_match',
+    labSheetTable:    'ew_retina_lab_sheet',
   },
   // Alias — neuroglancer layer name used in the viewer
   eyewire_ii: {
@@ -127,6 +136,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
+    labSheetRpc:      'ew_retina_lab_sheet_match',
+    labSheetTable:    'ew_retina_lab_sheet',
   },
 
   // ── Pinky sandbox (dev / testing) ────────────────────────────────────────
@@ -396,11 +407,17 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments: ['10001', '10010'] },
   optic_lobe_v1_1:  { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
     defaultSegments: ['10015', '10016', '10023'] },
+  // Hemibrain starts on three neurons named in its own segment properties:
+  // APL (the one giant inhibitory neuron of the mushroom body), an EPG
+  // compass neuron and a DA1 olfactory projection neuron.
+  hemibrain_v1_2:   { caveServer: '', datastack: '', alignedVolume: '', cellStatusTable: '', cellTypeTable: '', cellTypeSchema: 'bound_tag', cellStatusReadOnly: true, cellTypeReadOnly: true, exploreOnly: true,
+    defaultSegments: ['425790257', '1002507159', '1734350788'] },
   // The same configs under each dataset's switcher id: some callers look a
   // dataset up by id rather than by layer name (switchToDataset does), and
   // these ids are too short for the substring match (MIN_SUBSTRING_MATCH).
   get h01() { return this.h01_c3; },
   get manc() { return this.manc_v1_2; },
+  get hemibrain() { return this.hemibrain_v1_2; },
   get mcns() { return this.malecns_v1_0; },
   get maol() { return this.optic_lobe_v1_1; },
   fly_v26: {

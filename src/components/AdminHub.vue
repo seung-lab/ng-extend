@@ -8,6 +8,7 @@ import {renderSafeMarkdown} from '../util/safe_markdown';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
 import RollUp from 'components/RollUp.vue';
+import CellTypeCheck from 'components/CellTypeCheck.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
@@ -35,7 +36,7 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot'>(
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes'>(
   props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot'
     ? props.initialSubTab
     : 'notifications');
@@ -100,7 +101,11 @@ interface TriageRow {
   impl_run_url?: string | null;
   impl_attempts?: number;
   preview_url?: string | null;
-  feedback_log?: { user?: string; text: string; ts: string; role: string; by?: string; at?: string; via?: string; sent?: boolean; echoed?: boolean }[];
+  feedback_log?: { user?: string; text: string; ts: string; role: string; by?: string; at?: string; via?: string; sent?: boolean; echoed?: boolean;
+    /** reporter_update: sent with "Ask for a reply". reporter_reply: not read by an approver yet when seen is false. */
+    ask?: boolean; notification_id?: number; seen?: boolean;
+    /** What came with a reporter_reply (supabase-report-reply-parts.sql). */
+    screenshot_url?: string; view_url?: string; dataset?: string; build?: string; console_lines?: number }[];
   result_note?: string | null;
   nag_count?: number;
   approver_slack_id?: string | null;
@@ -143,6 +148,7 @@ const IMPL_LABELS: Record<ImplState, string> = {
 const ROLE_LABELS: Record<string, string> = {
   tester: 'Tester', question: 'Question', answer: 'Answer',
   reporter_update: 'To submitter', reporter_draft: 'Draft', reporter_ignored: 'Comment',
+  reporter_reply: 'Submitter reply',
 };
 const roleLabel = (role: string) => ROLE_LABELS[role] || 'Comment';
 const isBuildable = (r: TriageRow) => r.recommendation === 'bug_fix_spec' || r.recommendation === 'new_feature';
@@ -212,8 +218,8 @@ const shortDate = (iso: string) => {
 // ── Board: open work on top, finished and dismissed folded away ───────────
 // Slack and this tab write the same rows, so a dismiss, stop or "good" in a
 // Slack thread moves the card here too (after Refresh).
-type TriageGroupKey = 'decide' | 'progress' | 'done' | 'dismissed';
-const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, done: false, dismissed: false });
+type TriageGroupKey = 'decide' | 'progress' | 'later' | 'done' | 'dismissed';
+const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, later: false, done: false, dismissed: false });
 
 // The card you are working on stays marked, and stays in view when the list
 // reloads after an action (Ames 2026-10-05: sending an update reloaded the
@@ -261,6 +267,8 @@ function applyTriageFocus() {
 // is what the "New tab" link uses.
 const triageBoard = ref(!!props.standalone);
 const boardUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
+/** The game itself, on this same site. */
+const gameUrl = `${window.location.origin}${window.location.pathname}`;
 function onBoardKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && triageBoard.value && !props.standalone && !(e.target as HTMLElement)?.closest?.('textarea, input')) triageBoard.value = false;
 }
@@ -270,20 +278,33 @@ onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
 // 2026-10-10). What "more columns" means is INSIDE them: the chips of a wide
 // category sit in several columns side by side, so more fit on screen. Who
 // has the next move on an in-progress report is said by the tag on its chip.
+// A reply the submitter was asked for and no approver has read yet (Ames
+// 2026-10-13) puts the card back under Needs your decision, wherever it was,
+// Done included. Only where it is SHOWN changes: its status, its build state
+// and its note are untouched, so the robot never builds or rebuilds anything
+// because of a reply. "Reply read" (or writing back) lets it go home.
+const hasNewReply = (r: TriageRow) => (r.feedback_log || []).some(e => e.role === 'reporter_reply' && e.seen === false);
 function triageGroupOf(r: TriageRow): TriageGroupKey {
+  if (hasNewReply(r)) return 'decide';
   if (r.status === 'dismissed') return 'dismissed';
   if (r.status === 'done' || r.impl_state === 'deployed') return 'done';
   if (r.status === 'proposed') return 'decide';
+  if (isLater(r)) return 'later';
   return 'progress';
 }
 const triageGroups = computed(() => {
   const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
     { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Triage zero. Nicely done.', closed: false },
     { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
+    { key: 'later', icon: '💡', title: 'Ideas for later', hint: 'Good ideas, not now', empty: 'No ideas put by.', closed: true },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
   ];
-  return defs.map(d => ({ ...d, rows: triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r)) }));
+  return defs.map(d => {
+    const rows = triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r));
+    // New replies first: an old card would otherwise land at the bottom.
+    return { ...d, rows: d.key === 'decide' ? [...rows.filter(hasNewReply), ...rows.filter(r => !hasNewReply(r))] : rows };
+  });
 });
 
 // A light page for reading (Ames 2026-10-10: "it's hard to read this much
@@ -421,7 +442,7 @@ function cheerFor(row: TriageRow) {
 // to fold or open it; the choice is remembered.
 const TRIAGE_FOLD_KEY = 'nge_triage_folded_v3';
 const triageFolded = ref<Record<TriageGroupKey, boolean>>((() => {
-  const start = { decide: false, progress: false, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
+  const start = { decide: false, progress: false, later: true, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
   try { return { ...start, ...(JSON.parse(localStorage.getItem(TRIAGE_FOLD_KEY) || '{}') || {}) }; } catch { return start; }
 })());
 function toggleFold(key: TriageGroupKey) {
@@ -472,7 +493,13 @@ async function askForSuggestion(row: TriageRow) {
 
 const BY_HAND_NOTE = 'By hand';
 const isByHand = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(BY_HAND_NOTE);
-async function markInProgress(row: TriageRow) {
+/** A good idea that is not being done yet (Ames 2026-10-11: "add to future
+ *  ideas"). Kept the same way as a card marked by hand, so the robot leaves
+ *  it alone: approved, never queued, with a note that starts with this word.
+ *  scripts/slack-triage-bridge.mjs looks for the same word. */
+const LATER_NOTE = 'Later';
+const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(LATER_NOTE);
+async function markInProgress(row: TriageRow, later = false) {
   if (triageActing.value) return;
   triageActing.value = row.id;
   try {
@@ -480,10 +507,15 @@ async function markInProgress(row: TriageRow) {
     const comment = (triageNotes.value[row.id] ?? '').trim();
     await secureWrite('triage.update', { id: row.id, fields: {
       status: 'approved',
-      approver_note: `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
+      // A build the robot had waiting is taken off its list.
+      impl_state: null,
+      approver_note: later
+        ? `${LATER_NOTE}: a good idea kept for later, not being built now.${comment ? ' ' + comment : ''}`
+        : `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
     } });
+    if (later) { await loadTriage(); return; }
     triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
@@ -509,8 +541,15 @@ async function loadTriage() {
     }
     const { data, error } = await q;
     if (error) throw error;
+    // A card with an unread reply is on the board however long ago it was closed.
+    const rows = (data ?? []) as TriageRow[];
+    if (!triageShowReviewed.value) {
+      const { data: replied } = await supabase.from('feedback_triage').select('*')
+        .contains('feedback_log', JSON.stringify([{ role: 'reporter_reply', seen: false }])).limit(50);
+      for (const r of (replied ?? []) as TriageRow[]) if (hasNewReply(r) && !rows.some(x => x.id === r.id)) rows.push(r);
+    }
     // Discarded reports are off the board unless you ask for older ones.
-    triageRows.value = ((data ?? []) as TriageRow[]).filter(r => triageShowReviewed.value || !isDiscarded(r));
+    triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
     applyTriageFocus();
@@ -664,11 +703,17 @@ async function openInClaude(row: TriageRow) {
 /** Open composers, keyed by row id (absent = closed). */
 const reporterDrafts = ref<Record<string, string>>({});
 const reporterSending = ref<string | null>(null);
+/** "Ask for a reply" ticked in an open composer, keyed by row id (Ames
+ *  2026-10-13). Off unless ticked: an ordinary update is exactly as before. */
+const reporterAsk = ref<Record<string, boolean>>({});
 
-/** Draft from the card's state. Never includes the internal reviewer comment. */
+/** Draft from the card's state. Never includes the internal reviewer comment.
+ *  The quote is the whole submission, as the card shows it (the report's full
+ *  message once loaded, else the stored excerpt), never cut short: Ames was
+ *  pasting the rest in by hand every time (2026-10-12). */
 function draftReporterUpdate(row: TriageRow): string {
-  const t = (row.source_excerpt || '').trim();
-  const q = t ? `You reported: "${t.length > 90 ? t.slice(0, 87) + '...' : t}".` : 'Thanks for your report.';
+  const t = fullTextOf(row).trim();
+  const q = t ? `You reported: "${t}".` : 'Thanks for your report.';
   if (row.status === 'done' || row.impl_state === 'deployed') {
     // Same wording as the bridge's fixedNote: thanks, their words, what was built.
     const fix = String(row.result_note || row.impl_summary || '')
@@ -677,7 +722,7 @@ function draftReporterUpdate(row: TriageRow): string {
       .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '')
       // "QUESTION: ..." is Claude asking the approver, not a fix: never sent on.
       .replace(/^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:[\s\S]*$/i, '');
-    const thanks = t ? `Thank you for submitting: "${t.length > 200 ? t.slice(0, 197) + '...' : t}".` : 'Thank you for your report.';
+    const thanks = t ? `Thank you for submitting: "${t}".` : 'Thank you for your report.';
     return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
   }
   if (row.status === 'dismissed') {
@@ -693,10 +738,61 @@ function draftReporterUpdate(row: TriageRow): string {
 
 function closeReporterDraft(row: TriageRow) {
   delete reporterDrafts.value[row.id];
+  delete reporterAsk.value[row.id];
 }
 
-function reporterUpdatesFor(row: TriageRow) {
-  return (row.feedback_log || []).filter(e => e.role === 'reporter_update' && e.sent !== false);
+/** Console messages that came with a reply. Kept where only the server can
+ *  read them; fetched for an admin when asked for (functions/report-reply.js). */
+const replyConsole = ref<Record<string, string | null>>({});
+const replyConsoleOpen = ref<Record<string, boolean>>({});
+async function toggleReplyConsole(notificationId: number | string | undefined) {
+  const key = String(notificationId ?? '');
+  if (!key) return;
+  replyConsoleOpen.value = { ...replyConsoleOpen.value, [key]: !replyConsoleOpen.value[key] };
+  if (!replyConsoleOpen.value[key] || replyConsole.value[key] !== undefined) return;
+  try {
+    const out: any = await secureWrite('reply.console', { notificationId: Number(key) });
+    replyConsole.value = { ...replyConsole.value, [key]: out?.console_log ?? null };
+  } catch (e: any) {
+    replyConsole.value = { ...replyConsole.value, [key]: `Could not load them: ${e?.message ?? 'try again'}` };
+  }
+}
+
+/** What was sent to the submitter and what they wrote back, oldest first. */
+function reporterThreadFor(row: TriageRow) {
+  const log = row.feedback_log || [];
+  const when = (e: { at?: string; ts: string }) => Date.parse(e.at || e.ts) || 0;
+  return log
+    .filter(e => (e.role === 'reporter_update' && e.sent !== false) || e.role === 'reporter_reply')
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => (when(a.e) - when(b.e)) || (a.i - b.i))
+    .map(({ e }) => ({
+      ...e,
+      reply: e.role === 'reporter_reply',
+      // Asked, and their reply is not in yet.
+      waiting: e.role === 'reporter_update' && !!e.ask && !log.some(x => x.role === 'reporter_reply' && x.notification_id === e.notification_id),
+    }));
+}
+
+/** "Reply read": the New reply marker comes off and the card goes back to
+ *  where it was. Nothing else about the card changes. */
+async function markRepliesSeen(row: TriageRow) {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    const { supabase } = await import('../supabase');
+    // Re-read the log right before writing, so a bridge write in between is kept.
+    const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
+    const log = (Array.isArray(fresh?.feedback_log) ? fresh!.feedback_log : (row.feedback_log || []))
+      .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
+    await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not mark the reply read: ${e?.message ?? String(e)}`;
+  } finally {
+    triageActing.value = null;
+  }
 }
 
 function relTime(iso: string): string {
@@ -711,7 +807,7 @@ function relTime(iso: string): string {
  *  with that same text as its note, so there is no second question to answer
  *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
  *  not be sent, the report is left where it is. */
-async function sendReporterUpdate(row: TriageRow, andDone = false) {
+async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false, andLater = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
   let sent = false;
@@ -727,11 +823,21 @@ async function sendReporterUpdate(row: TriageRow, andDone = false) {
       return;
     }
     const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
-    await secureWrite('notification.insert', { row: {
-      title: '💬 An update on your report',
-      body: text,
+    const art = {
       thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
       image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 24)}.jpg`,
+    };
+    // "Ask for a reply": the same note, sent by the server tied to this card,
+    // so the submitter (and only them) gets a reply box under it. If that is
+    // not switched on yet it refuses and says why, and nothing is sent. Its
+    // picture is the server's: science Nurro (functions/report-reply.js).
+    const ask = !!reporterAsk.value[row.id];
+    let asked: { id?: number } | null = null;
+    if (ask) asked = await secureWrite('reply.ask', { triageId: row.id, text });
+    else await secureWrite('notification.insert', { row: {
+      title: '💬 An update on your report',
+      body: text,
+      ...art,
       target_type: 'user',
       target_id: userId,
       send_at: new Date().toISOString(),
@@ -739,20 +845,27 @@ async function sendReporterUpdate(row: TriageRow, andDone = false) {
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
-    const log = Array.isArray(fresh?.feedback_log) ? [...fresh!.feedback_log] : [];
+    // Writing back means their replies so far have been read.
+    const log = (Array.isArray(fresh?.feedback_log) ? [...fresh!.feedback_log] : [])
+      .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
     const at = new Date().toISOString();
-    log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false });
+    log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false,
+      ...(ask ? { ask: true, notification_id: asked?.id } : {}) });
     await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } })
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
+    delete reporterAsk.value[row.id];
     sent = true;
-    if (!andDone) await loadTriage();
+    if (!andDone && !andProgress && !andLater) await loadTriage();
   } catch (e: any) {
     triageError.value = `Could not send the update: ${e?.message ?? String(e)}`;
   } finally {
     reporterSending.value = null;
   }
   if (sent && andDone) await setTriageStatus(row, 'done', false, false, text.replace(/\s+/g, ' ').slice(0, 300));
+  // The submitter has been told it is being looked into: move it to In progress, by hand (Ames 2026-10-11).
+  if (sent && andProgress) await markInProgress(row);
+  if (sent && andLater) await markInProgress(row, true);
 }
 
 /** Build ID of the preview waiting to go live: the tested preview, or one
@@ -1232,6 +1345,47 @@ function onNotifImageChange(e: Event) {
   notifImageFile.value = file;
 }
 
+// Paste a picture straight into the notification as its feature image (Ames
+// 2026-10-13): a screenshot from the clipboard, with Ctrl+V anywhere in this
+// form. Pasted text is left alone. A screenshot is often a large PNG, so one
+// over the size limit is saved again as WebP, smaller, before it is checked.
+async function shrinkPasted(file: File): Promise<File> {
+  if (!backend.validateAdminImage(file).includes('MB')) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.92, 0.82, 0.7]) {
+      const blob: Blob | null = await new Promise(done => canvas.toBlob(done, 'image/webp', quality));
+      if (!blob) break;
+      const smaller = new File([blob], file.name.replace(/\.\w+$/, '') + '.webp', { type: 'image/webp' });
+      if (!backend.validateAdminImage(smaller)) return smaller;
+    }
+  } catch { /* fall through to the size message */ }
+  return file;
+}
+async function onNotifImagePaste(e: ClipboardEvent) {
+  const item = [...(e.clipboardData?.items ?? [])].find(i => i.kind === 'file' && i.type.startsWith('image/'));
+  const raw = item?.getAsFile();
+  if (!raw) return;                    // text, or nothing: the normal paste goes ahead
+  e.preventDefault();
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const named = new File([raw], `pasted-${stamp}.${(raw.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: raw.type });
+  const file = await shrinkPasted(named);
+  const invalid = backend.validateAdminImage(file);
+  if (invalid) { notifError.value = invalid; return; }
+  notifError.value = '';
+  notifImageFile.value = file;
+}
+/** A small look at the image that will be sent, pasted or picked. */
+const notifImagePreview = ref('');
+watch(notifImageFile, file => {
+  if (notifImagePreview.value) URL.revokeObjectURL(notifImagePreview.value);
+  notifImagePreview.value = file ? URL.createObjectURL(file) : '';
+});
+
 function onNotifIconChange(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -1699,6 +1853,12 @@ function practiceWhen(iso: string | null) {
       <a class="nge-admin-subtab nge-admin-subtab--triage" :href="boardUrl" target="_blank" rel="noopener" title="Opens the triage board in a new tab">Triage ↗</a>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
+    </div>
+
+    <!-- ── Cell types: the game's log against CAVE ── -->
+    <div v-if="adminSubTab === 'celltypes'" class="nge-admin-section">
+      <CellTypeCheck />
     </div>
 
     <!-- ── Notifications ── -->
@@ -1718,7 +1878,7 @@ function practiceWhen(iso: string | null) {
       </li></ul>
     </section>
 
-    <div v-if="adminSubTab === 'notifications'" class="nge-admin-section">
+    <div v-if="adminSubTab === 'notifications'" class="nge-admin-section" @paste="onNotifImagePaste">
       <div class="nge-admin-block">
         <label class="nge-admin-label">
           {{ editingId != null ? 'Editing Notification' : 'Send Notification' }}
@@ -1799,7 +1959,12 @@ function practiceWhen(iso: string | null) {
             {{ notifIconFile ? notifIconFile.name : 'Feed icon (optional)...' }}
           </label>
         </div>
-        <p class="nge-admin-hint">Images up to 3 MB (PNG, JPEG, WebP, GIF). The feed always loads the small icon, not the full image.</p>
+        <p class="nge-admin-hint">Images up to 3 MB (PNG, JPEG, WebP, GIF). You can also paste a picture here with Ctrl+V. The feed always loads the small icon, not the full image.</p>
+        <div v-if="notifImagePreview" class="nge-admin-pasted">
+          <img :src="notifImagePreview" alt="The image that will be sent" />
+          <span>{{ notifImageFile?.name }} · {{ ((notifImageFile?.size || 0) / 1024).toFixed(0) }} KB</span>
+          <button type="button" class="nge-admin-action-btn" @click="notifImageFile = null">Remove</button>
+        </div>
         <div class="nge-admin-row">
           <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>
@@ -2068,6 +2233,9 @@ function practiceWhen(iso: string | null) {
       <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard, 'nge-triage-light': triageBoard && triageLight }">
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
+          <!-- The page on its own has no game around it: a way back, in a new
+               tab so the board stays open (Ames 2026-10-12). -->
+          <a v-if="standalone" class="nge-admin-action-btn nge-triage-newtab" :href="gameUrl" target="_blank" rel="noopener" title="Opens Pyr in a new tab. This page stays open.">Open Pyr ↗</a>
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
@@ -2186,10 +2354,11 @@ function practiceWhen(iso: string | null) {
         </button>
         <template v-if="triageBoard ? !isFolded(g.key) : triageOpen[g.key]">
         <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
-             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id }]"
+             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id, 'nge-triage-card--reply': hasNewReply(row) }]"
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
+            <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
             <span class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
@@ -2266,9 +2435,12 @@ function practiceWhen(iso: string | null) {
             <!-- Done, on every card that is not already done (Ames 2026-10-01:
                  "a lot of the time I fix in Claude"), whatever state it is in:
                  waiting for a decision, in progress, or dismissed. -->
-            <button v-if="row.status === 'proposed'" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+            <button v-if="row.status === 'proposed' || isLater(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
                     title="You are fixing this yourself, for example in a Claude chat. Moves the card to In progress. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row)">▶ In progress</button>
+            <button v-if="row.status === 'proposed' || isByHand(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+                    title="A good idea, but not now. Moves the card to Ideas for later. The robot does not build it and nothing is sent to the reporter."
+                    @click="markInProgress(row, true)">💡 Later</button>
             <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id"
                     title="It is fixed or handled. Moves this card to Done and posts the update in its Slack thread."
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
@@ -2307,10 +2479,29 @@ function practiceWhen(iso: string | null) {
                the card's state; edit, send, or close it and nothing is sent.
                Slack threads get the same thing via "update reporter". -->
           <div v-if="row.source === 'site_issue'" class="nge-triage-reporter">
-            <div v-for="u in reporterUpdatesFor(row)" :key="u.ts" class="nge-triage-note">
-              <span class="nge-triage-spec-label">Sent to submitter</span>
-              <span class="nge-triage-spec-text">{{ u.text }}<span class="nge-triage-reporter-by"> · {{ u.by || 'Slack' }}{{ u.at ? ', ' + relTime(u.at) : '' }}</span></span>
+            <!-- The thread, oldest first: what was sent, and any reply asked for. -->
+            <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
+                 :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
+              <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
+              <span class="nge-triage-spec-text nge-triage-thread-text">{{ u.text }}<span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
+              <!-- What came with a reply: a screenshot, their view, console messages. -->
+              <div v-if="u.reply && (u.screenshot_url || u.view_url || u.console_lines || u.dataset)" class="nge-triage-reply-parts">
+                <a v-if="u.screenshot_url" :href="u.screenshot_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the full screenshot">
+                  <img :src="u.screenshot_url" alt="Screenshot sent with the reply" loading="lazy" />
+                </a>
+                <div class="nge-triage-reply-chips">
+                  <a v-if="u.view_url" :href="u.view_url" target="_blank" rel="noopener" class="nge-triage-chip">↗ Open their view</a>
+                  <button v-if="u.console_lines" type="button" class="nge-triage-chip" @click="toggleReplyConsole(u.notification_id)">
+                    {{ replyConsoleOpen[u.notification_id] ? '▾' : '▸' }} Console messages ({{ u.console_lines }})
+                  </button>
+                  <span v-if="u.dataset" class="nge-triage-chip nge-triage-chip--plain">{{ u.dataset }}{{ u.build ? ' · ' + u.build : '' }}</span>
+                </div>
+                <pre v-if="u.console_lines && replyConsoleOpen[u.notification_id]" class="nge-triage-reply-console">{{ replyConsole[u.notification_id] === undefined ? 'Loading…' : (replyConsole[u.notification_id] ?? 'These messages are no longer stored.') }}</pre>
+              </div>
             </div>
+            <button v-if="hasNewReply(row)" class="nge-admin-action-btn nge-triage-reporter-open" :disabled="triageActing === row.id"
+                    title="Takes the New reply marker off. The card goes back to where it was; nothing else about it changes."
+                    @click="markRepliesSeen(row)">✓ Reply read</button>
             <template v-if="reporterDrafts[row.id] !== undefined">
               <textarea
                 v-model="reporterDrafts[row.id]"
@@ -2318,14 +2509,39 @@ function practiceWhen(iso: string | null) {
                 rows="3"
                 @keydown.stop @keyup.stop @keypress.stop
               ></textarea>
+              <!-- Off / On, as a two way switch in the board's own style (Ames
+                   2026-10-13: "the black check box is weird"). The lit side
+                   is how it is now. -->
+              <div class="nge-triage-ask" title="They get a reply form under your message: text, and if they like a screenshot, their view and their console messages. One reply per message. To hear more, ask again.">
+                <span :id="'nge-triage-ask-' + row.id" class="nge-triage-ask-label">Ask for a reply</span>
+                <div class="nge-triage-switch" role="radiogroup" :aria-labelledby="'nge-triage-ask-' + row.id" :data-on="reporterAsk[row.id] ? 'on' : 'off'">
+                  <button type="button" role="radio" class="nge-triage-switch-opt" :aria-checked="reporterAsk[row.id] ? 'false' : 'true'" :tabindex="reporterAsk[row.id] ? -1 : 0"
+                          :disabled="reporterSending === row.id" @click="reporterAsk[row.id] = false"
+                          @keydown.right.prevent.stop="reporterAsk[row.id] = true" @keydown.left.prevent.stop="reporterAsk[row.id] = false">Off</button>
+                  <button type="button" role="radio" class="nge-triage-switch-opt nge-triage-switch-opt--on" :aria-checked="reporterAsk[row.id] ? 'true' : 'false'" :tabindex="reporterAsk[row.id] ? 0 : -1"
+                          :disabled="reporterSending === row.id" @click="reporterAsk[row.id] = true"
+                          @keydown.right.prevent.stop="reporterAsk[row.id] = true" @keydown.left.prevent.stop="reporterAsk[row.id] = false">On</button>
+                </div>
+                <span class="nge-triage-ask-hint">{{ reporterAsk[row.id]
+                  ? 'They get a reply form under your message: text, a screenshot, their view and console messages. One reply. Ask again to hear more.'
+                  : 'They get your message only.' }}</span>
+              </div>
               <div class="nge-triage-actions">
                 <button class="nge-admin-primary-btn" :disabled="reporterSending === row.id || !reporterDrafts[row.id]?.trim()" @click="sendReporterUpdate(row)">
-                  {{ reporterSending === row.id ? 'Sending…' : 'Send to submitter' }}
+                  {{ reporterSending === row.id ? 'Sending…' : reporterAsk[row.id] ? 'Send and ask for a reply' : 'Send to submitter' }}
                 </button>
                 <button v-if="triageGroupOf(row) !== 'done'" class="nge-admin-action-btn nge-triage-done-btn"
                         :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
                         title="Sends this to the submitter, then moves the card to Done with the same text as its note."
                         @click="sendReporterUpdate(row, true)">✓ Send and mark done</button>
+                <button v-if="triageGroupOf(row) === 'decide'" class="nge-admin-action-btn"
+                        :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
+                        title="Sends this to the submitter, then moves the card to In progress, marked by hand so the robot does not build it."
+                        @click="sendReporterUpdate(row, false, true)">▶ Send: mark in progress</button>
+                <button v-if="triageGroupOf(row) === 'decide' || isByHand(row)" class="nge-admin-action-btn"
+                        :disabled="reporterSending === row.id || triageActing === row.id || !reporterDrafts[row.id]?.trim()"
+                        title="Sends this to the submitter, then moves the card to Ideas for later."
+                        @click="sendReporterUpdate(row, false, false, true)">💡 Send: mark later</button>
                 <button class="nge-admin-action-btn" :disabled="reporterSending === row.id" @click="closeReporterDraft(row)">Not now</button>
               </div>
             </template>
@@ -2756,6 +2972,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-admin-check input { accent-color: #4a9eff; }
 
+.nge-admin-pasted { display: flex; align-items: center; gap: 10px; margin: 2px 0 8px; font-size: 12.5px; color: #aab; }
+.nge-admin-pasted img { max-height: 84px; max-width: 220px; border-radius: 6px; border: 1px solid rgba(74, 158, 255, 0.3); }
 .nge-admin-file-label {
   display: inline-flex;
   align-items: center;
@@ -2945,6 +3163,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-board .nge-triage-col--decide { border-top: 3px solid #ff8d8d; }
 .nge-triage-board .nge-triage-col--progress { border-top: 3px solid #4fcfff; }
+.nge-triage-board .nge-triage-col--later { border-top: 3px solid #ffd24d; }
 .nge-triage-board .nge-triage-col--done { border-top: 3px solid #5ee8a8; }
 .nge-triage-board .nge-triage-col--dismissed { border-top: 3px solid #7f93ad; }
 /* Column headers stay put and are not folds here. */
@@ -3215,6 +3434,22 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-message::placeholder, .nge-triage-light .nge-triage-comment::placeholder { color: #7b889c; }
 .nge-triage-light .nge-triage-reporter { color: #46546b; }
 .nge-triage-light .nge-triage-reporter-by { color: #6b788d; }
+.nge-triage-light .nge-triage-ask-hint { color: #6b788d; }
+.nge-triage-light .nge-triage-switch { background: #e6ecf5; border-color: #9fb6d6; }
+.nge-triage-light .nge-triage-switch::before { background: #ffffff; border-color: #b8c6da; }
+.nge-triage-light .nge-triage-switch[data-on="on"]::before { background: #cfecfa; border-color: #1487b8; box-shadow: none; }
+.nge-triage-light .nge-triage-switch-opt { color: #7a8799; }
+.nge-triage-light .nge-triage-switch-opt[aria-checked="true"] { color: #1c2a3d; }
+.nge-triage-light .nge-triage-switch-opt--on[aria-checked="true"] { color: #0c5f85; }
+.nge-triage-light .nge-triage-chip { background: #e9f6fd; border-color: #58b6dc; color: #0c5f85; }
+.nge-triage-light .nge-triage-chip--plain { background: #eef1f6; border-color: #cfd8e5; color: #55647a; }
+.nge-triage-light .nge-triage-reply-console { background: #f4f6fa; border-color: #d5dce8; color: #263347; }
+.nge-triage-light .nge-triage-reply-shot img { border-color: #58b6dc; }
+.nge-triage-light .nge-triage-note--reply { background: #e9f6fd; border-left-color: #58b6dc; }
+.nge-triage-light .nge-triage-note--unread { background: #cfecfa; border-left-color: #1487b8; }
+.nge-triage-light .nge-triage-rec--reply { background: #0f7fae; color: #ffffff; }
+.nge-triage-light.nge-triage-board .nge-triage-card.nge-triage-card--reply,
+.nge-triage-light .nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px #1487b8, 0 0 12px rgba(20,135,184,0.22); }
 .nge-triage-light .nge-triage-release { background: #eef3fb; border-color: #c3d3ec; }
 .nge-triage-light .nge-triage-release-why { color: #34425a; }
 .nge-triage-light .nge-triage-claude { border-top-color: #e0e5ee; }
@@ -3350,6 +3585,40 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-reporter-open { align-self: flex-start; }
 .nge-triage-reporter-by { color: rgba(255,255,255,0.45); }
+/* A reply the submitter was asked for (Ames 2026-10-13). */
+.nge-triage-thread-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nge-triage-note--reply { margin-left: 18px; background: rgba(126,224,255,0.07); border-left: 2px solid rgba(126,224,255,0.45); }
+.nge-triage-note--unread { background: rgba(126,224,255,0.16); border-left-color: #7ee0ff; }
+.nge-triage-rec--reply { background: #7ee0ff; color: #06202c; font-weight: 700; }
+.nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px rgba(126,224,255,0.55), 0 0 14px rgba(126,224,255,0.18); }
+.nge-triage-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+.nge-triage-ask-label { font-weight: 600; }
+.nge-triage-ask-hint { color: rgba(255,255,255,0.5); flex: 1 1 240px; }
+/* Off / On: a two way switch. The lit side is the current state. */
+.nge-triage-switch { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 2px; border-radius: 7px;
+  background: rgba(0,0,0,0.35); border: 1px solid rgba(126,224,255,0.28); }
+.nge-triage-switch::before { content: ''; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 5px;
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22); transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease; }
+.nge-triage-switch[data-on="on"]::before { transform: translateX(100%); background: rgba(126,224,255,0.2); border-color: rgba(126,224,255,0.75); box-shadow: 0 0 10px rgba(126,224,255,0.25); }
+.nge-triage-switch-opt { position: relative; z-index: 1; min-width: 44px; padding: 3px 10px; border: 0; background: none; cursor: pointer;
+  font-family: 'Orbitron', 'Inter', sans-serif; font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.45); transition: color 0.18s ease; }
+.nge-triage-switch-opt[aria-checked="true"] { color: #ffffff; }
+.nge-triage-switch-opt--on[aria-checked="true"] { color: #bfefff; }
+.nge-triage-switch-opt:focus-visible { outline: 2px solid #7ee0ff; outline-offset: 1px; border-radius: 5px; }
+.nge-triage-switch-opt:disabled { cursor: default; opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) { .nge-triage-switch::before, .nge-triage-switch-opt { transition: none; } }
+/* What came with a reply. */
+.nge-triage-note:has(.nge-triage-reply-parts) { flex-wrap: wrap; }
+.nge-triage-reply-parts { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.nge-triage-reply-shot img { display: block; max-width: 220px; max-height: 140px; border-radius: 6px; border: 1px solid rgba(126,224,255,0.35); }
+.nge-triage-reply-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.nge-triage-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; border: 1px solid rgba(126,224,255,0.4);
+  background: rgba(126,224,255,0.1); color: #bfefff; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.nge-triage-chip:hover { border-color: rgba(126,224,255,0.8); }
+.nge-triage-chip:focus-visible { outline: 2px solid #7ee0ff; outline-offset: 1px; }
+.nge-triage-chip--plain { cursor: default; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.65); }
+.nge-triage-reply-console { flex-basis: 100%; max-height: 220px; overflow: auto; margin: 0; padding: 8px 10px; border-radius: 6px; background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1); color: #cdd6e4; font: 11.5px/1.45 'Consolas', 'SF Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .nge-triage-note {
   display: flex; gap: 8px; align-items: baseline;
   font-size: 12px; line-height: 1.45;

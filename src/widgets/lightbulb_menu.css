@@ -696,6 +696,11 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   opacity: 0.92;
   transition: opacity 0.2s;
 }
+/* A bar along the bottom of the screen (a notice like "At this zoom level...",
+   Find Path, a tool's bar) used to lie over the legend. The legend rises to
+   sit on top of it while it is there, as the chat and the coordinates do
+   (Ames 2026-10-12). --nge-bottom-bar is that bar's height (util/bottom_bar.ts). */
+.nge-seg-legend { margin-bottom: var(--nge-bottom-bar, 0px); transition: opacity 0.2s, margin-bottom 0.2s ease; }
 .neuroglancer-segment-list:hover .nge-seg-legend,
 .nge-seg-legend:hover {
   opacity: 1;
@@ -835,3 +840,51 @@ input[type="color"].nge-color-picker-rainbow:hover::-webkit-color-swatch {
   margin: 2px 0 6px;
   line-height: 1.35;
 }
+
+/* What the lab's own sheet says about a Retina cell: read only, so it is
+   set apart from the sections a player can change. */
+.nge-lb-sheet[hidden] { display: none; }
+.nge-lb-sheet {
+  margin-bottom: 12px;
+  background: rgba(74, 158, 255, 0.04);
+  border-top: 1px solid rgba(74, 158, 255, 0.08);
+}
+.nge-lb-sheet-row + .nge-lb-sheet-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(74, 158, 255, 0.14);
+}
+.nge-lb-sheet-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.nge-lb-sheet-key {
+  flex: 0 0 96px;
+  color: rgba(150, 175, 210, 0.75);
+}
+.nge-lb-sheet-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: rgba(220, 230, 245, 0.95);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.nge-lb-sheet-which {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: rgba(120, 160, 210, 0.7);
+  margin-bottom: 2px;
+}
+.nge-lb-sheet .nge-lb-readonly-note { margin: 7px 0 2px; }
+
+/* The menu's title when it is the cell's class and type, not its ID. */
+.nge-lb-header-segid.nge-lb-header-label {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.nge-lb-readonly-note[hidden] { display: none; }

@@ -87,6 +87,10 @@ test('players delete only their own chat messages; admins any; nobody edits',()=
 test('chat presence identity and time are server-derived',()=>{
  const p=plan('chat_presence','POST','on_conflict=user_id',{user_id:b,name:'Admin',last_seen_at:'2099-01-01T00:00:00Z',joined_at:'2000-01-01T00:00:00Z'});
  assert.deepEqual(p.body,{user_id:a,name:'Player',last_seen_at:user.now});
+ // The dataset on screen is the one thing the client may add, as a plain tag.
+ assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{dataset:'stroeh_mouse_retina',name:'X'}).body,{user_id:a,name:'Player',last_seen_at:user.now,dataset:'stroeh_mouse_retina'});
+ assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{dataset:'<b>not a tag</b>'}).body,{user_id:a,name:'Player',last_seen_at:user.now});
+ assert.deepEqual(plan('chat_presence','POST','on_conflict=user_id',{dataset:42}).body,{user_id:a,name:'Player',last_seen_at:user.now});
  assert.throws(()=>plan('chat_presence','POST','',{}),/conflict/);
  assert.throws(()=>plan('chat_presence','PATCH','',{}),/heartbeat/);
  assert.throws(()=>plan('chat_presence','POST','on_conflict=user_id',{},anon),/Sign in/);

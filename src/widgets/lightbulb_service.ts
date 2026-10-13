@@ -866,6 +866,64 @@ export async function setCellComplete(
 /**
  * Save (or update) the cell-type annotation for a root ID.
  */
+// ── Admin check: are the logged cell types in CAVE? (src/util/cell_type_check.ts) ──
+
+/** Every row of this dataset's cell type table, as CAVE lists it now. The
+ *  cell IDs are read as TEXT: they are larger than a JavaScript number holds.
+ *  `problem` says why when it could not be read. */
+export async function listCaveCellTypes(): Promise<{
+  rows: { rootId: string; type: string; point: [number, number, number] | null; created: string | null }[];
+  problem: string;
+}> {
+  const cfg = getActiveDatasetConfig();
+  const { caveServer, datastack, cellTypeTable, cellTypeSchema } = cfg;
+  if (!caveServer || !datastack || !cellTypeTable || cfg.exploreOnly) return { rows: [], problem: 'This dataset has no cell type table in CAVE.' };
+  if (cfg.annotationLog || cfg.cellTypeReadOnly) return { rows: [], problem: 'The game does not write cell types to CAVE on this dataset, so there is nothing to compare.' };
+  try {
+    const res = await fetch(`${caveServer}/materialize/api/v3/datastack/${datastack}/query?return_pyarrow=false`, {
+      method: 'POST', headers: authHeaders(caveServer),
+      body: JSON.stringify({ table: cellTypeTable, timestamp: new Date().toISOString() }),
+    });
+    if (!res.ok) return { rows: [], problem: `CAVE did not list the table (error ${res.status}). Sign in to CAVE and try again.` };
+    const text = (await res.text()).replace(/("pt_root_id"\s*:\s*)(\d+)/g, '$1"$2"');
+    const raw = JSON.parse(text);
+    if (!Array.isArray(raw)) return { rows: [], problem: 'CAVE answered, but not with a list of rows.' };
+    const num = (v: any) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN);
+    const rows = raw.filter((a: any) => a && a.valid !== false && a.valid !== 'f').map((a: any) => {
+      const p = Array.isArray(a.pt_position) ? a.pt_position.map(num) : [num(a.pt_position_x), num(a.pt_position_y), num(a.pt_position_z)];
+      const tag = cellTypeSchema === 'cell_type_local' ? (a.cell_type || a.tag) : a.user_id != null ? a.tag : decodeTag(a.tag).value;
+      return {
+        rootId: String(a.pt_root_id ?? '0'),
+        type: String(tag ?? ''),
+        point: p.length === 3 && p.every(Number.isFinite) ? p as [number, number, number] : null,
+        created: a.created ? new Date(a.created).toISOString() : null,
+      };
+    });
+    return { rows, problem: '' };
+  } catch (e: any) {
+    return { rows: [], problem: `Could not reach CAVE: ${e?.message || e}` };
+  }
+}
+
+/** Save a cell type at a point taken from the game's log, for a save CAVE
+ *  never took. CAVE records whoever is signed in as the one who saved it. */
+export async function resendCellType(point: [number, number, number], cellType: string): Promise<{ ok: boolean; problem: string }> {
+  const cfg = getActiveDatasetConfig();
+  const { caveServer, cellTypeTable, cellTypeSchema, alignedVolume } = cfg;
+  if (!caveServer || !cellTypeTable || cfg.annotationLog || cfg.cellTypeReadOnly) return { ok: false, problem: 'This dataset takes no cell types in CAVE.' };
+  if (cellTypeSchema !== 'bound_tag_user') return { ok: false, problem: 'Sending again is only set up for the Retina table.' };
+  try {
+    const res = await fetch(annotationBaseUrl(caveServer, cellTypeTable, alignedVolume), {
+      method: 'POST', headers: authHeaders(caveServer),
+      body: JSON.stringify({ annotations: [{ pt: { position: point }, tag: cellType }] }),
+    });
+    if (res.ok) return { ok: true, problem: '' };
+    return { ok: false, problem: `CAVE did not save it (error ${res.status}).` };
+  } catch (e: any) {
+    return { ok: false, problem: `Could not reach CAVE: ${e?.message || e}` };
+  }
+}
+
 /** Why the last cell type was refused, in plain words ('' if it wasn't). */
 let lastCellTypeProblem = '';
 export function getLastCellTypeProblem(): string { return lastCellTypeProblem; }
@@ -873,9 +931,11 @@ export function getLastCellTypeProblem(): string { return lastCellTypeProblem; }
 export async function saveCellType(
     caveServer: string, rootId: string, cellType: string,
     existingAnnotationId?: number,
-    /** The batch tool types many cells from one view and cannot move the
-     *  crosshairs into each of them. */
-    skipCrosshairCheck = false): Promise<boolean> {
+    /** Set when the point is already known to be inside the cell. */
+    skipCrosshairCheck = false,
+    /** The point to save the type at, in place of the crosshairs: the batch
+     *  tool gives each cell the point the player saved inside it. */
+    pointOverride?: [number, number, number]): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellTypeTable, cellTypeSchema, alignedVolume} = dsCfg;
   lastCellTypeProblem = '';
@@ -897,18 +957,13 @@ export async function saveCellType(
   }
 
   const baseUrl = annotationBaseUrl(caveServer, cellTypeTable, alignedVolume);
-  const pos = getViewerPosition();
+  const pos = pointOverride ?? getViewerPosition();
 
   // annotationLog: no CAVE table to write; the edit_log path below is the record.
   if (!dsCfg.annotationLog) try {
-    // Delete old annotation if updating
-    if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
-      await fetch(baseUrl, {
-        method: 'DELETE',
-        headers: authHeaders(caveServer),
-        body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
-      }).catch(() => {});
-    }
+    // The old type is removed only AFTER the new one is saved (below). It
+    // used to be removed first, so a save that failed left the cell with no
+    // type in CAVE at all.
 
     // Create new annotation — schema-aware payload.
     //   - cell_type_local: classification_system carries the interim user
@@ -954,6 +1009,13 @@ export async function saveCellType(
     }
     if (res.ok) {
       console.info(`[lightbulb] ✓ Cell type saved to CAVE`);
+      if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
+        await fetch(baseUrl, {
+          method: 'DELETE',
+          headers: authHeaders(caveServer),
+          body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
+        }).catch(() => {});
+      }
       // Mirror to localStorage so the lightbulb shows the write immediately,
       // before the next materialization cron run.
       setLocalAnnotation(segKey(rootId), {cellType});
@@ -980,8 +1042,17 @@ export async function saveCellType(
     const errText = await res.text().catch(() => '');
     console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
     reportWriteFailure('cave_write', `cell type ${res.status} on ${getActiveDatasetConfig().cellTypeTable}`, errText.slice(0, 500));
+    // CAVE did not save it, so the cell is NOT typed. This used to fall
+    // through to "saved in this browser only": the menu said Saved, the type
+    // was logged and counted, and CAVE and every other browser had nothing
+    // (the same fault completions had until 2026-10-09; Ames 2026-10-12).
+    lastCellTypeProblem = `CAVE did not save this (error ${res.status}), so the cell type is not saved. Try again in a moment.`;
+    return false;
   } catch (e) {
     console.error('[lightbulb] saveCellType — CAVE network error:', e);
+    reportWriteFailure('cave_write', `cell type network error on ${getActiveDatasetConfig().cellTypeTable}`, String((e as any)?.message || e).slice(0, 500));
+    lastCellTypeProblem = 'Could not reach CAVE, so the cell type is not saved. Check your connection and try again.';
+    return false;
   }
 
   // localStorage fallback — save locally so UI still works (keyed by rootId)

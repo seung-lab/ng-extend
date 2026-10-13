@@ -5,17 +5,53 @@ const SOURCES = Object.freeze({
   // Complete (cut off), Need Help, Not BC, Can't Complete; WIP and Need Help
   // are not endings). The Complete form sends one of these; nothing else is
   // ever written to Status. A source without the list writes plain Complete.
+  // claimedStatus (Ames 2026-10-13): what Status says while a cell is claimed
+  // and not yet complete, so a proofreader can see in the sheet which rows
+  // are theirs to do. WIP, which the sheet's Status dropdown already has
+  // (Celia), so nothing in the sheet had to change. It must match the option
+  // character for character.
   stroeh_mouse_retina: {id:'10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w', gid:37544110,
-    completeStatuses:['Complete','Complete (cut off)','Not BC',"Can't Complete"]},
+    completeStatuses:['Complete','Complete (cut off)','Not BC',"Can't Complete"], claimedStatus:'WIP'},
   pinky_nf_v2: {id:'1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU', gid:0},
   // MEC (Ames 2026-09-28): no segment IDs in this sheet. Rows are found by
   // "Starting XYZ Coords", which the importer stores as the task's claim point.
   pni_mec: {id:'1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw', gid:869365415, matchBy:'startcoords'},
 });
+/**
+ * Annotation Quests (Ames 2026-10-12): a cell is annotated as a quest, apart
+ * from being completed. Each quest is one sheet tab whose rows are cells with
+ * a Start Link. The sheet's own "Input for Website" tab says what the game
+ * does with each column: the Start Link is read; Cilium status and Cilium
+ * split or merged? are chosen at submit from the sheet's own dropdowns;
+ * Annotation share link, Date and Annotator Notes are written at submit;
+ * Annotator Name is written at claim. Nothing else on the tab is touched.
+ * The lists below are the sheet's dropdown options, character for character
+ * (read from the sheet 2026-10-12); nothing else is ever written to them.
+ */
+const QUESTS = Object.freeze({
+  retina_cilia: {
+    id:'1CXRPE4rmH1SRQ3nqdyp9ULsMdQygJ-Ldjn3jN_jcqRU', gid:0, dataset:'stroeh_mouse_retina',
+    title:'Cilia on starburst amacrine cells',
+    statuses:['Cilium annotated','Cilium annotated (fixation artifact)','Need help','Need help: One centriole missing','No cilium','No cilium (BB & DC clear)','No cilium (BB & DC unclear; internal centriole pair)','No cilium (one centriole)','Skipped (low quality)'],
+    splitMerged:['Split','Merged'],
+    // How many cells a player may hold at once, claimed and not yet
+    // completed (Ames 2026-10-13: "Limit should be 3").
+    claimLimit:3,
+  },
+});
+/** The quest tab's columns, by header (letters and digits only, lower case). */
+const QUEST_COLUMNS = Object.freeze({
+  index:['index'], soma:['somacoords'], cellClass:['cellclass'], cellType:['celltype'], startLink:['startlink'],
+  status:['ciliumstatus'], splitMerged:['ciliumsplitormerged'], link:['annotationsharelink'],
+  name:['annotatorname'], date:['datemmddyyyy','date'], notes:['annotatornotes'],
+});
+const QUEST_ACTIONS = ['quest_list','quest_claim','quest_release','quest_submit'];
 /** Header patterns for the column a row is matched on. */
 /** Status values that mean "still being worked on": completing the cell
  *  replaces them. Any other existing Status is the sheet owner's and stays. */
 const UNFINISHED_STATUSES = ['WIP','Need Help'];
+/** A claim that is still open, in the Status column's own words. */
+const OPEN_CLAIM_STATUSES = ['WIP'];
 const SEGMENT_HEADERS = ['startseg','segmentid','segment','segid'];
 const START_COORD_HEADERS = ['startingxyz','startingcoord','startcoord'];
 const fail = (status,message) => {throw Object.assign(new Error(message),{status});};
@@ -78,6 +114,9 @@ function sheetValues(input, me, task, now) {
     return [
       [['proofreader','claimedby'],'',{clearIfName:mine}],
       [['datestarted','dateclaimed'],'',{clearWithName:true}],
+      // The WIP goes with the name: a row left saying WIP with nobody on it
+      // was never offered to anyone again.
+      [['status'],'',{clearWithName:true,onlyValues:['WIP']}],
     ];
   }
   // The player's name as the sheet already spells it (see sheetSpelling), or
@@ -93,6 +132,9 @@ function sheetValues(input, me, task, now) {
   const isDate = {userEntered:/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(now))};
   // "Date Started" is the day the cell was claimed (MEC sheet, Ames 2026-09-28).
   if (input.action === 'claim') fields.push([['datestarted','dateclaimed'],now,isDate]);
+  // WIP on claim, on a sheet set up for it, and only into an empty Status:
+  // whatever is already there (Need Help, a finished status) stays.
+  if (input.action === 'claim' && SOURCES[input.dataset].claimedStatus) fields.push([['status'],SOURCES[input.dataset].claimedStatus]);
   if (input.action === 'complete') {
     // A plain M/D/YYYY date is entered like a person typing it, so the sheet
     // stores a real date (9/28/2026), not an ISO timestamp as text.
@@ -168,7 +210,7 @@ function planSheetUpdate(grid, title, match, fields) {
   const statusEmpty=!statusNow || UNFINISHED_STATUSES.includes(statusNow);
   // A release may clear a claim that is still open: no Status yet, or WIP.
   // "Need Help" and every finished Status keep the name they have.
-  const openClaim=!statusNow || statusNow==='WIP';
+  const openClaim=!statusNow || OPEN_CLAIM_STATUSES.includes(statusNow);
   let nameCleared=false;
   // Whose row this is, for the rules that only apply to the player's own.
   const nameCol=firstColumn(header,['proofreader','claimedby','completedby']);
@@ -184,7 +226,8 @@ function planSheetUpdate(grid, title, match, fields) {
       continue;
     }
     if(opts?.clearWithName) {
-      if(existing && nameCleared) data.push({range:rangeOf(col),values:[['']]});
+      // onlyValues: clear it only when it holds one of these.
+      if(existing && nameCleared && (!opts.onlyValues || opts.onlyValues.includes(existing))) data.push({range:rangeOf(col),values:[['']]});
       continue;
     }
     // Preserve the sheet owner's existing data. Retrying a write is harmless.
@@ -204,4 +247,106 @@ function planSheetUpdate(grid, title, match, fields) {
   // userEnteredData holds only validated M/D/YYYY dates; everything else is RAW.
   return {valueInputOption:'RAW',data,userEnteredData};
 }
-module.exports={SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS,sourceFor,sheetValues,sheetSpelling,nameKey,planSheetUpdate,pointKey};
+// ── Annotation Quests ────────────────────────────────────────────────────
+function questFor(input) {
+  if (!Object.hasOwn(QUESTS,String(input.quest))) fail(400,'There is no such quest.');
+  if (!QUEST_ACTIONS.includes(input.action)) fail(400,'Invalid quest action.');
+  if (input.action !== 'quest_list' && !/^\d{1,20}$/.test(String(input.segmentId))) fail(400,'Invalid segment ID.');
+  return QUESTS[input.quest];
+}
+/** The header row and a column index for each known column, or -1. */
+function questHeader(grid) {
+  const firstColumn = (header,patterns) => {for (const p of patterns) {const n=header.findIndex(h=>h.includes(p)); if(n>=0)return n;} return -1;};
+  for(let i=0;i<Math.min(grid.length,10);i++) {
+    const h=(grid[i]||[]).map(norm), seg=firstColumn(h,SEGMENT_HEADERS);
+    if(seg<0) continue;
+    const cols={segment:seg};
+    for(const [key,patterns] of Object.entries(QUEST_COLUMNS)) cols[key]=firstColumn(h,patterns);
+    return {headerRow:i,cols};
+  }
+  fail(409,'The quest sheet needs a Segment ID column.');
+}
+/** Every cell on the quest tab, for the list in the game. Only the columns
+ *  the game shows; the reviewers' columns never leave the sheet. */
+function questRows(grid) {
+  const {headerRow,cols}=questHeader(grid);
+  const at=(row,key)=>cols[key]>=0 ? String(row[cols[key]]??'').trim() : '';
+  const rows=[];
+  for(let i=headerRow+1;i<grid.length;i++) {
+    const row=grid[i]||[];
+    const segmentId=at(row,'segment');
+    if(!/^\d{1,20}$/.test(segmentId)) continue;
+    rows.push({
+      index:at(row,'index'), segmentId, soma:at(row,'soma'), cellClass:at(row,'cellClass'), cellType:at(row,'cellType'),
+      startLink:/^https:\/\/[^\s"'<>]+$/i.test(at(row,'startLink')) ? at(row,'startLink') : '',
+      status:at(row,'status'), splitMerged:at(row,'splitMerged'), link:at(row,'link'),
+      annotator:at(row,'name'), date:at(row,'date'), notes:at(row,'notes').slice(0,1000),
+    });
+  }
+  return rows;
+}
+/** A claim is refused once the player holds the quest's limit of cells that
+ *  are claimed and not completed. `rows` is the whole tab (questRows). */
+function questClaimRoom(rows, me, quest) {
+  const limit=Number(quest.claimLimit)||0;
+  if(!limit) return;
+  const mine=[...new Set([me.sheet_name,me.display_name,me.username].map(nameKey).filter(Boolean))];
+  const held=rows.filter(r=>r.annotator && !r.status && mine.includes(nameKey(r.annotator))).length;
+  if(held>=limit) fail(409,`You hold ${limit} quests already. Submit or release one first.`);
+}
+/**
+ * The writes for one quest action on one row. Like planSheetUpdate: exact
+ * row match on the segment ID, titles quoted, every value RAW except a
+ * validated M/D/YYYY date. Whose row it is decides what may change:
+ *   claim    an empty Annotator Name takes the player's name; a row that is
+ *            someone else's, or already has a status, is refused;
+ *   release  the player's own name is cleared, only while nothing is submitted;
+ *   submit   on the player's own row (or an unclaimed one, which becomes
+ *            theirs) the status, split or merged, share link, date and notes
+ *            are written, and written again on a resubmit.
+ */
+function planQuestUpdate(grid, title, quest, input, me, today) {
+  const {headerRow,cols}=questHeader(grid);
+  const segmentId=String(input.segmentId);
+  const matches=[];
+  for(let i=headerRow+1;i<grid.length;i++) if(String((grid[i]||[])[cols.segment]??'').trim()===segmentId) matches.push(i);
+  if(matches.length!==1) fail(409,matches.length ? 'This cell appears more than once in the quest sheet.' : 'This cell is not in the quest sheet.');
+  const row=matches[0], line=grid[row]||[];
+  const existing=key=>cols[key]>=0 ? String(line[cols[key]]??'').trim() : '';
+  const mine=[...new Set([me.sheet_name,me.display_name,me.username].map(nameKey).filter(Boolean))];
+  const rowName=nameKey(existing('name'));
+  const isMine=!!rowName && mine.includes(rowName);
+  const name=String(me.sheet_name||me.display_name||me.username||'Player').slice(0,120);
+  const rangeOf=col=>{let letters='',n=col; do {letters=String.fromCharCode(65+n%26)+letters; n=Math.floor(n/26)-1;} while(n>=0); return `'${title.replace(/'/g,"''")}'!${letters}${row+1}`;};
+  const data=[], userEnteredData=[];
+  const put=(key,value,userEntered)=>{ if(cols[key]<0) fail(409,'The quest sheet is missing a column the game writes.'); (userEntered?userEnteredData:data).push({range:rangeOf(cols[key]),values:[[String(value)]]}); };
+  if(input.action==='quest_claim') {
+    if(rowName && !isMine) fail(409,'Someone else has this cell.');
+    if(existing('status')) fail(409,'This cell is already done.');
+    if(!rowName) put('name',name);
+  } else if(input.action==='quest_release') {
+    if(!isMine) fail(409,'This cell is not yours to let go.');
+    if(existing('status')) fail(409,'A submitted cell keeps its annotator.');
+    put('name','');
+  } else if(input.action==='quest_submit') {
+    if(rowName && !isMine) fail(409,'Someone else has this cell.');
+    const status=input.status;
+    if(typeof status!=='string' || !quest.statuses.includes(status)) fail(400,'Choose one of the sheet\'s cilium statuses.');
+    const sm=input.splitMerged==null ? '' : input.splitMerged;
+    if(typeof sm!=='string' || (sm && !quest.splitMerged.includes(sm))) fail(400,'Split or merged must be one of the sheet\'s options.');
+    const link=String(input.link??'').trim();
+    if(!link) fail(400,'A share link of your annotations is needed.');
+    if(link.length>2000 || !/^https:\/\/[^\s"'<>]+$/i.test(link)) fail(400,'The link must be a single https link.');
+    const notes=String(input.notes??'').replace(/\s+/g,' ').trim();
+    if(notes.length>1000) fail(400,'Keep the note under 1000 characters.');
+    if(!rowName) put('name',name);
+    put('status',status);
+    if(sm || existing('splitMerged')) put('splitMerged',sm);
+    put('link',link);
+    if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(today))) put('date',today,true); else put('date',String(today));
+    if(notes || existing('notes')) put('notes',notes);
+  }
+  return {valueInputOption:'RAW',data,userEnteredData};
+}
+module.exports={SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS,sourceFor,sheetValues,sheetSpelling,nameKey,planSheetUpdate,pointKey,
+  QUESTS,QUEST_COLUMNS,questFor,questHeader,questRows,planQuestUpdate,questClaimRoom};

@@ -30,6 +30,7 @@ import pinOtherVtkUrl from '../static/tags/pin-other.vtk';
 import scytheVtkUrl from '../static/tags/scythe.vtk';
 import {parsePositionString} from "neuroglancer/ui/default_clipboard_handling";
 import {Uint64} from "neuroglancer/util/uint64";
+import {NGE_KEEP_CUT_OPEN_KEY, ngeKeepCutOpen} from 'neuroglancer/datasource/graphene/frontend';
 import {setStatedColor} from "./widgets/widget_utils";
 import {mintShortStateLink} from "./util/state_link";
 
@@ -993,6 +994,11 @@ export interface UserPreferences {
   /** Show neuroglancer's "?" controls button in the top bar. Off by default
    *  (Amy 2026-09-30); the controls panel is still in the command palette. */
   showNgControlsButton?: boolean;
+  /** What a completed cell shows: the full congratulations in the middle of
+   *  the screen (the default), a small note at the top that does not cover
+   *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
+   *  distracting from the workflow"). */
+  cellCompleteMessage?: 'full' | 'small' | 'off';
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
@@ -1479,8 +1485,11 @@ export const LIVE_HELP = 'Live help';
 /** How each kind reads in chat. Both carry the Open view button; only the
  *  live one carries Join (ChatPanel), so the usual way to help is to open
  *  the view, look, and answer in chat. */
-export const HELP_CHAT_PREFIX = '🆘 Help requested';
+export const HELP_CHAT_PREFIX = 'New help request';
 export const LIVE_CHAT_PREFIX = '🤝 Live help wanted';
+/** How a help request was worded in chat until 2026-10-13 (Ames: no SOS
+ *  emoji). Messages already in chat still start with it. */
+export const OLD_HELP_CHAT_PREFIX = '🆘 Help requested';
 export function isLiveHelp(req: { issueType?: string | null } | null | undefined): boolean {
   return !!req && typeof req.issueType === 'string' && req.issueType.startsWith(LIVE_HELP);
 }
@@ -3182,6 +3191,14 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
    *  distinguish a Clear (points reset to 0, no submit) from an actual split
    *  submit (points also reset to 0, but the operation is processing). */
   const clearedAt = ref(0);
+  /** "Keep open after a cut" (Nseraf 2026-10-12). Off by default: the cut
+   *  tool closes after a cut. On, it stays for the next one. Kept in this
+   *  browser; the cut tool itself reads the same key at each submit. */
+  const keepCutOpen = ref(ngeKeepCutOpen());
+  function setKeepCutOpen(on: boolean) {
+    keepCutOpen.value = on;
+    try { localStorage.setItem(NGE_KEEP_CUT_OPEN_KEY, on ? '1' : '0'); } catch { /* a private window: it holds for this page only */ }
+  }
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -3298,9 +3315,9 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   return {
     toolActive, activeGroup, redPointCount, bluePointCount,
     mergeSubmissionCount, mergeSegments, mergeRows, autoSubmit, submitting, statusMessage, resultFlash, resultText,
-    pendingClose, closingTool, clearedAt,
+    pendingClose, closingTool, clearedAt, keepCutOpen,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
-    showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared,
+    showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared, setKeepCutOpen,
   };
 });
 
@@ -4829,6 +4846,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     post_to_chat: boolean;
     created_at: string;
     created_by: string | null;
+    // A reply was asked for (supabase-report-replies.sql). Absent until that
+    // SQL is run, and empty on every notification that did not ask.
+    reply_triage_id?: string | null;
+    reply_text?: string | null;
+    replied_at?: string | null;
+    reply_screenshot_url?: string | null;
+    reply_view_url?: string | null;
   }
 
   const notifications = ref<Notification[]>([]);
@@ -5069,7 +5093,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (data.post_to_chat && !isScheduledForLater) {
       try {
         const chatStore = useChatStore();
-        if (chatStore.connected) {
+        if (chatStore.connected || chatStore.polling) {
           chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
           // Record that the announcement already went out, so the every-10-min
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
@@ -5095,10 +5119,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * actually appear (the intended cron never ran — see createNotification).
    */
   async function postDueChatAnnouncements() {
+    // Only an admin's game may post one (the server refuses anyone else), so
+    // nobody else asks: every other open game was being told "Admins only"
+    // once a minute while an announcement waited (seen 2026-10-11).
+    if (!isAdmin.value) return;
     const chatStore = useChatStore();
     // Need a live channel to broadcast to other users. If no one is connected
     // yet, leave the rows unposted; the next connected poller picks them up.
-    if (!chatStore.connected) return;
+    if (!chatStore.connected && !chatStore.polling) return;
     const now = new Date().toISOString();
     const { data: due, error: dueErr } = await supabase
       .from('notifications')
@@ -5131,8 +5159,55 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   function announceAchievement(track: string, badgeId: number, forUserId?: string) {
     if (!userId.value) return;
     // forUserId: a special award an admin has just given to someone else.
-    secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
+    if (forUserId || track === 'special') {
+      secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
+      return;
+    }
+    // The game counts an edit or a cell a moment before the server has, so
+    // the server can answer "Not earned yet" to an achievement that is
+    // earned (Nseraf's 6,000 edits, 2026-10-11: saved, never announced). It
+    // is kept and asked again, across a reload too, until the server agrees.
+    const wait = waitingAnnouncements();
+    if (!wait.some(w => w.track === track && w.badgeId === badgeId)) wait.push({ track, badgeId, tries: 0 });
+    keepAnnouncements(wait);
+    // Asked 3 seconds after it is earned (Ames 2026-10-11), which gives the
+    // server time to count the edit or cell; asked again if it still says no.
+    setTimeout(() => { void sendAnnouncements(); }, 3000);
   }
+  const ANNOUNCE_KEY = 'nge_announce_waiting_v1';
+  type WaitingAnnouncement = { track: string; badgeId: number; tries: number };
+  function waitingAnnouncements(): WaitingAnnouncement[] {
+    try {
+      const all = JSON.parse(localStorage.getItem(ANNOUNCE_KEY) || '{}') || {};
+      const mine = all[userId.value || ''];
+      return Array.isArray(mine) ? mine.filter(w => w && typeof w.track === 'string' && Number.isFinite(w.badgeId)) : [];
+    } catch { return []; }
+  }
+  function keepAnnouncements(list: WaitingAnnouncement[]) {
+    if (!userId.value) return;
+    try { localStorage.setItem(ANNOUNCE_KEY, JSON.stringify({ [userId.value]: list })); } catch { /* not remembered */ }
+  }
+  let announceTimer: ReturnType<typeof setTimeout> | null = null;
+  let announcing = false;
+  async function sendAnnouncements() {
+    if (announcing || !userId.value) return;
+    announcing = true;
+    if (announceTimer) { clearTimeout(announceTimer); announceTimer = null; }
+    try {
+      const still: WaitingAnnouncement[] = [];
+      for (const w of waitingAnnouncements()) {
+        try { await secureWrite('chat.achievement', { track: w.track, badgeId: w.badgeId }); }   // posted, or already there
+        catch (e: any) {
+          // Only "not yet" is worth asking again, and not for ever (8 tries, about 15 minutes).
+          if (/not earned yet/i.test(String(e?.message || '')) && w.tries < 7) still.push({ ...w, tries: w.tries + 1 });
+        }
+      }
+      keepAnnouncements(still);
+      if (still.length) announceTimer = setTimeout(() => { void sendAnnouncements(); }, Math.min(240000, 20000 * 2 ** Math.min(still[0].tries - 1, 4)));
+    } finally { announcing = false; }
+  }
+  // Anything still waiting from before a reload is asked again once signed in.
+  watch(userId, id => { if (id && waitingAnnouncements().length) setTimeout(() => { void sendAnnouncements(); }, 8000); }, { immediate: true });
 
   async function createSelfNotification(data: {
     title: string; body: string;
@@ -5919,7 +5994,11 @@ function readMentionNotifyPref(): boolean {
 
 /** Reactions offered on chat messages. The ewCommunityData gateway accepts
  *  exactly these, so keep functions/community-data.js in step. */
-export const CHAT_REACTION_EMOJI = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+export const CHAT_REACTION_QUICK = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+/** More reactions, behind the picker's "+" (Nseraf 2026-10-11 asked for
+ *  more; Ames approved this list). All friendly or neutral. */
+export const CHAT_REACTION_MORE = ['👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈'];
+export const CHAT_REACTION_EMOJI = [...CHAT_REACTION_QUICK, ...CHAT_REACTION_MORE];
 
 export const useChatStore = defineStore('chat', () => {
   const chatMessages = ref<ChatMessage[]>([]);
@@ -5978,6 +6057,47 @@ export const useChatStore = defineStore('chat', () => {
 
   let channel: ReturnType<typeof supabase.channel> | null = null;
   let connecting = false;
+  // ── Chat without live updates (Ames 2026-10-13) ──────────────────────────
+  // Messages arrive over a live connection (Supabase Realtime). When that
+  // service is down the connection cannot be made, and chat used to go dead:
+  // the box was switched off and nothing could be sent or seen, for everyone,
+  // until the service came back. But SENDING never needed the live
+  // connection (a message is saved through the server), and new messages can
+  // be asked for. So while the live connection is down, chat asks for new
+  // messages every few seconds and stays usable, and it keeps trying to get
+  // the live connection back, a little less often each time.
+  const polling = ref(false);
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let rejoinTimer: ReturnType<typeof setTimeout> | null = null;
+  let rejoinDelay = 5000;
+  let openChannel: (() => void) | null = null;
+  const POLL_MS = 8000;
+  function startPolling() {
+    if (polling.value) return;
+    polling.value = true;
+    void loadMissed();
+    pollTimer = setInterval(() => { void loadMissed(); }, POLL_MS);
+    // Being online, and who else is, never needed the live connection either.
+    void heartbeat().then(loadOnline);
+    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
+    if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; void loadOnline(); }, 30_000);
+  }
+  function stopPolling() {
+    polling.value = false;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+  function rejoinSoon() {
+    if (rejoinTimer || !openChannel) return;
+    rejoinTimer = setTimeout(() => {
+      rejoinTimer = null;
+      if (connected.value || !openChannel) return;
+      const old = channel;
+      channel = null;                       // so the old one's closing is not taken for a new drop
+      if (old) { try { void supabase.removeChannel(old); } catch { /* already gone */ } }
+      rejoinDelay = Math.min(rejoinDelay * 2, 60_000);
+      openChannel();
+    }, rejoinDelay);
+  }
   let lastMessageDate = '';
 
   // ── Presence (Amy 2026-09-28: join notices and "# online" came back) ──────
@@ -5988,7 +6108,7 @@ export const useChatStore = defineStore('chat', () => {
   // be forged, unlike the old open broadcast the security fix removed.
   const ONLINE_MS = 90_000;
   const HEARTBEAT_MS = 60_000;
-  const online = ref<Record<string, { name: string; lastSeen: number }>>({});
+  const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
   const presenceTick = ref(0);
   const onlineCount = computed(() => {
@@ -6141,18 +6261,34 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Which dataset you have open goes with the heartbeat, for the online list
+  // (Krzysztof Kruk 2026-10-11). If the server does not take it yet, the
+  // plain heartbeat is used for a few minutes and then it is tried again, so
+  // being online never depends on it and a tab left open picks it up by itself.
+  let presenceRetryAt = 0;
+  const presenceTakesDataset = () => Date.now() >= presenceRetryAt;
+  const presenceWithoutDataset = () => { presenceRetryAt = Date.now() + 5 * 60_000; };
   async function heartbeat() {
+    if (presenceTakesDataset()) {
+      const { error } = await supabase.from('chat_presence').upsert({ dataset: currentDatasetTag() }, { onConflict: 'user_id' });
+      if (!error) return;
+      presenceWithoutDataset();
+    }
     const { error } = await supabase.from('chat_presence').upsert({}, { onConflict: 'user_id' });
     if (error) console.warn('[chat] presence heartbeat failed:', error.message);
   }
 
   async function loadOnline() {
     const since = new Date(Date.now() - ONLINE_MS).toISOString();
-    const { data, error } = await supabase.from('chat_presence')
-      .select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
+    let { data, error } = await supabase.from('chat_presence')
+      .select(presenceTakesDataset() ? 'user_id,name,last_seen_at,dataset' : 'user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
+    if (error && presenceTakesDataset()) {
+      presenceWithoutDataset();
+      ({ data, error } = await supabase.from('chat_presence').select('user_id,name,last_seen_at').gte('last_seen_at', since).limit(500));
+    }
     if (error || !data) return;
-    const next: Record<string, { name: string; lastSeen: number }> = {};
-    for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime() };
+    const next: Record<string, { name: string; lastSeen: number; dataset?: string }> = {};
+    for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime(), ...(r.dataset ? { dataset: r.dataset } : {}) };
     online.value = next;
   }
 
@@ -6173,7 +6309,7 @@ export const useChatStore = defineStore('chat', () => {
     // tab) is not news: Ames saw "celiad joined the chat" three times in a
     // row. Only announce people who weren't here.
     const wasOnline = !!online.value[row.user_id];
-    online.value[row.user_id] = { name: row.name, lastSeen: seen };
+    online.value[row.user_id] = { name: row.name, lastSeen: seen, ...(row.dataset ? { dataset: row.dataset } : {}) };
     // joined_at is only moved on a real (re)join, so a routine heartbeat is silent.
     if (row.user_id !== me && !wasOnline && Math.abs(seen - joined) < 5000) sysLine('join', row.name);
   }
@@ -6527,9 +6663,11 @@ export const useChatStore = defineStore('chat', () => {
 
     // Only database rows written by the verified backend reach the chat UI.
     // Public broadcast events are never treated as authenticated messages.
-    channel = supabase.channel('eyewire-ii-chat-verified');
     let subscribedOnce = false;
-    channel.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
+    openChannel = () => {
+    const mine = supabase.channel('eyewire-ii-chat-verified');
+    channel = mine;
+    mine.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
       const row = payload.new;
       if (!row.user_id) return;
       notePinRow(row);
@@ -6578,7 +6716,16 @@ export const useChatStore = defineStore('chat', () => {
     }).on('postgres_changes', {event:'*', schema:'public', table:'chat_presence'}, onPresence)
       .on('postgres_changes', {event:'INSERT', schema:'public', table:'edit_log', filter:'operation=in.(mark_complete,complete_task)'}, onCompletion)
       .subscribe(status => {
+        if (channel !== mine) return;       // an earlier connection, already replaced
         connected.value = status === 'SUBSCRIBED';
+        if (status !== 'SUBSCRIBED') {
+          // The live connection could not be made, or dropped: carry on by
+          // asking for new messages, and try for it again.
+          if (status === 'TIMED_OUT' || status === 'CLOSED' || status === 'CHANNEL_ERROR') { startPolling(); rejoinSoon(); }
+          return;
+        }
+        stopPolling();
+        rejoinDelay = 5000;
         if (status === 'SUBSCRIBED') {
           // A later SUBSCRIBED is a rejoin after a drop: backfill the gap.
           if (subscribedOnce) void loadMissed();
@@ -6589,6 +6736,8 @@ export const useChatStore = defineStore('chat', () => {
           if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; void loadOnline(); }, 30_000);
         }
       });
+    };
+    openChannel();
     window.addEventListener('pagehide', leavePresence);
     connecting = false; // channel is now assigned; the guard above holds
   }
@@ -6599,7 +6748,9 @@ export const useChatStore = defineStore('chat', () => {
    *   telling people to go and find it.
    */
   function sendMessage(text: string, notificationId: number | null = null, replyTo: string | null = null) {
-    if (!channel || !connected.value) return;
+    // Sending goes through the server, not the live connection, so it also
+    // works while chat is asking for messages on a timer.
+    if (!connected.value && !polling.value) return;
     const backend = useProofreadingBackendStore();
     const name = backend.chatHandle;
     // 'eyewirer' with production access, 'explorer' without, 'player' while
@@ -6620,10 +6771,12 @@ export const useChatStore = defineStore('chat', () => {
     // no-ops if the chat_messages table isn't present).
     const row: Record<string, any> = { name, rank, text, dataset: currentDatasetName(), notification_id: notificationId };
     const post = (r: Record<string, any>) => supabase.from('chat_messages').insert(r);
-    if (!replyTo) { post(row).then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); }); return; }
+    // With no live connection the message will not come back by itself: fetch it.
+    const shown = () => { if (polling.value) void loadMissed(); };
+    if (!replyTo) { post(row).then(({ error }) => { if (error) console.warn('[chat] persist failed:', error.message); else shown(); }); return; }
     // A reply the database cannot hold yet is still sent, as a plain message.
     post({ ...row, reply_to: replyTo }).then(({ error }) => {
-      if (!error) return;
+      if (!error) { shown(); return; }
       console.warn('[chat] reply link not stored, sent as a plain message:', error.message);
       post(row).then(({ error: e2 }) => { if (e2) console.warn('[chat] persist failed:', e2.message); });
     });
@@ -6696,14 +6849,18 @@ export const useChatStore = defineStore('chat', () => {
       if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
       window.removeEventListener('pagehide', leavePresence);
       online.value = {};
-      supabase.removeChannel(channel);
+      const old = channel;
       channel = null;
+      openChannel = null;
+      stopPolling();
+      if (rejoinTimer) { clearTimeout(rejoinTimer); rejoinTimer = null; }
+      supabase.removeChannel(old);
       connected.value = false;
       connecting = false;
     }
   }
 
-  return { chatMessages, connected, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };

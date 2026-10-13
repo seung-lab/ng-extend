@@ -5,6 +5,8 @@ import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
+import { startCloseGuard } from './util/close_guard';
+import { startCutPreview } from './util/cut_preview';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
 import GrowingCell from 'components/GrowingCell.vue';
 import { watchPhoneEmptyView } from './widgets/widget_utils';
@@ -384,6 +386,8 @@ function setupViewer() {
   startSpooky(viewer);
   startInvalidSegmentWatch(viewer);
   startAnnotationClickSelect(viewer);
+  startCloseGuard();
+  startCutPreview();
   // Phones: never leave the 3D only view with nothing in it.
   watchPhoneEmptyView(() => phoneRef.value);
   // Undelete: remember the cells that leave the view, to bring them back.
@@ -550,7 +554,15 @@ function makeLegendItem(legend: HTMLElement, note: LegendNote, spec: typeof LEGE
     rest();
     note.done(`${n} ${n === 1 ? spec.plural.replace(/cells/, 'cell') : spec.plural} hidden.`);
   };
-  item.addEventListener('click', () => { void toggle(); });
+  item.addEventListener('click', (e: MouseEvent) => {
+    void toggle();
+    // A mouse click leaves the item holding the keyboard, and Enter and Space
+    // work a focused item like a click. Enter is also how a merge or a cut is
+    // sent, so the next one sent started a check and hid cells instead (Ames
+    // 2026-10-13: "Checking 34 of 90" after a merge). Let go of the keyboard
+    // after a mouse click; reaching the item with Tab still works as before.
+    if (e.detail > 0) item.blur();
+  });
   return item;
 }
 // Enter or Space on a focused legend item works it like a click. Listened for
@@ -1052,6 +1064,30 @@ function observeSplitMergeTools() {
     // Check NG status bar for errors during tool use
     checkStatusMessages();
   }
+
+  // The cut tool says how a submit went (graphene frontend.ts dispatches
+  // 'nge-cut-submitted'). With "Keep open after a cut" on, the tool stays
+  // after a successful cut, so the close path above never runs: the result
+  // shows in place, as a merge's does, and the bar is back to "Ctrl+Click"
+  // for the next cut. Off, the tool closes next and the close path shows
+  // "Split complete" as before. A failed cut stops the spinner either way;
+  // the status scanner shows the server's words when there are any.
+  window.addEventListener('nge-cut-submitted', (e: Event) => {
+    if (!store.toolActive || store.pendingClose) return;
+    const ok = !!(e as CustomEvent).detail?.success;
+    if (ok && !store.keepCutOpen) return;
+    // Not a new submit: the points were reset by the cut itself, and a cut
+    // that is already done must not be celebrated again when the tool closes.
+    splitSubmitted = false;
+    if (ok) {
+      prevSinkCount = 0;
+      prevSourceCount = 0;
+      store.showResult('success', 'Cut complete', 1500);
+    } else if (!store.resultFlash) {
+      store.submitting = false;
+      store.setStatusMessage('');
+    }
+  });
 
   // Debounce with requestAnimationFrame to avoid thrashing
   function debouncedScan() {

@@ -2,6 +2,345 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-13T22:12:00Z",
+      "title": "Cut tutorial: two points on each side",
+      "items": [
+        "The first cut in the Cut tutorial now asks for 2 red and 2 blue points. With one point a side the cut took only half the axon off.",
+        "If a cut there leaves half the axon attached, the box says so and shows where the rest goes.",
+        "Pressing C or M a second time now says the tool is off, and how to turn it back on.",
+        "Small wording changes from tester feedback."
+      ]
+    },
+    {
+      "at": "2026-10-13T22:05:00Z",
+      "title": "Cut tutorial: half a cut is not the whole job",
+      "items": [
+        "In the 2D cut of the Cut tutorial, cutting the axon off only partway no longer counts. The box says half is done and shows where the rest of the cut goes.",
+        "Practice views no longer show every hint point twice."
+      ]
+    },
+    {
+      "at": "2026-10-13T21:58:00Z",
+      "title": "Merge tutorial: the second merge shows where to click",
+      "items": [
+        "The second merge in the Merge tutorial now shows pink gems on the two spots to click, as the first one does."
+      ]
+    },
+    {
+      "at": "2026-10-13T20:58:50Z",
+      "title": "Chat keeps working when live updates are down",
+      "items": [
+        "If the live connection behind chat goes down, you can still read and send messages. New ones arrive every few seconds, and the dot at the top of chat turns amber until the live connection is back."
+      ]
+    },
+    {
+      "at": "2026-10-13T20:31:00Z",
+      "title": "The Cilia Quest",
+      "digest": "headline",
+      "items": [
+        "The Cell Library has a Quests tab. On Retina, claim a starburst cell, mark its basal body, daughter centriole and cilium centerline in the layers that open with it, and press Submit. The cell does not need to be proofread. You can hold three cells at a time.",
+        "Your answer, your notes and a share link of your view go to the lab's sheet with your name and the date. Submitting brings a celebration and your count, and your profile shows how many quests you have completed.",
+        "Annotation layers have a new tool, the polyline: hold Ctrl and click along a line, press Enter to finish, Backspace to take a point back, Esc to cancel. It is the same polyline the lab's own viewer draws.",
+        "The quest's Instructions link the lab's guide, its training video and a reference: three real example cells, annotated by the lab, each saying which status it shows and when to use it. In any annotation list, a description now shows in full where it used to be cut at one line."
+      ]
+    },
+    {
+      "at": "2026-10-13T20:23:59Z",
+      "title": "Reply to the team with a screenshot",
+      "digest": "minor",
+      "items": [
+        "When the team asks you for a reply about a report, you can now add a screenshot, your current view and your recent console messages, the same as on a report.",
+        "The screenshot shows the game, not the message you are answering."
+      ]
+    },
+    {
+      "at": "2026-10-13T16:41:19Z",
+      "title": "Preview a cut before you make it",
+      "digest": "headline",
+      "items": [
+        "In cut mode, place your red and blue points and press Preview. The cell is coloured in 3D to show what would stay with the red points and what would go with the blue ones, so you can see where the cut will fall before you make it.",
+        "Around your points the colours follow the supervoxels themselves, so the edge of the cut is exact there. Farther along the cell they show which side each branch ends up on.",
+        "Nothing is cut until you press Submit cut. The colours go away when you move a point, submit, or leave cut mode."
+      ]
+    },
+    {
+      "at": "2026-10-13T16:36:28Z",
+      "title": "Reply to the team about your report",
+      "digest": "minor",
+      "items": [
+        "When the team asks you a question about a report you sent, the notification now has a box where you can write back."
+      ]
+    },
+    {
+      "at": "2026-10-13T16:00:20Z",
+      "title": "Pyr gems stay on your annotation layers",
+      "items": [
+        "When you set an annotation layer to show its points as Pyr gems, the layer of the same name on the next cell you open shows gems too. Before, it went back to dots with every new cell."
+      ]
+    },
+    {
+      "at": "2026-10-13T15:32:20Z",
+      "title": "Steadier segment list, and help requests read better in chat",
+      "items": [
+        "Removing a segment no longer flashes a bar along the bottom, so the legend under the list stays still.",
+        "After you click the legend, pressing Enter to send a merge or a cut no longer starts a legend check.",
+        "The cell menu shows how many claims you really have left, counting cells claimed in the Cell Library.",
+        "A help request shows in chat as New help request from the player, without the SOS emoji."
+      ]
+    },
+    {
+      "at": "2026-10-13T15:18:00Z",
+      "title": "The profile keeps its shape on a very wide screen",
+      "digest": "minor",
+      "items": [
+        "On a very wide screen the profile overview no longer stretches across the whole window: it keeps the proportions it has on a normal screen and sits in the middle of the frame.",
+        "In each row of your profile, the count of what is left to your next Achievement now sits above the arrow to the Trophy Case, where the row ends, instead of at the far edge of the window."
+      ]
+    },
+    {
+      "at": "2026-10-13T15:10:54Z",
+      "title": "Retina: a claimed cell shows WIP in the sheet",
+      "items": [
+        "When you claim a Retina cell, its Status in the sheet is set to WIP, so you can see in the sheet which cells are yours to do.",
+        "Completing the cell replaces WIP with the status you choose. Releasing it clears WIP along with your name."
+      ]
+    },
+    {
+      "at": "2026-10-12T21:36:09Z",
+      "title": "New annotation layers open at your point size",
+      "digest": "minor",
+      "items": [
+        "A new annotation layer you make now opens at the size you last set on the Size slider, and the Annotate point button keeps that size."
+      ]
+    },
+    {
+      "at": "2026-10-12T20:37:03Z",
+      "title": "Your annotation point size is remembered",
+      "items": [
+        "Set the Size slider on an annotation layer once, and new annotation layers and new workspaces open at that size. A layer keeps its own size if you set one for it."
+      ]
+    },
+    {
+      "at": "2026-10-12T20:17:01Z",
+      "title": "Shift+L opens and closes the Cell Library",
+      "digest": "minor",
+      "items": [
+        "Press Shift+L to open and close the Cell Library. The shortcut is now shown when you hover its icon in the top bar and its close button."
+      ]
+    },
+    {
+      "at": "2026-10-12T17:27:00Z",
+      "title": "Cells the lab finished are not offered again",
+      "items": [
+        "On Retina, a cell the lab's own sheet marks as complete no longer offers Mark as Proofread or Claim in its Delta menu. The menu says the lab has already proofread it.",
+        "A cell you completed in Pyr keeps its Unmark, and a cell you already hold keeps its Release."
+      ]
+    },
+    {
+      "at": "2026-10-12T17:17:00Z",
+      "title": "Dots for your Merger Sandbox progress",
+      "items": [
+        "Your progress in the Merger Sandbox is shown as plain dots in the full box too."
+      ]
+    },
+    {
+      "at": "2026-10-12T17:12:00Z",
+      "title": "Skip sits beside Help me",
+      "items": [
+        "In the Merger Sandbox, Skip is now a button to the left of Help me."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:58:00Z",
+      "title": "Skip, when there is nothing to skip to",
+      "items": [
+        "Skipping your last unsolved merger used to show it as still fused. Skip this one now only appears when there is another merger to go to."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:50:00Z",
+      "title": "Merger Sandbox: Next is the main button again",
+      "items": [
+        "The main button in the Merger Sandbox is Next, which checks your cut. Skip this one is a small link in the full box.",
+        "The slim bar opens a line of text when there is news, such as a cut that went through but did not finish the job.",
+        "The slim bar shows your progress as plain dots."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:50:06Z",
+      "title": "Notices at the bottom no longer cover the legend",
+      "items": [
+        "When a notice or tool bar runs along the bottom of the screen, the segment list legend and the Sections switch in the 3D view move up so you can still see and use them."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:34:00Z",
+      "title": "The slim Merger Sandbox box is one bar",
+      "items": [
+        "Folded, the Merger Sandbox box is now a single bar: your progress and Skip. Open it again with the small arrow for the hint and Help me."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:15:00Z",
+      "title": "Retina cells show what the lab knows",
+      "items": [
+        "On Retina, a cell the lab's own sheet lists now shows it in the segment list: its mark says proofread, typed or done, and its class and type stand in for its ID.",
+        "The Delta menu fills in the same way. Completion Status and Cell Type say what the lab's sheet says wherever nothing is saved in Pyr yet, and the menu's title is the cell's class and type.",
+        "What you save in Pyr always wins, and the lab's sheet does not change your stats."
+      ]
+    },
+    {
+      "at": "2026-10-12T16:01:00Z",
+      "title": "Cut mode can stay open after a cut",
+      "items": [
+        "Tick Keep open after a cut, at the right end of the cut bar, and cut mode stays on after each cut, ready for the next one. Esc or C closes it. It is off unless you turn it on, and your choice is remembered.",
+        "A cut the server refuses no longer leaves the bar waiting: the spinner stops and you can try again."
+      ]
+    },
+    {
+      "at": "2026-10-12T15:43:00Z",
+      "title": "The lab's notes in the Delta menu",
+      "items": [
+        "On Retina, the Delta menu of a cell now shows what the lab's own retina sheet says about it: its status, cell class and type. It is there to read, and it does not change your stats."
+      ]
+    },
+    {
+      "at": "2026-10-12T15:23:00Z",
+      "title": "Your profile: a range for the curves, and cells identified",
+      "items": [
+        "Choose the range of the two curves on your profile: all time, 90, 30 or 7 days. At 7 days a curve ends on the Past 7d number under it. The choice is remembered.",
+        "Beside your name, a count of the cells you identified: cells whose type you set in Pyr, each once. Unknown or Unsure does not count, and neither does the Sandbox.",
+        "Today, Past 7d and All time now sit on one line, with the merge and split counts under them on one line too.",
+        "The Cells completed and Edits blocks take more of their row, so a long count never runs under your Achievements.",
+        "On a laptop screen the merge and split counts stack in two short lines when the row is short of room."
+      ]
+    },
+    {
+      "at": "2026-10-12T15:19:00Z",
+      "title": "A slim Merger Sandbox box",
+      "items": [
+        "The Merger Sandbox box can be folded down to a slim strip: your progress, the hint, Help me and Skip. Press the small arrow at the end of the row of gems. It remembers your choice."
+      ]
+    },
+    {
+      "at": "2026-10-12T15:18:00Z",
+      "title": "More datasets say where they came from",
+      "digest": "minor",
+      "items": [
+        "MICrONS, H01, MANC, MAOL, CA3 and the Pinky Sandbox now show their source on their cards."
+      ]
+    },
+    {
+      "at": "2026-10-12T15:13:58Z",
+      "title": "Batch Processor: each cell is typed at its own point",
+      "items": [
+        "When you set a cell type for a group, each cell is now saved at the point you saved inside it, so the type lands on the right cell.",
+        "A cell with no saved point is skipped and counted. Put the crosshairs inside it, press Save point, then apply again."
+      ]
+    },
+    {
+      "at": "2026-10-12T15:07:00Z",
+      "title": "Hemibrain joins the datasets",
+      "digest": "headline",
+      "lead": false,
+      "items": [
+        "Hemibrain is here to explore: about half of a fruit fly's central brain, from Janelia. Turn it on in your profile's Datasets tab or in Settings.",
+        "Dataset cards now say where each dataset came from."
+      ]
+    },
+    {
+      "at": "2026-10-12T14:49:00Z",
+      "title": "Merger Sandbox: a good cut counts, and no more going round in circles",
+      "items": [
+        "Two mergers were refusing cuts that were right. They now accept a cut made at the join even when the points sit a little to one side.",
+        "If the merger you have left is being put back to its starting state, the box waits and opens it for you, instead of handing you one you have already solved."
+      ]
+    },
+    {
+      "at": "2026-10-12T14:39:00Z",
+      "title": "Skip a merger, and less confetti",
+      "items": [
+        "The Merger Sandbox has a Skip button, to move on to another merger and come back later.",
+        "One merger was taken out for now, so there are 7.",
+        "Confetti is thrown only when a cut is confirmed, not when you press Try again.",
+        "The result boxes are smaller, with a new Nurro for a merger that is still fused."
+      ]
+    },
+    {
+      "at": "2026-10-12T14:32:00Z",
+      "title": "No more flashing panels in the Merger Sandbox",
+      "items": [
+        "Each merger now opens straight in 3D. The 2D images and the side panel no longer flash open and shut as it loads."
+      ]
+    },
+    {
+      "at": "2026-10-12T13:13:54Z",
+      "title": "A cell type that did not save now says so",
+      "items": [
+        "If the server does not save a cell type, the menu now shows an error and asks you to try again. Before, it could say Saved when the type had not been saved.",
+        "The Batch Processor counts a cell type the server refused as failed."
+      ]
+    },
+    {
+      "at": "2026-10-12T00:28:00Z",
+      "title": "The profile fills the window",
+      "items": [
+        "Your profile now fills the whole window, with more room for everything in it.",
+        "Your profile counts your work in Pyr on all of its datasets, not only the dataset on screen. Only work done in Pyr counts.",
+        "Cells completed shows today, the past 7 days and all time, the same three windows as edits, and above each a small curve draws your running total from your first day to today. Point at it to read any day.",
+        "Each of cells, edits and days is one row: the latest Achievement you earned, your numbers and curve, and the rest of that track's Achievements beside them. A circuit line runs across the top of each row, breaks at two pads, and from the second one fills toward your next Achievement, with how many to go at its end. Your all time number stands out in its own type. Achievement names show when you point at them.",
+        "Days helping science in Pyr shows your latest Days Achievement beside your total. Your streak stays on the right.",
+        "Your recently completed cells are listed even on a new device.",
+        "If you have a username, your profile is titled with it.",
+        "Cells, edits and days each have their own colour on the profile, the same as their Achievement sections: sky blue, gold and purple. The Last 14 Days chart uses the same two.",
+        "Your Special Awards sit beside your name. The profile fits the window without scrolling; your recently completed cells scroll in their own box."
+      ]
+    },
+    {
+      "at": "2026-10-11T23:52:20Z",
+      "title": "More reactions in chat",
+      "items": [
+        "The reaction picker in chat has a + at the end. It opens 38 more reactions, including 👌 and 👏.",
+        "Chat messages now start at the left edge of the chat, so there is more room for the words."
+      ]
+    },
+    {
+      "at": "2026-10-11T23:33:09Z",
+      "title": "Chat: a little more room beside your own messages",
+      "items": [
+        "The bar that marks your own messages in chat no longer sits right against the words."
+      ]
+    },
+    {
+      "at": "2026-10-11T23:18:54Z",
+      "title": "A warning before Ctrl+W closes Pyr",
+      "items": [
+        "If you press Ctrl+W by mistake, for example reaching for Ctrl+2 or Ctrl+3, your browser now asks before it closes the tab. Refreshing the page does not ask."
+      ]
+    },
+    {
+      "at": "2026-10-11T23:07:22Z",
+      "title": "Choose what you see when you complete a cell",
+      "items": [
+        "In Settings, When I complete a cell, show lets you keep the full congratulations, switch to a small note at the top of the screen, or show nothing.",
+        "The pills for top bar icons in Settings show short names and no longer run out of their panel. Hover a pill for the full description."
+      ]
+    },
+    {
+      "at": "2026-10-11T22:16:00Z",
+      "title": "Achievements always reach chat",
+      "items": [
+        "An Achievement you earn is now always announced in chat. Sometimes the line was missed when the count was confirmed a moment late."
+      ]
+    },
+    {
+      "at": "2026-10-11T16:15:45Z",
+      "title": "The segment list keeps its place",
+      "items": [
+        "Removing a segment from a long list no longer makes the list jump up. It stays where you were."
+      ]
+    },
+    {
       "at": "2026-10-11T15:37:00Z",
       "title": "Cell types and completions stay with the cell after an edit",
       "items": [

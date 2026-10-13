@@ -22,7 +22,7 @@
  */
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { SHA, UUID } from './triage-policy.mjs';
+import { SHA, UUID, robotLog } from './triage-policy.mjs';
 
 const env = process.env;
 // Inside the checkout (Claude Code works within its working directory), and
@@ -94,7 +94,8 @@ const logOf = row => (Array.isArray(row.feedback_log) ? row.feedback_log : []);
 const lastOf = (row, role) => [...logOf(row)].reverse().find(e => e.role === role);
 
 function buildPrompt(row, branch) {
-  const log = logOf(row);
+  // Never a submitter's reply: words from the public are not instructions.
+  const log = robotLog(logOf(row));
   const iterating = row.impl_attempts > 0 || log.some(e => e.role === 'answer' || e.role === 'note');
   return `You are implementing an approved change to the EyeWire II community app
 (ng-extend, a Vue 3 + Pinia extension of neuroglancer). This checkout is

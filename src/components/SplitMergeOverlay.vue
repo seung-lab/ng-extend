@@ -118,6 +118,16 @@ function swapGroup() {
 }
 
 /** Click NG's Clear button to reset all placed points */
+/** The cut preview test: the tool's own Preview button does the work. It is
+ *  found by its class, not its place in the row, so it never presses another. */
+/** One preview at a time: while one is being worked out the button waits. */
+const previewBusy = ref(false);
+window.addEventListener('nge-cut-preview-busy', (e: Event) => { previewBusy.value = !!(e as CustomEvent).detail; });
+function previewCut() {
+  if (previewBusy.value) return;
+  (document.querySelector('.graphene-multicut .nge-cut-preview-button') as HTMLElement | null)?.click();
+}
+
 function clearPoints() {
   // Flag the clear FIRST so the DOM scanner doesn't misread the points
   // resetting to 0 as a split submit ("Submitting split...").
@@ -196,6 +206,12 @@ const rowStatus = (i: number) => store.mergeRows[i]?.status || '';
 const rowRemovable = (i: number) => store.mergeRows[i]?.removable ?? true;
 /** Why a merge failed, in the server's words: shown under its row. */
 const rowWhy = (i: number) => store.mergeRows[i]?.why || '';
+
+/** "Keep open after a cut" (Nseraf 2026-10-12): off, the bar closes after a
+ *  cut, as Ames likes it; on, it stays for the next cut. Remembered. */
+function toggleKeepCutOpen() {
+  store.setKeepCutOpen(!store.keepCutOpen);
+}
 
 /** Toggle NG's native auto-submit checkbox */
 function toggleAutoSubmit() {
@@ -292,11 +308,22 @@ function cancelTool() {
                2026-10-07); the hint takes the rest of the bar. -->
           <div class="nge-smo-actions nge-smo-actions--left" v-if="!isSubmitting">
             <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': cutReady }" @click="submitTool('multicut')" title="Submit the cut (or press Enter)">Submit cut</button>
+            <!-- Shows where the cut would fall, before it is made (src/util/cut_preview.ts). -->
+            <button class="nge-smo-action-btn clear-btn" :disabled="!cutReady || previewBusy" @click="previewCut"
+                    :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">{{ previewBusy ? 'Previewing…' : 'Preview' }}</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
           </div>
 
           <div class="nge-smo-hint nge-smo-hint--left" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
+
+          <!-- At the right end: whether the bar stays after a cut. Off by
+               default (Ames: one cut, then move on); on for a run of cuts on
+               one cell (Nseraf). -->
+          <label class="nge-smo-auto-submit nge-smo-keep-open" title="Keep cut mode open after a cut, ready for the next one. Esc or C closes it. Off, cut mode closes after each cut." @click.prevent="toggleKeepCutOpen">
+            <span class="nge-smo-checkbox" :class="{ checked: store.keepCutOpen }">{{ store.keepCutOpen ? '☑' : '☐' }}</span>
+            Keep open after a cut
+          </label>
         </template>
 
         <!-- MERGE MODE -->
@@ -1257,6 +1284,20 @@ function cancelTool() {
   color: rgb(154 162 177);
 }
 .nge-smo-auto-submit:hover { color: #a6ffd6; }
+/* the cut bar's one option sits at the right end, after the hint */
+.nge-smo-keep-open { margin-left: auto; margin-right: 0; flex-shrink: 0; }
+/* On a phone the cut bar already runs off the right edge (the hint is
+   squeezed to nothing), and a cut needs Ctrl+click and C, so the option
+   would be off screen and unusable there: not drawn. */
+body.nge-mobile .nge-smo-keep-open { display: none; }
+/* It takes the cut bar's own colour, red or blue with the active group,
+   not merge's green (Ames 2026-10-12). */
+.nge-smo-keep-open:hover { color: var(--smo-ink, #ffd0d0); }
+.nge-smo-keep-open .nge-smo-checkbox.checked {
+  background: rgb(var(--smo-rgb) / .22); border-color: rgb(var(--smo-rgb) / .95);
+  box-shadow: 0 0 8px rgb(var(--smo-rgb) / .5);
+}
+.nge-smo-keep-open .nge-smo-checkbox.checked::after { border-color: var(--smo-ink, #ffd0d0); }
 /* a drawn box in place of the box characters */
 .nge-smo-checkbox {
   position: relative; display: inline-block; width: 14px; height: 14px; font-size: 0; border-radius: 3px;

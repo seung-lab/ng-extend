@@ -16,6 +16,7 @@ import { BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, LOYALTY_TEST_ONLY,
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { streakMilestonesBetween } from '../util/streak_milestones';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
+import { runPanelTrace } from '../util/holo_trace';
 import { celebrationCellCounts } from '../util/dataset_contribution';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
@@ -24,9 +25,10 @@ const { stats } = storeToRefs(statsStore);
 const queueStore = useProofreadingQueueStore();
 const confettiRef = ref<InstanceType<typeof ConfettiCelebration> | null>(null);
 
-/** Fire confetti with configurable palette and intensity. */
-function fireConfetti(palette = 'default', intensity = 1) {
-  confettiRef.value?.trigger(palette, intensity);
+/** Fire confetti with configurable palette and intensity, from a point on
+ *  screen when one is given (otherwise from the usual place). */
+function fireConfetti(palette = 'default', intensity = 1, origin?: { x: number; y: number }) {
+  confettiRef.value?.trigger(palette, intensity, origin);
 }
 
 interface Toast {
@@ -54,8 +56,8 @@ function addToast(toast: Omit<Toast, 'id' | 'leaving'>) {
     return;
   }
   toasts.value.push(t);
-  // Auto-dismiss after 5s
-  setTimeout(() => dismiss(t.id), 5000);
+  // Auto-dismiss after 5s (a quest's counts get a little longer to be read)
+  setTimeout(() => dismiss(t.id), toast.type === 'quest' ? 8000 : 5000);
 }
 
 function dismiss(id: number) {
@@ -287,6 +289,35 @@ document.addEventListener('nge:loyalty-days', onLoyaltyDays);
 // The day may have been counted before this component existed.
 { const early = (window as any).__ngeLoyaltyDays; if (early) { (window as any).__ngeLoyaltyDays = null; setTimeout(() => onLoyaltyDays(new CustomEvent('nge:loyalty-days', { detail: early })), 3000); } }
 
+// ── Annotation Quest completion (Ames 2026-10-13: "we need some celebration
+//    and a counter popup of annotations placed in that cell, number of quests
+//    completed") ─────────────────────────────────────────────────────────
+/** The confetti goes on the Complete click itself, from the button, in shades
+ *  of one colour drawn fresh each time (Ames 2026-10-13: "it should appear
+ *  right when I click", "if you get blue, lots of blues"). */
+function onQuestConfetti(e: Event) {
+  const d = ((e as CustomEvent).detail || {}) as { origin?: { x: number; y: number } };
+  const origin = d.origin && Number.isFinite(d.origin.x) && Number.isFinite(d.origin.y) ? d.origin : undefined;
+  console.info('[quests] confetti');
+  fireConfetti('mono', 2.5, origin);
+}
+document.addEventListener('nge:quest-confetti', onQuestConfetti);
+/** The card with the counts, once the sheet has the quest: a holo card at the
+ *  top, in the site's own style, traced once as it arrives, gone after a few
+ *  seconds or a click. */
+const questCard = ref<{ index: string; points: number; done: number } | null>(null);
+const questCardEl = ref<HTMLElement | null>(null);
+let questCardTimer: ReturnType<typeof setTimeout> | null = null;
+function closeQuestCard() { questCard.value = null; if (questCardTimer) { clearTimeout(questCardTimer); questCardTimer = null; } }
+function onQuestComplete(e: Event) {
+  const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number };
+  questCard.value = { index: String(d.index || ''), points: Math.max(0, Number(d.points) || 0), done: Math.max(0, Number(d.done) || 0) };
+  if (questCardTimer) clearTimeout(questCardTimer);
+  questCardTimer = setTimeout(closeQuestCard, 7000);
+  nextTick(() => { try { if (questCardEl.value) runPanelTrace(questCardEl.value); } catch { /* the trace is decoration */ } });
+}
+document.addEventListener('nge:quest-complete', onQuestComplete);
+
 // ── Daily Quest completion celebration ──────────────────────────────────
 let prevDailyDone = -1; // -1 = not yet initialized
 const DAILY_QUEST_COUNT = 3;
@@ -414,8 +445,26 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
 let lastCelebratedCount: number | null = null;
 const cellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string; datasetLabel?: string; datasetCells?: number; counted?: boolean } | null>(null);
 
+/** How much a completed cell shows (Settings): the full congratulations, a
+ *  small note at the top, or nothing. Read when a cell is completed, so a
+ *  change in Settings applies to the next one. */
+const cellMessageMode = ref<'full' | 'small' | 'off'>('full');
+function cellMessagePref(): 'full' | 'small' | 'off' {
+  try {
+    const v = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').cellCompleteMessage;
+    return v === 'small' || v === 'off' ? v : 'full';
+  } catch { return 'full'; }
+}
+
 watch(() => backend.pendingCellCelebration, (pending) => {
   if (!pending) return;
+  const mode = cellMessageMode.value = cellMessagePref();
+  if (mode === 'off') {
+    // Nothing on screen: the cell's menu and its row say Proofread.
+    backend.pendingCellCelebration = null;
+    cellCelebration.value = null;
+    return;
+  }
   const shown = { ...pending };
   cellCelebration.value = shown;
   backend.pendingCellCelebration = null;
@@ -449,7 +498,10 @@ watch(() => backend.pendingCellCelebration, (pending) => {
   // Batch completions get the hero treatment: cascading confetti bursts
   // (cyan → gold → magenta → cyan) and a longer dwell so the user can take
   // it in. Single-cell stays as the original quick cyan pop.
-  if (pending.batchCount && pending.batchCount > 1) {
+  if (mode === 'small') {
+    // The note: no confetti, no sound, and it goes away by itself.
+    setTimeout(() => { if (cellCelebration.value && cellCelebration.value.segId === shown.segId && cellCelebration.value.imageUrl === shown.imageUrl) cellCelebration.value = null; }, 5000);
+  } else if (pending.batchCount && pending.batchCount > 1) {
     fireConfetti('cyan', 2.2);
     setTimeout(() => fireConfetti('gold', 2.0), 500);
     setTimeout(() => fireConfetti('cyan', 1.6), 1100);
@@ -596,9 +648,23 @@ function playBatchChime() {
       </div>
     </Transition>
 
+    <!-- The small note (Settings: "A small note at the top"): one line under
+         the top bar that covers nothing and takes no clicks from the view. -->
+    <Transition name="nge-cell-chip">
+      <button v-if="cellCelebration && cellMessageMode === 'small'" type="button" class="nge-cell-chip" title="Click to dismiss" @click="dismissCellCelebration">
+        <span class="nge-cell-chip-check" aria-hidden="true">✓</span>
+        <span class="nge-cell-chip-title">{{ cellCelebration.batchCount && cellCelebration.batchCount > 1 ? cellCelebration.batchCount + ' cells complete' : 'Cell complete' }}</span>
+        <span v-if="cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
+        <template v-else-if="cellCelebration.counted">
+          <span v-if="cellCelebration.datasetLabel" class="nge-cell-chip-count">{{ cellCelebration.datasetLabel }} <b>{{ cellCelebration.datasetCells }}</b></span>
+          <span v-else class="nge-cell-chip-count"><b>{{ cellCelebration.totalCells }}</b> in all</span>
+        </template>
+      </button>
+    </Transition>
+
     <!-- Single-cell celebration overlay (compact) -->
     <Transition name="nge-cell-celebrate">
-      <div v-if="cellCelebration && (!cellCelebration.batchCount || cellCelebration.batchCount <= 1)" class="nge-cell-overlay" @click="dismissCellCelebration">
+      <div v-if="cellCelebration && cellMessageMode === 'full' && (!cellCelebration.batchCount || cellCelebration.batchCount <= 1)" class="nge-cell-overlay" @click="dismissCellCelebration">
         <div class="nge-cell-card">
           <img v-if="cellCelebration.imageUrl" :src="cellCelebration.imageUrl" class="nge-cell-nurro" />
           <div class="nge-cell-text">
@@ -620,7 +686,7 @@ function playBatchChime() {
 
     <!-- Batch celebration overlay — Asgardian hero treatment -->
     <Transition name="nge-batch-celebrate">
-      <div v-if="cellCelebration && cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-batch-overlay" @click="dismissCellCelebration">
+      <div v-if="cellCelebration && cellMessageMode === 'full' && cellCelebration.batchCount && cellCelebration.batchCount > 1" class="nge-batch-overlay" @click="dismissCellCelebration">
         <div class="nge-batch-vignette"></div>
         <div class="nge-batch-hexgrid"></div>
         <div class="nge-batch-rays">
@@ -665,6 +731,24 @@ function playBatchChime() {
           <div class="nge-batch-total-sub">cells mapped</div>
           <div class="nge-batch-thanks">Thank you for mapping the brain!</div>
           <div class="nge-batch-rally">FOR SCIENCE!</div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- A completed quest: the counts, in a holo card at the top. -->
+    <Transition name="nge-qcard">
+      <div v-if="questCard" ref="questCardEl" class="nge-qcard" @click="closeQuestCard" role="status">
+        <div class="nge-qcard-eyebrow">Quest complete</div>
+        <div class="nge-qcard-cell">{{ questCard.index || 'Cell' }}</div>
+        <div class="nge-qcard-stats">
+          <div class="nge-qcard-stat">
+            <div class="nge-qcard-num">{{ questCard.points }}</div>
+            <div class="nge-qcard-label">{{ questCard.points === 1 ? 'annotation' : 'annotations' }} on this cell</div>
+          </div>
+          <div class="nge-qcard-stat">
+            <div class="nge-qcard-num nge-qcard-num--total">{{ questCard.done }}</div>
+            <div class="nge-qcard-label">{{ questCard.done === 1 ? 'quest' : 'quests' }} completed by you</div>
+          </div>
         </div>
       </div>
     </Transition>
@@ -1098,7 +1182,7 @@ function playBatchChime() {
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
-  max-width: 360px;
+  max-width: 480px;
 }
 
 /* ── Toast card ── */
@@ -1126,6 +1210,79 @@ function playBatchChime() {
 .nge-toast--cells  { border-color: rgba(76, 175, 80, 0.3); }
 .nge-toast--edits  { border-color: rgba(74, 158, 255, 0.3); }
 .nge-toast--quest  { border-color: rgba(0, 200, 255, 0.35); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 200, 255, 0.12); }
+/* ── A completed quest: the holo card (Ames 2026-10-13: the toast was tiny and
+   ugly). The hero card's surface and glow, the panel labels' Orbitron, the
+   profile's big numbers; the border is traced once by runPanelTrace. ── */
+.nge-qcard {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  padding: 22px 28px 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif;
+  color: #e4eaf5;
+  background: radial-gradient(ellipse at 50% 30%, rgba(0, 60, 120, 0.15) 0%, transparent 70%),
+    linear-gradient(145deg, rgba(8, 12, 24, 0.97) 0%, rgba(14, 18, 32, 0.96) 50%, rgba(6, 10, 22, 0.97) 100%);
+  border: 1px solid rgba(126, 224, 255, 0.32);
+  border-radius: 16px;
+  box-shadow:
+    0 0 60px rgba(0, 220, 255, 0.12),
+    0 18px 50px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(196, 228, 255, 0.10);
+  backdrop-filter: blur(10px) saturate(1.2);
+  cursor: pointer;
+  pointer-events: all;
+}
+.nge-qcard::before {
+  content: ""; position: absolute; left: 10%; right: 10%; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(126, 224, 255, 0.95) 50%, transparent);
+  box-shadow: 0 0 12px rgba(126, 224, 255, 0.6);
+}
+.nge-qcard-eyebrow {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.85);
+  text-shadow: 0 0 10px rgba(126, 224, 255, 0.45);
+}
+.nge-qcard-cell {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 30px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.1;
+  color: #f2f7ff;
+  text-shadow: 0 0 18px rgba(126, 224, 255, 0.35);
+}
+.nge-qcard-stats { display: flex; gap: 14px; width: 100%; margin-top: 6px; }
+.nge-qcard-stat {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 12px 10px 11px; border-radius: 10px;
+  background: rgba(126, 224, 255, 0.05);
+  border: 1px solid rgba(126, 224, 255, 0.14);
+}
+.nge-qcard-num {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 30px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  color: #7cffb2; text-shadow: 0 0 16px rgba(124, 255, 178, 0.45);
+}
+.nge-qcard-num--total { color: #ffd24d; text-shadow: 0 0 16px rgba(255, 210, 77, 0.45); }
+.nge-qcard-label {
+  font-size: 12.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #9fb0c8; text-align: center; line-height: 1.3;
+}
+.nge-qcard-enter-active { transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
+.nge-qcard-leave-active { transition: opacity 0.3s ease, transform 0.3s ease; }
+.nge-qcard-enter-from { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(0.96); }
+.nge-qcard-leave-to { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.98); }
+@media (prefers-reduced-motion: reduce) {
+  .nge-qcard-enter-active, .nge-qcard-leave-active { transition: opacity 0.2s ease; }
+  .nge-qcard-enter-from, .nge-qcard-leave-to { transform: translateX(-50%); }
+}
 
 /* ── Icon ── */
 .nge-toast-icon {
@@ -1354,6 +1511,55 @@ function playBatchChime() {
   from { transform: translateY(0); }
   to { transform: translateY(-6px); }
 }
+
+/* The small note at the top. Cut like the Lantern's bar and the layer tabs
+   (a circuit board part whose top edge is the trace, ending on two pads),
+   in the green of a finished cell where the Lantern is amber (Ames
+   2026-10-11: "use Lantern mode UI load in as inspiration ... just not
+   orange"). It sits below where the Lantern's bar goes, so both can show. */
+.nge-cell-chip {
+  --chip-trace: #8df0a4;
+  --chip-fill: #0a1120;
+  --chip-pad-x: calc(6px + (100% - 20px) * 0.75);
+  --chip-cut: polygon(
+    6px 3px, calc(var(--chip-pad-x) - 8px) 3px, calc(var(--chip-pad-x) - 8px) 0,
+    calc(var(--chip-pad-x) + 8px) 0, calc(var(--chip-pad-x) + 8px) 3px,
+    calc(100% - 14px) 3px, 100% 17px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
+  position: fixed; top: 88px; left: 50%; transform: translateX(-50%); z-index: 100000;
+  display: inline-flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px); box-sizing: border-box;
+  padding: 11px 20px 8px 12px; border: 0; border-radius: 0; cursor: pointer;
+  background: linear-gradient(180deg, var(--chip-trace) 0%, rgba(141, 240, 164, 0.8) 30%, rgba(141, 240, 164, 0.28) 72%, rgba(141, 240, 164, 0.05) 100%) no-repeat left bottom / 100% calc(100% - 3px);
+  clip-path: var(--chip-cut);
+  font: 500 13px/1.2 'Inter', system-ui, sans-serif; color: rgba(239, 244, 251, 0.94); white-space: nowrap;
+}
+.nge-cell-chip::before {
+  content: ''; position: absolute; inset: 3px 1px 1px 1px; z-index: 0; pointer-events: none;
+  background: linear-gradient(168deg, #0d1a22 0%, var(--chip-fill) 60%, #070c18 100%);
+  clip-path: polygon(5px 0, calc(100% - 13px) 0, 100% 14px, 100% 100%, 8.4px 100%, 0 calc(100% - 8.4px), 0 6.4px);
+}
+.nge-cell-chip::after {
+  content: ''; position: absolute; z-index: 1; pointer-events: none;
+  left: 6px; right: 14px; top: 0; height: 7px;
+  background:
+    radial-gradient(circle at calc(75% - 4.5px) 3.7px, #08160c 0 0.9px, var(--chip-trace) 1.3px 2.1px, transparent 2.5px),
+    radial-gradient(circle at calc(75% + 4.5px) 3.7px, #08160c 0 0.9px, var(--chip-trace) 1.3px 2.1px, transparent 2.5px),
+    linear-gradient(var(--chip-trace), var(--chip-trace)) left 0 top 3px / calc(75% - 6.8px) 1.4px no-repeat,
+    linear-gradient(var(--chip-trace), var(--chip-trace)) right 0 top 3px / calc(25% - 6.8px) 1.4px no-repeat;
+}
+.nge-cell-chip > * { position: relative; z-index: 1; }
+.nge-cell-chip-check { font-size: 13px; font-weight: 800; color: var(--chip-trace); }
+.nge-cell-chip-title { font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--chip-trace); }
+.nge-cell-chip-count { padding-left: 10px; border-left: 1px solid rgba(141, 240, 164, 0.28); font-variant-numeric: tabular-nums; }
+.nge-cell-chip-count b { font-weight: 700; color: #fff; }
+/* It comes in the way the Lantern's bar does: a light runs across from the left, once. */
+.nge-cell-chip-enter-active { animation: nge-cell-chip-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nge-cell-chip-leave-active { animation: nge-cell-chip-out 0.3s ease-in both; }
+@keyframes nge-cell-chip-in {
+  0%   { opacity: 0; filter: brightness(2.6); clip-path: polygon(6px 3px, 6px 3px, 6px 0, 6px 0, 6px 3px, 6px 3px, 6px 17px, 6px 100%, 6px 100%, 0 calc(100% - 9px), 0 9px); }
+  100% { opacity: 1; filter: none; clip-path: var(--chip-cut); }
+}
+@keyframes nge-cell-chip-out { 0% { opacity: 1; filter: none; } 100% { opacity: 0; filter: brightness(0.5); } }
+@media (prefers-reduced-motion: reduce) { .nge-cell-chip-enter-active, .nge-cell-chip-leave-active { animation: none; } }
 
 /* Transition */
 .nge-cell-celebrate-enter-active { transition: opacity 0.4s ease-out; }

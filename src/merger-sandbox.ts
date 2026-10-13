@@ -11,14 +11,14 @@
 import { ref } from 'vue';
 import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
-import imgPyrGem from './images/pyr-icon.png';
+import imgWheresNurro from './images/wheres-nurro.png';
 import imgSandboxComplete from './images/sandbox-complete.jpg';
 import { beginPractice, cellIsCut, endPractice, ensureTool } from './practice';
 import { SANDBOX_CELLS } from './practice_pools';
 import { supabase } from './supabase';
 import { awardSpecialOnce } from './util/special_award';
 import { useProofreadingBackendStore } from './store';
-import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, getViewer, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
+import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
 
 export const SANDBOX_TUTORIAL = 9;
 
@@ -113,6 +113,7 @@ export function startSandbox(index: number) {
     // went elsewhere meanwhile, do not pop a sandbox box up over them.
     if (store.activeTutorial !== from || store.getTutorialStep() !== fromStep) return;
     resetPracticeLog();
+    cutNow.value = false;
     current = index;
     store.activeTutorial = SANDBOX_TUTORIAL;
     // Past the end, then to the start: the step is keyed by its index, so
@@ -163,17 +164,52 @@ document.addEventListener('nge:sandbox-next', () => {
 
 /** The run of mergers as a row of cells: lit for each one cut, a pulse on
  *  the one in hand, dim for the rest, with the count beside it. */
-function progressBar(): string {
+/**
+ * Slim box (Ames, 2026-10-12): the working box folded down to the chain, the
+ * hint line and its buttons. The fold button sits at the end of the chain on
+ * the working box only; the choice is kept in this browser. It is a class on
+ * the body, because the box itself is redrawn by the app.
+ */
+const SLIM_KEY = 'nge-merger-sandbox-slim';
+function applySlim(on: boolean) {
+  document.body.classList.toggle('nge-sbx-slim', on);
+  document.dispatchEvent(new CustomEvent('nge:tutorial-reclamp'));
+}
+try { if (localStorage.getItem(SLIM_KEY) === '1') applySlim(true); } catch { /* private mode */ }
+document.addEventListener('nge:sandbox-slim', () => {
+  const on = !document.body.classList.contains('nge-sbx-slim');
+  applySlim(on);
+  try { localStorage.setItem(SLIM_KEY, on ? '1' : '0'); } catch { /* private mode */ }
+});
+/** Whether there is another unsolved merger to skip to. */
+const canSkip = () => { const other = nextUndone(); return other >= 0 && other !== current; };
+// In the working box, Skip is a button to the left of Help me (Ames,
+// 2026-10-12). Only when there is another merger to go to.
+document.addEventListener('nge:practice-helprow', ((e: CustomEvent) => {
+  const { row, help } = e.detail || {};
+  if (!row || useTutorialStore().activeTutorial !== SANDBOX_TUTORIAL || !canSkip() || row.querySelector('.nge-sbx-skipbtn')) return;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'nge-hud-btn nge-hud-btn--sm nge-sbx-skipbtn';
+  b.textContent = 'Skip';
+  b.title = 'Leave this merger for later and go to another';
+  b.addEventListener('click', () => document.dispatchEvent(new CustomEvent('nge:sandbox-skip')));
+  row.insertBefore(b, help ?? null);
+}) as EventListener);
+const SKIP = `<button type="button" class="nge-sbx-skip" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-skip'))">Skip this one</button>`;
+const FOLD = `<button type="button" class="nge-sbx-fold" title="Smaller or larger box" aria-label="Make this box smaller or larger" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-slim'))"></button>`;
+
+function progressBar(fold = false): string {
   const done = SANDBOX_CELLS.map(c => sandboxDone.value.includes(c.id));
   let chain = '';
   done.forEach((d, i) => {
     const state = d ? 'done' : i === current ? 'now' : 'todo';
-    chain += `<span class="nge-sbx-node nge-sbx-node--${state}" title="Merger ${i + 1}${d ? ', solved' : state === 'now' ? ', this one' : ''}"><img src="${imgPyrGem}" alt=""></span>`;
+    chain += `<span class="nge-sbx-node nge-sbx-node--${state}" title="Merger ${i + 1}${d ? ', solved' : state === 'now' ? ', this one' : ''}"></span>`;
     // The line between two solved mergers lights up.
     if (i < TOTAL - 1) chain += `<span class="nge-sbx-link${d && done[i + 1] ? ' nge-sbx-link--lit' : ''}"></span>`;
   });
   const n = doneCount();
-  return `<div class="nge-sbx-progress${n >= TOTAL ? ' nge-sbx-progress--all' : ''}" role="img" aria-label="${n} of ${TOTAL} mergers solved"><span class="nge-sbx-track">${chain}</span><span class="nge-sbx-count"><b>${n}</b><i>/ ${TOTAL}</i><em>solved</em></span></div>`;
+  return `<div class="nge-sbx-progress${n >= TOTAL ? ' nge-sbx-progress--all' : ''}" role="img" aria-label="${n} of ${TOTAL} mergers solved"><span class="nge-sbx-track">${chain}</span><span class="nge-sbx-count"><b>${n}</b><i>/ ${TOTAL}</i><em>solved</em></span>${fold ? FOLD : ''}</div>`;
 }
 
 /** The done box asks the cell itself whether it was cut; until that answer
@@ -181,7 +217,47 @@ function progressBar(): string {
 const checking = ref(false);
 /** The last cut being written to the account. */
 let recorded: Promise<unknown> = Promise.resolve();
-const thisOneCut = () => sandboxDone.value.includes(cell().id);
+/** Whether this attempt cut the merger. Not "was it ever cut": on a second
+ *  go at a solved merger, a miss used to read as a success. */
+const cutNow = ref(false);
+const thisOneCut = () => cutNow.value;
+
+/**
+ * Skip (Ames, 2026-10-12): the first box's button moves on to another merger
+ * that is not solved yet. If this one turns out to be cut after all (the
+ * watch can miss it), it goes to the success box instead. With no other
+ * merger left to try, it goes to the check box as before.
+ */
+/** Which attempt to take a cell is the current one. */
+let taking = 0;
+let skipping = false;
+// Skip is its own small button, in the full box and on the "still fused"
+// box. The main button is Next (Ames, 2026-10-12): it checks the cut.
+document.addEventListener('nge:sandbox-skip', () => {
+  const store = useTutorialStore();
+  if (store.activeTutorial !== SANDBOX_TUTORIAL) return;
+  // From the "still fused" box: straight on to another merger.
+  if (store.getTutorialStep() === 1) { const other = nextUndone(); if (other >= 0 && other !== current) startSandbox(other); return; }
+  sandboxSkip();
+});
+function sandboxSkip(): boolean {
+  if (askAgain.value) return false;
+  if (skipping) return true;
+  skipping = true;
+  const store = useTutorialStore();
+  const id = cell().id, at = current;
+  void cellIsCut(id).catch(() => null).then((cut) => {
+    skipping = false;
+    if (store.activeTutorial !== SANDBOX_TUTORIAL || current !== at || store.getTutorialStep() !== 0) return;
+    const other = nextUndone();
+    if (cut) { store.setTutorialStep(1); return; }
+    // Nothing else to go to: stay put and say so. This used to drop the
+    // player on the "still fused" box (Ames, 2026-10-12).
+    if (other < 0 || other === at) { practiceStatus('This is the only merger you have left, so there is nothing to skip to.'); return; }
+    startSandbox(other);
+  });
+  return true;
+}
 
 /**
  * The sandbox reads as one challenge, "cut all 5 mergers" (Nseraf,
@@ -202,7 +278,7 @@ ${progressBar()}
 You have solved every one. Want to go again from the start? Your Achievement stays yours.`;
       }
       return `
-${progressBar()}
+${progressBar(true)}
 
 Two neurons are fused into one segment here. Find where they touch and cut them apart.`;
     },
@@ -214,28 +290,45 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
       // Asking whether to go again: no cell is taken until they say yes.
       if (askAgain.value) return;
       // One merger is assigned at a time, and players work in parallel
-      // (Ames, 2026-10-08): if this one is taken, the next free one this
-      // player has not cut is given instead, then any free one.
-      const order = [current, ...SANDBOX_CELLS.map((_, i) => i).filter(i => i !== current)]
-        .sort((a, b) => Number(sandboxDone.value.includes(SANDBOX_CELLS[a].id)) - Number(sandboxDone.value.includes(SANDBOX_CELLS[b].id)));
-      const got = await movingToSandbox('Merger Sandbox', async () => {
+      // (Ames, 2026-10-08): if this one is taken, another this player has
+      // NOT solved is given instead. Never a solved one while unsolved ones
+      // remain: a player whose last merger was being reset was handed the
+      // one before it, solved it again, and was sent round in a loop
+      // (AzureJay, 2026-10-12). With none free, the box says so and keeps
+      // trying by itself.
+      const solved = (i: number) => sandboxDone.value.includes(SANDBOX_CELLS[i].id);
+      const everyone = [current, ...SANDBOX_CELLS.map((_, i) => i).filter(i => i !== current)];
+      const unsolved = everyone.filter(i => !solved(i));
+      const order = unsolved.length ? unsolved : everyone;
+      const mine = ++taking;
+      const store = useTutorialStore();
+      const take = async () => {
         for (const i of order) {
           const cellRow = await beginPractice('cut', 'start', { only: SANDBOX_CELLS[i].id });
           if (cellRow) { current = i; return cellRow; }
         }
         return null;
-      });
+      };
+      let got = await movingToSandbox('Merger Sandbox', take);
+      for (let tries = 0; !got && tries < 40; tries++) {
+        practiceStatus(order.length === 1
+          ? 'This merger is being put back to its starting state. It will open by itself in a moment.'
+          : 'The mergers you have left are in use or being put back to their starting state. One will open by itself in a moment.');
+        await new Promise(r => setTimeout(r, 15000));
+        // The player closed the box or moved on meanwhile.
+        if (mine !== taking || store.activeTutorial !== SANDBOX_TUTORIAL || store.getTutorialStep() !== 0) return;
+        got = await take();
+      }
       if (!got) {
-        practiceStatus(`Every merger is being worked on by someone else right now, or is being reset. Try again in a few minutes.`);
+        practiceStatus('No merger came free. Try again in a few minutes.');
         return;
       }
+      if (mine !== taking) return;
       // Watch only once the cell is held: with nothing held, the watch
       // would queue for the Cut tutorial's cells.
-      watchPractice(false, 'Ctrl+click to add points. Remember to press G to switch the cut colour group.', '', { advance: true });
-      // 3D only to start (Ames, 2026-10-11, reversing the split view of
-      // 2026-10-08): the whole cell is easier to read, and Space brings the
-      // 2D images back when the join needs a closer look.
-      setTimeout(() => { try { getViewer()?.layout?.restoreState('3d'); } catch { /* no viewer */ } }, 500);
+      watchPractice(false, 'Ctrl+click to add points. Remember to press G to switch the cut color group.', '', { advance: true });
+      // The cell loads in 3D (practice.ts sets the layout in the view
+      // itself); Space brings the 2D images back.
       setTimeout(() => ensureTool('multicut'), 1100);
     },
   } as Step,
@@ -252,9 +345,9 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
       if (checking.value) return `Checking your cut.`;
       if (!thisOneCut()) {
         return `
-The two neurons are still one segment, so this one is not cut yet. Place <strong style="color:#ff5c5c">red</strong> points on one neuron, press **G**, place <strong style="color:#5c8cff">blue</strong> points on the other, then **Submit cut**.
+<img class="nge-sbx-nurro" src="${imgWheresNurro}" alt="">
 
-Press **Try again** to have another go, or **Help me** there to see where the points go.`;
+The two neurons are still one segment, so this one is not cut yet. Press **Try again** to have another go. **Help me** there shows where the points go. ${canSkip() ? SKIP : ''}`;
       }
       if (left <= 0) {
         return `
@@ -265,6 +358,8 @@ Press **Try again** to have another go, or **Help me** there to see where the po
 To go again, open the Merger Sandbox from the burger menu.`;
       }
       return `
+<img class="nge-sbx-nurro" src="${imgBravoNurro}" alt="">
+
 <span class="nge-done-lead">Congratulations, that is ${done} of ${TOTAL}. ${left} ${left === 1 ? 'remains' : 'remain'}!</span>
 
 ${progressBar()}
@@ -281,17 +376,18 @@ ${progressBar()}
     },
     position: OVER_3D,
     width: "440px",
-    // The last box of the set shows what all this is for (Ames's picture).
-    // The last box of the set carries its own picture in the text, with its
-    // caption on hover; the others have Nurro.
-    get image() { return !checking.value && thisOneCut() && doneCount() >= TOTAL ? undefined : imgBravoNurro; },
+    // Pictures sit in the text, small, so the box fits a laptop screen.
+    // Confetti is thrown once, by celebrateStep, when the cut is confirmed:
+    // the button itself throws none (it used to, even on Try again).
+    noConfetti: true,
     onEnter: async () => {
       // Done means the cut was made, not that Next was pressed. Asked of the
       // cell itself too, so a cut the watch missed still counts.
       const id = cell().id;
       checking.value = true;
-      try { if (await cellIsCut(id)) creditPractice(id); } finally { checking.value = false; }
-      if (practiceEarned()) {
+      let earned = false;
+      try { if (await cellIsCut(id)) creditPractice(id); earned = practiceEarned(); } finally { cutNow.value = earned; checking.value = false; }
+      if (earned) {
         markDone(id); celebrateStep();
         // Recorded on the account first: the server looks there before it
         // lets the Achievement through.

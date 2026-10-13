@@ -18,8 +18,10 @@ import 'neuroglancer/annotation/bounding_box';
 import 'neuroglancer/annotation/line';
 import 'neuroglancer/annotation/point';
 import 'neuroglancer/annotation/ellipsoid';
+import 'neuroglancer/annotation/polyline';
 
-import {AnnotationBase, AnnotationSerializer, AnnotationSource, annotationTypes, formatAnnotationPropertyValue, SerializedAnnotations} from 'neuroglancer/annotation';
+import {AnnotationBase, AnnotationSerializer, AnnotationSource, AnnotationType, annotationTypes, formatAnnotationPropertyValue, SerializedAnnotations} from 'neuroglancer/annotation';
+import {findFirstInSortedArray} from 'neuroglancer/util/array';
 import {AnnotationLayerState, OptionalSegmentationDisplayState} from 'neuroglancer/annotation/annotation_layer_state';
 import {ANNOTATION_PERSPECTIVE_RENDER_LAYER_UPDATE_SOURCES_RPC_ID, ANNOTATION_RENDER_LAYER_RPC_ID, ANNOTATION_RENDER_LAYER_UPDATE_SEGMENTATION_RPC_ID, ANNOTATION_SPATIALLY_INDEXED_RENDER_LAYER_RPC_ID, forEachVisibleAnnotationChunk} from 'neuroglancer/annotation/base';
 import {AnnotationGeometryChunkSource, AnnotationGeometryData, computeNumPickIds, MultiscaleAnnotationSource} from 'neuroglancer/annotation/frontend_source';
@@ -431,7 +433,7 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
       const {base} = this;
       const {chunkDisplayTransform} = state;
       const {serializedAnnotations} = chunk;
-      const {typeToIdMaps, typeToOffset} = serializedAnnotations;
+      const {typeToIdMaps, typeToOffset, typeToSize, typeToInstanceCounts} = serializedAnnotations;
       let pickId = 0;
       if (renderContext.emitPickID) {
         pickId = renderContext.pickIDs.register(this, chunk.numPickIds, 0, 0, chunk);
@@ -459,19 +461,31 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
           this.base.state.displayState.shaderControls.histogramSpecifications.visibleHistograms > 0;
       for (const annotationType of annotationTypes) {
         const idMap = typeToIdMaps[annotationType];
-        let count = idMap.size;
+        // Instances, not annotations: a polyline is one instance per line.
+        let count = typeToSize[annotationType];
         if (count > 0) {
           const handler = getAnnotationTypeRenderHandler(annotationType);
           let selectedIndex = 0xFFFFFFFF;
           if (hoverValue !== undefined) {
             const index = idMap.get(hoverValue.id);
             if (index !== undefined) {
-              selectedIndex = index * handler.pickIdsPerInstance;
+              if (annotationType === AnnotationType.POLYLINE) {
+                // The polyline's first instance; its lines find themselves from it.
+                selectedIndex = typeToInstanceCounts[annotationType][index] * handler.pickIdsPerInstance;
+              } else {
+                selectedIndex = index * handler.pickIdsPerInstance;
+              }
               // If we wanted to include the partIndex, we would add:
               // selectedIndex += hoverValue.partIndex;
             }
           }
           count = Math.round(count * drawFraction);
+          // When only a fraction is drawn, never stop part way along a polyline.
+          if (drawFraction < 1 && annotationType === AnnotationType.POLYLINE) {
+            const starts = typeToInstanceCounts[annotationType];
+            const bestIndex = findFirstInSortedArray(starts, a => a >= count);
+            count = bestIndex === -1 ? typeToSize[annotationType] : starts[bestIndex];
+          }
           context.count = count;
           context.bufferOffset = typeToOffset[annotationType];
           context.selectedIndex = selectedIndex;
@@ -490,18 +504,28 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
         mouseState: MouseSelectionState, _pickedValue: Uint64, pickedOffset: number, data: any) {
       const chunk = data as AnnotationGeometryDataInterface;
       const {serializedAnnotations} = chunk;
-      const {typeToIds, typeToOffset} = serializedAnnotations;
+      const {typeToIds, typeToOffset, typeToSize, typeToInstanceCounts} = serializedAnnotations;
       const rank = this.curRank;
       const chunkTransform = this.chunkTransform;
       if (chunkTransform.error !== undefined) return;
       for (const annotationType of annotationTypes) {
         const ids = typeToIds[annotationType];
+        const numInstances = typeToSize[annotationType];
         const renderHandler = getAnnotationTypeRenderHandler(annotationType);
         const {pickIdsPerInstance} = renderHandler;
-        if (pickedOffset < ids.length * pickIdsPerInstance) {
-          const instanceIndex = Math.floor(pickedOffset / pickIdsPerInstance);
+        if (pickedOffset < numInstances * pickIdsPerInstance) {
+          let partIndex = pickedOffset % pickIdsPerInstance;
+          let instanceIndex = Math.floor(pickedOffset / pickIdsPerInstance);
+          const annotationInstanceIndex = instanceIndex;
+          if (annotationType === AnnotationType.POLYLINE) {
+            // Which polyline this line belongs to, and the part counted from
+            // the polyline's first line.
+            const starts = typeToInstanceCounts[annotationType];
+            instanceIndex = findFirstInSortedArray(starts, start => annotationInstanceIndex >= start, 'desc');
+            if (instanceIndex === -1) return;
+            partIndex = pickedOffset - starts[instanceIndex] * pickIdsPerInstance;
+          }
           const id = ids[instanceIndex];
-          const partIndex = pickedOffset % pickIdsPerInstance;
           mouseState.pickedAnnotationId = id;
           mouseState.pickedAnnotationLayer = this.base.state;
           mouseState.pickedOffset = partIndex;
@@ -511,6 +535,8 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
             typeToOffset[annotationType];
           mouseState.pickedAnnotationIndex = instanceIndex;
           mouseState.pickedAnnotationCount = ids.length;
+          mouseState.pickedAnnotationInstanceIndex = annotationInstanceIndex;
+          mouseState.pickedAnnotationInstanceCount = numInstances;
           const chunkPosition = this.tempChunkPosition;
           const {chunkToLayerTransform, combinedGlobalLocalToChunkTransform, layerRank} =
               chunkTransform;
@@ -525,7 +551,7 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
           renderHandler.snapPosition(
               chunkPosition, mouseState.pickedAnnotationBuffer,
               mouseState.pickedAnnotationBufferBaseOffset +
-                  mouseState.pickedAnnotationIndex * propertySerializer.propertyGroupBytes[0],
+                  annotationInstanceIndex * propertySerializer.propertyGroupBytes[0],
               partIndex);
           const globalRank = globalToRenderLayerDimensions.length;
           for (let globalDim = 0; globalDim < globalRank; ++globalDim) {
@@ -543,7 +569,7 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
           }
           return;
         }
-        pickedOffset -= ids.length * pickIdsPerInstance;
+        pickedOffset -= numInstances * pickIdsPerInstance;
       }
     }
 
@@ -555,15 +581,15 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
       const {
         pickedAnnotationBufferBaseOffset,
         pickedAnnotationType,
-        pickedAnnotationIndex,
-        pickedAnnotationCount
+        pickedAnnotationInstanceIndex,
+        pickedAnnotationInstanceCount
       } = pickState;
       const {annotationPropertySerializers} = this.base.source;
       // Check if there are any properties.
       const propertyValues = new Array(properties.length);
       annotationPropertySerializers[pickedAnnotationType!].deserialize(
           new DataView(pickedAnnotationBuffer), pickedAnnotationBufferBaseOffset!,
-          pickedAnnotationIndex!, pickedAnnotationCount!,
+          pickedAnnotationInstanceIndex!, pickedAnnotationInstanceCount!,
           /*isLittleEndian=*/ Endianness.LITTLE === ENDIANNESS, propertyValues);
       return formatAnnotationPropertyValue(properties[0], propertyValues[0]);
     }

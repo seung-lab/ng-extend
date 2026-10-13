@@ -348,6 +348,29 @@ export function getSelectedSupervoxelId(): string | null {
 // ─── Root lineage endpoints ─────────────────────────────────────────────────
 
 /**
+ * Every ID in `root`'s edit history: itself and each past root that led to
+ * it. Null when the lookup failed. Same endpoint and same care with 18 digit
+ * IDs as ancestorAmong below; for callers whose candidates are too many to
+ * hold in the browser (the lab's retina sheet, src/util/lab_sheet.ts).
+ */
+export async function lineageIds(root: string): Promise<string[] | null> {
+  const pcg = getPcgInfo();
+  if (!pcg || !/^\d+$/.test(root)) return null;
+  try {
+    const res = await fetch(
+      `${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
+      { headers: authHeaders(pcg.server) });
+    if (!res.ok) { console.warn(`[pcg] lineage_graph ${res.status}`); return null; }
+    const seen = new Set<string>([root]);
+    for (const m of (await res.text()).matchAll(/"(?:source|target|id)"\s*:\s*"?(\d+)/g)) seen.add(m[1]);
+    return [...seen];
+  } catch (e) {
+    console.warn('[pcg] lineage_graph network error:', e);
+    return null;
+  }
+}
+
+/**
  * Which of `candidates` is `root` itself or one of its ANCESTORS in the edit
  * history? Proofreading gives a cell a new root id with every merge or split,
  * so a claim's Start SegID stops matching the cell on screen; its lineage

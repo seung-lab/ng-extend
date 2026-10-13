@@ -410,3 +410,91 @@
    goes without its rule and its diamond (Ames, 2026-10-11). */
 .introductionStepAnchor .chip:has(.nge-sbx-progress) .title { border-bottom: 0 !important; border-image: none !important; padding-bottom: 2px !important; }
 .introductionStepAnchor .chip:has(.nge-sbx-progress) .title::before { display: none !important; }
+
+/* Nurro on the sandbox's result boxes: small, so the box fits a laptop. */
+.nge-sbx-nurro { display: block; height: 92px; width: auto; margin: 0 auto 6px; }
+
+/* Merger Sandbox, slim (Ames, 2026-10-12): the box folded down to the chain
+   of gems, the hint line, and its buttons, for small screens and for players
+   who know the drill. The fold button sits at the end of the chain; the
+   choice is remembered. Set by a class on the body, not on the box, which
+   the app redraws. */
+.nge-sbx-fold {
+  flex: none; width: 20px; height: 20px; padding: 0; margin-left: -6px;
+  border: 1px solid rgba(150, 215, 255, 0.22); border-radius: 3px; background: none;
+  color: #8fa9c4; font-size: 11px; line-height: 1; cursor: pointer;
+}
+.nge-sbx-fold:hover { color: #fff; border-color: rgba(150, 215, 255, 0.6); }
+.nge-sbx-fold::before { content: '\25B4'; }
+body.nge-sbx-slim .nge-sbx-fold::before { content: '\25BE'; }
+/* Slim is one bar (Ames, 2026-10-12): the chain, the count, Skip, and the
+   arrow that opens the box again for the hint and Help me. */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) { width: 430px !important; padding: 14px 44px 12px 16px !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html > *:not(.nge-sbx-progress) { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-drag { top: 4px !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-progress { margin: 0 96px 0 0 !important; gap: 10px; height: 30px; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot { margin-top: -31px !important; padding-top: 0 !important; background: none !important; pointer-events: none; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot .buttonContainer { margin: 0 !important; justify-content: flex-end; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot button.next { padding: 6px 12px !important; font-size: 11px !important; min-width: 0 !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) button.exit { top: 15px !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .title,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-readout,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .progressBarContainer,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-count em { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot::before { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot button { pointer-events: auto; }
+
+/* "Skip this one": a quiet text button after the sentence. */
+.nge-sbx-skip { border: 0; background: none; padding: 0; margin-left: 4px; font: inherit; font-size: 0.9em; color: #8fb8d8; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.nge-sbx-skip:hover { color: #fff; }
+/* Slim bar: Next is pinned to the bar's own row, so news can open below it.
+   A status line that is news (not the standing hint) shows even when slim. */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot { position: absolute !important; top: 13px; right: 44px; margin: 0 !important; width: auto !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html > .nge-practice-status:not(.nge-practice-status--quiet) { display: block !important; margin: 10px 0 2px !important; font-size: 0.86em; line-height: 1.4; }
+/* With news showing, Help me comes with it. */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .html:has(> .nge-practice-status:not(.nge-practice-status--quiet)) > .nge-practice-helprow { display: flex !important; margin: 6px 0 0 !important; }
+/* Slim bar: progress as plain dots (Ames, 2026-10-12: the gems sat oddly at
+   this size). */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node img { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node { width: 7px; height: 7px; border-radius: 50%; background: rgba(150, 215, 255, 0.16); }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--done { background: #7ee0ff; box-shadow: 0 0 5px rgba(126, 224, 255, 0.55); }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--now { width: 7px; height: 7px; background: none; box-shadow: 0 0 0 1.5px #dff4fb; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--now::after { display: none !important; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-link { margin: 0 5px; }
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-track { height: 30px; }
+
+/* Progress as plain dots everywhere, full box and slim bar alike (Ames,
+   2026-10-12: they look better than the gems). These come last, so they
+   stand over the gem rules above. */
+.nge-sbx-track { height: 26px; }
+.nge-sbx-node, .nge-sbx-node--now { width: 8px; height: 8px; border-radius: 50%; background: rgba(150, 215, 255, 0.16); }
+.nge-sbx-node--done { background: #7ee0ff; box-shadow: 0 0 5px rgba(126, 224, 255, 0.55); }
+.nge-sbx-node--now { background: none; box-shadow: 0 0 0 1.5px #dff4fb; }
+.nge-sbx-node--now::after { display: none !important; }
+.nge-sbx-link { margin: 0 5px; }
+/* Merger Sandbox boxes carry no step rail at the bottom: the dots are the
+   progress (Ames, 2026-10-12). */
+.introductionStepAnchor .chip:has(.nge-sbx-progress) .progressBarContainer,
+.introductionStepAnchor .chip:has(.nge-sbx-nurro) .progressBarContainer,
+.introductionStepAnchor .chip:has(.nge-sbx-figure) .progressBarContainer { display: none !important; }
+
+/* The dots, second pass (Ames, 2026-10-13: "kind of strange"). Before, the
+   ones still to do were so dim they read as smudges and the one in hand was
+   the only hollow one. Now: to do is a small open ring you can see, the one
+   in hand is a solid white dot with a soft halo, solved is a solid cyan dot.
+   All the same size, on a line that is visible. */
+.nge-sbx-node, .nge-sbx-node--now, .nge-sbx-node--done,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node--now {
+  width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box;
+  background: none; border: 1.5px solid rgba(150, 215, 255, 0.45); box-shadow: none;
+}
+.nge-sbx-node.nge-sbx-node--done,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node.nge-sbx-node--done { background: #7ee0ff; border-color: #7ee0ff; box-shadow: 0 0 5px rgba(126, 224, 255, 0.5); }
+.nge-sbx-node.nge-sbx-node--now,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node.nge-sbx-node--now { background: #ffffff; border-color: #ffffff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.14), 0 0 8px rgba(255, 255, 255, 0.45); }
+.nge-sbx-link, body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-link { margin: 0 4px; background: rgba(150, 215, 255, 0.24); }
+.nge-sbx-link.nge-sbx-link--lit { background: rgba(126, 224, 255, 0.85); box-shadow: none; }
+/* Slim bar: no grip mark (the six dots at the top left). The bar can still
+   be dragged from anywhere on it, as every tutorial box can. */
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-drag { display: none !important; }

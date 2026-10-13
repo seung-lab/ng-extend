@@ -698,9 +698,10 @@ function serverLabel(url: string): string {
      leave room below: with a zero bottom margin the callout sat flush on the
      Initialize Connection button and its shadow read as an overlap. */
   margin: -8px auto 20px;
-  max-width: 340px;
-  font-size: 11.5px;
-  line-height: 1.55;
+  max-width: 380px;
+  /* Readable on a laptop (Ames 2026-10-13: "microscopic"). */
+  font-size: 14px;
+  line-height: 1.5;
   color: rgba(190, 212, 240, 0.82);
   background: linear-gradient(135deg, rgba(53, 181, 255, 0.10) 0%, rgba(12, 20, 40, 0.55) 60%);
   border: 1px solid rgba(53, 181, 255, 0.28);
@@ -1025,7 +1026,7 @@ function serverLabel(url: string): string {
 
 .nge-login-server-url {
   flex: 1;
-  font-size: 0.78em;
+  font-size: 14px;
   font-family: 'SF Mono', ui-monospace, 'Cascadia Code', monospace;
   color: rgba(0, 180, 255, 0.6);
   overflow: hidden;
@@ -1041,7 +1042,7 @@ function serverLabel(url: string): string {
   border-radius: 1px;
   background: rgba(0, 150, 255, 0.08);
   color: rgba(0, 220, 255, 0.9);
-  font-size: 0.68em;
+  font-size: 12px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
@@ -1063,7 +1064,7 @@ function serverLabel(url: string): string {
 
 .nge-login-server-ok {
   flex-shrink: 0;
-  font-size: 0.68em;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.12em;
   color: rgba(0, 255, 150, 0.8);
@@ -1148,8 +1149,8 @@ function serverLabel(url: string): string {
   padding: 8px;
   background: none;
   border: none;
-  color: rgba(100, 140, 180, 0.35);
-  font-size: 0.65em;
+  color: rgba(100, 140, 180, 0.55);
+  font-size: 12px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
@@ -1167,9 +1168,9 @@ function serverLabel(url: string): string {
 /* ── Bottom data stream text ── */
 .nge-holo-datastream {
   margin-top: 20px;
-  font-size: 0.5em;
+  font-size: 11px;
   font-family: 'SF Mono', ui-monospace, 'Cascadia Code', monospace;
-  color: rgba(0, 180, 255, 0.2);
+  color: rgba(0, 180, 255, 0.35);
   letter-spacing: 0.08em;
   position: relative;
   z-index: 2;

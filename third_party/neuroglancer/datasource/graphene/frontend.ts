@@ -51,7 +51,9 @@ import {Owned, RefCounted} from 'neuroglancer/util/disposable';
 import {makeValueOrError, ValueOrError, valueOrThrow} from 'neuroglancer/util/error';
 import {EventActionMap} from 'neuroglancer/util/event_action_map';
 import {mat4, vec3, vec4} from 'neuroglancer/util/geom';
-import {HttpError, isNotFoundError, responseJson} from 'neuroglancer/util/http_request';
+import {HttpError, isNotFoundError, responseArrayBuffer, responseJson} from 'neuroglancer/util/http_request';
+import {VolumeChunkEncoding} from 'neuroglancer/datasource/precomputed/base';
+import {readSingleChannelValue as ngeReadCompressedUint64} from 'neuroglancer/sliceview/compressed_segmentation/decode_uint64';
 import {parseArray, parseFixedLengthArray, verify3dVec, verifyBoolean, verifyEnumString, verifyFiniteFloat, verifyFinitePositiveFloat, verifyInt, verifyNonnegativeInt, verifyObject, verifyObjectProperty, verifyOptionalObjectProperty, verifyOptionalString, verifyPositiveInt, verifyString} from 'neuroglancer/util/json';
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {NullarySignal} from 'neuroglancer/util/signal';
@@ -1148,19 +1150,12 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       if (!added) {
         const segmentCount = [...segmentsState.segmentEquivalences.setElements(segmentId)].length; // Approximation
         segmentsState.segmentEquivalences.deleteSet(segmentId);
-        if (this.lastDeselectionMessage && this.lastDeselectionMessageExists) {
-          this.lastDeselectionMessage.dispose();
-          this.lastDeselectionMessageExists = false;
-        }
-        this.lastDeselectionMessage =
-            StatusMessage.showMessage(`Hid ${segmentCount} segments.`);
-        this.lastDeselectionMessageExists = true;
-        setTimeout(() => {
-          if (this.lastDeselectionMessageExists) {
-            this.lastDeselectionMessage!.dispose();
-            this.lastDeselectionMessageExists = false;
-          }
-        }, 2000);
+        // nge: no "Hid N segments." bar for this. It ran along the bottom of
+        // the screen for two seconds after every single removal, so the
+        // legend, the chat and the coordinates all jumped up and back down
+        // each time (Nseraf 2026-10-12, report 121). The row leaving the list
+        // already says the segment is gone, and Undelete brings it back.
+        void segmentCount;
       }
     }
   }
@@ -1615,6 +1610,46 @@ class GrapheneGraphServerInterface {
   // links between a cell's pieces, and a point inside each piece, which is
   // all it takes to know what lies on which side of a click.
 
+  /** What a cut WOULD do, without making it: the smallest bits of the cell
+   *  (supervoxels) that would end up on each side, near the points. Same
+   *  request as the cut itself; the first group given comes back first.
+   *  `illegal` is the server saying these points cannot be cut apart. */
+  async ngeSplitPreview(
+      first: SegmentSelection[], second: SegmentSelection[],
+      annotationToNanometers: Float64Array): Promise<{sides: string[][], illegal: boolean}> {
+    const {url} = this;
+    if (url === '') return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
+    const row = (x: SegmentSelection) =>
+        [String(x.segmentId), ...x.position.map((val, i) => val * annotationToNanometers[i])];
+    let response: Response;
+    try {
+      response = await cancellableFetchSpecialOk(
+          this.credentialsProvider, `${url}/graph/split_preview?int64_as_str=1`,
+          {method: 'POST', body: JSON.stringify({'sources': first.map(row), 'sinks': second.map(row)})},
+          responseIdentity);
+    } catch (e) {
+      // The server says why in its answer (points that cannot be told apart,
+      // a point off the cell...): pass that on, not just the error number.
+      if (e instanceof HttpError && e.response) {
+        let why: string|undefined;
+        try { why = await parseGrapheneError(e); } catch { why = undefined; }
+        const text = String(why ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+        throw new Error(text ? `the server said "${text}" (error ${e.status})` : `the server refused it (error ${e.status})`);
+      }
+      throw e;
+    }
+    // The ids are larger than a JavaScript number holds. If the server sent
+    // them as bare numbers, quote them before the text is read as JSON.
+    const text = (await response.text()).replace(/([\[,:\s])(\d{16,})(?=[\s,\]}])/g, '$1"$2"');
+    const json = JSON.parse(text);
+    const groups = json['supervoxel_connected_components'];
+    if (!Array.isArray(groups)) throw new Error('The server did not return a preview of this cut.');
+    return {
+      sides: groups.map((g: any) => Array.isArray(g) ? g.map(String) : []),
+      illegal: json['illegal_split'] === true,
+    };
+  }
+
   /** The links between the pieces of a cell, as pairs of piece ids. */
   async ngeBranchEdges(rootId: string): Promise<[string, string][]> {
     const {url} = this;
@@ -1647,7 +1682,11 @@ class GrapheneGraphServerInterface {
     if (!m) throw new Error('This dataset has no map of its branches.');
     const out = new Map<string, number[]>();
     const wanted = ids.filter(id => /^\d+$/.test(id));
+    // A dataset with no store of piece positions answers with an error every
+    // time (the Sandbox): ask it once, not on every use.
+    const storeKey = `${m[1]}/${m[2]}`;
     try {
+      if (this.ngeNoPiecePoints.has(storeKey)) throw new Error('known to have none');
       const BATCH = 2000;
       for (let i = 0; i < wanted.length; i += BATCH) {
         const batch = wanted.slice(i, i + BATCH);
@@ -1664,7 +1703,8 @@ class GrapheneGraphServerInterface {
         }
       }
     } catch (e) {
-      console.info('[highlight] no stored piece positions for this dataset, using chunk middles:', (e as any)?.message);
+      if (!this.ngeNoPiecePoints.has(storeKey)) console.info('[highlight] no stored piece positions for this dataset, using chunk middles:', (e as any)?.message);
+      this.ngeNoPiecePoints.add(storeKey);
     }
     if (out.size < wanted.length) {
       const middle = await this.ngeChunkMiddle(m[1], m[2]);
@@ -1672,6 +1712,28 @@ class GrapheneGraphServerInterface {
     }
     return out;
   }
+
+  private ngeNoPiecePoints = new Set<string>();
+
+  /** The block of the volume each piece lies in, in NANOMETERS, as
+   *  [x0, y0, z0, x1, y1, z1]. Read from the piece's id, so it asks the
+   *  server nothing beyond the dataset's own description (asked once). */
+  async ngeChunkBoxes(ids: string[]): Promise<Map<string, number[]>> {
+    const {url} = this;
+    const m = url.match(/^(https:\/\/[^/]+)\/segmentation\/(?:api\/v1\/)?table\/([^/?#]+)/);
+    if (!m) throw new Error('This dataset has no map of its branches.');
+    const middle = await this.ngeChunkMiddle(m[1], m[2]);
+    const half = this.ngeChunkHalf.get(`${m[1]}/${m[2]}`);
+    const out = new Map<string, number[]>();
+    if (!half) return out;
+    for (const id of ids) {
+      const p = middle(id);
+      if (p) out.set(id, [p[0] - half[0], p[1] - half[1], p[2] - half[2], p[0] + half[0], p[1] + half[1], p[2] + half[2]]);
+    }
+    return out;
+  }
+  /** Half the size of a level 2 chunk, in nanometers, per dataset. */
+  private ngeChunkHalf = new Map<string, number[]>();
 
   /** Where a piece's chunk of the volume is, read from the piece's id. A
    *  level 2 id is, from the top bit down: the layer, then the chunk's x, y
@@ -1688,16 +1750,20 @@ class GrapheneGraphServerInterface {
         const graph = info?.['graph'], scale = info?.['scales']?.[0];
         const layerBits = Number(graph?.['n_bits_for_layer_id']);
         const bits = Number(graph?.['spatial_bit_masks']?.['2']);
+        // Supervoxels (layer 1) sit in the same blocks as the pieces (layer 2).
+        const bits1 = Number(graph?.['spatial_bit_masks']?.['1']);
         const chunk: number[] = graph?.['chunk_size'], res: number[] = scale?.['resolution'];
         if (!Number.isFinite(layerBits) || !Number.isFinite(bits) || !Array.isArray(chunk) || !Array.isArray(res)) {
           throw new Error('This dataset has no map of its branches.');
         }
         const offset: number[] = info?.['chunks_start_at_voxel_offset'] && Array.isArray(scale?.['voxel_offset']) ? scale['voxel_offset'] : [0, 0, 0];
         const mask = (BigInt(1) << BigInt(bits)) - BigInt(1);
+        this.ngeChunkHalf.set(key, [0, 1, 2].map(k => chunk[k] * res[k] / 2));
         return (id: string) => {
           let n: bigint;
           try { n = BigInt(id); } catch { return undefined; }
-          if (Number(n >> BigInt(64 - layerBits)) !== 2) return undefined;
+          const layer = Number(n >> BigInt(64 - layerBits));
+          if (layer !== 2 && !(layer === 1 && bits1 === bits)) return undefined;
           const at = (k: number) => Number((n >> BigInt(64 - layerBits - bits * (k + 1))) & mask);
           return [0, 1, 2].map(k => (offset[k] + (at(k) + 0.5) * chunk[k]) * res[k]);
         };
@@ -1998,6 +2064,17 @@ const MULTICUT_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
 });
 
+/** nge: "Keep open after a cut", the preference at the right end of the cut
+ *  bar (Nseraf 2026-10-12: merge stayed open after a merge, cut closed after a
+ *  cut). Off by default, so the cut tool closes after a successful cut, as it
+ *  always has. On, it stays for the next cut. Kept in this browser; the bar
+ *  (src/components/SplitMergeOverlay.vue) writes it, the tool reads it at
+ *  each submit. */
+export const NGE_KEEP_CUT_OPEN_KEY = 'nge-keep-cut-open';
+export function ngeKeepCutOpen(): boolean {
+  try { return localStorage.getItem(NGE_KEEP_CUT_OPEN_KEY) === '1'; } catch { return false; }
+}
+
 class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
   toJSON() {
     return GRAPHENE_MULTICUT_SEGMENTS_TOOL_ID;
@@ -2034,9 +2111,18 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
           loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
       graphConnection.submitMulticut(annotationToNanometers).then(success => {
         submitIcon.classList.toggle('disabled', false);
-        if (success) {
+        // nge: the cut bar shows how it went (in place, when the tool stays).
+        window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success}}));
+        // With "Keep open after a cut" on, the tool stays for the next cut,
+        // as merge does. Off, it closes after a cut, as it always has.
+        if (success && !ngeKeepCutOpen()) {
           activation.cancel();
         }
+      }, () => {
+        // The server refused or failed: the status bar has said why. The
+        // Submit icon comes back so the next try can go.
+        submitIcon.classList.toggle('disabled', false);
+        window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success: false}}));
       });
     }
     const submitIcon = makeIcon({
@@ -2047,6 +2133,22 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       }
     });
     body.appendChild(submitIcon);
+    // nge (Nseraf 2026-10-11; for everyone since 2026-10-13): colour the cell in 3D by the side each
+    // part would fall on, before anything is cut. The app does the work
+    // (src/util/cut_preview.ts); the colours go when the points change, when
+    // the cut is sent, and when the tool closes.
+    const previewIcon = makeIcon({
+      text: 'Preview',
+      title: 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.',
+      onClick: () => {
+        window.dispatchEvent(new CustomEvent('nge-cut-preview', {detail: {layer: this.layer}}));
+      }
+    });
+    previewIcon.classList.add('nge-cut-preview-button');
+    body.appendChild(previewIcon);
+    const clearPreview = () => window.dispatchEvent(new CustomEvent('nge-cut-preview-clear'));
+    activation.registerDisposer(multicutState.changed.add(clearPreview));
+    activation.registerDisposer(clearPreview);
     const activeGroupIndicator = document.createElement('div');
     activeGroupIndicator.className = 'activeGroupIndicator';
     activeGroupIndicator.innerHTML = 'Active Group: ';
@@ -2619,6 +2721,227 @@ export async function ngeGrapheneBranchGraph(layer: SegmentationUserLayer, rootI
   for (const [a, b] of edges) { ids.add(a); ids.add(b); }
   const points: Map<string, number[]> = await server.ngePiecePoints([...ids]);
   return {edges, points};
+}
+
+/** For the cut preview: the links between a cell's pieces, and the block of
+ *  the volume each piece lies in (nanometres, [x0, y0, z0, x1, y1, z1]). */
+export async function ngeGrapheneCutGraph(layer: SegmentationUserLayer, rootId: string):
+    Promise<{edges: [string, string][], boxes: Map<string, number[]>}> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const server = connection.graph.graphServer as any;
+  const edges: [string, string][] = await server.ngeBranchEdges(rootId);
+  const ids = new Set<string>();
+  for (const [a, b] of edges) { ids.add(a); ids.add(b); }
+  const boxes: Map<string, number[]> = await server.ngeChunkBoxes([...ids]);
+  return {edges, boxes};
+}
+
+/** For the cut preview (src/util/cut_preview.ts): the red and blue points
+ *  placed so far, and the groups of supervoxels the server says a cut between
+ *  them would leave. Which group is which side is decided by the app, from
+ *  the points each group holds, not from the order they come in. Nothing is
+ *  cut. */
+export async function ngeGrapheneCutPreview(layer: SegmentationUserLayer): Promise<{
+  rootId: string, redPicks: string[], bluePicks: string[], groups: string[][], illegal: boolean,
+}> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const {multicutState} = connection.state;
+  const red = [...multicutState.sinks], blue = [...multicutState.sources];
+  if (!red.length || !blue.length) throw new Error('Place at least one red and one blue point first.');
+  const loadedSubsource = getGraphLoadedSubsource(layer)!;
+  const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
+  const server = connection.graph.graphServer as any;
+  const preview: {sides: string[][], illegal: boolean} = await server.ngeSplitPreview(red, blue, toNm);
+  return {
+    rootId: red[0].rootId.toString(),
+    redPicks: red.map(x => x.segmentId.toString()), bluePicks: blue.map(x => x.segmentId.toString()),
+    groups: preview.sides, illegal: preview.illegal,
+  };
+}
+
+/** What ngeGrapheneCutVoxels found: the voxels near the points, each marked
+ *  with the side its supervoxel is on, or why they could not be read. */
+export interface NgeCutVoxels {
+  ok: boolean;
+  /** Why not, in plain words, when ok is false. */
+  why: string;
+  /** How the volume is stored, for the console line that says what happened. */
+  stored: {host: string, scales: {key: string, nm: number[], encoding: string, sharded: boolean}[], used: string};
+  /** Corner of the region in nanometres, the size of one voxel, and how many. */
+  originNm: number[]; voxelNm: number[]; dims: number[];
+  /** x fastest, then y, then z. 0 neither side, 1 red, 2 blue. */
+  labels: Uint8Array;
+  files: {asked: number, read: number, empty: number, failed: number};
+  marked: {red: number, blue: number};
+}
+
+/**
+ * For the cut preview: the supervoxel under every voxel near the points, as
+ * the side the server's preview put that supervoxel on.
+ *
+ * The cell's surface in 3D is not made of supervoxels, so the only way to
+ * say where one is, is the volume itself: the same files the 2D view loads.
+ * They are read here at a coarse scale (about 30 nm a voxel or more), only
+ * around the points, where the server's answer is.
+ */
+export async function ngeGrapheneCutVoxels(
+    layer: SegmentationUserLayer, redSupervoxels: readonly string[], blueSupervoxels: readonly string[]): Promise<NgeCutVoxels> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const info = (connection.graph as any).info as GrapheneMultiscaleVolumeInfo;
+  // Where the points are, in nanometres, and the room round them the server looks at.
+  const {multicutState} = connection.state;
+  const picks = [...multicutState.sinks, ...multicutState.sources];
+  const loadedSubsource = getGraphLoadedSubsource(layer)!;
+  const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
+  const PAD = [2600, 2600, 1500];
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const pick of picks) for (let i = 0; i < 3; i++) {
+    const v = pick.position[i] * toNm[i];
+    lo[i] = Math.min(lo[i], v - PAD[i]); hi[i] = Math.max(hi[i], v + PAD[i]);
+  }
+  return ngeReadSideVoxels(info.dataUrl, info.scales, lo, hi, redSupervoxels, blueSupervoxels);
+}
+
+/** The reading itself, for any volume stored the plain way: every voxel of
+ *  the region lo..hi (nanometres) marked 1 or 2 if its id is in the first or
+ *  the second list. Apart from the graph, so it can be tried on a public
+ *  volume (the cut preview's own test). */
+export async function ngeReadSideVoxels(
+    dataUrl: string, scales: readonly any[], lo: readonly number[], hi: readonly number[],
+    redSupervoxels: readonly string[], blueSupervoxels: readonly string[]): Promise<NgeCutVoxels> {
+  const none = (why: string, stored: NgeCutVoxels['stored']): NgeCutVoxels => ({
+    ok: false, why, stored, originNm: [0, 0, 0], voxelNm: [1, 1, 1], dims: [0, 0, 0], labels: new Uint8Array(0),
+    files: {asked: 0, read: 0, empty: 0, failed: 0}, marked: {red: 0, blue: 0},
+  });
+  const info = {dataUrl, scales};
+  const stored: NgeCutVoxels['stored'] = {
+    host: String(info.dataUrl).replace(/^(\w+:\/\/[^/]+\/[^/]*).*$/, '$1'),
+    scales: info.scales.map(sc => ({
+      key: sc.key, nm: Array.from(sc.resolution).slice(0, 3), encoding: VolumeChunkEncoding[sc.encoding], sharded: sc.sharding !== undefined,
+    })),
+    used: '',
+  };
+  if (!lo.every(Number.isFinite) || !hi.every(Number.isFinite)) return none('There are no points.', stored);
+  // The finest scale that is not finer than about 30 nm a voxel, then coarser
+  // ones if the region would still be too many voxels.
+  const MAX_VOXELS = 9e6;
+  const usable = (sc: any) => sc.sharding === undefined &&
+      (sc.encoding === VolumeChunkEncoding.COMPRESSED_SEGMENTATION || sc.encoding === VolumeChunkEncoding.RAW);
+  let scale: any = undefined, vlo: number[] = [], vhi: number[] = [];
+  for (const sc of info.scales) {
+    if (sc.resolution[0] < 30 && sc !== info.scales[info.scales.length - 1]) continue;
+    const a = [0, 1, 2].map(i => Math.max(sc.voxelOffset[i], Math.floor(lo[i] / sc.resolution[i])));
+    const b = [0, 1, 2].map(i => Math.min(sc.voxelOffset[i] + sc.size[i], Math.ceil(hi[i] / sc.resolution[i])));
+    if (b.some((v, i) => v <= a[i])) continue;
+    if ((b[0] - a[0]) * (b[1] - a[1]) * (b[2] - a[2]) > MAX_VOXELS) continue;
+    scale = sc; vlo = a; vhi = b;
+    break;
+  }
+  if (scale === undefined) return none('No scale of the volume fits the region round the points.', stored);
+  stored.used = scale.key;
+  if (!usable(scale)) {
+    return none(`The volume is stored in a way this preview cannot read yet (${VolumeChunkEncoding[scale.encoding]}${scale.sharding !== undefined ? ', sharded' : ''}).`, stored);
+  }
+  // Each side's supervoxels, as the two halves of their 64 bit ids.
+  const sideOf = new Map<number, Map<number, number>>();
+  const add = (ids: readonly string[], side: number) => {
+    for (const id of ids) {
+      let n: bigint;
+      try { n = BigInt(id); } catch { continue; }
+      const high = Number(n >> BigInt(32)), low = Number(n & BigInt(0xffffffff));
+      (sideOf.get(high) ?? sideOf.set(high, new Map()).get(high)!).set(low, side);
+    }
+  };
+  add(redSupervoxels, 1); add(blueSupervoxels, 2);
+
+  const dims = [vhi[0] - vlo[0], vhi[1] - vlo[1], vhi[2] - vlo[2]];
+  const labels = new Uint8Array(dims[0] * dims[1] * dims[2]);
+  const files = {asked: 0, read: 0, empty: 0, failed: 0};
+  const marked = {red: 0, blue: 0};
+  const cs: ArrayLike<number> = scale.chunkSizes[0];
+  const off: ArrayLike<number> = scale.voxelOffset, size: ArrayLike<number> = scale.size;
+  const g0 = [0, 1, 2].map(i => Math.floor((vlo[i] - off[i]) / cs[i]));
+  const g1 = [0, 1, 2].map(i => Math.floor((vhi[i] - 1 - off[i]) / cs[i]));
+  const todo: number[][] = [];
+  for (let gz = g0[2]; gz <= g1[2]; gz++) for (let gy = g0[1]; gy <= g1[1]; gy++) for (let gx = g0[0]; gx <= g1[0]; gx++) todo.push([gx, gy, gz]);
+  if (todo.length > 400) return none('The region round the points is spread over too many files.', stored);
+  const value = new Uint64();
+  const readOne = async (g: number[]) => {
+    const at = [0, 1, 2].map(i => off[i] + g[i] * cs[i]);
+    const n = [0, 1, 2].map(i => Math.min(cs[i], off[i] + size[i] - at[i]));
+    const url = `${info.dataUrl}/${scale.key}/${at[0]}-${at[0] + n[0]}_${at[1]}-${at[1] + n[1]}_${at[2]}-${at[2] + n[2]}`;
+    files.asked++;
+    let buffer: ArrayBuffer;
+    try {
+      buffer = await cancellableFetchSpecialOk(undefined, url, {}, responseArrayBuffer);
+    } catch (e) {
+      if (isNotFoundError(e)) files.empty++; else files.failed++;
+      return;
+    }
+    files.read++;
+    const compressed = scale.encoding === VolumeChunkEncoding.COMPRESSED_SEGMENTATION;
+    const data = new Uint32Array(buffer, 0, Math.floor(buffer.byteLength / 4));
+    const block: ArrayLike<number> = scale.compressedSegmentationBlockSize ?? [8, 8, 8];
+    const base = compressed ? data[0] : 0;
+    // Only the part of this file inside the region.
+    const x0 = Math.max(at[0], vlo[0]), x1 = Math.min(at[0] + n[0], vhi[0]);
+    const y0 = Math.max(at[1], vlo[1]), y1 = Math.min(at[1] + n[1], vhi[1]);
+    const z0 = Math.max(at[2], vlo[2]), z1 = Math.min(at[2] + n[2], vhi[2]);
+    const pos = [0, 0, 0];
+    for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      let low: number, high: number;
+      if (compressed) {
+        pos[0] = x - at[0]; pos[1] = y - at[1]; pos[2] = z - at[2];
+        ngeReadCompressedUint64(value, data, base, n, block, pos);
+        low = value.low; high = value.high;
+      } else {
+        const k = ((x - at[0]) + n[0] * ((y - at[1]) + n[1] * (z - at[2]))) * 2;
+        low = data[k]; high = data[k + 1];
+      }
+      const side = sideOf.get(high >>> 0)?.get(low >>> 0);
+      if (!side) continue;
+      labels[(x - vlo[0]) + dims[0] * ((y - vlo[1]) + dims[1] * (z - vlo[2]))] = side;
+      if (side === 1) marked.red++; else marked.blue++;
+    }
+  };
+  const worker = async () => { for (;;) { const g = todo.pop(); if (!g) return; await readOne(g); } };
+  await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
+  const res = Array.from(scale.resolution as Float64Array).slice(0, 3);
+  return {
+    ok: files.read > 0, why: files.read > 0 ? '' : 'None of the volume\'s files round the points could be read.',
+    stored, originNm: [0, 1, 2].map(i => vlo[i] * res[i]), voxelNm: res, dims, labels, files, marked,
+  };
+}
+
+/** The block of the volume each id lies in ([x0, y0, z0, x1, y1, z1] in
+ *  nanometres), for supervoxels and for pieces alike. Read from the id. */
+export async function ngeGrapheneBoxesOf(layer: SegmentationUserLayer, ids: string[]): Promise<Map<string, number[]>> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  return (connection.graph.graphServer as any).ngeChunkBoxes(ids);
+}
+
+/** The piece each of a FEW supervoxels belongs to, one request each, a few
+ *  at a time (the same request Highlight mode makes for a click). One the
+ *  server does not answer for is left out. */
+export async function ngeGraphenePiecesOf(layer: SegmentationUserLayer, supervoxelIds: string[]): Promise<Map<string, string>> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
+  const server = connection.graph.graphServer as any;
+  const out = new Map<string, string>();
+  const todo = [...new Set(supervoxelIds)];
+  const next = async () => {
+    for (;;) {
+      const sv = todo.pop();
+      if (!sv) return;
+      try { out.set(sv, await server.ngePieceOf(sv)); } catch { /* left out */ }
+    }
+  };
+  await Promise.all([next(), next(), next(), next(), next(), next()]);
+  return out;
 }
 
 /** The piece of its cell that a pick landed in, or undefined. */

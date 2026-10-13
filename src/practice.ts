@@ -222,6 +222,14 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   await ensureSupervoxels(ex);
   // Both lineages, since a cut can leave the pieces on different roots with
   // the merge in each history.
+  // In passes, while a pass still changes something: a cut on a piece that
+  // carries neither registered spot can be missing from these histories
+  // until the cuts around it are undone. An operation can also stay listed
+  // for good (undoing a cut whose edges are already back does nothing), so a
+  // pass that finds the same operations as the last one is the end.
+  let lastPass = '';
+  let undoneCount = 0;
+  for (let pass = 0; pass < 8; pass++) {
   const roots = new Set<string>();
   for (const sv of [ex.supervoxel_a, ex.supervoxel_b]) {
     const r = await rootOfSupervoxel(ex, sv);
@@ -242,6 +250,12 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   }
   const activeOps = remainingPracticeOperations(ops, details);
   for (const op of activeOps) { await assertLease(); await undoOp(ex, op.operationId); }
+  const thisPass = activeOps.map(op => op.operationId).join(',');
+  if (!activeOps.length || thisPass === lastPass) break;
+  undoneCount += activeOps.length;
+  lastPass = thisPass;
+  }
+  const activeOps = { length: undoneCount };
   await assertLease();
   const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
   const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
@@ -305,7 +319,10 @@ export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
   try {
     // By the class's static type: class names are renamed in production.
     const seg = viewer.layerManager?.managedLayers?.find((x: any) => (x.layer?.constructor as any)?.type === 'segmentation');
-    if (seg) { viewer.selectedLayer.layer = seg; viewer.selectedLayer.visible = true; }
+    // Selected, but its side panel is left shut: the tool needs the layer
+    // chosen, not the panel open. Opening it here was what flashed a panel
+    // on every box (Ames, 2026-10-12).
+    if (seg) viewer.selectedLayer.layer = seg;
   } catch { /* non-critical */ }
   const key = tool === 'multicut' ? 'c' : 'm';
   const init: KeyboardEventInit = { key, code: key === 'c' ? 'KeyC' : 'KeyM', bubbles: true, cancelable: true };
@@ -631,7 +648,9 @@ export async function cellIsCut(id: string): Promise<boolean | null> {
     if (!ex) return null;
     const [sa, sb] = checkSupervoxels(ex);
     const [a, b] = await Promise.all([rootOfSupervoxel(ex, sa), rootOfSupervoxel(ex, sb)]);
-    return a && b ? a !== b : null;
+    if (!a || !b) return null;
+    // Parted, and nothing left behind that should have come off too.
+    return a !== b && !(LEFTOVER[ex.id] && await practiceLeftover(ex.id));
   } catch { return null; }
 }
 
@@ -891,8 +910,15 @@ const CHECK_SUPERVOXELS: Record<string, [string, string]> = {
   // touch across the join, from the edges her reference cuts removed
   // (operations 1872 and 1873). Checked against history: parted by the
   // reference cut, still together after the stray one.
-  '0482d846-0c16-4393-ab8a-0d1212b9520f': ['75508549324873021', '75508549324879021'],
-  '814be870-9149-4474-876f-195e0af0bd08': ['74593068321675225', '74593068321697468'],
+  // Widened 2026-10-12: the pair that touched across the join was too
+  // strict. A cut with its points a few voxels over takes a slightly
+  // different plane, and a player made the right cut on Merger 8 several
+  // times without it counting (AzureJay, operation 1966). These are the
+  // supervoxels under the reference cut's own red and blue points, about
+  // 300 nm apart with the join between them. Replayed against every cut in
+  // the history: the cuts at the join part them, the stray ones do not.
+  '0482d846-0c16-4393-ab8a-0d1212b9520f': ['75508549324873021', '75508549324875952'],
+  '814be870-9149-4474-876f-195e0af0bd08': ['74593068321697409', '74593068321720790'],
 };
 /**
  * Split view (2D images beside 3D), with the 2D panel rebuilt once the view
@@ -955,17 +981,23 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     // The saved views were made with neuroglancer's side panels open. Shut
     // them in the view itself before it loads, so they never flash open and
     // closed in front of the learner (Ames, 2026-10-11).
+    // Likewise the layout: a cell shown in 3D loads in 3D, so the 2D panels
+    // are never built and torn down (Merger Sandbox cells, and any cell
+    // staged as 3D).
+    const want3d = SANDBOX_IDS.includes(ex.id) || staged?.layout === '3d';
     setStateRewriter(async (state: any) => {
       if (state?.selectedLayer) state.selectedLayer = { ...state.selectedLayer, visible: false };
       if (state?.selection) state.selection = { ...state.selection, visible: false };
+      if (want3d && state) state.layout = '3d';
+      // Annotation layers saved in the view (the "remove" and "keep" points
+      // a view was made with) are left out: the tutorial draws its own hint
+      // gems, and both together showed every point twice, with two extra
+      // tabs (Ames, 2026-10-13). The hints are read from the views
+      // separately, so nothing is lost.
+      if (Array.isArray(state?.layers)) state.layers = state.layers.filter((l: any) => l?.type !== 'annotation');
       return state;
     });
     try { await useLayersStore().loadState(staged?.state ?? ex.state_url); } finally { setStateRewriter(null); }
-    // A saved view can bring the layer side panel with it, and switching a
-    // tool on can open it. It is a third of the screen the exercise does
-    // not use (Ames, 2026-10-11). Shut it as the view settles, and not after
-    // that, so a player who opens it on purpose keeps it.
-    for (const ms of [200, 1600, 3600]) setTimeout(() => { try { getViewer().selectedLayer.visible = false; } catch { /* no viewer */ } }, ms);
     // The staged panel layout for this cell (3D only, or split with 2D).
     if (staged?.layout === 'xy-3d') openSplitView();
     else if (staged?.layout) {
@@ -1010,6 +1042,50 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     session.rootA === session.rootB
       ? [[session.rootA, PURPLE]]
       : [[session.rootA, PURPLE], [session.rootB, YELLOW]]);
+}
+
+/**
+ * A cut that takes off only part of what does not belong.
+ *
+ * The 2D cut cell's axon can be cut partway along, which parts the two
+ * checked spots and used to count, with half the axon still on the dendrite
+ * (Ames, 2026-10-13). `pair` is a spot on that remaining half and a spot on
+ * the dendrite: while they share a segment, the job is half done. The red and
+ * blue points (viewer voxels) show where the rest of the cut goes.
+ */
+const LEFTOVER: Record<string, { pair: [string, string]; message: string; red: number[][]; blue: number[][] }> = {
+  // First cut (fusion on a proofread cell). The axon touches the dendrite
+  // along a stretch, and a cut placed at one end takes only the near half
+  // off. The pair is the supervoxel under the far red hint point and the one
+  // under the far blue hint point. Replayed against all 19 cuts in the
+  // cell's history: the five that took the whole axon part them, the
+  // fourteen that left half do not.
+  '02c5adcc-23c8-4003-83cd-cd9df7a65ce0': {
+    pair: ['75155055934384400', '75155055934269534'],
+    message: 'Good cut, but you cut off only half of the merger. The rest of the axon is still on the dendrite. Go back and get it: the gems show where.',
+    red: [[82030, 49104, 529]],
+    blue: [[81910, 49234, 521]],
+  },
+  // Axon fused to a dendrite, 2D cut. Supervoxels under (86309, 59613, 786)
+  // and (86358, 59125, 806).
+  '0813e168-d4e6-4baa-91b7-c9846b9fc6f4': {
+    pair: ['75437218239981902', '75437149587202747'],
+    message: 'Good cut, but you cut off only half of the merger. Part of the axon is still on the dendrite. Go back and get the rest: the gems show where.',
+    red: [[86385, 59535, 793]],
+    blue: [[86436, 59597, 806]],
+  },
+};
+
+/** For the cell on screen: what is still attached that should not be, or
+ *  null when there is nothing (or it cannot be told). */
+export async function practiceLeftover(id?: string): Promise<{ message: string; red: number[][]; blue: number[][] } | null> {
+  try {
+    const ex = id ? [...Object.values(session.held), ...Object.values(riders)].find(c => c.id === id) : session.example;
+    const left = ex ? LEFTOVER[ex.id] : undefined;
+    if (!ex || !left) return null;
+    const [a, b] = await Promise.all([rootOfSupervoxel(ex, left.pair[0]), rootOfSupervoxel(ex, left.pair[1])]);
+    return a && b && a === b ? left : null;
+  } catch { return null; }
 }
 
 /** True when the two pieces currently share a root. */

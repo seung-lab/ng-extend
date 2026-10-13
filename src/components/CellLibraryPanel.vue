@@ -31,9 +31,11 @@ import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
+import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
+import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -142,7 +144,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -286,7 +288,8 @@ function mapSheetStatus(s?: string): 'pending' | 'in_progress' | 'completed' {
  *  Available and could be claimed over the player who asked for help,
  *  2026-10-08). It frees up when the status is cleared in the sheet. */
 function sheetHolds(s?: string): boolean {
-  return /needs?.{0,3}help|\bhelp\b|\bwip\b|work in progress/i.test(s || '');
+  // "Claimed" (Ames 2026-10-13): the sheet's word for a cell someone holds.
+  return /needs?.{0,3}help|\bhelp\b|\bwip\b|work in progress|\bclaimed\b/i.test(s || '');
 }
 
 const cells = computed(() => {
@@ -1579,10 +1582,12 @@ async function ensureDataset(raw: string | undefined | null): Promise<boolean> {
  * Library on Help, and carry on to the request that was asked for
  * (Ames 2026-10-07: "switch here should reopen the cell library / jump me to
  * the help request"). Read by ExtensionBar (reopen) and here (the jump).
+ * The Quests tab's own switch leaves `tab: 'quests'`, so the library comes
+ * back open on Quests.
  */
 const AFTER_SWITCH_KEY = 'nge_cl_after_switch';
-function rememberAfterSwitch(reqId?: string) {
-  try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab: 'help', reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
+function rememberAfterSwitch(reqId?: string, tab: string = 'help') {
+  try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab, reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
 }
 function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ } }
 function isOnDataset(raw: string | undefined | null): boolean {
@@ -1674,6 +1679,33 @@ const teamAllowed = computed(() => teamAccess() !== false);
 /** Team play shows only on the dataset it is being tried on (util/teams.ts). */
 const teamsHere = computed(() => teamAllowed.value && teamsOnDataset(activeDataset.value || getCurrentDatasetName()));
 watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value = 'mine'; });
+/** Annotation Quests live on one dataset for now (Retina: cilia on starburst
+ *  amacrine cells, Ames 2026-10-12). The tab shows everywhere; elsewhere it
+ *  says so and offers the switch (Ames 2026-10-13: "it's not clear that my
+ *  tasks don't show up until I realize I'm in the wrong dataset"). */
+const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
+const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
+/** The quests' dataset as the top bar names it, "Retina" (Ames 2026-10-13:
+ *  "this should say Switch to Retina"; its longer name reads "EyeWire II"). */
+const questDatasetName = computed(() => (questDatasetEntry.value && datasetAbbrev(questDatasetEntry.value.id)) || 'Retina');
+// The number on the Quests tab (Ames 2026-10-13: "Quests doesn't have any
+// number?"): cells open to claim, read once when the panel opens on Retina
+// signed in; the tab's own reads refresh it through questState.
+watch([questsHere, () => backend.userId], ([here, uid]) => {
+  if (here && uid && !questState.loaded) void listQuests().catch(() => { /* the tab says why when opened */ });
+}, { immediate: true });
+async function switchToQuestDataset() {
+  const ds = questDatasetEntry.value;
+  if (!ds) return;
+  // The switch reloads the page into the dataset's start view: leave word
+  // for the next page to open the library on Quests again.
+  rememberAfterSwitch(undefined, 'quests');
+  const ok = await switchToDataset(ds);
+  if (ok) {
+    activeDataset.value = segLayerName(ds) || '';
+    filter.value = 'quests';
+  }
+}
 
 /** The dataset header's "switch here" (Amy: the old "jump switches" tag
  *  looked like a button and did nothing). Switch datasets and open the group. */
@@ -2175,6 +2207,8 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'tags',      label: 'Tags' },
   { key: 'ai',        label: 'AI' },
   { key: 'links',     label: 'My Links' },
+  // Annotation Quests (Ames 2026-10-12): shown on datasets that have one.
+  { key: 'quests',    label: 'Quests' },
 ];
 /** Hidden by default (still in the gear picker): the tab bar was cropping
  *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
@@ -2190,6 +2224,11 @@ const visibleTabs = ref<string[]>((() => {
       if (!localStorage.getItem('nge_cl_tabs_teams_added_v1')) {
         localStorage.setItem('nge_cl_tabs_teams_added_v1', '1');
         if (!saved.includes('teams')) { saved.push('teams'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
+      }
+      // Quests arrived 2026-10-12: a tab list saved before then gets it once.
+      if (!localStorage.getItem('nge_cl_tabs_quests_added_v1')) {
+        localStorage.setItem('nge_cl_tabs_quests_added_v1', '1');
+        if (!saved.includes('quests')) { saved.push('quests'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
       }
       if (!localStorage.getItem('nge_cl_tabs_ai_hidden_v1')) {
         localStorage.setItem('nge_cl_tabs_ai_hidden_v1', '1');
@@ -2478,7 +2517,7 @@ const panelStyle = computed(() => ({
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <button v-if="!viewOnlyDataset" class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
-          <button class="nge-cl-close" @mousedown.stop @click="emit('hide')">×</button>
+          <button class="nge-cl-close" title="Close (Shift+L)" aria-label="Close the Cell Library" @mousedown.stop @click="emit('hide')">×</button>
         </div>
 
         <!-- Resolve celebration -->
@@ -2543,6 +2582,11 @@ const panelStyle = computed(() => ({
               </button>
               <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'" title="Every cell in this dataset">
                 All <b>{{ datasetScopedCells.length }}</b>
+              </button>
+              <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
+              <button v-if="tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
+                      :title="questsHere ? 'Annotation quests: mark the cilia on a starburst amacrine cell, without completing it. The number is the cells open to claim.' : 'Annotation quests are on Retina for now'">
+                Quests <b v-if="questsHere && questState.loaded">{{ questOpenCount() }}</b>
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
@@ -2959,6 +3003,16 @@ const panelStyle = computed(() => ({
         <!-- ═══ TEAMS TAB (saved teams: two to four players on one cell) ═══ -->
         <div v-else-if="filter === 'teams' && teamsHere" class="nge-cl-list">
           <teams-tab />
+        </div>
+
+        <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
+        <div v-else-if="filter === 'quests'" class="nge-cl-list">
+          <annotation-quests-tab v-if="questsHere" />
+          <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
+            <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
+            <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
+                    title="Switch this view to the quests' dataset">Switch to {{ questDatasetName }}</button>
+          </div>
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
@@ -3830,7 +3884,7 @@ const panelStyle = computed(() => ({
   border-radius: 6px;
   background: rgba(10, 10, 30, 0.5);
   color: #ccd;
-  font-size: 0.78em;
+  font-size: 13.5px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -3901,7 +3955,9 @@ const panelStyle = computed(() => ({
   flex: 1;
 }
 .nge-cl-row-name {
-  font-size: 0.82em;
+  /* Sizes in px from here down (Ames 2026-10-13: "what is the deal with
+     tiny text"): the em chain made the list smaller than it read. */
+  font-size: 14px;
   font-weight: 600;
   color: #dde;
   white-space: nowrap;
@@ -3915,8 +3971,8 @@ const panelStyle = computed(() => ({
   margin-top: 2px;
 }
 .nge-cl-badge {
-  font-size: 0.65em;
-  padding: 1px 6px;
+  font-size: 11px;
+  padding: 2px 7px;
   border-radius: 4px;
   font-weight: 600;
   text-transform: uppercase;
@@ -3927,8 +3983,8 @@ const panelStyle = computed(() => ({
 .nge-cl-badge.nge-cl-status--done { background: rgba(68, 170, 255, 0.15); color: #4af; }
 
 .nge-cl-notes {
-  font-size: 0.68em;
-  color: #667;
+  font-size: 12.5px;
+  color: #8a97ad;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3952,12 +4008,12 @@ const panelStyle = computed(() => ({
   margin-left: 8px;
 }
 .nge-cl-btn {
-  padding: 4px 10px;
+  padding: 5px 11px;
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 5px;
   background: transparent;
   color: #8bf;
-  font-size: 0.72em;
+  font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -4076,10 +4132,16 @@ const panelStyle = computed(() => ({
 .nge-cl-loading, .nge-cl-empty, .nge-cl-no-results {
   padding: 24px 16px;
   text-align: center;
-  color: #667;
-  font-size: 0.82em;
+  color: #8a97ad;
+  font-size: 14px;
 }
-.nge-cl-hint { font-size: 0.75em; margin-top: 6px; color: #556; }
+.nge-cl-hint { font-size: 12.5px; margin-top: 6px; color: #7f8aa0; }
+/* The Quests tab on a dataset without quests: where they are, and the switch. */
+.nge-cl-quests-elsewhere { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 14px; color: #93a0b6; line-height: 1.5; }
+.nge-cl-quests-elsewhere b { color: #dde; font-weight: 600; }
+/* The Quests tab's number in green, apart from the cell counts (Ames 2026-10-13). */
+.nge-cl-filters .nge-cl-quests-tab b, .nge-cl-filters .nge-cl-quests-tab.active b { color: #7cffb2; }
+.nge-cl-quests-switch { font-size: 13px; padding: 6px 14px; }
 
 .nge-cl-login-hint {
   padding: 8px 14px;

@@ -45,7 +45,7 @@
  *   TRIAGE_LOOP_SINCE  ISO time; approvals before it are backlog, not auto
  */
 
-import { releaseCommand, SHA } from './triage-policy.mjs';
+import { releaseCommand, reporterReplyNote, SHA } from './triage-policy.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -302,7 +302,7 @@ async function reporterUpdates() {
     // Admin Hub sends that have not been mentioned in the thread yet.
     for (const e of log) {
       if (e.role === 'reporter_update' && e.via === 'admin' && !e.echoed) {
-        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}:\n> ${e.text}`).catch(() => {});
+        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:\n> ${e.text}`).catch(() => {});
         e.echoed = true;
         changed = true;
       }
@@ -347,6 +347,40 @@ async function reporterUpdates() {
     if (changed) await patchRow(row.id, { feedback_log: log });
   }
   return sent;
+}
+
+/**
+ * A submitter's reply (Ames 2026-10-13). An approver ticked "Ask for a reply"
+ * on the triage board, the submitter answered in the game, and the answer is
+ * in feedback_log with role 'reporter_reply' (functions/report-reply.js).
+ * Each one is shown in the report's thread once, whatever state the card is
+ * in. That is all that happens: it is posted by the bot, so readApprovals,
+ * pollThreads and collectNotes never read it as a decision, a verdict or a
+ * note, and nothing here touches status or impl_state.
+ */
+async function reporterReplies() {
+  const waiting = encodeURIComponent(JSON.stringify([{ role: 'reporter_reply', echoed: false }]));
+  const res = await sb(`feedback_triage?slack_ts=not.is.null&feedback_log=cs.${waiting}&select=id,slack_ts,feedback_log&limit=50`);
+  if (!res.ok) { console.warn(`[bridge] reporter replies skipped (${res.status})`); return 0; }
+  let shown = 0;
+  for (const row of await res.json()) {
+    const posted = new Set();
+    for (const e of Array.isArray(row.feedback_log) ? row.feedback_log : []) {
+      if (e.role !== 'reporter_reply' || e.echoed !== false) continue;
+      try { await say(row, reporterReplyNote(e)); posted.add(e.ts); }
+      catch (err) { console.warn(`[bridge] reply for ${row.id} not posted: ${err.message}`); }
+    }
+    if (!posted.size) continue;
+    // Mark them on the log as it is NOW: the board may have written to it
+    // (a reply marked read) while this was posting.
+    const again = await sb(`feedback_triage?id=eq.${row.id}&select=feedback_log`);
+    const log = again.ok ? ((await again.json())[0]?.feedback_log ?? row.feedback_log) : row.feedback_log;
+    for (const e of log) if (e.role === 'reporter_reply' && posted.has(e.ts)) e.echoed = true;
+    await patchRow(row.id, { feedback_log: log });
+    console.log(`[bridge] showed ${posted.size} reporter repl${posted.size === 1 ? 'y' : 'ies'} on ${row.id}`);
+    shown += posted.size;
+  }
+  return shown;
 }
 
 const REC_LABEL = {
@@ -457,7 +491,10 @@ function isSuggestRequest(text, botId = BOT_USER_ID) {
 }
 
 // Every new report still goes on the triage board at once, as a card with
-// no suggestion on it: no Claude run, nothing posted, nobody notified. The
+// no suggestion on it: no Claude run and nothing posted to Slack. Admins get
+// the in-game bell for it (Ames 2026-10-13: "I'm not getting notifications
+// for new triages"; since reports stopped getting a suggestion by themselves,
+// the only bell was the one for a suggestion, so nothing rang). The
 // card is an ordinary row (so the board, Slack replies, Done and Dismiss all
 // work on it), told apart by its rationale. Asking for a suggestion later
 // fills the same row in. Same words in AdminHub.vue and triage-loop.mjs.
@@ -482,15 +519,33 @@ async function fileNewReports() {
     // suggestion) reach this card. Found, not posted to.
     const threadTs = await findReportTs(row).catch(() => null);
     const res = await sb('feedback_triage?on_conflict=source,source_id', {
-      method: 'POST', headers: { Prefer: 'return=minimal,resolution=ignore-duplicates' },
+      method: 'POST', headers: { Prefer: 'return=representation,resolution=ignore-duplicates' },
       body: JSON.stringify({ ...row, recommendation: 'nothing', status: 'proposed',
         rationale: `${NEW_REPORT_NOTE}. To get one, press Suggest a fix on this card, or tag the bot in the report's Slack thread.`,
         ...(threadTs ? { slack_channel: CHANNEL, slack_ts: threadTs } : {}) }),
     });
-    if (res.ok) filed++; else console.warn(`[bridge] could not file report ${issue.id}: ${res.status}`);
+    if (!res.ok) { console.warn(`[bridge] could not file report ${issue.id}: ${res.status}`); continue; }
+    // Only the pass that really made the card rings the bell: a card another
+    // pass made a moment ago comes back as no rows.
+    const made = await res.json().catch(() => []);
+    if (!Array.isArray(made) || !made.length) continue;
+    filed++;
+    await notifyAdminsOfReport(made[0]).catch(e => console.warn(`[bridge] new report ${issue.id}: admins not notified: ${e.message}`));
   }
   if (filed) console.log(`[bridge] filed ${filed} new report(s) on the board, no suggestion asked`);
   return filed;
+}
+
+/** In-game bell for every admin when a new report lands on the board (the
+ *  feed files a 🗂 title under its Triage tab). Once per card. */
+async function notifyAdminsOfReport(row) {
+  const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" A new report is on the triage board. Click this note to open it. Press Suggest a fix there if you want Claude to look.`;
+  let sent = 0;
+  for (const id of await adminUserIds()) {
+    if (await notifyUser(id, '🗂️ Feedback triage: new report', body)) sent++;
+  }
+  console.log(`[bridge] new report ${row.id}: notified ${sent} admin(s)`);
 }
 
 async function suggestRequests() {
@@ -681,9 +736,13 @@ async function echoAppDecisions() {
     // Marked "In progress" by hand in the Admin Hub: someone is fixing it
     // themselves, so the robot does not build it (AdminHub.vue BY_HAND_NOTE).
     const byHand = row.status === 'approved' && /^By hand\b/.test(row.approver_note || '');
-    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state && !byHand;
+    // Kept as an idea for later (AdminHub.vue LATER_NOTE): not built either.
+    const later = row.status === 'approved' && /^Later\b/.test(row.approver_note || '');
+    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state && !byHand && !later;
     const note = row.approver_note ? ` with the note "${row.approver_note}"` : '';
-    const posted = await say(row, byHand
+    const posted = await say(row, later
+      ? `Kept as an idea for later in the Admin Hub by ${row.reviewed_by}. The robot is not building it. 💡`
+      : byHand
       ? `Marked in progress in the Admin Hub by ${row.reviewed_by}: it is being fixed by hand, so the robot is not building it. ✓`
       : row.status === 'approved'
       ? `Approved in the Admin Hub by ${row.reviewed_by}${note}.${building ? ` Claude is starting on it now. <@${tester}>, you're the tester.` : ''} ✓`
@@ -1269,6 +1328,7 @@ let LOOP = false;
   }
   const announced = await announceDone();
   if (COLS) await reporterUpdates().catch(e => console.warn('[bridge] reporter updates failed:', e.message));
+  if (COLS) await reporterReplies().catch(e => console.warn('[bridge] reporter replies failed:', e.message));
   // The workflow runs several passes a minute apart; timed reminders only on
   // the first, or each would post once per pass inside its window.
   if ((process.env.BRIDGE_PASS || '1') === '1') {

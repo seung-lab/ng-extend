@@ -63,3 +63,45 @@ export function bindNgeMeshTint(gl: GL, unit: number): boolean {
   }
   return true;
 }
+
+// ── A second, FINE map (the cut preview, src/util/cut_preview.ts) ──────────
+// The map above covers everything marked, so over a whole cell one of its
+// cells is a micron or more. Where a cut falls needs far finer than that, in
+// a region a few microns across. This is the same thing again, for that one
+// small region, drawn over the first map wherever it has colour.
+let fine: NgeMeshTint|null = null;
+let fineVersion = 0;
+export function setNgeMeshTintFine(tint: NgeMeshTint|null) {
+  fine = tint;
+  fineVersion++;
+  ngeMeshTintChanged.dispatch();
+}
+export function getNgeMeshTintFine() {
+  return fine;
+}
+const fineTextures = new WeakMap<GL, {texture: WebGLTexture|null, version: number}>();
+export function bindNgeMeshTintFine(gl: GL, unit: number): boolean {
+  if (fine === null) return false;
+  let entry = fineTextures.get(gl);
+  if (entry === undefined) {
+    entry = {texture: gl.createTexture(), version: -1};
+    fineTextures.set(gl, entry);
+  }
+  const T = WebGL2RenderingContext;
+  gl.activeTexture(T.TEXTURE0 + unit);
+  gl.bindTexture(T.TEXTURE_3D, entry.texture);
+  if (entry.version !== fineVersion) {
+    entry.version = fineVersion;
+    const [w, h, d] = fine.dims;
+    gl.pixelStorei(T.UNPACK_ALIGNMENT, 1);
+    // Nearest, not blended: between a red cell and a blue one there is no
+    // third colour, and the edge of the cut should be an edge.
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_MIN_FILTER, T.NEAREST);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_MAG_FILTER, T.NEAREST);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_WRAP_S, T.CLAMP_TO_EDGE);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_WRAP_T, T.CLAMP_TO_EDGE);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_WRAP_R, T.CLAMP_TO_EDGE);
+    gl.texImage3D(T.TEXTURE_3D, 0, T.RGBA8, w, h, d, 0, T.RGBA, T.UNSIGNED_BYTE, fine.data);
+  }
+  return true;
+}

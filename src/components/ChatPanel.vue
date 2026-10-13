@@ -11,7 +11,7 @@ import { booGhost, isBoo, inSeason } from '../util/spooky';
 import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_EMOJI, CHAT_MAX_CHARS, chatTextLength } from '../store';
+import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_MAX_CHARS, chatTextLength } from '../store';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
@@ -24,13 +24,16 @@ function openNurroProfile() {
   document.dispatchEvent(new CustomEvent('nge:open-nurro-profile'));
 }
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
-import { LIVE_CHAT_PREFIX } from '../store';
+import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
 const { chatMessages, connected, unreadMessages } = storeToRefs(chatStore);
+/** Chat can be used: on its live connection, or, while that is down, by
+ *  asking for new messages every few seconds (store: polling). */
+const chatUsable = computed(() => connected.value || chatStore.polling);
 const backendStore = useProofreadingBackendStore();
 
 const messageInput = ref('');
@@ -402,12 +405,18 @@ function nameColor(msg: { name: string; rank: string }): string {
 
 // ── Who is online: the "2 online" label opens the list ──────────────────
 const showOnline = ref(false);
+/** The short name of the dataset someone has open, for the online list. */
+function onlineDatasetName(tag: string): string {
+  const d = DATASETS.find(x => canonicalDataset(segLayerName(x)) === tag || x.id === tag);
+  // Retina's short label is the project's old name; players know it as Retina.
+  return d?.shortLabel === 'EyeWire II' ? 'Retina' : d?.shortLabel || '';
+}
 const onlineNow = computed(() => {
   void chatStore.onlineCount;          // the store's tick: people go stale after 90 s
   const cutoff = Date.now() - 90_000;
   return Object.entries(chatStore.online)
     .filter(([, p]) => p.lastSeen >= cutoff)
-    .map(([id, p]) => ({ id, name: p.name }))
+    .map(([id, p]) => ({ id, name: p.name, where: p.dataset ? onlineDatasetName(p.dataset) : '' }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 });
 function openOnlineProfile(id: string) {
@@ -800,6 +809,30 @@ function isShotLink(u: string): boolean {
 // press Join on it: the asker gets the offer and accepts or declines.
 const joinOffered = ref(new Set<string>());
 const joinNote = ref('');
+// A help request is said in chat by the game, about the player: "New help
+// request from annkri", not a line that reads as if she typed it (Ames
+// 2026-10-13: "I don't like chat posting on behalf of ppl"). The message is
+// still kept under her name, so it is found by how it starts, and that
+// start is left out of the words shown after the notice.
+const HELP_STARTS: [string, string][] = [
+  [HELP_CHAT_PREFIX, 'New help request from'], [OLD_HELP_CHAT_PREFIX, 'New help request from'], [LIVE_CHAT_PREFIX, 'Live help wanted by'],
+];
+function helpStart(msg: any): [string, string] | null {
+  if (msg?.type !== 'message' || msg.rank === 'bot') return null;
+  const first = (msg.parts || []).find((p: any) => p.type !== 'sender');
+  const text = typeof first?.text === 'string' ? first.text.trimStart() : '';
+  return HELP_STARTS.find(([start]) => text.startsWith(start)) ?? null;
+}
+/** "New help request from" (or the live wording), or '' for an ordinary message. */
+const helpLead = (msg: any) => helpStart(msg)?.[1] ?? '';
+/** A part's words, without the start that marks a help request. */
+function partText(msg: any, part: any): string {
+  const start = helpStart(msg);
+  if (!start) return part.text;
+  const first = (msg.parts || []).find((p: any) => p.type !== 'sender');
+  if (part !== first) return part.text;
+  return String(part.text).trimStart().slice(start[0].length).replace(/^\s+/, ' ');
+}
 function isHelpAsk(msg: any): boolean {
   if (msg?.type !== 'message' || !msg.userId || msg.userId === backendStore.userId) return false;
   if (teamAccess() === false) return false;
@@ -821,7 +854,32 @@ async function joinHelp(msg: any) {
 
 // ── Reactions (Ames 2026-09-28) ──
 const pickerFor = ref<string | null>(null);
-function togglePicker(id: string) { pickerFor.value = pickerFor.value === id ? null : id; }
+/** The longer list behind the picker's "+" is open. */
+const pickerMore = ref(false);
+/** Where the list goes: above the "+" when there is room, else below it,
+ *  and never off the side of the window. */
+const morePlace = ref<Record<string, string>>({});
+const MORE_W = 236, MORE_H = 152;
+function toggleMore(e: MouseEvent) {
+  pickerMore.value = !pickerMore.value;
+  if (!pickerMore.value) return;
+  const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const left = Math.max(6, Math.min(window.innerWidth - MORE_W - 6, at.right - MORE_W));
+  const above = at.top - MORE_H - 8;
+  const top = above >= 6 ? above : Math.min(window.innerHeight - MORE_H - 6, at.bottom + 8);
+  morePlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(Math.max(6, top))}px` };
+  // A press anywhere else puts it away, the 3D view included (which keeps
+  // its clicks to itself, so the chat's own click handler never hears them).
+  const away = (ev: PointerEvent) => {
+    const t = ev.target as HTMLElement;
+    if (t.closest?.('.nge-chat-react-more') || t.closest?.('.nge-chat-react-add')) return;
+    document.removeEventListener('pointerdown', away, true);
+    pickerMore.value = false;
+    pickerFor.value = null;
+  };
+  document.addEventListener('pointerdown', away, true);
+}
+function togglePicker(id: string) { pickerMore.value = false; pickerFor.value = pickerFor.value === id ? null : id; }
 function react(id: string, emoji: string) {
   pickerFor.value = null;
   void chatStore.toggleReaction(id, emoji);
@@ -882,7 +940,7 @@ function reactedByMe(list: Array<{ userId: string }>) {
 }
 function closePopovers(e: MouseEvent) {
   const t = e.target as HTMLElement;
-  if (!t.closest?.('.nge-chat-react-add')) pickerFor.value = null;
+  if (!t.closest?.('.nge-chat-react-add') && !t.closest?.('.nge-chat-react-more')) pickerFor.value = null;
   if (!t.closest?.('.nge-chat-share')) shareMenuOpen.value = false;
   if (!t.closest?.('.nge-chat-emoji')) emojiOpen.value = false;
 }
@@ -1143,16 +1201,18 @@ function toggleCollapse() {
 
       <!-- Tiny drag/control strip -->
       <div class="nge-chat-strip" @mousedown="startDrag" @dblclick="toggleCollapse">
-        <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected }"></span>
+        <span class="nge-chat-strip-dot" :class="{ 'nge-chat-strip-dot--on': connected, 'nge-chat-strip-dot--slow': !connected && chatStore.polling }"
+              :title="connected ? 'Chat is live' : chatStore.polling ? 'Live updates are down. Chat still works: new messages are fetched every few seconds.' : 'Chat is not connected'"></span>
         <span v-if="collapsed" class="nge-chat-strip-label">Chat</span>
-        <span v-if="connected && chatStore.onlineCount > 0" class="nge-chat-online-wrap">
+        <span v-if="chatUsable && chatStore.onlineCount > 0" class="nge-chat-online-wrap">
           <button type="button" class="nge-chat-online" :aria-expanded="showOnline" title="See who is online"
                   @click.stop="showOnline = !showOnline">{{ chatStore.onlineCount }} online</button>
           <!-- Who that is (Ames 2026-10-09). A name opens that player's profile. -->
           <div v-if="showOnline" class="nge-chat-online-list" role="menu" @click.stop>
             <button v-for="p in onlineNow" :key="p.id" type="button" class="nge-chat-online-name" role="menuitem"
                     :style="{ color: rankColor(knownRank[p.name] || 'player') }" @click="openOnlineProfile(p.id)">
-              <span class="nge-chat-online-dot" aria-hidden="true"></span>{{ p.name }}
+              <span class="nge-chat-online-dot" aria-hidden="true"></span><span class="nge-chat-online-who">{{ p.name }}</span>
+              <span v-if="p.where" class="nge-chat-online-where" :title="'In ' + p.where">{{ p.where }}</span>
             </button>
           </div>
         </span>
@@ -1264,7 +1324,8 @@ function toggleCollapse() {
                     <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                             @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
                     <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
-                      <button v-for="e in CHAT_REACTION_EMOJI" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                      <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                      <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                     </span>
                   </span>
                   <span class="nge-chat-announce-cta">Open →</span>
@@ -1305,7 +1366,7 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery }"
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery, 'nge-chat-msg--help': !!helpLead(msg) }"
                      @click="onMessageClick(msg, $event)"
                      :data-msg-id="msg.id != null ? String(msg.id) : undefined"
                      :title="msg.private ? 'Only you can see this' : undefined">
@@ -1321,8 +1382,11 @@ function toggleCollapse() {
                           @click="openNurroProfile" title="Nurro's profile"><img :src="nurroAvatar" alt="" />Nurro<span class="nge-chat-bot-tag nge-chat-nurro-tag">guide</span></button>
                   <span v-else-if="msg.rank === 'bot'" class="nge-chat-msg-name nge-chat-bot-name"
                         :title="'nkem_test: the original EyeWire chat bot, by @nkem (2013). Say \'for science\' and it answers.'">nkem_test<span class="nge-chat-bot-tag">bot</span></span>
-                  <span v-else class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: nameColor(msg) }"
-                        @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
+                  <template v-else>
+                    <span v-if="helpLead(msg)" class="nge-chat-help-lead">{{ helpLead(msg) }}</span>
+                    <span class="nge-chat-msg-name nge-chat-msg-name--clickable" :style="{ color: nameColor(msg) }"
+                          @click="openUserProfile(msg.name)" :title="'View ' + msg.name + '\'s profile'">{{ shortName(msg.name) }}</span>
+                  </template>
                   <template v-for="(part, pi) in msg.parts" :key="pi">
                     <template v-if="part.type === 'sender'"></template>
                     <a v-else-if="part.type === 'link' && isViewLink(part.text)" class="nge-chat-view-chip" :href="part.text" target="_blank" rel="noopener"
@@ -1356,7 +1420,7 @@ function toggleCollapse() {
                         :title="'Copy ' + part.text.slice(1)"
                       >{{ copiedSegId === part.text.slice(1) ? '✓' : '⧉' }}</button></span>
                     <span v-else class="nge-chat-msg-text" :class="{ 'nge-chat-bot-text': msg.rank === 'bot' && msg.name !== 'Nurro' }"><template
-                      v-for="(piece, ri) in richPieces(part.text)" :key="ri"><b v-if="piece.bold" class="nge-chat-b" :class="{ 'nge-chat-u': piece.underline }">{{ piece.text }}</b><u
+                      v-for="(piece, ri) in richPieces(partText(msg, part))" :key="ri"><b v-if="piece.bold" class="nge-chat-b" :class="{ 'nge-chat-u': piece.underline }">{{ piece.text }}</b><u
                       v-else-if="piece.underline" class="nge-chat-u">{{ piece.text }}</u><template v-else>{{ piece.text }}</template></template></span>
                   </template>
                   <button v-if="isHelpAsk(msg)" type="button" class="nge-chat-view-chip nge-chat-join-chip" :disabled="joinOffered.has(joinKey(msg))"
@@ -1374,7 +1438,8 @@ function toggleCollapse() {
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                               @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
-                        <button v-for="e in CHAT_REACTION_EMOJI" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                        <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                        <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                       </span>
                     </span>
                     <div v-if="Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row">
@@ -1453,7 +1518,7 @@ function toggleCollapse() {
           </div>
           <div v-else class="nge-chat-input-row">
             <span class="nge-chat-share">
-              <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !connected || sharing"
+              <button class="nge-chat-share-btn" :disabled="!isLoggedIn || !chatUsable || sharing"
                       @click.stop="shareMenuOpen = !shareMenuOpen" title="Share my view in chat"><template v-if="sharing">…</template><svg v-else class="nge-chat-share-pin" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M8 15.4S2.6 10.5 2.6 6.3a5.4 5.4 0 0 1 10.8 0C13.4 10.5 8 15.4 8 15.4zM8 8.4a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 0 4.2z"/></svg></button>
               <span v-if="shareMenuOpen" class="nge-chat-share-menu">
                 <button @click="shareView(false)">📍 Share my view</button>
@@ -1466,7 +1531,7 @@ function toggleCollapse() {
               class="nge-chat-input"
               :class="{ 'nge-chat-input--over': messageTooLong }"
               rows="1"
-              :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : 'Message... (@ to mention)'"
+              :placeholder="!isLoggedIn ? 'Log in to chat' : isQuiet ? '>' : !chatUsable ? 'Chat is connecting…' : 'Message... (@ to mention)'"
               title="Enter sends. *bold* and _underline_, or Ctrl+B and Ctrl+U on selected text."
               @keydown.stop="onInputKeydown"
               @keyup.stop
@@ -1478,12 +1543,12 @@ function toggleCollapse() {
               @blur="mentionQuery = null"
               spellcheck="true"
               autocomplete="off"
-              :disabled="!isLoggedIn || !connected"
+              :disabled="!isLoggedIn || !chatUsable"
             ></textarea>
             <span v-if="showLengthCount" class="nge-chat-count" :class="{ 'nge-chat-count--over': messageTooLong }"
                   :title="`Up to ${CHAT_MAX_CHARS} characters, links don't count`">{{ CHAT_MAX_CHARS - messageLength }}</span>
             <span class="nge-chat-emoji">
-              <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !connected"
+              <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !chatUsable"
                       @mousedown.prevent @click.stop="emojiOpen = !emojiOpen" title="Add an emoji">🙂</button>
               <span v-if="emojiOpen" class="nge-chat-emoji-grid">
                 <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
@@ -1494,6 +1559,13 @@ function toggleCollapse() {
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
                           @close="showShareShot = false" @attached="onShareShotAttached" />
       </template>
+    </div>
+  </Teleport>
+  <!-- More reactions: drawn on the page itself, not inside the chat, so the
+       chat's own edges never cut it off however small the chat is. -->
+  <Teleport to="body">
+    <div v-if="pickerMore && pickerFor" class="nge-chat-react-more" :style="morePlace" role="menu" aria-label="More reactions" @click.stop @mousedown.stop>
+      <button v-for="e in CHAT_REACTION_MORE" :key="e" role="menuitem" @click.stop="react(pickerFor, e)">{{ e }}</button>
     </div>
   </Teleport>
 </template>
@@ -1676,6 +1748,8 @@ function toggleCollapse() {
   background: #0fb18b;
   box-shadow: 0 0 4px rgba(15, 177, 139, 0.5);
 }
+/* Amber: no live connection, chat is fetching new messages on a timer. */
+.nge-chat-strip-dot--slow { background: #ffb347; box-shadow: 0 0 6px rgba(255, 179, 71, 0.8); }
 
 .nge-chat-strip-label {
   font-size: 10px;
@@ -1748,7 +1822,9 @@ function toggleCollapse() {
   overflow-y: auto;
   display: flex;
   flex-direction: column-reverse;
-  padding: 2px 8px;
+  /* No space on the left: a message's own indent is enough, and the bar on
+     your own messages sits on the panel's edge (Ames 2026-10-11). */
+  padding: 2px 8px 2px 0;
   position: relative;
   z-index: 2;
 }
@@ -1797,6 +1873,15 @@ function toggleCollapse() {
 /* Your own messages: a bar on the left edge, drawn inside the row so nothing
    moves (Krzysztof 2026-10-09). */
 .nge-chat-msg--mine { box-shadow: inset 2px 0 0 rgba(124, 200, 255, 0.85); }
+/* A help request: a notice from the game, with the player named in it. */
+.nge-chat-help-lead { margin-right: 4px; font-weight: 600; color: #ffc98a; }
+.nge-chat-msg--help { background: rgba(255, 180, 90, 0.06); border-radius: 4px; }
+/* Room between that bar and the words (Ames 2026-10-11: "too close to the
+   text"). Every message gets it, so yours and everyone else's still line up. */
+.nge-chat-msg { padding-left: 11px; }
+/* Everything that is not a message (date lines, join notices, cards) keeps
+   the space the list itself used to give it. */
+.nge-chat-messages-inner > :not(.nge-chat-msg) { margin-left: 8px; }
 .nge-chat-b { font-weight: 700; color: #f2f6fc; }
 .nge-chat-u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 /* Search */
@@ -1844,6 +1929,8 @@ function toggleCollapse() {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .nge-chat-online-name:hover, .nge-chat-online-name:focus-visible { background: rgba(255, 255, 255, 0.07); outline: none; }
+.nge-chat-online-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nge-chat-online-where { margin-left: auto; padding-left: 10px; flex: 0 0 auto; font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.6); }
 .nge-chat-online-dot { width: 7px; height: 7px; border-radius: 50%; background: #7dffb0; box-shadow: 0 0 6px rgba(125, 255, 176, 0.8); flex: 0 0 auto; }
 .nge-chat-del {
   visibility: hidden;
@@ -2480,6 +2567,20 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
   transition: transform 0.1s;
 }
 .nge-chat-react-picker button:hover { transform: scale(1.25); background: rgba(74, 158, 255, 0.15); }
+/* "+": the longer list, in a small grid under the quick row. */
+.nge-chat-react-picker .nge-chat-react-more-btn { font-size: 15px; font-weight: 700; color: #9fc4ff; width: 23px; }
+.nge-chat-react-picker .nge-chat-react-more-btn--open { background: rgba(74, 158, 255, 0.22); }
+.nge-chat-react-more {
+  position: fixed; z-index: 100001;
+  display: grid; grid-template-columns: repeat(8, 27px); gap: 1px; padding: 5px;
+  background: rgba(10, 16, 30, 0.98); border: 1px solid rgba(74, 158, 255, 0.3); border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+}
+.nge-chat-react-more button {
+  background: none; border: none; font-size: 17px; line-height: 1; cursor: pointer; transition: transform 0.1s;
+}
+.nge-chat-react-more button:hover { transform: scale(1.25); background: rgba(74, 158, 255, 0.15); }
+.nge-chat-react-more button { width: 27px; height: 27px; padding: 0; border-radius: 6px; }
 .nge-chat-react-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .nge-chat-react {
   display: inline-flex;

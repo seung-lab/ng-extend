@@ -192,6 +192,29 @@ export function getIndicesComplement(indices: number[], max: number) {
   return findMatchingIndices(mask, undefined);
 }
 
+/**
+ * Binary search over a sorted array: the first index whose item satisfies the
+ * predicate ('asc': the predicate is false then true along the array), or the
+ * last such index for 'desc' (true then false). -1 when none does. Ported
+ * from seung-lab/neuroglancer with the polyline annotations (2026-10-13).
+ */
+export function findFirstInSortedArray<T>(
+    haystack: ArrayLike<T>, predicate: (item: T) => boolean, direction: 'asc'|'desc' = 'asc',
+    low: number = 0, high: number = haystack.length): number {
+  let result = -1;
+  while (low < high) {
+    const mid = (low + high - 1) >> 1;
+    const match = predicate(haystack[mid]);
+    if (match) {
+      result = mid;
+      if (direction === 'asc') high = mid; else low = mid + 1;
+    } else {
+      if (direction === 'asc') low = mid + 1; else high = mid;
+    }
+  }
+  return result;
+}
+
 export function arraysEqual<T>(a: ArrayLike<T>, b: ArrayLike<T>) {
   const length = a.length;
   if (b.length !== length) return false;

@@ -2,6 +2,12 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { useProofreadingBackendStore } from '../store';
+import { secureWrite } from '../secure_write';
+import { mintShortStateLink } from '../util/state_link';
+import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
+import { currentDatasetTag, canonicalDataset } from '../datasets';
+import ScreenshotDialog from 'components/ScreenshotDialog.vue';
+declare const NGE_BUILD: string | undefined;
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
 const props = defineProps<{ visible: boolean }>();
@@ -186,6 +192,71 @@ function openDetail(notif: any) {
 
 function closeDetail() {
   openNotif.value = null;
+}
+
+// ── A reply the team asked for (Ames 2026-10-13) ─────────────────────────
+// An update on your own report can come with a reply box: an approver ticked
+// "Ask for a reply" on the triage board. One reply, text only; it goes to the
+// server, which checks the report is yours (functions/report-reply.js). Every
+// other notification has no reply_triage_id and looks exactly as before.
+const REPLY_MAX = 1000;
+const replyDraft = ref('');
+const replySending = ref(false);
+const replyError = ref('');
+const replyJustSent = ref(false);
+// A reply can carry what a report carries (Ames 2026-10-13): a screenshot,
+// the view the player is looking at, and their recent console messages.
+const replyShot = ref('');
+const showReplyShot = ref(false);
+const replyAttachView = ref(true);
+const replyAttachConsole = ref(true);
+const replyConsoleCount = ref(0);
+const replyNote = ref('');
+function onReplyShot(payload: { url: string }) { replyShot.value = payload.url; showReplyShot.value = false; replyError.value = ''; }
+const asksReply = (n: any) => !!n && !n.preview && !!n.reply_triage_id && n.target_type === 'user' && n.target_id === backend.userId;
+const replyAsked = computed(() => asksReply(openNotif.value));
+watch(() => openNotif.value?.id, () => {
+  replyDraft.value = ''; replyError.value = ''; replyJustSent.value = false;
+  replyShot.value = ''; replyNote.value = ''; replyAttachView.value = true; replyAttachConsole.value = true;
+  replyConsoleCount.value = recentConsoleCount();
+});
+async function sendReply() {
+  const notif = openNotif.value;
+  const text = replyDraft.value.trim();
+  if (!notif || !text || replySending.value) return;
+  replySending.value = true;
+  replyError.value = '';
+  try {
+    // The view and the console messages are read at the moment of sending.
+    // A link that will not come is given up on, so the reply itself is never held.
+    const viewUrl = replyAttachView.value
+      ? await Promise.race([mintShortStateLink().catch(() => null), new Promise<null>(r => setTimeout(() => r(null), 8000))])
+      : null;
+    const consoleLog = replyAttachConsole.value && recentConsoleCount() ? recentConsoleText() : '';
+    let dataset = '';
+    try { dataset = canonicalDataset(currentDatasetTag()) || ''; } catch { /* no viewer */ }
+    const out: any = await secureWrite('reply.send', {
+      notificationId: notif.id, text,
+      screenshotUrl: replyShot.value || undefined, viewUrl: viewUrl || undefined, consoleLog: consoleLog || undefined,
+      dataset: dataset || undefined, build: typeof NGE_BUILD !== 'undefined' && NGE_BUILD ? String(NGE_BUILD).slice(0, 40) : undefined,
+    });
+    notif.reply_text = out?.reply_text ?? text;
+    notif.replied_at = out?.replied_at ?? new Date().toISOString();
+    notif.reply_screenshot_url = out?.reply_screenshot_url ?? null;
+    notif.reply_view_url = out?.reply_view_url ?? null;
+    replyNote.value = out?.parts_saved === false ? 'Your words were sent. The screenshot, view and console messages could not be kept this time.'
+      : (replyAttachView.value && !viewUrl ? 'Sent, without your view: a link to it could not be made.' : '');
+    replyJustSent.value = true;
+    replyDraft.value = '';
+  } catch (e: any) {
+    // Already answered from another window: show that reply instead.
+    await backend.loadNotifications().catch(() => {});
+    const fresh: any = backend.notifications.find((n: any) => n.id === notif.id);
+    if (fresh?.replied_at && openNotif.value?.id === notif.id) openNotif.value = fresh;
+    else replyError.value = `Your reply was not sent: ${e?.message ?? 'please try again'}`;
+  } finally {
+    replySending.value = false;
+  }
 }
 
 // Weekly Champions: a name opens that player's profile (Ames 2026-10-05).
@@ -475,6 +546,7 @@ function padRank(rank: number): string {
               >×</button>
             </div>
             <div class="nge-notif-card-body nge-notif-card-body--preview">{{ plainText(cleanCopy(notif.body)) }}</div>
+            <div v-if="asksReply(notif) && !notif.replied_at" class="nge-notif-reply-chip">Reply requested</div>
           </div>
         </div>
       </div>
@@ -611,6 +683,56 @@ function padRank(rank: number): string {
                     v-html="renderMarkdown(cleanCopy(openNotif.body))"
                   ></div>
                 </template>
+                <!-- A reply the team asked for: one per request, with what a report carries. -->
+                <div v-if="replyAsked" class="nge-notif-reply">
+                  <template v-if="openNotif.replied_at">
+                    <div class="nge-notif-reply-label">Your reply</div>
+                    <div class="nge-notif-reply-sent">{{ openNotif.reply_text }}</div>
+                    <a v-if="openNotif.reply_screenshot_url" :href="openNotif.reply_screenshot_url" target="_blank" rel="noopener" class="nge-notif-reply-shot" title="Open the full screenshot">
+                      <img :src="openNotif.reply_screenshot_url" alt="The screenshot you sent" />
+                    </a>
+                    <div v-if="openNotif.reply_view_url" class="nge-notif-reply-hint">Your view was sent with it.</div>
+                    <div v-if="replyNote" class="nge-notif-reply-hint">{{ replyNote }}</div>
+                    <div class="nge-notif-reply-hint">{{ replyJustSent ? 'Sent. Thank you, the team has it.' : 'Sent ' + relativeTime(openNotif.replied_at) + '.' }}</div>
+                  </template>
+                  <template v-else>
+                    <label class="nge-notif-reply-label" for="nge-notif-reply-box">The team asked for a reply</label>
+                    <textarea
+                      id="nge-notif-reply-box"
+                      v-model="replyDraft"
+                      class="nge-notif-reply-box"
+                      rows="3"
+                      :maxlength="REPLY_MAX"
+                      :disabled="replySending"
+                      placeholder="Write your reply here"
+                      @keydown.stop @keyup.stop @keypress.stop
+                    ></textarea>
+                    <!-- What goes with it, as on a report. -->
+                    <div class="nge-notif-reply-parts">
+                      <button v-if="!replyShot" type="button" class="nge-notif-reply-part" :disabled="replySending" @click="showReplyShot = true"
+                              title="Take a screenshot of what you see now. You can draw on it before it is attached.">📷 Add a screenshot</button>
+                      <span v-else class="nge-notif-reply-part nge-notif-reply-part--on">
+                        <img :src="replyShot" alt="Screenshot attached" />
+                        Screenshot attached
+                        <button type="button" class="nge-notif-reply-x" :disabled="replySending" aria-label="Remove the screenshot" @click="replyShot = ''">×</button>
+                      </span>
+                      <button type="button" class="nge-notif-reply-part" :class="{ 'nge-notif-reply-part--on': replyAttachView }" :aria-pressed="replyAttachView ? 'true' : 'false'"
+                              :disabled="replySending" title="Sends a link to exactly what you are looking at, so the team can open it."
+                              @click="replyAttachView = !replyAttachView">{{ replyAttachView ? '✓' : '+' }} My current view</button>
+                      <button type="button" class="nge-notif-reply-part" :class="{ 'nge-notif-reply-part--on': replyAttachConsole && replyConsoleCount > 0 }"
+                              :aria-pressed="replyAttachConsole && replyConsoleCount > 0 ? 'true' : 'false'" :disabled="replySending || !replyConsoleCount"
+                              :title="replyConsoleCount ? 'Sends the recent warnings and errors from this page. Only the team can read them.' : 'There are no recent warnings or errors to send.'"
+                              @click="replyAttachConsole = !replyAttachConsole">{{ replyAttachConsole && replyConsoleCount ? '✓' : '+' }} Console messages ({{ replyConsoleCount }})</button>
+                    </div>
+                    <div class="nge-notif-reply-row">
+                      <span class="nge-notif-reply-hint">One reply. {{ REPLY_MAX - replyDraft.length }} characters left.</span>
+                      <button class="nge-notif-reply-send" :disabled="replySending || !replyDraft.trim()" @click="sendReply">
+                        {{ replySending ? 'Sending…' : 'Send reply' }}
+                      </button>
+                    </div>
+                    <div v-if="replyError" class="nge-notif-reply-error" role="alert">{{ replyError }}</div>
+                  </template>
+                </div>
                 <button
                   v-if="isHelpNotification(openNotif)"
                   class="nge-notif-open-help"
@@ -627,6 +749,11 @@ function padRank(rank: number): string {
     <div v-if="lightboxUrl" class="nge-notif-lightbox" @click="lightboxUrl = null">
       <img :src="lightboxUrl" class="nge-notif-lightbox-img" />
     </div>
+  </Teleport>
+  <Teleport to="body">
+    <!-- The notification steps out of the way for the capture, so the picture
+         is of the game and not of this message. -->
+    <ScreenshotDialog :show="showReplyShot" mode="attach" hide-opener=".nge-notif-detail, .nge-notif-panel" @close="showReplyShot = false" @attached="onReplyShot" />
   </Teleport>
 </template>
 
@@ -924,6 +1051,101 @@ function padRank(rank: number): string {
   color: #556;
   font-size: 0.82em;
 }
+
+/* A reply the team asked for: the tag on the feed card, and the box under the
+   message in the detail window. */
+.nge-notif-reply-chip {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border: 1px solid rgba(126, 224, 255, 0.4);
+  border-radius: 8px;
+  font-size: 0.72em;
+  font-weight: 600;
+  color: #9fe6ff;
+  background: rgba(126, 224, 255, 0.08);
+}
+.nge-notif-reply {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgb(var(--nd-accent) / 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nge-notif-reply-label {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(var(--nd-cyan) / 0.9);
+}
+.nge-notif-reply-box {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 76px;
+  padding: 9px 11px;
+  border: 1px solid rgb(var(--nd-accent) / 0.35);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgb(var(--nd-ink));
+  font: inherit;
+  font-size: 0.95em;
+  line-height: 1.5;
+  resize: vertical;
+}
+.nge-notif-reply-box:focus-visible {
+  outline: none;
+  border-color: rgb(var(--nd-cyan) / 0.7);
+  box-shadow: 0 0 0 2px rgb(var(--nd-cyan) / 0.18);
+}
+.nge-notif-reply-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nge-notif-reply-hint { font-size: 0.8em; color: rgb(var(--nd-dim) / 0.85); }
+.nge-notif-reply-parts { display: flex; flex-wrap: wrap; gap: 6px; }
+.nge-notif-reply-part {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid rgb(var(--nd-accent) / 0.3); background: rgba(0, 0, 0, 0.3); color: rgb(var(--nd-dim));
+  font: inherit; font-size: 0.82em; cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.nge-notif-reply-part:hover:not(:disabled) { border-color: rgb(var(--nd-cyan) / 0.7); }
+.nge-notif-reply-part:focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--nd-cyan) / 0.35); }
+.nge-notif-reply-part:disabled { opacity: 0.5; cursor: default; }
+.nge-notif-reply-part--on { border-color: rgb(var(--nd-cyan) / 0.75); background: rgb(var(--nd-cyan) / 0.14); color: rgb(var(--nd-ink)); }
+span.nge-notif-reply-part { cursor: default; }
+.nge-notif-reply-part img { width: 28px; height: 20px; object-fit: cover; border-radius: 3px; }
+.nge-notif-reply-x { border: 0; background: none; color: inherit; font-size: 1.15em; line-height: 1; cursor: pointer; padding: 0 2px; }
+.nge-notif-reply-shot img { display: block; max-width: 260px; max-height: 160px; border-radius: 8px; border: 1px solid rgb(var(--nd-accent) / 0.35); }
+.nge-notif-reply-send {
+  padding: 8px 16px;
+  border: 1px solid rgb(var(--nd-cyan) / 0.5);
+  border-radius: 6px;
+  background: rgb(var(--nd-cyan) / 0.14);
+  color: #eaf9ff;
+  font: 600 0.85em/1 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.nge-notif-reply-send:hover:not(:disabled),
+.nge-notif-reply-send:focus-visible { background: rgb(var(--nd-cyan) / 0.24); border-color: rgb(var(--nd-cyan) / 0.8); outline: none; }
+.nge-notif-reply-send:disabled { opacity: 0.45; cursor: default; }
+.nge-notif-reply-sent {
+  padding: 9px 12px;
+  border-left: 2px solid rgb(var(--nd-cyan) / 0.6);
+  background: rgb(var(--nd-accent) / 0.06);
+  color: #d6e2f0;
+  font-size: 0.95em;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.nge-notif-reply-error { font-size: 0.85em; color: #ff9d9d; }
 
 /* ═══ Detail overlay ═══ */
 /* Built from Amy's scifi-ui library (amyleesterling.github.io/scifi-ui),

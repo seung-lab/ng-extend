@@ -6,8 +6,6 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgCutBefore from './images/cut-before.jpg';
 import imgCutAfter from './images/cut-after.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
-import imgCut2Before from './images/cut2-before.jpg';
-import imgCut2After from './images/cut2-after.jpg';
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
@@ -88,7 +86,7 @@ In a moment you'll get the fused version of this very cell and make the cut your
   {
     title: "How to Cut",
     text: `
-Now the same cell as the AI left it: the two are one purple segment. Your job is to separate them.
+Here's the same cell with the merger fused onto it. Your quest is to separate them.
 
 Press the **C** key to start the cut tool.
 
@@ -98,7 +96,7 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
     onEnter: async () => {
       closeSidePanel();
       // No "?" yet: the help it opens is about placing points, the next box.
-      watchTool('Press C to start the cut tool.', 'Cut mode is on. Press next.');
+      watchTool('Press C to start the cut tool.', 'Cut mode is on. Press next.', 'Cut mode is off. Press C again to re-enter cut mode.');
       await beginPractice('cut', 'start');
     },
   },
@@ -108,9 +106,11 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
   // itself when its one thing is done.
   // 4: a red point
   {
-    title: "Place a red point",
+    title: "Place 2 red points",
     text: `
-**Ctrl+Click** the piece that doesn't belong, by the <strong style="color:#ff5c5c">red</strong> gem.`,
+**Ctrl+Click** the piece that doesn't belong, once by each <strong style="color:#ff5c5c">red</strong> gem.
+
+More than one point on each side tells the cut where the whole join is.`,
     position: OVER_3D,
     width: "380px",
     onEnter: async () => {
@@ -121,9 +121,12 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
       if (!holdsSlot('b')) await beginPractice('cut', 'start', { slot: 'b', show: false, prefer: CUT_SECOND });
       // The previous step said "press C"; turn the tool on if they didn't.
       setTimeout(() => ensureTool('multicut'), 400);
-      // One red and one blue gem show where the points go.
-      setTimeout(() => { showWhereToCut(1); }, 1400);
-      watchCutStep('red', 'Waiting for a red point: Ctrl+click by the red gem.');
+      // Two red and two blue gems show where the points go. One point a
+      // side made the cut take only half the axon off: every single-point
+      // cut on this cell since 2026-10-06 left the far half attached, and
+      // every two-point cut took all of it.
+      setTimeout(() => { showWhereToCut(2); }, 1400);
+      watchCutStep('red', 'Waiting for 2 red points: Ctrl+click by each red gem.', 2);
     },
   },
 
@@ -133,7 +136,7 @@ Once it's on, the cut bar appears at the bottom of the viewer with the red group
     text: `
 Red is placed. Now press **G** to switch to <strong style="color:#5c8cff">blue</strong>.
 
-The two colours mark the two sides of the cut.`,
+The two colors mark the two sides of the cut.`,
     position: OVER_3D,
     width: "380px",
     onEnter: () => {
@@ -144,16 +147,16 @@ The two colours mark the two sides of the cut.`,
 
   // 6: a blue point, and submit
   {
-    title: "Place a blue point",
+    title: "Place 2 blue points",
     text: `
-**Ctrl+Click** the cell, by the <strong style="color:#5c8cff">blue</strong> gem.
+**Ctrl+Click** the cell, once by each <strong style="color:#5c8cff">blue</strong> gem.
 
 Then press **Submit cut** on the bar at the bottom, or **Enter**.`,
     position: OVER_3D,
     width: "380px",
     onEnter: async () => {
       closeSidePanel();
-      watchPractice(false, 'Waiting for a blue point, then Submit cut.', '', { advance: true });
+      watchPractice(false, 'Waiting for 2 blue points, then Submit cut.', '', { advance: true });
       await beginPractice('cut', 'start', { slot: 'a' });
       setTimeout(() => ensureTool('multicut'), 400);
     },
@@ -178,11 +181,7 @@ You did it. The piece that didn't belong is its own segment now.
     text: `
 **Ctrl+Click** places points on the 2D images too, not only on the 3D shape: <strong style="color:#ff5c5c">red</strong> inside one cell's outline, <strong style="color:#5c8cff">blue</strong> inside the other's. It helps when the join is hard to see in 3D.
 
-<span class="nge-cut-2d-next">Press next to try it on a new cell, this one:</span>
-`
-    + beforeAfter(
-        imgCut2Before, 'Now: one segment.',
-        imgCut2After, 'After your cut: the axon (yellow) is its own segment.', false),
+<span class="nge-cut-2d-next">Press next to try it on a new cell.</span>`,
     position: OVER_2D,
     width: "440px",
     onEnter: () => {

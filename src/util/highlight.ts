@@ -541,6 +541,24 @@ export function setHighlightsShown(on: boolean) {
   scheduleTint();
 }
 
+/** Lines painted on the cell that are not highlights: the cut preview
+ *  (src/util/cut_preview.ts) colours the two sides of a cut this way. In
+ *  nanometres. They are never saved and go when it clears them. */
+export interface ExtraTintLine { a: number[]; b: number[]; rgb: number[]; }
+let extraTintLines: ExtraTintLine[] = [];
+export function setExtraTintLines(lines: ExtraTintLine[] | null) {
+  extraTintLines = lines ?? [];
+  scheduleTint();
+}
+/** Whole blocks of the volume painted one colour: [x0, y0, z0, x1, y1, z1] in
+ *  nanometres. The cut preview colours a cell this way, block by block. */
+export interface ExtraTintBox { box: number[]; rgb: number[]; }
+let extraTintBoxes: ExtraTintBox[] = [];
+export function setExtraTintBoxes(boxes: ExtraTintBox[] | null) {
+  extraTintBoxes = boxes ?? [];
+  scheduleTint();
+}
+
 const MAX_VOXELS = 6e6;   // 24 MB of RGBA at most
 const hexRgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 
@@ -566,11 +584,16 @@ function buildTint(): NgeMeshTint | null {
       });
     }
   }
-  if (!segs.length) return null;
+  // The cut preview's two sides, over any highlight on the same stretch.
+  for (const l of extraTintLines) segs.push({ a: l.a, b: l.b, rgb: l.rgb });
+  if (!segs.length && !extraTintBoxes.length) return null;
   const r = tintRadiusNm();
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const s of segs) for (const p of [s.a, s.b]) for (let i = 0; i < 3; i++) {
     lo[i] = Math.min(lo[i], p[i] - r); hi[i] = Math.max(hi[i], p[i] + r);
+  }
+  for (const b of extraTintBoxes) for (let i = 0; i < 3; i++) {
+    lo[i] = Math.min(lo[i], b.box[i]); hi[i] = Math.max(hi[i], b.box[i + 3]);
   }
   const ext = [0, 1, 2].map(i => hi[i] - lo[i]);
   // Cell size: fine enough for a clean edge, coarse enough to fit the budget.
@@ -580,6 +603,18 @@ function buildTint(): NgeMeshTint | null {
   const [nx, ny, nz] = dims;
   const data = new Uint8Array(nx * ny * nz * 4);
   const soft = Math.max(cell, r * 0.3);   // feathered edge
+  // Blocks first, at full strength; a highlight stroke painted after still
+  // shows on top where it is the stronger mark.
+  for (const b of extraTintBoxes) {
+    const i0 = [0, 1, 2].map(i => Math.max(0, Math.floor((b.box[i] - lo[i]) / cell)));
+    const i1 = [0, 1, 2].map(i => Math.min(dims[i] - 1, Math.ceil((b.box[i + 3] - lo[i]) / cell) - 1));
+    for (let z = i0[2]; z <= i1[2]; z++) for (let y = i0[1]; y <= i1[1]; y++) {
+      let o = ((z * ny + y) * nx + i0[0]) * 4;
+      for (let x = i0[0]; x <= i1[0]; x++, o += 4) {
+        data[o] = b.rgb[0]; data[o + 1] = b.rgb[1]; data[o + 2] = b.rgb[2]; data[o + 3] = 254;
+      }
+    }
+  }
   // The newest mark is painted last, so where it overlaps an older mark its
   // lighter colour is the one that shows.
   segs.sort((x, y) => Number(!!x.latest) - Number(!!y.latest));
@@ -620,7 +655,7 @@ function buildTint(): NgeMeshTint | null {
     m[12 + i] = -lo[i] / (dims[i] * cell);
   }
   // For checking from the console and in tests.
-  (window as any).__ngeHighlightTint = { segments: segs.length, dims: [nx, ny, nz], cellNm: cell, radiusNm: r };
+  (window as any).__ngeHighlightTint = { segments: segs.length, boxes: extraTintBoxes.length, dims: [nx, ny, nz], cellNm: cell, radiusNm: r };
   const glowSeg = segs.find(s => s.latest);
   const glow = glowSeg ? glowSeg.rgb.map(c => c / 255) as [number, number, number] : undefined;
   return { data, dims: [nx, ny, nz], gridFromGlobal: m, glow };

@@ -147,7 +147,10 @@ This is a snapshot, not a standing truth. If someone says it is fixed, believe t
 
 **YOU HAVE TOOLS.** When asked about ng-extend code, use fetch_ng_extend_file; pass repo="amyleesterling" if a file looks like it is missing recent work, because Amy's fork is often ahead of seung-lab. When asked about CAVE status, use check_cave_health with the right dataset argument (pni_mec for MEC, it is on a different server). Know its limit: it proves reachability and CORS only. It cannot see whether a table exists, whether an aligned volume is registered, or whether materialization runs, because CAVE checks auth first and you have no CAVE token. If someone asks you to confirm MEC's tables, say plainly that you cannot check that and a signed-in human has to. Prefer tool calls over guessing. If asked something outside this context, say so honestly. Route CAVE issues to #shared_cave_seunglab — don't name individuals.
 
-**The feedback triage loop (#citsci_feedback), live since 2026-09-25.** A user report is posted to the channel. It gets a triage proposal (a suggested fix) only when an approver asks for one by tagging this bot in the report's thread, alone or with "suggest a fix" (since 2026-10-10, to save Claude runs); then the proposal is posted in that thread. Every report is also on the triage board straight away as a \"New report\" card with no suggestion, where an admin can press Suggest a fix, or handle it by hand. An approver (Amy or Celia) replies approve or dismiss, in the thread or in Admin Hub > Triage; both show the same list. An approved fix is built by Claude in GitHub Actions (seung-lab/ng-extend, workflow "Triage Implement", on Amy's Princeton Claude subscription) on branch triage/<first 8 of the row id>, which deploys a preview at https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/ using the real data. The approver is the tester and is tagged every 10 minutes until they reply with an exact command: good <build ID> (deploys live; the 12 character build ID is in the preview announcement, and a bare good deploys nothing), ship to test <build ID> (goes live for a real-data test, then good <build ID> or revert <build ID>), a question ending in ? (Claude answers), note: words (saved, no rebuild), anything else (Claude fixes it, new preview), or hand off @someone. Reply update sender to draft a note to the person who reported it, then send update. The full list of exact replies is at https://connectome.quest/admin/#exact-replies. Claude can also stop and ask a question; the tester's answer sends it back to work. When anyone asks where a fix or Claude's work is, call get_triage_status (with the thread's ts if you are in a triage thread) and answer from the row: its state, preview link, run link, and who it is waiting on. Approvals from before 2026-09-25 were never built by anything unless the row says otherwise. You cannot approve, test, or deploy anything yourself; only people can, by replying in the thread. Mentions of you are skipped by the loop, so they never count as a tester's verdict.`;
+**The feedback triage loop (#citsci_feedback), live since 2026-09-25.** A user report is posted to the channel. It gets a triage proposal (a suggested fix) only when an approver asks for one by tagging this bot in the report's thread, alone or with "suggest a fix" (since 2026-10-10, to save Claude runs); then the proposal is posted in that thread. Every report is also on the triage board straight away as a \"New report\" card with no suggestion, where an admin can press Suggest a fix, or handle it by hand. An approver (Amy or Celia) replies approve or dismiss, in the thread or in Admin Hub > Triage; both show the same list. An approved fix is built by Claude in GitHub Actions (seung-lab/ng-extend, workflow "Triage Implement", on Amy's Princeton Claude subscription) on branch triage/<first 8 of the row id>, which deploys a preview at https://triage-<id8>-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/ using the real data. The approver is the tester and is tagged every 10 minutes until they reply with an exact command: good <build ID> (deploys live; the 12 character build ID is in the preview announcement, and a bare good deploys nothing), ship to test <build ID> (goes live for a real-data test, then good <build ID> or revert <build ID>), a question ending in ? (Claude answers), note: words (saved, no rebuild), anything else (Claude fixes it, new preview), or hand off @someone. Reply update sender to draft a note to the person who reported it, then send update. The full list of exact replies is at https://connectome.quest/admin/#exact-replies. Claude can also stop and ask a question; the tester's answer sends it back to work. When anyone asks where a fix or Claude's work is, call get_triage_status (with the thread's ts if you are in a triage thread) and answer from the row: its state, preview link, run link, and who it is waiting on. Approvals from before 2026-09-25 were never built by anything unless the row says otherwise. You cannot approve, test, or deploy anything yourself; only people can, by replying in the thread. Mentions of you are skipped by the loop, so they never count as a tester's verdict.
+
+**Cut preview (released to all players 2026-10-13).** In cut mode, with at least one red and one blue point placed, the Preview button on the cut bar colours the cell in 3D by the side of the cut each part would fall on: red stays with the red points, blue goes with the blue points. It asks the proofreading server for a preview of the cut (graph/split_preview, the same calculation as a real cut, nothing is saved), then reads the supervoxel volume around the points and colours each voxel by the side the server put its supervoxel on, so the edge of the cut is exact near the points (about 2.5 microns each way). Farther along, colours are carried from the nearest exact voxel and then by block. One preview runs at a time. Nothing is cut until Submit cut. Code: src/util/cut_preview.ts, cut_sides.ts, cut_fine.ts, and ngeGrapheneCutVoxels in third_party/neuroglancer/datasource/graphene/frontend.ts. Requested by Nseraf; Ames suggested the supervoxel approach.
+`;
 
 async function verifySlackSignature(req, signingSecret) {
   const timestamp = req.header("X-Slack-Request-Timestamp");
@@ -2028,6 +2031,51 @@ exports.ewProofreadingTest = onRequest(
   }
 );
 
+// ── Report replies (Ames 2026-10-13): a function of its own ──────────────
+// An approver asks a report's submitter for a reply (reply.ask, admins) and
+// the submitter answers once in the notification (reply.send). Rules in
+// report-reply.js; client in src/secure_write.ts. No pilot gate: what counts
+// is being the submitter of that report. Kept out of ewSecureWrite for the
+// reason above: a deploy of that function from an older checkout would
+// silently remove it.
+//   firebase deploy --only functions:ewReportReply --project eyewire-ii-e4d52
+const EW_REPLY_CODE_VERSION = "2026-10-13-report-reply-3-parts";
+exports.ewReportReply = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    // Health: the database is reachable, the columns exist, and which code is live.
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_REPLY_CODE_VERSION }); return; }
+      let columns = true;
+      try { await probe("notifications?select=reply_triage_id,reply_text,replied_at&limit=1"); } catch (e) { columns = false; }
+      // supabase-report-reply-parts.sql: screenshot, view and console on a reply.
+      let parts = true;
+      try { await probe("notifications?select=reply_screenshot_url,reply_view_url,reply_dataset,reply_build&limit=1"); await probe("report_reply_console?select=notification_id&limit=1"); } catch (e) { parts = false; }
+      res.json({ ok: true, db: true, columns, parts, code: EW_REPLY_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("reply.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      const data = await require("./report-reply").handle(action, args, { sb, me, isAdmin,
+        wake: () => wakeWorkflow("slack-triage-bridge.yml", "report reply") });
+      res.json({ ok: true, data });
+    } catch (e) {
+      console.warn("[ewReportReply]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That could not be sent. Please try again." });
+    }
+  }
+);
+
 exports.ewCommunityData = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
@@ -2187,10 +2235,44 @@ exports.ewSheetSync = onRequest(
      console.info('[ewSheetSync] write probe',JSON.stringify({sheet:source.gid,columns,protections:(sheet.protectedRanges||[]).map(p=>({range:p.range,canEdit:p.requestingUserCanEdit,warningOnly:p.warningOnly,unprotected:p.unprotectedRanges}))}));
      await sheetsApi(admin.credential.applicationDefault(),source.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:columns.map(({i})=>({findReplace:{find:probe,replacement:probe,range:{sheetId:source.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:i,endColumnIndex:i+1},matchCase:true}}))})});
     }
-    return res.json({ok:true,sheets:Object.keys(SOURCES),keyless:true,writable:true});
+    // Annotation Quests: each quest tab is shared with the Sheets identity,
+    // has the columns the game writes, and takes a no-op write.
+    const {QUESTS,questHeader}=require('./sheet-policy');
+    const quests={};
+    for(const [key,quest] of Object.entries(QUESTS)) {
+     const meta=await sheetsApi(admin.credential.applicationDefault(),quest.id+'?fields=sheets.properties');
+     const tab=meta.sheets.find(s=>s.properties.sheetId===quest.gid);
+     if(!tab) throw Error('Quest sheet tab missing: '+key);
+     const range="'"+tab.properties.title.replace(/'/g,"''")+"'!A1:Z10";
+     const grid=(await sheetsApi(admin.credential.applicationDefault(),quest.id+'/values/'+encodeURIComponent(range))).values||[];
+     const {headerRow,cols}=questHeader(grid);
+     const missing=['startLink','status','splitMerged','link','name','date','notes'].filter(k=>cols[k]<0);
+     if(missing.length) throw Error('Quest sheet columns missing: '+key+' '+missing.join(','));
+     const probe='__eyewire_sync_noop_785ea491a19d4f7bab5b__';
+     await sheetsApi(admin.credential.applicationDefault(),quest.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[{findReplace:{find:probe,replacement:probe,range:{sheetId:quest.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:cols.name,endColumnIndex:cols.name+1},matchCase:true}}]})});
+     quests[key]={tab:tab.properties.title,headerRow:headerRow+1};
+    }
+    return res.json({ok:true,sheets:Object.keys(SOURCES),quests,keyless:true,writable:true});
    }
    const who=await ewVerify(input.token);
    if(!who) throw ewErr(401,"Sign in before syncing a cell.");
+   // Annotation Quests (Ames 2026-10-12): the quest's own sheet tab is the
+   // record. No proofreading task is involved: the row's Annotator Name says
+   // whose cell it is, and sheet-policy.js decides what each action may write.
+   if(input.quest!=null) {
+    const {questFor}=require('./sheet-policy'),{questList,syncQuest}=require('./sheet-sync');
+    questFor(input);
+    const listing=input.action==='quest_list';
+    if(!(await rateLimit({ip:who.email},true,listing?"read:quests":"write:sheets")).ok) throw ewErr(429,listing?"Please wait a moment.":"Please wait before syncing another cell.");
+    const sb=ewSb(ewServiceKey.value().trim());
+    const me=(await sb('users?middleauth_email=eq.'+encodeURIComponent(who.email)+'&select=id,display_name,username&limit=1'))[0];
+    requirePilot(await pilotContext(sb,who));
+    if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
+    // `you` is the name the sheet would carry for this player, so the game
+    // can tell their rows apart however the sheet spells them.
+    if(listing) return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows:await questList(input.quest,admin.credential.applicationDefault())});
+    return res.json(await syncQuest(input,me,admin.credential.applicationDefault()));
+   }
    require('./sheet-policy').sourceFor(input);
    if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");
    const sb=ewSb(ewServiceKey.value().trim());

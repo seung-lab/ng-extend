@@ -9,7 +9,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
@@ -66,10 +66,18 @@ const MERGE_HINT_STATES: Record<string, string> = {
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5193945751486464',
 };
 
+/** Or the two spots themselves, in viewer voxels, where Ames gave them
+ *  directly. Looked at before the saved views. */
+const MERGE_HINT_POINTS: Record<string, number[][]> = {
+  // Second merge (axon), in the 2D images at z 638 (Ames, 2026-10-13: this
+  // box had no points of its own and fell back to the first cell's).
+  'a4bd2f76-67e9-4093-adc7-e670230d1577': [[75014, 62609, 638], [75114, 62629, 638]],
+};
+
 async function showWhereToClick(): Promise<boolean> {
   const ex = currentPractice().example;
-  let pts: number[][] = [];
-  if (ex && MERGE_HINT_STATES[ex.id]) pts = await pointsInState(MERGE_HINT_STATES[ex.id]);
+  let pts: number[][] = ex ? (MERGE_HINT_POINTS[ex.id] ?? []) : [];
+  if (!pts.length && ex && MERGE_HINT_STATES[ex.id]) pts = await pointsInState(MERGE_HINT_STATES[ex.id]);
   if (!pts.length && ex?.point_a && ex?.point_b) {
     try { pts = [JSON.parse(ex.point_a), JSON.parse(ex.point_b)]; } catch { pts = []; }
   }
@@ -128,7 +136,7 @@ function smallButton(cls: string, label: string, onClick: () => void): HTMLButto
  *  asks for a key press does not). */
 let helpWanted = true;
 
-export function practiceStatus(text: string, done = false) {
+export function practiceStatus(text: string, done = false, quiet = false) {
   const chip = chipBody();
   if (!chip) return;
   let el = chip.querySelector('.nge-practice-status') as HTMLElement | null;
@@ -139,12 +147,20 @@ export function practiceStatus(text: string, done = false) {
   }
   el.textContent = text;
   el.classList.toggle('nge-hud-note--ok', done);
+  // Quiet: the standing hint or a step-by-step prompt. Anything else is news
+  // (a cut that missed, a cell being put back) and shows even on the slim
+  // Merger Sandbox bar.
+  el.classList.toggle('nge-practice-status--quiet', quiet);
   // Stuck? A "?" on the right opens a small panel with the ways out (Amy).
   let help = chip.querySelector('.nge-practice-help') as HTMLElement | null;
   if (!help) {
     help = smallButton('nge-practice-help', 'Help me', () => helpMe());
     help.title = 'Show me where to click';
-    helpRow(chip).appendChild(help);
+    const row = helpRow(chip);
+    row.appendChild(help);
+    // A tutorial can put its own button beside Help me (the Merger
+    // Sandbox's Skip sits to its left).
+    document.dispatchEvent(new CustomEvent('nge:practice-helprow', { detail: { row, help } }));
   }
   help.style.display = (done || !helpWanted) ? 'none' : '';
   const stuck = chip.querySelector('.nge-practice-stuck') as HTMLElement | null;
@@ -389,7 +405,7 @@ async function helpMe() {
   if (ex?.kind === 'cut') {
     ensureTool('multicut');
     shown = await showWhereToCut();
-    if (shown) practiceStatus('The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch colour, then Submit cut.');
+    if (shown) practiceStatus('The red and blue gems mark the spots: red on one side of the join, blue on the other. Ctrl+click near each, press G to switch color, then Submit cut.');
   } else if (ex?.kind === 'merge_then_cut') {
     ensureTool('merge');
     shown = await showWhereToClick();
@@ -602,7 +618,7 @@ export function finishPracticeTutorial(what: 'merge' | 'cut'): boolean {
  * colour to be switched to blue ('blue'), then move on. The counts and the
  * active colour are the cut tool's own.
  */
-export function watchCutStep(want: 'red' | 'blue', waiting: string) {
+export function watchCutStep(want: 'red' | 'blue', waiting: string, need = 1) {
   pointAtNext(false);
   const token = ++practiceWatch;
   waitingFor = null;
@@ -610,7 +626,7 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string) {
   const bar = useSplitMergeOverlayStore();
   const tick = () => {
     if (token !== practiceWatch) return;
-    const done = want === 'red' ? bar.redPointCount > 0 : bar.activeGroup === 'blue';
+    const done = want === 'red' ? bar.redPointCount >= need : bar.activeGroup === 'blue';
     if (done) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
     practiceStatus(waiting);
     setTimeout(tick, 300);
@@ -618,6 +634,8 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string) {
   setTimeout(tick, 500);
 }
 
+/** The watch for which the "half done" gems are already up. */
+let leftoverShown = 0;
 export function watchPractice(wantMerged: boolean, waiting: string, finished: string, opts: { advance?: boolean } = {}) {
   pointAtNext(false);
   const token = ++practiceWatch;
@@ -652,6 +670,24 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     const merged = await piecesMerged();
     if (token !== practiceWatch) return;
     if (merged === wantMerged) {
+      // A cut that took off only part of the piece: say so, show where the
+      // rest goes, and keep waiting.
+      if (!wantMerged) {
+        const left = await practiceLeftover();
+        if (token !== practiceWatch) return;
+        if (left) {
+          practiceStatus(left.message);
+          if (leftoverShown !== token) {
+            leftoverShown = token;
+            showGemMarkers([
+              { name: 'Red points go here', color: RED, points: left.red },
+              { name: 'Blue points go here', color: BLUE, points: left.blue },
+            ]);
+          }
+          setTimeout(tick, 1500);
+          return;
+        }
+      }
       practiceLanded.add(p.example.id);
       hidePyrMarkers();
       if (opts.advance) {
@@ -660,7 +696,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
         document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
         return;
       }
-      practiceStatus(finished + ' If a black box appears where the pieces meet, the new mesh is still being built.', true);
+      practiceStatus(finished + ' If an empty space appears where the pieces meet, the new mesh is still being built.', true);
       if (!celebrated) { celebrated = true; document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); }
       return;
     }
@@ -684,16 +720,16 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
           ? 'Red point placed. Now press G to switch to blue, then Ctrl+click the other side.'
           : 'Blue is on. Ctrl+click a blue point on the other side of the join.';
       } else if (bar.redPointCount > 0 && bar.bluePointCount > 0) {
-        cutStage = 'Both colours placed. Press Submit cut, or Enter.';
+        cutStage = 'Both colors placed. Press Submit cut, or Enter.';
       }
     }
-    if (cutStage) { practiceStatus(cutStage); setTimeout(tick, 700); return; }
+    if (cutStage) { practiceStatus(cutStage, false, true); setTimeout(tick, 700); return; }
     practiceStatus(failed
       ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
         + (wantMerged
           ? 'Ctrl+click once on each of the two pieces, then submit again.'
           : 'Keep every point on the one fused segment, red on one side of the join and blue on the other, then submit again. Clear on the bar starts over.')
-      : waiting);
+      : waiting, false, !failed);
     if (wantMerged) offerPlacePoints();
     // Cuts are watched closely so the first point is noticed at once.
     setTimeout(tick, failed ? 1500 : wantMerged ? 3000 : 800);
@@ -717,7 +753,9 @@ export function celebrateStep() {
   document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
 }
 
-export const BLACK_BOX_NOTE = 'If a black box appears where the pieces meet, the new mesh is still being built.';
+// "Empty space", not "black box": it is a place with no mesh yet, not a
+// box coloured black (tester feedback, 2026-10-13).
+export const BLACK_BOX_NOTE = 'If an empty space appears where the pieces meet, the new mesh is still being built.';
 
 /** A step that only asks for the tool to be switched on: the status line
  *  flips when it is. No help button on such a step (Amy). */
@@ -758,7 +796,8 @@ function submitInsteadOfNext(): boolean {
 document.addEventListener('click', e => {
   const btn = (e.target as HTMLElement | null)?.closest?.('.introductionStepAnchor .chip button') as HTMLElement | null;
   if (!btn) return;
-  if (btn.classList.contains('next') && submitInsteadOfNext()) {
+  // Not when the button says Skip: skipping must never submit a cut.
+  if (btn.classList.contains('next') && !/^skip/i.test((btn.textContent || '').trim()) && submitInsteadOfNext()) {
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -767,16 +806,20 @@ document.addEventListener('click', e => {
   pointAtNext(false);
 }, true);
 
-export function watchTool(waiting: string, finished: string) {
+export function watchTool(waiting: string, finished: string, offAgain = '') {
   const token = ++practiceWatch;
   helpWanted = false;
   pointAtNext(false);
+  let wasOn = false;
   const tick = () => {
     if (token !== practiceWatch) return;
     const p = currentPractice();
     if (p.phase === 'unavailable') { practiceStatus('Practice cells need you to be signed in. Read along and press next.'); setTimeout(tick, 2000); return; }
     if (p.phase === 'busy') { practiceStatus('Every practice cell is in use right now. Read along and press next.'); return; }
-    if (toolIsOn()) { practiceStatus(finished, true); pointAtNext(true); return; }
+    // Keeps looking after the tool comes on: pressing the key again turns
+    // it off, and the box used to go on saying it was on.
+    if (toolIsOn()) { wasOn = true; practiceStatus(finished, true); pointAtNext(true); setTimeout(tick, 500); return; }
+    if (wasOn && offAgain) { pointAtNext(false); practiceStatus(offAgain); setTimeout(tick, 500); return; }
     practiceStatus(waiting);
     setTimeout(tick, 700);
   };
@@ -1000,7 +1043,7 @@ export async function movingToSandbox<T>(tutorial: string, work: () => Promise<T
     thumbnail: imgProfessorNurro,
     contain: true,
     hold: true,
-    steps: ['Finding your practice cells', 'Holding them for you', 'Loading the volume', 'Colouring the pieces', 'Almost there'],
+    steps: ['Finding your practice cells', 'Holding them for you', 'Loading the volume', 'Coloring the pieces', 'Almost there'],
   });
   try { return await work(); } finally { releaseDatasetTransition(); }
 }
@@ -1192,7 +1235,7 @@ You can also start it from the toolbar at the top of the screen. Once it's on, t
     width: "450px",
     onEnter: async () => {
       closeSidePanel();
-      watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.');
+      watchTool('Press M to activate merge mode.', 'Merge mode is on. Press next.', 'Merge mode is off. Press M again to re-enter merge mode.');
       // Point at the segmentation layer chip without being asked (Amy).
       setTimeout(() => document.dispatchEvent(new CustomEvent('nge:tutorial-flash-seg-layer')), 1500);
       // The whole tutorial runs on both merge cells (Amy): take both now, so
@@ -1267,11 +1310,11 @@ Press next to keep going.`,
 Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` behind this box lost the yellow piece; the AI left it as its own segment.
 
 1. Press **M** if the merge tool is off.
-2. **Ctrl+Click** the yellow piece. This time try it in the 2D images on the left: click inside its coloured outline.
+2. **Ctrl+Click** the yellow piece. This time try it in the 2D images on the left: click inside its colored outline.
 3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
-You'll see "trying..." and then "done", and the piece turns purple.`,
+The pink gems show where to click. You'll see "trying..." and then "done", and the piece turns purple.`,
     position: OVER_3D,
     width: "420px",
     onEnter: async () => {
@@ -1286,6 +1329,8 @@ You'll see "trying..." and then "done", and the piece turns purple.`,
       await beginPractice('merge_then_cut', 'start', { slot: 'b' });
       watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       setTimeout(() => ensureTool('merge'), 400);
+      // The spots are shown from the start, as on the first merge.
+      setTimeout(() => { showWhereToClick(); }, 1400);
     },
   },
 
@@ -1318,7 +1363,7 @@ A few things worth knowing:
 
 Next up is the other half of proofreading: a <strong style="color:#e06060">cut</strong> separates two neurons the AI fused together.
 
-<div style="text-align:center">` + startTutorialButton(5, 'Start the Cut tutorial') + `</div>
+<div style="text-align:center;margin:16px 0 18px">` + startTutorialButton(5, 'Start the Cut tutorial') + `</div>
 
 Or press done and explore. The cells you practised on are put back for the next person.
 

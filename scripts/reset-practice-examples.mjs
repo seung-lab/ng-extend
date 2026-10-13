@@ -30,7 +30,27 @@ async function roots(ex) {
 function checkBaseline(ex,[a,b]) {
  if((a===b)!==(ex.kind==='cut'))throw Error('Practice pieces do not match their registered starting state');
 }
+// In passes, while a pass still changes something. A cut that takes a piece
+// off without either registered supervoxel on it can be missing from the
+// history of the roots read here until the cuts around it are undone, so a
+// second look is worth having. But an operation can also stay listed as
+// active for good: undoing a cut whose edges an earlier undo already put
+// back does nothing and records nothing (operations 1939 and 1969,
+// 2026-10-12, both checked edge by edge: nothing was still apart). So a pass
+// that finds the same operations as the one before is the end, and the
+// starting state is then checked as it always was.
 async function reset(ex,assertLease=async()=>{}) {
+ let before='';
+ for(let pass=0;pass<8;pass++) {
+  const active=await resetPass(ex,assertLease);
+  if(dryRun)return null;
+  const now=active.join(',');
+  if(!active.length||now===before)break;
+  before=now;
+ }
+ const result=await roots(ex);checkBaseline(ex,result);return result;
+}
+async function resetPass(ex,assertLease) {
  const ops=new Map();
  for(const root of new Set(await roots(ex))) {
   // The filtered view can omit recent merges and splits from a root's lineage.
@@ -46,8 +66,7 @@ async function reset(ex,assertLease=async()=>{}) {
   if(dryRun)console.log('[reset] would undo '+op.operationId);
   else { await assertLease(); await cave(ex,'/undo?int64_as_str=1',{operation_id:op.operationId}); }
  }
- if(dryRun)return null;
- const result=await roots(ex);checkBaseline(ex,result);return result;
+ return active.map(op=>op.operationId);
 }
 async function main() {
  const path='tutorial_practice_examples?enabled=eq.true';

@@ -275,8 +275,13 @@ export class VirtualList extends RefCounted {
   private debouncedRemeasure =
       this.registerCancellable(animationFrameDebounce(() => this.remeasure()));
 
-  constructor(options: {source: VirtualListSource, selectedIndex?: number, horizontalScroll?: boolean}) {
+  // nge: set for a list whose rows do not depend on where they are in it.
+  private keepRowsOnSplice = false;
+  private keptRows = false;
+
+  constructor(options: {source: VirtualListSource, selectedIndex?: number, horizontalScroll?: boolean, keepRowsOnSplice?: boolean}) {
     super();
+    this.keepRowsOnSplice = options.keepRowsOnSplice === true;
     const {selectedIndex} = options;
     if (selectedIndex !== undefined) {
       this.state.anchorIndex = selectedIndex;
@@ -327,7 +332,17 @@ export class VirtualList extends RefCounted {
       this.registerDisposer(source.changed.add(splices => {
         this.sizes.splice(splices);
         this.state.splice(splices);
-        this.renderedItems.length = 0;
+        if (this.keepRowsOnSplice) {
+          // nge: the rows that stay keep their elements. Drawing every row
+          // again made each one come back at its bare height and grow a
+          // moment later (the game adds a name under it), and the list lost
+          // its place while they did: removing a segment near the end of a
+          // long list threw it up by ten rows (Nseraf 2026-10-11).
+          this.renderedItems = spliceArray(this.renderedItems, splices);
+          this.keptRows = true;
+        } else {
+          this.renderedItems.length = 0;
+        }
         this.debouncedUpdateView();
       }));
     }
@@ -354,12 +369,18 @@ export class VirtualList extends RefCounted {
           renderParams, prevRenderParams, numItems, viewportHeight, sizes, state);
       renderParams.viewportWidth = viewportWidth;
       let forceRender: boolean;
+      const renderGenerationBefore = this.renderGeneration;
       if ((renderChanged !== undefined && renderChanged.count !== this.renderGeneration) ||
           (changed !== undefined && changed.count !== this.listGeneration)) {
         this.renderGeneration = renderChanged === undefined ? -1 : renderChanged.count;
         this.listGeneration = changed === undefined ? -1 : changed.count;
         forceRender = true;
-        this.renderedItems.length = 0;
+        if (this.keptRows && (renderChanged === undefined || renderChanged.count === renderGenerationBefore)) {
+          this.keptRows = false;
+        } else {
+          this.keptRows = false;
+          this.renderedItems.length = 0;
+        }
       } else {
         forceRender = false;
       }
