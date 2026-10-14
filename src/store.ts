@@ -1006,6 +1006,10 @@ export interface UserPreferences {
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). */
   classicLayerClicks?: boolean;
+  /** Neuroglancer's own 3D mouse controls: scroll moves along the line of
+   *  sight, Ctrl+scroll zooms, Shift+drag slides. Off by default: scroll
+   *  zooms and the right button drags (Ames 2026-10-14). */
+  classic3dControls?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
@@ -5997,7 +6001,7 @@ function readMentionNotifyPref(): boolean {
 export const CHAT_REACTION_QUICK = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
 /** More reactions, behind the picker's "+" (Nseraf 2026-10-11 asked for
  *  more; Ames approved this list). All friendly or neutral. */
-export const CHAT_REACTION_MORE = ['👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈'];
+export const CHAT_REACTION_MORE = ['👋', '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈'];
 export const CHAT_REACTION_EMOJI = [...CHAT_REACTION_QUICK, ...CHAT_REACTION_MORE];
 
 export const useChatStore = defineStore('chat', () => {

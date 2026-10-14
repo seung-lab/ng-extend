@@ -38,6 +38,7 @@ const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
 const draftClassicLayers = ref(false);
+const draftClassic3d = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
@@ -109,6 +110,7 @@ onMounted(() => {
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
+  draftClassic3d.value = prefsStore.prefs.classic3dControls === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
@@ -137,7 +139,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, classicLayerClicks: draftClassicLayers.value, classic3dControls: draftClassic3d.value, undeleteCounter: draftUndeleteCounter.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -407,6 +409,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Off: left click selects a layer, right click hides or shows it. On: the other way round, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic layer tabs: left click hides a layer, right click selects it</span>
+            </label>
+            <label class="nge-settings-toggle" title="Off: in the 3D view, scroll zooms and dragging with the right button slides the view. On: as in neuroglancer, scroll moves through the volume, Ctrl+scroll zooms and Shift+drag slides.">
+              <input type="checkbox" v-model="draftClassic3d" />
+              <span class="nge-settings-toggle-label">Classic neuroglancer 3D controls: Ctrl+scroll to zoom, Shift+drag to pan</span>
             </label>
             <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
               <input type="checkbox" v-model="draftUndeleteCounter" />

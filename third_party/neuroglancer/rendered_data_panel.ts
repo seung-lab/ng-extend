@@ -472,6 +472,21 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           this.navigationState.depthRange.value *= getWheelZoomAmount(e);
         });
 
+    // nge (Ames 2026-10-14): the right button in the 3D view. Dragged, it
+    // slides the view; clicked without a drag, it centres the view on the
+    // spot, as a right click always has (src/util/three_d_controls.ts).
+    registerActionListener(element, 'nge-pan-or-center', (e: ActionEvent<MouseEvent>) => {
+      let travelled = 0;
+      startRelativeMouseDrag(e.detail, (_event, deltaX, deltaY) => {
+        travelled += Math.abs(deltaX) + Math.abs(deltaY);
+        if (travelled > 3) this.translateByViewportPixels(deltaX, deltaY);
+      }, () => {
+        if (travelled > 3) return;
+        const {mouseState} = this.viewer;
+        if (mouseState.updateUnconditionally()) this.navigationState.position.value = mouseState.position;
+      });
+    });
+
     registerActionListener(element, 'translate-via-mouse-drag', (e: ActionEvent<MouseEvent>) => {
       startRelativeMouseDrag(e.detail, (_event, deltaX, deltaY) => {
         this.translateByViewportPixels(deltaX, deltaY);
