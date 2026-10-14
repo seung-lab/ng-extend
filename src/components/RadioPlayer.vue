@@ -249,10 +249,15 @@ const label = computed(() => on.value
 const dock = ref(0);
 let dockTimer = 0;
 const DOCKED = ['.neuroglancer-side-panel-column', '.neuroglancer-side-panel', '#nge-lb-modal .nge-overlay', '.nge-lb-modal .nge-overlay'];
-// Things that can sit in the bottom right corner, under the button.
-const UNDER = ['label.perspective-panel-show-slice-views', '#statusContainer > li'];
+// Things that can sit in the bottom right corner, under the button. The 3D
+// view's small "Sections" tick box is stepped round to the left, on the same
+// line; a bar along the bottom is risen above (Ames 2026-10-14: the button
+// sat a whole row above the tick box, "too high").
+const UNDER = ['#statusContainer > li'];
+const BESIDE = ['label.perspective-panel-show-slice-views'];
 const lift = ref(0);
 const base = ref(6);
+const shift = ref(0);
 function measureLift() {
   const H = window.innerHeight;
   const me = rootEl.value?.getBoundingClientRect();
@@ -261,6 +266,19 @@ function measureLift() {
   const coords = document.querySelector<HTMLElement>('.neuroglancer-position-widget')?.getBoundingClientRect();
   const b = coords && coords.height > 0 && H - coords.bottom < 60 ? Math.max(4, Math.round(H - coords.bottom)) : 6;
   if (b !== base.value) base.value = b;
+  // Where the button would be with no step to the left, so the step is
+  // worked out from a fixed place and never chases itself.
+  const left0 = me.left + shift.value, right0 = me.right + shift.value;
+  let step = 0;
+  for (const sel of BESIDE) {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue;
+      if (r.right <= left0 || r.left >= right0 || H - r.bottom > 70) continue;
+      step = Math.max(step, Math.round(right0 - r.left + 8));
+    }
+  }
+  if (step !== shift.value) shift.value = step;
   let need = 0;
   for (const sel of UNDER) {
     for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
@@ -337,7 +355,7 @@ watch(() => prefsStore.prefs.radio, r => {
 <template>
   <Teleport to="body">
     <div ref="rootEl" class="nge-radio" :class="{ 'nge-radio--on': on, 'nge-radio--playing': playing, 'nge-radio--open': expanded, 'holo-on': expanded }"
-         :style="{ '--nge-radio-dock': dock + 'px', '--nge-radio-lift': lift + 'px', '--nge-radio-base': base + 'px' }"
+         :style="{ '--nge-radio-dock': dock + 'px', '--nge-radio-lift': lift + 'px', '--nge-radio-base': base + 'px', '--nge-radio-shift': shift + 'px' }"
          @pointerenter="hovering = true; expanded = true" @pointerleave="onLeave" @focusin="onFocusIn" @focusout="onFocusOut"
          @keydown.esc="expanded = false" @wheel="onWheel">
       <div class="nge-radio-tray" :aria-hidden="!expanded">
@@ -375,7 +393,7 @@ watch(() => prefsStore.prefs.radio, r => {
   position: fixed;
   /* Left of anything docked on the right edge; above the 3D view's "Sections"
      tick box, neuroglancer's status bar, and the cut and merge bar. */
-  right: calc(8px + var(--nge-radio-dock, 0px));
+  right: calc(8px + var(--nge-radio-dock, 0px) + var(--nge-radio-shift, 0px));
   /* On the same line as the coordinates box at the bottom left (Ames
      2026-10-14: "why this height?"). It rises only while something is
      actually under it: the 3D view's "Sections" tick box, a status message
