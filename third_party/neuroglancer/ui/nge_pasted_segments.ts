@@ -109,6 +109,27 @@ export function placeFrom(text: string, layer: any): number[]|undefined {
   return longIds ? nums : undefined;
 }
 
+/** The words that narrow the lists: none while the box holds what looks
+ *  like IDs or coordinates being typed (brackets, or several numbers), which
+ *  Enter acts on instead (Ames 2026-10-14: "It's treating ( as a query"). One
+ *  number still narrows the lists to IDs that contain it. */
+export function listFilterOf(text: string): string {
+  const t = text.trim();
+  if (/^[\s\d,;.:=xyz()\[\]{}#-]*$/i.test(t) && (/[(\[{]/.test(t) || /\d[\s,;]+\d/.test(t))) return '';
+  return t;
+}
+
+/** Set by the app: find the cell at the view's centre once it has loaded,
+ *  for a pasted coordinate (Ames 2026-10-14: "can we make it load the segID
+ *  for that coord?"). */
+let placeCellLoader: ((group: any) => void)|undefined;
+export function setPlaceCellLoader(fn: (group: any) => void) {
+  placeCellLoader = fn;
+}
+export function loadCellAtPlace(group: any) {
+  placeCellLoader?.(group);
+}
+
 /** True when a row's cell matches the words typed in the box: the ID or the
  *  name, any case; `/text` is a regular expression. */
 export function segmentMatchesFilter(id: string, filter: string): boolean {

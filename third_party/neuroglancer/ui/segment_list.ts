@@ -46,7 +46,7 @@ import {makeEyeButton} from 'neuroglancer/widget/eye_button';
 import svg_bin from 'ikonate/icons/bin.svg';
 import svg_plus from 'ikonate/icons/plus.svg';
 import {makeIcon} from 'neuroglancer/widget/icon';
-import {addPastedSegments, clearPastedSegments, getPastedSegments, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
+import {addPastedSegments, clearPastedSegments, getPastedSegments, listFilterOf, loadCellAtPlace, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
 import {openColorPalette, pickedSegments, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 
@@ -119,14 +119,14 @@ class StarredSegmentsListSource extends SegmentListSource {
 
   /** nge: the words in the box, if any. */
   get filterValue() {
-    return this.filterText?.value.trim() ?? '';
+    return listFilterOf(this.filterText?.value ?? '');
   }
 
   /** nge: this list's cells, in the list's own order (pasted: newest paste
    *  first). A cell in a folder is listed only in its folder. */
   segmentsHere(): Uint64[] {
     const group = this.segmentationDisplayState.segmentationGroupState.value;
-    const filter = this.filterText?.value ?? '';
+    const filter = listFilterOf(this.filterText?.value ?? '');
     const keep = (id: Uint64) => !filter || segmentMatchesFilter(id.toString(), filter);
     if (/[a-z]/i.test(filter)) {
       // a name search: find the names of the cells not drawn yet
@@ -1391,7 +1391,9 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
         const viewer = (window as any)['viewer'];
         if (viewer && viewer.coordinateSpace?.value?.rank === place.length) {
           viewer.navigationState.position.value = Float32Array.from(place);
-          StatusMessage.showTemporaryMessage(`Moved to ${place.join(', ')}`);
+          StatusMessage.showTemporaryMessage(`Moved to ${place.join(', ')}. Finding the cell there\u2026`);
+          // and the cell there joins the list, under Pasted
+          loadCellAtPlace(group);
         } else {
           StatusMessage.showTemporaryMessage('This view does not have three coordinates.');
         }
@@ -1800,7 +1802,7 @@ export class SegmentDisplayTab extends Tab {
                     // nge: words in the box narrow the lists below by name; the
                     // layer's own search shows only where the layer has names
                     // of its own to search.
-                    const filtering = segmentQuery.value.trim() !== '';
+                    const filtering = listFilterOf(segmentQuery.value) !== '';
                     const showQueryResultsList = segmentPropertyMap !== undefined &&
                         (listSource.query.value !== '' || listSource.numMatches > 0);
                     const showPastedList = pasted.source.length > 0;

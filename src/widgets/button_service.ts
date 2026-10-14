@@ -1,7 +1,10 @@
 import { explainCellType } from '../data/cell_type_glossary';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {Uint64} from 'neuroglancer/util/uint64';
-import {segmentLabels, segmentLabelsChanged, setSegmentLabelRequester} from 'neuroglancer/ui/nge_pasted_segments';
+import {addPastedSegments, segmentLabels, segmentLabelsChanged, setPlaceCellLoader, setSegmentLabelRequester} from 'neuroglancer/ui/nge_pasted_segments';
+import {StatusMessage} from 'neuroglancer/status';
+import {cellAtCrosshair} from '../util/crosshair_cell';
+import {getPcgInfo} from './pcg_service';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
@@ -15,6 +18,35 @@ function cellLabel(status: CellStatus|null|undefined): string {
     ? (status.classificationSystem ? `${status.classificationSystem} - ${status.cellType}` : status.cellType)
     : (status?.classificationSystem || '');
 }
+
+// A pasted coordinate: once that spot has loaded, the cell there (its current
+// ID, after any edits) joins the list under Pasted. Empty space says so.
+let placeLoad = 0;
+setPlaceCellLoader(async (group: any) => {
+  const mine = ++placeLoad;
+  let found: Awaited<ReturnType<typeof cellAtCrosshair>> | null = null;
+  for (let i = 0; i < 16; ++i) {
+    await new Promise(r => setTimeout(r, 500));
+    if (mine !== placeLoad) return;  // a newer paste took over
+    found = await cellAtCrosshair();
+    if (found.supervoxel) break;
+  }
+  if (!found || !found.supervoxel) {
+    StatusMessage.showTemporaryMessage('Nothing has loaded at that place yet. Look at the 2D view, then paste again.', 4000);
+    return;
+  }
+  if (found.supervoxel === '0') {
+    StatusMessage.showTemporaryMessage('That place is empty space, not inside a cell.', 4000);
+    return;
+  }
+  const id = found.root ?? (getPcgInfo() ? null : found.supervoxel);
+  if (!id) {
+    StatusMessage.showTemporaryMessage(found.problem || 'Could not look up the cell there.', 4000);
+    return;
+  }
+  addPastedSegments(group, [Uint64.parseString(id)]);
+  StatusMessage.showTemporaryMessage(`Added the cell there: ${id}`, 4000);
+});
 
 // A search by name in the Seg panel asks for the names of the cells whose rows
 // are not drawn yet: each cell is looked up once, four at a time.
