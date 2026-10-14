@@ -108,12 +108,14 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeTable:    'eyewire_ii_cell_type_v2',
     cellStatusSchema: 'bound_tag_user',
     cellTypeSchema:   'bound_tag_user',
-    defaultSegments:  ['720575940569107563', '720575940565386350'],
+    // Current cells, blue and gold (Ames 2026-10-14: the old default view
+    // held cells that had since been edited).
+    defaultSegments:  ['720575940575771862', '720575940565074413'],
     segmentColors:    {
-      '720575940569107563': '#00aaff',
-      '720575940565386350': '#ffd700',
+      '720575940575771862': '#00aaff',
+      '720575940565074413': '#ffd700',
     },
-    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5488298986307584',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
     labSheetRpc:      'ew_retina_lab_sheet_match',
@@ -128,12 +130,14 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeTable:    'eyewire_ii_cell_type_v2',
     cellStatusSchema: 'bound_tag_user',
     cellTypeSchema:   'bound_tag_user',
-    defaultSegments:  ['720575940569107563', '720575940565386350'],
+    // Current cells, blue and gold (Ames 2026-10-14: the old default view
+    // held cells that had since been edited).
+    defaultSegments:  ['720575940575771862', '720575940565074413'],
     segmentColors:    {
-      '720575940569107563': '#00aaff',
-      '720575940565386350': '#ffd700',
+      '720575940575771862': '#00aaff',
+      '720575940565074413': '#ffd700',
     },
-    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5672815546073088',
+    defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5488298986307584',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
     labSheetRpc:      'ew_retina_lab_sheet_match',
