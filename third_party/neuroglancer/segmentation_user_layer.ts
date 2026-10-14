@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import {FOLDERS_JSON_KEY, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 import 'neuroglancer/segmentation_user_layer.css';
 
 import {CoordinateTransformSpecification, emptyValidCoordinateSpace} from 'neuroglancer/coordinate_transform';
@@ -439,8 +440,12 @@ export class SegmentationUserLayer extends Base {
   anchorSegment = new TrackableValue<Uint64|undefined>(
       undefined, x => x === undefined ? undefined : Uint64.parseString(x));
 
+  /** nge: the Seg panel's folders (ui/nge_segment_folders.ts). */
+  ngeFolders = new SegmentFolders();
+
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
+    this.ngeFolders.changed.add(this.specificationChanged.dispatch);
     this.registerDisposer(registerNestedSync((context, group) => {
       context.registerDisposer(group.specificationChanged.add(this.specificationChanged.dispatch));
       this.specificationChanged.dispatch();
@@ -690,6 +695,7 @@ export class SegmentationUserLayer extends Base {
     }
     this.displayState.segmentationGroupState.value.restoreState(specification);
     this.displayState.segmentationColorGroupState.value.restoreState(specification);
+    this.ngeFolders.restoreState(specification[FOLDERS_JSON_KEY]);
   }
 
   toJSON() {
@@ -719,6 +725,12 @@ export class SegmentationUserLayer extends Base {
     if (linkedSegmentationColorGroup.root.value === this) {
       Object.assign(x, this.displayState.segmentationColorGroupState.value.toJSON());
     }
+    const {selectedSegments} = this.displayState.segmentationGroupState.value;
+    const folders = this.ngeFolders.toJSON(id => {
+      const u = new Uint64();
+      return u.tryParseString(id) && selectedSegments.has(u);
+    });
+    if (folders !== undefined) x[FOLDERS_JSON_KEY] = folders;
     return x;
   }
 

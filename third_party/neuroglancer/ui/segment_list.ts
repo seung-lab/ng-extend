@@ -49,6 +49,7 @@ import svg_plus from 'ikonate/icons/plus.svg';
 import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, parseCoordinates, parsePastedIds, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
+import {pickedSegments, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
 
@@ -87,42 +88,58 @@ abstract class SegmentListSource extends RefCounted implements VirtualListSource
   }
 }
 
+/** nge: which cells a list of cells in view holds: the pasted ones, one
+ *  folder's (by folder id), or the rest ('inview'). */
+type ListMode = 'inview'|'pasted'|{folder: string};
+
 class StarredSegmentsListSource extends SegmentListSource {
   explicitSegmentsVisible: true;
 
   constructor(
       public segmentationDisplayState: SegmentationDisplayState,
-      public parentElement: HTMLElement, protected pastedOnly?: boolean,
-      protected filterText?: WatchableValueInterface<string>) {
+      public parentElement: HTMLElement, public mode: ListMode = 'inview',
+      protected filterText?: WatchableValueInterface<string>,
+      protected folders?: SegmentFolders) {
     super(segmentationDisplayState, parentElement);
     this.update();
     const group = segmentationDisplayState.segmentationGroupState.value;
     this.registerDisposer(group.selectedSegments.changed.add(this.debouncedUpdate));
+    // nge: the pasted cells and each folder are listed on their own.
+    this.registerDisposer(getPastedSegments(group).changed.add(this.debouncedUpdate));
+    if (folders !== undefined) {
+      this.registerDisposer(folders.changed.add(this.debouncedUpdate));
+    }
     // nge: words in the box narrow the cells listed, by name or ID.
     if (filterText !== undefined) {
       this.registerDisposer(filterText.changed.add(this.debouncedUpdate));
     }
-    // nge: the pasted cells are listed on their own, above the rest.
-    this.registerDisposer(getPastedSegments(group).changed.add(this.debouncedUpdate));
   }
 
-  /** nge: this list's cells: the pasted ones (newest paste first) or the
-   *  others in view, in the list's own order. */
+  /** nge: this list's cells, in the list's own order (pasted: newest paste
+   *  first). A cell in a folder is listed only in its folder. */
   segmentsHere(): Uint64[] {
     const group = this.segmentationDisplayState.segmentationGroupState.value;
-    const pasted = getPastedSegments(group).ids;
     const filter = this.filterText?.value ?? '';
     const keep = (id: Uint64) => !filter || segmentMatchesFilter(id.toString(), filter);
-    if (this.pastedOnly) {
+    const inFolders = this.folders?.memberIds() ?? new Set<string>();
+    const {mode} = this;
+    if (typeof mode === 'object') {
+      const mine = new Set(this.folders?.value.find(f => f.id === mode.folder)?.ids ?? []);
+      return [...group.selectedSegments].filter(id => mine.has(id.toString()) && keep(id));
+    }
+    const pasted = getPastedSegments(group).ids;
+    if (mode === 'pasted') {
       const out: Uint64[] = [];
       for (const s of pasted) {
+        if (inFolders.has(s)) continue;
         const id = Uint64.parseString(s);
         if (group.selectedSegments.has(id) && keep(id)) out.push(id);
       }
       return out;
     }
     const skip = new Set(pasted);
-    return [...group.selectedSegments].filter(id => !skip.has(id.toString()) && keep(id));
+    return [...group.selectedSegments].filter(
+        id => !skip.has(id.toString()) && !inFolders.has(id.toString()) && keep(id));
   }
 
   update() {
@@ -957,6 +974,8 @@ abstract class SegmentListGroupBase extends RefCounted {
       }
     });
     const {selectionStatusContainer} = this;
+    this.copyAllSegmentsButton.classList.add('nge-seg-copy-all');
+    this.copyVisibleSegmentsButton.classList.add('nge-seg-copy-visible');
     this.selectionStatusMessage.classList.add('neuroglancer-segment-list-status-message');
     selectionStatusContainer.classList.add('neuroglancer-segment-list-status');
     selectionStatusContainer.appendChild(this.copyAllSegmentsButton);
@@ -1012,7 +1031,8 @@ abstract class SegmentListGroupBase extends RefCounted {
       }
       queryVisibleCount = shown;
       querySelectedCount = here;
-      statusMessage = `${this.headingText()}${shown}/${here}${this.headingText().startsWith('Pasted') ? '' : ' visible'}`;
+      // Shown out of listed (the eye beside it says what the numbers are).
+      statusMessage = `${this.headingText()}${shown}/${here}`;
     }
     const isSearchList = listSource instanceof SegmentQueryListSource;
     const visibleDisplayedCount =
@@ -1052,31 +1072,204 @@ abstract class SegmentListGroupBase extends RefCounted {
   }
 }
 
+/** nge: what the Seg panel's sections can ask of the tab. */
+interface SectionActions {
+  /** Give cells one colour ('#rrggbb'). */
+  recolor(ids: string[], hex: string): void;
+  /** A folder was just made: name it. */
+  onNewFolder(folderId: string): void;
+}
+
+const FOLDER_DRAG_TYPE = 'application/x-nge-folder';
+
 class SegmentListGroupSelected extends SegmentListGroupBase {
   constructor(
       protected listSource: StarredSegmentsListSource,
-      protected group: SegmentationUserLayerGroupState, private pasted = false) {
+      protected group: SegmentationUserLayerGroupState, folders?: SegmentFolders,
+      actions?: SectionActions) {
     super(listSource, group);
-    this.element.classList.add(pasted ? 'nge-seg-list-group--pasted' : 'nge-seg-list-group--inview');
-    this.selectionStatusContainer.classList.add(
-        pasted ? 'nge-seg-list-heading--pasted' : 'nge-seg-list-heading--inview');
-    if (pasted) {
+    this.folderModel = folders;
+    const {mode} = listSource;
+    const kind = typeof mode === 'object' ? 'folder' : mode;
+    this.element.classList.add(`nge-seg-list-group--${kind}`);
+    const heading = this.selectionStatusContainer;
+    heading.classList.add(`nge-seg-list-heading--${kind}`);
+    if (mode === 'pasted') {
       // nge: put the pasted cells in with the rest (they stay in view).
       const keep = document.createElement('button');
       keep.className = 'nge-seg-list-keep';
       keep.textContent = 'Move down';
       keep.title = 'Put these cells in with the others in view (they stay shown)';
       keep.addEventListener('click', () => clearPastedSegments(group));
-      this.selectionStatusContainer.appendChild(keep);
+      heading.appendChild(keep);
     }
+    if (folders === undefined) return;
+    const targetFolder = typeof mode === 'object' ? mode.folder : '';
+
+    // Cells dropped on a heading go into that folder; on In view, out of
+    // their folder (drag_reorder.ts sends `nge-folder-drop`, with every
+    // picked cell when the dragged one was picked).
+    heading.dataset.ngeFolderDrop = targetFolder || 'none';
+    heading.addEventListener('nge-folder-drop', (event: Event) => {
+      const segIds = ((event as CustomEvent).detail?.segIds ?? []) as string[];
+      if (!segIds.length) return;
+      const p = getPastedSegments(group);
+      if (segIds.some(id => p.ids.includes(id))) {
+        p.ids = p.ids.filter(id => !segIds.includes(id));
+        p.changed.dispatch();
+      }
+      folders.move(segIds, targetFolder);
+      pickedSegments.clear();
+    });
+    // A folder dragged onto a heading goes inside that folder; onto In view,
+    // to the top level.
+    heading.addEventListener('dragover', (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes(FOLDER_DRAG_TYPE)) return;
+      event.preventDefault();
+      heading.classList.add('nge-folder-drop-target');
+    });
+    heading.addEventListener('dragleave', () => heading.classList.remove('nge-folder-drop-target'));
+    heading.addEventListener('drop', (event: DragEvent) => {
+      heading.classList.remove('nge-folder-drop-target');
+      const dragged = event.dataTransfer?.getData(FOLDER_DRAG_TYPE);
+      if (!dragged) return;
+      event.preventDefault();
+      if (dragged === targetFolder) return;
+      folders.setParent(dragged, targetFolder || undefined);
+    });
+
+    if (mode === 'inview') {
+      const add = document.createElement('button');
+      add.className = 'nge-seg-list-keep nge-seg-folder-new';
+      add.textContent = '+ Folder';
+      add.title = 'Make a folder, then drag cells onto it (picked cells go straight in)';
+      add.addEventListener('click', () => {
+        const f = folders.create('New folder');
+        if (pickedSegments.ids.size) {
+          folders.move([...pickedSegments.ids], f.id);
+          pickedSegments.clear();
+        }
+        actions?.onNewFolder(f.id);
+      });
+      heading.appendChild(add);
+      return;
+    }
+    if (typeof mode !== 'object') return;
+
+    // A folder's heading: fold, colour, name (double click or the pencil to
+    // rename), a folder inside it, ungroup. Drag the heading to nest it.
+    const folder = () => folders.value.find(f => f.id === mode.folder);
+    heading.draggable = true;
+    heading.addEventListener('dragstart', (event: DragEvent) => {
+      if (name.contentEditable === 'true') { event.preventDefault(); return; }
+      event.dataTransfer?.setData(FOLDER_DRAG_TYPE, mode.folder);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+    const caret = document.createElement('button');
+    caret.className = 'nge-seg-folder-caret';
+    caret.title = 'Fold or unfold';
+    caret.addEventListener('click', () => {
+      const f = folder();
+      if (f) folders.setCollapsed(f.id, !f.collapsed);
+    });
+    const swatch = document.createElement('input');
+    swatch.type = 'color';
+    swatch.className = 'nge-seg-folder-color';
+    swatch.title = 'Give every cell in this folder one colour';
+    swatch.addEventListener('change', () => {
+      const f = folder();
+      if (!f) return;
+      actions?.recolor(folders.cellsIn(f.id), swatch.value);
+      folders.setColor(f.id, swatch.value);
+    });
+    heading.prepend(caret, swatch);
+    const name = document.createElement('span');
+    name.className = 'nge-seg-folder-name';
+    name.title = 'Double click to rename. Drag onto another folder to put it inside.';
+    const startRename = () => {
+      const f = folder();
+      if (!f) return;
+      name.contentEditable = 'true';
+      name.focus();
+      const range = document.createRange();
+      range.selectNodeContents(name);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    };
+    const finishRename = (save: boolean) => {
+      if (name.contentEditable !== 'true') return;
+      name.contentEditable = 'false';
+      const f = folder();
+      if (!f) return;
+      if (save && name.textContent && name.textContent.trim() !== f.name) {
+        folders.rename(f.id, name.textContent);
+      } else {
+        name.textContent = f.name;
+      }
+    };
+    name.addEventListener('dblclick', startRename);
+    name.addEventListener('blur', () => finishRename(true));
+    name.addEventListener('keydown', (event: KeyboardEvent) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') { event.preventDefault(); finishRename(true); }
+      if (event.key === 'Escape') { event.preventDefault(); finishRename(false); }
+    });
+    this.selectionStatusMessage.before(name);
+    const icon = (text: string, title: string, onClick: () => void, extra = '') => {
+      const b = document.createElement('button');
+      b.className = 'nge-seg-folder-icon' + (extra ? ' ' + extra : '');
+      b.textContent = text;
+      b.title = title;
+      b.addEventListener('click', onClick);
+      return b;
+    };
+    heading.append(
+        icon('+', 'Make a folder inside this one', () => {
+          const f = folder();
+          if (!f) return;
+          const child = folders.create('New folder', f.id);
+          if (f.collapsed) folders.setCollapsed(f.id, false);
+          actions?.onNewFolder(child.id);
+        }),
+        icon('\u270e', 'Rename this folder', startRename),
+        icon('\u2715', 'Ungroup: the folder goes, its cells stay in view', () => {
+          const f = folder();
+          if (f) folders.remove(f.id);
+        }, 'nge-seg-folder-ungroup'));
+    const paint = () => {
+      const f = folder();
+      if (!f) return;
+      caret.textContent = f.collapsed ? '\u25b8' : '\u25be';
+      if (name.contentEditable !== 'true') name.textContent = f.name;
+      swatch.value = f.color ?? '#f5d142';
+      this.element.classList.toggle('nge-seg-folder--collapsed', !!f.collapsed);
+      const depth = folders.ordered().find(x => x.folder.id === f.id)?.depth ?? 0;
+      this.element.style.setProperty('--nge-folder-depth', String(depth));
+    };
+    this.registerDisposer(folders.changed.add(paint));
+    paint();
+    this.startRename = startRename;
   }
+
+  private folderModel?: SegmentFolders;
+  startRename?: () => void;
 
   headingText() {
-    return this.pasted ? 'Pasted · ' : 'In view · ';
+    const {mode} = this.listSource;
+    if (typeof mode === 'object') return '\u00b7 ';
+    return mode === 'pasted' ? 'Pasted \u00b7 ' : 'In view \u00b7 ';
   }
 
+  /** A folder's heading acts on its cells and the cells of the folders
+   *  inside it (show, hide, remove, copy). */
   listSegments(safe = false) {
     safe;
+    const {mode} = this.listSource;
+    if (typeof mode === 'object' && this.folderModel !== undefined) {
+      const mine = new Set(this.folderModel.cellsIn(mode.folder));
+      return [...this.group.selectedSegments].filter(id => mine.has(id.toString()))[Symbol.iterator]();
+    }
     return this.listSource.segmentsHere()[Symbol.iterator]();
   }
 }
@@ -1322,66 +1515,258 @@ export class SegmentDisplayTab extends Tab {
                 (segmentPropertyMap, parent, context) => {
                   const listSource = context.registerDisposer(new SegmentQueryListSource(
                       segmentQuery, segmentPropertyMap, layer.displayState, parent));
-                  const selectedSegmentsListSource = context.registerDisposer(
-                      new StarredSegmentsListSource(layer.displayState, parent, false, segmentQuery));
-                  const pastedListSource = context.registerDisposer(
-                      new StarredSegmentsListSource(layer.displayState, parent, true, segmentQuery));
-                  const pastedList = context.registerDisposer(new VirtualList(
-                      {source: pastedListSource, horizontalScroll: true, keepRowsOnSplice: true}));
+                  const group = layer.displayState.segmentationGroupState.value;
+                  const folders: SegmentFolders = (layer as any).ngeFolders;
                   const list = context.registerDisposer(
                       new VirtualList({source: listSource, horizontalScroll: true}));
-                  // nge: a segment's row is the same wherever it sits in the list.
-                  const selectedSegmentsList = context.registerDisposer(new VirtualList(
-                      {source: selectedSegmentsListSource, horizontalScroll: true, keepRowsOnSplice: true}));
-
-                  const group = layer.displayState.segmentationGroupState.value;
-
                   const segList = context.registerDisposer(new SegmentListGroupQuery(
                       list, listSource, group, segmentPropertyMap, segmentQuery, queryElement,
                       debouncedUpdateQueryModel));
                   segList.element.appendChild(list.element);
                   parent.appendChild(segList.element);
-                  const segListPasted = context.registerDisposer(
-                      new SegmentListGroupSelected(pastedListSource, group, true));
-                  segListPasted.element.appendChild(pastedList.element);
-                  parent.appendChild(segListPasted.element);
-                  const segList2 = context.registerDisposer(
-                      new SegmentListGroupSelected(selectedSegmentsListSource, group));
-                  segList2.element.appendChild(selectedSegmentsList.element);
-                  parent.appendChild(segList2.element);
+                  list.element.classList.add('neuroglancer-segment-list');
+                  list.element.classList.add('neuroglancer-preview-list');
+                  context.registerDisposer(layer.bindSegmentListWidth(list.element));
+                  context.registerDisposer(
+                      new MouseEventBinder(list.element, getDefaultSelectBindings()));
+
+                  // nge: the cells in view, in sections: Pasted, each folder,
+                  // then the rest (In view). Each is its own list.
+                  interface Section {
+                    source: StarredSegmentsListSource;
+                    vlist: VirtualList;
+                    grp: SegmentListGroupSelected;
+                  }
+                  let renameNext: string|undefined;
+                  const sectionActions: SectionActions = {
+                    recolor: (ids, hex) => {
+                      const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+                      if (!m) return;
+                      const v = parseInt(m[1], 16);
+                      // neuroglancer packs a colour as 0xBBGGRR
+                      const packed = ((v >> 16) & 0xff) | (v & 0xff00) | ((v & 0xff) << 16);
+                      const colors = layer.displayState.segmentationColorGroupState.value.segmentStatedColors;
+                      for (const s of ids) {
+                        const id = new Uint64();
+                        if (!id.tryParseString(s)) continue;
+                        // set() never overwrites a colour already there: delete first
+                        colors.delete(id);
+                        colors.set(id, new Uint64(packed, 0));
+                      }
+                      // the rows' chips take the new colour too
+                      updateListItems();
+                    },
+                    onNewFolder: id => {
+                      // The sections are rebuilt as the folder is made: name it
+                      // now if its section is there, else as soon as it is.
+                      const sec = folderSections.find(
+                          x => typeof x.source.mode === 'object' && x.source.mode.folder === id);
+                      if (sec?.grp.startRename) sec.grp.startRename();
+                      else renameNext = id;
+                    },
+                  };
+                  const makeSection = (owner: RefCounted, mode: ListMode): Section => {
+                    const source = owner.registerDisposer(new StarredSegmentsListSource(
+                        layer.displayState, parent, mode, segmentQuery, folders));
+                    // a segment's row is the same wherever it sits in the list
+                    const vlist = owner.registerDisposer(new VirtualList(
+                        {source, horizontalScroll: true, keepRowsOnSplice: true}));
+                    const grp = owner.registerDisposer(new SegmentListGroupSelected(
+                        source, group, folders, sectionActions));
+                    grp.element.appendChild(vlist.element);
+                    vlist.element.classList.add('neuroglancer-segment-list');
+                    if (typeof mode === 'object') vlist.element.classList.add('nge-seg-list--folder');
+                    if (mode === 'pasted') vlist.element.classList.add('nge-seg-list--pasted');
+                    owner.registerDisposer(layer.bindSegmentListWidth(vlist.element));
+                    owner.registerDisposer(new MouseEventBinder(vlist.element, getDefaultSelectBindings()));
+                    source.segmentWidgetFactory = new SegmentWidgetWithExtraColumnsFactory(
+                        source.segmentationDisplayState, source.parentElement,
+                        property => queryIncludesColumn(undefined, property.id));
+                    removeChildren(vlist.header);
+                    owner.registerDisposer(grp.statusChanged.add(() => updateListDisplayState()));
+                    return {source, vlist, grp};
+                  };
+                  const pasted = makeSection(context, 'pasted');
+                  parent.appendChild(pasted.grp.element);
+                  const foldersHost = document.createElement('div');
+                  foldersHost.style.display = 'contents';
+                  parent.appendChild(foldersHost);
+                  const inview = makeSection(context, 'inview');
+                  parent.appendChild(inview.grp.element);
+
+                  let folderSections: Section[] = [];
+                  let folderOwner: RefCounted|undefined;
+                  let builtFor = '';
+                  const buildFolders = () => {
+                    const ordered = folders?.ordered() ?? [];
+                    const key = ordered.map(x => x.folder.id + '<' + (x.folder.parent ?? '')).join(',');
+                    if (key === builtFor) return;
+                    builtFor = key;
+                    folderOwner?.dispose();
+                    removeChildren(foldersHost);
+                    folderOwner = new RefCounted();
+                    folderSections = ordered.map(({folder: f}) => {
+                      const sec = makeSection(folderOwner!, {folder: f.id});
+                      foldersHost.appendChild(sec.grp.element);
+                      sec.grp.updateStatus();
+                      return sec;
+                    });
+                    if (renameNext !== undefined) {
+                      const target = folderSections.find(
+                          x => typeof x.source.mode === 'object' && x.source.mode.folder === renameNext);
+                      renameNext = undefined;
+                      target?.grp.startRename?.();
+                    }
+                  };
+                  if (folders !== undefined) {
+                    context.registerDisposer(folders.changed.add(() => {
+                      buildFolders();
+                      updateListDisplayState();
+                    }));
+                  }
+                  context.registerDisposer(() => folderOwner?.dispose());
+
+                  const allSections = () => [pasted, ...folderSections, inview];
+
+                  // nge: picked cells (Ctrl+click, Shift+click) are lit, and a
+                  // bar above the list acts on all of them at once.
+                  const pickStyle = document.createElement('style');
+                  document.head.appendChild(pickStyle);
+                  context.registerDisposer(() => pickStyle.remove());
+                  const bar = document.createElement('div');
+                  bar.className = 'nge-pick-bar';
+                  parent.prepend(bar);
+                  const barCount = document.createElement('span');
+                  barCount.className = 'nge-pick-count';
+                  const moveTo = document.createElement('select');
+                  moveTo.className = 'nge-pick-move';
+                  moveTo.title = 'Move the picked cells into a folder';
+                  const barBtn = (text: string, title: string, onClick: () => void, cls = '') => {
+                    const b = document.createElement('button');
+                    b.className = 'nge-pick-btn' + (cls ? ' ' + cls : '');
+                    b.textContent = text;
+                    b.title = title;
+                    b.addEventListener('click', onClick);
+                    return b;
+                  };
+                  const pickedIds = () => {
+                    const out: Uint64[] = [];
+                    for (const s of pickedSegments.ids) {
+                      const id = new Uint64();
+                      if (id.tryParseString(s) && group.selectedSegments.has(id)) out.push(id);
+                    }
+                    return out;
+                  };
+                  const recolorPicked = document.createElement('input');
+                  recolorPicked.type = 'color';
+                  recolorPicked.className = 'nge-pick-color';
+                  recolorPicked.title = 'Give the picked cells one colour';
+                  recolorPicked.value = '#7cffb2';
+                  recolorPicked.addEventListener('change', () => {
+                    sectionActions.recolor([...pickedSegments.ids], recolorPicked.value);
+                  });
+                  bar.append(
+                      barCount, moveTo,
+                      barBtn('Show', 'Show the picked cells', () => group.visibleSegments.set(pickedIds(), true)),
+                      barBtn('Hide', 'Hide the picked cells', () => group.visibleSegments.set(pickedIds(), false)),
+                      recolorPicked,
+                      barBtn('Remove', 'Take the picked cells out of the view', () => {
+                        const ids = pickedIds();
+                        if (ids.length > 1 && !window.confirm(`Remove ${ids.length} cells from the view?`)) return;
+                        group.selectedSegments.delete(ids);
+                        pickedSegments.clear();
+                      }, 'nge-pick-remove'),
+                      barBtn('\u2715', 'Unpick (Esc)', () => pickedSegments.clear(), 'nge-pick-clear'));
+                  moveTo.addEventListener('change', () => {
+                    const v = moveTo.value;
+                    moveTo.value = '';
+                    if (!v || folders === undefined) return;
+                    const ids = [...pickedSegments.ids];
+                    let target = v === '__none' ? '' : v;
+                    if (v === '__new') {
+                      const f = folders.create('New folder');
+                      target = f.id;
+                      window.setTimeout(() => sectionActions.onNewFolder(f.id), 0);
+                    }
+                    const p = getPastedSegments(group);
+                    if (ids.some(id => p.ids.includes(id))) {
+                      p.ids = p.ids.filter(id => !ids.includes(id));
+                      p.changed.dispatch();
+                    }
+                    folders.move(ids, target);
+                    pickedSegments.clear();
+                  });
+                  const paintPicks = () => {
+                    const n = pickedSegments.ids.size;
+                    bar.style.display = n ? '' : 'none';
+                    barCount.textContent = `${n} picked`;
+                    removeChildren(moveTo);
+                    const opt = (value: string, text: string) => {
+                      const o = document.createElement('option');
+                      o.value = value;
+                      o.textContent = text;
+                      moveTo.appendChild(o);
+                    };
+                    opt('', 'Move to\u2026');
+                    for (const {folder: f, depth} of folders?.ordered() ?? []) {
+                      opt(f.id, '\u00a0\u00a0'.repeat(depth) + f.name);
+                    }
+                    opt('__new', '+ New folder');
+                    opt('__none', 'Out of folders');
+                    pickStyle.textContent = [...pickedSegments.ids]
+                        .map(id => `.neuroglancer-segment-list-entry[data-id="${id}"]`)
+                        .join(',\n') + (n ? ' { background: rgba(124, 255, 178, 0.14) !important; box-shadow: inset 3px 0 0 #7cffb2; }' : '');
+                  };
+                  context.registerDisposer(pickedSegments.changed.add(paintPicks));
+                  if (folders !== undefined) context.registerDisposer(folders.changed.add(paintPicks));
+                  paintPicks();
                   context.registerDisposer(getPastedSegments(group).changed.add(() => {
-                    pastedListSource.debouncedUpdate.flush();
-                    selectedSegmentsListSource.debouncedUpdate.flush();
-                    segListPasted.updateStatus();
-                    segList2.updateStatus();
+                    for (const sec of allSections()) {
+                      sec.source.debouncedUpdate.flush();
+                      sec.grp.updateStatus();
+                    }
                   }));
 
-                  const updateListDisplayState = () => {
+                  function updateListDisplayState() {
                     // nge: words in the box narrow the lists below by name; the
                     // layer's own search shows only where the layer has names
                     // of its own to search.
+                    const filtering = segmentQuery.value.trim() !== '';
                     const showQueryResultsList = segmentPropertyMap !== undefined &&
                         (listSource.query.value !== '' || listSource.numMatches > 0);
-                    const showPastedList = pastedListSource.length > 0;
-                    const showStarredSegmentsList = selectedSegmentsListSource.length > 0 ||
-                        (!showQueryResultsList && !showPastedList);
-                    selectedSegmentsList.element.dataset.ngeNoMatch =
-                        String(selectedSegmentsListSource.length === 0 && segmentQuery.value.trim() !== '');
+                    const showPastedList = pasted.source.length > 0;
+                    let shownInFolders = 0;
+                    const order = folders?.ordered() ?? [];
+                    for (const sec of folderSections) {
+                      // An empty folder still shows, so cells can be dragged in,
+                      // unless the box is narrowing the list; a folder inside a
+                      // folded one does not.
+                      const placed = order.find(
+                          x => typeof sec.source.mode === 'object' && x.folder.id === sec.source.mode.folder);
+                      const show = !placed?.hidden && (sec.source.length > 0 || !filtering);
+                      sec.grp.element.style.display = show ? 'contents' : 'none';
+                      const f = folders?.value.find(
+                          x => typeof sec.source.mode === 'object' && x.id === sec.source.mode.folder);
+                      sec.vlist.element.style.display = f?.collapsed ? 'none' : '';
+                      sec.vlist.element.dataset.ngeEmpty = String(sec.source.length === 0 && !filtering);
+                      shownInFolders += sec.source.length;
+                    }
+                    const showStarredSegmentsList = inview.source.length > 0 || !filtering ||
+                        (!showQueryResultsList && !showPastedList && !shownInFolders);
+                    inview.vlist.element.dataset.ngeNoMatch = String(
+                        filtering && inview.source.length === 0 && !showPastedList && !shownInFolders);
                     segList.element.style.display = showQueryResultsList ? 'contents' : 'none';
-                    segListPasted.element.style.display = showPastedList ? 'contents' : 'none';
-                    segList2.element.style.display = showStarredSegmentsList ? 'contents' : 'none';
-                  };
+                    pasted.grp.element.style.display = showPastedList ? 'contents' : 'none';
+                    inview.grp.element.style.display = showStarredSegmentsList ? 'contents' : 'none';
+                  }
                   context.registerDisposer(segList.statusChanged.add(updateListDisplayState));
-                  context.registerDisposer(segListPasted.statusChanged.add(updateListDisplayState));
-                  context.registerDisposer(segList2.statusChanged.add(updateListDisplayState));
+                  buildFolders();
                   segList.updateStatus();
-                  segListPasted.updateStatus();
-                  segList2.updateStatus();
+                  for (const sec of allSections()) sec.grp.updateStatus();
 
                   const updateListItems = context.registerCancellable(animationFrameDebounce(() => {
                     listSource.updateRenderedItems(list);
-                    pastedListSource.updateRenderedItems(pastedList);
-                    selectedSegmentsListSource.updateRenderedItems(selectedSegmentsList);
+                    for (const sec of allSections()) sec.source.updateRenderedItems(sec.vlist);
                   }));
                   const {displayState} = this.layer;
                   registerCallbackWhenSegmentationDisplayStateChanged(
@@ -1389,35 +1774,7 @@ export class SegmentDisplayTab extends Tab {
                   context.registerDisposer(
                       displayState.segmentationGroupState.value.selectedSegments.changed.add(
                           updateListItems));
-                  list.element.classList.add('neuroglancer-segment-list');
-                  list.element.classList.add('neuroglancer-preview-list');
-                  selectedSegmentsList.element.classList.add('neuroglancer-segment-list');
-                  pastedList.element.classList.add('neuroglancer-segment-list', 'nge-seg-list--pasted');
-                  context.registerDisposer(layer.bindSegmentListWidth(pastedList.element));
-                  context.registerDisposer(new MouseEventBinder(
-                      pastedList.element, getDefaultSelectBindings()));
-                  context.registerDisposer(layer.bindSegmentListWidth(list.element));
-                  context.registerDisposer(
-                      layer.bindSegmentListWidth(selectedSegmentsList.element));
-                  context.registerDisposer(
-                      new MouseEventBinder(list.element, getDefaultSelectBindings()));
-                  context.registerDisposer(new MouseEventBinder(
-                      selectedSegmentsList.element, getDefaultSelectBindings()));
-
-                  // list2 doesn't depend on queryResult, maybe move this into class
-                  selectedSegmentsListSource.segmentWidgetFactory =
-                      new SegmentWidgetWithExtraColumnsFactory(
-                          selectedSegmentsListSource.segmentationDisplayState,
-                          selectedSegmentsListSource.parentElement,
-                          property => queryIncludesColumn(undefined, property.id));
-                  pastedListSource.segmentWidgetFactory =
-                      new SegmentWidgetWithExtraColumnsFactory(
-                          pastedListSource.segmentationDisplayState,
-                          pastedListSource.parentElement,
-                          property => queryIncludesColumn(undefined, property.id));
-                  removeChildren(pastedList.header);
-                  selectedSegmentsList.scrollToTop();
-                  removeChildren(selectedSegmentsList.header);
+                  inview.vlist.scrollToTop();
                 }))
             .element);
   }

@@ -1694,8 +1694,14 @@ export function UserLayerWithAnnotationsMixin<TBase extends {new (...args: any[]
       this.annotationDisplayState.color.changed.add(this.specificationChanged.dispatch);
       this.annotationDisplayState.shader.changed.add(this.specificationChanged.dispatch);
       this.annotationDisplayState.shaderControls.changed.add(this.specificationChanged.dispatch);
-      this.tabs.add(
-          'annotations', {label: 'Annotations', order: 10, getter: () => new AnnotationTab(this)});
+      // nge: a segmentation layer's Annotations tab only ever held the
+      // volume's bounding box, and a tab called Annotations that holds no
+      // annotations confused new players (Ames 2026-10-14). Its box controls
+      // are in the Render tab (segmentation_display_options_tab.ts).
+      if ((this.constructor as any).type !== 'segmentation') {
+        this.tabs.add(
+            'annotations', {label: 'Annotations', order: 10, getter: () => new AnnotationTab(this)});
+      }
 
       let annotationStateReadyBinding: (() => void)|undefined;
 

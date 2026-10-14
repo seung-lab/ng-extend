@@ -15,6 +15,7 @@
 //   happen because the UX feels broken if drag silently does nothing.
 
 import {Uint64} from 'neuroglancer/util/uint64';
+import {pickedSegments} from 'neuroglancer/ui/nge_segment_folders';
 
 const ROW_SEL = '.neuroglancer-segment-list-entry';
 const ID_SEL = '.neuroglancer-segment-list-entry-id';
@@ -22,6 +23,14 @@ const LIST_SEL = '.neuroglancer-segment-list';
 const PREVIEW_CLASS = 'neuroglancer-preview-list';
 
 const DRAG_THRESHOLD_PX = 4;
+
+const FOLDER_DROP_SEL = '[data-nge-folder-drop]';
+const FOLDER_HOVER_CLASS = 'nge-folder-drop-target';
+
+function folderHeadingAt(x: number, y: number): HTMLElement | null {
+  const el = document.elementFromPoint(x, y) as HTMLElement | null;
+  return (el?.closest(FOLDER_DROP_SEL) as HTMLElement | null) ?? null;
+}
 
 interface DragState {
   startX: number;
@@ -32,6 +41,8 @@ interface DragState {
   dropLine: HTMLElement;
   /** -1 if no valid drop target; else index in the list's current row order. */
   targetIndex: number;
+  /** A section heading under the pointer: the cell goes into that folder. */
+  folderTarget: HTMLElement | null;
 }
 
 let drag: DragState | null = null;
@@ -79,7 +90,7 @@ function getSelectedSegmentsSet(): {set: any; Uint64Ctor: typeof Uint64} | null 
   return null;
 }
 
-function persistSelectedReorder(idsInNewOrder: string[]) {
+function persistSelectedReorder(idsInNewOrder: string[], movedId?: string) {
   const got = getSelectedSegmentsSet();
   if (!got) return;
   const {set} = got;
@@ -96,8 +107,24 @@ function persistSelectedReorder(idsInNewOrder: string[]) {
   for (const u of data.values()) byId.set(u.toString(), u);
   if (!idsInNewOrder.every(id => byId.has(id))) return;
 
+  // Only the rows on screen in one section are in `idsInNewOrder`. Keep every
+  // other cell where it is and move the dragged one next to its new
+  // neighbour: rebuilding from the visible rows alone dropped every cell
+  // scrolled out of sight, or in another section, from the list.
+  const moved = movedId;
+  const full = [...byId.keys()];
+  let order = full;
+  if (moved !== undefined && full.includes(moved)) {
+    const at = idsInNewOrder.indexOf(moved);
+    const next = idsInNewOrder.slice(at + 1).find(id => id !== moved);
+    const prev = idsInNewOrder.slice(0, at).reverse().find(id => id !== moved);
+    order = full.filter(id => id !== moved);
+    if (next !== undefined) order.splice(order.indexOf(next), 0, moved);
+    else if (prev !== undefined) order.splice(order.indexOf(prev) + 1, 0, moved);
+    else order.push(moved);
+  }
   data.clear();
-  for (const id of idsInNewOrder) {
+  for (const id of order) {
     const u = byId.get(id);
     if (u) data.set(BigInt(id), u);
   }
@@ -153,7 +180,7 @@ function applyReorder(state: DragState) {
     // Selected list: rebuild Uint64OrderedSet, NG re-renders DOM. Then flash
     // the new (re-rendered) row by data-id, since `state.row` is gone.
     console.log('[nge-drag] persisting reorder for', ids.length, 'segments, dropping', segId);
-    persistSelectedReorder(ids);
+    persistSelectedReorder(ids, segId);
     flashByDataId(segId);
   } else {
     // Preview/query list: visual reorder via DOM move. NG's query re-render
@@ -186,6 +213,7 @@ document.addEventListener('mousedown', (e: MouseEvent) => {
     isDragging: false,
     dropLine: createDropLine(),
     targetIndex: -1,
+    folderTarget: null,
   };
 }, true);
 
@@ -202,6 +230,14 @@ document.addEventListener('mousemove', (e: MouseEvent) => {
     document.body.style.cursor = 'grabbing';
   }
   e.preventDefault();
+  const heading = folderHeadingAt(e.clientX, e.clientY);
+  if (heading !== drag.folderTarget) {
+    drag.folderTarget?.classList.remove(FOLDER_HOVER_CLASS);
+    drag.folderTarget = heading;
+    heading?.classList.add(FOLDER_HOVER_CLASS);
+  }
+  drag.dropLine.style.display = heading ? 'none' : '';
+  if (heading) return;
   const {index, lineTop} = pickTargetIndex(drag.list, drag.row, e.clientY);
   drag.targetIndex = index;
   const listRect = drag.list.getBoundingClientRect();
@@ -223,15 +259,88 @@ document.addEventListener('mouseup', (e: MouseEvent) => {
   }
   e.preventDefault();
   e.stopPropagation();
+  justDragged = performance.now();
   state.row.classList.remove('nge-drag-source');
   state.dropLine.remove();
   document.body.style.cursor = '';
+  if (state.folderTarget) {
+    state.folderTarget.classList.remove(FOLDER_HOVER_CLASS);
+    const segId = state.row.getAttribute('data-id');
+    if (segId) {
+      // A picked cell carries every picked cell with it.
+      const segIds = pickedSegments.ids.has(segId) ? [...pickedSegments.ids] : [segId];
+      state.folderTarget.dispatchEvent(new CustomEvent('nge-folder-drop', {detail: {segIds}}));
+      flashByDataId(segId);
+    }
+    return;
+  }
   applyReorder(state);
 }, true);
 
+// A click on a cell's ID chip (not a drag) opens its Δ menu (Ames
+// 2026-10-14: "Should we make it so that you can click on a seg ID to bring
+// up the delta menu?"). Opened after the click has finished, so the menu's
+// own click-outside check does not shut it again at once.
+let justDragged = 0;
+
+// Ctrl+click (Cmd+click on a Mac) picks or unpicks a cell; Shift+click picks
+// every cell between the last one clicked and this one, in the same section.
+// Buttons on the row (eye, copy, remove, jump, Δ) keep their own clicks.
+const ROW_BUTTONS = 'button, .neuroglancer-icon, input, .nge-seg-list-toggle';
+function pickTarget(e: MouseEvent): HTMLElement | null {
+  const t = e.target as HTMLElement | null;
+  if (!t || t.closest(ROW_BUTTONS)) return null;
+  return t.closest(ROW_SEL) as HTMLElement | null;
+}
+document.addEventListener('mousedown', (e: MouseEvent) => {
+  if (e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey) || e.altKey) return;
+  if (!pickTarget(e)) return;
+  // neuroglancer's own Ctrl/Shift row clicks stay out of it
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+document.addEventListener('click', (e: MouseEvent) => {
+  if (e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey) || e.altKey) return;
+  const row = pickTarget(e);
+  const id = row?.getAttribute('data-id');
+  if (!row || !id) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.shiftKey && pickedSegments.anchor) {
+    const list = row.closest(LIST_SEL);
+    const ids = list ? rowsInList(list as HTMLElement).map(r => r.getAttribute('data-id') || '') : [];
+    const a = ids.indexOf(pickedSegments.anchor);
+    const b = ids.indexOf(id);
+    if (a >= 0 && b >= 0) {
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      pickedSegments.set([...pickedSegments.ids, ...ids.slice(lo, hi + 1)]);
+      return;
+    }
+  }
+  pickedSegments.toggle(id);
+}, true);
+
+document.addEventListener('click', (e: MouseEvent) => {
+  if (e.button !== 0 || e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return;
+  if (performance.now() - justDragged < 300) return;
+  const chip = (e.target as HTMLElement | null)?.closest(ID_SEL);
+  if (!chip) return;
+  pickedSegments.clear();
+  const row = chip.closest(ROW_SEL);
+  const delta = row?.querySelector<HTMLElement>('.nge-lb-btn');
+  if (!delta) return;
+  window.setTimeout(() => delta.click(), 0);
+}, true);
+
 // Cancel an in-flight drag if the user hits Escape.
+// Esc unpicks.
+document.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && !drag && pickedSegments.ids.size) pickedSegments.clear();
+}, true);
+
 document.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.key !== 'Escape' || !drag) return;
+  drag.folderTarget?.classList.remove(FOLDER_HOVER_CLASS);
   drag.row.classList.remove('nge-drag-source');
   drag.dropLine.remove();
   document.body.style.cursor = '';

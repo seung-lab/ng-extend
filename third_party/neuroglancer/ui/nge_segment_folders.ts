@@ -1,0 +1,193 @@
+/**
+ * nge: folders in the Seg panel (Ames 2026-10-14: "how could we add a folders
+ * or grouping system here? There exists a prototype in Batch Processor but
+ * it's separate from this all-important menu"). A folder is a named, foldable
+ * section of the list; a cell sits in at most one. Folders are saved in the
+ * segmentation layer's state (`ngeFolders`), so a saved view or a shared link
+ * opens with the same folders. Only membership is kept here: the order of the
+ * cells inside a folder is the list's own order, which drag still changes.
+ */
+import {NullarySignal} from 'neuroglancer/util/signal';
+
+export interface SegmentFolder {
+  id: string;
+  name: string;
+  ids: string[];
+  collapsed?: boolean;
+  /** The folder this one sits in (nesting); none = top level. */
+  parent?: string;
+  /** The colour last given to the whole folder ('#rrggbb'). */
+  color?: string;
+}
+
+/** nge: cells picked with Ctrl+click or Shift+click, to move, show, hide,
+ *  recolour or remove together (Ames 2026-10-14: "there needs to be a way to
+ *  easily select and move batches of segIDs"). */
+export const pickedSegments = {
+  ids: new Set<string>(),
+  /** The last cell clicked, where a Shift+click range starts. */
+  anchor: undefined as string | undefined,
+  changed: new NullarySignal(),
+  set(ids: Iterable<string>) {
+    this.ids = new Set(ids);
+    this.changed.dispatch();
+  },
+  toggle(id: string) {
+    const next = new Set(this.ids);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.ids = next;
+    this.anchor = id;
+    this.changed.dispatch();
+  },
+  clear() {
+    if (!this.ids.size) return;
+    this.ids = new Set();
+    this.changed.dispatch();
+  },
+};
+
+export const FOLDERS_JSON_KEY = 'ngeFolders';
+
+export class SegmentFolders {
+  value: SegmentFolder[] = [];
+  changed = new NullarySignal();
+
+  restoreState(json: unknown) {
+    const out: SegmentFolder[] = [];
+    if (Array.isArray(json)) {
+      for (const f of json) {
+        if (!f || typeof f !== 'object') continue;
+        const name = typeof f.name === 'string' && f.name.trim() ? f.name.trim().slice(0, 60) : 'Folder';
+        const ids = Array.isArray(f.ids) ? f.ids.filter((s: unknown) => typeof s === 'string' && /^\d+$/.test(s)) : [];
+        out.push({
+          id: typeof f.id === 'string' && f.id ? f.id : newFolderId(), name, ids,
+          collapsed: f.collapsed === true,
+          parent: typeof f.parent === 'string' && f.parent ? f.parent : undefined,
+          color: typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : undefined,
+        });
+      }
+    }
+    // A parent that is missing, or a loop, puts the folder at the top level.
+    const known = new Set(out.map(f => f.id));
+    for (const f of out) if (f.parent !== undefined && !known.has(f.parent)) f.parent = undefined;
+    this.value = out;
+    for (const f of out) if (f.parent !== undefined && this.isInside(f.parent, f.id)) f.parent = undefined;
+    this.changed.dispatch();
+  }
+
+  /** Only the cells still in the list are written, so a folder never carries
+   *  cells that were removed. Nothing is written when there are no folders. */
+  toJSON(inList?: (id: string) => boolean) {
+    if (!this.value.length) return undefined;
+    return this.value.map(f => ({
+      id: f.id,
+      name: f.name,
+      ids: inList ? f.ids.filter(inList) : f.ids,
+      ...(f.collapsed ? {collapsed: true} : {}),
+      ...(f.parent ? {parent: f.parent} : {}),
+      ...(f.color ? {color: f.color} : {}),
+    }));
+  }
+
+  /** True when folder `id` is `ancestor` or sits somewhere inside it. */
+  isInside(id: string, ancestor: string): boolean {
+    let cur: string|undefined = id;
+    for (let guard = 0; cur !== undefined && guard < 100; ++guard) {
+      if (cur === ancestor) return true;
+      cur = this.value.find(f => f.id === cur)?.parent;
+    }
+    return false;
+  }
+
+  /** The folder and every folder inside it. */
+  subtree(id: string): string[] {
+    const out = [id];
+    for (let i = 0; i < out.length; ++i) {
+      for (const f of this.value) if (f.parent === out[i]) out.push(f.id);
+    }
+    return out;
+  }
+
+  /** The cells in a folder and in every folder inside it. */
+  cellsIn(id: string): string[] {
+    const ids = new Set(this.subtree(id));
+    return this.value.filter(f => ids.has(f.id)).flatMap(f => f.ids);
+  }
+
+  /** Folders in display order, each under its parent, with its depth. */
+  ordered(): {folder: SegmentFolder, depth: number, hidden: boolean}[] {
+    const out: {folder: SegmentFolder, depth: number, hidden: boolean}[] = [];
+    const walk = (parent: string|undefined, depth: number, hidden: boolean) => {
+      for (const f of this.value) {
+        if (f.parent !== parent) continue;
+        out.push({folder: f, depth, hidden});
+        walk(f.id, depth + 1, hidden || !!f.collapsed);
+      }
+    };
+    walk(undefined, 0, false);
+    return out;
+  }
+
+  /** Put a folder inside another (undefined = top level); never inside itself. */
+  setParent(id: string, parent: string|undefined) {
+    if (parent !== undefined && this.isInside(parent, id)) return;
+    this.value = this.value.map(f => f.id === id ? {...f, parent} : f);
+    this.changed.dispatch();
+  }
+
+  setColor(id: string, color: string) {
+    this.value = this.value.map(f => f.id === id ? {...f, color} : f);
+    this.changed.dispatch();
+  }
+
+  folderOf(segId: string): SegmentFolder|undefined {
+    return this.value.find(f => f.ids.includes(segId));
+  }
+
+  memberIds(): Set<string> {
+    const s = new Set<string>();
+    for (const f of this.value) for (const id of f.ids) s.add(id);
+    return s;
+  }
+
+  create(name = 'New folder', parent?: string): SegmentFolder {
+    const f: SegmentFolder = {id: newFolderId(), name, ids: [], parent};
+    this.value = [...this.value, f];
+    this.changed.dispatch();
+    return f;
+  }
+
+  rename(id: string, name: string) {
+    const clean = name.trim().slice(0, 60);
+    if (!clean) return;
+    this.value = this.value.map(f => f.id === id ? {...f, name: clean} : f);
+    this.changed.dispatch();
+  }
+
+  setCollapsed(id: string, collapsed: boolean) {
+    this.value = this.value.map(f => f.id === id ? {...f, collapsed} : f);
+    this.changed.dispatch();
+  }
+
+  /** Ungroup: the folder goes, its cells go back to the main list and the
+   *  folders inside it move up a level. */
+  remove(id: string) {
+    const gone = this.value.find(f => f.id === id);
+    this.value = this.value.filter(f => f.id !== id)
+                     .map(f => f.parent === id ? {...f, parent: gone?.parent} : f);
+    this.changed.dispatch();
+  }
+
+  /** Put cells in a folder ('' = no folder), taking them out of any other. */
+  move(segIds: string[], folderId: string) {
+    this.value = this.value.map(f => {
+      const kept = f.ids.filter(id => !segIds.includes(id));
+      return f.id === folderId ? {...f, ids: [...kept, ...segIds]} : {...f, ids: kept};
+    });
+    this.changed.dispatch();
+  }
+}
+
+function newFolderId() {
+  return 'f' + Math.random().toString(36).slice(2, 9);
+}

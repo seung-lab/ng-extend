@@ -1383,3 +1383,100 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
   color: #7cffb2; font: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer; white-space: nowrap; flex: none;
 }
 .nge-seg-list-keep:hover { background: rgba(124, 255, 178, 0.12); }
+
+/* ── Seg panel rows: eye, then the cell, then copy and remove on hover; the
+ *    empty column on the left is gone (Ames 2026-10-14: "a lot of empty
+ *    space here") ───────────────────────────────────────────────────────── */
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-visible-checkbox { order: 1 !important; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-id-container { order: 2 !important; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container { order: 3 !important; }
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { order: 4 !important; }
+.neuroglancer-segment-list-entry-name,
+.neuroglancer-segment-list-entry .nge-label-badge { margin-left: 24px !important; }
+
+/* ── Folders ─────────────────────────────────────────────────────────────── */
+.nge-seg-list-heading--folder { gap: 2px; }
+.nge-seg-folder-caret {
+  background: none; border: none; color: rgba(200, 215, 240, 0.8);
+  font-size: 12px; width: 18px; padding: 0; cursor: pointer; flex: none;
+}
+.nge-seg-folder-name {
+  font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 600;
+  color: #f5d142; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 45%; padding: 0 3px; border-radius: 3px; cursor: text; outline: none;
+}
+.nge-seg-folder-name[contenteditable="true"] { background: rgba(245, 209, 66, 0.12); box-shadow: 0 0 0 1px rgba(245, 209, 66, 0.5); }
+.nge-seg-list-heading--folder .neuroglancer-segment-list-status-message { margin-left: 2px; }
+.nge-seg-folder-icon {
+  background: none; border: none; color: rgba(200, 215, 240, 0.55); cursor: pointer;
+  font-size: 12px; padding: 0 4px; flex: none;
+}
+.nge-seg-folder-icon:first-of-type { margin-left: auto; }
+.nge-seg-folder-icon:hover { color: #fff; }
+.nge-seg-folder-ungroup:hover { color: #e06060; }
+@media (hover: hover) {
+  .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon { visibility: hidden; }
+}
+.nge-seg-list--folder {
+  flex: 0 1 auto !important; max-height: 40%;
+  margin-left: 10px; border-left: 1px solid rgba(245, 209, 66, 0.25);
+}
+.nge-seg-list--folder[data-nge-empty="true"]::before {
+  content: 'Drag cells onto the folder name to put them here.';
+  display: block; padding: 6px 10px; font-size: 11px; color: rgba(200, 215, 240, 0.5);
+}
+.nge-seg-folder-new { color: #f5d142 !important; border-color: rgba(245, 209, 66, 0.35) !important; }
+.nge-seg-folder-new:hover { background: rgba(245, 209, 66, 0.12) !important; }
+.neuroglancer-segment-list-status.nge-folder-drop-target {
+  box-shadow: inset 0 0 0 2px rgba(245, 209, 66, 0.8);
+  background: rgba(245, 209, 66, 0.12) !important;
+}
+.nge-seg-list-group--folder > .neuroglancer-segment-list-status { border-top: 1px solid rgba(245, 209, 66, 0.2); }
+
+/* ── Render tab: the bounding box ─────────────────────────────────────────── */
+.nge-bounds-control { display: flex; align-items: center; gap: 8px; }
+.nge-bounds-control-inputs { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.nge-bounds-control .neuroglancer-color-widget { width: 34px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; }
+
+/* nested folders step in; the colour swatch on a folder heading */
+.nge-seg-list-group--folder > .neuroglancer-segment-list-status { margin-left: calc(var(--nge-folder-depth, 0) * 14px) !important; }
+.nge-seg-list-group--folder > .nge-seg-list--folder { margin-left: calc(10px + var(--nge-folder-depth, 0) * 14px) !important; }
+.nge-seg-list-heading--folder[draggable="true"] { cursor: grab; }
+.nge-seg-folder-color {
+  width: 14px; height: 14px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%; overflow: hidden; background: none; cursor: pointer; flex: none; margin: 0 3px;
+}
+.nge-seg-folder-color::-webkit-color-swatch-wrapper { padding: 0; }
+.nge-seg-folder-color::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+/* the batch bar over the list while cells are picked */
+.nge-pick-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 6px 8px; margin: 4px 0;
+  border: 1px solid rgba(124, 255, 178, 0.35); border-radius: 6px;
+  background: rgba(124, 255, 178, 0.07);
+  font-family: Inter, system-ui, sans-serif; font-size: 12px;
+}
+.nge-pick-count { color: #7cffb2; font-weight: 600; margin-right: 2px; }
+.nge-pick-move, .nge-pick-btn {
+  background: rgba(10, 15, 30, 0.9); color: rgba(220, 230, 245, 0.95);
+  border: 1px solid rgba(140, 180, 235, 0.3); border-radius: 5px;
+  font: inherit; font-size: 12px; padding: 2px 7px; cursor: pointer;
+}
+.nge-pick-move option { background: #0b1222; color: #e6eefc; }
+.nge-pick-btn:hover, .nge-pick-move:hover { border-color: rgba(140, 180, 235, 0.7); }
+.nge-pick-remove:hover { border-color: #e06060; color: #ffb3b3; }
+.nge-pick-clear { margin-left: auto; }
+.nge-pick-color { width: 22px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; }
+
+/* folder headings: the name gets the room; copy buttons are left to the
+   rows and the batch bar; the other icons come on hover */
+.nge-seg-list-heading--folder > .nge-seg-copy-all,
+.nge-seg-list-heading--folder > .nge-seg-copy-visible { display: none !important; }
+.nge-seg-list-heading--folder .nge-seg-folder-name { flex: 1 1 auto; min-width: 40px; max-width: none; }
+.nge-seg-list-heading--folder .neuroglancer-segment-list-status-message { flex: none; }
+@media (hover: hover) {
+  .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon,
+  .nge-seg-list-heading--folder:not(:hover) .nge-seg-list-all-toggle { display: none !important; }
+}
+.nge-seg-folder-icon:first-of-type { margin-left: 0; }
