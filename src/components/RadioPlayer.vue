@@ -249,7 +249,32 @@ const label = computed(() => on.value
 const dock = ref(0);
 let dockTimer = 0;
 const DOCKED = ['.neuroglancer-side-panel-column', '.neuroglancer-side-panel', '#nge-lb-modal .nge-overlay', '.nge-lb-modal .nge-overlay'];
+// Things that can sit in the bottom right corner, under the button.
+const UNDER = ['label.perspective-panel-show-slice-views', '#statusContainer > li'];
+const lift = ref(0);
+const base = ref(6);
+function measureLift() {
+  const H = window.innerHeight;
+  const me = rootEl.value?.getBoundingClientRect();
+  if (!me || !me.width) return;
+  // The coordinates box's own distance from the bottom, so the two share a line.
+  const coords = document.querySelector<HTMLElement>('.neuroglancer-position-widget')?.getBoundingClientRect();
+  const b = coords && coords.height > 0 && H - coords.bottom < 60 ? Math.max(4, Math.round(H - coords.bottom)) : 6;
+  if (b !== base.value) base.value = b;
+  let need = 0;
+  for (const sel of UNDER) {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue;
+      // Under the button: overlapping it side to side, near the bottom.
+      if (r.right <= me.left || r.left >= me.right || H - r.bottom > 70) continue;
+      need = Math.max(need, Math.round(H - r.top + 6 - b));
+    }
+  }
+  if (need !== lift.value) lift.value = need;
+}
 function measureDock() {
+  measureLift();
   const W = window.innerWidth, H = window.innerHeight;
   let d = 0;
   for (const sel of DOCKED) {
@@ -312,7 +337,7 @@ watch(() => prefsStore.prefs.radio, r => {
 <template>
   <Teleport to="body">
     <div ref="rootEl" class="nge-radio" :class="{ 'nge-radio--on': on, 'nge-radio--playing': playing, 'nge-radio--open': expanded, 'holo-on': expanded }"
-         :style="{ '--nge-radio-dock': dock + 'px' }"
+         :style="{ '--nge-radio-dock': dock + 'px', '--nge-radio-lift': lift + 'px', '--nge-radio-base': base + 'px' }"
          @pointerenter="hovering = true; expanded = true" @pointerleave="onLeave" @focusin="onFocusIn" @focusout="onFocusOut"
          @keydown.esc="expanded = false" @wheel="onWheel">
       <div class="nge-radio-tray" :aria-hidden="!expanded">
@@ -351,7 +376,11 @@ watch(() => prefsStore.prefs.radio, r => {
   /* Left of anything docked on the right edge; above the 3D view's "Sections"
      tick box, neuroglancer's status bar, and the cut and merge bar. */
   right: calc(8px + var(--nge-radio-dock, 0px));
-  bottom: calc(34px + var(--nge-bottom-bar, 0px));
+  /* On the same line as the coordinates box at the bottom left (Ames
+     2026-10-14: "why this height?"). It rises only while something is
+     actually under it: the 3D view's "Sections" tick box, a status message
+     (measured, --nge-radio-lift), or the cut and merge bar. */
+  bottom: calc(var(--nge-radio-base, 6px) + var(--nge-radio-lift, 0px) + var(--nge-bottom-bar, 0px));
   z-index: 900;
   display: flex;
   align-items: center;
