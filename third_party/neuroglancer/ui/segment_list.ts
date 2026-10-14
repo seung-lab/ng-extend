@@ -42,14 +42,13 @@ import {clampToInterval, computeInvlerp, dataTypeCompare, DataTypeInterval, data
 import {CdfController, getUpdatedRangeAndWindowParameters, RangeAndWindowIntervals} from 'neuroglancer/widget/invlerp';
 import {makeToolButton} from 'neuroglancer/ui/tool';
 import {ANNOTATE_MERGE_SEGMENTS_TOOL_ID, ANNOTATE_SPLIT_SEGMENTS_TOOL_ID} from 'neuroglancer/ui/segment_split_merge_tools';
-import {SELECT_SEGMENTS_TOOLS_ID} from 'neuroglancer/ui/segment_select_tools';
 import {makeEyeButton} from 'neuroglancer/widget/eye_button';
 import svg_bin from 'ikonate/icons/bin.svg';
 import svg_plus from 'ikonate/icons/plus.svg';
 import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
-import {pickedSegments, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
+import {openColorPalette, pickedSegments, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
 
@@ -1203,24 +1202,21 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       const f = folder();
       if (f) folders.setCollapsed(f.id, !f.collapsed);
     });
-    const swatch = document.createElement('input');
-    swatch.type = 'color';
+    // The folder's colour: one click on the dot, one on a colour, and every
+    // cell in the folder (and the folders inside it) takes it.
+    const swatch = document.createElement('button');
     swatch.className = 'nge-seg-folder-color';
-    swatch.title = 'Folder colour. Pick one to give every cell in this folder that colour.';
-    // The colour goes on as it is picked, not only when the picker closes
-    // (some browsers send `change` only then).
-    let lastColor = '';
-    const applyColor = () => {
+    swatch.title = 'Recolour every cell in this folder';
+    swatch.addEventListener('click', event => {
+      event.stopPropagation();
       const f = folder();
-      if (!f || swatch.value === lastColor) return;
-      lastColor = swatch.value;
-      actions?.recolor(folders.cellsIn(f.id), swatch.value);
-    };
-    swatch.addEventListener('input', applyColor);
-    swatch.addEventListener('change', () => {
-      applyColor();
-      const f = folder();
-      if (f && f.color !== swatch.value) folders.setColor(f.id, swatch.value);
+      if (!f) return;
+      openColorPalette(swatch, f.color, hex => {
+        const cur = folder();
+        if (!cur) return;
+        actions?.recolor(folders.cellsIn(cur.id), hex);
+        if (cur.color !== hex) folders.setColor(cur.id, hex);
+      }, `Colour for ${f.name}`);
     });
     heading.prepend(caret, swatch);
     const name = document.createElement('span');
@@ -1290,7 +1286,7 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       if (!f) return;
       caret.textContent = f.collapsed ? '\u25b8' : '\u25be';
       if (name.contentEditable !== 'true') name.textContent = f.name;
-      if (document.activeElement !== swatch) swatch.value = f.color ?? '#8cb4eb';
+      swatch.style.background = f.color ?? '#8cb4eb';
       this.element.style.setProperty('--nge-folder-color', f.color ?? '#8cb4eb');
       this.element.classList.toggle('nge-seg-folder--collapsed', !!f.collapsed);
       const depth = folders.ordered().find(x => x.folder.id === f.id)?.depth ?? 0;
@@ -1526,12 +1522,8 @@ export class SegmentDisplayTab extends Tab {
             .element);
 
 
-    const toolbox = document.createElement('div');
-    toolbox.className = 'neuroglancer-segmentation-toolbox';
-    toolbox.appendChild(makeToolButton(
-        this, layer.toolBinder,
-        {toolJson: SELECT_SEGMENTS_TOOLS_ID, label: 'Select', title: 'Select/Deselect segments'}));
-    element.appendChild(toolbox);
+    // nge: the Select tool is in the Render tab, to give the list the room
+    // (Ames 2026-10-14).
 
     const queryElement = document.createElement('input');
     queryElement.classList.add('neuroglancer-segment-list-query');
@@ -1711,13 +1703,14 @@ export class SegmentDisplayTab extends Tab {
                     }
                     return out;
                   };
-                  const recolorPicked = document.createElement('input');
-                  recolorPicked.type = 'color';
-                  recolorPicked.className = 'nge-pick-color';
+                  const recolorPicked = document.createElement('button');
+                  recolorPicked.className = 'nge-pick-btn nge-pick-recolor';
+                  recolorPicked.textContent = 'Colour';
                   recolorPicked.title = 'Give the picked cells one colour';
-                  recolorPicked.value = '#7cffb2';
-                  recolorPicked.addEventListener('change', () => {
-                    sectionActions.recolor(pickedIds().map(id => id.toString()), recolorPicked.value);
+                  recolorPicked.addEventListener('click', () => {
+                    openColorPalette(recolorPicked, undefined, hex => {
+                      sectionActions.recolor(pickedIds().map(id => id.toString()), hex);
+                    }, 'Colour for the picked cells');
                   });
                   bar.append(
                       barCount, moveTo,

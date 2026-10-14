@@ -194,7 +194,7 @@ export class SegmentFolders {
   }
 }
 
-const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#e06060'];
+export const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#e06060'];
 
 /**
  * When a cell's ID is replaced (an out of date ID updated to its current
@@ -236,6 +236,64 @@ export function followReplacements(
       Promise.resolve().then(flush);
     }
   });
+}
+
+/**
+ * A small palette under a colour dot (Ames 2026-10-14: "currently I have to
+ * move the color to make it recolor them"; the browser's picker only acts
+ * when the colour changes). One click on a colour, the current one too,
+ * applies it; Custom opens the full picker, which applies as it moves.
+ */
+export function openColorPalette(
+    anchor: HTMLElement, current: string|undefined, onPick: (hex: string) => void,
+    title = 'Colour') {
+  document.querySelector('.nge-color-palette')?.remove();
+  const pop = document.createElement('div');
+  pop.className = 'nge-color-palette';
+  const head = document.createElement('div');
+  head.className = 'nge-color-palette-title';
+  head.textContent = title;
+  pop.appendChild(head);
+  const grid = document.createElement('div');
+  grid.className = 'nge-color-palette-grid';
+  const close = () => {
+    pop.remove();
+    document.removeEventListener('mousedown', outside, true);
+    document.removeEventListener('keydown', esc, true);
+  };
+  for (const c of FOLDER_COLORS) {
+    const b = document.createElement('button');
+    b.className = 'nge-color-palette-chip' + (current && c.toLowerCase() === current.toLowerCase() ? ' nge-current' : '');
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener('click', () => { onPick(c); close(); });
+    grid.appendChild(b);
+  }
+  pop.appendChild(grid);
+  const custom = document.createElement('label');
+  custom.className = 'nge-color-palette-custom';
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = current && /^#[0-9a-f]{6}$/i.test(current) ? current : '#8cb4eb';
+  input.addEventListener('input', () => onPick(input.value));
+  input.addEventListener('change', () => { onPick(input.value); close(); });
+  custom.append(input, document.createTextNode(' Custom\u2026'));
+  pop.appendChild(custom);
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect();
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left))}px`;
+  pop.style.top = `${r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6}px`;
+  const outside = (e: MouseEvent) => {
+    if (!pop.contains(e.target as Node) && e.target !== anchor) close();
+  };
+  const esc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+  };
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true);
+    document.addEventListener('keydown', esc, true);
+  }, 0);
 }
 
 function newFolderId() {

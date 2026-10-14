@@ -24,6 +24,8 @@ import {makeMaximizeButton} from 'neuroglancer/widget/maximize_button';
 import {ShaderCodeWidget} from 'neuroglancer/widget/shader_code_widget';
 import {ShaderControls} from 'neuroglancer/widget/shader_controls';
 import {Tab} from 'neuroglancer/widget/tab_view';
+import {makeToolButton} from 'neuroglancer/ui/tool';
+import {SELECT_SEGMENTS_TOOLS_ID} from 'neuroglancer/ui/segment_select_tools';
 import {ColorWidget} from 'neuroglancer/widget/color';
 import {vec3} from 'neuroglancer/util/geom';
 
@@ -40,6 +42,17 @@ export class DisplayOptionsTab extends Tab {
     super();
     const {element} = this;
     element.classList.add('neuroglancer-segmentation-rendering-tab');
+
+    // nge: the Select tool, moved here from the Seg tab (Ames 2026-10-14).
+    {
+      const toolbox = document.createElement('div');
+      toolbox.className = 'neuroglancer-segmentation-toolbox nge-render-select-tool';
+      toolbox.appendChild(makeToolButton(this, layer.toolBinder, {
+        toolJson: SELECT_SEGMENTS_TOOLS_ID, label: 'Select',
+        title: 'Select: turn it on, then drag across the 2D view to add every cell you pass over. Alt+drag takes them out.',
+      }));
+      element.appendChild(toolbox);
+    }
 
     // Linked segmentation control
     {
