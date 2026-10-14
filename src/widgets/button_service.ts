@@ -1,6 +1,7 @@
 import { explainCellType } from '../data/cell_type_glossary';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {Uint64} from 'neuroglancer/util/uint64';
+import {segmentLabels} from 'neuroglancer/ui/nge_pasted_segments';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
@@ -213,6 +214,8 @@ export class ButtonService {
       : (status?.classificationSystem || '');
     if (idEl) {
       const segId = (idEl.textContent || '').trim();
+      // The Seg panel's box finds cells by this name.
+      if (label) segmentLabels.set(segId, label); else segmentLabels.delete(segId);
       if (label) {
         idEl.dataset.ngeLabel = label;
         // Abbreviations written out (Ames: "hover tips to write out acronyms").
@@ -1164,6 +1167,35 @@ export class ButtonService {
       if (!segLayer) return;
 
       const segId = Uint64.parseString(segIdStr);
+
+      // A hidden cell has no mesh loaded, so there is nowhere to go yet and
+      // the jump only said "No position information loaded" (Ames
+      // 2026-10-14). Show it, wait for its mesh, then go.
+      const positionNow = () => {
+        for (const layer of (segLayer.renderLayers || []) as any[]) {
+          const pos = layer?.getObjectPosition?.(segId);
+          if (pos !== undefined) return true;
+        }
+        return false;
+      };
+      if (!positionNow()) {
+        const group = segLayer.displayState?.segmentationGroupState?.value;
+        if (group && !group.visibleSegments.has(segId)) {
+          group.selectedSegments.add(segId);
+          group.visibleSegments.add(segId);
+        }
+        let tries = 0;
+        const wait = () => {
+          if (positionNow() || ++tries > 30) {
+            segLayer.moveToSegment?.(segId);
+            this._bloomSegment(segIdStr);
+            return;
+          }
+          setTimeout(wait, 300);
+        };
+        setTimeout(wait, 300);
+        return;
+      }
 
       // Use neuroglancer's built-in moveToSegment — it walks render layers,
       // calls getObjectPosition on the first MultiscaleMeshLayer that has

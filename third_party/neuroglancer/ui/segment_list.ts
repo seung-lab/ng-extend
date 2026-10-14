@@ -47,7 +47,8 @@ import {makeEyeButton} from 'neuroglancer/widget/eye_button';
 import svg_bin from 'ikonate/icons/bin.svg';
 import svg_plus from 'ikonate/icons/plus.svg';
 import {makeIcon} from 'neuroglancer/widget/icon';
-import {addPastedSegments, clearPastedSegments, getPastedSegments, parsePastedIds} from 'neuroglancer/ui/nge_pasted_segments';
+import {addPastedSegments, clearPastedSegments, getPastedSegments, parseCoordinates, parsePastedIds, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
+import {StatusMessage} from 'neuroglancer/status';
 
 const tempUint64 = new Uint64();
 
@@ -91,11 +92,16 @@ class StarredSegmentsListSource extends SegmentListSource {
 
   constructor(
       public segmentationDisplayState: SegmentationDisplayState,
-      public parentElement: HTMLElement, protected pastedOnly?: boolean) {
+      public parentElement: HTMLElement, protected pastedOnly?: boolean,
+      protected filterText?: WatchableValueInterface<string>) {
     super(segmentationDisplayState, parentElement);
     this.update();
     const group = segmentationDisplayState.segmentationGroupState.value;
     this.registerDisposer(group.selectedSegments.changed.add(this.debouncedUpdate));
+    // nge: words in the box narrow the cells listed, by name or ID.
+    if (filterText !== undefined) {
+      this.registerDisposer(filterText.changed.add(this.debouncedUpdate));
+    }
     // nge: the pasted cells are listed on their own, above the rest.
     this.registerDisposer(getPastedSegments(group).changed.add(this.debouncedUpdate));
   }
@@ -105,17 +111,18 @@ class StarredSegmentsListSource extends SegmentListSource {
   segmentsHere(): Uint64[] {
     const group = this.segmentationDisplayState.segmentationGroupState.value;
     const pasted = getPastedSegments(group).ids;
+    const filter = this.filterText?.value ?? '';
+    const keep = (id: Uint64) => !filter || segmentMatchesFilter(id.toString(), filter);
     if (this.pastedOnly) {
       const out: Uint64[] = [];
       for (const s of pasted) {
         const id = Uint64.parseString(s);
-        if (group.selectedSegments.has(id)) out.push(id);
+        if (group.selectedSegments.has(id) && keep(id)) out.push(id);
       }
       return out;
     }
-    if (!pasted.length) return [...group.selectedSegments];
     const skip = new Set(pasted);
-    return [...group.selectedSegments].filter(id => !skip.has(id.toString()));
+    return [...group.selectedSegments].filter(id => !skip.has(id.toString()) && keep(id));
   }
 
   update() {
@@ -1132,6 +1139,17 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
       segmentQuery.value = '';
     };
     const addIdsFrom = (text: string) => {
+      // Three short numbers are a place: go there.
+      const place = parseCoordinates(text);
+      if (place !== undefined) {
+        const viewer = (window as any)['viewer'];
+        if (viewer) {
+          viewer.navigationState.position.value = Float32Array.from(place);
+          StatusMessage.showTemporaryMessage(`Moved to ${place.join(', ')}`);
+        }
+        clearQuery();
+        return true;
+      }
       const ids = parsePastedIds(text);
       if (ids === undefined) return false;
       addPastedSegments(group, ids);
@@ -1142,7 +1160,7 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
       const text = event.clipboardData?.getData('text/plain') ?? '';
       const whole = queryElement.value.slice(0, queryElement.selectionStart ?? 0) + text +
           queryElement.value.slice(queryElement.selectionEnd ?? queryElement.value.length);
-      if (parsePastedIds(whole) === undefined) return;
+      if (parseCoordinates(whole) === undefined && parsePastedIds(whole) === undefined) return;
       event.preventDefault();
       addIdsFrom(whole);
     });
@@ -1282,7 +1300,7 @@ export class SegmentDisplayTab extends Tab {
     queryElement.autocomplete = 'off';
     queryElement.title = keyMap.describe();
     queryElement.spellcheck = false;
-    queryElement.placeholder = 'Enter ID, name prefix or /regexp';
+    queryElement.placeholder = 'Paste IDs or coordinates, or find a cell by name';
     this.registerDisposer(observeWatchable(q => {
       queryElement.value = q;
     }, segmentQuery));
@@ -1305,9 +1323,9 @@ export class SegmentDisplayTab extends Tab {
                   const listSource = context.registerDisposer(new SegmentQueryListSource(
                       segmentQuery, segmentPropertyMap, layer.displayState, parent));
                   const selectedSegmentsListSource = context.registerDisposer(
-                      new StarredSegmentsListSource(layer.displayState, parent));
+                      new StarredSegmentsListSource(layer.displayState, parent, false, segmentQuery));
                   const pastedListSource = context.registerDisposer(
-                      new StarredSegmentsListSource(layer.displayState, parent, true));
+                      new StarredSegmentsListSource(layer.displayState, parent, true, segmentQuery));
                   const pastedList = context.registerDisposer(new VirtualList(
                       {source: pastedListSource, horizontalScroll: true, keepRowsOnSplice: true}));
                   const list = context.registerDisposer(
@@ -1339,11 +1357,16 @@ export class SegmentDisplayTab extends Tab {
                   }));
 
                   const updateListDisplayState = () => {
-                    const showQueryResultsList =
+                    // nge: words in the box narrow the lists below by name; the
+                    // layer's own search shows only where the layer has names
+                    // of its own to search.
+                    const showQueryResultsList = segmentPropertyMap !== undefined &&
                         (listSource.query.value !== '' || listSource.numMatches > 0);
                     const showPastedList = pastedListSource.length > 0;
                     const showStarredSegmentsList = selectedSegmentsListSource.length > 0 ||
                         (!showQueryResultsList && !showPastedList);
+                    selectedSegmentsList.element.dataset.ngeNoMatch =
+                        String(selectedSegmentsListSource.length === 0 && segmentQuery.value.trim() !== '');
                     segList.element.style.display = showQueryResultsList ? 'contents' : 'none';
                     segListPasted.element.style.display = showPastedList ? 'contents' : 'none';
                     segList2.element.style.display = showStarredSegmentsList ? 'contents' : 'none';
