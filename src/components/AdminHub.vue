@@ -3614,6 +3614,34 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 @media (max-width: 1100px) {
   .nge-triage-board .nge-triage-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
 }
+/* Phones (Ames 2026-10-14: "This page needs a mobile pass"). The board
+   scrolls as one page; the categories stack, each as wide as the screen; a
+   folded one is a single line to tap instead of a rail on its side. */
+@media (max-width: 700px) {
+  .nge-triage-board { overflow-y: auto; overscroll-behavior: contain; padding: 12px 12px 24px; gap: 8px; -webkit-overflow-scrolling: touch; }
+  .nge-triage-board .nge-triage-cols {
+    display: flex !important; flex-direction: column; flex: 0 0 auto; min-height: auto; gap: 10px;
+  }
+  .nge-triage-board .nge-triage-col { flex: 0 0 auto; overflow: visible; min-height: 0; }
+  .nge-triage-board .nge-triage-col:not(.nge-triage-col--folded) { grid-template-columns: minmax(0, 1fr); }
+  .nge-triage-board .nge-triage-group { position: static; }
+  .nge-triage-board .nge-triage-col--folded .nge-triage-group {
+    writing-mode: horizontal-tb; height: auto; padding: 11px 12px; justify-content: flex-start;
+  }
+  .nge-triage-board .nge-triage-col--folded .nge-triage-group-count { margin-left: auto; }
+  /* The score panel: two stats to a line, the mascot smaller beside the counts. */
+  .nge-triage-board .nge-triage-score { gap: 8px; padding: 10px; }
+  .nge-triage-board .nge-triage-score-item { box-sizing: border-box; flex: 1 1 calc(50% - 8px); min-width: 0; padding: 7px 9px; gap: 7px; white-space: normal; }
+  .nge-triage-board .nge-triage-score-item b { font-size: 20px; }
+  .nge-hud-level { flex: 1 1 100%; }
+  .nge-hud-level-text { min-width: 0; flex: 1; }
+  .nge-hud-nurro { flex: 0 0 84px; min-height: 52px; }
+  .nge-hud-nurro img { height: 96px; margin-top: -48px; }
+  .nge-triage-board .nge-admin-hint { font-size: 12.5px; }
+  .nge-triage-search { flex: 1 1 100%; min-width: 0; }
+  /* An opened card: its buttons a comfortable size to tap. */
+  .nge-triage-board .nge-triage-card--selected .nge-admin-action-btn { min-height: 38px; }
+}
 .nge-triage-discard-btn { color: #d79a9a; border-color: rgba(255, 120, 120, 0.3); }
 .nge-triage-discard-btn:hover:not(:disabled) { background: rgba(255, 90, 90, 0.12); color: #ffb3b3; }
 .nge-triage-claude { flex-wrap: wrap; }
