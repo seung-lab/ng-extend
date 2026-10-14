@@ -2434,7 +2434,7 @@ function practiceWhen(iso: string | null) {
           </label>
           <button class="nge-admin-action-btn" @click="loadTriage" :disabled="triageLoading">↻ Refresh</button>
         </div>
-        <div class="nge-admin-hint">
+        <div class="nge-admin-hint nge-triage-howto">
           The triage agent reads every incoming report and proposes an action.
           Nothing happens until you approve it, here or in Slack; both show the
           same list. Approving "Send a message" delivers the text to the
@@ -3613,6 +3613,33 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light :focus-visible { outline: 2px solid #2f6fd6; outline-offset: 2px; }
 @media (max-width: 1100px) {
   .nge-triage-board .nge-triage-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+}
+/* Laptops (Ames 2026-10-14: "top bar is too tall vertically on laptop"):
+   the score panel is one compact row, so the columns start higher. */
+@media (min-width: 701px) {
+  .nge-triage-board { gap: 8px; padding-top: 12px; }
+  .nge-triage-board .nge-triage-score { flex-wrap: nowrap; align-items: center; gap: 8px; padding: 6px 10px; }
+  .nge-triage-board .nge-triage-score-item { padding: 4px 10px 4px 8px; gap: 6px; border-radius: 11px; flex: 0 1 auto; min-width: 0; }
+  .nge-triage-board .nge-triage-score-item b { font-size: 20px; }
+  .nge-triage-board .nge-triage-score-icon { font-size: 16px; }
+  .nge-triage-board .nge-hud-ring { transform: scale(0.82); margin: -6px; }
+  .nge-triage-board .nge-hud-level-text { min-width: 120px; }
+  .nge-triage-board .nge-hud-spark { margin-left: auto; }
+  .nge-triage-board .nge-hud-spark-bars { height: 26px; }
+  .nge-triage-board .nge-hud-nurro { flex: 0 0 70px; min-height: 44px; order: 99; }
+  .nge-triage-board .nge-hud-nurro img { height: 70px; margin-top: -35px; }
+}
+/* Not much room: commits and deploys make way first, then the 14 day chart
+   and Nurro; the paragraph on how the board works is left out on short
+   screens. All of it is back on a big screen. */
+@media (min-width: 701px) and (max-width: 1500px) {
+  .nge-triage-board .nge-hud-repo { display: none; }
+}
+@media (min-width: 701px) and (max-width: 1150px) {
+  .nge-triage-board .nge-hud-spark, .nge-triage-board .nge-hud-nurro { display: none; }
+}
+@media (min-width: 701px) and (max-height: 1000px) {
+  .nge-triage-board .nge-triage-howto { display: none; }
 }
 /* Phones (Ames 2026-10-14: "This page needs a mobile pass"). The board
    scrolls as one page; the categories stack, each as wide as the screen; a
