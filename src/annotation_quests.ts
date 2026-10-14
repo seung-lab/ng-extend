@@ -12,6 +12,7 @@
  */
 import { reactive } from 'vue';
 import { functionUrl } from './functions_base';
+import { supabase } from './supabase';
 import { makeLayer } from 'neuroglancer/layer';
 import { parseRGBColorSpecification } from 'neuroglancer/util/color';
 
@@ -231,4 +232,165 @@ export function annotationCountInView(): number {
     return layers.filter(l => l && l.type === 'annotation' && Array.isArray(l.annotations))
       .reduce((m, l) => m + l.annotations.length, 0);
   } catch { return 0; }
+}
+
+// ── The quest being worked on, and its saved work (2026-10-14) ───────────
+// A player's report: "It's hard to tell which quest you are currently working
+// on because there's no association between your cell ID and the Quest name.
+// If you lay down points and then reopen the Quest you are on it will remove
+// your work. Can we have it indicate which quest is currently active, and
+// also be able to save the work on your current quest (like BCs have)?"
+// Claimed cells keep a view per claim (CellLibraryPanel.vue, "Each claim
+// keeps its own view"); quests now do the same:
+//   * The active quest is the one last claimed or opened, kept per browser.
+//   * Open on the active quest, with its layers on screen, only goes to the
+//     cell: nothing is reloaded, so nothing placed is lost.
+//   * Each quest cell's view is saved to the player's own private saved views
+//     (user_views, the table "Pick up where you left off" uses) under the key
+//     quest.<quest>.<cell>, which the data gateway already accepts. It is
+//     saved when its annotations change (not on every camera move), before
+//     another quest is opened, before Submit, and on Save.
+//   * Open brings a cell's saved view back before the lab's Start Link.
+
+export interface ActiveQuest { segmentId: string; index: string; label: string }
+const ACTIVE_KEY = 'nge-quest-active';
+/** Which quest this browser tab has on screen: set when one is opened, so a
+ *  reload of the same tab still knows (the view itself is in the address). */
+const ON_SCREEN_KEY = 'nge-quest-on-screen';
+const WORK_PREFIX = 'quest.' + QUEST_KEY + '.';
+const MAX_WORK_BYTES = 240 * 1024;  // the gateway's own limit for a saved view
+const WORK_QUIET_MS = 4000;         // save this long after the last change
+const WORK_MIN_GAP_MS = 15000;      // and at most this often
+
+function readActive(): ActiveQuest | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(ACTIVE_KEY) || 'null');
+    return v && typeof v.segmentId === 'string' && /^\d+$/.test(v.segmentId) ? v : null;
+  } catch { return null; }
+}
+
+export const questWork = reactive({
+  active: readActive() as ActiveQuest | null,
+  /** When each cell's saved work was last written (ms), as read or saved. */
+  savedAt: {} as Record<string, number>,
+  /** The cell being saved right now, or ''. */
+  saving: '',
+  /** The cell being opened right now, or ''. Nothing is saved meanwhile: the
+   *  view on screen may still be the quest before it. */
+  opening: '',
+  error: '',
+});
+
+const workKey = (segmentId: string) => WORK_PREFIX + segmentId;
+
+export function setActiveQuest(a: ActiveQuest | null) {
+  questWork.active = a;
+  questWork.error = '';
+  try { a ? localStorage.setItem(ACTIVE_KEY, JSON.stringify(a)) : localStorage.removeItem(ACTIVE_KEY); } catch { /* a private window */ }
+}
+export function markQuestOnScreen(segmentId: string | null) {
+  try { segmentId ? sessionStorage.setItem(ON_SCREEN_KEY, segmentId) : sessionStorage.removeItem(ON_SCREEN_KEY); } catch { /* a private window */ }
+}
+
+/** This cell's quest is the one on screen: it was opened in this tab and the
+ *  lab's layers are still in the view. */
+export function questOnScreen(segmentId: string): boolean {
+  try {
+    if (sessionStorage.getItem(ON_SCREEN_KEY) !== segmentId) return false;
+    const layers: any[] = (window as any)['viewer']?.layerManager?.managedLayers ?? [];
+    return layers.some(ml => (ml?.layer?.type === 'annotation' || ml?.layer?.constructor?.type === 'annotation') && /basal|centriole/i.test(ml.name));
+  } catch { return false; }
+}
+
+/** What has been placed: every local annotation layer's annotations. Camera
+ *  moves do not change it, so they do not cause a save. */
+function workSignature(): string {
+  try {
+    const parts: string[] = [];
+    for (const ml of (window as any)['viewer']?.layerManager?.managedLayers ?? []) {
+      const anns = ml?.layer?.localAnnotations?.toJSON?.();
+      if (Array.isArray(anns)) parts.push(ml.name + ':' + JSON.stringify(anns));
+    }
+    return parts.join('|');
+  } catch { return ''; }
+}
+let lastSavedSig = '';
+/** The work on screen counts as saved as it is (just opened, or just restored). */
+export function markQuestWorkClean() { lastSavedSig = workSignature(); }
+
+/** Save the view on screen as this cell's quest work. */
+export async function saveQuestWork(segmentId: string): Promise<boolean> {
+  const viewer: any = (window as any)['viewer'];
+  let state: any;
+  try { state = viewer?.state?.toJSON?.(); } catch { state = null; }
+  if (!state) return false;
+  if (JSON.stringify(state).length > MAX_WORK_BYTES) { questWork.error = 'This view is too large to save.'; return false; }
+  const sig = workSignature();
+  questWork.saving = segmentId;
+  try {
+    const { error } = await supabase.from('user_views').upsert({ dataset: workKey(segmentId), state }, { onConflict: 'user_id,dataset' });
+    if (error) throw new Error(error.message);
+    questWork.savedAt = { ...questWork.savedAt, [segmentId]: Date.now() };
+    questWork.error = '';
+    lastSavedSig = sig;
+    return true;
+  } catch (e: any) {
+    questWork.error = 'Your work could not be saved: ' + (e?.message || e);
+    return false;
+  } finally {
+    if (questWork.saving === segmentId) questWork.saving = '';
+  }
+}
+
+/** This cell's saved quest work, or null when there is none. */
+export async function loadQuestWork(segmentId: string): Promise<any | null> {
+  const { data, error } = await supabase.from('user_views').select('state,updated_at').eq('dataset', workKey(segmentId)).maybeSingle();
+  if (error) throw new Error(error.message);
+  const st = (data as any)?.state;
+  if (!st || typeof st !== 'object') return null;
+  const at = Date.parse((data as any)?.updated_at || '');
+  if (Number.isFinite(at)) questWork.savedAt = { ...questWork.savedAt, [segmentId]: at };
+  return st;
+}
+
+/** When each cell's work was saved, for the list: one read, no views. */
+export async function readSavedQuestWork(): Promise<void> {
+  try {
+    const { data, error } = await supabase.from('user_views').select('dataset,updated_at');
+    if (error || !Array.isArray(data)) return;
+    const next: Record<string, number> = {};
+    for (const row of data as any[]) {
+      if (typeof row?.dataset !== 'string' || !row.dataset.startsWith(WORK_PREFIX)) continue;
+      const at = Date.parse(row.updated_at || '');
+      if (Number.isFinite(at)) next[row.dataset.slice(WORK_PREFIX.length)] = at;
+    }
+    questWork.savedAt = { ...next, ...Object.fromEntries(Object.entries(questWork.savedAt).filter(([k, v]) => !next[k] || v > next[k])) };
+  } catch { /* the list still works without it */ }
+}
+
+/** Save the active quest's work a few seconds after its annotations change,
+ *  for as long as it is on screen. Started once, with the viewer (main.ts). */
+let watching = false;
+export function startQuestWorkWatch(viewer: any, userId: () => string | null) {
+  if (watching || !viewer?.state?.changed) return;
+  watching = true;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastSaveAt = 0;
+  const maybeSave = async () => {
+    timer = null;
+    const a = questWork.active;
+    if (!a || !userId() || !questOnScreen(a.segmentId) || questWork.saving || questWork.opening) return;
+    const sig = workSignature();
+    if (!sig || sig === lastSavedSig) return;
+    const wait = WORK_MIN_GAP_MS - (Date.now() - lastSaveAt);
+    if (wait > 0) { timer = setTimeout(maybeSave, wait); return; }
+    lastSaveAt = Date.now();
+    await saveQuestWork(a.segmentId);
+  };
+  viewer.state.changed.add(() => {
+    const a = questWork.active;
+    if (!a || !questOnScreen(a.segmentId)) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(maybeSave, WORK_QUIET_MS);
+  });
 }

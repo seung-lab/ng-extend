@@ -13,6 +13,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
+import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
+import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { mintShortStateLink } from '../util/state_link';
 import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
@@ -56,7 +58,13 @@ const done = computed(() => rows.value.filter(isDone).sort((a, b) => Number(isMi
 async function load() {
   loading.value = true;
   error.value = '';
-  try { const r = await listQuests(); rows.value = r.rows; if (r.you) you.value = r.you; }
+  try {
+    const r = await listQuests(); rows.value = r.rows; if (r.you) you.value = r.you;
+    void readSavedQuestWork();
+    // Submitted or released somewhere else: it is no longer the one being worked on.
+    const a = questWork.active;
+    if (a && rows.value.length && !mine.value.some(m => m.segmentId === a.segmentId)) setActiveQuest(null);
+  }
   catch (e: any) { error.value = e?.message || String(e); }
   finally { loading.value = false; }
 }
@@ -100,12 +108,75 @@ onUnmounted(() => {
   if (nudgeTimer) clearTimeout(nudgeTimer);
   if (nudgeOffTimer) clearTimeout(nudgeOffTimer);
 });
-function openCell(r: QuestRow) {
+/** The quest you are working on (a player's report, 2026-10-14: "Can we have
+ *  it indicate which quest is currently active"). */
+const isActive = (r: QuestRow) => questWork.active?.segmentId === r.segmentId;
+/** Go to the cell's soma, with nothing else changed. */
+function goToSoma(r: QuestRow) {
+  try {
+    const xyz = (r.soma.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+    if (xyz.length === 3) (window as any)['viewer'].navigationState.position.value = Float32Array.from(xyz);
+  } catch { /* the view stays where it is */ }
+}
+/** Open a quest cell to work on it (player report 2026-10-14: "If you lay
+ *  down points and then reopen the Quest you are on it will remove your
+ *  work"). The quest already on screen is not reloaded, only gone to. Another
+ *  quest on screen is saved first. A cell with saved work opens on it; one
+ *  without, on the lab's Start Link. */
+async function openCell(r: QuestRow) {
   current.value = r.segmentId;
-  const before = layerSnapshot();
-  if (!openStartLink(r.startLink)) { error.value = 'This cell has no start link in the sheet.'; return; }
-  // Once the link's own layers are in: the game's colours, plus the centerline layer.
-  void dressQuestLayers(before);
+  error.value = '';
+  if (isActive(r) && questOnScreen(r.segmentId)) {
+    goToSoma(r);
+    message.value = `You are on ${r.index || 'this cell'}. Your work is as you left it.`;
+    return;
+  }
+  const was = questWork.active;
+  if (was && was.segmentId !== r.segmentId && questOnScreen(was.segmentId)) {
+    const ok = await saveQuestWork(was.segmentId);
+    if (!ok && !window.confirm(`Your work on ${was.index || 'your current quest'} could not be saved. Open ${r.index || 'this cell'} anyway? Anything not saved would be lost.`)) return;
+  }
+  questWork.opening = r.segmentId;
+  try {
+    let saved: any = null;
+    try { saved = await loadQuestWork(r.segmentId); } catch (e: any) { console.warn('[quests] could not read saved work:', e); }
+    setActiveQuest({ segmentId: r.segmentId, index: r.index, label: label(r) });
+    markQuestOnScreen(r.segmentId);
+    const before = layerSnapshot();
+    if (saved) {
+      const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
+      try { (window as any)['viewer'].state.restoreState(saved); }
+      catch (e: any) { error.value = `Your saved work could not be opened: ${e?.message || e}`; return; }
+      restoreDisplayAfterLoad(snap);
+      message.value = `Your saved work on ${r.index || 'this cell'} is back.`;
+    } else if (!openStartLink(r.startLink)) {
+      error.value = 'This cell has no start link in the sheet.';
+      return;
+    }
+    // Once the layers are in: the game's colours, plus the centerline layer.
+    await dressQuestLayers(before);
+    markQuestWorkClean();
+  } finally {
+    questWork.opening = '';
+  }
+}
+/** Save now (the work is also saved as annotations are placed). */
+async function saveNow(r: QuestRow) {
+  error.value = '';
+  if (!questOnScreen(r.segmentId)) { error.value = `${r.index || 'This cell'} is not on screen. Press Open first.`; return; }
+  if (await saveQuestWork(r.segmentId)) message.value = `Your work on ${r.index || 'this cell'} is saved.`;
+}
+/** "Saved at 2:02 PM", or what is happening to it. */
+function savedLine(r: QuestRow): string {
+  if (questWork.saving === r.segmentId) return 'Saving your work…';
+  if (isActive(r) && questWork.error) return questWork.error;
+  const at = questWork.savedAt[r.segmentId];
+  if (at) {
+    const d = new Date(at);
+    const today = d.toDateString() === new Date().toDateString();
+    return 'Saved ' + (today ? 'at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'on ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' }));
+  }
+  return isActive(r) ? 'Not saved yet' : 'Yours to annotate';
 }
 /** Show only this cell and go to its soma (Ames 2026-10-13: "hide other
  *  segIDs in view and show only that one"). The layers stay as they are;
@@ -133,8 +204,8 @@ async function take(r: QuestRow) {
   current.value = r.segmentId;
   try {
     await claimQuest(r.segmentId);
+    await openCell(r);
     message.value = `${r.index || 'The cell'} is yours. Mark what you find in its layers, then press Submit.`;
-    openCell(r);
     await load();
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
@@ -144,6 +215,7 @@ async function letGo(r: QuestRow) {
   try {
     await releaseQuest(r.segmentId);
     if (open.value === r.segmentId) open.value = '';
+    if (isActive(r)) { setActiveQuest(null); markQuestOnScreen(null); }
     message.value = `${r.index || 'The cell'} is open for someone else.`;
     await load();
   } catch (e: any) { error.value = e?.message || String(e); }
@@ -185,12 +257,15 @@ async function send(r: QuestRow, e?: Event) {
     // The crosshairs may have moved since the check: check once more.
     await runCheck(r);
     if (!check.value.ok) throw new Error(check.value.message);
+    // The work is kept with the cell too, should it be needed again.
+    if (questOnScreen(r.segmentId)) await saveQuestWork(r.segmentId);
     // The share link is the view as it is now, with the annotation layers.
     const link = await mintShortStateLink();
     if (!link) throw new Error('A share link of this view could not be made. Sign in and try again.');
     const placed = points.value;
     await submitQuest(r.segmentId, { status: form.value.status, splitMerged: form.value.splitMerged, link, notes: form.value.notes });
     open.value = '';
+    if (isActive(r)) { setActiveQuest(null); markQuestOnScreen(null); }
     message.value = `${r.index || 'The cell'} is submitted. Thank you.`;
     await load();
     // The celebration: a toast with the counts, and confetti (AchievementToast.vue).
@@ -244,17 +319,21 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         <template v-if="mine.length">
           <div class="nge-aq-section">Yours</div>
           <template v-for="r in mine" :key="r.segmentId">
-            <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId }">
+            <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r) }">
               <div class="nge-aq-row-left">
                 <span class="nge-aq-pip nge-aq-pip--claimed"></span>
                 <div class="nge-aq-row-info">
-                  <div class="nge-aq-row-name">{{ label(r) }}</div>
-                  <div class="nge-aq-row-meta">Yours to annotate</div>
+                  <div class="nge-aq-row-name">{{ label(r) }}<span v-if="isActive(r)" class="nge-aq-active-pill" title="The quest you are working on">Active</span></div>
+                  <div class="nge-aq-row-meta nge-aq-cellid" title="This quest's cell, as the segment list shows it">Cell {{ r.segmentId }}</div>
+                  <div class="nge-aq-row-meta nge-aq-saved" :class="{ 'nge-aq-saved--bad': isActive(r) && !!questWork.error && questWork.saving !== r.segmentId }">
+                    <span>{{ savedLine(r) }}</span>
+                    <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save now</button>
+                  </div>
                 </div>
               </div>
               <div class="nge-aq-row-actions">
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
-                <button class="nge-aq-btn" @click="openCell(r)" title="Open this cell's start view, with its layers">Open</button>
+                <button class="nge-aq-btn" @click="openCell(r)" :title="isActive(r) ? 'Go to this cell. Your work stays as it is.' : 'Open this cell with your saved work, or its start view'">Open</button>
                 <button class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this quest: your answer and a share link of this view go to the sheet">Submit</button>
                 <button class="nge-aq-btn nge-aq-btn--release" :disabled="busy === r.segmentId" @click="letGo(r)" title="Take your name off this cell">Release</button>
               </div>
@@ -461,6 +540,17 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-row--current { background: rgba(0, 220, 160, 0.10); box-shadow: inset 3px 0 0 rgba(0, 230, 160, 0.9); }
 .nge-aq-row--current:hover { background: rgba(0, 220, 160, 0.14); }
 .nge-aq-row--dim { opacity: 0.65; }
+/* The quest being worked on: Highlight's green, the colour key's (player report 2026-10-14). */
+.nge-aq-row--active { background: rgba(124, 255, 178, 0.09); box-shadow: inset 3px 0 0 #7CFFB2; }
+.nge-aq-row--active:hover { background: rgba(124, 255, 178, 0.13); }
+.nge-aq-active-pill { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font: 700 11px/18px 'Inter', 'Roboto', sans-serif; letter-spacing: 0.04em; color: #08140e; background: #7CFFB2; vertical-align: 2px; }
+.nge-aq-cellid { font-family: 'JetBrains Mono', 'Consolas', monospace; color: #b4c8de; user-select: text; }
+.nge-aq-saved { display: flex; align-items: baseline; gap: 8px; color: #8fb3cf; }
+.nge-aq-saved > span { overflow: hidden; text-overflow: ellipsis; }
+.nge-aq-saved--bad { color: #ff9a9a; }
+.nge-aq-save { flex-shrink: 0; padding: 0; border: none; background: none; font: 600 13px 'Inter', 'Roboto', sans-serif; color: #7ecaff; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.nge-aq-save:hover { color: #d6efff; }
+.nge-aq-save:disabled { opacity: 0.5; cursor: default; }
 .nge-aq-row-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .nge-aq-pip { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #556; }
 .nge-aq-pip--available { background: #4a6; }

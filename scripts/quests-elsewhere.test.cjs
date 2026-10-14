@@ -10,6 +10,10 @@
 // with the fake token wedges the middleauth provider, so every middleauth
 // host is answered by a catch-all registered first.
 const path = require('path');
+const fs = require('fs');
+// The start view of Retina, as the config names it (it changes now and then).
+const CONFIG = fs.readFileSync(path.join(__dirname, '..', 'src', 'config.ts'), 'utf8');
+const RETINA_START = ((CONFIG.slice(CONFIG.indexOf("datastack:        'stroeh_mouse_retina'")).match(/defaultStateUrl:\s*'[^']*[/]nglstate[/]api[/]v1[/](\d+)'/) || [])[1]) || '';
 const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
 const CHROME = 'C:/Users/amyle/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe';
 const OUT = process.argv[2] || __dirname;
@@ -87,7 +91,7 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
     await ready();
     // (The address is rewritten once the view is in, so the read is what is checked.)
     await page.waitForFunction(() => window.viewer.layerManager.managedLayers.some(l => l.name === 'stroeh_mouse_retina'), null, { timeout: 40000 }).catch(() => {});
-    check('the start view of Retina was read from the state server', stateReads.length > 0 && stateReads.every(id => id === '5672815546073088'), stateReads);
+    check('the start view of Retina was read from the state server', !!RETINA_START && stateReads.length > 0 && stateReads.every(id => id === RETINA_START), stateReads);
     check('Retina is on screen', (await layers()).includes('stroeh_mouse_retina') && await dataLabel() === 'Data: Retina', { layers: await layers(), label: await dataLabel(), stateReads });
     const reopened = await page.waitForSelector('.nge-cl-panel', { timeout: 20000 }).then(() => true, () => false);
     check('the Cell Library comes back open by itself', reopened);

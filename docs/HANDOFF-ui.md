@@ -451,6 +451,40 @@ on `claude/annotation-quests`, not deployed.
   request (the share link included) hangs with no error. Stub every
   middleauth host with a catch-all registered first, and keep the
   segmentation server unreachable (abort), never 401.
+- **The active quest, and each quest's work kept** (a player's report,
+  2026-10-14: "hard to tell which quest you are currently working on ...
+  if you lay down points and then reopen the Quest you are on it will remove
+  your work ... save the work on your current quest (like BCs have)").
+  Claimed cells already keep a view per claim (`CellLibraryPanel.vue`, "Each
+  claim keeps its own view"); quests now do the same, in the
+  "active quest" section of `src/annotation_quests.ts`:
+  - The active quest is the one last claimed or opened, kept per browser
+    (`nge-quest-active` in localStorage). Its row has an **Active** pill in
+    Highlight green, and every row of yours shows its cell ID. Submit and
+    Release end it, and so does the list no longer showing it as yours.
+  - Which quest this tab has on screen is `nge-quest-on-screen` in
+    sessionStorage, so a reload of the tab still knows (the view itself is
+    in the address). `questOnScreen(cell)` is that, plus the lab's layers
+    still being in the view.
+  - **Open on the active quest, on screen, only goes to the soma.** Nothing
+    is reloaded. Another quest on screen is saved before a different one
+    opens. A cell with saved work opens on it (`viewer.state.restoreState`)
+    instead of the lab's Start Link.
+  - **The work is saved to the player's private saved views**, `user_views`
+    (the table "Pick up where you left off" uses), under the key
+    `quest.retina_cilia.<cell>`. The data gateway already accepted that key
+    (letters, digits, dots, underscores, 100 at most), so there was no
+    server change. It is saved 4 seconds after the annotations change (at
+    most every 15 seconds; camera moves do not count), before another quest
+    opens, before Submit, and on **Save now**. Nothing is saved while a quest
+    is being opened (`questWork.opening`), so the old view is never filed
+    under the new cell. The watcher starts with the viewer in `main.ts`.
+    Writes count against the gateway's 60 a minute per player.
+  - Saved work is kept after Submit and Release; it is the player's own.
+  Test: `scripts/quests-work.test.cjs` (21 checks on a retina build: the
+  cell IDs, Active, autosave of placed points, Open again keeps them, switching
+  saves the one left, coming back restores it without the Start Link, Save
+  now, a reload of the tab, Release).
 - **Off Retina the Quests tab names the dataset as the top bar does**
   (Ames 2026-10-13: "this should say Switch to Retina"): `questDatasetName`
   in `CellLibraryPanel.vue` is `datasetAbbrev(...)`, "Retina". The dataset's

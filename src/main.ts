@@ -1,4 +1,5 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
@@ -382,6 +383,8 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  // The active quest's annotations, saved to that quest cell as they change.
+  startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
   startImageLoadingHint(viewer);
   startLantern(viewer);
