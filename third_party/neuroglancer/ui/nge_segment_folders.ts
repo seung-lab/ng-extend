@@ -199,7 +199,7 @@ export class SegmentFolders {
   }
 }
 
-export const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#e06060'];
+export const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#ff2d2d'];
 
 /**
  * When a cell's ID is replaced (an out of date ID updated to its current
@@ -249,6 +249,23 @@ export function followReplacements(
  * when the colour changes). One click on a colour, the current one too,
  * applies it; Custom opens the full picker, which applies as it moves.
  */
+const SAVED_COLORS_KEY = 'nge-custom-colors';
+function savedColors(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(SAVED_COLORS_KEY) || '[]');
+    return Array.isArray(v) ? v.filter((c: unknown) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+function saveColor(hex: string) {
+  try {
+    const c = hex.toLowerCase();
+    const next = [c, ...savedColors().filter(x => x.toLowerCase() !== c)].slice(0, 8);
+    localStorage.setItem(SAVED_COLORS_KEY, JSON.stringify(next));
+  } catch { /* private window: not kept */ }
+}
+
 export function openColorPalette(
     anchor: HTMLElement, current: string|undefined, onPick: (hex: string) => void,
     title = 'Colour') {
@@ -275,13 +292,32 @@ export function openColorPalette(
     grid.appendChild(b);
   }
   pop.appendChild(grid);
+  // Colours picked with Custom are kept (the last 8, in this browser) and
+  // offered again here (Ames 2026-10-14).
+  const mine = savedColors().filter(c => !FOLDER_COLORS.includes(c));
+  if (mine.length) {
+    const label = document.createElement('div');
+    label.className = 'nge-color-palette-title nge-color-palette-mine';
+    label.textContent = 'Your colours';
+    const row = document.createElement('div');
+    row.className = 'nge-color-palette-grid';
+    for (const c of mine) {
+      const b = document.createElement('button');
+      b.className = 'nge-color-palette-chip' + (current && c.toLowerCase() === current.toLowerCase() ? ' nge-current' : '');
+      b.style.background = c;
+      b.title = c;
+      b.addEventListener('click', () => { onPick(c); close(); });
+      row.appendChild(b);
+    }
+    pop.append(label, row);
+  }
   const custom = document.createElement('label');
   custom.className = 'nge-color-palette-custom';
   const input = document.createElement('input');
   input.type = 'color';
   input.value = current && /^#[0-9a-f]{6}$/i.test(current) ? current : '#8cb4eb';
   input.addEventListener('input', () => onPick(input.value));
-  input.addEventListener('change', () => { onPick(input.value); close(); });
+  input.addEventListener('change', () => { onPick(input.value); saveColor(input.value); close(); });
   custom.append(input, document.createTextNode(' Custom\u2026'));
   pop.appendChild(custom);
   document.body.appendChild(pop);

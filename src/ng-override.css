@@ -1576,3 +1576,5 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 .nge-seg-list--folder[data-nge-empty="true"]::before,
 .neuroglancer-segment-list[data-nge-no-match="true"]::before { font-size: 12px !important; }
 .nge-pick-bar, .nge-pick-move, .nge-pick-btn, .nge-color-palette, .nge-color-palette-title { font-size: 12.5px !important; }
+
+.nge-color-palette-mine { margin-top: 8px; }
