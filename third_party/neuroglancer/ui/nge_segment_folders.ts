@@ -196,6 +196,48 @@ export class SegmentFolders {
 
 const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#e06060'];
 
+/**
+ * When a cell's ID is replaced (an out of date ID updated to its current
+ * pieces, a merge, a split), the new IDs take the old one's place: in its
+ * folder (Ames 2026-10-14: "shouldn't those pieces stay in the folder they
+ * were in?"). Every path that replaces an ID removes the old and adds the new
+ * in one go, so a removal and an addition in the same moment are a
+ * replacement; a cell added later on its own is not.
+ */
+export function followReplacements(
+    selectedSegments: {changed: {add(fn: (x: any, add: boolean) => void): () => void}},
+    folders: SegmentFolders, pasted?: () => {ids: string[], changed: NullarySignal}) {
+  let removed: string[] = [];
+  let added: string[] = [];
+  let pending = false;
+  const flush = () => {
+    pending = false;
+    const gone = removed, came = added;
+    removed = [];
+    added = [];
+    if (!gone.length || !came.length) return;
+    const fresh = came.filter(id => !gone.includes(id) && !folders.folderOf(id));
+    if (!fresh.length) return;
+    const home = gone.map(id => folders.folderOf(id)).find(f => f !== undefined);
+    if (home !== undefined) folders.move(fresh, home.id);
+    const p = pasted?.();
+    if (p && gone.some(id => p.ids.includes(id))) {
+      const at = Math.min(...gone.map(id => p.ids.indexOf(id)).filter(i => i >= 0));
+      p.ids = [...p.ids.slice(0, at), ...fresh.filter(id => !p.ids.includes(id)), ...p.ids.slice(at)];
+      p.changed.dispatch();
+    }
+  };
+  return selectedSegments.changed.add((x: any, add: boolean) => {
+    if (x == null) return;
+    const ids = (Array.isArray(x) ? x : [x]).map((u: any) => u.toString());
+    (add ? added : removed).push(...ids);
+    if (!pending) {
+      pending = true;
+      Promise.resolve().then(flush);
+    }
+  });
+}
+
 function newFolderId() {
   return 'f' + Math.random().toString(36).slice(2, 9);
 }

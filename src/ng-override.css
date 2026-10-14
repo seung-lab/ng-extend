@@ -1520,3 +1520,19 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 /* a folder never squeezes below its own rows (up to its cap): the panel
    scrolls instead, so headings never sit over a folder's cells */
 .nge-seg-list--folder, .nge-seg-list--pasted { flex: 0 0 auto !important; }
+
+/* + Folder in the panel's own blue, not yellow (Ames 2026-10-14) */
+.nge-seg-folder-new { color: rgba(170, 200, 240, 0.95) !important; border-color: rgba(140, 180, 235, 0.35) !important; }
+.nge-seg-folder-new:hover { background: rgba(74, 158, 255, 0.15) !important; color: #fff !important; }
+
+/* Copy and remove sit just left of the jump arrow, anchored to the row's
+   right end, so on hover they never cover the arrow, the eye or the Δ
+   (Ames 2026-10-14: "some overlap in the hover state so that I can't jump").
+   The arrow and the Δ keep together at the right. */
+.neuroglancer-segment-list-entry-sticky { position: static !important; }
+.neuroglancer-segment-list-entry .nge-jump-btn { margin-left: auto !important; }
+.neuroglancer-segment-list-entry .nge-lb-btn { margin-left: 4px !important; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container,
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { left: auto !important; top: 17px !important; }
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { right: 70px !important; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container { right: 94px !important; }

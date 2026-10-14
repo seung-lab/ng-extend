@@ -113,7 +113,49 @@ function flashRow(row: HTMLElement) {
   });
 }
 
+/** Unfold the folder holding the cell, and the folders around it, so its row
+ *  can be shown. True when something was unfolded. */
+function unfoldFoldersOf(segmentId: string): boolean {
+  const viewer = (window as any)['viewer'];
+  const folders = viewer?.selectedLayer?.layer?.layer?.ngeFolders;
+  if (!folders?.folderOf) return false;
+  let f = folders.folderOf(segmentId);
+  let changed = false;
+  for (let guard = 0; f && guard < 50; ++guard) {
+    if (f.collapsed) {
+      folders.setCollapsed(f.id, false);
+      changed = true;
+    }
+    f = f.parent ? folders.value.find((x: any) => x.id === f.parent) : undefined;
+  }
+  return changed;
+}
+
+/** The list (Pasted, a folder, or In view) whose cells include this one, and
+ *  where in it. */
+function listHolding(segmentId: string): {list: HTMLElement, idx: number} | null {
+  const lists = document.querySelectorAll<HTMLElement>(
+      '.neuroglancer-segment-list:not(.neuroglancer-preview-list)');
+  for (const list of Array.from(lists)) {
+    const vl = (list as any).__nge_virtualList;
+    const ids: any[] | undefined = vl?.source?.explicitSegments;
+    if (!ids || !vl.scrollItemIntoView) continue;
+    const idx = ids.findIndex(u => u.toString() === segmentId);
+    if (idx >= 0) return {list, idx};
+  }
+  return null;
+}
+
 function scrollListToSegment(segmentId: string): boolean {
+  // A cell in a folded folder has no row: unfold, then look on the next frames.
+  if (unfoldFoldersOf(segmentId)) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!scrollListToSegment(segmentId)) {
+        StatusMessage.showTemporaryMessage(`Segment ${segmentId} is not in your list.`, 2500);
+      }
+    }));
+    return true;
+  }
   // A segment can appear in multiple lists at once (query/preview + selected).
   // Prefer the row in the *selected* list (the one not flagged preview) since
   // that's the stable list users typically look at; if not found there, fall
@@ -141,7 +183,13 @@ function scrollListToSegment(segmentId: string): boolean {
       console.log('[nge-jump] not in selectedSegments either — bailing');
       return false;
     }
-    const list = scrollSelectedListToIndex(idx);
+    // The cell's own section (a folder, Pasted or In view), at its place there.
+    const holding = listHolding(segmentId);
+    if (holding) {
+      (holding.list as any).__nge_virtualList.scrollItemIntoView(holding.idx);
+      holding.list.scrollIntoView({block: 'nearest'});
+    }
+    const list = holding?.list ?? scrollSelectedListToIndex(idx);
     if (!list) return false;
     // Wait for NG's debounced re-render to land the new row, then flash it.
     findRowAndApply(segmentId, row => {
@@ -177,7 +225,7 @@ window.addEventListener('mousedown', (e: MouseEvent) => {
 
   if (!scrollListToSegment(segId)) {
     StatusMessage.showTemporaryMessage(
-        `Segment ${segId} is not in the current list — star it or add to selected first.`,
+        `Segment ${segId} is not in your list.`,
         2500);
   }
 }, /* capture */ true);

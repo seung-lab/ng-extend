@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import {FOLDERS_JSON_KEY, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
+import {FOLDERS_JSON_KEY, followReplacements, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
+import {getPastedSegments} from 'neuroglancer/ui/nge_pasted_segments';
 import 'neuroglancer/segmentation_user_layer.css';
 
 import {CoordinateTransformSpecification, emptyValidCoordinateSpace} from 'neuroglancer/coordinate_transform';
@@ -446,6 +447,11 @@ export class SegmentationUserLayer extends Base {
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
     this.ngeFolders.changed.add(this.specificationChanged.dispatch);
+    // nge: a replaced ID's new pieces stay where the old one was.
+    this.registerDisposer(registerNestedSync((context, group) => {
+      context.registerDisposer(followReplacements(
+          group.selectedSegments, this.ngeFolders, () => getPastedSegments(group)));
+    }, this.displayState.segmentationGroupState));
     this.registerDisposer(registerNestedSync((context, group) => {
       context.registerDisposer(group.specificationChanged.add(this.specificationChanged.dispatch));
       this.specificationChanged.dispatch();
