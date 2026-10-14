@@ -1065,7 +1065,7 @@ async function confirmSegJump() {
   const active = activeDatasetName();
   const needSwitch = !!target && (!active || canonicalDataset(p.dataset) !== canonicalDataset(active));
   if (needSwitch) {
-    const ok = await switchToDataset(target!);
+    const ok = await switchToDataset(target!, {forJump: true});
     if (ok) {
       // Let the new layers mount before moving the camera to the segment.
       setTimeout(() => loadSegment(p.segRef), 800);

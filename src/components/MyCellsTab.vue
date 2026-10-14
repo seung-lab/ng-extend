@@ -137,7 +137,7 @@ function ago(iso: string) {
 async function jump(g: Group, r: Row) {
   if (g.dataset !== current.value) {
     const ds = findDatasetByCanonical(g.dataset);
-    if (!ds || !(await switchToDataset(ds))) { error.value = `Could not switch to ${label(g.dataset)}.`; return; }
+    if (!ds || !(await switchToDataset(ds, {forJump: true}))) { error.value = `Could not switch to ${label(g.dataset)}.`; return; }
     await new Promise(res => setTimeout(res, 800));  // let the new layers mount
   }
   useCellHistoryStore().jumpToCell(r.segId, r.pos);

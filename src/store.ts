@@ -537,8 +537,14 @@ export const useLayersStore = defineStore('layers', () => {
   }
 
   /** keepHash: load in place, never redirect to a curated or start view (the
-   *  boot fallback, when the address already holds the player's own view). */
-  async function selectLayers(layers: any[], opts: {keepHash?: boolean} = {}) {
+   *  boot fallback, when the address already holds the player's own view).
+   *  forJump: the switch is on the way to one cell (a chat link, the Cell
+   *  Library, My cells), so the dataset arrives bare, with no curated or
+   *  saved start view and no starter cells, and in place, so the jump that
+   *  follows is not lost to a reload (Ames 2026-10-14: "if I jump via chat
+   *  it doesn't need to load the default segments, just the segment I
+   *  jumped to, true of any and all jumps"). */
+  async function selectLayers(layers: any[], opts: {keepHash?: boolean; forJump?: boolean} = {}) {
     if (!viewer) return;
 
     // Detect the target dataset (by segmentation layer name) BEFORE restoring,
@@ -554,8 +560,8 @@ export const useLayersStore = defineStore('layers', () => {
     // Settings > Switching datasets: the player's own start view wins, then
     // "without starter cells" skips the curated view, else the curated view.
     const startPrefs = useUserPreferencesStore().prefs;
-    const ownHash = targetSegName ? startViewHash(startPrefs.datasetStartViews?.[targetSegName]) : '';
-    const bareSwitch = !!startPrefs.datasetBareSwitch;
+    const ownHash = targetSegName && !opts.forJump ? startViewHash(startPrefs.datasetStartViews?.[targetSegName]) : '';
+    const bareSwitch = !!startPrefs.datasetBareSwitch || !!opts.forJump;
     const curatedUrl = ownHash ? window.location.origin + window.location.pathname + ownHash
       : bareSwitch ? '' : (dsCfgEarly?.defaultStateUrl || '');
     if (curatedUrl && !skipStateUrl && !opts.keepHash) {

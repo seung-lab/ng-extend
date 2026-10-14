@@ -1204,7 +1204,7 @@ async function confirmJump() {
   const linkBeingOpened = pendingLinkOpen.value;
   if (!req) return cancelJumpConfirm();
   if (target) {
-    const ok = await switchToDataset(target);
+    const ok = await switchToDataset(target, {forJump: !linkBeingOpened});
     if (ok) {
       activeDataset.value = target.layers.find((l: any) => l.type === 'segmentation')?.name ?? '';
       // Give neuroglancer one tick to swap layers before navigating.
@@ -1563,12 +1563,12 @@ function datasetHeading(raw: string | undefined | null): string {
  * viewer (never the cached activeDataset) so a stale value can't send a root
  * ID into the wrong dataset's layer. Returns false if it couldn't switch.
  */
-async function ensureDataset(raw: string | undefined | null): Promise<boolean> {
+async function ensureDataset(raw: string | undefined | null, forJump = true): Promise<boolean> {
   activeDataset.value = getCurrentDatasetName() || activeDataset.value;
   if (!raw || canonicalDataset(raw) === canonicalDataset(activeDataset.value)) return true;
   const target = datasetEntryFor(raw);
   if (!target) return false;
-  const ok = await switchToDataset(target);
+  const ok = await switchToDataset(target, {forJump});
   if (!ok) return false;
   activeDataset.value = segLayerName(target);
   // Give neuroglancer a moment to swap layers before navigating.
@@ -1711,7 +1711,7 @@ async function switchToQuestDataset() {
  *  looked like a button and did nothing). Switch datasets and open the group. */
 async function switchToDatasetGroup(group: HelpDatasetGroup) {
   rememberAfterSwitch();
-  if (!(await ensureDataset(group.dataset))) {
+  if (!(await ensureDataset(group.dataset, false))) {
     forgetAfterSwitch();
     flashJumpError(`Could not switch to ${datasetHeading(group.dataset)}.`);
     return;
@@ -2052,7 +2052,7 @@ function linkHashState(link: WorkingLink): any | null {
  *  hash that no longer describes a working state. */
 async function openLinkStructured(link: WorkingLink, targetDs: any) {
   if (targetDs && link.dataset && link.dataset !== activeDataset.value) {
-    const ok = await switchToDataset(targetDs);
+    const ok = await switchToDataset(targetDs, {forJump: true});
     if (ok) activeDataset.value = link.dataset;
     await new Promise(r => setTimeout(r, 250));
   }

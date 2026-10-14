@@ -729,12 +729,13 @@ export function datasetSpeciesIcon(name: string | undefined | null): string {
  * Returns true on success. Caller is responsible for any post-switch action
  * (e.g. navigating to a segment) — wait one tick before doing so.
  */
-export async function switchToDataset(ds: DatasetEntry): Promise<boolean> {
+export async function switchToDataset(ds: DatasetEntry, opts: {forJump?: boolean} = {}): Promise<boolean> {
   try {
     const layerStore = useLayersStore();
-    // Offer the player's autosaved view of the new dataset once it is up.
-    offerViewRestoreAfterSwitch();
-    layerStore.selectLayers(ds.layers);
+    // Offer the player's autosaved view of the new dataset once it is up,
+    // unless the switch is on the way to a cell (see selectLayers forJump).
+    if (!opts.forJump) offerViewRestoreAfterSwitch();
+    layerStore.selectLayers(ds.layers, {forJump: opts.forJump});
     const segName = segLayerName(ds);
     if (segName) localStorage.setItem('nge_dataset_preference', segName);
     const cfg = getDatasetCaveConfig(ds.id);
