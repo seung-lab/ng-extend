@@ -358,12 +358,33 @@ async function addCover() {
 // Pasting brings in words only, never another page's styling or code.
 function onPaste(e: ClipboardEvent) {
   e.preventDefault();
+  // A picture on the clipboard (a screenshot, an image copied from a page) is
+  // uploaded and placed where the cursor is, like Add image (Ames 2026-10-14:
+  // "the pasted image doesn't save here, while the rest of the text does";
+  // a paste used to keep only the words).
+  const pictures = [...(e.clipboardData?.items ?? [])].filter(i => i.kind === 'file' && i.type.startsWith('image/'))
+    .map(i => i.getAsFile()).filter((f): f is File => !!f);
+  if (pictures.length) void pastePictures(pictures);
   const text = e.clipboardData?.getData('text/plain') ?? '';
   const paras = text.replace(/\r\n?/g, '\n').split(/\n+/).map(x => x.trim()).filter(Boolean);
   if (!paras.length) return;
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   if (paras.length === 1) document.execCommand('insertText', false, paras[0]);
   else document.execCommand('insertHTML', false, paras.map(x => `<p>${esc(x)}</p>`).join(''));
+}
+async function pastePictures(files: File[]) {
+  keepSelection();
+  problem.value = ''; busy.value = true;
+  try {
+    for (const f of files.slice(0, 4)) {
+      const url = await secureUpload(f, 'blog');
+      restoreSelection();
+      insertBlock(figure(url));
+      keepSelection();
+    }
+  } catch (err: any) {
+    problem.value = err?.message || 'The pasted picture could not be uploaded.';
+  } finally { busy.value = false; }
 }
 // Click a picture or a video to select it, so Delete removes it.
 function onDocClick(e: MouseEvent) {
