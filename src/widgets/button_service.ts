@@ -716,7 +716,7 @@ export class ButtonService {
       ['#ff4444', 1, 0.27, 0.27],   // red
       ['#ff8800', 1, 0.53, 0],       // orange
       ['#ffdd00', 1, 0.87, 0],       // yellow
-      ['#44ff44', 0.27, 1, 0.27],   // green
+      ['#7cffb2', 0.49, 1, 0.70],   // green: Highlight mode's (Ames 2026-10-14: the old one was too neon)
       ['#00ddff', 0, 0.87, 1],       // cyan
       ['#4488ff', 0.27, 0.53, 1],   // blue
       ['#aa44ff', 0.67, 0.27, 1],   // purple
@@ -741,7 +741,7 @@ export class ButtonService {
     // Custom color input
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
-    colorInput.value = '#44ff44';
+    colorInput.value = '#7cffb2';
     colorInput.className = 'nge-color-picker-rainbow';
     colorInput.title = 'Custom color';
     colorInput.addEventListener('input', () => {
