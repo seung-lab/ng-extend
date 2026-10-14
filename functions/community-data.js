@@ -11,7 +11,7 @@ const SITE_ASSETS = 'https://connectome.quest/assets/';
 // approved it 2026-10-11). Nothing outside this list is accepted.
 const REACTION_EMOJI = new Set([
   '👍', '❤️', '🔥', '😂', '🎉', '🧠',
-  '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈',
+  '👋', '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈',
 ]);
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 // users.last_edit_date and users.total_days are never writable from a browser:

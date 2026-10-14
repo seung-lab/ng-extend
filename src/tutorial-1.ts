@@ -1,4 +1,3 @@
-import { zoom3dWords, pan3dWords } from './util/three_d_controls';
 import { Step, useTutorialStore } from "./store-pyr";
 import { ngePointScale } from "neuroglancer/annotation/point";
 import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
@@ -334,7 +333,7 @@ This box won't go away when you click outside it.`,
   },
   //7 - zoom in 3D: SCROLL, or CTRL+SCROLL with the classic controls (Settings)
   {
-    get text() { return `${zoom3dWords()} to zoom in and out.`; },
+    text: `SCROLL to zoom in and out (CTRL+SCROLL works too).`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
@@ -365,9 +364,9 @@ This box won't go away when you click outside it.`,
   },
   //8a - right click
   {
-    get text() { return `Right click on the neuron to re-center your view.
+    text: `Right click on the neuron to re-center your view.
 
-${pan3dWords()} to slide the view around.`; },
+RIGHT-DRAG (or SHIFT+DRAG) to slide the view around.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",

@@ -1,4 +1,3 @@
-import { classic3dControls } from './util/three_d_controls';
 import { Step } from "./store-pyr";
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 import mossyFibersHero from '../static/tour-mossy-fibers.png';
@@ -367,10 +366,9 @@ Drag to reorder, **+** to add a new layer.`,
   // ── 20. The 3D viewer ────────────────────────────────────────
   {
     title: "The 3D Viewer",
-    get text() { return `The right panel renders neurons as 3D meshes. **Drag** to rotate, **${classic3dControls() ? 'Ctrl+scroll' : 'scroll'}** to zoom, **${classic3dControls() ? 'Shift+drag' : 'right-drag'}** to pan.`
-  + `
+    text: `The right panel renders neurons as 3D meshes. **Drag** to rotate, **scroll** to zoom, **right-drag** (or **shift-drag**) to pan.
 
-Click a segment to select it. A **Delta menu** next to the segment ID has completion, cell-type, and claim controls.`; },
+Click a segment to select it. A **Delta menu** next to the segment ID has completion, cell-type, and claim controls.`,
     position: VIEWER_3D,
     highlight: true,
   },
