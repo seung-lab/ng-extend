@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-14T15:11:53Z",
+      "title": "Your work is kept when CAVE is down",
+      "digest": "headline",
+      "items": [
+        "When CAVE is not answering, marking a cell proofread or saving a cell type no longer asks you to try again. Pyr keeps it, counts it right away, and sends it to CAVE as soon as CAVE is back, under your name.",
+        "You will see a message when something is waiting, and another when it has been sent. Unmarking a cell before then simply takes it off the list.",
+        "Replying to the team now ends on the lit up neuron alone."
+      ]
+    },
+    {
       "at": "2026-10-14T14:46:57Z",
       "title": "Jumps take you straight to the cell",
       "digest": "minor",
