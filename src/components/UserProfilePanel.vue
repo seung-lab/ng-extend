@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue';
+import {supabase} from '../supabase';
 import {pendingAnnotations, sentAnnotations, loadAnnotationTotal} from '../util/annotation_counter';
 import {listQuests, nameKey as questNameKey} from '../annotation_quests';
 import {nextDayMilestone} from '../util/day_milestones';
@@ -1148,15 +1149,53 @@ const recentCells = computed<Array<CellHistoryEntry & { serverOnly?: boolean }>>
   const rows = scopedCompletionRows.value ?? [];
   const known = viewingOtherUser.value ? new Map<string, CellHistoryEntry>() : new Map(cellHistory.value.map(c => [c.segId, c]));
   const list = rows.map(r => {
-    const mine = known.get(r.cell);
+    const cell = taskSegments.value[r.cell] ?? r.cell;
+    const mine = known.get(cell);
     return mine
-      ? { ...mine, segId: r.cell, isComplete: true, updatedAt: r.done_at, dataset: r.dataset }
-      : { segId: r.cell, isComplete: true, cellType: '', position: [0, 0, 0] as [number, number, number],
+      ? { ...mine, segId: cell, isComplete: true, updatedAt: r.done_at, dataset: r.dataset }
+      : { segId: cell, isComplete: true, cellType: '', position: [0, 0, 0] as [number, number, number],
           updatedAt: r.done_at, dataset: r.dataset, serverOnly: true };
   });
-  // Starred cells first, then the newest.
-  return list.sort((x, y) => Number(!!y.isFavorite) - Number(!!x.isFavorite) || String(y.updatedAt).localeCompare(String(x.updatedAt)));
+  // Starred cells first, then the newest; a cell finished twice (or by two
+  // tasks) is listed once, at its latest.
+  const seen = new Set<string>();
+  return list
+    .sort((x, y) => Number(!!y.isFavorite) - Number(!!x.isFavorite) || String(y.updatedAt).localeCompare(String(x.updatedAt)))
+    .filter(c => !seen.has(c.segId) && !!seen.add(c.segId));
 });
+
+/** How many recently completed cells the overview shows; the rest are in
+ *  My cells (Ames 2026-10-14: "profile should only load a small number here
+ *  and if you want more go to 'my cells'"). */
+const RECENT_SHOWN = 10;
+
+/** A cell finished from the Cell Library is recorded as `task:<id>`, the
+ *  proofreading task, not as a segment ID (Ames 2026-10-14: rows read
+ *  "task:12659"). The task's segment, its final one when the task recorded
+ *  one, is looked up for the rows shown. */
+const taskSegments = ref<Record<string, string>>({});
+const taskLookupsAsked = new Set<string>();
+watch(() => (scopedCompletionRows.value ?? [])
+    .slice().sort((x, y) => String(y.done_at).localeCompare(String(x.done_at)))
+    .map(r => r.cell).filter(c => c.startsWith('task:') && !taskLookupsAsked.has(c)).slice(0, 60),
+  async (cells) => {
+    if (!cells.length) return;
+    cells.forEach(c => taskLookupsAsked.add(c));
+    const ids = cells.map(c => Number(c.slice(5))).filter(Number.isFinite);
+    try {
+      const { data, error } = await supabase.from('proofreading_tasks')
+        .select('id, segment_id, final_segment_id').in('id', ids);
+      if (error) throw error;
+      const found: Record<string, string> = {};
+      for (const t of data ?? []) {
+        const seg = String(t.final_segment_id || t.segment_id || '');
+        if (seg) found['task:' + t.id] = seg;
+      }
+      taskSegments.value = { ...taskSegments.value, ...found };
+    } catch (e) {
+      console.warn('[profile] task segments unavailable', e);
+    }
+  }, { immediate: true });
 
 // ── 14-day activity chart data ───────────────────────────────────────────────
 const last14Days = computed(() => {
@@ -1802,7 +1841,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
               <div class="nge-cell-list-scroll">
                 <div
-                  v-for="cell in recentCells.slice(0, 50)"
+                  v-for="cell in recentCells.slice(0, RECENT_SHOWN)"
                   :key="cell.segId"
                   class="nge-cell-row"
                   :title="cell.nickname ? `${cell.nickname} (${cell.segId})` : `Jump to ${cell.segId}`"
@@ -1828,6 +1867,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                   >✎</button>
                 </div>
               </div>
+              <button v-if="recentCells.length > RECENT_SHOWN" class="nge-cell-list-more" @click="activeTab = 'myCells'">{{ (recentCells.length - RECENT_SHOWN).toLocaleString() }} more in {{ viewingOtherUser ? 'All cells' : 'My cells' }} →</button>
             </div>
             <div class="nge-cell-empty" v-else>
 No cells completed yet. <template v-if="!viewingOtherUser">Your recently completed cells will show here.</template>
@@ -3573,7 +3613,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   border-radius: 9px;
   background: rgba(74, 158, 255, 0.055);
   border: 1px solid rgba(74, 158, 255, 0.16);
-  cursor: help;
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
 /* Compact (Ames 2026-10-01): label and number share a line, so the four
@@ -3749,6 +3788,12 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-cell-col-label--type { width: 110px; text-align: left; }
 .nge-cell-col-label--time { width: 64px; text-align: right; padding-right: 18px; }
 
+.nge-cell-list-more {
+  display: block; margin: 6px 0 0 auto;
+  background: none; border: none; padding: 2px 4px;
+  color: #8cf; font: inherit; font-size: 0.8em; cursor: pointer;
+}
+.nge-cell-list-more:hover { color: #bdf; text-decoration: underline; }
 .nge-cell-list-all {
   margin-left: auto;
   background: none;
