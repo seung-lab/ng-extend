@@ -6,6 +6,7 @@ import {startSpooky} from './util/spooky';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
+import { startCaveOutbox } from './cave_outbox';
 import { startThreeDControls } from './util/three_d_controls';
 import { startCutPreview } from './util/cut_preview';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
@@ -389,6 +390,8 @@ function setupViewer() {
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
   startCloseGuard();
+  // Saves that waited for CAVE while it was down go out once it is back.
+  startCaveOutbox();
   startCutPreview();
   // Phones: never leave the 3D only view with nothing in it.
   watchPhoneEmptyView(() => phoneRef.value);

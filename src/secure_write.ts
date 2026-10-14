@@ -29,6 +29,7 @@ export type SecureAction =
   | 'triage.update' | 'triage.release'
   | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log' | 'activity.visit'
   | 'reply.ask' | 'reply.send' | 'reply.console'
+  | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
 

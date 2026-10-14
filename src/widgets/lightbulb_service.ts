@@ -15,6 +15,7 @@ import {currentDatasetTag} from '../datasets';
 import {defaultCredentialsManager} from 'neuroglancer/credentials_provider/default_manager';
 import {parseSpecialUrl} from 'neuroglancer/util/special_protocol_request';
 import {cellAtCrosshair} from '../util/crosshair_cell';
+import {queueCaveWrite, cancelWaiting, caveMayRecover} from '../cave_outbox';
 import {markToCarry, type KeptMark} from '../util/mark_follow';
 import {ancestorAmong, latestDescendants, getRootFromSupervoxel} from './pcg_service';
 import nurroSuccess from '../../static/nurro/nurro-success.png';
@@ -662,6 +663,23 @@ export async function setCellComplete(
 
   const baseUrl = annotationBaseUrl(caveServer, cellStatusTable, alignedVolume);
 
+  // A completion still waiting for CAVE (cave_outbox.ts) is un-marked by
+  // taking it off the list: CAVE never had it.
+  if (!complete && !dsCfg.annotationLog && await cancelWaiting('complete', currentDatasetTag(), rootId)) {
+    deleteLocalAnnotation(segKey(rootId), 'isComplete');
+    document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segId: rootId, status: { isComplete: false } } }));
+    try {
+      const statsStore = useUserStatsStore();
+      statsStore.setStats({ cellsSubmitted: Math.max(0, statsStore.stats.cellsSubmitted - 1) });
+      const backend = useProofreadingBackendStore();
+      if (backend.userId) {
+        const p = getViewerPosition();
+        backend.logEdit({ operation: 'unmark_complete', segment_after: rootId, coordinates: `${p[0]}, ${p[1]}, ${p[2]}`, metadata: { root_id: rootId } });
+      }
+    } catch { /* non-critical */ }
+    return true;
+  }
+
   // annotationLog: no CAVE table to write; the edit_log path below is the record.
   if (!dsCfg.annotationLog) try {
     // Unmarking needs the mark's ID in CAVE. The menu may only know the copy
@@ -723,19 +741,31 @@ export async function setCellComplete(
         }],
       };
       console.info(`[lightbulb] POST completion → ${baseUrl}`, body);
+      // No answer at all is status 0: CAVE could not be reached.
       const res = await fetch(baseUrl, {
         method: 'POST',
         headers: authHeaders(caveServer),
         body: JSON.stringify(body),
+      }).catch(e => { console.error('[lightbulb] setCellComplete — CAVE network error:', e); return null; });
+      const status = res ? res.status : 0;
+      // CAVE is down or failing: the completion waits for it instead of
+      // being refused (Ames 2026-10-14), and counts now like any other.
+      const queued = !res?.ok && caveMayRecover(status) && await queueCaveWrite({
+        kind: 'complete', dataset: currentDatasetTag(), caveServer, alignedVolume: alignedVolume || dsCfg.alignedVolume,
+        datastack: dsCfg.datastack || '', table: cellStatusTable, rootId, pt: pos, annotation: body.annotations[0],
       });
-      if (res.status === 401) {
+      if (queued) reportWriteFailure('cave_write', `proofread mark ${status || 'network error'} on ${cellStatusTable}, kept waiting for CAVE`, '');
+      if (res && res.status === 401) {
         const errText = await res.text().catch(() => '');
         console.error('[lightbulb] CAVE 401 — token expired:', errText);
         handleCaveAuthExpired(caveServer, parseAuthRealmHost(res));
         return false;  // do NOT fake-save to localStorage on auth failure
       }
-      if (res.ok) {
-        console.info(`[lightbulb] ✓ Completion saved to CAVE`);
+      if (res?.ok || queued) {
+        if (res?.ok) {
+          console.info(`[lightbulb] ✓ Completion saved to CAVE`);
+          void cancelWaiting('complete', currentDatasetTag(), rootId);
+        }
         // Mirror to localStorage so the lightbulb shows the write immediately,
         // before the next materialization cron run (every other day on stroeh).
         setLocalAnnotation(segKey(rootId), {isComplete: true});
@@ -787,6 +817,10 @@ export async function setCellComplete(
           } catch { /* non-critical */ }
         }
         return true;
+      }
+      if (!res) {
+        lastCompletionProblem = 'CAVE could not be reached, and the completion could not be kept to send later. Try again in a moment.';
+        return false;
       }
       const errText = await res.text().catch(() => '');
       console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
@@ -996,20 +1030,33 @@ export async function saveCellType(
       annotations: [annotation],
     };
     console.info(`[lightbulb] POST cell type → ${baseUrl}`, body);
+    // No answer at all is status 0: CAVE could not be reached.
     const res = await fetch(baseUrl, {
       method: 'POST',
       headers: authHeaders(caveServer),
       body: JSON.stringify(body),
+    }).catch(e => { console.error('[lightbulb] saveCellType — CAVE network error:', e); return null; });
+    const status = res ? res.status : 0;
+    // CAVE is down or failing: the type waits for it (Ames 2026-10-14).
+    const queued = !res?.ok && caveMayRecover(status) && await queueCaveWrite({
+      kind: 'cell_type', dataset: currentDatasetTag(), caveServer, alignedVolume: alignedVolume || dsCfg.alignedVolume,
+      datastack: dsCfg.datastack || '', table: cellTypeTable, rootId, pt: pos, annotation,
+      replacesId: existingAnnotationId !== undefined && existingAnnotationId >= 0 ? existingAnnotationId : null,
     });
-    if (res.status === 401) {
+    if (queued) reportWriteFailure('cave_write', `cell type ${status || 'network error'} on ${cellTypeTable}, kept waiting for CAVE`, '');
+    if (res && res.status === 401) {
       const errText = await res.text().catch(() => '');
       console.error('[lightbulb] CAVE 401 — token expired:', errText);
       handleCaveAuthExpired(caveServer, parseAuthRealmHost(res));
       return false;  // do NOT fake-save to localStorage on auth failure
     }
-    if (res.ok) {
-      console.info(`[lightbulb] ✓ Cell type saved to CAVE`);
-      if (existingAnnotationId !== undefined && existingAnnotationId >= 0) {
+    if (res?.ok || queued) {
+      if (res?.ok) {
+        console.info(`[lightbulb] ✓ Cell type saved to CAVE`);
+        void cancelWaiting('cell_type', currentDatasetTag(), rootId);
+      }
+      // A waiting type removes the old one itself, once CAVE has the new one.
+      if (res?.ok && existingAnnotationId !== undefined && existingAnnotationId >= 0) {
         await fetch(baseUrl, {
           method: 'DELETE',
           headers: authHeaders(caveServer),
@@ -1038,6 +1085,10 @@ export async function saveCellType(
         });
       } catch { /* non-critical */ }
       return true;
+    }
+    if (!res) {
+      lastCellTypeProblem = 'Could not reach CAVE, and the cell type could not be kept to send later. Try again in a moment.';
+      return false;
     }
     const errText = await res.text().catch(() => '');
     console.error(`[lightbulb] CAVE POST failed (${res.status}):`, errText);
@@ -1078,4 +1129,9 @@ export async function saveCellType(
     }
   } catch { /* non-critical */ }
   return true;
+}
+
+// Headless tests of saves waiting for CAVE (set window.ngeOutboxTest before load).
+if (typeof window !== 'undefined' && (window as any).ngeOutboxTest) {
+  (window as any).__ngeOutboxSave = { setCellComplete, saveCellType, problem: () => lastCompletionProblem || lastCellTypeProblem };
 }

@@ -1955,6 +1955,21 @@ exports.ewSecureWrite = onRequest(
           break;
         }
         default:
+          // Saves waiting for CAVE (supabase-cave-outbox.sql): every rule is
+          // in cave-outbox.js. The server keeps the list; the player's own
+          // browser sends each save to CAVE.
+          if (typeof action === "string" && action.startsWith("outbox.")) {
+            if (!me) throw ewErr(403, "no EyeWire II profile");
+            const { outboxAction, restDb } = require("./cave-outbox");
+            try {
+              out = await outboxAction(action, args, { db: restDb(sb), me, isAdmin });
+            } catch (e) {
+              // Until the SQL is run the table is missing: say so plainly.
+              if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
+              throw e;
+            }
+            break;
+          }
           // Saved teams (supabase-teams.sql): every rule is in teams.js.
           if (typeof action === "string" && action.startsWith("team.")) {
             if (!me) throw ewErr(403, "no EyeWire II profile");

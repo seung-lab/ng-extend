@@ -805,6 +805,15 @@ function reporterThreadFor(row: TriageRow) {
     }));
 }
 
+// Saves waiting for CAVE, for the Cell types tab (functions/cave-outbox.js).
+const outboxSummary = ref<null | { installed?: boolean; error?: string; waiting?: number; players?: number; oldest?: string; byKind?: Record<string, number> }>(null);
+async function loadOutboxSummary() {
+  outboxSummary.value = null;
+  try { outboxSummary.value = await secureWrite('outbox.summary', {}); }
+  catch (e: any) { outboxSummary.value = { error: e?.message || String(e) }; }
+}
+watch(adminSubTab, tab => { if (tab === 'celltypes') void loadOutboxSummary(); }, { immediate: true });
+
 /** The card's log with every unread reply marked read. Re-read right before
  *  writing, so a bridge write in between is kept. */
 async function logWithRepliesSeen(row: TriageRow): Promise<any[]> {
@@ -1923,6 +1932,21 @@ function practiceWhen(iso: string | null) {
 
     <!-- ── Cell types: the game's log against CAVE ── -->
     <div v-if="adminSubTab === 'celltypes'" class="nge-admin-section">
+      <!-- Saves waiting for CAVE (cave_outbox.ts): every player, every dataset. -->
+      <div class="nge-outbox-line" role="status">
+        <b>Waiting for CAVE:</b>&#32;
+        <template v-if="outboxSummary === null">checking…</template>
+        <template v-else-if="outboxSummary.installed === false">not switched on yet (run supabase-cave-outbox.sql).</template>
+        <template v-else-if="outboxSummary.error">could not be read ({{ outboxSummary.error }}).</template>
+        <template v-else-if="!outboxSummary.waiting">nothing. Every save reached CAVE.</template>
+        <template v-else>
+          {{ outboxSummary.waiting }} save{{ outboxSummary.waiting === 1 ? '' : 's' }}
+          ({{ outboxSummary.byKind?.complete || 0 }} completion{{ outboxSummary.byKind?.complete === 1 ? '' : 's' }},
+          {{ outboxSummary.byKind?.cell_type || 0 }} cell type{{ outboxSummary.byKind?.cell_type === 1 ? '' : 's' }})
+          from {{ outboxSummary.players }} player{{ outboxSummary.players === 1 ? '' : 's' }}, the oldest {{ relTime(outboxSummary.oldest) }}.
+          Each goes out from the player's own browser when CAVE is back and they have Pyr open.
+        </template>
+      </div>
       <CellTypeCheck />
     </div>
 
@@ -3859,4 +3883,6 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-name { font-weight:700; color:#fff; }
 .nge-pilot-noname { font-style:normal; color:#93a1b3; }
 .nge-pilot-admin button { cursor:pointer; }
+.nge-outbox-line { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.86em; line-height: 1.5;
+  background: rgba(74, 150, 224, 0.08); border: 1px solid rgba(74, 150, 224, 0.25); }
 </style>

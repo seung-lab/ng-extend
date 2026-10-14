@@ -222,7 +222,35 @@ async function robotSpend() {
   return { spent, runs, budget, since };
 }
 
-async function checkPlayerFailures() {
+// Saves waiting for CAVE (supabase-cave-outbox.sql, Ames 2026-10-14): a
+// completion or cell type CAVE did not take waits in our table and the
+// player's browser sends it when CAVE is back. Fine while they are young;
+// a save still waiting after a day is worth a look.
+const OUTBOX_STUCK_MS = 24 * 3600 * 1000;
+async function readCaveOutbox() {
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const headers = { apikey: key, ...(key.startsWith('sb_') ? {} : { Authorization: `Bearer ${key}` }) };
+  const r = await timed(`${env.SUPABASE_URL}/rest/v1/cave_outbox?select=user_id,kind,created_at&status=eq.waiting&order=created_at.asc&limit=5000`, { headers });
+  if (r.status === 404) return null; // the SQL has not been run
+  if (!r.ok) throw new Error(`could not read cave_outbox (${r.status})`);
+  const rows = await r.json();
+  return { waiting: rows.length, players: new Set(rows.map(x => x.user_id)).size, oldest: rows[0]?.created_at || null };
+}
+function outboxLine(o) {
+  if (!o || !o.waiting) return '';
+  return `${o.waiting} save${o.waiting === 1 ? '' : 's'} from ${o.players} player${o.players === 1 ? '' : 's'} waiting for CAVE; they go out when CAVE is back`;
+}
+async function checkCaveOutbox(o) {
+  if (o === undefined) return { ok: false, detail: 'cave_outbox could not be read' };
+  if (o === null) return { ok: true, detail: 'not installed yet (supabase-cave-outbox.sql)' };
+  if (!o.waiting) return { ok: true, detail: 'nothing waiting' };
+  const age = Date.now() - new Date(o.oldest).getTime();
+  const hours = Math.round(age / 3600000);
+  if (age < OUTBOX_STUCK_MS) return { ok: true, detail: `${outboxLine(o)} (oldest ${hours}h)` };
+  return { ok: false, detail: `${outboxLine(o)}, but the oldest has waited ${hours} hours. A player may not have opened Pyr since, or CAVE keeps refusing it.` };
+}
+
+async function checkPlayerFailures(outbox) {
   const since = new Date(Date.now() - 3600 * 1000).toISOString();
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
   const headers = { apikey: key, ...(key.startsWith('sb_') ? {} : { Authorization: `Bearer ${key}` }) };
@@ -236,8 +264,9 @@ async function checkPlayerFailures() {
     for (const x of rows) { const k = (x.message || '').split(':')[0]; kinds[k] = (kinds[k] || 0) + 1; }
     const people = new Set(rows.map(x => x.user_id).filter(Boolean)).size;
     const sample = rows[0].message.slice(0, 140);
+    const waiting = outboxLine(outbox);
     return { ok: false, detail: `${rows.length} failed write(s) in the last hour from ${people} player(s) `
-      + `(${Object.entries(kinds).map(([k, n]) => `${k} ${n}`).join(', ')}). Latest: ${sample}` };
+      + `(${Object.entries(kinds).map(([k, n]) => `${k} ${n}`).join(', ')}). Latest: ${sample}${waiting ? `. ${waiting}.` : ''}` };
   } catch (e) { return { ok: false, detail: `client_errors check failed: ${e.message}` }; }
 }
 
@@ -291,11 +320,13 @@ async function previousFailures() {
 }
 
 (async () => {
+  const outbox = await readCaveOutbox().catch(e => { console.warn('[health] outbox:', e.message); return undefined; });
   const results = {
     'Spreadsheet write-back': await checkSheets(),
     'CAVE tables': await checkCave(),
     'Segmentation servers': await checkSegmentation(),
-    'Player write failures': await checkPlayerFailures(),
+    'Player write failures': await checkPlayerFailures(outbox),
+    'Saves waiting for CAVE': await checkCaveOutbox(outbox),
     'Robot AI step': await checkRobotAi(),
     'Anthropic key': await checkAnthropicKey(),
   };
