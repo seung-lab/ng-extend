@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-14T12:46:45Z",
+      "title": "Music on, and replies that show they arrived",
+      "digest": "minor",
+      "items": [
+        "Pyr Radio now plays when you start, unless you have turned it off. If you turn it off, it stays off.",
+        "The music button sits on the same line as the coordinates, and moves up only when something is under it.",
+        "Replying to the team shows each step while it sends, then lets you know the team has it."
+      ]
+    },
+    {
       "at": "2026-10-14T01:22:00Z",
       "title": "The Proofreading Test gets a clock",
       "items": [
