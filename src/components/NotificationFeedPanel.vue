@@ -720,16 +720,6 @@ function padRank(rank: number): string {
                       <span class="nge-rs-corner nge-rs-corner--br" aria-hidden="true"></span>
                       <div class="nge-rs-art" aria-hidden="true">
                         <GrowingNeuron arrived :seed="replySeed" />
-                        <div class="nge-rs-seal">
-                          <svg viewBox="0 0 96 96">
-                            <circle class="nge-rs-seal-ticks" cx="48" cy="48" r="44"/>
-                            <circle class="nge-rs-seal-arc" cx="48" cy="48" r="37"/>
-                            <circle class="nge-rs-seal-ring" cx="48" cy="48" r="29" pathLength="100"/>
-                            <path class="nge-rs-seal-check" pathLength="100" d="M34 49.5 44 59 63 38.5"/>
-                          </svg>
-                          <span class="nge-rs-seal-wave"></span>
-                          <span class="nge-rs-seal-wave nge-rs-seal-wave--2"></span>
-                        </div>
                       </div>
                       <div class="nge-rs-kicker">Reply received</div>
                       <div class="nge-rs-text">Thank you! The team has your reply.</div>
@@ -1172,7 +1162,7 @@ function padRank(rank: number): string {
 /* Sending a reply, and its arrival: the bug report's own (FeedbackModal), smaller. */
 .nge-rs-sending { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 6px 6px; }
 .nge-rs-sending > canvas { width: 260px; max-width: 100%; }
-.nge-rs-art > canvas { width: 210px; max-width: 55%; }
+.nge-rs-art > canvas { width: 250px; max-width: 80%; }
 .nge-rs-sending-title { font-weight: 700; color: rgb(var(--nd-ink)); }
 .nge-rs-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .nge-rs-step { display: flex; align-items: center; gap: 9px; font-size: 0.86em; color: #6f7c96; transition: color 0.2s; }
@@ -1191,33 +1181,17 @@ function padRank(rank: number): string {
 .nge-rs-corner--tl { left: 4px; top: 4px; border-left: 2px solid; border-top: 2px solid; border-top-left-radius: 6px; }
 .nge-rs-corner--br { right: 4px; bottom: 4px; border-right: 2px solid; border-bottom: 2px solid; border-bottom-right-radius: 6px; }
 .nge-rs-art { display: flex; align-items: center; gap: 14px; }
-.nge-rs-seal { position: relative; width: 78px; height: 78px; }
-.nge-rs-seal svg { width: 100%; height: 100%; overflow: visible; }
-.nge-rs-seal-ticks { fill: none; stroke: rgba(126, 224, 255, 0.5); stroke-width: 4; stroke-dasharray: 1 8.87; transform-origin: 48px 48px;
-  animation: nge-rs-spin 24s linear infinite, nge-rs-rise 0.4s ease-out 0.5s both; }
-.nge-rs-seal-arc { fill: none; stroke: rgba(52, 230, 168, 0.75); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 46 28 12 147; transform-origin: 48px 48px;
-  animation: nge-rs-spin 5s linear infinite reverse, nge-rs-rise 0.4s ease-out 0.6s both; }
-.nge-rs-seal-ring { fill: rgba(0, 220, 120, 0.1); stroke: #34e6a8; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100;
-  transform-origin: 48px 48px; transform: rotate(-90deg); filter: drop-shadow(0 0 6px rgba(52, 230, 168, 0.7)); animation: nge-rs-light 0.55s ease-out 0.7s forwards; }
-.nge-rs-seal-check { fill: none; stroke: #c8ffe9; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 100;
-  filter: drop-shadow(0 0 6px rgba(52, 230, 168, 0.95)); animation: nge-rs-light 0.4s cubic-bezier(.5, 0, .2, 1) 1.1s forwards; }
-.nge-rs-seal-wave { position: absolute; inset: 15px; border-radius: 50%; border: 1.5px solid rgba(52, 230, 168, 0.8); opacity: 0; animation: nge-rs-wave 1.2s ease-out 1.25s forwards; }
-.nge-rs-seal-wave--2 { animation-delay: 1.45s; border-color: rgba(126, 224, 255, 0.6); }
 .nge-rs-kicker { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.72em; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: #34e6a8;
-  animation: nge-rs-rise 0.4s ease-out 1.2s both; }
-.nge-rs-text { color: #f0f6ff; font-weight: 700; animation: nge-rs-rise 0.4s ease-out 1.3s both; }
+  animation: nge-rs-rise 0.4s ease-out 0.5s both; }
+.nge-rs-text { color: #f0f6ff; font-weight: 700; animation: nge-rs-rise 0.4s ease-out 0.6s both; }
 .nge-rs-readout { display: grid; grid-template-columns: repeat(4, auto); gap: 6px; margin: 6px 0 0; }
 .nge-rs-cell { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; min-width: 58px; border: 1px solid rgba(74, 150, 224, 0.3); border-radius: 6px;
-  background: rgba(8, 16, 30, 0.6); animation: nge-rs-rise 0.35s ease-out calc(1.5s + var(--i, 0) * 0.08s) both; }
+  background: rgba(8, 16, 30, 0.6); animation: nge-rs-rise 0.35s ease-out calc(0.8s + var(--i, 0) * 0.08s) both; }
 .nge-rs-readout dt { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.62em; letter-spacing: 0.14em; text-transform: uppercase; color: #6f8bb0; }
 .nge-rs-readout dd { margin: 0; font-size: 0.8em; font-weight: 600; color: #dcebff; white-space: nowrap; }
-@keyframes nge-rs-light { to { stroke-dashoffset: 0; } }
 @keyframes nge-rs-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@keyframes nge-rs-spin { to { rotate: 360deg; } }
-@keyframes nge-rs-wave { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.7); } }
 @media (prefers-reduced-motion: reduce) {
   .nge-rs-done *, .nge-rs-done *::before, .nge-rs-step--now .nge-rs-step-mark { animation-duration: 0.01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
-  .nge-rs-seal-wave { display: none; }
 }
 .nge-notif-reply-parts { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-notif-reply-part {
