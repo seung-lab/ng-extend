@@ -1480,3 +1480,43 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
   .nge-seg-list-heading--folder:not(:hover) .nge-seg-list-all-toggle { display: none !important; }
 }
 .nge-seg-folder-icon:first-of-type { margin-left: 0; }
+
+/* ── Seg panel round 4 (Ames 2026-10-14) ─────────────────────────────────── */
+/* No trash on a heading: one slip removed a whole section. Cells are removed
+   from their own row, or picked and removed from the batch bar. */
+.neuroglancer-segment-list-status .nge-seg-remove-all { display: none !important; }
+
+/* Copy and remove float in the empty space after the cell, on hover, so they
+   never push the jump arrow onto a second line (rows in folders are a little
+   narrower). */
+.neuroglancer-segment-list-entry-sticky { position: relative; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container,
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+}
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container { left: calc(100% + 4px); }
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { left: calc(100% + 26px); }
+.neuroglancer-segment-list-entry:not(.nge-seg-labelled):not(:hover) .neuroglancer-segment-list-entry-copy-container { visibility: hidden; }
+.neuroglancer-segment-list-entry .neuroglancer-segment-list-entry-sticky { flex-wrap: nowrap; }
+
+/* folder name in soft white; the folder's own colour is its dot and rail */
+.nge-seg-folder-name { color: rgba(228, 236, 248, 0.95) !important; }
+.nge-seg-list-group--folder > .nge-seg-list--folder { border-left-color: color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 55%, transparent) !important; }
+.nge-seg-list-group--folder > .neuroglancer-segment-list-status { border-top-color: color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 30%, transparent) !important; }
+
+/* Room for the cells not in a folder: folders and Pasted stop at a height of
+   their own, In view keeps at least a good handful of rows, and the panel
+   scrolls when everything will not fit. */
+.neuroglancer-segment-display-tab { overflow-y: auto !important; }
+.nge-seg-list--folder, .nge-seg-list--pasted { flex: 0 1 auto !important; max-height: 220px !important; }
+.nge-seg-list-group--inview > .neuroglancer-segment-list { flex: 1 1 auto !important; min-height: min(320px, 45vh); }
+
+/* the heading's icons keep their place while hidden, so nothing on the
+   heading moves when the pointer comes over it (Ames 2026-10-14) */
+@media (hover: hover) {
+  .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon { display: inline-block !important; visibility: hidden; }
+}
+
+/* a folder never squeezes below its own rows (up to its cap): the panel
+   scrolls instead, so headings never sit over a folder's cells */
+.nge-seg-list--folder, .nge-seg-list--pasted { flex: 0 0 auto !important; }

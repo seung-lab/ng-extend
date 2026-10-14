@@ -1206,12 +1206,21 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     const swatch = document.createElement('input');
     swatch.type = 'color';
     swatch.className = 'nge-seg-folder-color';
-    swatch.title = 'Give every cell in this folder one colour';
-    swatch.addEventListener('change', () => {
+    swatch.title = 'Folder colour. Pick one to give every cell in this folder that colour.';
+    // The colour goes on as it is picked, not only when the picker closes
+    // (some browsers send `change` only then).
+    let lastColor = '';
+    const applyColor = () => {
       const f = folder();
-      if (!f) return;
+      if (!f || swatch.value === lastColor) return;
+      lastColor = swatch.value;
       actions?.recolor(folders.cellsIn(f.id), swatch.value);
-      folders.setColor(f.id, swatch.value);
+    };
+    swatch.addEventListener('input', applyColor);
+    swatch.addEventListener('change', () => {
+      applyColor();
+      const f = folder();
+      if (f && f.color !== swatch.value) folders.setColor(f.id, swatch.value);
     });
     heading.prepend(caret, swatch);
     const name = document.createElement('span');
@@ -1266,14 +1275,23 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
         icon('\u270e', 'Rename this folder', startRename),
         icon('\u2715', 'Ungroup: the folder goes, its cells stay in view', () => {
           const f = folder();
-          if (f) folders.remove(f.id);
+          if (!f) return;
+          const cells = folders.cellsIn(f.id).length;
+          const inner = folders.subtree(f.id).length - 1;
+          if (cells || inner) {
+            const what = [cells ? `${cells} cell${cells === 1 ? '' : 's'}` : '',
+                          inner ? `${inner} folder${inner === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+            if (!window.confirm(`Ungroup "${f.name}"? Its ${what} stay in view, out of this folder.`)) return;
+          }
+          folders.remove(f.id);
         }, 'nge-seg-folder-ungroup'));
     const paint = () => {
       const f = folder();
       if (!f) return;
       caret.textContent = f.collapsed ? '\u25b8' : '\u25be';
       if (name.contentEditable !== 'true') name.textContent = f.name;
-      swatch.value = f.color ?? '#f5d142';
+      if (document.activeElement !== swatch) swatch.value = f.color ?? '#8cb4eb';
+      this.element.style.setProperty('--nge-folder-color', f.color ?? '#8cb4eb');
       this.element.classList.toggle('nge-seg-folder--collapsed', !!f.collapsed);
       const depth = folders.ordered().find(x => x.folder.id === f.id)?.depth ?? 0;
       this.element.style.setProperty('--nge-folder-depth', String(depth));
@@ -1529,7 +1547,7 @@ export class SegmentDisplayTab extends Tab {
     queryElement.autocomplete = 'off';
     queryElement.title = keyMap.describe();
     queryElement.spellcheck = false;
-    queryElement.placeholder = 'Paste IDs or coordinates, or find a cell by name';
+    queryElement.placeholder = 'Paste IDs, (x, y, z), or find a cell by name';
     this.registerDisposer(observeWatchable(q => {
       queryElement.value = q;
     }, segmentQuery));

@@ -151,7 +151,13 @@ export class SegmentFolders {
   }
 
   create(name = 'New folder', parent?: string): SegmentFolder {
-    const f: SegmentFolder = {id: newFolderId(), name, ids: [], parent};
+    // Each new folder gets its own colour (Ames 2026-10-14), the first of
+    // these not yet used, for its dot and its rail. The cells keep theirs
+    // until a colour is picked on the dot.
+    const used = new Set(this.value.map(f => f.color));
+    const color = FOLDER_COLORS.find(c => !used.has(c)) ??
+        FOLDER_COLORS[this.value.length % FOLDER_COLORS.length];
+    const f: SegmentFolder = {id: newFolderId(), name, ids: [], parent, color};
     this.value = [...this.value, f];
     this.changed.dispatch();
     return f;
@@ -187,6 +193,8 @@ export class SegmentFolders {
     this.changed.dispatch();
   }
 }
+
+const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#e06060'];
 
 function newFolderId() {
   return 'f' + Math.random().toString(36).slice(2, 9);
