@@ -7,6 +7,7 @@ import { mintShortStateLink } from '../util/state_link';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
+import GrowingNeuron from 'components/GrowingNeuron.vue';
 declare const NGE_BUILD: string | undefined;
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
 
@@ -212,6 +213,23 @@ const replyAttachView = ref(true);
 const replyAttachConsole = ref(true);
 const replyConsoleCount = ref(0);
 const replyNote = ref('');
+// Sending can take a few seconds (making the view link, then the server), so
+// it shows its progress the way a bug report does, and a sent reply gets the
+// report's "signal received" moment (Ames 2026-10-14).
+type ReplyStage = 'view' | 'send';
+const replyStage = ref<ReplyStage>('send');
+const replySteps = computed(() => [
+  ...(replyAttachView.value ? [{ key: 'view' as ReplyStage, label: 'Saving your view' }] : []),
+  { key: 'send' as ReplyStage, label: 'Sending your reply' },
+]);
+const replyStepsDone = computed(() => Math.max(0, replySteps.value.map(x => x.key).indexOf(replyStage.value)));
+function replyStepState(key: ReplyStage): 'done' | 'now' | 'todo' {
+  const order = replySteps.value.map(x => x.key);
+  const at = order.indexOf(replyStage.value), mine = order.indexOf(key);
+  return mine < at ? 'done' : mine === at ? 'now' : 'todo';
+}
+const replySeed = ref(1);
+const replySentWith = ref<{ k: string; v: string }[]>([]);
 function onReplyShot(payload: { url: string }) { replyShot.value = payload.url; showReplyShot.value = false; replyError.value = ''; }
 const asksReply = (n: any) => !!n && !n.preview && !!n.reply_triage_id && n.target_type === 'user' && n.target_id === backend.userId;
 const replyAsked = computed(() => asksReply(openNotif.value));
@@ -226,12 +244,15 @@ async function sendReply() {
   if (!notif || !text || replySending.value) return;
   replySending.value = true;
   replyError.value = '';
+  replySeed.value = 1 + Math.floor(Math.random() * 1e6);
+  replyStage.value = replyAttachView.value ? 'view' : 'send';
   try {
     // The view and the console messages are read at the moment of sending.
     // A link that will not come is given up on, so the reply itself is never held.
     const viewUrl = replyAttachView.value
       ? await Promise.race([mintShortStateLink().catch(() => null), new Promise<null>(r => setTimeout(() => r(null), 8000))])
       : null;
+    replyStage.value = 'send';
     const consoleLog = replyAttachConsole.value && recentConsoleCount() ? recentConsoleText() : '';
     let dataset = '';
     try { dataset = canonicalDataset(currentDatasetTag()) || ''; } catch { /* no viewer */ }
@@ -246,6 +267,13 @@ async function sendReply() {
     notif.reply_view_url = out?.reply_view_url ?? null;
     replyNote.value = out?.parts_saved === false ? 'Your words were sent. The screenshot, view and console messages could not be kept this time.'
       : (replyAttachView.value && !viewUrl ? 'Sent, without your view: a link to it could not be made.' : '');
+    const consoleLines = Number(out?.console_lines) || 0;
+    replySentWith.value = [
+      { k: 'Words', v: String(text.split(/\s+/).filter(Boolean).length) },
+      { k: 'Screenshot', v: out?.reply_screenshot_url ? 'Yes' : 'No' },
+      { k: 'View', v: out?.reply_view_url ? 'Yes' : 'No' },
+      { k: 'Console', v: consoleLines ? `${consoleLines} lines` : 'None' },
+    ];
     replyJustSent.value = true;
     replyDraft.value = '';
   } catch (e: any) {
@@ -686,6 +714,29 @@ function padRank(rank: number): string {
                 <!-- A reply the team asked for: one per request, with what a report carries. -->
                 <div v-if="replyAsked" class="nge-notif-reply">
                   <template v-if="openNotif.replied_at">
+                    <!-- Just sent: the bug report's arrival, smaller. -->
+                    <div v-if="replyJustSent" class="nge-rs-done" role="status" aria-live="polite">
+                      <span class="nge-rs-corner nge-rs-corner--tl" aria-hidden="true"></span>
+                      <span class="nge-rs-corner nge-rs-corner--br" aria-hidden="true"></span>
+                      <div class="nge-rs-art" aria-hidden="true">
+                        <GrowingNeuron arrived :seed="replySeed" />
+                        <div class="nge-rs-seal">
+                          <svg viewBox="0 0 96 96">
+                            <circle class="nge-rs-seal-ticks" cx="48" cy="48" r="44"/>
+                            <circle class="nge-rs-seal-arc" cx="48" cy="48" r="37"/>
+                            <circle class="nge-rs-seal-ring" cx="48" cy="48" r="29" pathLength="100"/>
+                            <path class="nge-rs-seal-check" pathLength="100" d="M34 49.5 44 59 63 38.5"/>
+                          </svg>
+                          <span class="nge-rs-seal-wave"></span>
+                          <span class="nge-rs-seal-wave nge-rs-seal-wave--2"></span>
+                        </div>
+                      </div>
+                      <div class="nge-rs-kicker">Reply received</div>
+                      <div class="nge-rs-text">Thank you! The team has your reply.</div>
+                      <dl class="nge-rs-readout">
+                        <div v-for="(x, i) in replySentWith" :key="x.k" class="nge-rs-cell" :style="{ '--i': i }"><dt>{{ x.k }}</dt><dd>{{ x.v }}</dd></div>
+                      </dl>
+                    </div>
                     <div class="nge-notif-reply-label">Your reply</div>
                     <div class="nge-notif-reply-sent">{{ openNotif.reply_text }}</div>
                     <a v-if="openNotif.reply_screenshot_url" :href="openNotif.reply_screenshot_url" target="_blank" rel="noopener" class="nge-notif-reply-shot" title="Open the full screenshot">
@@ -693,8 +744,18 @@ function padRank(rank: number): string {
                     </a>
                     <div v-if="openNotif.reply_view_url" class="nge-notif-reply-hint">Your view was sent with it.</div>
                     <div v-if="replyNote" class="nge-notif-reply-hint">{{ replyNote }}</div>
-                    <div class="nge-notif-reply-hint">{{ replyJustSent ? 'Sent. Thank you, the team has it.' : 'Sent ' + relativeTime(openNotif.replied_at) + '.' }}</div>
+                    <div v-if="!replyJustSent" class="nge-notif-reply-hint">{{ 'Sent ' + relativeTime(openNotif.replied_at) + '.' }}</div>
                   </template>
+                  <div v-else-if="replySending" class="nge-rs-sending" role="status" aria-live="polite">
+                    <GrowingNeuron :stage="replyStepsDone" :stages="replySteps.length" :seed="replySeed" />
+                    <div class="nge-rs-sending-title">Sending your reply</div>
+                    <ul class="nge-rs-steps">
+                      <li v-for="st in replySteps" :key="st.key" class="nge-rs-step" :class="`nge-rs-step--${replyStepState(st.key)}`">
+                        <span class="nge-rs-step-mark" aria-hidden="true">{{ replyStepState(st.key) === 'done' ? '✓' : '' }}</span>
+                        <span>{{ st.label }}</span>
+                      </li>
+                    </ul>
+                  </div>
                   <template v-else>
                     <label class="nge-notif-reply-label" for="nge-notif-reply-box">The team asked for a reply</label>
                     <textarea
@@ -725,7 +786,7 @@ function padRank(rank: number): string {
                               @click="replyAttachConsole = !replyAttachConsole">{{ replyAttachConsole && replyConsoleCount ? '✓' : '+' }} Console messages ({{ replyConsoleCount }})</button>
                     </div>
                     <div class="nge-notif-reply-row">
-                      <span class="nge-notif-reply-hint">One reply. {{ REPLY_MAX - replyDraft.length }} characters left.</span>
+                      <span class="nge-notif-reply-hint">{{ REPLY_MAX - replyDraft.length }} characters left.</span>
                       <button class="nge-notif-reply-send" :disabled="replySending || !replyDraft.trim()" @click="sendReply">
                         {{ replySending ? 'Sending…' : 'Send reply' }}
                       </button>
@@ -1108,6 +1169,56 @@ function padRank(rank: number): string {
   flex-wrap: wrap;
 }
 .nge-notif-reply-hint { font-size: 0.8em; color: rgb(var(--nd-dim) / 0.85); }
+/* Sending a reply, and its arrival: the bug report's own (FeedbackModal), smaller. */
+.nge-rs-sending { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 6px 6px; }
+.nge-rs-sending > canvas { width: 260px; max-width: 100%; }
+.nge-rs-art > canvas { width: 210px; max-width: 55%; }
+.nge-rs-sending-title { font-weight: 700; color: rgb(var(--nd-ink)); }
+.nge-rs-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.nge-rs-step { display: flex; align-items: center; gap: 9px; font-size: 0.86em; color: #6f7c96; transition: color 0.2s; }
+.nge-rs-step-mark { width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #06231a; border: 1.5px solid rgba(120, 140, 180, 0.4); }
+.nge-rs-step--now { color: #e6eeff; }
+.nge-rs-step--now .nge-rs-step-mark { border-color: #7ee0ff; box-shadow: 0 0 8px rgba(126, 224, 255, 0.7); animation: nge-rs-now 1s ease-in-out infinite; }
+.nge-rs-step--done { color: #9fb3cc; }
+.nge-rs-step--done .nge-rs-step-mark { background: #34e6a8; border-color: #34e6a8; }
+@keyframes nge-rs-now { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+
+.nge-rs-done { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 14px 14px; margin-bottom: 4px;
+  border-radius: 8px; background: rgba(8, 20, 30, 0.55); overflow: hidden; }
+.nge-rs-corner { position: absolute; width: 14px; height: 14px; border-color: rgba(126, 240, 200, 0.85); filter: drop-shadow(0 0 5px rgba(52, 230, 168, 0.7));
+  animation: nge-rs-rise 0.4s ease-out 0.15s both; }
+.nge-rs-corner--tl { left: 4px; top: 4px; border-left: 2px solid; border-top: 2px solid; border-top-left-radius: 6px; }
+.nge-rs-corner--br { right: 4px; bottom: 4px; border-right: 2px solid; border-bottom: 2px solid; border-bottom-right-radius: 6px; }
+.nge-rs-art { display: flex; align-items: center; gap: 14px; }
+.nge-rs-seal { position: relative; width: 78px; height: 78px; }
+.nge-rs-seal svg { width: 100%; height: 100%; overflow: visible; }
+.nge-rs-seal-ticks { fill: none; stroke: rgba(126, 224, 255, 0.5); stroke-width: 4; stroke-dasharray: 1 8.87; transform-origin: 48px 48px;
+  animation: nge-rs-spin 24s linear infinite, nge-rs-rise 0.4s ease-out 0.5s both; }
+.nge-rs-seal-arc { fill: none; stroke: rgba(52, 230, 168, 0.75); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 46 28 12 147; transform-origin: 48px 48px;
+  animation: nge-rs-spin 5s linear infinite reverse, nge-rs-rise 0.4s ease-out 0.6s both; }
+.nge-rs-seal-ring { fill: rgba(0, 220, 120, 0.1); stroke: #34e6a8; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100;
+  transform-origin: 48px 48px; transform: rotate(-90deg); filter: drop-shadow(0 0 6px rgba(52, 230, 168, 0.7)); animation: nge-rs-light 0.55s ease-out 0.7s forwards; }
+.nge-rs-seal-check { fill: none; stroke: #c8ffe9; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 100;
+  filter: drop-shadow(0 0 6px rgba(52, 230, 168, 0.95)); animation: nge-rs-light 0.4s cubic-bezier(.5, 0, .2, 1) 1.1s forwards; }
+.nge-rs-seal-wave { position: absolute; inset: 15px; border-radius: 50%; border: 1.5px solid rgba(52, 230, 168, 0.8); opacity: 0; animation: nge-rs-wave 1.2s ease-out 1.25s forwards; }
+.nge-rs-seal-wave--2 { animation-delay: 1.45s; border-color: rgba(126, 224, 255, 0.6); }
+.nge-rs-kicker { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.72em; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: #34e6a8;
+  animation: nge-rs-rise 0.4s ease-out 1.2s both; }
+.nge-rs-text { color: #f0f6ff; font-weight: 700; animation: nge-rs-rise 0.4s ease-out 1.3s both; }
+.nge-rs-readout { display: grid; grid-template-columns: repeat(4, auto); gap: 6px; margin: 6px 0 0; }
+.nge-rs-cell { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; min-width: 58px; border: 1px solid rgba(74, 150, 224, 0.3); border-radius: 6px;
+  background: rgba(8, 16, 30, 0.6); animation: nge-rs-rise 0.35s ease-out calc(1.5s + var(--i, 0) * 0.08s) both; }
+.nge-rs-readout dt { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.62em; letter-spacing: 0.14em; text-transform: uppercase; color: #6f8bb0; }
+.nge-rs-readout dd { margin: 0; font-size: 0.8em; font-weight: 600; color: #dcebff; white-space: nowrap; }
+@keyframes nge-rs-light { to { stroke-dashoffset: 0; } }
+@keyframes nge-rs-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes nge-rs-spin { to { rotate: 360deg; } }
+@keyframes nge-rs-wave { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(2.7); } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-rs-done *, .nge-rs-done *::before, .nge-rs-step--now .nge-rs-step-mark { animation-duration: 0.01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+  .nge-rs-seal-wave { display: none; }
+}
 .nge-notif-reply-parts { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-notif-reply-part {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;

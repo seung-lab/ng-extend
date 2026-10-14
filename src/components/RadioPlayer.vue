@@ -47,11 +47,19 @@ let waitingForGesture = false;
 // the same on the next visit and on another computer.
 const prefsStore = useUserPreferencesStore();
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+// The music is on unless the player has turned it off (Ames 2026-10-14:
+// "turn the music on by default when user opens, and then save their mute
+// settings"). A player who never chose gets it on; turning it off is saved
+// and kept. Browsers allow sound only after a click or a key, so it starts
+// on the player's first one. Not on a phone: the control is hidden there, so
+// nobody could turn it off.
+const onPhone = () => document.body.classList.contains('nge-mobile');
 function loadPrefs() {
   let p: any = prefsStore.prefs.radio;
   if (!p) { try { p = JSON.parse(localStorage.getItem(PREF_KEY) || 'null'); } catch { p = null; } }   // the first build kept them here
   if (p && typeof p.volume === 'number') volume.value = clamp01(p.volume);
-  return !!p && p.on === true;
+  if (p && typeof p.on === 'boolean') return p.on;
+  return !onPhone();
 }
 let touched = false;              // the listener has used the control this visit
 function savePrefs() {
@@ -271,8 +279,8 @@ onMounted(() => {
   window.addEventListener('resize', measureDock);
   document.addEventListener('pointerdown', onDocDown, true);
   window.addEventListener('pagehide', onPageHide);
-  // Left on last time: pick the station back up (on the first click, if the
-  // browser wants one before any sound).
+  // Left on last time, or never chosen: start the station (on the first
+  // click, if the browser wants one before any sound).
   if (wasOn) void turnOnQuietly();
 });
 // The wheel over the control turns the volume, as it does on a system mixer.
