@@ -1330,3 +1330,37 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
   opacity: 0;
   pointer-events: none;
 }
+
+/* ── Seg panel: trash can and + in place of the star, a Pasted section
+ *    above the cells in view (Ames 2026-10-14) ──────────────────────────── */
+.nge-seg-list-toggle { display: inline-flex; align-items: center; }
+.nge-seg-list-toggle .nge-seg-list-add { display: none; }
+.nge-seg-list-toggle:not(.neuroglancer-starred) .nge-seg-list-remove { display: none; }
+.nge-seg-list-toggle:not(.neuroglancer-starred) .nge-seg-list-add { display: inline-flex; }
+.neuroglancer-segment-list-entry .nge-seg-list-toggle .neuroglancer-icon { opacity: 0.6; transition: opacity 0.15s; }
+.neuroglancer-segment-list-entry .nge-seg-list-toggle .neuroglancer-icon:hover { opacity: 1; }
+.neuroglancer-segment-list-entry .nge-seg-list-remove:hover,
+.neuroglancer-segment-list-status .nge-seg-list-all-toggle.nge-seg-remove-all:hover {
+  background-color: rgba(224, 96, 96, 0.18) !important;
+}
+.neuroglancer-segment-list-entry .nge-seg-list-remove:hover > svg { stroke: #e06060 !important; }
+.neuroglancer-segment-list-entry .nge-seg-list-add > svg { stroke: #7cffb2 !important; }
+
+.neuroglancer-segment-list-status.nge-seg-list-heading--pasted {
+  border-top: 1px solid rgba(124, 255, 178, 0.35);
+  background: rgba(124, 255, 178, 0.06) !important;
+}
+.neuroglancer-segment-list-status.nge-seg-list-heading--pasted .neuroglancer-segment-list-status-message {
+  color: #7cffb2;
+}
+.nge-seg-list-group--pasted:not([style*="none"]) + .nge-seg-list-group--inview > .neuroglancer-segment-list-status {
+  margin-top: 6px;
+  border-top: 1px solid rgba(140, 180, 235, 0.35);
+}
+.nge-seg-list--pasted { border-bottom: 1px solid rgba(124, 255, 178, 0.18); flex: 0 1 auto !important; max-height: 45%; }
+.nge-seg-list-keep {
+  margin-left: auto; margin-right: 6px;
+  background: none; border: 1px solid rgba(124, 255, 178, 0.35); border-radius: 6px;
+  color: #7cffb2; font: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer; white-space: nowrap; flex: none;
+}
+.nge-seg-list-keep:hover { background: rgba(124, 255, 178, 0.12); }

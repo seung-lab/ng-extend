@@ -44,7 +44,10 @@ import {makeToolButton} from 'neuroglancer/ui/tool';
 import {ANNOTATE_MERGE_SEGMENTS_TOOL_ID, ANNOTATE_SPLIT_SEGMENTS_TOOL_ID} from 'neuroglancer/ui/segment_split_merge_tools';
 import {SELECT_SEGMENTS_TOOLS_ID} from 'neuroglancer/ui/segment_select_tools';
 import {makeEyeButton} from 'neuroglancer/widget/eye_button';
-import {makeStarButton} from 'neuroglancer/widget/star_button';
+import svg_bin from 'ikonate/icons/bin.svg';
+import svg_plus from 'ikonate/icons/plus.svg';
+import {makeIcon} from 'neuroglancer/widget/icon';
+import {addPastedSegments, clearPastedSegments, getPastedSegments, parsePastedIds} from 'neuroglancer/ui/nge_pasted_segments';
 
 const tempUint64 = new Uint64();
 
@@ -88,18 +91,36 @@ class StarredSegmentsListSource extends SegmentListSource {
 
   constructor(
       public segmentationDisplayState: SegmentationDisplayState,
-      public parentElement: HTMLElement) {
+      public parentElement: HTMLElement, protected pastedOnly?: boolean) {
     super(segmentationDisplayState, parentElement);
     this.update();
-    this.registerDisposer(
-        segmentationDisplayState.segmentationGroupState.value.selectedSegments.changed.add(
-            this.debouncedUpdate));
+    const group = segmentationDisplayState.segmentationGroupState.value;
+    this.registerDisposer(group.selectedSegments.changed.add(this.debouncedUpdate));
+    // nge: the pasted cells are listed on their own, above the rest.
+    this.registerDisposer(getPastedSegments(group).changed.add(this.debouncedUpdate));
+  }
+
+  /** nge: this list's cells: the pasted ones (newest paste first) or the
+   *  others in view, in the list's own order. */
+  segmentsHere(): Uint64[] {
+    const group = this.segmentationDisplayState.segmentationGroupState.value;
+    const pasted = getPastedSegments(group).ids;
+    if (this.pastedOnly) {
+      const out: Uint64[] = [];
+      for (const s of pasted) {
+        const id = Uint64.parseString(s);
+        if (group.selectedSegments.has(id)) out.push(id);
+      }
+      return out;
+    }
+    if (!pasted.length) return [...group.selectedSegments];
+    const skip = new Set(pasted);
+    return [...group.selectedSegments].filter(id => !skip.has(id.toString()));
   }
 
   update() {
     const splices: ArraySpliceOp[] = [];
-    const {selectedSegments} = this.segmentationDisplayState.segmentationGroupState.value;
-    const newSelectedSegments = [...selectedSegments];
+    const newSelectedSegments = this.segmentsHere();
     const {explicitSegments} = this;
     if (explicitSegments === undefined) {
       splices.push({retainCount: 0, insertCount: newSelectedSegments.length, deleteCount: 0});
@@ -886,23 +907,26 @@ abstract class SegmentListGroupBase extends RefCounted {
       element,
     } = this;
     element.style.display = 'contents';
-    this.starAllButton = makeStarButton({
-      title: 'Click to toggle star status, shift+click to unstar non-visible segments.',
-      onClick: (event) => {
-        const starred = this.starAllButton.classList.contains('neuroglancer-starred');
-        if (event.shiftKey) {
-          const nonVisibleSegments: Uint64[] = [];
-          for (const segment of this.group.selectedSegments) {
-            if (!this.group.visibleSegments.has(segment)) {
-              nonVisibleSegments.push(segment);
-            }
-          }
-          this.group.selectedSegments.delete(nonVisibleSegments);
+    // nge: in place of the star, search results get "add them all" and the
+    // lists of cells in view get "remove them all" (Ames 2026-10-14).
+    const isSearch = listSource instanceof SegmentQueryListSource;
+    this.starAllButton = makeIcon({
+      svg: isSearch ? svg_plus : svg_bin,
+      title: isSearch ? 'Add every match to the view' : 'Remove these cells from the view',
+      onClick: () => {
+        if (isSearch) {
+          this.selectSegments(true, true);
           return;
         }
-        this.selectSegments(!starred, false);
+        const ids = Array.from(this.listSegments(true));
+        if (ids.length > 1 &&
+            !window.confirm(`Remove ${ids.length} cells from the view?`)) {
+          return;
+        }
+        this.group.selectedSegments.delete(ids);
       }
     });
+    this.starAllButton.classList.add('nge-seg-list-all-toggle', isSearch ? 'nge-seg-add-all' : 'nge-seg-remove-all');
     this.copyAllSegmentsButton = makeCopyButton({
       title: 'Copy all segment IDs',
       onClick: () => {
@@ -943,6 +967,11 @@ abstract class SegmentListGroupBase extends RefCounted {
     safe;
   }
 
+  /** nge: the words before the count in a list's heading. */
+  headingText() {
+    return '';
+  }
+
   updateStatus() {
     const {
       listSource,
@@ -967,18 +996,30 @@ abstract class SegmentListGroupBase extends RefCounted {
       querySelectedCount = listSource.selectedMatches;
       statusMessage = listSource.statusText.value;
     } else {
-      statusMessage = `${visibleCount}/${selectedCount} visible`;
+      // nge: count this list's own cells (the pasted list and the list of
+      // the others in view each have their own heading).
+      let here = 0, shown = 0;
+      for (const id of this.listSegments(true)) {
+        ++here;
+        if (visibleSegments.has(id)) ++shown;
+      }
+      queryVisibleCount = shown;
+      querySelectedCount = here;
+      statusMessage = `${this.headingText()}${shown}/${here}${this.headingText().startsWith('Pasted') ? '' : ' visible'}`;
     }
-    const visibleDisplayedCount = numMatches ? queryVisibleCount : visibleCount;
-    const visibleSelectedCount = numMatches ? querySelectedCount : selectedCount;
-    const totalDisplayed = numMatches || selectedCount;
+    const isSearchList = listSource instanceof SegmentQueryListSource;
+    const visibleDisplayedCount =
+        numMatches ? queryVisibleCount : (isSearchList ? visibleCount : queryVisibleCount);
+    const visibleSelectedCount =
+        numMatches ? querySelectedCount : (isSearchList ? selectedCount : querySelectedCount);
+    const totalDisplayed = numMatches || visibleSelectedCount;
     starAllButton.classList.toggle('neuroglancer-starred', visibleSelectedCount === totalDisplayed);
     starAllButton.classList.toggle(
         'neuroglancer-indeterminate',
         visibleSelectedCount > 0 && visibleSelectedCount !== totalDisplayed);
     selectionStatusMessage.textContent = statusMessage;
     copyAllSegmentsButton.title =
-        `Copy all ${totalDisplayed} ${numMatches ? 'matching' : 'starred'} segment(s)`;
+        `Copy all ${totalDisplayed} ${numMatches ? 'matching' : 'listed'} segment ID(s)`;
     copyVisibleSegmentsButton.title =
         `Copy ${visibleDisplayedCount} ${numMatches ? 'visible matching' : 'visible'} segment(s)`;
     copyAllSegmentsButton.style.visibility = totalDisplayed ? 'visible' : 'hidden';
@@ -1006,14 +1047,30 @@ abstract class SegmentListGroupBase extends RefCounted {
 
 class SegmentListGroupSelected extends SegmentListGroupBase {
   constructor(
-      protected listSource: SegmentListSource, protected group: SegmentationUserLayerGroupState) {
+      protected listSource: StarredSegmentsListSource,
+      protected group: SegmentationUserLayerGroupState, private pasted = false) {
     super(listSource, group);
+    this.element.classList.add(pasted ? 'nge-seg-list-group--pasted' : 'nge-seg-list-group--inview');
+    this.selectionStatusContainer.classList.add(
+        pasted ? 'nge-seg-list-heading--pasted' : 'nge-seg-list-heading--inview');
+    if (pasted) {
+      // nge: put the pasted cells in with the rest (they stay in view).
+      const keep = document.createElement('button');
+      keep.className = 'nge-seg-list-keep';
+      keep.textContent = 'Move down';
+      keep.title = 'Put these cells in with the others in view (they stay shown)';
+      keep.addEventListener('click', () => clearPastedSegments(group));
+      this.selectionStatusContainer.appendChild(keep);
+    }
+  }
+
+  headingText() {
+    return this.pasted ? 'Pasted · ' : 'In view · ';
   }
 
   listSegments(safe = false) {
     safe;
-    return this.group
-        .selectedSegments[Symbol.iterator]();  // TODO, better way to call the iterator?
+    return this.listSource.segmentsHere()[Symbol.iterator]();
   }
 }
 
@@ -1067,7 +1124,30 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
       queryElement.value = '';
       segmentQuery.value = '';
     }));
+    // nge: IDs typed or pasted into the box go straight into the view, shown,
+    // under "Pasted" (Ames 2026-10-14). A name or a /regexp is still a search.
+    const clearQuery = () => {
+      debouncedUpdateQueryModel.cancel();
+      queryElement.value = '';
+      segmentQuery.value = '';
+    };
+    const addIdsFrom = (text: string) => {
+      const ids = parsePastedIds(text);
+      if (ids === undefined) return false;
+      addPastedSegments(group, ids);
+      clearQuery();
+      return true;
+    };
+    this.registerEventListener(queryElement, 'paste', (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      const whole = queryElement.value.slice(0, queryElement.selectionStart ?? 0) + text +
+          queryElement.value.slice(queryElement.selectionEnd ?? queryElement.value.length);
+      if (parsePastedIds(whole) === undefined) return;
+      event.preventDefault();
+      addIdsFrom(whole);
+    });
     this.registerDisposer(registerActionListener(queryElement, 'toggle-listed', () => {
+      if (addIdsFrom(queryElement.value)) return;
       this.toggleMatches();
     }));
     this.registerDisposer(registerActionListener(queryElement, 'hide-all', () => {
@@ -1226,6 +1306,10 @@ export class SegmentDisplayTab extends Tab {
                       segmentQuery, segmentPropertyMap, layer.displayState, parent));
                   const selectedSegmentsListSource = context.registerDisposer(
                       new StarredSegmentsListSource(layer.displayState, parent));
+                  const pastedListSource = context.registerDisposer(
+                      new StarredSegmentsListSource(layer.displayState, parent, true));
+                  const pastedList = context.registerDisposer(new VirtualList(
+                      {source: pastedListSource, horizontalScroll: true, keepRowsOnSplice: true}));
                   const list = context.registerDisposer(
                       new VirtualList({source: listSource, horizontalScroll: true}));
                   // nge: a segment's row is the same wherever it sits in the list.
@@ -1239,26 +1323,41 @@ export class SegmentDisplayTab extends Tab {
                       debouncedUpdateQueryModel));
                   segList.element.appendChild(list.element);
                   parent.appendChild(segList.element);
+                  const segListPasted = context.registerDisposer(
+                      new SegmentListGroupSelected(pastedListSource, group, true));
+                  segListPasted.element.appendChild(pastedList.element);
+                  parent.appendChild(segListPasted.element);
                   const segList2 = context.registerDisposer(
                       new SegmentListGroupSelected(selectedSegmentsListSource, group));
                   segList2.element.appendChild(selectedSegmentsList.element);
                   parent.appendChild(segList2.element);
+                  context.registerDisposer(getPastedSegments(group).changed.add(() => {
+                    pastedListSource.debouncedUpdate.flush();
+                    selectedSegmentsListSource.debouncedUpdate.flush();
+                    segListPasted.updateStatus();
+                    segList2.updateStatus();
+                  }));
 
                   const updateListDisplayState = () => {
                     const showQueryResultsList =
                         (listSource.query.value !== '' || listSource.numMatches > 0);
-                    const showStarredSegmentsList =
-                        selectedSegmentsListSource.length > 0 || !showQueryResultsList;
+                    const showPastedList = pastedListSource.length > 0;
+                    const showStarredSegmentsList = selectedSegmentsListSource.length > 0 ||
+                        (!showQueryResultsList && !showPastedList);
                     segList.element.style.display = showQueryResultsList ? 'contents' : 'none';
+                    segListPasted.element.style.display = showPastedList ? 'contents' : 'none';
                     segList2.element.style.display = showStarredSegmentsList ? 'contents' : 'none';
                   };
                   context.registerDisposer(segList.statusChanged.add(updateListDisplayState));
+                  context.registerDisposer(segListPasted.statusChanged.add(updateListDisplayState));
                   context.registerDisposer(segList2.statusChanged.add(updateListDisplayState));
                   segList.updateStatus();
+                  segListPasted.updateStatus();
                   segList2.updateStatus();
 
                   const updateListItems = context.registerCancellable(animationFrameDebounce(() => {
                     listSource.updateRenderedItems(list);
+                    pastedListSource.updateRenderedItems(pastedList);
                     selectedSegmentsListSource.updateRenderedItems(selectedSegmentsList);
                   }));
                   const {displayState} = this.layer;
@@ -1270,6 +1369,10 @@ export class SegmentDisplayTab extends Tab {
                   list.element.classList.add('neuroglancer-segment-list');
                   list.element.classList.add('neuroglancer-preview-list');
                   selectedSegmentsList.element.classList.add('neuroglancer-segment-list');
+                  pastedList.element.classList.add('neuroglancer-segment-list', 'nge-seg-list--pasted');
+                  context.registerDisposer(layer.bindSegmentListWidth(pastedList.element));
+                  context.registerDisposer(new MouseEventBinder(
+                      pastedList.element, getDefaultSelectBindings()));
                   context.registerDisposer(layer.bindSegmentListWidth(list.element));
                   context.registerDisposer(
                       layer.bindSegmentListWidth(selectedSegmentsList.element));
@@ -1284,6 +1387,12 @@ export class SegmentDisplayTab extends Tab {
                           selectedSegmentsListSource.segmentationDisplayState,
                           selectedSegmentsListSource.parentElement,
                           property => queryIncludesColumn(undefined, property.id));
+                  pastedListSource.segmentWidgetFactory =
+                      new SegmentWidgetWithExtraColumnsFactory(
+                          pastedListSource.segmentationDisplayState,
+                          pastedListSource.parentElement,
+                          property => queryIncludesColumn(undefined, property.id));
+                  removeChildren(pastedList.header);
                   selectedSegmentsList.scrollToTop();
                   removeChildren(selectedSegmentsList.header);
                 }))

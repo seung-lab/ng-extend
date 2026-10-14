@@ -41,7 +41,9 @@ import {withSharedVisibility} from 'neuroglancer/visibility_priority/frontend';
 import {makeCopyButton} from 'neuroglancer/widget/copy_button';
 import {makeEyeButton} from 'neuroglancer/widget/eye_button';
 import {makeFilterButton} from 'neuroglancer/widget/filter_button';
-import {makeStarButton} from 'neuroglancer/widget/star_button';
+import svg_bin from 'ikonate/icons/bin.svg';
+import svg_plus from 'ikonate/icons/plus.svg';
+import {makeIcon} from 'neuroglancer/widget/icon';
 
 export class Uint64MapEntry {
   constructor(public key: Uint64, public value?: Uint64, public label?: string|undefined) {}
@@ -273,10 +275,18 @@ const segmentWidgetTemplate = (() => {
   idElement.classList.add('neuroglancer-segment-list-entry-id');
   const idIndex = idContainer.childElementCount;
   idContainer.appendChild(idElement);
-  const starButton = makeStarButton({
-    title: `Star segment`,
-  });
-  starButton.classList.add('neuroglancer-segment-list-entry-star');
+  // nge: the star was neuroglancer's "keep this in the list" mark, and taking
+  // it off took the cell out of view, which read as a bug (Ames 2026-10-14).
+  // A cell in the list has a trash can that removes it; a search result has
+  // a + that adds it. The `neuroglancer-starred` class (in the list) still
+  // says which one shows.
+  const starButton = document.createElement('div');
+  starButton.classList.add('neuroglancer-segment-list-entry-star', 'nge-seg-list-toggle');
+  const removeIcon = makeIcon({svg: svg_bin, title: 'Remove from view'});
+  removeIcon.classList.add('nge-seg-list-remove');
+  const addIcon = makeIcon({svg: svg_plus, title: 'Add to view'});
+  addIcon.classList.add('nge-seg-list-add');
+  starButton.append(removeIcon, addIcon);
   const starIndex = stickyContainer.childElementCount;
   stickyContainer.appendChild(starButton);
 
@@ -444,8 +454,13 @@ function makeRegisterSegmentWidgetEventHandlers(displayState: SegmentationDispla
       const idString = entryElement.dataset.id!;
       const id = tempStatedColor
       id.tryParseString(idString);
-      const {selectedSegments} = displayState.segmentationGroupState.value;
-      selectedSegments.set(id, !selectedSegments.has(id));
+      const {selectedSegments, visibleSegments} = displayState.segmentationGroupState.value;
+      if (selectedSegments.has(id)) {
+        selectedSegments.delete(id);
+      } else {
+        selectedSegments.add(id);
+        visibleSegments.add(id);
+      }
     });
   };
 }
