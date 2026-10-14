@@ -54,7 +54,8 @@ export function startAnnotationClickSelect(viewer: any) {
       const sel = viewer.selectedLayer;
       if (sel && sel.layer !== managed) sel.layer = managed;
       if (sel && !sel.visible) sel.visible = true;
-      try { if (managed.layer.tabs?.value !== 'annotations') managed.layer.tabs.value = 'annotations'; } catch { /* no such tab */ }
+      // A cell layer has no Annotations tab (its box is in Render): leave its tab alone.
+      try { if (managed.layer.tabs?.options?.has('annotations') && managed.layer.tabs.value !== 'annotations') managed.layer.tabs.value = 'annotations'; } catch { /* no such tab */ }
       managed.layer.selectAnnotation(state, id, true);
       // The list scrolls to the row itself (third_party/neuroglancer/ui/annotations.ts),
       // waiting for its panel if that had to be brought forward first.

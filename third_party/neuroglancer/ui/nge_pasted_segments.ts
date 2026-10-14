@@ -60,6 +60,20 @@ export function addPastedSegments(
  *  search used to answer "No label property" (Ames 2026-10-14). */
 export const segmentLabels = new Map<string, string>();
 
+/** Fires when names arrive, so a list narrowed by name updates. */
+export const segmentLabelsChanged = new NullarySignal();
+
+/** Set by the app: look up the names of cells not drawn yet (a row's name is
+ *  only read when its row is on screen, so a search by name missed cells
+ *  scrolled out of sight). */
+let labelRequester: ((ids: string[]) => void)|undefined;
+export function setSegmentLabelRequester(fn: (ids: string[]) => void) {
+  labelRequester = fn;
+}
+export function requestSegmentLabels(ids: string[]) {
+  labelRequester?.(ids);
+}
+
 /** Three plain numbers, as copied from the coordinates line or a message
  *  ("48430, 29415, 582", "[48430 29415 582]", "x 48430 y 29415 z 582"), are a
  *  place, not three cells (Ames 2026-10-14: pasted coordinates turned into
@@ -71,6 +85,28 @@ export function parseCoordinates(text: string): number[]|undefined {
   const nums = parts.map(Number);
   if (nums.some(n => !Number.isFinite(n) || n < 0 || n >= 1e8)) return undefined;
   return nums;
+}
+
+/** Whether pasted numbers are a place. Brackets, x/y/z or a decimal point
+ *  always say so. Three plain numbers are a place only where cell IDs are
+ *  long (a graphene volume, or a list already holding long IDs): on MANC,
+ *  MCNS or MAOL a cell ID has 5 or 6 digits, so there three plain numbers
+ *  are three cells. */
+export function placeFrom(text: string, layer: any): number[]|undefined {
+  const nums = parseCoordinates(text);
+  if (nums === undefined) return undefined;
+  if (/[\[\](){}]|\b[xyz]\s*[:=]?\s*\d|\d\.\d/i.test(text)) return nums;
+  let longIds = false;
+  try {
+    for (const ds of layer?.dataSources ?? []) {
+      if (/graphene:\/\//.test(String(ds?.spec?.url ?? ''))) longIds = true;
+    }
+    for (const id of layer?.displayState?.segmentationGroupState?.value?.selectedSegments ?? []) {
+      if (id.toString().length >= 12) longIds = true;
+      break;
+    }
+  } catch { /* unknown: keep them as IDs */ }
+  return longIds ? nums : undefined;
 }
 
 /** True when a row's cell matches the words typed in the box: the ID or the

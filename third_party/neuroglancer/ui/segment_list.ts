@@ -47,7 +47,7 @@ import {makeEyeButton} from 'neuroglancer/widget/eye_button';
 import svg_bin from 'ikonate/icons/bin.svg';
 import svg_plus from 'ikonate/icons/plus.svg';
 import {makeIcon} from 'neuroglancer/widget/icon';
-import {addPastedSegments, clearPastedSegments, getPastedSegments, parseCoordinates, parsePastedIds, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
+import {addPastedSegments, clearPastedSegments, getPastedSegments, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
 import {pickedSegments, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 
@@ -112,7 +112,15 @@ class StarredSegmentsListSource extends SegmentListSource {
     // nge: words in the box narrow the cells listed, by name or ID.
     if (filterText !== undefined) {
       this.registerDisposer(filterText.changed.add(this.debouncedUpdate));
+      this.registerDisposer(segmentLabelsChanged.add(() => {
+        if (filterText.value.trim()) this.debouncedUpdate();
+      }));
     }
+  }
+
+  /** nge: the words in the box, if any. */
+  get filterValue() {
+    return this.filterText?.value.trim() ?? '';
   }
 
   /** nge: this list's cells, in the list's own order (pasted: newest paste
@@ -121,6 +129,15 @@ class StarredSegmentsListSource extends SegmentListSource {
     const group = this.segmentationDisplayState.segmentationGroupState.value;
     const filter = this.filterText?.value ?? '';
     const keep = (id: Uint64) => !filter || segmentMatchesFilter(id.toString(), filter);
+    if (/[a-z]/i.test(filter)) {
+      // a name search: find the names of the cells not drawn yet
+      const unknown: string[] = [];
+      for (const id of group.selectedSegments) {
+        const s = id.toString();
+        if (!segmentLabels.has(s)) unknown.push(s);
+      }
+      if (unknown.length) requestSegmentLabels(unknown);
+    }
     const inFolders = this.folders?.memberIds() ?? new Set<string>();
     const {mode} = this;
     if (typeof mode === 'object') {
@@ -1113,6 +1130,16 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     heading.addEventListener('nge-folder-drop', (event: Event) => {
       const segIds = ((event as CustomEvent).detail?.segIds ?? []) as string[];
       if (!segIds.length) return;
+      // A search result dropped on a folder joins the view as it goes in.
+      const add: Uint64[] = [];
+      for (const s of segIds) {
+        const id = new Uint64();
+        if (id.tryParseString(s) && !group.selectedSegments.has(id)) add.push(id);
+      }
+      if (add.length) {
+        group.selectedSegments.add(add);
+        group.visibleSegments.add(add);
+      }
       const p = getPastedSegments(group);
       if (segIds.some(id => p.ids.includes(id))) {
         p.ids = p.ids.filter(id => !segIds.includes(id));
@@ -1145,8 +1172,12 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       add.title = 'Make a folder, then drag cells onto it (picked cells go straight in)';
       add.addEventListener('click', () => {
         const f = folders.create('New folder');
-        if (pickedSegments.ids.size) {
-          folders.move([...pickedSegments.ids], f.id);
+        const picked = [...pickedSegments.ids].filter(s => {
+          const id = new Uint64();
+          return id.tryParseString(s) && group.selectedSegments.has(id);
+        });
+        if (picked.length) {
+          folders.move(picked, f.id);
           pickedSegments.clear();
         }
         actions?.onNewFolder(f.id);
@@ -1268,7 +1299,10 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     const {mode} = this.listSource;
     if (typeof mode === 'object' && this.folderModel !== undefined) {
       const mine = new Set(this.folderModel.cellsIn(mode.folder));
-      return [...this.group.selectedSegments].filter(id => mine.has(id.toString()))[Symbol.iterator]();
+      const filter = this.listSource.filterValue;
+      return [...this.group.selectedSegments]
+          .filter(id => mine.has(id.toString()) &&
+                      (!filter || segmentMatchesFilter(id.toString(), filter)))[Symbol.iterator]();
     }
     return this.listSource.segmentsHere()[Symbol.iterator]();
   }
@@ -1332,13 +1366,15 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
       segmentQuery.value = '';
     };
     const addIdsFrom = (text: string) => {
-      // Three short numbers are a place: go there.
-      const place = parseCoordinates(text);
+      // Coordinates: go there (placeFrom says when numbers are a place).
+      const place = placeFrom(text, (group as any).layer);
       if (place !== undefined) {
         const viewer = (window as any)['viewer'];
-        if (viewer) {
+        if (viewer && viewer.coordinateSpace?.value?.rank === place.length) {
           viewer.navigationState.position.value = Float32Array.from(place);
           StatusMessage.showTemporaryMessage(`Moved to ${place.join(', ')}`);
+        } else {
+          StatusMessage.showTemporaryMessage('This view does not have three coordinates.');
         }
         clearQuery();
         return true;
@@ -1353,7 +1389,7 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
       const text = event.clipboardData?.getData('text/plain') ?? '';
       const whole = queryElement.value.slice(0, queryElement.selectionStart ?? 0) + text +
           queryElement.value.slice(queryElement.selectionEnd ?? queryElement.value.length);
-      if (parseCoordinates(whole) === undefined && parsePastedIds(whole) === undefined) return;
+      if (placeFrom(whole, (group as any).layer) === undefined && parsePastedIds(whole) === undefined) return;
       event.preventDefault();
       addIdsFrom(whole);
     });
@@ -1663,7 +1699,7 @@ export class SegmentDisplayTab extends Tab {
                   recolorPicked.title = 'Give the picked cells one colour';
                   recolorPicked.value = '#7cffb2';
                   recolorPicked.addEventListener('change', () => {
-                    sectionActions.recolor([...pickedSegments.ids], recolorPicked.value);
+                    sectionActions.recolor(pickedIds().map(id => id.toString()), recolorPicked.value);
                   });
                   bar.append(
                       barCount, moveTo,
@@ -1681,7 +1717,7 @@ export class SegmentDisplayTab extends Tab {
                     const v = moveTo.value;
                     moveTo.value = '';
                     if (!v || folders === undefined) return;
-                    const ids = [...pickedSegments.ids];
+                    const ids = pickedIds().map(id => id.toString());
                     let target = v === '__none' ? '' : v;
                     if (v === '__new') {
                       const f = folders.create('New folder');

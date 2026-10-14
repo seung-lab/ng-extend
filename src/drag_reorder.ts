@@ -16,6 +16,7 @@
 
 import {Uint64} from 'neuroglancer/util/uint64';
 import {pickedSegments} from 'neuroglancer/ui/nge_segment_folders';
+import {getPastedSegments} from 'neuroglancer/ui/nge_pasted_segments';
 
 const ROW_SEL = '.neuroglancer-segment-list-entry';
 const ID_SEL = '.neuroglancer-segment-list-entry-id';
@@ -80,7 +81,37 @@ function pickTargetIndex(list: HTMLElement, sourceRow: HTMLElement, clientY: num
   return {index, lineTop};
 }
 
-function getSelectedSegmentsSet(): {set: any; Uint64Ctor: typeof Uint64} | null {
+/** The segmentation group a Seg panel row belongs to: the layer whose side
+ *  panel is open, else the first segmentation layer. */
+function groupFor(row?: Element | null): any {
+  const viewer = (window as any)['viewer'];
+  if (row?.closest('.neuroglancer-segment-display-tab')) {
+    const g = viewer?.selectedLayer?.layer?.layer?.displayState?.segmentationGroupState?.value;
+    if (g?.selectedSegments) return g;
+  }
+  for (const ml of viewer?.layerManager?.managedLayers ?? []) {
+    const g = ml.layer?.displayState?.segmentationGroupState?.value;
+    if (g?.selectedSegments) return g;
+  }
+  return undefined;
+}
+
+/** `full` with `moved` put next to the neighbour it has in `shown`. */
+function placeNextTo(full: string[], moved: string, shown: string[]): string[] {
+  if (!full.includes(moved)) return full;
+  const at = shown.indexOf(moved);
+  const next = shown.slice(at + 1).find(id => id !== moved && full.includes(id));
+  const prev = shown.slice(0, at).reverse().find(id => id !== moved && full.includes(id));
+  const order = full.filter(id => id !== moved);
+  if (next !== undefined) order.splice(order.indexOf(next), 0, moved);
+  else if (prev !== undefined) order.splice(order.indexOf(prev) + 1, 0, moved);
+  else order.push(moved);
+  return order;
+}
+
+function getSelectedSegmentsSet(row?: Element | null): {set: any; Uint64Ctor: typeof Uint64} | null {
+  const g = groupFor(row);
+  if (g) return {set: g.selectedSegments, Uint64Ctor: Uint64};
   const viewer = (window as any)['viewer'];
   for (const ml of viewer?.layerManager?.managedLayers ?? []) {
     const groupState = ml.layer?.displayState?.segmentationGroupState?.value;
@@ -90,8 +121,8 @@ function getSelectedSegmentsSet(): {set: any; Uint64Ctor: typeof Uint64} | null 
   return null;
 }
 
-function persistSelectedReorder(idsInNewOrder: string[], movedId?: string) {
-  const got = getSelectedSegmentsSet();
+function persistSelectedReorder(idsInNewOrder: string[], movedId?: string, row?: Element | null) {
+  const got = getSelectedSegmentsSet(row);
   if (!got) return;
   const {set} = got;
   // Reach into the OrderedSet's private Map. We can't use .clear() + .add()
@@ -111,18 +142,8 @@ function persistSelectedReorder(idsInNewOrder: string[], movedId?: string) {
   // other cell where it is and move the dragged one next to its new
   // neighbour: rebuilding from the visible rows alone dropped every cell
   // scrolled out of sight, or in another section, from the list.
-  const moved = movedId;
   const full = [...byId.keys()];
-  let order = full;
-  if (moved !== undefined && full.includes(moved)) {
-    const at = idsInNewOrder.indexOf(moved);
-    const next = idsInNewOrder.slice(at + 1).find(id => id !== moved);
-    const prev = idsInNewOrder.slice(0, at).reverse().find(id => id !== moved);
-    order = full.filter(id => id !== moved);
-    if (next !== undefined) order.splice(order.indexOf(next), 0, moved);
-    else if (prev !== undefined) order.splice(order.indexOf(prev) + 1, 0, moved);
-    else order.push(moved);
-  }
+  const order = movedId !== undefined ? placeNextTo(full, movedId, idsInNewOrder) : full;
   data.clear();
   for (const id of order) {
     const u = byId.get(id);
@@ -176,11 +197,18 @@ function applyReorder(state: DragState) {
   const adjusted = target > sourceIdx ? target - 1 : target;
   ids.splice(adjusted, 0, moved);
 
-  if (!isPreview) {
+  if (state.list.classList.contains('nge-seg-list--pasted')) {
+    // The Pasted list is drawn in its own order (newest paste first).
+    const g = groupFor(state.row);
+    if (!g) return;
+    const p = getPastedSegments(g);
+    p.ids = placeNextTo(p.ids, segId, ids);
+    p.changed.dispatch();
+    flashByDataId(segId);
+  } else if (!isPreview) {
     // Selected list: rebuild Uint64OrderedSet, NG re-renders DOM. Then flash
     // the new (re-rendered) row by data-id, since `state.row` is gone.
-    console.log('[nge-drag] persisting reorder for', ids.length, 'segments, dropping', segId);
-    persistSelectedReorder(ids, segId);
+    persistSelectedReorder(ids, segId, state.row);
     flashByDataId(segId);
   } else {
     // Preview/query list: visual reorder via DOM move. NG's query re-render
@@ -290,7 +318,11 @@ const ROW_BUTTONS = 'button, .neuroglancer-icon, input, .nge-seg-list-toggle';
 function pickTarget(e: MouseEvent): HTMLElement | null {
   const t = e.target as HTMLElement | null;
   if (!t || t.closest(ROW_BUTTONS)) return null;
-  return t.closest(ROW_SEL) as HTMLElement | null;
+  // Only the Seg panel's lists: segment rows elsewhere (selection details,
+  // an annotation's segments) keep their own Ctrl and Shift clicks.
+  if (!t.closest('.neuroglancer-segment-display-tab')) return null;
+  const row = t.closest(ROW_SEL) as HTMLElement | null;
+  return row?.getAttribute('data-id') ? row : null;
 }
 document.addEventListener('mousedown', (e: MouseEvent) => {
   if (e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey) || e.altKey) return;
@@ -333,9 +365,30 @@ document.addEventListener('click', (e: MouseEvent) => {
 }, true);
 
 // Cancel an in-flight drag if the user hits Escape.
-// Esc unpicks.
+// Esc unpicks; Delete takes the picked cells out of the view (asking first
+// when there is more than one). Never while typing.
 document.addEventListener('keydown', (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && !drag && pickedSegments.ids.size) pickedSegments.clear();
+  if (!pickedSegments.ids.size || drag) return;
+  const t = e.target as HTMLElement | null;
+  if (t && (t.closest('input, textarea, select') || t.isContentEditable)) return;
+  if (e.key === 'Escape') {
+    pickedSegments.clear();
+    return;
+  }
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  const panel = document.querySelector('.neuroglancer-segment-display-tab');
+  const got = getSelectedSegmentsSet(panel);
+  if (!got) return;
+  const ids = [...pickedSegments.ids].map(s => Uint64.parseString(s)).filter(id => got.set.has(id));
+  if (!ids.length) {
+    pickedSegments.clear();
+    return;
+  }
+  if (ids.length > 1 && !window.confirm(`Remove ${ids.length} cells from the view?`)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  got.set.delete(ids);
+  pickedSegments.clear();
 }, true);
 
 document.addEventListener('keydown', (e: KeyboardEvent) => {

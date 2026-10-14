@@ -1,13 +1,56 @@
 import { explainCellType } from '../data/cell_type_glossary';
 import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {Uint64} from 'neuroglancer/util/uint64';
-import {segmentLabels} from 'neuroglancer/ui/nge_pasted_segments';
+import {segmentLabels, segmentLabelsChanged, setSegmentLabelRequester} from 'neuroglancer/ui/nge_pasted_segments';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
-import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem} from './lightbulb_service';
+import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
+
+/** The name Pyr shows for a cell: its type, with its classification. */
+function cellLabel(status: CellStatus|null|undefined): string {
+  return status?.cellType
+    ? (status.classificationSystem ? `${status.classificationSystem} - ${status.cellType}` : status.cellType)
+    : (status?.classificationSystem || '');
+}
+
+// A search by name in the Seg panel asks for the names of the cells whose rows
+// are not drawn yet: each cell is looked up once, four at a time.
+const labelAsked = new Set<string>();
+// Names are for one dataset: a switch starts them afresh, so an ID that
+// exists in two datasets never shows the other one's name.
+let labelScope = '';
+function inLabelScope() {
+  const scope = currentSegLayerName();
+  if (scope !== labelScope) {
+    labelScope = scope;
+    segmentLabels.clear();
+    labelAsked.clear();
+  }
+}
+setSegmentLabelRequester(ids => {
+  inLabelScope();
+  const todo = ids.filter(id => !labelAsked.has(id) && !segmentLabels.has(id)).slice(0, 300);
+  if (!todo.length) return;
+  todo.forEach(id => labelAsked.add(id));
+  const server = activeCaveServer();
+  let next = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const id = todo[next++];
+      try {
+        const label = cellLabel(await getCellStatus(server, id));
+        if (label && currentSegLayerName() === labelScope) {
+          segmentLabels.set(id, label);
+          segmentLabelsChanged.dispatch();
+        }
+      } catch { /* that cell stays unnamed */ }
+    }
+  };
+  for (let i = 0; i < 4; ++i) void worker();
+});
 import {getDatasetCaveConfig} from '../config';
 import {currentSegLayerName} from '../datasets';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
@@ -209,12 +252,11 @@ export class ButtonService {
     // (Ames 2026-09-29); the id stays in the tooltip and on the row's copy
     // button. CSS draws data-nge-label over the chip (ng-override.css).
     const idEl = row.querySelector('.neuroglancer-segment-list-entry-id') as HTMLElement|null;
-    const label = status?.cellType
-      ? (status.classificationSystem ? `${status.classificationSystem} - ${status.cellType}` : status.cellType)
-      : (status?.classificationSystem || '');
+    const label = cellLabel(status);
     if (idEl) {
       const segId = (idEl.textContent || '').trim();
       // The Seg panel's box finds cells by this name.
+      inLabelScope();
       if (label) segmentLabels.set(segId, label); else segmentLabels.delete(segId);
       if (label) {
         idEl.dataset.ngeLabel = label;
