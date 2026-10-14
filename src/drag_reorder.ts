@@ -256,6 +256,7 @@ document.addEventListener('mousemove', (e: MouseEvent) => {
     drag.row.classList.add('nge-drag-source');
     document.body.appendChild(drag.dropLine);
     document.body.style.cursor = 'grabbing';
+    document.body.classList.add('nge-row-dragging');
   }
   e.preventDefault();
   const heading = folderHeadingAt(e.clientX, e.clientY);
@@ -291,6 +292,7 @@ document.addEventListener('mouseup', (e: MouseEvent) => {
   state.row.classList.remove('nge-drag-source');
   state.dropLine.remove();
   document.body.style.cursor = '';
+  document.body.classList.remove('nge-row-dragging');
   if (state.folderTarget) {
     state.folderTarget.classList.remove(FOLDER_HOVER_CLASS);
     const segId = state.row.getAttribute('data-id');
@@ -397,5 +399,6 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
   drag.row.classList.remove('nge-drag-source');
   drag.dropLine.remove();
   document.body.style.cursor = '';
+  document.body.classList.remove('nge-row-dragging');
   drag = null;
 }, true);

@@ -1553,3 +1553,8 @@ button.nge-seg-folder-color { -webkit-appearance: none; appearance: none; paddin
 .nge-color-palette-custom { display: flex; align-items: center; gap: 6px; margin-top: 8px; cursor: pointer; }
 .nge-color-palette-custom input { width: 22px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; }
 .nge-render-select-tool { margin-bottom: 6px; }
+
+/* while a cell is dragged: the grabbing hand everywhere (the folder name's
+   text cursor showed through), and no text gets selected */
+body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; user-select: none !important; }
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-entry-id { cursor: grab; }
