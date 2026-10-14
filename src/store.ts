@@ -1046,6 +1046,9 @@ export interface UserPreferences {
   /** Mute help requests: hide the pending count on the Second Opinion toolbar
    *  icon. Defaults to false (badge shown) when the key isn't set yet. */
   helpMuted?: boolean;
+  /** Segment list: a typed cell shows its segment ID on a second line under
+   *  its label (Celia 2026-10-14). Off: the label alone, as since 2026-09-29. */
+  segShowId?: boolean;
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
@@ -1078,7 +1081,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

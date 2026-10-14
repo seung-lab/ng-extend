@@ -218,12 +218,25 @@ export class ButtonService {
         // Abbreviations written out (Ames: "hover tips to write out acronyms").
         const spelled = explainCellType(label);
         idEl.title = [label, ...spelled, '', `ID ${segId} (copy button on the left)`].join(String.fromCharCode(10));
+        // Drawn under the label only with "Show the segment ID under a cell's
+        // label" on (body.nge-seg-show-id, ng-override.css).
+        badge.dataset.segId = segId;
       } else {
+        delete badge.dataset.segId;
         delete idEl.dataset.ngeLabel;
         idEl.removeAttribute('title');
       }
     }
+    const wasLabelled = row.classList.contains('nge-seg-labelled');
     row.classList.toggle('nge-seg-labelled', !!label);
+    // With the segment ID shown under the label, a row that gains or loses
+    // its label changes height: tell its virtual list (move_to_segment_patch.ts).
+    if (wasLabelled !== !!label && document.body.classList.contains('nge-seg-show-id')) {
+      for (let el = row.parentElement; el; el = el.parentElement) {
+        const vl = (el as any).__nge_virtualList;
+        if (vl) { vl.remeasureItem?.(row); break; }
+      }
+    }
 
     if (!status) {
       badge.className = 'nge-label-badge';

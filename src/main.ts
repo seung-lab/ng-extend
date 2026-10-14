@@ -17,7 +17,7 @@ import { Uint64 as Uint64ForUndelete } from 'neuroglancer/util/uint64';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
 import { startHighlightTint } from './util/highlight';
-import {createApp, nextTick} from 'vue';
+import {createApp, nextTick, watch} from 'vue';
 import {createPinia} from 'pinia';
 import {installConsoleBuffer} from './util/console_buffer';
 import {installAnnotationCounter} from './util/annotation_counter';
@@ -40,7 +40,7 @@ import {installShowcase} from './showcase';
 import {runPendingDatasetTour} from './dataset_tour';
 import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
-import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useVolumesStore} from 'src/store';
+import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useUserPreferencesStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
 import {exitGrapheneTool} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
@@ -643,6 +643,14 @@ function observeSegmentSelect(targetNode: Element) {
       }
     }
   };
+
+  // Settings, "Show the segment ID under a cell's label" (Celia 2026-10-14).
+  // The ID line is drawn by CSS from a body class, so it changes at once;
+  // the typed rows change height, so the list measures them again.
+  watch(() => useUserPreferencesStore().prefs.segShowId === true, on => {
+    document.body.classList.toggle('nge-seg-show-id', on);
+    setTimeout(() => document.querySelectorAll<HTMLElement>('.neuroglancer-segment-list-entry.nge-seg-labelled').forEach(remeasureListRow), 0);
+  }, { immediate: true });
 
   const updateSegmentSelectItem = function(item: HTMLElement) {
     if (item.classList) {

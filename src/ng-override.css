@@ -910,6 +910,29 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Settings, "Show the segment ID under a cell's label" (Celia 2026-10-14):
+   the row's empty label badge, already a second line under the chip, shows
+   the ID in small grey monospace. Selectable, so it can be copied by hand. */
+body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-label-badge[data-seg-id]::after {
+  content: attr(data-seg-id);
+  font: 500 10.5px 'Consolas', 'Monaco', monospace;
+  letter-spacing: 0.02em;
+  color: #8fa3bd;
+}
+body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-label-badge[data-seg-id] {
+  display: block !important;
+  user-select: text;
+  max-width: none;
+  line-height: 1.2;
+  margin-top: -1px !important;
+  /* Under the label, not under the star: the chip starts after the copy,
+     star and eye icons. */
+  margin-left: 87px !important;
+  padding: 0 0 2px !important;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
 /* ...and its copy button stays visible, since the id is no longer on show. */
 .neuroglancer-segment-list-entry.nge-seg-labelled .neuroglancer-segment-list-entry-copy {
   visibility: visible !important;
