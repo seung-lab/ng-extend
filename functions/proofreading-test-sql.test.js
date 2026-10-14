@@ -51,6 +51,29 @@ test('pilot_test_action: one player at a time, holds, tries, the pass opens the 
     await assert.rejects(() => call(A, 'heartbeat', {id, session: B}), /has ended/);
     await assert.rejects(() => call(B, 'heartbeat', {id, session: c1.session}), /has ended/);
     assert.ok((await call(A, 'heartbeat', {id, session: c1.session})).expires_at);
+    // The time limit (60 minutes by default): the clock starts at the claim,
+    // and renewing the hold never reaches past the limit plus two minutes.
+    assert.ok(Math.abs(Date.parse(c1.deadline_at) - Date.now() - 60 * 60000) < 60000, 'the deadline is an hour from the claim');
+    assert.equal(again.deadline_at, c1.deadline_at, 'a reload keeps the same clock');
+    assert.equal((await call(A, 'status')).deadline_at, c1.deadline_at);
+    assert.equal((await call(B, 'status')).deadline_at, null, 'nobody else is told');
+    assert.equal((await call(A, 'status')).test.time_limit_minutes, 60);
+    await db.exec(`UPDATE proofreading_tests SET deadline_at = now() + interval '1 minute' WHERE id='${id}'`);
+    const nearEnd = await call(A, 'heartbeat', {id, session: c1.session});
+    const holdLeft = Date.parse(nearEnd.expires_at) - Date.now();
+    assert.ok(holdLeft > 2.5 * 60000 && holdLeft < 3.5 * 60000, 'one minute to the limit plus the grace, not the 30 minute hold: ' + holdLeft);
+    // Past the limit and its grace: the session is over, whatever is sent.
+    await db.exec(`UPDATE proofreading_tests SET deadline_at = now() - interval '3 minutes', expires_at = now() - interval '1 minute' WHERE id='${id}'`);
+    await assert.rejects(() => call(A, 'heartbeat', {id, session: c1.session}), /has ended/);
+    await assert.rejects(() => call(A, 'record', {id, session: c1.session, outcome: 'fail', clean: true}), /has ended/);
+    // A refused call changes nothing; the next look closes the try as expired
+    // (not counted as a try) and leaves the cell waiting for its reset.
+    const afterLimit = await call(A, 'status');
+    assert.equal(afterLimit.test.status, 'needs_reset'); assert.equal(afterLimit.attempts, 0); assert.equal(afterLimit.deadline_at, null);
+    assert.equal((await one(`SELECT outcome FROM proofreading_test_attempts WHERE user_id='${A}' ORDER BY id DESC LIMIT 1`)).outcome, 'expired');
+    // Back on the cell for the rest of this test.
+    Object.assign(c1, await call(A, 'claim'));
+    assert.equal(c1.was, 'needs_reset');
     await call(A, 'cleaned', {id, session: c1.session});
     assert.equal((await one(`SELECT reset_failures FROM proofreading_tests WHERE id='${id}'`)).reset_failures, 0);
 
@@ -61,6 +84,15 @@ test('pilot_test_action: one player at a time, holds, tries, the pass opens the 
     assert.equal(s.attempts, 1); assert.equal(s.last.outcome, 'fail'); assert.ok(s.wait_until); assert.equal(s.can_start, false);
     await assert.rejects(() => call(A, 'claim'), /Try again after/);
     assert.equal((await one('SELECT count(*)::int AS n FROM pilot_members')).n, 0);
+    // A test with no limit has no clock, and a try scored after time ran out says so.
+    await db.exec(`UPDATE proofreading_tests SET time_limit_minutes = NULL WHERE id='${id}'`);
+    const free = await call(ADMIN, 'claim');
+    assert.equal(free.deadline_at, null);
+    const freeHold = Date.parse((await call(ADMIN, 'heartbeat', {id, session: free.session})).expires_at) - Date.now();
+    assert.ok(freeHold > 29 * 60000 && freeHold < 31 * 60000, 'the plain 30 minute hold');
+    await call(ADMIN, 'record', {id, session: free.session, outcome: 'fail', found: 0, errors: 1, damaged: 0, percent: 0, clean: true, timed_out: true});
+    assert.equal((await one(`SELECT timed_out FROM proofreading_test_attempts WHERE user_id='${ADMIN}' ORDER BY id DESC LIMIT 1`)).timed_out, true);
+    await db.exec(`DELETE FROM proofreading_test_attempts WHERE user_id='${ADMIN}'; UPDATE proofreading_tests SET time_limit_minutes = 60 WHERE id='${id}'`);
     // An admin may take it any time.
     const ca = await call(ADMIN, 'claim');
     await call(ADMIN, 'record', {id, session: ca.session, outcome: 'abandoned', clean: true});

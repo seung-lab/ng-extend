@@ -37,15 +37,19 @@ export interface TestInfo {
   /** Whether a pass opens anything (the pilot list, CAVE groups). A trial
    *  run records the pass and grants nothing. */
   grants?: boolean;
+  /** Minutes allowed for the whole test, from getting the cell. Null: none. */
+  time_limit_minutes?: number | null;
 }
 export interface TestStatus {
   test: TestInfo | null; free?: boolean; mine?: boolean; attempts?: number; passed?: boolean; admin?: boolean;
   last?: { outcome: string; found: number; errors: number; damaged: number; percent: number; submitted_at: string } | null;
   wait_until?: string | null; can_start?: boolean;
 }
-interface StartResult { test: TestInfo; session: string; attempt: number; resumed: boolean; checks: number; endpoints: number; root: string | null; }
+interface StartResult { test: TestInfo; session: string; attempt: number; resumed: boolean; checks: number; endpoints: number; root: string | null; deadline?: string | null; }
 export interface TestResult {
   passed: boolean; feedback: string;
+  /** Scored because the time limit ran out. */
+  timedOut?: boolean;
   granted?: { pilot: boolean; groups: { id: number; ok: boolean }[] };
   found?: number; errors?: number; damaged?: number; percent?: number; endpoints?: number; endpointsFound?: number; stray?: number;
   checks?: { kind: string; label: string; ok: boolean; point: number[] | null }[];
@@ -90,6 +94,8 @@ const session = reactive({
   checks: 0,
   endpoints: 0,
   resumed: false,
+  /** When this try's time limit runs out (ms), or null with no limit. */
+  deadline: null as number | null,
   result: null as TestResult | null,
   error: '',
 });
@@ -116,6 +122,13 @@ function startHold() {
     if (session.phase !== 'working' || !session.nonce || !session.test) { stopHold(); return; }
     const idle = Date.now() - lastActivity;
     const quiet = Math.max(5, session.test.hold_minutes || 60) * 60 * 1000;
+    // The time limit (Ames, 2026-10-13): at zero the cell is scored as it
+    // stands. The server holds the same clock and refuses anything later.
+    if (session.deadline !== null) {
+      const timeLeft = session.deadline - Date.now();
+      updateTestHud(timeLeft);
+      if (timeLeft <= 0) { submitFromHud(); return; }
+    }
     if (idle < 60 * 1000 && Date.now() - lastHeartbeat > 60 * 1000) {
       lastHeartbeat = Date.now();
       secureWrite('test.heartbeat', { id: session.test.id, session: session.nonce }).catch((e: any) => {
@@ -127,7 +140,7 @@ function startHold() {
       });
     }
     const left = quiet - idle;
-    updateTestHud(left);
+    if (session.deadline === null) updateTestHud(left);
     if (left > 0 && left <= 5 * 60 * 1000) {
       const m = Math.ceil(left / 60000);
       statusLine(`Still there? The cell goes to the next person after ${m} more quiet minute${m === 1 ? '' : 's'}. Any move keeps it.`);
@@ -177,7 +190,7 @@ function helpHtml(): string {
 <p><strong>Follow every branch to its end.</strong> Use <strong>Highlight</strong> to paint each stretch you have checked, so you can see where you have been: press the highlighter in the top bar, or hold <strong>H</strong> and click two points on a branch.</p>
 <p><strong>At the end of every branch, place an annotation point.</strong> The <strong>End</strong> layer is ready for it: pick it in the layer tabs and click the last bit of the cell.</p>
 <p><strong>Cut off anything that does not belong, and merge any missing pieces.</strong></p>
-<p>When the cell is right, press <strong>Submit for scoring</strong> up here.</p>`;
+<p>When the cell is right, press <strong>Submit for scoring</strong> up here.${session.deadline !== null ? ' The clock beside it is the time you have left: at zero your cell is scored as it stands.' : ''}</p>`;
 }
 const HUD_ID = 'nge-test-hud', HELP_ID = 'nge-test-help';
 
@@ -202,7 +215,7 @@ function showTestHud() {
   count.textContent = session.checks ? `${session.checks} to fix` : 'Proofreading Test';
   const time = document.createElement('span');
   time.className = 'nge-test-hud-time';
-  time.title = 'How long the cell stays yours if you stop moving. Any move resets it.';
+  time.title = session.deadline !== null ? 'Time left. At zero your cell is scored as it stands.' : 'How long the cell stays yours if you stop moving. Any move resets it.';
   const submit = document.createElement('button');
   submit.type = 'button';
   submit.className = 'nge-hud-btn nge-hud-btn--sm nge-hud-btn--arrow';
@@ -218,6 +231,8 @@ function updateTestHud(msLeft: number) {
   const s = Math.max(0, Math.ceil(msLeft / 1000));
   const m = Math.floor(s / 60), r = s % 60;
   el.textContent = `${m}:${r < 10 ? '0' : ''}${r}`;
+  el.style.color = session.deadline === null || s > 300 ? '' : s > 60 ? '#ffc857' : '#ff6b6b';
+  el.style.fontWeight = session.deadline !== null && s <= 300 ? '700' : '';
 }
 function hideTestHud() {
   document.getElementById(HUD_ID)?.remove();
@@ -386,6 +401,8 @@ async function startWork() {
   // gives feedback at all.
   session.checks = got.test.feedback === 'none' ? 0 : got.checks;
   session.endpoints = got.test.feedback === 'none' ? 0 : got.endpoints;
+  const until = got.deadline ? Date.parse(got.deadline) : NaN;
+  session.deadline = Number.isFinite(until) ? until : null;
   // The saved view names the id the cell had when it was saved. It is
   // rewritten on the way in to the id the cell has now, and given the End
   // layer, so nothing out of date ever reaches the segment list.
@@ -410,7 +427,7 @@ async function startWork() {
   session.phase = 'working';
   startHold();
   showTestHud();
-  updateTestHud((got.test.hold_minutes || 60) * 60 * 1000);
+  updateTestHud(session.deadline !== null ? session.deadline - Date.now() : (got.test.hold_minutes || 60) * 60 * 1000);
   // The boxes go; the bar at the top left takes over (Ames, 2026-10-11).
   useTutorialStore().setTutorialStep(steps.length);
 }
@@ -471,6 +488,7 @@ function resultText(): string {
       : 'There was no test in progress to score. Start the test from the menu.';
   }
   const parts: string[] = [];
+  if (r.timedOut) parts.push('**Time ran out**, so your cell was scored as it stood.');
   if (r.passed) {
     parts.push('<span class="nge-done-lead">You found and fixed what was wrong. That is real proofreading.</span>');
     const groups = r.granted?.groups ?? [];
@@ -520,13 +538,16 @@ export const steps: Step[] = [
       const st = testStatus.value;
       const t = st?.test;
       const hold = t?.hold_minutes ?? 60;
+      const limit = t?.time_limit_minutes ?? null;
       const grants = t ? t.grants !== false : true;
       const lines = [
         'This is the real thing: one cell from the Sandbox with **several mistakes** on it, and nothing marked. Find and fix every one. Cut off what belongs to another cell, merge on what is missing, and mark the end of every branch with a point annotation.',
         grants
           ? 'Pass, and Pyr opens the production dataset to you: the real retina, where your edits count for science.'
           : 'This is a trial run of the test: a pass is recorded, and access to the real datasets is switched on by hand for now.',
-        `**How it works.** One player at a time: the cell is yours alone while you work. There is no time limit, but if you stop for ${hold} minutes the cell goes to the next person and that try is not scored. Cuts and merges are real edits on the Sandbox and are put back afterwards. When the cell is right, press **Submit for scoring**: the server checks the cell itself.`,
+        limit
+          ? `**How it works.** One player at a time: the cell is yours alone while you work. **You have ${limit} minutes** from the moment you get the cell. When the cell is right, press **Submit for scoring**; if the time runs out first, the cell is scored as it stands. Cuts and merges are real edits on the Sandbox and are put back afterwards. The server checks the cell itself.`
+          : `**How it works.** One player at a time: the cell is yours alone while you work. There is no time limit, but if you stop for ${hold} minutes the cell goes to the next person and that try is not scored. Cuts and merges are real edits on the Sandbox and are put back afterwards. When the cell is right, press **Submit for scoring**: the server checks the cell itself.`,
       ];
       if (!st) lines.push('Sign in to take the test.');
       else if (!t) lines.push('There is no test open right now. Check back later.');
@@ -559,7 +580,7 @@ export const steps: Step[] = [
 
 **Cut off anything that does not belong, and merge any missing pieces.**
 
-Once you have the cell, the bar at the top left has an **i** for these instructions, how long the cell stays yours, and **Submit for scoring**.`,
+Once you have the cell, the bar at the top left has an **i** for these instructions, the time you have left, and **Submit for scoring**.`,
     position: MIDDLE,
     width: '620px',
     nextLabel: 'Give me the cell',

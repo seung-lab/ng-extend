@@ -179,7 +179,7 @@ test('submit: detail feedback names each miss with a place to look; none says on
     const {rpc} = fakeRpc({});
     const out = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me, io: {...io(g, rpc), sb: sbWith}});
     for (const k of expectKeys) assert.ok(k in out, level + ' has ' + k);
-    if (level === 'none') assert.deepEqual(Object.keys(out).sort(), ['feedback', 'passed']);
+    if (level === 'none') assert.deepEqual(Object.keys(out).sort(), ['feedback', 'passed', 'timedOut']);
     if (level === 'detail') {
       const miss = out.checks.find(c => c.kind === 'cut');
       assert.deepEqual(miss.point, [2, 2, 2]);
@@ -215,6 +215,22 @@ test('submit: the admins are told the result, and a failed notice never costs th
   const quiet = [];
   await handle({action: 'test.abandon', args: {id: T.id, session: SESSION}, who, me, io: {...io(fakeGraph(START), fakeRpc({}).rpc), notifyAdmins: async n => { quiet.push(n); }}});
   assert.equal(quiet.length, 0);
+});
+
+test('submit after the time limit: scored as it stands, marked as timed out', async () => {
+  const late = {...T, deadline_at: new Date(Date.now() - 30000).toISOString()};
+  const g = fakeGraph(START);
+  const {rpc, calls} = fakeRpc({});
+  const notes = [];
+  const out = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me,
+    io: {...io(g, rpc), sb: async path => path.startsWith('proofreading_tests?') ? [late] : CHECKS, notifyAdmins: async n => { notes.push(n); }}});
+  assert.equal(out.timedOut, true); assert.equal(out.passed, false);
+  assert.equal(calls.find(c => c.action === 'record').args.timed_out, true);
+  assert.match(notes[0].body, /Time ran out\.$/);
+  // In time: not marked.
+  const onTime = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me,
+    io: {...io(fakeGraph(START), fakeRpc({}).rpc), sb: async path => path.startsWith('proofreading_tests?') ? [{...T, deadline_at: new Date(Date.now() + 600000).toISOString()}] : CHECKS}});
+  assert.equal(onTime.timedOut, false);
 });
 
 test('abandon: the edits come off and the attempt is closed without a score', async () => {

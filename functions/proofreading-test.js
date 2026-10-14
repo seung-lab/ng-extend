@@ -172,14 +172,14 @@ function feedback(test, decision, results, granted) {
 }
 
 /** What the admins are told when a player submits (Ames, 2026-10-13). */
-function adminNote(me, decision) {
+function adminNote(me, decision, timedOut = false) {
   const name = String((me && (me.username || me.display_name)) || 'A player').slice(0, 60);
   const bits = [`${decision.found} of ${decision.errors} mistakes fixed`];
   if (decision.endpoints) bits.push(`${decision.endpointsFound} of ${decision.endpoints} branch ends marked`);
   bits.push(decision.damaged ? `${decision.damaged} real part${decision.damaged === 1 ? '' : 's'} of the cell damaged` : 'nothing damaged');
   return {
     title: `Proofreading Test: ${name} ${decision.passed ? 'passed' : 'did not pass'}`,
-    body: `${decision.percent} percent. ${bits.join(', ')}.`,
+    body: `${decision.percent} percent. ${bits.join(', ')}.${timedOut ? ' Time ran out.' : ''}`,
   };
 }
 
@@ -294,6 +294,8 @@ async function handle({action, args, who, me, io}) {
       try { root = await rootOf(caveClient(io).get, pcgBase(full), full.anchor_supervoxel); } catch (e) { root = null; }
     }
     return {test: claim.test, session, attempt: claim.attempt, resumed: !!claim.resumed, root,
+      // When the time limit on this try runs out (null: no limit).
+      deadline: claim.deadline_at || null,
       // Things to fix are the cuts and merges; a keep or apart check is
       // something not to break, and is not counted for the player.
       checks: checks.filter(c => ERROR_KINDS.includes(c.kind)).length, endpoints: checks.filter(c => c.kind === 'endpoint').length};
@@ -310,6 +312,9 @@ async function handle({action, args, who, me, io}) {
     const cave = caveClient(io);
     const lease = () => rpc('heartbeat', {id, session});
     let decision = null, results = [], granted = null, endpoints = null;
+    // Scored after the time limit: the player's page submits by itself when
+    // the clock reaches zero, and the database allows a short grace for it.
+    const timedOut = !!full.deadline_at && Date.now() >= Date.parse(full.deadline_at);
     if (action === 'test.submit') {
       const roots = await readRoots(full, checks, cave.get);
       const annotations = cleanAnnotations(args.annotations);
@@ -328,12 +333,12 @@ async function handle({action, args, who, me, io}) {
     } catch (e) { error = String(e && e.message).slice(0, 300); }
     await rpc('record', decision
       ? {id, session, outcome: decision.passed ? 'pass' : 'fail', found: decision.found, errors: decision.errors, damaged: decision.damaged,
-        percent: decision.percent, checks: results, endpoints, granted, clean, error}
+        percent: decision.percent, checks: results, endpoints, granted, clean, error, timed_out: timedOut}
       : {id, session, outcome: 'abandoned', clean, error});
     if (decision && decision.passed) { try { if (io.onGranted) io.onGranted(); } catch (e) { /* the cache clears itself in time */ } }
     // A notice to the admins never stands between a player and their result.
-    if (decision && io.notifyAdmins) { try { await io.notifyAdmins(adminNote(me, decision)); } catch (e) { console.warn('[test] the admins were not told:', e && e.message); } }
-    return decision ? feedback(full, decision, results, granted) : {ended: true, clean};
+    if (decision && io.notifyAdmins) { try { await io.notifyAdmins(adminNote(me, decision, timedOut)); } catch (e) { console.warn('[test] the admins were not told:', e && e.message); } }
+    return decision ? {...feedback(full, decision, results, granted), timedOut} : {ended: true, clean};
   }
   fail(400, 'Unknown test action');
 }

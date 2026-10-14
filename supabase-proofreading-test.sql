@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS public.proofreading_tests (
   baseline_at timestamptz NOT NULL DEFAULT now(),
   -- The rules.
   hold_minutes integer NOT NULL DEFAULT 60 CHECK (hold_minutes BETWEEN 5 AND 600), -- quiet minutes before the cell is released
+  -- The time limit on the whole test, from the moment the cell is claimed
+  -- (Ames, 2026-10-13). NULL = none. Renewing the hold never reaches past it.
+  time_limit_minutes integer DEFAULT 60 CHECK (time_limit_minutes IS NULL OR time_limit_minutes BETWEEN 1 AND 600),
   pass_mark integer NOT NULL DEFAULT 100 CHECK (pass_mark BETWEEN 1 AND 100),      -- percent of points needed
   damage_fails boolean NOT NULL DEFAULT true,  -- a broken keep/apart check fails the test outright
   attempts_allowed integer CHECK (attempts_allowed IS NULL OR attempts_allowed >= 1), -- NULL = no limit
@@ -47,6 +50,7 @@ CREATE TABLE IF NOT EXISTS public.proofreading_tests (
   claimed_by uuid REFERENCES public.users(id) ON DELETE SET NULL,
   claimed_at timestamptz,
   expires_at timestamptz,
+  deadline_at timestamptz,                     -- when this claim's time limit runs out
   claim_nonce uuid,
   reset_nonce uuid,
   uses integer NOT NULL DEFAULT 0,
@@ -57,6 +61,11 @@ CREATE TABLE IF NOT EXISTS public.proofreading_tests (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Columns added after the first install (re-running this file adds them).
+ALTER TABLE public.proofreading_tests
+  ADD COLUMN IF NOT EXISTS time_limit_minutes integer DEFAULT 60 CHECK (time_limit_minutes IS NULL OR time_limit_minutes BETWEEN 1 AND 600),
+  ADD COLUMN IF NOT EXISTS deadline_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS public.proofreading_test_checks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -97,8 +106,10 @@ CREATE TABLE IF NOT EXISTS public.proofreading_test_attempts (
   checks jsonb,        -- every check's result (private)
   endpoints jsonb,     -- the player's point annotations and which endpoints they hit
   granted jsonb,       -- what the pass granted: pilot, CAVE groups, errors
-  error text
+  error text,
+  timed_out boolean NOT NULL DEFAULT false  -- scored because the time limit ran out
 );
+ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS timed_out boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS proofreading_test_attempts_user_idx ON public.proofreading_test_attempts (user_id, test_id, started_at DESC);
 
 ALTER TABLE public.proofreading_tests ENABLE ROW LEVEL SECURITY;
@@ -121,7 +132,7 @@ LANGUAGE sql IMMUTABLE AS $$
     'status', t.status, 'claimed_by', t.claimed_by, 'expires_at', t.expires_at, 'hold_minutes', t.hold_minutes,
     'pass_mark', t.pass_mark, 'damage_fails', t.damage_fails, 'attempts_allowed', t.attempts_allowed,
     'retry_hours', t.retry_hours, 'feedback', t.feedback, 'cave_groups', to_jsonb(t.cave_groups),
-    'grants', (t.grant_pilot OR cardinality(t.cave_groups) > 0));
+    'grants', (t.grant_pilot OR cardinality(t.cave_groups) > 0), 'time_limit_minutes', t.time_limit_minutes);
 $$;
 
 CREATE OR REPLACE FUNCTION public.pilot_test_action(p_user uuid, p_action text, p_args jsonb DEFAULT '{}')
@@ -138,6 +149,9 @@ DECLARE
   want uuid := (p_args->>'id')::uuid;
   nonce uuid := (p_args->>'session')::uuid;
   clean boolean := coalesce((p_args->>'clean')::boolean, false);
+  -- After the time limit a submit still gets through for this long: the
+  -- player's page submits by itself the moment the clock reaches zero.
+  grace constant interval := interval '2 minutes';
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.users WHERE id = p_user) THEN
     RAISE EXCEPTION 'Create your Pyr profile first' USING ERRCODE = '42501';
@@ -151,7 +165,7 @@ BEGIN
     WHERE a.test_id = x.id AND a.claim_nonce = x.claim_nonce AND a.outcome IS NULL
       AND x.status = 'in_use' AND x.expires_at <= now();
   UPDATE public.proofreading_tests SET status = 'needs_reset', claimed_by = NULL, claimed_at = NULL,
-      expires_at = NULL, claim_nonce = NULL, updated_at = now()
+      expires_at = NULL, deadline_at = NULL, claim_nonce = NULL, updated_at = now()
     WHERE status = 'in_use' AND expires_at <= now();
 
   IF p_action = 'status' THEN
@@ -174,6 +188,7 @@ BEGIN
       'last', CASE WHEN att.id IS NULL THEN NULL ELSE jsonb_build_object('outcome', att.outcome, 'found', att.found,
         'errors', att.errors, 'damaged', att.damaged, 'percent', att.percent, 'submitted_at', att.submitted_at) END,
       'wait_until', CASE WHEN wait_until > now() THEN wait_until ELSE NULL END,
+      'deadline_at', CASE WHEN t.status = 'in_use' AND t.claimed_by = p_user THEN t.deadline_at ELSE NULL END,
       'can_start', is_admin OR (NOT has_passed AND (t.attempts_allowed IS NULL OR n_done < t.attempts_allowed)
         AND (wait_until IS NULL OR wait_until <= now()) AND t.status <> 'broken'));
 
@@ -183,12 +198,13 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'There is no test to take right now'; END IF;
     -- The same player again (a reload mid test): keep the session and its edits.
     IF t.status = 'in_use' AND t.claimed_by = p_user AND t.expires_at > now() THEN
-      UPDATE public.proofreading_tests SET expires_at = now() + make_interval(mins => hold_minutes), updated_at = now()
+      -- least() skips a NULL, so a test with no limit keeps renewing freely.
+      UPDATE public.proofreading_tests SET expires_at = least(now() + make_interval(mins => hold_minutes), deadline_at + grace), updated_at = now()
         WHERE id = t.id RETURNING * INTO t;
       SELECT * INTO att FROM public.proofreading_test_attempts WHERE test_id = t.id AND claim_nonce = t.claim_nonce AND outcome IS NULL
         ORDER BY id DESC LIMIT 1;
       RETURN jsonb_build_object('test', public.proofreading_test_public(t), 'session', t.claim_nonce,
-        'attempt', att.id, 'resumed', true, 'was', 'in_use');
+        'attempt', att.id, 'resumed', true, 'was', 'in_use', 'deadline_at', t.deadline_at);
     END IF;
     IF t.status = 'in_use' THEN RAISE EXCEPTION 'Someone else is taking the test right now' USING ERRCODE = '55P03'; END IF;
     IF t.status = 'resetting' AND t.updated_at > now() - interval '15 minutes' THEN
@@ -207,13 +223,17 @@ BEGIN
       END IF;
     END IF;
     was := t.status;
+    -- The clock starts now: the limit runs from the claim, and the hold can
+    -- be renewed up to the limit plus the grace, never further.
     UPDATE public.proofreading_tests SET status = 'in_use', claimed_by = p_user, claimed_at = now(),
-        expires_at = now() + make_interval(mins => hold_minutes), claim_nonce = gen_random_uuid(), reset_nonce = NULL,
+        deadline_at = now() + make_interval(mins => time_limit_minutes),
+        expires_at = least(now() + make_interval(mins => hold_minutes), now() + make_interval(mins => time_limit_minutes) + grace),
+        claim_nonce = gen_random_uuid(), reset_nonce = NULL,
         uses = uses + 1, updated_at = now()
       WHERE id = t.id RETURNING * INTO t;
     INSERT INTO public.proofreading_test_attempts (test_id, user_id, claim_nonce) VALUES (t.id, p_user, t.claim_nonce) RETURNING * INTO att;
     RETURN jsonb_build_object('test', public.proofreading_test_public(t), 'session', t.claim_nonce,
-      'attempt', att.id, 'resumed', false, 'was', was);
+      'attempt', att.id, 'resumed', false, 'was', was, 'deadline_at', t.deadline_at);
 
   ELSE
     SELECT * INTO t FROM public.proofreading_tests WHERE id = want FOR UPDATE;
@@ -223,9 +243,9 @@ BEGIN
       RAISE EXCEPTION 'This test session has ended';
     END IF;
     IF p_action = 'heartbeat' THEN
-      UPDATE public.proofreading_tests SET expires_at = now() + make_interval(mins => hold_minutes), updated_at = now()
+      UPDATE public.proofreading_tests SET expires_at = least(now() + make_interval(mins => hold_minutes), deadline_at + grace), updated_at = now()
         WHERE id = t.id RETURNING * INTO t;
-      RETURN jsonb_build_object('expires_at', t.expires_at);
+      RETURN jsonb_build_object('expires_at', t.expires_at, 'deadline_at', t.deadline_at);
     ELSIF p_action = 'cleaned' THEN
       -- The server put the cell back to its start under this claim.
       UPDATE public.proofreading_tests SET last_reset_at = now(), reset_failures = 0, last_error = NULL, updated_at = now()
@@ -236,7 +256,8 @@ BEGIN
       UPDATE public.proofreading_test_attempts SET outcome = p_args->>'outcome', submitted_at = now(),
           found = (p_args->>'found')::integer, errors = (p_args->>'errors')::integer, damaged = (p_args->>'damaged')::integer,
           percent = (p_args->>'percent')::integer, checks = p_args->'checks', endpoints = p_args->'endpoints',
-          granted = p_args->'granted', error = left(p_args->>'error', 500)
+          granted = p_args->'granted', error = left(p_args->>'error', 500),
+          timed_out = coalesce((p_args->>'timed_out')::boolean, false)
         WHERE test_id = t.id AND claim_nonce = t.claim_nonce AND outcome IS NULL RETURNING * INTO att;
       -- A pass opens the app's own gate here, in the same transaction.
       IF p_args->>'outcome' = 'pass' AND t.grant_pilot THEN
@@ -246,7 +267,7 @@ BEGIN
       END IF;
       UPDATE public.proofreading_tests SET
           status = CASE WHEN clean THEN 'ready' WHEN reset_failures + 1 >= 3 THEN 'broken' ELSE 'needs_reset' END,
-          claimed_by = NULL, claimed_at = NULL, expires_at = NULL, claim_nonce = NULL, reset_nonce = NULL,
+          claimed_by = NULL, claimed_at = NULL, expires_at = NULL, deadline_at = NULL, claim_nonce = NULL, reset_nonce = NULL,
           last_reset_at = CASE WHEN clean THEN now() ELSE last_reset_at END,
           reset_failures = CASE WHEN clean THEN 0 ELSE reset_failures + 1 END,
           last_error = CASE WHEN clean THEN NULL ELSE left(p_args->>'error', 500) END,
