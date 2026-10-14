@@ -23,6 +23,10 @@ function onDocClick(e: MouseEvent) {
   if (target.closest?.('.nge-icon-btn')) return;
   // Ignore clicks inside the detail overlay or lightbox (separate Teleport)
   if (target.closest?.('.nge-notif-detail-backdrop') || target.closest?.('.nge-notif-lightbox')) return;
+  // The reply's screenshot window sits outside the panel (its own Teleport).
+  // A click in it hid the panel, which closed the reply and dropped the
+  // picture it was taking (Celia and Ames, 2026-10-14).
+  if (showReplyShot.value || target.closest?.('.nge-shotdlg-overlay')) return;
   if (panelRef.value && !panelRef.value.contains(target)) {
     emit('hide');
   }

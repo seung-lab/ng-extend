@@ -70,6 +70,21 @@ export class ButtonService {
       const el = menu.element as HTMLElement;
       el.style.top = '50%';
       el.style.transform = 'translateY(-50%)';
+      // Placed by a 290px guess, the menu covered most of the side panel but
+      // not its X, which then read as the Cell Profile's own close (player
+      // report 2026-10-14). It opens squarely on top of the panel instead,
+      // edge to edge, with a close of its own (Ames 2026-10-14).
+      const panel = button.closest('.neuroglancer-side-panel') as HTMLElement | null;
+      if (panel) {
+        const p = panel.getBoundingClientRect();
+        el.classList.add('nge-lb-over-panel');
+        el.style.left = p.left + 'px';
+        el.style.top = p.top + 'px';
+        el.style.width = p.width + 'px';
+        el.style.height = p.height + 'px';
+        el.style.maxHeight = p.height + 'px';
+        el.style.transform = 'none';
+      }
     });
 
     // Listen for annotation changes from AnnotationPanel (or anywhere).
@@ -327,6 +342,14 @@ export class ButtonService {
     segIdLabel.title = segmentIDString;
     header.appendChild(eyebrow);
     header.appendChild(segIdLabel);
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'nge-lb-close';
+    closeBtn.type = 'button';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Close the Cell Profile';
+    closeBtn.setAttribute('aria-label', 'Close the Cell Profile');
+    closeBtn.addEventListener('click', () => contextMenu.hide());
+    header.appendChild(closeBtn);
     menu.appendChild(header);
 
     // ── Out of date ID ────────────────────────────────────────────────────
