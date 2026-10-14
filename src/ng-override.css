@@ -1565,3 +1565,14 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 /* copy and remove on the chip's centre line */
 .neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container,
 .neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { top: 13px !important; }
+
+/* Readable sizes for the new text (Ames 2026-10-14: "should also not be
+   microscopic"): headings, counts, folder names, buttons and hints. Cell
+   chips keep their size. */
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-status-message { font-size: 12px !important; }
+.nge-seg-folder-name { font-size: 13px !important; }
+.nge-seg-list-keep, .nge-seg-folder-new { font-size: 12px !important; }
+.nge-seg-folder-icon { font-size: 13px !important; }
+.nge-seg-list--folder[data-nge-empty="true"]::before,
+.neuroglancer-segment-list[data-nge-no-match="true"]::before { font-size: 12px !important; }
+.nge-pick-bar, .nge-pick-move, .nge-pick-btn, .nge-color-palette, .nge-color-palette-title { font-size: 12.5px !important; }

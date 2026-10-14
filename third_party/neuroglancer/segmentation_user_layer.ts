@@ -480,7 +480,7 @@ export class SegmentationUserLayer extends Base {
     this.tabs.add(
         'rendering', {label: 'Render', order: -100, getter: () => new DisplayOptionsTab(this)});
     this.tabs.add(
-        'segments', {label: 'Seg.', order: -50, getter: () => new SegmentDisplayTab(this)});
+        'segments', {label: '3D Segments', order: -50, getter: () => new SegmentDisplayTab(this)});
     // EyeWire II (Ames 2026-10-02): a segmentation layer opens on Seg., with
     // Source and Graph tucked away; Settings can show them again. (Split,
     // Merge and Find Path are on the toolbar, not only in the Graph tab.)

@@ -131,15 +131,15 @@ export function openSegPanel(retryAttempts = 3): void {
       );
       for (const tab of tabLabels) {
         const text = tab.textContent?.trim();
-        if (text === 'Seg.' || text === 'Seg' || text === 'Segments') {
+        if (text === '3D Segments' || text === 'Seg.' || text === 'Seg' || text === 'Segments') {
           (tab as HTMLElement).click();
           return;
         }
       }
-      // Fallback: any leaf element with text "Seg."
+      // Fallback: any leaf element with the tab's name
       const allEls = document.querySelectorAll('.neuroglancer-layer-side-panel *');
       for (const el of allEls) {
-        if (el.children.length === 0 && el.textContent?.trim() === 'Seg.') {
+        if (el.children.length === 0 && (el.textContent?.trim() === '3D Segments' || el.textContent?.trim() === 'Seg.')) {
           (el as HTMLElement).click();
           return;
         }

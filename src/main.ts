@@ -294,7 +294,7 @@ function autoSelectSegLayer(viewer: any, attempt = 0) {
         );
         for (const tab of tabs) {
           const text = tab.textContent?.trim();
-          if (text === 'Seg.' || text === 'Seg' || text === 'Segments') {
+          if (text === '3D Segments' || text === 'Seg.' || text === 'Seg' || text === 'Segments') {
             (tab as HTMLElement).click();
             return;
           }

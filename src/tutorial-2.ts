@@ -223,7 +223,7 @@ Other layer types include IMG which indicates the EM image layer, and ANN for an
     text: `
 These TABS correspond to your selected layer.
 
-We are currently in the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Seg.</span> tab which shows the segment ID for our visible cell. `,
+We are currently in the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">3D Segments</span> tab which shows the segment ID for our visible cell. `,
     position: {
       element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
       side: "left",

@@ -331,9 +331,9 @@ CLICK + DRAG to rotate it.
 This box won't go away when you click outside it.`,
     position: OVER_3D,
   },
-  //7 - zoom in 3D: SCROLL, or CTRL+SCROLL with the classic controls (Settings)
+  //7 - zoom in 3D: SCROLL
   {
-    text: `SCROLL to zoom in and out (CTRL+SCROLL works too).`,
+    text: `SCROLL to zoom in and out.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
@@ -366,7 +366,7 @@ This box won't go away when you click outside it.`,
   {
     text: `Right click on the neuron to re-center your view.
 
-RIGHT-DRAG (or SHIFT+DRAG) to slide the view around.`,
+RIGHT-DRAG to slide the view around.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
