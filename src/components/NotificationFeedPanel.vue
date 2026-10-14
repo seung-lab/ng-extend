@@ -53,9 +53,11 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 function onPreview(e: Event) {
   const d = (e as CustomEvent).detail ?? {};
   openNotif.value = {
-    id: null, preview: true, target_type: 'all',
+    id: null, preview: true, target_type: d.target_type || 'all',
     title: String(d.title ?? ''), body: String(d.body ?? ''),
-    image_url: d.image_url || '', thumbnail_url: '', send_at: new Date().toISOString(),
+    image_url: d.image_url || '', thumbnail_url: d.thumbnail_url || '', send_at: d.send_at || new Date().toISOString(),
+    // View from the Admin Hub list: one already sent says when, not "not sent".
+    viewing: !!d.viewing,
   };
 }
 
@@ -611,7 +613,7 @@ function padRank(rank: number): string {
               <span class="nge-notif-detail-kicker-dot" aria-hidden="true"></span>
               <span class="nge-notif-detail-kicker-label">{{ champions ? 'Broadcast' : 'Notification' }}</span>
               <span class="nge-notif-detail-kicker-sep" aria-hidden="true">/</span>
-              <span class="nge-notif-detail-time">{{ openNotif.preview ? 'Preview, not sent' : relativeTime(openNotif.send_at) }}</span>
+              <span class="nge-notif-detail-time">{{ openNotif.preview && !openNotif.viewing ? 'Preview, not sent' : relativeTime(openNotif.send_at) }}</span>
             </span>
             <button class="nge-notif-detail-close" @click="closeDetail" aria-label="Close">×</button>
           </div>

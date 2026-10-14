@@ -1189,6 +1189,16 @@ function previewNotification() {
   }));
 }
 
+/** View: a notification from the list, in the window players read it in
+ *  (Ames 2026-10-14). Opened as a preview, so nothing is marked read and no
+ *  reply can be sent from it. */
+function viewNotification(n: any) {
+  document.dispatchEvent(new CustomEvent('nge:preview-notification', {
+    detail: { title: n.title || 'Untitled', body: n.body || '', image_url: n.image_url || '', thumbnail_url: n.thumbnail_url || '',
+      send_at: n.send_at || n.created_at, target_type: n.target_type, viewing: !(n.send_at && new Date(n.send_at).getTime() > Date.now()) },
+  }));
+}
+
 /** Load an existing notification into the compose form for editing. */
 function startEdit(n: any) {
   editingId.value = n.id;
@@ -2126,6 +2136,7 @@ function practiceWhen(iso: string | null) {
               <span v-if="n.post_to_chat"> · posts to chat</span>
             </span>
           </div>
+          <button class="nge-admin-edit-btn" @click="viewNotification(n)" title="See this notification as players see it. Nothing changes.">View</button>
           <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit this notification (changes it in place, sends nothing new)">&#9998; Edit</button>
           <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Cancel this scheduled notification">&times;</button>
         </div>
@@ -2141,6 +2152,7 @@ function practiceWhen(iso: string | null) {
               <span v-if="n.expires_at"> · stops sending {{ formatEt(n.expires_at) }}</span>
             </span>
           </div>
+          <button class="nge-admin-edit-btn" @click="viewNotification(n)" title="See this notification as players see it. Nothing changes.">View</button>
           <button class="nge-admin-edit-btn" @click="startEdit(n)" title="Edit this notification (changes it in place, sends nothing new)">&#9998; Edit</button>
           <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">&times;</button>
         </div>
@@ -2156,6 +2168,7 @@ function practiceWhen(iso: string | null) {
             <strong>{{ n.title }}</strong>
             <span class="nge-admin-notif-meta">{{ n.target_type }} · stopped sending {{ formatEt(n.expires_at) }}</span>
           </div>
+          <button class="nge-admin-edit-btn" @click="viewNotification(n)" title="See this notification as players see it. Nothing changes.">View</button>
           <button class="nge-admin-delete-btn" @click="requestDelete(n)" title="Delete">&times;</button>
         </div>
       </div>
