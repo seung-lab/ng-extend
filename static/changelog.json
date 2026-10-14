@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-14T14:39:09Z",
+      "title": "Easier 3D controls",
+      "digest": "headline",
+      "items": [
+        "In the 3D view, scroll now zooms in and out, and dragging with the right mouse button slides the view. A right click without dragging still centres the view where you clicked.",
+        "Ctrl+scroll and Shift+drag keep working too, so use whichever you like. The 2D views are unchanged: scroll still moves through the sections.",
+        "Retina opens on two current cells, in blue and gold.",
+        "You can wave in chat: 👋 is now in the emoji choices.",
+        "The music button sits beside the 3D view's Sections box instead of above it, and the green segment colour is a softer green.",
+        "Your profile shows your latest 10 completed cells, with the rest a click away in My cells, and cells finished from the Cell Library show their segment ID."
+      ]
+    },
+    {
       "at": "2026-10-14T14:13:52Z",
       "title": "Your profile lists only your own completed cells",
       "items": [
