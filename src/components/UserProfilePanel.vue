@@ -1136,18 +1136,26 @@ const filteredCellHistory = computed(() => {
 });
 
 
-/** Recent cells: the browser's own history of cells worked on here, or, when
- *  that is empty (a new device, a build on another address), the cells
- *  completed on this dataset from the server's list, the same rows as the
- *  Cells completed numbers (Ames 2026-10-11: "what happened to the list of my
- *  recently completed cells?"). Server rows carry no type, name or favorite. */
+/** Recent cells: the cells THIS PLAYER completed, from the server's list,
+ *  the same rows as the Cells completed numbers. The list used to come from a
+ *  history kept in the browser, which belongs to no player: a new player on a
+ *  computer someone else had used, or anyone looking at another player's
+ *  profile, saw that other person's cells (Ames 2026-10-14: a new player
+ *  showing her cells under Recently completed). The browser's history now
+ *  only adds what it knows about a cell (its type, the name you gave it, a
+ *  star) on your own profile, and only for cells in your server list. */
 const recentCells = computed<Array<CellHistoryEntry & { serverOnly?: boolean }>>(() => {
-  const done = cellHistory.value.filter(c => c.isComplete);
-  if (done.length) return done;
-  return (scopedCompletionRows.value ?? []).map(r => ({
-    segId: r.cell, isComplete: true, cellType: '', position: [0, 0, 0] as [number, number, number],
-    updatedAt: r.done_at, dataset: r.dataset, serverOnly: true,
-  }));
+  const rows = scopedCompletionRows.value ?? [];
+  const known = viewingOtherUser.value ? new Map<string, CellHistoryEntry>() : new Map(cellHistory.value.map(c => [c.segId, c]));
+  const list = rows.map(r => {
+    const mine = known.get(r.cell);
+    return mine
+      ? { ...mine, segId: r.cell, isComplete: true, updatedAt: r.done_at, dataset: r.dataset }
+      : { segId: r.cell, isComplete: true, cellType: '', position: [0, 0, 0] as [number, number, number],
+          updatedAt: r.done_at, dataset: r.dataset, serverOnly: true };
+  });
+  // Starred cells first, then the newest.
+  return list.sort((x, y) => Number(!!y.isFavorite) - Number(!!x.isFavorite) || String(y.updatedAt).localeCompare(String(x.updatedAt)));
 });
 
 // ── 14-day activity chart data ───────────────────────────────────────────────
