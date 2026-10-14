@@ -1215,7 +1215,7 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
         const cur = folder();
         if (!cur) return;
         actions?.recolor(folders.cellsIn(cur.id), hex);
-        if (cur.color !== hex) folders.setColor(cur.id, hex);
+        if (cur.color !== hex || !cur.paint) folders.setColor(cur.id, hex, true);
       }, `Colour for ${f.name}`);
     });
     heading.prepend(caret, swatch);
@@ -1292,6 +1292,11 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       const depth = folders.ordered().find(x => x.folder.id === f.id)?.depth ?? 0;
       this.element.style.setProperty('--nge-folder-depth', String(depth));
     };
+    // Copy the folder's IDs (and those of the folders inside it), beside the
+    // other heading icons (Ames 2026-10-14).
+    const copy = this.copyAllSegmentsButton;
+    copy.classList.add('nge-seg-folder-copy');
+    heading.insertBefore(copy, heading.querySelector('.nge-seg-folder-icon'));
     this.registerDisposer(folders.changed.add(paint));
     paint();
     this.startRename = startRename;
@@ -1673,6 +1678,23 @@ export class SegmentDisplayTab extends Tab {
                   context.registerDisposer(() => folderOwner?.dispose());
 
                   const allSections = () => [pasted, ...folderSections, inview];
+
+                  // nge: a cell that joins a folder whose colour was picked
+                  // takes that colour, however it got there (Ames 2026-10-14).
+                  if (folders !== undefined) {
+                    const membersOf = () => new Map(folders.value.map(f => [f.id, new Set(f.ids)]));
+                    let before = membersOf();
+                    context.registerDisposer(folders.changed.add(() => {
+                      const now = membersOf();
+                      for (const f of folders.value) {
+                        if (!f.paint || !f.color) continue;
+                        const had = before.get(f.id);
+                        const joined = f.ids.filter(id => !had?.has(id));
+                        if (joined.length && had !== undefined) sectionActions.recolor(joined, f.color);
+                      }
+                      before = now;
+                    }));
+                  }
 
                   // nge: picked cells (Ctrl+click, Shift+click) are lit, and a
                   // bar above the list acts on all of them at once.

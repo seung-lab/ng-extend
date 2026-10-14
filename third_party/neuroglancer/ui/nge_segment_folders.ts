@@ -18,6 +18,9 @@ export interface SegmentFolder {
   parent?: string;
   /** The colour last given to the whole folder ('#rrggbb'). */
   color?: string;
+  /** True once a colour was picked for the folder's cells: cells that join
+   *  the folder later take it too. */
+  paint?: boolean;
 }
 
 /** nge: cells picked with Ctrl+click or Shift+click, to move, show, hide,
@@ -64,6 +67,7 @@ export class SegmentFolders {
           collapsed: f.collapsed === true,
           parent: typeof f.parent === 'string' && f.parent ? f.parent : undefined,
           color: typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : undefined,
+          paint: f.paint === true,
         });
       }
     }
@@ -86,6 +90,7 @@ export class SegmentFolders {
       ...(f.collapsed ? {collapsed: true} : {}),
       ...(f.parent ? {parent: f.parent} : {}),
       ...(f.color ? {color: f.color} : {}),
+      ...(f.paint ? {paint: true} : {}),
     }));
   }
 
@@ -135,8 +140,8 @@ export class SegmentFolders {
     this.changed.dispatch();
   }
 
-  setColor(id: string, color: string) {
-    this.value = this.value.map(f => f.id === id ? {...f, color} : f);
+  setColor(id: string, color: string, paint = false) {
+    this.value = this.value.map(f => f.id === id ? {...f, color, paint: paint || f.paint} : f);
     this.changed.dispatch();
   }
 

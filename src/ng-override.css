@@ -1471,7 +1471,6 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 
 /* folder headings: the name gets the room; copy buttons are left to the
    rows and the batch bar; the other icons come on hover */
-.nge-seg-list-heading--folder > .nge-seg-copy-all,
 .nge-seg-list-heading--folder > .nge-seg-copy-visible { display: none !important; }
 .nge-seg-list-heading--folder .nge-seg-folder-name { flex: 1 1 auto; min-width: 40px; max-width: none; }
 .nge-seg-list-heading--folder .neuroglancer-segment-list-status-message { flex: none; }
@@ -1558,3 +1557,11 @@ button.nge-seg-folder-color { -webkit-appearance: none; appearance: none; paddin
    text cursor showed through), and no text gets selected */
 body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; user-select: none !important; }
 .neuroglancer-segment-display-tab .neuroglancer-segment-list-entry-id { cursor: grab; }
+
+@media (hover: hover) {
+  .nge-seg-list-heading--folder:not(:hover) > .nge-seg-folder-copy { visibility: hidden !important; }
+}
+
+/* copy and remove on the chip's centre line */
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container,
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { top: 13px !important; }
