@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-14T14:13:52Z",
+      "title": "Your profile lists only your own completed cells",
+      "items": [
+        "Recently completed cells on a profile now lists the cells that player completed. Before, it could show cells completed by someone else who had used the same browser."
+      ]
+    },
+    {
       "at": "2026-10-14T12:46:45Z",
       "title": "Music on, and replies that show they arrived",
       "digest": "minor",
