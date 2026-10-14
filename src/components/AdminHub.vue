@@ -604,6 +604,9 @@ const isGoingLive = (r: TriageRow) => ['deploying', 'live_test_queued', 'live_te
 
 async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' | 'done', discard = false, builtElsewhere = false, presetNote?: string | null) {
   if (triageActing.value) return;
+  // Already closed, and only back under Needs your decision for a reply: Done
+  // means "read it". No second Slack update, no new note.
+  if (hasNewReply(row) && status === row.status && !discard) return markRepliesSeen(row);
   if (discard && !window.confirm('Discard this report? It is dismissed and taken off the board. Any build in progress is stopped. You can still find it with "Show older".')) return;
   // Shipping a change closes the loop in Slack: the bridge posts a change
   // update into the original thread and tags the approvers, carrying this
@@ -660,6 +663,10 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
       reviewed_by: backend.userName || backend.userEmail || 'admin',
       reviewed_at: new Date().toISOString(),
     };
+    // Closing a card is reading its reply. Without this, Done on a card that
+    // was already done changed nothing and the New reply kept it under Needs
+    // your decision (Ames 2026-10-14).
+    if (hasNewReply(row) && status !== 'approved') update.feedback_log = await logWithRepliesSeen(row);
     let noteLost = false;
     try {
       await secureWrite('triage.update', { id: row.id, fields: update });
@@ -798,6 +805,15 @@ function reporterThreadFor(row: TriageRow) {
     }));
 }
 
+/** The card's log with every unread reply marked read. Re-read right before
+ *  writing, so a bridge write in between is kept. */
+async function logWithRepliesSeen(row: TriageRow): Promise<any[]> {
+  const { supabase } = await import('../supabase');
+  const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
+  return (Array.isArray(fresh?.feedback_log) ? fresh!.feedback_log : (row.feedback_log || []))
+    .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
+}
+
 /** "Reply read": the New reply marker comes off and the card goes back to
  *  where it was. Nothing else about the card changes. */
 async function markRepliesSeen(row: TriageRow) {
@@ -805,12 +821,7 @@ async function markRepliesSeen(row: TriageRow) {
   triageActing.value = row.id;
   triageError.value = '';
   try {
-    const { supabase } = await import('../supabase');
-    // Re-read the log right before writing, so a bridge write in between is kept.
-    const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
-    const log = (Array.isArray(fresh?.feedback_log) ? fresh!.feedback_log : (row.feedback_log || []))
-      .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
-    await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } });
+    await secureWrite('triage.update', { id: row.id, fields: { feedback_log: await logWithRepliesSeen(row) } });
     await loadTriage();
   } catch (e: any) {
     triageError.value = `Could not mark the reply read: ${e?.message ?? String(e)}`;
