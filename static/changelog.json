@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-15T21:05:49Z",
+      "title": "Quest work stays with its quest cell",
+      "digest": "minor",
+      "items": [
+        "Jumping from a quest cell to one of your claimed cells now saves your quest work first and takes the quest's layers out of the view. Before, they came along, and your quest cell could reopen showing the wrong cell."
+      ]
+    },
+    {
       "at": "2026-10-15T20:54:46Z",
       "title": "Restore all settings to default",
       "digest": "minor",
