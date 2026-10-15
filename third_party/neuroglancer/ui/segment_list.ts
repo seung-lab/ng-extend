@@ -1262,6 +1262,8 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       } else {
         name.textContent = f.name;
       }
+      // editing leaves a long name scrolled to its end: show its start again
+      name.scrollLeft = 0;
     };
     name.addEventListener('dblclick', startRename);
     name.addEventListener('blur', () => finishRename(true));
@@ -1287,7 +1289,6 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
           if (f.collapsed) folders.setCollapsed(f.id, false);
           actions?.onNewFolder(child.id);
         }),
-        icon('\u270e', 'Rename this folder', startRename),
         icon('\u2715', 'Ungroup: the folder goes, its cells stay in view', () => {
           const f = folder();
           if (!f) return;
@@ -1304,7 +1305,12 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       const f = folder();
       if (!f) return;
       caret.textContent = f.collapsed ? '\u25b8' : '\u25be';
-      if (name.contentEditable !== 'true') name.textContent = f.name;
+      if (name.contentEditable !== 'true') {
+        name.textContent = f.name;
+        name.scrollLeft = 0;
+      }
+      // the whole name on hover, however long (Ames 2026-10-15)
+      name.title = `${f.name}\nDouble click to rename. Drag onto another folder to put it inside.`;
       swatch.style.background = f.color ?? '#8cb4eb';
       this.element.style.setProperty('--nge-folder-color', f.color ?? '#8cb4eb');
       this.element.classList.toggle('nge-seg-folder--collapsed', !!f.collapsed);
@@ -1316,7 +1322,7 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     const copy = this.copyAllSegmentsButton;
     copy.classList.add('nge-seg-folder-copy');
     heading.insertBefore(copy, heading.querySelector('.nge-seg-folder-icon'));
-    heading.insertBefore(this.starAllButton, heading.querySelector('.nge-seg-folder-icon'));
+    heading.insertBefore(this.starAllButton, heading.querySelector('.nge-seg-folder-ungroup'));
     this.registerDisposer(folders.changed.add(paint));
     paint();
     this.startRename = startRename;

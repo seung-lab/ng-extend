@@ -1613,3 +1613,6 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 }
 .neuroglancer-segment-list-status .nge-seg-remove-all:hover { background-color: rgba(224, 96, 96, 0.18) !important; }
 .neuroglancer-segment-list-status .nge-seg-remove-all:hover > svg { stroke: #e06060 !important; }
+
+/* a long folder name shows its start and ends in an ellipsis */
+.nge-seg-folder-name:not([contenteditable="true"]) { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; direction: ltr; }
