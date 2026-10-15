@@ -1049,10 +1049,16 @@ export interface UserPreferences {
   /** Segment list: a typed cell shows its segment ID on a second line under
    *  its label (Celia 2026-10-14). Off: the label alone, as since 2026-09-29. */
   segShowId?: boolean;
+  /** The viewer's loading settings as this player set them in Viewer
+   *  settings, put back whenever a new view resets them (src/util/viewer_perf.ts,
+   *  Krzysztof 2026-10-15). Absent: neuroglancer's defaults. */
+  viewerPerf?: ViewerPerf;
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
 }
+
+export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
 
 /** Settings: "Jumping to a cell adds it to my view" (off = replace). */
 export function jumpAddsToView(): boolean {
@@ -1081,7 +1087,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
