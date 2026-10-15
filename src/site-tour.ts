@@ -352,7 +352,7 @@ Below them: the **Proofreading Guide** and the **Forum**.`,
     title: "The Layers Bar",
     text: `Each chip at the top is a data layer (image volume, segmentation, annotation, etc.).
 
-**Click a layer chip** to open its side panel. That's where you find the **Source / Render / 3D Segments / Graph / Annotations** tabs you've seen throughout the tour.
+**Click a layer chip** to open its side panel. That's where you find the **Source / Render / Segments / Graph / Annotations** tabs you've seen throughout the tour.
 
 Drag to reorder, **+** to add a new layer.`,
     // The layer bar sits at the TOP of the viewer, so there is no room above

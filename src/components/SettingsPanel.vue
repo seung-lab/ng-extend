@@ -526,7 +526,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
               <button class="nge-settings-advanced-btn" @click="toggleSelectionDetails">◫ Selection Details</button>
             </div>
-            <label class="nge-settings-toggle" style="margin-top: 10px;" title="Segmentation layers open on 3D Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
+            <label class="nge-settings-toggle" style="margin-top: 10px;" title="Segmentation layers open on Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
               <input type="checkbox" v-model="draftSegSetupTabs" />
               <span class="nge-settings-toggle-label">Show Source and Graph tabs on segmentation layers</span>
             </label>
