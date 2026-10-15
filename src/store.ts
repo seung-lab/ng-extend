@@ -4938,15 +4938,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // The bell used to ask for the 50 newest notifications in full, twice a
   // minute, in every open tab, with every read mark the player has: after
   // the leaderboard, the biggest share of Pyr's Supabase egress (2026-10-15).
-  // A check now asks only for what became due since the last one (newOnly).
-  // The read marks and group memberships come with a full load: at sign in,
-  // when the bell opens, and every tenth check as a safety net.
+  // A check now asks only for what is new since the last check (newOnly):
+  // rows written since (id above the highest seen) and rows that became due
+  // since (send_at after the last check's own clock reading). The first
+  // version compared send_at with the newest send_at seen, which missed a
+  // row written later with an earlier send_at, e.g. by a writer whose clock
+  // runs behind (review by Astra, 2026-10-15). The read marks and group
+  // memberships come with a full load: at sign in, when the bell opens, and
+  // every tenth check, which also brings edits and other tabs' dismissals.
   let notifGroupIds: string[] = [];
-  let notifNewestDue = 0;
+  let notifMaxId = 0;
+  let notifCheckedAt = '';
   async function loadNotifications(opts: { newOnly?: boolean } = {}) {
     if (!userId.value) return;
     const now = new Date().toISOString();
-    const newOnly = !!opts.newOnly && notifNewestDue > 0;
+    const newOnly = !!opts.newOnly && !!notifCheckedAt;
 
     if (!newOnly) {
       // Get user's group IDs for group-targeted notifications
@@ -4956,24 +4962,31 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         .eq('user_id', userId.value);
       notifGroupIds = (memberships || []).map((m: any) => String(m.group_id));
     }
-    const groupIds = notifGroupIds;
 
-    // Fetch active notifications: all of them, or only those due since the last check.
+    // Fetch active notifications: all of them, or only what is new since the last check.
     let query = supabase
       .from('notifications')
       .select('*')
       .lte('send_at', now)
       .order('created_at', { ascending: false })
       .limit(50);
-    if (newOnly) query = query.gt('send_at', new Date(notifNewestDue).toISOString());
+    if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
     const { data: allNotifs } = await query;
     if (!allNotifs) return;
-    for (const n of allNotifs as any[]) {
-      const due = n.send_at ? new Date(n.send_at).getTime() : 0;
-      if (due > notifNewestDue) notifNewestDue = due;
-    }
+    for (const n of allNotifs as any[]) if (Number(n.id) > notifMaxId) notifMaxId = Number(n.id);
+    notifCheckedAt = now;
     if (newOnly && !allNotifs.length) return;
+    // The server already picks what is meant for this player. A group
+    // notification for a group joined since the last full load: read the
+    // memberships again so it is not filtered out here.
+    if (newOnly && (allNotifs as any[]).some(n => n.target_type === 'group' && !notifGroupIds.includes(String(n.target_id)))) {
+      const { data: memberships } = await supabase
+        .from('user_group_members')
+        .select('group_id')
+        .eq('user_id', userId.value);
+      if (memberships) notifGroupIds = memberships.map((m: any) => String(m.group_id));
+    }
 
     if (!newOnly) {
       // Load read + dismissed status together (both live on notification_reads).
@@ -4994,6 +5007,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // computers.
     const prefsStore = useUserPreferencesStore();
     const delivered = new Set<number>([...(prefsStore.prefs.notifDelivered || []), ...notificationReads.value]);
+    const groupIds = notifGroupIds;
     const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && (
       n.target_type === 'all'
       || (n.target_type === 'user' && n.target_id === userId.value)
