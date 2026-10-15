@@ -306,7 +306,7 @@ function cancelTool() {
             </div>
             <!-- The swap key sits with the colours it swaps (it used to be
                  far right, among Submit and Cancel). -->
-            <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap }" @click="swapGroup()" title="Switch between red and blue"><kbd v-if="!isTouchRef">G</kbd> {{ needsSwap ? (isTouchRef ? 'Tap for blue' : 'Press G for blue') : 'Swap' }}</span>
+            <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap, 'nge-smo-swap-hint--touch': isTouchRef }" @click="swapGroup()" title="Switch between red and blue"><kbd v-if="!isTouchRef">G</kbd> {{ needsSwap ? (isTouchRef ? 'Tap for blue' : 'Press G for blue') : 'Swap' }}</span>
           </div>
 
           <!-- All the cut controls sit together on the left (Ames,
@@ -602,6 +602,14 @@ function cancelTool() {
   transform: scale(1.25); animation: nge-smo-swap-now 0.9s ease-out infinite;
 }
 .nge-smo-hint--now { color: #fff; font-weight: 600; font-style: normal; }
+/* On a touch screen there is no G key to show, so Swap is a plain button,
+   blue and pulsing when it is time for blue (Nseraf, report 135). */
+.nge-smo-swap-hint--touch {
+  display: inline-flex; align-items: center; height: 30px; padding: 0 14px; border-radius: 6px;
+  background: rgb(84 112 255 / .18); border: 1px solid rgb(150 172 255 / .55); color: #fff; opacity: 1;
+}
+.nge-smo-swap-hint--touch.nge-smo-swap-hint--now { background: #4f7dff; border-color: #b9caff; animation: nge-smo-swap-now 0.9s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .nge-smo-swap-hint--touch.nge-smo-swap-hint--now { animation: none; } }
 @keyframes nge-smo-swap-now {
   0% { box-shadow: 0 0 0 0 rgba(120, 150, 255, 0.9); }
   100% { box-shadow: 0 0 0 14px rgba(120, 150, 255, 0); }
