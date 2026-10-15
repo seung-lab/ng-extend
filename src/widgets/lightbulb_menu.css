@@ -78,9 +78,9 @@
   position: relative;
   padding-right: 40px;
 }
-/* Opened over the side panel it covers the panel exactly, so square edges. */
-.nge_lbmenu.nge-lb-over-panel { min-width: 0; box-sizing: border-box; border-radius: 0; }
-.nge_lbmenu.nge-lb-over-panel .nge-lb-header { border-radius: 0; }
+/* Docked at the right edge of the page: square corners, a left edge only. */
+.nge_lbmenu.nge-lb-docked { border-radius: 0; border-width: 0 0 0 1px; box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45); }
+.nge_lbmenu.nge-lb-docked .nge-lb-header { border-radius: 0; }
 .nge-lb-close {
   position: absolute;
   top: 8px;

@@ -1161,9 +1161,29 @@ function handleScroll() {
   if (!isScrolledUp.value) {
     chatStore.markRead();
   }
+  // One page per trip to the top. A trackpad's momentum kept hitting each new
+  // top and chained page after page, faster than anyone could read (annkri
+  // 2026-10-14). After a page loads, the next waits until the scrolling has
+  // stopped and the reader heads up again.
+  const movingUp = up > lastScrollUp;
+  lastScrollUp = up;
+  markScrolling();
   // Near the top: fetch the previous page. The view is anchored to the
   // bottom, so older messages appear above without moving what you read.
-  if (el.scrollHeight - el.clientHeight - up < 40) void chatStore.loadOlder();
+  if (autoLoadArmed && movingUp && el.scrollHeight - el.clientHeight - up < 40
+      && !chatStore.loadingHistory && chatStore.hasMoreHistory) {
+    autoLoadArmed = false;
+    void chatStore.loadOlder();
+  }
+}
+let autoLoadArmed = true;
+let lastScrollUp = 0;
+let scrollQuietTimer: ReturnType<typeof setTimeout> | null = null;
+// Pinned at the top the list cannot move, so momentum sends wheel events and
+// no scroll events; both count as still scrolling.
+function markScrolling() {
+  if (scrollQuietTimer) clearTimeout(scrollQuietTimer);
+  scrollQuietTimer = setTimeout(() => { autoLoadArmed = true; }, 250);
 }
 
 function scrollToBottom() {
@@ -1255,7 +1275,7 @@ function toggleCollapse() {
           <div
             class="nge-chat-messages"
             ref="scrollContainer"
-            @scroll="handleScroll"
+            @scroll="handleScroll" @wheel.passive="markScrolling"
           >
             <div class="nge-chat-messages-inner">
               <div v-if="isLoggedIn && chatMessages.length" class="nge-chat-history-top">

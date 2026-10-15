@@ -55,36 +55,21 @@ export class ButtonService {
 
     button.addEventListener('click', (_event: MouseEvent) => {
       const menu = this.makeMenu(button, localServerURL, segmentIDString, dataset);
-      // Horizontal: open to the LEFT of the lightbulb button with a 32px gap
-      // so the popup has clear breathing room from the seg panel edge.
-      // Vertical: center in the viewport so a tall menu doesn't bleed off
-      // the bottom or feel pinned to wherever the user happened to click.
-      const rect = button.getBoundingClientRect();
-      const menuWidth = 290; // matches .nge_lbmenu min-width
-      const margin = 12;
-      const gap = 32;
-      const desired = rect.left - menuWidth - gap;
-      const x = Math.max(margin, Math.min(desired, window.innerWidth - menuWidth - margin));
-      menu.show(<MouseEvent>{clientX: x, clientY: 0});
-      // Override vertical positioning to center the menu in the viewport
+      menu.show(<MouseEvent>{clientX: 0, clientY: 0});
       const el = menu.element as HTMLElement;
-      el.style.top = '50%';
-      el.style.transform = 'translateY(-50%)';
-      // Placed by a 290px guess, the menu covered most of the side panel but
-      // not its X, which then read as the Cell Profile's own close (player
-      // report 2026-10-14). It opens squarely on top of the panel instead,
-      // edge to edge, with a close of its own (Ames 2026-10-14).
+      // Docked to the right edge of the page, under the top bar, like a side
+      // panel: floating, it covered the cells being looked at, and placed by a
+      // width guess it left the side panel's X showing beside it, which read
+      // as its own close (player report and Ames, 2026-10-14). It has its own X.
       const panel = button.closest('.neuroglancer-side-panel') as HTMLElement | null;
-      if (panel) {
-        const p = panel.getBoundingClientRect();
-        el.classList.add('nge-lb-over-panel');
-        el.style.left = p.left + 'px';
-        el.style.top = p.top + 'px';
-        el.style.width = p.width + 'px';
-        el.style.height = p.height + 'px';
-        el.style.maxHeight = p.height + 'px';
-        el.style.transform = 'none';
-      }
+      const top = panel ? Math.max(0, panel.getBoundingClientRect().top) : 0;
+      el.classList.add('nge-lb-docked');
+      el.style.left = 'auto';
+      el.style.right = '0px';
+      el.style.top = top + 'px';
+      el.style.bottom = '0px';
+      el.style.maxHeight = 'none';
+      el.style.transform = 'none';
     });
 
     // Listen for annotation changes from AnnotationPanel (or anywhere).
