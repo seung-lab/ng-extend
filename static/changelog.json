@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-15T10:25:00Z",
+      "title": "Tap to place on phones and tablets",
+      "items": [
+        "On a touch screen, one tap now places a point in Cut, Merge and Find Path, the same as Ctrl+click. Two quick taps still show or hide a cell.",
+        "One tap also places annotation points, and Highlight points while the Highlight box is open.",
+        "On a touch screen the Cut and Merge bar says tap and shows buttons in place of keys."
+      ]
+    },
+    {
       "at": "2026-10-15T01:17:00Z",
       "title": "Tablets keep the top bar during Cut and Merge",
       "digest": "minor",
