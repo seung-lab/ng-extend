@@ -10,7 +10,8 @@
  * were current on 2026-10-05. Boxes are each cell's mesh bounds in
  * micrometres. The volume is a sheet 82 micrometres deep: ganglion cell
  * bodies sit at low z, and bipolar and Müller cells run up to its top face,
- * so those two are shown from the side.
+ * so those two are shown from the side. The Müller cell was replaced on
+ * 2026-10-15 (current then).
  */
 import { Step } from "./store-pyr";
 import { makeCellTour, VIEW_SIDE, VIEW_TOP, type TourCell } from "./dataset_tour_kit";
@@ -47,8 +48,10 @@ How deep its axon ends tells you its type: **ON** cells end deeper, **OFF** cell
   {
     title: "Müller Glia",
     text: `The main glia of the retina, not a neuron. Each one spans the tissue like a pillar, with fine side branches that wrap the neurons and synapses around it.`,
-    ids: ['720575940578861353'], color: '#67f5cb',
-    min: [429.7, 413.0, 4.2], max: [463.2, 480.8, 82.6],
+    // 2026-10-15: the first example was two cells stuck together (Celia);
+    // this one is a single, proofread Müller cell she found.
+    ids: ['720575940569699594'], color: '#67f5cb',
+    min: [632.9, 653.0, 11.6], max: [651.3, 682.6, 82.6],
     view: VIEW_SIDE,
   },
 ];
