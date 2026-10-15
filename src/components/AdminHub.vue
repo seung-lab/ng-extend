@@ -851,6 +851,23 @@ async function logWithRepliesSeen(row: TriageRow): Promise<any[]> {
     .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
 }
 
+/** Undo a dismiss (Ames 2026-10-15: "can I undismiss?"). The report goes
+ *  back to Needs your decision; its log, messages and replies are kept. */
+async function undismiss(row: TriageRow) {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    await secureWrite('triage.update', { id: row.id, fields: { status: 'proposed', result_note: null,
+      reviewed_by: backend.userName || backend.userEmail || 'admin', reviewed_at: new Date().toISOString() } });
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = `Could not bring it back: ${e?.message ?? String(e)}`;
+  } finally {
+    triageActing.value = null;
+  }
+}
+
 /** "Reply read": the New reply marker comes off and the card goes back to
  *  where it was. Nothing else about the card changes. */
 async function markRepliesSeen(row: TriageRow) {
@@ -2626,6 +2643,9 @@ function practiceWhen(iso: string | null) {
             <button v-if="triageGroupOf(row) !== 'done' && !isDiscarded(row)" class="nge-admin-action-btn nge-triage-discard-btn" :disabled="triageActing === row.id || isGoingLive(row)"
                     title="Junk, a duplicate or a test: dismiss it and take it off the board. Still findable with Show older."
                     @click="setTriageStatus(row, 'dismissed', true)">🗑 Discard</button>
+            <button v-if="row.status === 'dismissed'" class="nge-admin-action-btn" :disabled="triageActing === row.id"
+                    title="Undo the dismiss: the report goes back under Needs your decision, with its history kept."
+                    @click="undismiss(row)">↩ Back to the board</button>
             <span v-if="claudeCopied === row.id" class="nge-triage-copied">Briefing copied. Paste it into Claude Code to change the code.</span>
           </div>
           <!-- Going live is approved in Slack only: the deploy checks the
