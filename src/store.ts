@@ -448,8 +448,15 @@ export const useLayersStore = defineStore('layers', () => {
     // at a coarser level, counts as fully loaded and never sharpens (seen on practice views,
     // 2026-10-07, src/practice.ts). Clamp it to 1 on every image layer, now and whenever a
     // layer appears or the value changes (Cell Library jumps, shared links, curated states).
+    // The player may choose a coarser detail in Settings (imageDetail, Krzysztof
+    // 2026-10-15): then every image layer is held at THAT value instead, and
+    // still no saved view can choose for them.
+    const chosenDetail = (): number => {
+      try { const d = useUserPreferencesStore().prefs.imageDetail; return d === 2 || d === 4 ? d : 1; } catch { return 1; }
+    };
     const hookedManaged = new WeakSet<object>();
     const clampedTargets = new WeakSet<object>();
+    const detailTargets: { name: string; t: any }[] = [];
     const clampImageDetail = () => {
       for (const ml of v.layerManager.managedLayers as any[]) {
         if (!hookedManaged.has(ml) && ml.layerChanged) {
@@ -461,10 +468,12 @@ export const useLayersStore = defineStore('layers', () => {
         const t = layer.sliceViewRenderScaleTarget;
         if (!t || clampedTargets.has(t)) continue;
         clampedTargets.add(t);
+        detailTargets.push({ name: ml.name, t });
         const clamp = () => {
-          if (t.value > 1) {
-            console.info(`[2D] image layer "${ml.name}" asked for detail ${t.value}; set to 1`);
-            t.value = 1;
+          const want = chosenDetail();
+          if (want > 1 ? t.value !== want : t.value > 1) {
+            console.info(`[2D] image layer "${ml.name}" asked for detail ${t.value}; set to ${want}`);
+            t.value = want;
           }
         };
         t.changed.add(clamp);
@@ -473,6 +482,10 @@ export const useLayersStore = defineStore('layers', () => {
     };
     v.layerManager.layersChanged.add(clampImageDetail);
     clampImageDetail();
+    // A change of the setting (or the account's copy arriving) applies at once.
+    setTimeout(() => watch(() => chosenDetail(), want => {
+      for (const { t } of detailTargets) if (want > 1 ? t.value !== want : t.value > 1) t.value = want;
+    }), 0);
     // Mobile defaults to fullscreen 3D (Amy 2026-08-18): split screen is
     // reachable only from a share link that carries its own layout or the
     // corner view toggle. A layout named in the URL hash wins on any device.
@@ -1005,6 +1018,10 @@ export interface UserPreferences {
    *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
    *  distracting from the workflow"). */
   cellCompleteMessage?: 'full' | 'small' | 'off';
+  /** 2D image detail: 1 full (default), 2 half, 4 quarter, as neuroglancer's
+   *  render scale target for image layers. Coarser loads far less on a slow
+   *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
+  imageDetail?: 1 | 2 | 4;
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
@@ -1087,7 +1104,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

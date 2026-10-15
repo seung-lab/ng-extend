@@ -37,6 +37,7 @@ const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
+const draftImageDetail = ref<1 | 2 | 4>(1);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftSegShowId = ref(false);
@@ -109,6 +110,7 @@ onMounted(() => {
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
+  draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
@@ -139,7 +141,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -424,6 +426,14 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="full">Full congratulations</option>
                 <option value="small">A small note at the top</option>
                 <option value="off">Nothing</option>
+              </select>
+            </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="How sharp the 2D images are drawn. Half loads about a quarter of the data and Quarter about a sixteenth, so they load much faster on a slow connection, but the images stay that blurry until you set Full again.">
+              <span class="nge-settings-toggle-label">2D image detail</span>
+              <select v-model.number="draftImageDetail" class="nge-sv-select">
+                <option :value="1">Full (sharpest)</option>
+                <option :value="2">Half (faster loading)</option>
+                <option :value="4">Quarter (fastest, blurry)</option>
               </select>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
