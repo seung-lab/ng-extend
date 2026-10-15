@@ -1597,3 +1597,5 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
   font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 600;
   color: rgba(228, 236, 248, 0.95); padding: 2px 6px;
 }
+
+.nge-color-palette-toggle { border-top: 1px solid rgba(140, 180, 235, 0.2); padding-top: 8px; white-space: nowrap; }

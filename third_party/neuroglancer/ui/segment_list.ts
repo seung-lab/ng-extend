@@ -1215,8 +1215,18 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
         const cur = folder();
         if (!cur) return;
         actions?.recolor(folders.cellsIn(cur.id), hex);
-        if (cur.color !== hex || !cur.paint) folders.setColor(cur.id, hex, true);
-      }, `Colour for ${f.name}`);
+        if (cur.color !== hex) folders.setColor(cur.id, hex);
+      }, `Colour for ${f.name}`, {
+        label: 'Cells added later take this colour',
+        value: !!f.paint,
+        onChange: on => {
+          const cur = folder();
+          if (!cur) return;
+          folders.setPaint(cur.id, on);
+          // turning it on paints the folder's cells now too
+          if (on && cur.color) actions?.recolor(folders.cellsIn(cur.id), cur.color);
+        },
+      });
     });
     heading.prepend(caret, swatch);
     const name = document.createElement('span');

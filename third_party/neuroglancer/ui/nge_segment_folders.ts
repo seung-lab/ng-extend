@@ -140,8 +140,15 @@ export class SegmentFolders {
     this.changed.dispatch();
   }
 
-  setColor(id: string, color: string, paint = false) {
-    this.value = this.value.map(f => f.id === id ? {...f, color, paint: paint || f.paint} : f);
+  setColor(id: string, color: string) {
+    this.value = this.value.map(f => f.id === id ? {...f, color} : f);
+    this.changed.dispatch();
+  }
+
+  /** Whether cells that join the folder later take its colour (off unless
+   *  turned on in the folder's colour palette; Ames 2026-10-14). */
+  setPaint(id: string, paint: boolean) {
+    this.value = this.value.map(f => f.id === id ? {...f, paint} : f);
     this.changed.dispatch();
   }
 
@@ -268,7 +275,7 @@ function saveColor(hex: string) {
 
 export function openColorPalette(
     anchor: HTMLElement, current: string|undefined, onPick: (hex: string) => void,
-    title = 'Colour') {
+    title = 'Colour', toggle?: {label: string, value: boolean, onChange: (on: boolean) => void}) {
   document.querySelector('.nge-color-palette')?.remove();
   const pop = document.createElement('div');
   pop.className = 'nge-color-palette';
@@ -320,6 +327,16 @@ export function openColorPalette(
   input.addEventListener('change', () => { onPick(input.value); saveColor(input.value); close(); });
   custom.append(input, document.createTextNode(' Custom\u2026'));
   pop.appendChild(custom);
+  if (toggle !== undefined) {
+    const row = document.createElement('label');
+    row.className = 'nge-color-palette-custom nge-color-palette-toggle';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = toggle.value;
+    box.addEventListener('change', () => toggle.onChange(box.checked));
+    row.append(box, document.createTextNode(' ' + toggle.label));
+    pop.appendChild(row);
+  }
   document.body.appendChild(pop);
   const r = anchor.getBoundingClientRect();
   const w = pop.offsetWidth, h = pop.offsetHeight;
