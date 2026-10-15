@@ -1475,15 +1475,14 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-seg-list-heading--folder .nge-seg-folder-name { flex: 1 1 auto; min-width: 40px; max-width: none; }
 .nge-seg-list-heading--folder .neuroglancer-segment-list-status-message { flex: none; }
 @media (hover: hover) {
-  .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon,
-  .nge-seg-list-heading--folder:not(:hover) .nge-seg-list-all-toggle { display: none !important; }
+  .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon { display: none !important; }
 }
 .nge-seg-folder-icon:first-of-type { margin-left: 0; }
 
 /* ── Seg panel round 4 (Ames 2026-10-14) ─────────────────────────────────── */
 /* No trash on a heading: one slip removed a whole section. Cells are removed
    from their own row, or picked and removed from the batch bar. */
-.neuroglancer-segment-list-status .nge-seg-remove-all { display: none !important; }
+
 
 /* Copy and remove float in the empty space after the cell, on hover, so they
    never push the jump arrow onto a second line (rows in folders are a little
@@ -1599,3 +1598,18 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 }
 
 .nge-color-palette-toggle { border-top: 1px solid rgba(140, 180, 235, 0.2); padding-top: 8px; white-space: nowrap; }
+
+/* Headings (Ames 2026-10-15): one copy button (all IDs; Shift for the shown
+   ones), so the copy visible button goes; Remove all on the right with the
+   heading's other actions, showing on hover and keeping its place, so the
+   eye and the name never move. */
+.neuroglancer-segment-list-status .nge-seg-copy-visible:not(.nge-keep) { display: none !important; }
+.neuroglancer-segment-list-status .nge-seg-remove-all { flex: none; }
+.nge-seg-list-heading--inview .nge-seg-remove-all,
+.nge-seg-list-heading--pasted .nge-seg-remove-all { margin-left: 4px; }
+.nge-seg-list-heading--inview .nge-seg-folder-new { margin-left: auto; }
+@media (hover: hover) {
+  .neuroglancer-segment-list-status:not(:hover) .nge-seg-remove-all { visibility: hidden !important; }
+}
+.neuroglancer-segment-list-status .nge-seg-remove-all:hover { background-color: rgba(224, 96, 96, 0.18) !important; }
+.neuroglancer-segment-list-status .nge-seg-remove-all:hover > svg { stroke: #e06060 !important; }

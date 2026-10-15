@@ -952,25 +952,32 @@ abstract class SegmentListGroupBase extends RefCounted {
     const isSearch = listSource instanceof SegmentQueryListSource;
     this.starAllButton = makeIcon({
       svg: isSearch ? svg_plus : svg_bin,
-      title: isSearch ? 'Add every match to the view' : 'Remove these cells from the view',
-      onClick: () => {
+      title: isSearch ? 'Add every match to the view' :
+                        'Remove all these cells from the view (asks first). Shift+click removes only the hidden ones.',
+      onClick: (event: MouseEvent) => {
         if (isSearch) {
           this.selectSegments(true, true);
           return;
         }
-        const ids = Array.from(this.listSegments(true));
-        if (ids.length > 1 &&
-            !window.confirm(`Remove ${ids.length} cells from the view?`)) {
-          return;
-        }
+        // nge: remove the section's cells, or with Shift only its hidden ones
+        // (neuroglancer's own Shift+click), always asking first (Ames
+        // 2026-10-15).
+        let ids = Array.from(this.listSegments(true));
+        const onlyHidden = event.shiftKey;
+        if (onlyHidden) ids = ids.filter(id => !this.group.visibleSegments.has(id));
+        if (!ids.length) return;
+        const what = `${ids.length} ${onlyHidden ? 'hidden ' : ''}cell${ids.length === 1 ? '' : 's'}`;
+        if (!window.confirm(`Remove ${what} from the view?`)) return;
         this.group.selectedSegments.delete(ids);
       }
     });
     this.starAllButton.classList.add('nge-seg-list-all-toggle', isSearch ? 'nge-seg-add-all' : 'nge-seg-remove-all');
+    // nge: one copy button copies every ID in the section, hidden cells too;
+    // Shift+click copies only the shown ones (Celia, 2026-10-15).
     this.copyAllSegmentsButton = makeCopyButton({
       title: 'Copy all segment IDs',
-      onClick: () => {
-        this.copySegments(false);
+      onClick: (event: MouseEvent) => {
+        this.copySegments(event.shiftKey);
       },
     });
     this.copyVisibleSegmentsButton = makeCopyButton({
@@ -1062,7 +1069,7 @@ abstract class SegmentListGroupBase extends RefCounted {
         visibleSelectedCount > 0 && visibleSelectedCount !== totalDisplayed);
     selectionStatusMessage.textContent = statusMessage;
     copyAllSegmentsButton.title =
-        `Copy all ${totalDisplayed} ${numMatches ? 'matching' : 'listed'} segment ID(s)`;
+        `Copy all ${totalDisplayed} ${numMatches ? 'matching' : 'listed'} segment IDs. Shift+click copies only the shown ones.`;
     copyVisibleSegmentsButton.title =
         `Copy ${visibleDisplayedCount} ${numMatches ? 'visible matching' : 'visible'} segment(s)`;
     copyAllSegmentsButton.style.visibility = totalDisplayed ? 'visible' : 'hidden';
@@ -1119,6 +1126,8 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       keep.addEventListener('click', () => clearPastedSegments(group));
       heading.appendChild(keep);
     }
+    // Remove all sits on the right, with the heading's other actions.
+    if (kind !== 'folder') heading.appendChild(this.starAllButton);
     if (folders === undefined) return;
     const targetFolder = typeof mode === 'object' ? mode.folder : '';
 
@@ -1181,7 +1190,7 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
         }
         actions?.onNewFolder(f.id);
       });
-      heading.appendChild(add);
+      heading.insertBefore(add, this.starAllButton);
       return;
     }
     if (typeof mode !== 'object') return;
@@ -1307,6 +1316,7 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     const copy = this.copyAllSegmentsButton;
     copy.classList.add('nge-seg-folder-copy');
     heading.insertBefore(copy, heading.querySelector('.nge-seg-folder-icon'));
+    heading.insertBefore(this.starAllButton, heading.querySelector('.nge-seg-folder-icon'));
     this.registerDisposer(folders.changed.add(paint));
     paint();
     this.startRename = startRename;
