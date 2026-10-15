@@ -1616,3 +1616,33 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 
 /* a long folder name shows its start and ends in an ellipsis */
 .nge-seg-folder-name:not([contenteditable="true"]) { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; direction: ltr; }
+
+/* Pyr's own confirm box (third_party/neuroglancer/ui/nge_confirm.ts) */
+.nge-confirm-backdrop {
+  position: fixed; inset: 0; z-index: 100000;
+  background: rgba(2, 6, 14, 0.55); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+}
+.nge-confirm {
+  min-width: 300px; max-width: min(420px, calc(100vw - 32px));
+  padding: 18px 20px 16px; border-radius: 12px;
+  background: linear-gradient(180deg, rgba(18, 28, 50, 0.98), rgba(10, 16, 30, 0.98));
+  border: 1px solid rgba(140, 180, 235, 0.3);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(74, 158, 255, 0.08) inset;
+  font-family: Inter, system-ui, sans-serif; color: rgba(228, 236, 248, 0.95);
+  animation: ngeConfirmIn 140ms ease-out;
+}
+@keyframes ngeConfirmIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+.nge-confirm-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.nge-confirm-message { font-size: 13.5px; line-height: 1.45; color: rgba(200, 215, 240, 0.85); }
+.nge-confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.nge-confirm-buttons button {
+  font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 7px; cursor: pointer;
+}
+.nge-confirm-cancel { background: transparent; color: rgba(200, 215, 240, 0.9); border: 1px solid rgba(140, 180, 235, 0.35); }
+.nge-confirm-cancel:hover { background: rgba(74, 158, 255, 0.12); }
+.nge-confirm-ok { background: rgba(74, 158, 255, 0.9); color: #04101f; border: 1px solid transparent; }
+.nge-confirm-ok:hover { background: #6fb3ff; }
+.nge-confirm-ok.nge-confirm-danger { background: #e06060; color: #fff; }
+.nge-confirm-ok.nge-confirm-danger:hover { background: #ec7676; }
+.nge-confirm-ok:focus-visible, .nge-confirm-cancel:focus-visible { outline: 2px solid rgba(124, 255, 178, 0.8); outline-offset: 2px; }

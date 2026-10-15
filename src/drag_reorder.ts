@@ -17,6 +17,7 @@
 import {Uint64} from 'neuroglancer/util/uint64';
 import {pickedSegments} from 'neuroglancer/ui/nge_segment_folders';
 import {getPastedSegments} from 'neuroglancer/ui/nge_pasted_segments';
+import {ngeConfirm} from 'neuroglancer/ui/nge_confirm';
 
 const ROW_SEL = '.neuroglancer-segment-list-entry';
 const ID_SEL = '.neuroglancer-segment-list-entry-id';
@@ -386,11 +387,18 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
     pickedSegments.clear();
     return;
   }
-  if (ids.length > 1 && !window.confirm(`Remove ${ids.length} cells from the view?`)) return;
   e.preventDefault();
   e.stopPropagation();
-  got.set.delete(ids);
-  pickedSegments.clear();
+  const remove = () => {
+    got.set.delete(ids);
+    pickedSegments.clear();
+  };
+  if (ids.length > 1) {
+    void ngeConfirm(`Remove ${ids.length} cells from the view?`, {title: 'Remove cells'})
+        .then(yes => { if (yes) remove(); });
+  } else {
+    remove();
+  }
 }, true);
 
 document.addEventListener('keydown', (e: KeyboardEvent) => {

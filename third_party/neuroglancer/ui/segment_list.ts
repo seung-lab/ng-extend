@@ -48,6 +48,7 @@ import svg_plus from 'ikonate/icons/plus.svg';
 import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, listFilterOf, loadCellAtPlace, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
+import {ngeConfirm} from 'neuroglancer/ui/nge_confirm';
 import {openColorPalette, pickedSegments, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
@@ -954,7 +955,7 @@ abstract class SegmentListGroupBase extends RefCounted {
       svg: isSearch ? svg_plus : svg_bin,
       title: isSearch ? 'Add every match to the view' :
                         'Remove all these cells from the view (asks first). Shift+click removes only the hidden ones.',
-      onClick: (event: MouseEvent) => {
+      onClick: async (event: MouseEvent) => {
         if (isSearch) {
           this.selectSegments(true, true);
           return;
@@ -967,7 +968,9 @@ abstract class SegmentListGroupBase extends RefCounted {
         if (onlyHidden) ids = ids.filter(id => !this.group.visibleSegments.has(id));
         if (!ids.length) return;
         const what = `${ids.length} ${onlyHidden ? 'hidden ' : ''}cell${ids.length === 1 ? '' : 's'}`;
-        if (!window.confirm(`Remove ${what} from the view?`)) return;
+        if (!await ngeConfirm(`Remove ${what} from the view?`, {
+              title: onlyHidden ? 'Remove hidden cells' : 'Remove cells',
+            })) return;
         this.group.selectedSegments.delete(ids);
       }
     });
@@ -1289,7 +1292,7 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
           if (f.collapsed) folders.setCollapsed(f.id, false);
           actions?.onNewFolder(child.id);
         }),
-        icon('\u2715', 'Ungroup: the folder goes, its cells stay in view', () => {
+        icon('\u2715', 'Ungroup: the folder goes, its cells stay in view', async () => {
           const f = folder();
           if (!f) return;
           const cells = folders.cellsIn(f.id).length;
@@ -1297,7 +1300,9 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
           if (cells || inner) {
             const what = [cells ? `${cells} cell${cells === 1 ? '' : 's'}` : '',
                           inner ? `${inner} folder${inner === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
-            if (!window.confirm(`Ungroup "${f.name}"? Its ${what} stay in view, out of this folder.`)) return;
+            if (!await ngeConfirm(`Its ${what} stay in view, out of this folder.`, {
+                  title: `Ungroup "${f.name}"?`, ok: 'Ungroup', danger: false,
+                })) return;
           }
           folders.remove(f.id);
         }, 'nge-seg-folder-ungroup'));
@@ -1770,9 +1775,9 @@ export class SegmentDisplayTab extends Tab {
                       barBtn('Show', 'Show the picked cells', () => group.visibleSegments.set(pickedIds(), true)),
                       barBtn('Hide', 'Hide the picked cells', () => group.visibleSegments.set(pickedIds(), false)),
                       recolorPicked,
-                      barBtn('Remove', 'Take the picked cells out of the view', () => {
+                      barBtn('Remove', 'Take the picked cells out of the view', async () => {
                         const ids = pickedIds();
-                        if (ids.length > 1 && !window.confirm(`Remove ${ids.length} cells from the view?`)) return;
+                        if (ids.length > 1 && !await ngeConfirm(`Remove ${ids.length} cells from the view?`, {title: 'Remove cells'})) return;
                         group.selectedSegments.delete(ids);
                         pickedSegments.clear();
                       }, 'nge-pick-remove'),
