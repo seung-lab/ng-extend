@@ -839,6 +839,27 @@ async function markRepliesSeen(row: TriageRow) {
   }
 }
 
+/** Text in pieces, with every http(s) address as a link (Ames 2026-10-15:
+ *  "can you make links clickable"). Drawn with v-for, never v-html, so what a
+ *  reporter wrote can never become markup. A full stop or bracket that ends a
+ *  sentence is left out of the link. */
+type TextPart = { t: string; href?: string };
+function linkParts(text: string | null | undefined): TextPart[] {
+  const s = String(text ?? '');
+  const out: TextPart[] = [];
+  let at = 0;
+  for (const m of s.matchAll(/https?:\/\/[^\s<>"']+/g)) {
+    let url = m[0];
+    while (/[.,;:!?)\]]$/.test(url) && !(url.endsWith(')') && url.includes('('))) url = url.slice(0, -1);
+    const i = m.index ?? 0;
+    if (i > at) out.push({ t: s.slice(at, i) });
+    out.push({ t: url, href: url });
+    at = i + url.length;
+  }
+  if (at < s.length) out.push({ t: s.slice(at) });
+  return out;
+}
+
 function relTime(iso: string): string {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return 'just now';
@@ -2489,7 +2510,7 @@ function practiceWhen(iso: string | null) {
             <span class="nge-triage-avatar" aria-hidden="true" :style="{ '--hue': avatarHue(reporterOf(row)?.name || '') }">{{ (reporterOf(row)?.name || '?').slice(0, 1).toUpperCase() }}</span>
             <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
-          <div v-if="fullTextOf(row)" class="nge-triage-excerpt">"{{ fullTextOf(row) }}"</div>
+          <div v-if="fullTextOf(row)" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
             <button class="nge-triage-console-btn" @click="toggleIssueConsole(row)">
               {{ issueConsole[row.id] === undefined ? '🖥 Console messages' : issueConsoleOpen[row.id] ? '▾ Console messages' : '▸ Console messages' }}
@@ -2497,7 +2518,7 @@ function practiceWhen(iso: string | null) {
             <pre v-if="issueConsoleOpen[row.id]" class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
-          <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale">{{ row.rationale }}</div>
+          <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale"><template v-for="(pt, pi) in linkParts(row.rationale)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
           <textarea
             v-if="row.recommendation === 'message' && row.status === 'proposed'"
             v-model="triageEdits[row.id]"
@@ -2505,7 +2526,7 @@ function practiceWhen(iso: string | null) {
             rows="3"
             @keydown.stop @keyup.stop @keypress.stop
           ></textarea>
-          <div v-else-if="row.proposed_message" class="nge-triage-rationale">💬 {{ row.proposed_message }}</div>
+          <div v-else-if="row.proposed_message" class="nge-triage-rationale">💬 <template v-for="(pt, pi) in linkParts(row.proposed_message)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
           <div v-if="row.spec" class="nge-triage-spec">
             <div v-for="(line, i) in parseSpec(row.spec)" :key="i" class="nge-triage-spec-row">
               <span v-if="line.label" class="nge-triage-spec-label">{{ line.label }}</span>
@@ -2514,13 +2535,13 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="row.approver_note" class="nge-triage-note">
             <span class="nge-triage-spec-label">Comment</span>
-            <span class="nge-triage-spec-text">{{ row.approver_note }}</span>
+            <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(row.approver_note)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></span>
           </div>
           <div v-if="row.impl_state" class="nge-triage-loop">
             <div v-if="row.impl_summary"><span class="nge-triage-spec-label">Change</span> {{ row.impl_summary }}</div>
             <div v-if="row.preview_url"><span class="nge-triage-spec-label">Preview</span> <a :href="row.preview_url" target="_blank" rel="noopener">{{ row.preview_url }}</a></div>
             <div v-if="row.impl_state === 'testing' || row.impl_state === 'live_testing' || row.impl_state === 'needs_info'"><span class="nge-triage-spec-label">Waiting on</span> the tester in the Slack thread{{ row.impl_state === 'needs_info' ? ', to answer Claude' : '' }}. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
-            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> {{ f.text }}</div>
+            <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> <template v-for="(pt, pi) in linkParts(f.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
             <div v-if="row.impl_run_url"><a :href="row.impl_run_url" target="_blank" rel="noopener">Claude's run log</a><template v-if="row.impl_attempts"> · attempt {{ row.impl_attempts }}</template></div>
           </div>
           <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
@@ -2602,7 +2623,7 @@ function practiceWhen(iso: string | null) {
             <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
                  :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
               <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
-              <span class="nge-triage-spec-text nge-triage-thread-text">{{ u.text }}<span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
+              <span class="nge-triage-spec-text nge-triage-thread-text"><template v-for="(pt, pi) in linkParts(u.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
               <!-- What came with a reply: a screenshot, their view, console messages. -->
               <div v-if="u.reply && (u.screenshot_url || u.view_url || u.console_lines || u.dataset)" class="nge-triage-reply-parts">
                 <a v-if="u.screenshot_url" :href="u.screenshot_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the full screenshot">
@@ -3953,4 +3974,8 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-admin button { cursor:pointer; }
 .nge-outbox-line { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.86em; line-height: 1.5;
   background: rgba(74, 150, 224, 0.08); border: 1px solid rgba(74, 150, 224, 0.25); }
+.nge-triage-link { color: #7ec8ff; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; cursor: pointer; }
+.nge-triage-link:hover { color: #b3e0ff; }
+.nge-triage-light .nge-triage-link { color: #1f5fc4; }
+.nge-triage-light .nge-triage-link:hover { color: #0d3f8f; }
 </style>
