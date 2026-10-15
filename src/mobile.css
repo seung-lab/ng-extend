@@ -43,6 +43,18 @@ body.nge-mobile {
   overflow: hidden;
 }
 
+/* Tablets get the desktop layout, but their browser has the same moving
+   bar: 100vh was taller than the screen, and the page slid up out of reach
+   when Cut or Merge started, taking the top bar with it (Nseraf, report 135,
+   on a Galaxy Tab). Any touch screen is sized to what is visible. :root
+   outranks neuroglancer's plain `html, body` rule. */
+@media (pointer: coarse) {
+  :root,
+  :root > body {
+    height: 100dvh;
+  }
+}
+
 /* Double-tap zoom fights the viewer's tap interactions; pinch zoom is the
    viewer's own gesture. The viewport meta disables page zoom, touch-action
    keeps the browser from consuming gestures before neuroglancer sees them. */

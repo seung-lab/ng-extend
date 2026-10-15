@@ -48,9 +48,15 @@ export function installMobileMode() {
   apply();
   // Belt and braces for iPhone Safari (see mobile.css): if the page is ever
   // slid up anyway (the browser bar showing, the keyboard closing), put it
-  // back, so the top bar never ends up under the status bar.
+  // back, so the top bar never ends up under the status bar. Tablets too
+  // (Nseraf, report 135): they get the desktop layout, and the page slid up
+  // there when Cut or Merge started. Off a phone the page is left alone
+  // while a text box has the cursor, so the keyboard can show it.
   const unslide = () => {
-    if (!isMobileRef.value) return;
+    if (!isMobileRef.value) {
+      const a = document.activeElement as HTMLElement | null;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+    }
     if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
   };
   window.addEventListener('scroll', unslide, { passive: true });

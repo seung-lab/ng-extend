@@ -613,7 +613,7 @@ function activateTool(toolType: 'multicut' | 'merge') {
     document.getElementById('neuroglancer-container'),
   ].filter(Boolean);
   for (const el of targets) {
-    if (el instanceof HTMLElement) el.focus();
+    if (el instanceof HTMLElement) el.focus({ preventScroll: true });
     el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
   }
 }

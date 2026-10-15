@@ -594,7 +594,7 @@ function clearToolMode() {
   const viewer: any = (window as any)['viewer'];
   const el = viewer?.element;
   if (el instanceof HTMLElement) {
-    el.focus();
+    el.focus({ preventScroll: true });
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
   }
 }
@@ -880,8 +880,11 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     viewer.display?.container,
     document.getElementById('neuroglancer-container'),
   ].filter(Boolean);
+  // preventScroll: on a touch screen the page is taller than what shows (the
+  // browser bar), and a plain focus() slid it up, so the top bar went off
+  // screen for good (Nseraf, report 135, on a Galaxy Tab).
   for (const el of targets) {
-    if (el instanceof HTMLElement) el.focus();
+    if (el instanceof HTMLElement) el.focus({ preventScroll: true });
     el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
   }
 }

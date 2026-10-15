@@ -328,7 +328,7 @@ export function ensureTool(tool: 'merge' | 'multicut', attempt = 0) {
   const init: KeyboardEventInit = { key, code: key === 'c' ? 'KeyC' : 'KeyM', bubbles: true, cancelable: true };
   for (const el of [viewer.element, viewer.display?.container, document.getElementById('neuroglancer-container')]) {
     if (!el) continue;
-    if (el instanceof HTMLElement) el.focus();
+    if (el instanceof HTMLElement) el.focus({ preventScroll: true });
     el.dispatchEvent(new KeyboardEvent('keydown', init));
   }
 }
