@@ -131,6 +131,36 @@ onMounted(() => {
   draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
 });
 
+// "Restore all settings to default" (Ames 2026-10-15), behind a warning.
+const confirmReset = ref(false);
+const resetting = ref(false);
+const resetError = ref('');
+async function restoreDefaults() {
+  resetting.value = true;
+  resetError.value = '';
+  try {
+    await prefsStore.resetToDefaults();
+    // The viewer's loading settings also live in the view in the address bar,
+    // so a reload alone would bring them back: put Pyr's defaults in it first
+    // (the values src/store.ts initializeWithViewer and neuroglancer start with).
+    try {
+      const q = (window as any).viewer?.dataContext?.chunkQueueManager;
+      if (q) {
+        q.enablePrefetch.value = true;
+        q.capacities.download.itemLimit.value = 100;
+        q.capacities.gpuMemory.sizeLimit.value = 2e9;
+        q.capacities.systemMemory.sizeLimit.value = 3e9;
+      }
+    } catch { /* the reload still resets the rest */ }
+    // The address bar follows the view a moment later.
+    await new Promise(r => setTimeout(r, 600));
+    window.location.reload();
+  } catch (e: any) {
+    resetError.value = `Your account copy could not be reset, so nothing was reloaded: ${e?.message || e}. Try again in a moment.`;
+    resetting.value = false;
+  }
+}
+
 async function handleSave() {
   const flag = draftFlag.value.trim();
   const bio = draftBio.value.trim().slice(0, 280);
@@ -559,6 +589,35 @@ const props = defineProps<{ embedded?: boolean }>();
         </button>
         <button v-if="!props.embedded" class="nge-settings-cancel" @click="emit('hide')">Cancel</button>
       </div>
+      <div class="nge-settings-reset-row">
+        <button class="nge-settings-reset" type="button" @click="confirmReset = true">Restore all settings to default</button>
+      </div>
+
+      <Teleport to="body">
+        <div v-if="confirmReset" class="nge-settings-reset-backdrop" @click.self="!resetting && (confirmReset = false)">
+          <div class="nge-settings-reset-dlg" role="alertdialog" aria-modal="true" aria-labelledby="nge-reset-title" aria-describedby="nge-reset-what">
+            <div id="nge-reset-title" class="nge-settings-reset-title">⚠ Restore all settings to default?</div>
+            <div id="nge-reset-what" class="nge-settings-reset-text">
+              <p>Every setting goes back to how Pyr starts, on this computer and on your account, so on your other computers too. This includes:</p>
+              <ul>
+                <li>your toolbar icons and their order</li>
+                <li>chat, music and notification choices</li>
+                <li>your Highlight colors</li>
+                <li>viewer settings and 2D image detail</li>
+                <li>extra datasets you turned on, and your own start views</li>
+              </ul>
+              <p>Your flag, your bio, your cells and your progress are not touched. Pyr reloads afterwards. This cannot be undone.</p>
+            </div>
+            <div v-if="resetError" class="nge-settings-reset-error">{{ resetError }}</div>
+            <div class="nge-settings-reset-btns">
+              <button class="nge-settings-cancel" type="button" :disabled="resetting" @click="confirmReset = false">Keep my settings</button>
+              <button class="nge-settings-reset nge-settings-reset--go" type="button" :disabled="resetting" @click="restoreDefaults">
+                {{ resetting ? 'Restoring…' : 'Restore defaults' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
     </div>
   </component>
@@ -1364,4 +1423,27 @@ const props = defineProps<{ embedded?: boolean }>();
 /* a toggle row that carries a menu, not a checkbox */
 .nge-settings-pick { justify-content: space-between; gap: 12px; cursor: default; }
 .nge-settings-pick .nge-sv-select { flex: 0 0 auto; min-width: 130px; }
+.nge-settings-reset-row { display: flex; justify-content: center; padding: 2px 0 10px; }
+.nge-settings-reset {
+  padding: 6px 14px; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer;
+  background: rgba(255, 90, 90, 0.06); border: 1px solid rgba(255, 120, 120, 0.35); color: #e8a0a0;
+}
+.nge-settings-reset:hover:not(:disabled) { background: rgba(255, 90, 90, 0.14); color: #ffc2c2; }
+.nge-settings-reset:disabled { opacity: 0.6; cursor: default; }
+.nge-settings-reset--go { background: rgba(255, 80, 80, 0.2); border-color: rgba(255, 120, 120, 0.7); color: #ffd6d6; font-weight: 700; }
+.nge-settings-reset-backdrop {
+  position: fixed; inset: 0; z-index: 100050; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.55); padding: 16px; box-sizing: border-box;
+}
+.nge-settings-reset-dlg {
+  width: 420px; max-width: 100%; box-sizing: border-box; padding: 18px 20px 16px; border-radius: 12px;
+  background: #0b1220; border: 1px solid rgba(255, 120, 120, 0.45); color: #dbe6f5;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 22px rgba(255, 90, 90, 0.12); font-family: 'Inter', system-ui, sans-serif;
+}
+.nge-settings-reset-title { font-weight: 700; font-size: 15px; color: #ffb3b3; margin-bottom: 8px; }
+.nge-settings-reset-text { font-size: 13px; line-height: 1.45; color: #c3d2e6; }
+.nge-settings-reset-text p { margin: 0 0 8px; }
+.nge-settings-reset-text ul { margin: 0 0 8px; padding-left: 18px; }
+.nge-settings-reset-error { margin: 4px 0 8px; font-size: 12.5px; color: #ff9d9d; }
+.nge-settings-reset-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 </style>

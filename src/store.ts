@@ -1127,6 +1127,25 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
     }, 800);
   }
 
+  /**
+   * Settings, "Restore all settings to default" (Ames 2026-10-15). Every
+   * setting goes back to its default, on this computer and on the account.
+   * Kept: the flag and bio (they are the profile, not settings) and the record
+   * of which notifications were delivered (not a setting, and delivery is
+   * never taken back). Resolves once the account copy is saved, so the page
+   * can reload after it without the old settings coming back.
+   */
+  async function resetToDefaults(): Promise<void> {
+    const kept = { flag: prefs.value.flag, bio: prefs.value.bio, notifDelivered: prefs.value.notifDelivered };
+    prefs.value = { toolbarIcons: [], chatMuted: false, helpMuted: false, flag: kept.flag || '', bio: kept.bio || '',
+      ...(kept.notifDelivered ? { notifDelivered: kept.notifDelivered } : {}) };
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+    if (!pulledFor) return;
+    const { error } = await supabase.from('user_settings').upsert({ settings: syncedPart(prefs.value) }, { onConflict: 'user_id' });
+    if (error) throw new Error(error.message);
+  }
+
   async function pullFromAccount(userId: string) {
     if (!userId || pulledFor === userId) return;
     try {
@@ -1152,7 +1171,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
   setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
-  return { prefs, save };
+  return { prefs, save, resetToDefaults };
 });
 
 // ─── Segment Annotation Store ─────────────────────────────────────────────────
