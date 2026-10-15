@@ -1206,7 +1206,7 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     // cell in the folder (and the folders inside it) takes it.
     const swatch = document.createElement('button');
     swatch.className = 'nge-seg-folder-color';
-    swatch.title = 'Recolour every cell in this folder';
+    swatch.title = 'Recolor every cell in this folder';
     swatch.addEventListener('click', event => {
       event.stopPropagation();
       const f = folder();
@@ -1216,8 +1216,8 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
         if (!cur) return;
         actions?.recolor(folders.cellsIn(cur.id), hex);
         if (cur.color !== hex) folders.setColor(cur.id, hex);
-      }, `Colour for ${f.name}`, {
-        label: 'Cells added later take this colour',
+      }, `Color for ${f.name}`, {
+        label: 'Cells added later take this color',
         value: !!f.paint,
         onChange: on => {
           const cur = folder();
@@ -1742,12 +1742,12 @@ export class SegmentDisplayTab extends Tab {
                   };
                   const recolorPicked = document.createElement('button');
                   recolorPicked.className = 'nge-pick-btn nge-pick-recolor';
-                  recolorPicked.textContent = 'Colour';
-                  recolorPicked.title = 'Give the picked cells one colour';
+                  recolorPicked.textContent = 'Color';
+                  recolorPicked.title = 'Give the picked cells one color';
                   recolorPicked.addEventListener('click', () => {
                     openColorPalette(recolorPicked, undefined, hex => {
                       sectionActions.recolor(pickedIds().map(id => id.toString()), hex);
-                    }, 'Colour for the picked cells');
+                    }, 'Color for the picked cells');
                   });
                   bar.append(
                       barCount, moveTo,

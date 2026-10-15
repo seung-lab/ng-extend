@@ -111,7 +111,7 @@ export class DisplayOptionsTab extends Tab {
       });
       const color = this.registerDisposer(new ColorWidget(
           layer.annotationDisplayState.color, () => vec3.fromValues(0.10, 0.25, 0.60)));
-      color.element.title = 'Colour of the box';
+      color.element.title = 'Color of the box';
       const controls = document.createElement('span');
       controls.className = 'nge-bounds-control-inputs';
       controls.append(show, color.element);

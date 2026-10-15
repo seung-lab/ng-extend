@@ -148,6 +148,8 @@ export class SegmentFolders {
   /** Whether cells that join the folder later take its colour (off unless
    *  turned on in the folder's colour palette; Ames 2026-10-14). */
   setPaint(id: string, paint: boolean) {
+    // the choice is kept: new folders start with it (Ames 2026-10-14)
+    try { localStorage.setItem(PAINT_DEFAULT_KEY, paint ? '1' : '0'); } catch { /* private window */ }
     this.value = this.value.map(f => f.id === id ? {...f, paint} : f);
     this.changed.dispatch();
   }
@@ -169,7 +171,7 @@ export class SegmentFolders {
     const used = new Set(this.value.map(f => f.color));
     const color = FOLDER_COLORS.find(c => !used.has(c)) ??
         FOLDER_COLORS[this.value.length % FOLDER_COLORS.length];
-    const f: SegmentFolder = {id: newFolderId(), name, ids: [], parent, color};
+    const f: SegmentFolder = {id: newFolderId(), name, ids: [], parent, color, paint: paintDefault()};
     this.value = [...this.value, f];
     this.changed.dispatch();
     return f;
@@ -204,6 +206,11 @@ export class SegmentFolders {
     });
     this.changed.dispatch();
   }
+}
+
+const PAINT_DEFAULT_KEY = 'nge-folder-paint-default';
+function paintDefault(): boolean {
+  try { return localStorage.getItem(PAINT_DEFAULT_KEY) === '1'; } catch { return false; }
 }
 
 export const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#ff2d2d'];
@@ -275,7 +282,7 @@ function saveColor(hex: string) {
 
 export function openColorPalette(
     anchor: HTMLElement, current: string|undefined, onPick: (hex: string) => void,
-    title = 'Colour', toggle?: {label: string, value: boolean, onChange: (on: boolean) => void}) {
+    title = 'Color', toggle?: {label: string, value: boolean, onChange: (on: boolean) => void}) {
   document.querySelector('.nge-color-palette')?.remove();
   const pop = document.createElement('div');
   pop.className = 'nge-color-palette';
@@ -305,7 +312,7 @@ export function openColorPalette(
   if (mine.length) {
     const label = document.createElement('div');
     label.className = 'nge-color-palette-title nge-color-palette-mine';
-    label.textContent = 'Your colours';
+    label.textContent = 'Your colors';
     const row = document.createElement('div');
     row.className = 'nge-color-palette-grid';
     for (const c of mine) {
