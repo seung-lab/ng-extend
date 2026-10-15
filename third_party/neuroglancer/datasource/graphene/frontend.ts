@@ -2060,6 +2060,8 @@ const getPoint = (layer: SegmentationUserLayer, mouseState: MouseSelectionState)
 
 const MULTICUT_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+control+mousedown0': {action: 'set-anchor'},
+  'at:touchtap1x1': {action: 'nge-tap-place'},
+  'at:touchtap1x2': {action: 'nge-tap-double'},
   'at:shift?+keyg': {action: 'swap-group'},
   'at:shift?+enter': {action: 'submit'},
 });
@@ -2073,6 +2075,34 @@ const MULTICUT_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
 export const NGE_KEEP_CUT_OPEN_KEY = 'nge-keep-cut-open';
 export function ngeKeepCutOpen(): boolean {
   try { return localStorage.getItem(NGE_KEEP_CUT_OPEN_KEY) === '1'; } catch { return false; }
+}
+
+/** nge: tap to place (Nseraf, report 135, on a Galaxy Tab with no keyboard).
+ *  In Cut, Merge and Find Path a one finger tap does what Ctrl+click does.
+ *  A double tap still shows or hides a segment, as everywhere else: the
+ *  point waits a moment, and a second tap inside that moment takes it back
+ *  and passes the double tap on. A second tap after the point is placed is
+ *  a new tap. Each tool's map binds 'at:touchtap1x1' to 'nge-tap-place' and
+ *  'at:touchtap1x2' to 'nge-tap-double'. */
+const NGE_TAP_WAIT_MS = 300;
+function ngeBindTapToPlace(activation: ToolActivation<any>, place: () => void) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const schedule = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(() => { timer = undefined; place(); }, NGE_TAP_WAIT_MS);
+  };
+  activation.registerDisposer(() => { if (timer !== undefined) clearTimeout(timer); });
+  activation.bindAction('nge-tap-place', event => {
+    event.stopPropagation();
+    schedule();
+  });
+  activation.bindAction('nge-tap-double', event => {
+    event.stopPropagation();
+    if (timer === undefined) { schedule(); return; }
+    clearTimeout(timer);
+    timer = undefined;
+    event.target?.dispatchEvent(new CustomEvent('action:select', {bubbles: true, detail: event.detail}));
+  });
 }
 
 class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
@@ -2227,8 +2257,7 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       multicutState.swapGroup();
     });
 
-    activation.bindAction('set-anchor', event => {
-      event.stopPropagation();
+    const setAnchor = () => {
       const currentSegmentSelection =
           maybeGetSelection(this, segmentationGroupState.visibleSegments);
       if (!currentSegmentSelection) return;
@@ -2256,7 +2285,12 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
         }
       }
       multicutState.activeGroup.add(currentSegmentSelection);
+    };
+    activation.bindAction('set-anchor', event => {
+      event.stopPropagation();
+      setAnchor();
     });
+    ngeBindTapToPlace(activation, setAnchor);
 
     activation.bindAction('submit', event => {
       event.stopPropagation();
@@ -2386,6 +2420,8 @@ const MERGE_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   // annotation layer on purpose gets an annotation from ctrl+click, without
   // having to close merge first. See 'place-merge-point' below.
   'at:shift?+control+mousedown0': {action: 'place-merge-point'},
+  'at:touchtap1x1': {action: 'nge-tap-place'},
+  'at:touchtap1x2': {action: 'nge-tap-double'},
 });
 
 class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
@@ -2426,8 +2462,7 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
         });
       }
     } catch { /* the viewer is not up yet */ }
-    activation.bindAction('place-merge-point', event => {
-      event.stopPropagation();
+    const placeMergePoint = () => {
       // The player has moved to an annotation layer with a tool picked (to
       // mark a true end, say): the click is an annotation there. Back on the
       // segmentation layer it is a merge point again. Merge stays open.
@@ -2437,7 +2472,12 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
         if (annotate && typeof annotate.trigger === 'function') { annotate.trigger(this.mouseState); return; }
       } catch { /* fall through to the merge point */ }
       lineTool.trigger(this.mouseState);
+    };
+    activation.bindAction('place-merge-point', event => {
+      event.stopPropagation();
+      placeMergePoint();
     });
+    ngeBindTapToPlace(activation, placeMergePoint);
     const submitAction = async () => {
       if (merges.value.filter(x => x.locked).length) return;
       submitIcon.classList.toggle('disabled', true);
@@ -2545,6 +2585,8 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
 const FIND_PATH_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
   'at:shift?+control+mousedown0': {action: 'add-point'},
+  'at:touchtap1x1': {action: 'nge-tap-place'},
+  'at:touchtap1x2': {action: 'nge-tap-double'},
 });
 
 class FindPathTool extends LayerTool<SegmentationUserLayer> {
@@ -2631,9 +2673,7 @@ class FindPathTool extends LayerTool<SegmentationUserLayer> {
       submitAction();
     });
 
-    activation.bindAction('add-point', event => {
-      console.log('add-point');
-      event.stopPropagation();
+    const addPoint = () => {
       (async () => {
         if (!source.value) { // first selection
           const selection = maybeGetSelection(this, segmentationGroupState.visibleSegments);
@@ -2647,7 +2687,13 @@ class FindPathTool extends LayerTool<SegmentationUserLayer> {
           }
         }
       })()
+    };
+    activation.bindAction('add-point', event => {
+      console.log('add-point');
+      event.stopPropagation();
+      addPoint();
     });
+    ngeBindTapToPlace(activation, addPoint);
   }
 
   toJSON() {

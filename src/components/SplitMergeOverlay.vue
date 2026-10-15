@@ -4,6 +4,7 @@ import { useSplitMergeOverlayStore } from 'src/store';
 import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { currentSegLayer } from '../datasets';
+import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
 
 // Hovering a segment in the Merge Queue lights it up in the 2D and 3D views
@@ -90,14 +91,17 @@ const contextHint = computed(() => {
   if (store.statusMessage) return store.statusMessage;
   // The error lives in the popup only; repeating it here doubled it (Amy 2026-09-29).
   if (isSubmitting.value) return 'Submitting...';
+  // On a touch screen one tap does what Ctrl+Click does, and there are no
+  // keys to press (Nseraf, report 135).
+  const touch = isTouchRef.value;
   if (isMulticut.value && !store.pendingClose) {
-    if (totalPoints.value === 0) return 'Ctrl+Click on supervoxels to mark them';
-    if (store.redPointCount > 0 && store.bluePointCount === 0) return 'Press G to swap to Blue group, then Ctrl+Click';
-    if (store.redPointCount > 0 && store.bluePointCount > 0) return 'Ready to submit. Press Enter';
-    return 'Ctrl+Click to add more points';
+    if (totalPoints.value === 0) return touch ? 'Tap supervoxels to mark them' : 'Ctrl+Click on supervoxels to mark them';
+    if (store.redPointCount > 0 && store.bluePointCount === 0) return touch ? 'Tap Blue, then tap the other side' : 'Press G to swap to Blue group, then Ctrl+Click';
+    if (store.redPointCount > 0 && store.bluePointCount > 0) return touch ? 'Ready to submit' : 'Ready to submit. Press Enter';
+    return touch ? 'Tap to add more points' : 'Ctrl+Click to add more points';
   }
   if (isMerge.value && !store.pendingClose) {
-    if (store.mergeSubmissionCount === 0) return 'Ctrl+Click on two segments to draw a merge line';
+    if (store.mergeSubmissionCount === 0) return touch ? 'Tap two segments to draw a merge line' : 'Ctrl+Click on two segments to draw a merge line';
     return `${store.mergeSubmissionCount} merge${store.mergeSubmissionCount !== 1 ? 's' : ''} queued`;
   }
   return '';
@@ -275,8 +279,9 @@ function cancelTool() {
                2026-10-08). Clicking it switches too. -->
           <div v-if="needsSwap && inPracticeTutorial" class="nge-smo-swap-banner" @click="swapGroup()" role="status">
             <span class="nge-smo-swap-banner-step">Red is placed</span>
-            <span class="nge-smo-swap-banner-main">Now press <kbd>G</kbd> to switch to <b>blue</b></span>
-            <span class="nge-smo-swap-banner-sub">then Ctrl+click the other side</span>
+            <span v-if="isTouchRef" class="nge-smo-swap-banner-main">Now tap here to switch to <b>blue</b></span>
+            <span v-else class="nge-smo-swap-banner-main">Now press <kbd>G</kbd> to switch to <b>blue</b></span>
+            <span class="nge-smo-swap-banner-sub">{{ isTouchRef ? 'then tap the other side' : 'then Ctrl+click the other side' }}</span>
           </div>
           <div class="nge-smo-loading-indicator nge-smo-loading-indicator--left" v-if="isSubmitting">
             <span class="nge-smo-spinner"></span>
@@ -301,7 +306,7 @@ function cancelTool() {
             </div>
             <!-- The swap key sits with the colours it swaps (it used to be
                  far right, among Submit and Cancel). -->
-            <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap }" @click="swapGroup()" title="Switch between red and blue"><kbd>G</kbd> {{ needsSwap ? 'Press G for blue' : 'Swap' }}</span>
+            <span class="nge-smo-key-hint nge-smo-swap-hint" :class="{ 'nge-smo-swap-hint--now': needsSwap }" @click="swapGroup()" title="Switch between red and blue"><kbd v-if="!isTouchRef">G</kbd> {{ needsSwap ? (isTouchRef ? 'Tap for blue' : 'Press G for blue') : 'Swap' }}</span>
           </div>
 
           <!-- All the cut controls sit together on the left (Ames,
@@ -312,7 +317,7 @@ function cancelTool() {
             <button class="nge-smo-action-btn clear-btn" :disabled="!cutReady || previewBusy" @click="previewCut"
                     :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">{{ previewBusy ? 'Previewing…' : 'Preview' }}</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
-            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd>Esc</kbd> Cancel</button>
+            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
           </div>
 
           <div class="nge-smo-hint nge-smo-hint--left" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
@@ -342,12 +347,12 @@ function cancelTool() {
           <div class="nge-smo-actions nge-smo-actions--left" v-if="!isSubmitting">
             <button class="nge-smo-action-btn submit-btn" :class="{ 'is-ready': mergeReady }" @click="submitTool('merge')" title="Submit the merge (or press Enter)">Submit merge</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearMerges" title="Clear every queued merge">Clear</button>
-            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd>Esc</kbd> Cancel</button>
+            <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit merge mode"><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
             <label class="nge-smo-auto-submit" title="Auto-submit merges when both points are placed" @click.prevent="toggleAutoSubmit">
               <span class="nge-smo-checkbox" :class="{ checked: store.autoSubmit }">{{ store.autoSubmit ? '☑' : '☐' }}</span>
               auto-submit
             </label>
-            <span class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
+            <span v-if="!isTouchRef" class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
           </div>
 
           <div class="nge-smo-hint nge-smo-hint--left merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>

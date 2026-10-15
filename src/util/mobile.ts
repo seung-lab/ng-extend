@@ -22,6 +22,15 @@ export const MOBILE_MEDIA_QUERY =
 export const isMobileRef = ref(false);
 
 /**
+ * A touch screen is the main pointer (phones and tablets; a laptop with a
+ * touch screen keeps its mouse wording). The Cut and Merge bar says "tap"
+ * instead of naming keys there (Nseraf, report 135, on a Galaxy Tab).
+ */
+const touchQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(pointer: coarse)') : null;
+export const isTouchRef = ref(!!touchQuery?.matches);
+touchQuery?.addEventListener?.('change', () => { isTouchRef.value = touchQuery.matches; });
+
+/**
  * True while the mobile welcome sheet (the phone landing page) is showing.
  * LoginModal watches this to stay out of the way: on phones the welcome
  * sheet IS the landing experience, and identity verification only appears
