@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-15T00:44:00Z",
+      "title": "Cell Profile on the right, steadier chat scrolling",
+      "digest": "minor",
+      "items": [
+        "The Cell Profile opens along the right edge of the page instead of over the cells you are looking at. Close it with its X or by clicking outside it.",
+        "Scrolling to the top of the chat loads one page of older messages at a time, so a quick swipe no longer races far back. Scroll up again to see more."
+      ]
+    },
+    {
       "at": "2026-10-14T23:45:00Z",
       "title": "Cell Profile and reply screenshots",
       "digest": "minor",
