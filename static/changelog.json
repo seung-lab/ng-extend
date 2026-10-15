@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-15T16:36:32Z",
+      "title": "A new Müller cell in Meet the cells",
+      "digest": "minor",
+      "items": [
+        "Retina's Meet the cells tour now shows a single Müller glia cell. The one before was two cells stuck together.",
+        "In the Cilia Quest, the explanation for No cilium (BB & DC clear) is clearer: the centrioles are visible and clearly differentiated, with the basal body closer to the surface."
+      ]
+    },
+    {
       "at": "2026-10-15T15:10:30Z",
       "title": "Choose how sharp the 2D images are",
       "digest": "minor",
