@@ -1646,3 +1646,20 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 .nge-confirm-ok.nge-confirm-danger { background: #e06060; color: #fff; }
 .nge-confirm-ok.nge-confirm-danger:hover { background: #ec7676; }
 .nge-confirm-ok:focus-visible, .nge-confirm-cancel:focus-visible { outline: 2px solid rgba(124, 255, 178, 0.8); outline-offset: 2px; }
+
+/* Rows line up the same with a name or a number (Ames 2026-10-15: "weird
+   spacing of segIDs with names vs only numbers"): copy shows on hover on
+   every row, and the row's parts keep one order whatever order they were
+   added in: eye and chip, the jump arrow (pushed right), then the Δ. */
+.neuroglancer-segment-list-entry.nge-seg-labelled:not(:hover) .neuroglancer-segment-list-entry-copy-container,
+.neuroglancer-segment-list-entry.nge-seg-labelled:not(:hover) .neuroglancer-segment-list-entry-copy { visibility: hidden !important; }
+.neuroglancer-segment-list-entry > .neuroglancer-segment-list-entry-sticky { order: 0 !important; }
+.neuroglancer-segment-list-entry > .nge-jump-btn { order: 50 !important; margin-left: auto !important; }
+.neuroglancer-segment-list-entry > .nge-lb-btn { order: 51 !important; margin-left: 4px !important; }
+/* the ID under a name (Settings) starts under the name, now that the row
+   starts with the eye */
+body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-label-badge[data-seg-id] { margin-left: 26px !important; }
+
+/* dragging a folder: a line above or below a heading places it there */
+.neuroglancer-segment-list-status.nge-folder-drop-before { box-shadow: inset 0 3px 0 rgba(140, 200, 255, 0.95) !important; }
+.neuroglancer-segment-list-status.nge-folder-drop-after { box-shadow: inset 0 -3px 0 rgba(140, 200, 255, 0.95) !important; }

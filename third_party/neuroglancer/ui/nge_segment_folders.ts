@@ -140,6 +140,27 @@ export class SegmentFolders {
     this.changed.dispatch();
   }
 
+  /** Put a folder just before or after another, beside it (same parent);
+   *  never next to something inside itself (Ames 2026-10-15: "can I drag to
+   *  reorder folders"). */
+  placeFolder(id: string, targetId: string, where: 'before'|'after') {
+    if (id === targetId || this.isInside(targetId, id)) return;
+    const target = this.value.find(f => f.id === targetId);
+    const moving = this.value.find(f => f.id === id);
+    if (!target || !moving) return;
+    const rest = this.value.filter(f => f.id !== id);
+    const at = rest.indexOf(target) + (where === 'after' ? 1 : 0);
+    // after a folder means after everything inside it too
+    let end = at;
+    if (where === 'after') {
+      const inside = new Set(this.subtree(targetId));
+      while (end < rest.length && inside.has(rest[end].id)) ++end;
+    }
+    rest.splice(where === 'after' ? end : at, 0, {...moving, parent: target.parent});
+    this.value = rest;
+    this.changed.dispatch();
+  }
+
   setColor(id: string, color: string) {
     this.value = this.value.map(f => f.id === id ? {...f, color} : f);
     this.changed.dispatch();

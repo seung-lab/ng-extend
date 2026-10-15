@@ -1161,19 +1161,34 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     });
     // A folder dragged onto a heading goes inside that folder; onto In view,
     // to the top level.
+    // On a folder's heading: the top edge puts the dragged folder above it,
+    // the bottom edge below it, the middle inside it. A line or a ring shows
+    // which before the drop.
+    const zoneOf = (event: DragEvent): 'before'|'after'|'inside' => {
+      if (!targetFolder) return 'inside';
+      const r = heading.getBoundingClientRect();
+      const y = (event.clientY - r.top) / r.height;
+      return y < 0.3 ? 'before' : y > 0.7 ? 'after' : 'inside';
+    };
+    const clearZone = () => heading.classList.remove(
+        'nge-folder-drop-target', 'nge-folder-drop-before', 'nge-folder-drop-after');
     heading.addEventListener('dragover', (event: DragEvent) => {
       if (!event.dataTransfer?.types.includes(FOLDER_DRAG_TYPE)) return;
       event.preventDefault();
-      heading.classList.add('nge-folder-drop-target');
+      const zone = zoneOf(event);
+      clearZone();
+      heading.classList.add(zone === 'inside' ? 'nge-folder-drop-target' : `nge-folder-drop-${zone}`);
     });
-    heading.addEventListener('dragleave', () => heading.classList.remove('nge-folder-drop-target'));
+    heading.addEventListener('dragleave', clearZone);
     heading.addEventListener('drop', (event: DragEvent) => {
-      heading.classList.remove('nge-folder-drop-target');
+      const zone = zoneOf(event);
+      clearZone();
       const dragged = event.dataTransfer?.getData(FOLDER_DRAG_TYPE);
       if (!dragged) return;
       event.preventDefault();
       if (dragged === targetFolder) return;
-      folders.setParent(dragged, targetFolder || undefined);
+      if (zone === 'inside') folders.setParent(dragged, targetFolder || undefined);
+      else folders.placeFolder(dragged, targetFolder, zone);
     });
 
     if (mode === 'inview') {
