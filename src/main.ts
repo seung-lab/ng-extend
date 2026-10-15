@@ -14,6 +14,7 @@ import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from
 import GrowingCell from 'components/GrowingCell.vue';
 import { watchPhoneEmptyView } from './widgets/widget_utils';
 import { startUndelete } from './util/undelete';
+import { installTouchTap } from './util/touch_tap';
 import { Uint64 as Uint64ForUndelete } from 'neuroglancer/util/uint64';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
@@ -401,6 +402,8 @@ function setupViewer() {
   // Undelete: remember the cells that leave the view, to bring them back.
   startUndelete(Uint64ForUndelete, () => !!document.querySelector('#extensionBar [data-icon-id="undelete"]'));
   installNoFourPanel(viewer);
+  // Touch screens: one tap places an annotation or Highlight point (report 135).
+  installTouchTap(viewer);
   // window.eyewire, the stable API for player scripts (static/scripts.html).
   installScriptApi(viewer, {
     user: () => {

@@ -8,6 +8,8 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
+import { claimTouchTaps } from '../util/touch_tap';
+import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
 import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
@@ -143,10 +145,10 @@ async function setSlim(v: boolean) {
 /** The one line the strip has room for. */
 const slimStep = computed(() => {
   if (messageBad.value && message.value) return message.value;
-  if (branchWay.value) return 'Ctrl + click the soma';
+  if (branchWay.value) return isTouchRef.value ? 'Tap the soma' : 'Ctrl + click the soma';
   if (first.value) return 'Now the end';
   if (message.value === 'Highlight complete') return stat.value ? `Done, ${stat.value}` : 'Done';
-  return 'Ctrl + click';
+  return isTouchRef.value ? 'Tap a start point' : 'Ctrl + click';
 });
 
 // ── Drag the box by its header; it remembers where it was put ─────────────
@@ -217,7 +219,7 @@ async function place(x: number, y: number) {
   if (!first.value) {
     first.value = pick;
     try { showStartMarker(pick, styleOf()); } catch (e) { console.warn('[highlight] start marker failed:', e); }
-    say('Start placed. Now click where the checked stretch ends.');
+    say(isTouchRef.value ? 'Start placed. Now tap where the checked stretch ends.' : 'Start placed. Now click where the checked stretch ends.');
     return;
   }
   const a = first.value;
@@ -391,8 +393,13 @@ function clearAll() {
 }
 
 let stopLayerWatch = () => { /* set on mount */ };
+// A touch screen has no Ctrl: while this box is open one tap places a point,
+// as Ctrl+click does (report 135). With Merge, Cut or Find Path open the tap
+// is theirs, as Ctrl+click is.
+let stopTouchTaps = () => { /* set on mount */ };
 onMounted(() => {
   refresh();
+  stopTouchTaps = claimTouchTaps((x, y) => (editToolOpen() ? null : () => { void place(x, y); }));
   stopLayerWatch = onLayersChanged(() => { shown.value = highlightsShown(); });
   requestAnimationFrame(() => { if (panelEl.value) runPanelTrace(panelEl.value); });
   window.addEventListener('keydown', onKeyDown, true);
@@ -405,6 +412,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   stopLayerWatch();
+  stopTouchTaps();
   window.removeEventListener('keydown', onKeyDown, true);
   window.removeEventListener('keyup', onKeyUp, true);
   window.removeEventListener('pointerdown', onPointerCapture, true);
@@ -458,8 +466,14 @@ onBeforeUnmount(() => {
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
       </div>
       <p class="nge-hl-how">
-        <kbd>Ctrl</kbd> + click where a checked stretch starts, then where it ends.
-        After the first click you can also mark <b>to the soma</b> or <b>beyond</b>.
+        <template v-if="isTouchRef">
+          Tap where a checked stretch starts, then where it ends.
+          After the first tap you can also mark <b>to the soma</b> or <b>beyond</b>.
+        </template>
+        <template v-else>
+          <kbd>Ctrl</kbd> + click where a checked stretch starts, then where it ends.
+          After the first click you can also mark <b>to the soma</b> or <b>beyond</b>.
+        </template>
       </p>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
         <span
@@ -493,7 +507,7 @@ onBeforeUnmount(() => {
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--main" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
-        <span v-else class="nge-hl-step">Ctrl + click the start</span>
+        <span v-else class="nge-hl-step">{{ isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>

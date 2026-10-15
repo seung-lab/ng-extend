@@ -13,6 +13,7 @@ import { currentSegLayer } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
+import { isTouchRef } from './mobile';
 
 export interface HighlightStyle { key: string; label: string; layer: string; color: string; }
 export const DEFAULT_HIGHLIGHT_STYLES: HighlightStyle[] = [
@@ -327,7 +328,7 @@ async function branchGraphOf(layer: SegmentationUserLayer, root: string): Promis
 
 /** Thrown when the soma is not known: the panel asks for one more click. */
 export class NeedsSomaSide extends Error {
-  constructor() { super("Now Ctrl + click this cell's soma."); }
+  constructor() { super(isTouchRef.value ? "Now tap this cell's soma." : "Now Ctrl + click this cell's soma."); }
 }
 
 /**
