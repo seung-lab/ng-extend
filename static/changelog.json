@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-15T14:53:18Z",
+      "title": "Your viewer settings stay put",
+      "digest": "minor",
+      "items": [
+        "Prefetching, concurrent chunk requests and the memory limits you set in Viewer settings are now kept on your account. Opening a quest cell, a link or reloading no longer puts them back to the defaults."
+      ]
+    },
+    {
       "at": "2026-10-15T13:15:00Z",
       "title": "Lighter on the server",
       "digest": "minor",
