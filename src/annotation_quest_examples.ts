@@ -28,7 +28,7 @@ export const QUEST_STATUS_GUIDE: Record<string, string> = {
   "Need help": "You can't find any cilium or centrioles, or some other issue that stops you from annotating the cell. Good to leave clarifying notes in most cases!",
   "Need help: One centriole missing": "You found one centriole, but the other is MIA",
   "No cilium": "Nothing found. This should only be used after review (use Need Help if you are the first annotator)",
-  "No cilium (BB & DC clear)": "No cilium, but centrioles are visible and it's clear which is the basal body (centriole closer to the surface)",
+  "No cilium (BB & DC clear)": "No cilium, but centrioles are visible and clearly differentiated (basal body closer to the surface).",
   "No cilium (BB & DC unclear; internal centriole pair)": "No cilium, centriole positions make it unclear which is the basal body and which is the daughter",
   "Skipped (low quality)": "Extensive data artifacting, missing slides, no soma etc, make it too difficult to ID cilium or centrioles",
 };

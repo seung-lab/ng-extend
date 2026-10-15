@@ -75,6 +75,19 @@ assert rows[0].get('A') == 'Status' and rows[0].get('B') == 'When to use' and ro
 guide = [(r['A'], r['B'], r.get('C', '')) for r in rows[1:] if r.get('A')]
 assert guide, 'the sheet has no statuses'
 
+# Wording the lab has corrected but the sheet does not carry yet. Each entry
+# names who gave it and when; drop it once the sheet says the same, so the
+# sheet stays the one source. The script says so when one is no longer needed.
+WHEN_TO_USE_CORRECTIONS = {
+    # Celia, Slack 2026-10-15.
+    'No cilium (BB & DC clear)': 'No cilium, but centrioles are visible and clearly differentiated (basal body closer to the surface).',
+}
+for i, (status, when, example) in enumerate(guide):
+    if status in WHEN_TO_USE_CORRECTIONS:
+        if when == WHEN_TO_USE_CORRECTIONS[status]:
+            print('The sheet now says this itself; remove its correction:', status, file=sys.stderr)
+        guide[i] = (status, WHEN_TO_USE_CORRECTIONS[status], example)
+
 
 # ── the example views ─────────────────────────────────────────────────────
 def state_url(link):
