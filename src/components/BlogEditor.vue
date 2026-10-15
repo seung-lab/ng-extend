@@ -366,6 +366,17 @@ function onPaste(e: ClipboardEvent) {
     .map(i => i.getAsFile()).filter((f): f is File => !!f);
   if (pictures.length) void pastePictures(pictures);
   const text = e.clipboardData?.getData('text/plain') ?? '';
+  // Pasted text written in the blog's own format (## headings, - lists,
+  // **bold**, [links](https://...)) arrives formatted, through the same
+  // safe renderer that opens a saved post (Ames 2026-10-15: "give me
+  // something I can paste in").
+  if (/^\s*(#{2,3}\s|[-*]\s|\d+\.\s|>\s|!>\s|---\s*$)/m.test(text) || /\*\*[^*\n]+\*\*/.test(text)) {
+    const html = renderBlogMarkdown(text.replace(/\r\n?/g, '\n'), true);
+    if (html) {
+      document.execCommand('insertHTML', false, html);
+      return;
+    }
+  }
   const paras = text.replace(/\r\n?/g, '\n').split(/\n+/).map(x => x.trim()).filter(Boolean);
   if (!paras.length) return;
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
