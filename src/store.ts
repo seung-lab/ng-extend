@@ -1353,6 +1353,9 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
     const entry = cells.value.find(c => c.segId === segId);
     const viewer: any = (window as any)['viewer'];
     if (!viewer) return;
+    // A quest on screen is saved and put away first (src/annotation_quests.ts
+    // leaveQuestFor): its layers must not ride along to this cell.
+    document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId } }));
 
     // Use override position, or claimPoint (stable anchor), or fall back to cell history
     const pos = positionOverride ?? entry?.claimPoint ?? entry?.position;

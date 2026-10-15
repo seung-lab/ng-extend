@@ -368,6 +368,31 @@ export async function readSavedQuestWork(): Promise<void> {
   } catch { /* the list still works without it */ }
 }
 
+/**
+ * Leaving the quest on screen for another cell (annkri #142, reproduced by
+ * Ames 2026-10-15). A jump to a claimed cell kept the quest's three layers,
+ * so the quest still counted as on screen and its autosave went on saving
+ * the other cell's view as the quest cell's work; reopening the quest then
+ * brought back the wrong view. Now the quest work is saved as it is (the view
+ * is read before anything changes), the quest's own annotation layers are
+ * taken out, and the quest is marked off screen, which stops its autosave.
+ * Reopening it from the Quests tab brings the saved work back as before.
+ */
+export function leaveQuestFor(segId: string | null | undefined) {
+  const a = questWork.active;
+  if (!a || (segId && segId === a.segmentId) || !questOnScreen(a.segmentId) || questWork.opening) return;
+  // saveQuestWork reads the view before its first await, so this is the quest.
+  if (workSignature() !== lastSavedSig) void saveQuestWork(a.segmentId);
+  markQuestOnScreen(null);
+  try {
+    const lm = (window as any)['viewer']?.layerManager;
+    const isAnnotation = (ml: any) => ml?.layer?.type === 'annotation' || ml?.layer?.constructor?.type === 'annotation';
+    for (const ml of [...(lm?.managedLayers ?? [])]) {
+      if (isAnnotation(ml) && QUEST_LAYER_COLORS.some(q => q.match.test(ml.name))) lm.removeManagedLayer(ml);
+    }
+  } catch (e) { console.warn('[quests] could not take the quest layers out:', e); }
+}
+
 /** Save the active quest's work a few seconds after its annotations change,
  *  for as long as it is on screen. Started once, with the viewer (main.ts). */
 let watching = false;
@@ -387,6 +412,8 @@ export function startQuestWorkWatch(viewer: any, userId: () => string | null) {
     lastSaveAt = Date.now();
     await saveQuestWork(a.segmentId);
   };
+  // Any jump to another cell leaves the quest first (src/store.ts jumpToCell).
+  document.addEventListener('nge:leaving-for-cell', (e: Event) => leaveQuestFor((e as CustomEvent).detail?.segId));
   viewer.state.changed.add(() => {
     const a = questWork.active;
     if (!a || !questOnScreen(a.segmentId)) return;
