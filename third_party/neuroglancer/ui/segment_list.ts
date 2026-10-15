@@ -1705,7 +1705,10 @@ export class SegmentDisplayTab extends Tab {
                   context.registerDisposer(() => pickStyle.remove());
                   const bar = document.createElement('div');
                   bar.className = 'nge-pick-bar';
-                  parent.prepend(bar);
+                  // At the foot of the panel, floating over the list: picking
+                  // a cell never moves the rows (Ames 2026-10-14: the list
+                  // "drops down from where I clicked").
+                  parent.appendChild(bar);
                   const barCount = document.createElement('span');
                   barCount.className = 'nge-pick-count';
                   const moveTo = document.createElement('select');

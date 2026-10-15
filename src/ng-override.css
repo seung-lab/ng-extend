@@ -1578,3 +1578,10 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 .nge-pick-bar, .nge-pick-move, .nge-pick-btn, .nge-color-palette, .nge-color-palette-title { font-size: 12.5px !important; }
 
 .nge-color-palette-mine { margin-top: 8px; }
+
+/* the batch bar floats at the foot of the panel; the rows never move */
+.nge-pick-bar {
+  position: sticky; bottom: 8px; z-index: 20; margin: 6px 4px 8px !important;
+  background: rgba(10, 22, 30, 0.97) !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+}
