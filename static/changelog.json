@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-15T13:15:00Z",
+      "title": "Lighter on the server",
+      "digest": "minor",
+      "items": [
+        "The leaderboard refreshes every two minutes instead of every minute, and asks for far less each time. Opening a player's card loads their all-time totals.",
+        "The bell checks for new notifications once a minute and asks only for what is new. A new notification still appears within a minute."
+      ]
+    },
+    {
       "at": "2026-10-15T10:25:00Z",
       "title": "Tap to place on phones and tablets",
       "items": [
