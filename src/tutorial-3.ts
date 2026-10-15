@@ -966,6 +966,10 @@ function friendlyLayerNames() {
     let name = kind === 'segmentation' ? segName : kind === 'image' ? imgName : '';
     if (name && used.has(name)) name = '';
     if (name) used.add(name);
+    // The side panel's title for this layer says the same (layer_side_panel.ts).
+    for (const t of Array.from(document.querySelectorAll<HTMLElement>('.nge-panel-title-name'))) {
+      if (t.dataset.layerName === ml.name && t.textContent !== (name || ml.name)) t.textContent = name || ml.name;
+    }
     const label = chips.find(c => (c.querySelector('.neuroglancer-layer-item-label')?.textContent ?? '') === ml.name)
       ?.querySelector('.neuroglancer-layer-item-label') as HTMLElement | null | undefined;
     if (!label) continue;

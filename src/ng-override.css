@@ -1585,3 +1585,15 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
   background: rgba(10, 22, 30, 0.97) !important;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
 }
+
+/* cell and image layers: a plain title and the close button only */
+.nge-locked-layer .neuroglancer-layer-side-panel-type,
+.nge-locked-layer .neuroglancer-layer-side-panel-name,
+.nge-locked-layer .nge-title-pick,
+.nge-locked-layer .nge-title-pin,
+.nge-locked-layer .nge-title-delete { display: none !important; }
+.nge-panel-title-name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 600;
+  color: rgba(228, 236, 248, 0.95); padding: 2px 6px;
+}

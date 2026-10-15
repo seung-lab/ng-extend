@@ -158,6 +158,7 @@ class LayerSidePanel extends SidePanel {
           changed: layer.managedLayer.layerChanged,
         },
         pickButton.element));
+    pickButton.element.classList.add('nge-title-pick');
     titleBar.appendChild(pickButton.element);
     const pinWatchable = {
       get value() {
@@ -172,7 +173,7 @@ class LayerSidePanel extends SidePanel {
       },
       changed: layer.manager.root.layerManager.layersChanged,
     };
-    titleBar.appendChild(this.registerDisposer(new CheckboxIcon(pinWatchable, {
+    const pinIcon = titleBar.appendChild(this.registerDisposer(new CheckboxIcon(pinWatchable, {
                                // Note: \ufe0e forces text display, as otherwise the pin icon
                                // may as an emoji with color.
                                text: '📌\ufe0e',
@@ -180,6 +181,7 @@ class LayerSidePanel extends SidePanel {
                                disableTitle: 'Unpin panel to this layer',
                              }))
                              .element);
+    pinIcon.classList.add('nge-title-pin');
     this.registerDisposer(observeWatchable(pinned => {
       element.dataset.neuroglancerLayerPanelPinned = pinned.toString();
     }, pinWatchable));
@@ -188,7 +190,20 @@ class LayerSidePanel extends SidePanel {
       onClick: () => {
         void deleteLayerFromUi(this.layer.managedLayer);
       }
-    }));
+    })).classList.add('nge-title-delete');
+    // nge: the cell and image layers are the dataset itself: players cannot
+    // change their type, rename or delete them, and the selection and pin
+    // switches meant nothing to them (Ames 2026-10-14). Their title is the
+    // friendly name the layer bar shows (tutorial-3.ts fills it in).
+    const kind = (layer.constructor as any).type;
+    if (kind === 'segmentation' || kind === 'image') {
+      titleBar.classList.add('nge-locked-layer');
+      const title = document.createElement('span');
+      title.className = 'nge-panel-title-name';
+      title.dataset.layerName = layer.managedLayer.name;
+      title.textContent = layer.managedLayer.name;
+      titleBar.insertBefore(title, titleBar.firstChild);
+    }
     this.tabView = new TabView(
         {
           makeTab: id => layer.tabs.options.get(id)!.getter(),
