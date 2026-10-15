@@ -21,11 +21,9 @@ import type {
 } from "#src/merge_review/types.js";
 import {
   buildViewerState,
-  clusterPositions,
   editedClusterLabels,
   type TokenEdits,
 } from "#src/merge_review/state.js";
-import { seedMulticut } from "#src/merge_review/multicut.js";
 import {
   clearDecisionField,
   isDecided,
@@ -52,7 +50,7 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
 
   // Manual point edits (recolour / delete) per window, keyed by window
   // idx → { tokenIdx → newLabel | "x" }.  In-memory for the session;
-  // they refine the split grouping that feeds createSplit().
+  // they refine the split grouping the reviewer labels.
   const tokenEdits: Ref<Record<number, TokenEdits>> = ref({});
 
   // Floating-panel chrome (re-openable from the top bar).
@@ -258,61 +256,6 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
   function setNotes(notes: string) {
     if (!bundle.value || currentIdx.value == null) return;
     setField(currentIdx.value, "notes", notes || "");
-  }
-
-  // Binary split: the highlighted (selected) clusters form ONE side,
-  // every remaining cluster forms the OTHER side.  A single Create-split
-  // therefore ALWAYS produces exactly two groups.  Seedable as soon as
-  // at least one cluster is highlighted AND at least one is left out
-  // (otherwise one of the two sides would be empty).
-  const canCreateSplit = computed(() => {
-    if (currentIdx.value == null) return false;
-    const split = decisions.value[currentIdx.value]?.split;
-    if (!Array.isArray(split) || split.length === 0) return false;
-    // Count clusters after edits so recolours/deletes stay consistent.
-    const total = splitClusterLabels.value.length;
-    if (total === 0) return false;
-    // ≥1 highlighted and ≥1 not highlighted → both sides non-empty.
-    return split.length >= 1 && split.length < total;
-  });
-
-  // Seed the graphene multicut tool with the binary split: the
-  // highlighted clusters become one side (sinks), all the remaining
-  // clusters become the other side (sources), then activate it.
-  function createSplit() {
-    if (!viewer || !bundle.value || currentIdx.value == null) return;
-    const w = currentWindow.value;
-    if (!w) return;
-    const split = decisions.value[currentIdx.value]?.split;
-    if (!Array.isArray(split) || split.length === 0) return;
-
-    const selected = new Set(split.map(Number));
-    const posByLabel = clusterPositions(w, currentEdits.value);
-    // posA = union of all highlighted clusters; posB = union of the rest.
-    const posA: number[][] = [];
-    const posB: number[][] = [];
-    for (const [lab, pts] of posByLabel) {
-      (selected.has(lab) ? posA : posB).push(...pts);
-    }
-    if (posA.length === 0 || posB.length === 0) {
-      alert(
-        "Binary split needs both sides non-empty — highlight at least one " +
-          "cluster and leave at least one un-highlighted.",
-      );
-      return;
-    }
-    seedMulticut(viewer, String(splitRootId()), posA, posB);
-  }
-
-  // The segment to multicut.  Demo: the merge error lives in the OLD
-  // (pre-proofread) root, so cut against that; fall back to the latest.
-  function splitRootId(): string | number {
-    const n = bundle.value!.neuron;
-    const oldRoot =
-      Array.isArray(n.old_root_ids) && n.old_root_ids.length
-        ? n.old_root_ids[0]
-        : n.old_root_id;
-    return oldRoot != null ? oldRoot : n.latest_root_id;
   }
 
   // ─────────────────────── manual point edits ──────────────────
@@ -592,7 +535,6 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     visibleWindows,
     nReviewed,
     meta,
-    canCreateSplit,
     splitClusterLabels,
     hasTokenEdits,
     // actions
@@ -601,7 +543,6 @@ export const useMergeReviewStore = defineStore("mergeReview", () => {
     applyMerge,
     toggleSplitCluster,
     toggleSplitSkip,
-    createSplit,
     editToken,
     editHoveredToken,
     resetTokenEdits,

@@ -1,3 +1,5 @@
+// Must stay the first import: it refuses segmentation edits before neuroglancer loads.
+import "#src/merge_review/edit_guard.js";
 import "neuroglancer";
 import { setupDefaultViewer } from "neuroglancer/unstable/ui/default_viewer_setup.js";
 import { createPinia } from "pinia";
