@@ -1678,3 +1678,27 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-seg-folder-slot { flex: none; width: 30px; display: inline-flex; align-items: center; justify-content: center; }
 
 .nge-seg-folder-slot .nge-seg-folder-nested { padding: 0; }
+
+/* "+5": folders inside a folded folder, lighter than the cell count */
+.nge-seg-folder-slot .nge-seg-folder-nested { color: rgba(200, 215, 240, 0.42) !important; font-size: 12px; }
+
+/* Folder heading buttons float over the right end on hover; at rest the name
+   has the room. Touch screens (no hover) keep them in the row. */
+.nge-seg-list-heading--folder { position: relative; }
+.nge-seg-folder-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.nge-seg-folder-actions .nge-seg-folder-icon,
+.nge-seg-folder-actions .nge-seg-folder-copy,
+.nge-seg-folder-actions .nge-seg-remove-all { visibility: visible !important; display: inline-flex !important; }
+.nge-seg-folder--collapsed > .neuroglancer-segment-list-status .nge-seg-folder-actions .nge-seg-remove-all { display: none !important; }
+@media (hover: hover) {
+  .nge-seg-folder-actions {
+    position: absolute; right: 0; top: 0; bottom: 0; z-index: 3;
+    padding: 0 6px 0 22px;
+    background: linear-gradient(90deg, rgba(15, 23, 41, 0) 0, rgba(15, 23, 41, 0.97) 18px);
+    opacity: 0; pointer-events: none; transition: opacity 0.12s;
+  }
+  .nge-seg-list-heading--folder:hover .nge-seg-folder-actions { opacity: 1; pointer-events: auto; }
+}
+.nge-seg-list-heading--folder > .nge-seg-folder-nested { flex: none; margin-left: 2px; color: rgba(200, 215, 240, 0.42) !important; font-size: 12px; padding: 0 2px; }
+
+.nge-seg-list-heading--folder > .nge-seg-folder-nested { min-width: 26px; text-align: left; }

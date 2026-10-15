@@ -1332,14 +1332,15 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
       caret.textContent = f.collapsed ? '\u25b8' : '\u25be';
       const inner = folders.subtree(f.id).slice(1)
           .map(id => folders.value.find(x => x.id === id)?.name ?? '').filter(Boolean);
-      const showNested = !!f.collapsed && inner.length > 0;
-      nested.style.display = showNested ? '' : 'none';
-      // an outline folder (not two squares, which reads as the copy button)
-      nested.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
-          'stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
-      nested.append(` ${inner.length}`);
+      // folders inside, open or folded (Ames 2026-10-15: "at rest it should
+      // show # segs and sub-folders if there are any")
+      const showNested = inner.length > 0;
+      // the spot stays when empty, so every folder's count lines up
+      nested.style.visibility = showNested ? '' : 'hidden';
+      // plain "+5", lighter than the count so it does not read as more cells
+      nested.textContent = `+${inner.length}`;
       nested.title = `${inner.length} folder${inner.length === 1 ? '' : 's'} inside: ${inner.join(', ')}` +
-          '\nOpen the folder to remove its cells.';
+          (f.collapsed ? '\nOpen the folder to remove its cells.' : '');
       this.element.classList.toggle('nge-seg-folder--nested-hidden', showNested);
       if (name.contentEditable !== 'true') {
         name.textContent = f.name;
@@ -1358,12 +1359,19 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     const copy = this.copyAllSegmentsButton;
     copy.classList.add('nge-seg-folder-copy');
     heading.insertBefore(copy, heading.querySelector('.nge-seg-folder-icon'));
-    // The trash can and the folded tag share one slot of a fixed width, so the
-    // name and the count never move when a folder folds.
-    const slot = document.createElement('span');
-    slot.className = 'nge-seg-folder-slot';
-    slot.append(this.starAllButton, nested);
-    heading.insertBefore(slot, heading.querySelector('.nge-seg-folder-ungroup'));
+    // The heading's buttons (copy, a folder inside, remove, ungroup) take no
+    // room at rest: the name gets the width, and on hover the buttons come in
+    // over the heading's right end (Ames 2026-10-15: "show more of the folder
+    // name and if you hover on that right side then some of it gets replaced
+    // by the buttons"). The "+5" of a folded folder sits after the count.
+    const buttons = document.createElement('span');
+    buttons.className = 'nge-seg-folder-actions';
+    const plus = [...heading.querySelectorAll<HTMLElement>('.nge-seg-folder-icon')]
+        .find(b => !b.classList.contains('nge-seg-folder-ungroup'));
+    const ungroup = heading.querySelector<HTMLElement>('.nge-seg-folder-ungroup');
+    buttons.append(copy, ...(plus ? [plus] : []), this.starAllButton, ...(ungroup ? [ungroup] : []));
+    heading.appendChild(buttons);
+    this.selectionStatusMessage.after(nested);
     this.registerDisposer(folders.changed.add(paint));
     paint();
     this.startRename = startRename;
