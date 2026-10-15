@@ -370,27 +370,55 @@ watch(triageWords, words => {
 // over ALL of them, so a number never changes as cards come and go from the
 // board (Ames 2026-10-10: "number the requests so it's easier to keep track").
 const triageNumbers = ref<Record<string, number>>({});
+/** What a closed report counts as on the score panel (Ames 2026-10-15: the
+ *  boxes went by the robot's suggestion, and most reports never get one, so
+ *  most closes counted nowhere). The reporter's own choice decides: Bug and
+ *  Data problem are bugs fixed, Idea is a feature shipped, Other is answered.
+ *  A report with no category (from Slack, say) falls back to the suggestion.
+ *  So the three boxes always add up to everything closed. */
+type ClosedKind = 'bug' | 'feature' | 'other';
+function closedKind(r: { recommendation?: string | null }, category?: string | null): ClosedKind {
+  const c = (category || '').trim().toLowerCase();
+  if (c === 'bug' || c === 'data problem') return 'bug';
+  if (c === 'idea') return 'feature';
+  if (c) return 'other';
+  if (r.recommendation === 'new_feature') return 'feature';
+  if (r.recommendation === 'bug_fix_spec' || r.recommendation === 'fix') return 'bug';
+  return 'other';
+}
 async function loadTriageNumbers() {
   try {
     const { supabase } = await import('../supabase');
     const next: Record<string, number> = {};
     let bugs = 0, features = 0, other = 0, today = 0;
+    const closed: any[] = [];
     const days: Record<string, number> = {};
     const todayIs = new Date().toDateString();
     // 500 at a time: the server refuses a larger page, which is why the
     // numbers did not show at first.
     for (let from = 0, n = 0; ; from += 500) {
-      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
+      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at,source,source_id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
       if (error || !data) return;
       for (const r of data as any[]) {
         next[r.id] = ++n;
         if (r.status === 'done' || r.impl_state === 'deployed') {
-          if (r.recommendation === 'new_feature') features++; else if (r.recommendation === 'bug_fix_spec') bugs++; else other++;
+          closed.push(r);
           if (r.reviewed_at && new Date(r.reviewed_at).toDateString() === todayIs) today++;
           if (r.reviewed_at) { const k = dayKey(new Date(r.reviewed_at)); days[k] = (days[k] || 0) + 1; }
         }
       }
       if (data.length < 500) break;
+    }
+    // What each closed report was filed as, 150 at a time.
+    const cats: Record<string, string> = {};
+    const ids = [...new Set(closed.filter(r => r.source === 'site_issue' && r.source_id).map(r => String(r.source_id)))];
+    for (let i = 0; i < ids.length; i += 150) {
+      const { data: got } = await supabase.from('site_issues').select('id,category').in('id', ids.slice(i, i + 150));
+      for (const x of (got ?? []) as any[]) cats[String(x.id)] = x.category || '';
+    }
+    for (const r of closed) {
+      const k = closedKind(r, r.source === 'site_issue' ? cats[String(r.source_id)] : null);
+      if (k === 'bug') bugs++; else if (k === 'feature') features++; else other++;
     }
     triageNumbers.value = next;
     triageTally.value = { bugs, features, other, today, days };
@@ -450,9 +478,9 @@ onMounted(() => { void loadRepoStats().then(s => { repoStats.value = s; }); });
 const triageCheer = ref<{ key: number; kind: 'bug' | 'feature' | 'other'; text: string; levelUp?: boolean } | null>(null);
 let cheerTimer: ReturnType<typeof setTimeout> | null = null;
 function cheerFor(row: TriageRow) {
-  const kind = row.recommendation === 'new_feature' ? 'feature' : row.recommendation === 'bug_fix_spec' ? 'bug' : 'other';
+  const kind = closedKind(row, reporterOf(row)?.category);
   const n = triageNumbers.value[row.id];
-  const what = kind === 'feature' ? 'Feature shipped' : kind === 'bug' ? 'Bug fixed' : 'Report closed';
+  const what = kind === 'feature' ? 'Feature shipped' : kind === 'bug' ? 'Bug fixed' : 'Answered';
   // This close is the one that reaches the next level when one was left to go.
   const levelUp = triageScore.value.toGo === 1;
   triageCheer.value = { key: Date.now(), kind, levelUp, text: levelUp ? `Level ${triageGame.value.level + 1}! ${what}${n ? ` · #${n}` : ''}` : `${what}${n ? ` · #${n}` : ''}` };
@@ -2405,6 +2433,12 @@ function practiceWhen(iso: string | null) {
               <b><RollUp :value="triageTally.features" /></b>
               <span class="nge-triage-score-word">{{ triageTally.features === 1 ? 'feature' : 'features' }} shipped</span>
             </div>
+            <div class="nge-triage-score-item nge-triage-score-item--other" :class="{ 'nge-triage-score-item--pop': triageCheer?.kind === 'other' }"
+                 title="Closed reports filed as Other, and any that were not a bug or an idea">
+              <span class="nge-triage-score-icon" aria-hidden="true">💬</span>
+              <b><RollUp :value="triageTally.other" /></b>
+              <span class="nge-triage-score-word">answered</span>
+            </div>
             <div class="nge-triage-score-item nge-triage-score-item--today"
                  :class="{ 'nge-triage-score-item--pop': !!triageCheer, 'nge-triage-score-item--record': triageGame.record }"
                  :title="triageGame.best ? `Best day so far: ${triageGame.best} closed` : undefined">
@@ -3465,6 +3499,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-score-word { font-size: 12px; line-height: 1.15; color: rgba(255, 255, 255, 0.7); max-width: 62px; white-space: normal; }
 .nge-triage-score-item--bug b { color: #ff9c94; }
 .nge-triage-score-item--feature b { color: #8ee8a0; }
+.nge-triage-score-item--other b { color: #9ec9ff; }
 .nge-triage-score-item--today b { color: #ffc857; }
 .nge-triage-score-item--pop { animation: nge-score-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.5); }
 .nge-triage-score-item--pop .nge-triage-score-icon { animation: nge-score-wiggle 0.7s ease-in-out; display: inline-block; }
@@ -3609,6 +3644,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-score-word { color: #4a5870; }
 .nge-triage-light .nge-triage-score-item--bug b { color: #c0362c; }
 .nge-triage-light .nge-triage-score-item--feature b { color: #1f8a4c; }
+.nge-triage-light .nge-triage-score-item--other b { color: #2f6fb8; }
 .nge-triage-light .nge-triage-score-item--today b { color: #c47a00; }
 .nge-triage-light .nge-triage-score-goal-text { color: #4a5870; }
 .nge-triage-light .nge-triage-score-goal-text b { color: #1c2635; }
