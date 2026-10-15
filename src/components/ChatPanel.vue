@@ -334,8 +334,14 @@ function medalFor(msg: ChatMessage): { medal: string; why: string } | null {
 // fresh so the medals are right even if the board was never opened.
 let medalTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
-  if (!(backendStore.leaderboard || []).length) void backendStore.loadLeaderboard();
-  medalTimer = setInterval(() => { void backendStore.loadLeaderboard(); }, 5 * 60 * 1000);
+  // The copy the store already has serves, refreshed only when it is older
+  // than ten minutes: the board's own refresh keeps it fresh while it is open.
+  const LB_FRESH_MS = 10 * 60 * 1000;
+  const medalsRefresh = () => {
+    if (!(backendStore.leaderboard || []).length || Date.now() - (backendStore.leaderboardAt || 0) > LB_FRESH_MS) void backendStore.loadLeaderboard();
+  };
+  medalsRefresh();
+  medalTimer = setInterval(() => { if (!document.hidden) medalsRefresh(); }, 5 * 60 * 1000);
 });
 onUnmounted(() => { if (medalTimer) clearInterval(medalTimer); });
 

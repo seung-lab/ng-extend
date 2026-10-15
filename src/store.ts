@@ -4311,6 +4311,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** When the numbers on the board were read (ms). */
   const leaderboardAt: Ref<number> = ref(0);
 
+  /** The rest of one player's row (all-time totals, streaks) for the
+   *  board's card: read when the card opens, not with every refresh. */
+  const DETAIL_COLS = 'id, total_edits, total_merges, total_splits, cells_completed, longest_streak';
+  async function loadLeaderboardDetail(id: string): Promise<boolean> {
+    const { data, error } = await supabase.from('user_edit_counts').select(DETAIL_COLS).eq('id', id).maybeSingle();
+    if (error || !data) return false;
+    const i = leaderboard.value.findIndex((u: any) => u.id === id);
+    if (i >= 0) leaderboard.value[i] = { ...leaderboard.value[i], ...(data as any) };
+    return i >= 0;
+  }
+
   async function loadLeaderboard() {
     // Pull from the `user_edit_counts` view so we get distinct edits_24h,
     // edits_week, and edits_alltime per user (used by the leaderboard
@@ -4321,14 +4332,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       // all time). Fetching only the top 50 by all-time edits left out anyone
       // strong on Cells or in a recent window but lower on all-time edits
       // (Ames 2026-10-05). Fetch the top 50 of EACH ranking and merge them.
-      const COLS = 'id, display_name, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime';
+      // Only what the board draws (the rows show the current streak). A
+      // player's all-time totals and longest streak are read when their card
+      // opens (loadLeaderboardDetail). Six selects
+      // of 16 columns, every minute, in every tab with the board open, were
+      // most of Pyr's Supabase egress (2026-10-15).
+      const COLS = 'id, display_name, flag, current_streak, edits_24h, edits_week, edits_alltime, completions_24h, completions_week, completions_alltime';
       const RANKINGS = ['edits_alltime', 'edits_week', 'edits_24h', 'completions_alltime', 'completions_week', 'completions_24h'];
       const me = userId.value;
-      const [mine, ...results] = await Promise.all([
+      // One read instead of six: leaderboard_board holds the union of the
+      // six top 50s (supabase-leaderboard-board.sql). Until that view is
+      // installed, the six selects.
+      const [mine, board] = await Promise.all([
         me ? supabase.from('user_edit_counts').select(COLS).eq('id', me).maybeSingle() : Promise.resolve({ data: null, error: null } as any),
-        // Ties in a fixed order (by id), so the same 50 come back every time.
-        ...RANKINGS.map(col => supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).order('id', { ascending: true }).limit(50)),
+        supabase.from('leaderboard_board').select(COLS),
       ]);
+      const results = !board.error ? [board] : await Promise.all(
+        // Ties in a fixed order (by id), so the same 50 come back every time.
+        RANKINGS.map(col => supabase.from('user_edit_counts').select(COLS).order(col, { ascending: false }).order('id', { ascending: true }).limit(50)));
       // One ranking that could not be read is the board not being readable:
       // merging the rest would quietly leave its players out.
       const error = results.find(r => r.error)?.error ?? null;
@@ -4891,36 +4912,56 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications.value.filter(n => !notificationReads.value.has(n.id)).length
   );
 
-  async function loadNotifications() {
+  // The bell used to ask for the 50 newest notifications in full, twice a
+  // minute, in every open tab, with every read mark the player has: after
+  // the leaderboard, the biggest share of Pyr's Supabase egress (2026-10-15).
+  // A check now asks only for what became due since the last one (newOnly).
+  // The read marks and group memberships come with a full load: at sign in,
+  // when the bell opens, and every tenth check as a safety net.
+  let notifGroupIds: string[] = [];
+  let notifNewestDue = 0;
+  async function loadNotifications(opts: { newOnly?: boolean } = {}) {
     if (!userId.value) return;
     const now = new Date().toISOString();
+    const newOnly = !!opts.newOnly && notifNewestDue > 0;
 
-    // Get user's group IDs for group-targeted notifications
-    const { data: memberships } = await supabase
-      .from('user_group_members')
-      .select('group_id')
-      .eq('user_id', userId.value);
-    const groupIds = (memberships || []).map((m: any) => String(m.group_id));
+    if (!newOnly) {
+      // Get user's group IDs for group-targeted notifications
+      const { data: memberships } = await supabase
+        .from('user_group_members')
+        .select('group_id')
+        .eq('user_id', userId.value);
+      notifGroupIds = (memberships || []).map((m: any) => String(m.group_id));
+    }
+    const groupIds = notifGroupIds;
 
-    // Fetch active notifications
+    // Fetch active notifications: all of them, or only those due since the last check.
     let query = supabase
       .from('notifications')
       .select('*')
       .lte('send_at', now)
       .order('created_at', { ascending: false })
       .limit(50);
+    if (newOnly) query = query.gt('send_at', new Date(notifNewestDue).toISOString());
 
     const { data: allNotifs } = await query;
     if (!allNotifs) return;
+    for (const n of allNotifs as any[]) {
+      const due = n.send_at ? new Date(n.send_at).getTime() : 0;
+      if (due > notifNewestDue) notifNewestDue = due;
+    }
+    if (newOnly && !allNotifs.length) return;
 
-    // Load read + dismissed status together (both live on notification_reads).
-    const { data: reads } = await supabase
-      .from('notification_reads')
-      .select('notification_id, dismissed')
-      .eq('user_id', userId.value);
-    notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
-    notificationDismissals.value = new Set(
-      (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));
+    if (!newOnly) {
+      // Load read + dismissed status together (both live on notification_reads).
+      const { data: reads } = await supabase
+        .from('notification_reads')
+        .select('notification_id, dismissed')
+        .eq('user_id', userId.value);
+      notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
+      notificationDismissals.value = new Set(
+        (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));
+    }
 
     // "Stop sending at" is a deadline for DELIVERY, not for the notification
     // itself (Ames 2026-10-10: it was vanishing from everyone's feed). Past
@@ -4935,13 +4976,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       || (n.target_type === 'user' && n.target_id === userId.value)
       || (n.target_type === 'group' && groupIds.includes(n.target_id || '')));
     const stopped = (n: Notification) => !!n.expires_at && new Date(n.expires_at) < new Date();
-    const current = (allNotifs as Notification[]).filter(n => mine(n) && (!stopped(n) || delivered.has(n.id)));
+    const due = (allNotifs as Notification[]).filter(n => mine(n) && (!stopped(n) || delivered.has(n.id)));
+    // New ones join the feed in front of what is already there.
+    const current = newOnly
+      ? [...due.filter(n => !notifications.value.some(o => o.id === n.id)), ...notifications.value]
+          .sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)))
+      : due;
 
     // Delivered ones that have since stopped: the server leaves those out of
     // the list above, so ask for them by id.
     const have = new Set(current.map(n => n.id));
     const kept = [...delivered].filter(id => !have.has(id) && !notificationDismissals.value.has(id)).sort((a, b) => b - a).slice(0, 100);
-    if (kept.length) {
+    if (kept.length && !newOnly) {
       const { data: older } = await supabase.from('notifications').select('*').in('id', kept).lte('send_at', now);
       for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
       current.sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)));
@@ -5297,12 +5343,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Private notifications cannot use an anonymous Realtime subscription.
     // Refresh through the identity-verified route, without overlapping requests.
     let refreshing = false;
+    let checks = 0;
     notifSubscription = setInterval(async () => {
       if (refreshing || document.hidden) return;
       refreshing = true;
+      checks++;
       const existing = new Set(notifications.value.map(n => n.id));
       try {
-        await loadNotifications();
+        await loadNotifications({ newOnly: checks % 10 !== 0 });
         const row = notifications.value.find(n => !existing.has(n.id) &&
           n.title?.includes('New Achievement') && n.target_type !== 'group' &&
           (!n.target_id || n.target_id === userId.value));
@@ -5311,7 +5359,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         };
       } catch { /* retry on the next refresh */ }
       finally { refreshing = false; }
-    }, 30000);
+    }, 60_000);
   }
 
   function unsubscribeFromNotifications() {
@@ -5759,7 +5807,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
-    leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt,
+    leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
@@ -6089,7 +6137,7 @@ export const useChatStore = defineStore('chat', () => {
     // Being online, and who else is, never needed the live connection either.
     void heartbeat().then(loadOnline);
     if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
-    if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; void loadOnline(); }, 30_000);
+    if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; if (!document.hidden) void loadOnline(); }, 60_000);
   }
   function stopPolling() {
     polling.value = false;
@@ -6742,7 +6790,7 @@ export const useChatStore = defineStore('chat', () => {
           // Say we're here (other open chats show the join), then who else is.
           void heartbeat().then(loadOnline);
           if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
-          if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; void loadOnline(); }, 30_000);
+          if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; if (!document.hidden) void loadOnline(); }, 60_000);
         }
       });
     };

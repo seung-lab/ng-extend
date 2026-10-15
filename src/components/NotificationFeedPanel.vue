@@ -85,7 +85,8 @@ onMounted(() => {
   pollTimer = setInterval(() => {
     // Skip while the tab is hidden — it'll refresh on the next visible tick.
     if (document.hidden) return;
-    backend.loadNotifications();
+    // New notifications arrive through the store's own check (every minute);
+    // this timer only posts announcements, so one tab is not asking twice.
     // Post any scheduled "also post to chat" announcements that have come due.
     // Atomic-claimed inside, so running it on every client posts each once.
     backend.postDueChatAnnouncements();
@@ -110,6 +111,8 @@ watch(() => props.visible, (v) => {
   if (!v) {
     openNotif.value = null;
     lightboxUrl.value = null;
+  } else {
+    backend.loadNotifications();
   }
 });
 

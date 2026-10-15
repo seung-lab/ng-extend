@@ -129,7 +129,8 @@ function depart(): Promise<void> {
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
   backendStore.loadLeaderboard();
-  refreshTimer = setInterval(() => { if (!document.hidden) backendStore.loadLeaderboard(); }, 60_000);
+  // Every two minutes: each refresh is a read in every tab with the board open.
+  refreshTimer = setInterval(() => { if (!document.hidden) backendStore.loadLeaderboard(); }, 120_000);
 });
 onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 
@@ -288,6 +289,13 @@ const earnedExplorationForUser = computed(() => {
 function selectUser(user: DemoUser) {
   selectedUser.value = user;
   selectedBadgeId.value = null;
+  // The board's rows carry only what the board draws; the card's all-time
+  // totals and streaks are read for this one player now.
+  void backendStore.loadLeaderboardDetail(user.id).then((found: boolean) => {
+    if (!found || selectedUser.value?.id !== user.id) return;
+    const fresh = supabaseUsers.value.find(u => u.id === user.id);
+    if (fresh) selectedUser.value = fresh;
+  });
 }
 
 function onDetailBadgeClick(badgeId: number) {
