@@ -250,7 +250,7 @@ function placeReviewPoints(it: AccessItem): boolean {
   for (const color of ['red', 'blue', 'merge'] as const) {
     const pts = it.points[color] ?? [];
     if (!pts.length) continue;
-    const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: 2,
+    const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: 8,
       annotations: pts.map((p, i) => ({ type: 'point', id: `${color}-${i}`, point: p.position, description: pointName(color, i) })) };
     v.layerSpecification.add(makeLayer(v.layerSpecification, REVIEW_LAYERS[color].name, spec));
   }
@@ -258,21 +258,29 @@ function placeReviewPoints(it: AccessItem): boolean {
   return true;
 }
 
-/** The link loads a moment after the hash changes and replaces the layers,
- *  so the points are put back until they hold. */
+/** The link loads a while after the hash changes (seconds, on real data)
+ *  and replaces every layer, the drawn points too (Ames 2026-10-16: still no
+ *  points). So for as long as this example is being reviewed, the points and
+ *  the opacity are put back whenever they are gone. */
 export function showReviewPoints(it: AccessItem) {
   window.clearInterval(reviewTimer);
-  let tries = 0;
-  const want = (['red', 'blue', 'merge'] as const).filter(c => (it.points[c] ?? []).length).map(c => REVIEW_LAYERS[c].name);
+  const want = (['red', 'blue', 'merge'] as const).filter(c => (it.points[c] ?? []).length)
+    .map(c => ({ name: REVIEW_LAYERS[c].name, n: (it.points[c] ?? []).length }));
   const have = () => {
-    const names = ((window as any).viewer?.layerManager?.managedLayers ?? []).map((l: any) => l.name);
-    return want.every(n => names.includes(n)) && segLayers().every(ml => ml.layer.displayState.objectAlpha.value === REVIEW_ALPHA);
+    const ls = (window as any).viewer?.layerManager?.managedLayers ?? [];
+    const count = (name: string) => {
+      const l = ls.find((x: any) => x.name === name);
+      try { return l?.layer?.localAnnotations ? l.layer.localAnnotations.toJSON().length : -1; } catch { return -1; }
+    };
+    return want.every(w => count(w.name) === w.n) && segLayers().every(ml => ml.layer.displayState.objectAlpha.value === REVIEW_ALPHA);
   };
+  let first = true;
   reviewTimer = window.setInterval(() => {
-    tries++;
-    if (tries === 2 || (tries > 2 && !have())) placeReviewPoints(it);
-    if (tries > 12) window.clearInterval(reviewTimer);
-  }, 300);
+    // A layer that is still loading reports no annotations yet: wait a beat
+    // before the first placing, then put back whatever went missing.
+    if (first) { first = false; return; }
+    if (!have()) placeReviewPoints(it);
+  }, 600);
 }
 
 /** Review mode ends: the drawn points go, the cells are solid again. */

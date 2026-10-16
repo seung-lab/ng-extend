@@ -61,6 +61,8 @@ const REVIEWER = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000003', username: 'celiad
 let actingAs = 'player';
 // Notifications the test hands the bell, through every way it reads them.
 let fakeNotes = [];
+// From the review step on, saved views load slowly, as on real data.
+let slowViews = false;
 const calls = [];
 
 const RETINA_LAYERS = [
@@ -110,7 +112,9 @@ const RETINA_LAYERS = [
   await context.route(/supabase\.co/, r => r.fulfill(json(/\/rest\/v1\/notifications/.test(r.request().url()) && r.request().method() === 'GET' ? fakeNotes : [])));
   let minted = 0;
   await context.route(/nglstate\/api\/v1\/post/, r => { minted++; return r.fulfill(json('https://global.daf-apis.com/nglstate/api/v1/' + (5000 + minted))); });
-  await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json({ dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d' })));
+  // The saved views load slowly, as on real data (Ames 2026-10-16: the
+  // points were drawn, then the view landed and wiped them).
+  await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, async r => { if (slowViews) await new Promise(res => setTimeout(res, 5000)); return r.fulfill(json({ dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d' })); });
 
   const page = await context.newPage();
   context.on('page', p => { if (p !== page) p.close().catch(() => {}); });
@@ -260,13 +264,15 @@ const RETINA_LAYERS = [
     await page.click('.nge-accr-btn--good >> nth=0');
     await page.waitForTimeout(500);
     // Open cut 2 in the view.
+    slowViews = true;
     await page.click('.nge-accr-acts >> nth=1 >> text=Review in the view');
     await page.waitForSelector('.nge-arv', { timeout: 8000 });
     await page.waitForTimeout(800);
     ok(await page.evaluate(() => !document.querySelector('.nge-profile-shell')), 'the profile closed for the view');
     ok(/Cut 2/.test(await page.evaluate(() => document.querySelector('.nge-arv').innerText)), 'the review bar shows cut 2');
-    // Review mode draws the example's points itself, and the cells are see through.
-    await page.waitForTimeout(4500);
+    // Review mode draws the example's points itself, and the cells are see through,
+    // still after the slow view has landed.
+    await page.waitForTimeout(8000);
     const rv = await page.evaluate(() => {
       const ls = window.viewer.layerManager.managedLayers;
       const n = name => { const l = ls.find(x => x.name === name); return l ? l.layer.localAnnotations.toJSON().length : 0; };
