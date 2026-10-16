@@ -231,7 +231,9 @@ const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced 
 const resumeDecided = ref(false);
 watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu
-});
+// Immediate: a tutorial that opens at its first box (the Tracer Tour on a
+// first visit) is a fresh start too, and must not ask Continue after Next.
+}, { immediate: true });
 const needsResumePrompt = computed(() => !resumeDecided.value && !!activeStep.value && activeStep.value.index > 0);
 const resumeName = computed(() => TUTORIAL_NAMES[store.activeTutorial] ?? 'the tutorial');
 function continueTutorial() { resumeDecided.value = true; }
