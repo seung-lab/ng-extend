@@ -187,7 +187,7 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
   const again = tries > 1 ? ` (try ${tries})` : '';
   if (notifyReviewers) {
     try { await notifyReviewers({title: `🔬 Retina access request from ${name}${again}`,
-      body: `${name} sent 7 cut and 3 merge examples for retina access${again}. Review them in the Admin Hub, Access requests.`}); }
+      body: `${name} sent 7 cut and 3 merge examples for retina access${again}. Click here to review them in the Admin Hub, Access requests.`}); }
     catch (e) { console.warn('[access] reviewers were not told:', e && e.message); }
   }
   if (postSlack) {
@@ -269,7 +269,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
     const title = outcome === 'invited' ? '🎉 You are invited to the retina' : '🔬 Notes on your retina access request';
     const body = outcome === 'invited'
       ? `Your examples look right. Welcome to the EyeWire II retina!${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out and in again.`
-      : `A reviewer looked at your ten examples and would like ${redos === 1 ? 'one' : redos} again.${note ? `\n\n${note}` : ''}\n\nOpen the menu, then Ask for retina access, to see the notes on each one.`;
+      : `A reviewer looked at your ten examples and would like ${redos === 1 ? 'one' : redos} again.${note ? `\n\n${note}` : ''}\n\nClick here, or open the menu and Ask for retina access, to see the notes on each one.`;
     try { await notifyPlayer({userId: request.user_id, title, body}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
   }

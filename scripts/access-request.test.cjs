@@ -59,6 +59,8 @@ function sb(pathq, init = {}) {
 const PLAYER = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000002', display_name: 'Test Player' };
 const REVIEWER = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000003', username: 'celiad', display_name: 'Celia' };
 let actingAs = 'player';
+// Notifications the test hands the bell, through every way it reads them.
+let fakeNotes = [];
 const calls = [];
 
 const RETINA_LAYERS = [
@@ -98,13 +100,14 @@ const RETINA_LAYERS = [
         return r.fulfill(json({ ok: true, data }));
       } catch (e) { return r.fulfill(json({ error: e.message }, e.status || 500)); }
     }
-    const rows = input.table === 'users' && String(input.method || 'GET').toUpperCase() === 'GET'
+    const get = String(input.method || 'GET').toUpperCase() === 'GET';
+    const rows = input.table === 'users' && get
       ? [{ id: 'test-user', display_name: 'Test Player', username: 'testplayer', middleauth_email: 't@example.org', total_edits: 0, cells_completed: 0 }]
-      : [];
+      : input.table === 'notifications' && get ? fakeNotes : [];
     const single = /pgrst\.object/.test(String(input.accept || ''));
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(single ? (rows[0] || null) : rows) }));
   });
-  await context.route(/supabase\.co/, r => r.fulfill(json([])));
+  await context.route(/supabase\.co/, r => r.fulfill(json(/\/rest\/v1\/notifications/.test(r.request().url()) && r.request().method() === 'GET' ? fakeNotes : [])));
   let minted = 0;
   await context.route(/nglstate\/api\/v1\/post/, r => { minted++; return r.fulfill(json('https://global.daf-apis.com/nglstate/api/v1/' + (5000 + minted))); });
   await context.route(/global\.daf-apis\.com\/nglstate\/api\/v1\/\d+/, r => r.fulfill(json({ dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] }, position: [37166, 16688, 1973], layers: RETINA_LAYERS, layout: 'xy-3d' })));
@@ -291,7 +294,7 @@ const RETINA_LAYERS = [
     // 5. The player sees the notes and redoes cut 2.
     actingAs = 'player';
     await setIdentity(false);
-    await page.evaluate(() => document.querySelector('.nge-profile-close, .nge-profile-shell [aria-label="Close"]')?.click());
+    await page.evaluate(() => document.querySelector('.nge-profile-exit')?.click());
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:access-open')));
     await page.waitForSelector('.nge-acc-state--redo', { timeout: 10000 });
     await page.click('.nge-acc-item--redo .nge-acc-more');
@@ -323,10 +326,39 @@ const RETINA_LAYERS = [
     await full('10-admin-invited');
     actingAs = 'player';
     await setIdentity(false);
-    await page.evaluate(() => document.querySelector('.nge-profile-close, .nge-profile-shell [aria-label="Close"]')?.click());
+    await page.evaluate(() => document.querySelector('.nge-profile-exit')?.click());
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:access-open')));
     await page.waitForSelector('.nge-acc-state--yes', { timeout: 10000 });
     await shotOf('.nge-acc', '11-player-invited');
+    await page.click('.nge-acc-close');
+
+    // 7. The notifications are links: a reviewer's opens Access requests,
+    // a player's opens their panel.
+    const clickNote = async (title) => {
+      fakeNotes = [{ id: 9000 + fakeNotes.length, title, body: 'Test.', send_at: new Date(Date.now() - 60000).toISOString(), created_at: new Date(Date.now() - 60000).toISOString(), target_type: 'user', target_id: 'test-user' }];
+      await page.evaluate((note) => {
+        const pb = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('proofreadingBackend');
+        pb.notifications = [note];
+        document.dispatchEvent(new CustomEvent('nge:open-notification'));
+      }, fakeNotes[0]);
+      await page.waitForSelector('.nge-notif-card', { timeout: 8000 });
+      await page.click(`.nge-notif-card:has-text("${title.slice(3, 30)}")`);
+    };
+    await page.evaluate(() => document.querySelector('.nge-profile-exit')?.click());
+    await page.waitForTimeout(500);
+    actingAs = 'reviewer';
+    await setIdentity(true);
+    await clickNote('🔬 Retina access request from Test Player');
+    await page.waitForSelector('.nge-accr', { timeout: 8000 }).catch(() => {});
+    ok(await page.evaluate(() => !!document.querySelector('.nge-accr')), "the reviewer's notification opens Access requests");
+    await full('12-note-opens-requests');
+    await page.evaluate(() => document.querySelector('.nge-profile-exit')?.click());
+    await page.keyboard.press('Escape');
+    actingAs = 'player';
+    await setIdentity(false);
+    await clickNote('🔬 Notes on your retina access request');
+    await page.waitForSelector('.nge-acc', { timeout: 8000 }).catch(() => {});
+    ok(await page.evaluate(() => !!document.querySelector('.nge-acc')), "the player's notification opens their panel");
   } catch (e) {
     console.log('ERROR ' + (e && e.stack || e));
     console.log('panel: ' + JSON.stringify(await panelText().catch(() => '')));
