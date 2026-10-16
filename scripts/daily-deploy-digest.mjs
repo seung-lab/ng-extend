@@ -14,7 +14,10 @@
  * highlights of one sentence each, written by Claude (ANTHROPIC_API_KEY) and
  * checked against the house rules. Without a key, or if the model's text
  * breaks a rule twice, it is one line: how many updates went live and the
- * names of three of them. It never lists every entry.
+ * names of three of them. It never writes out every entry; on a day of at
+ * most LIST_ALL_MAX updates the last line names them all, titles only, one
+ * line (Ames 2026-10-16: "why not list them when there is such a small list
+ * here?"). A bigger day keeps the count alone.
  *
  * An entry can say how it should be treated here, with an optional "digest"
  * field (Ames, 2026-10-11): "headline" is always in the note, "minor" is never
@@ -257,6 +260,13 @@ async function writeSummary(entries) {
   }
 }
 
+const LIST_ALL_MAX = 12;
+/** The day's updates by name, oldest first, on one line; '' on a big day. */
+function allTitles(entries) {
+  if (entries.length > LIST_ALL_MAX) return '';
+  return entries.map(e => String(e.title || '').trim()).filter(Boolean).join(' · ');
+}
+
 function joinNaturally(items) {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
@@ -280,12 +290,17 @@ function buildBody(entries, sinceMs, nowMs, summary) {
     const some = [...newestFirst.filter(isHeadline), ...newestFirst.filter(e => !isHeadline(e))].slice(0, 3).map(e => e.title);
     parts.push(n <= 3
       ? `**TLDR:** ${joinNaturally(told.map(e => e.title))}.`
-      : `**TLDR:** ${n} updates went live in Pyr today. Among them: ${some.join('; ')}.`);
+      : allTitles(entries)
+        ? `**TLDR:** ${n} updates went live in Pyr today: ${allTitles(entries)}.`
+        : `**TLDR:** ${n} updates went live in Pyr today. Among them: ${some.join('; ')}.`);
     return parts.join('\n\n');
   }
   parts.push(`**TLDR:** ${summary.tldr}`);
   for (const h of summary.highlights) parts.push(`**${h.title}:** ${h.text}`);
-  if (n > Math.max(3, summary.highlights.length)) parts.push(`${n} updates went live in all.`);
+  if (n > Math.max(3, summary.highlights.length)) {
+    const names = allTitles(entries);
+    parts.push(names ? `**All ${n} updates:** ${names}` : `${n} updates went live in all.`);
+  }
   return parts.join('\n\n');
 }
 
