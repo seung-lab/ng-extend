@@ -23,8 +23,9 @@ name: Slack Triage Bridge
 
 on:
   schedule:
-    # Every 10 minutes: testers are re-tagged on this clock until they reply.
-    # GitHub may start a scheduled run a few minutes late under load.
+    # Every 10 minutes: testers are re-tagged on this clock until they reply,
+    # and it catches anything a wake missed. GitHub may start a scheduled run
+    # a few minutes late under load.
     - cron: '*/10 * * * *'
   workflow_dispatch: {}
 
@@ -40,7 +41,7 @@ permissions:
 jobs:
   bridge:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -73,22 +74,15 @@ jobs:
           # Model credentials exist only in the isolated model jobs.
           TRIAGE_MODEL_CONFIGURED: 'true'
           GH_TOKEN: ${{ github.token }}
-        # One run covers its 10 minute slot with a pass every 45 seconds, so an
-        # approve gets its reply within a minute instead of waiting for the next
-        # (often late) cron. A suggestion is only made on request: the bridge
-        # script starts Triage Propose itself when an approver tags the bot
-        # in a report's thread.
+        # One pass per run (2026-10-16). The bridge used to pass every 45
+        # seconds around the clock and start its own next run: about 1,600
+        # passes a day, each reading the recent reports in full, about 230 MB a
+        # day of Supabase egress. It no longer needs to listen: the slackBot
+        # function starts it on every reply in the triage channel, and the
+        # Admin Hub and report replies start it too (wakeWorkflow in
+        # functions/index.js). The 10 minute cron re-tags testers and catches
+        # anything a wake missed. Timed reminders run on the cron only.
         run: |
-          end=$((SECONDS + 540)); pass=0
-          while :; do
-            pass=$((pass + 1))
-            BRIDGE_PASS=$pass node scripts/slack-triage-bridge.mjs || echo "::warning::bridge pass $pass failed"
-            [ "$SECONDS" -ge "$end" ] && break
-            sleep 45
-          done
-          # GitHub starts scheduled runs late, or skips them (2026-10-07: no
-          # run for 28 minutes, and an approve sat unanswered). So each run
-          # starts the next one itself as it finishes, and the bridge is always
-          # listening. The cron above only restarts the chain if it ever
-          # breaks. Still one run at a time (the concurrency group).
-          gh workflow run slack-triage-bridge.yml -R "$GITHUB_REPOSITORY" --ref main || echo "::warning::could not start the next bridge run"
+          pass=1
+          [ "${{ github.event_name }}" = "schedule" ] || pass=2
+          BRIDGE_PASS=$pass node scripts/slack-triage-bridge.mjs
