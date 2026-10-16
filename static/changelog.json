@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-16T13:44:00Z",
+      "title": "Easier on phones and tablets",
+      "digest": "minor",
+      "items": [
+        "Swiping one finger through the 2D images moves through the slices more slowly, so you can stop where you want.",
+        "Hold one finger still on a spot to move the view there. It now takes just over half a second.",
+        "On a touch screen the Segments panel has a Select button: tap cells to pick them, then move them to a folder, show, hide, color or remove them together.",
+        "On a phone the corner button switches between 3D only and 2D with 3D."
+      ]
+    },
+    {
       "at": "2026-10-15T21:05:49Z",
       "title": "Quest work stays with its quest cell",
       "digest": "minor",
