@@ -166,11 +166,28 @@ async function editable(sb, me, who) {
 }
 
 
+/** Keep an example a reviewer may have seen before it is replaced or
+ *  removed (Ames 2026-10-16): once a request was sent, nothing is lost.
+ *  Quietly skipped until its SQL is run. */
+async function keepEarlier(sb, request, kind, slot) {
+  if (!(request.tries > 0)) return;
+  const old = (await sb(`access_request_items?request_id=eq.${request.id}&kind=eq.${kind}&slot=eq.${slot}&select=*&limit=1`))[0];
+  if (!old) return;
+  const {id, request_id, ...rest} = old;
+  try {
+    await sb('access_request_item_history', {method: 'POST', headers: {Prefer: 'return=minimal'},
+      body: JSON.stringify({request_id: request.id, try: request.tries, ...pick(rest)})});
+  } catch (e) { if (!missingTable(e)) throw e; }
+}
+const KEPT = ['kind', 'slot', 'link', 'dataset', 'note', 'points', 'segments', 'position', 'verdict', 'point_marks', 'feedback', 'saved_at'];
+const pick = o => Object.fromEntries(KEPT.filter(k => k in o).map(k => [k, o[k]]));
+
 async function save(args, {sb, me, who}) {
   needMe(me);
   const {kind, slot} = cleanSlot(args);
   const ex = cleanExample(kind, args);
   const request = await editable(sb, me, who);
+  await keepEarlier(sb, request, kind, slot);
   const row = {request_id: request.id, kind, slot, ...ex, saved_at: new Date().toISOString(),
     // A new example: the old marks were about the old one.
     verdict: null, point_marks: {}, feedback: null};
@@ -187,6 +204,7 @@ async function remove(args, {sb, me, who}) {
   const {kind, slot} = cleanSlot(args);
   const request = await editable(sb, me, who);
   const item = (await sb(`access_request_items?request_id=eq.${request.id}&kind=eq.${kind}&slot=eq.${slot}&select=*&limit=1`))[0];
+  if (item) await keepEarlier(sb, request, kind, slot);
   if (item) await sb(`access_request_items?id=eq.${item.id}`, {method: 'DELETE'});
   return mine({}, {sb, me});
 }
@@ -262,7 +280,14 @@ async function list(args, {sb, isAdmin}) {
   if (!requests.length) return {requests: []};
   const ids = requests.map(r => r.id).join(',');
   const items = await sb(`access_request_items?request_id=in.(${ids})&select=*&order=kind.asc,slot.asc`);
-  return {requests: requests.map(r => ({...r, items: items.filter(i => i.request_id === r.id)}))};
+  let history = [];
+  try { history = await sb(`access_request_item_history?request_id=in.(${ids})&select=*&order=replaced_at.asc`); }
+  catch (e) { if (!missingTable(e)) throw e; }
+  const earlierOf = (r, k, s) => history.filter(h => h.request_id === r.id && h.kind === k && h.slot === s);
+  return {requests: requests.map(r => ({...r,
+    items: items.filter(i => i.request_id === r.id).map(i => ({...i, earlier: earlierOf(r, i.kind, i.slot)})),
+    // Examples removed and not saved again: kept too, with no current one.
+    removed: history.filter(h => h.request_id === r.id && !items.some(i => i.request_id === r.id && i.kind === h.kind && i.slot === h.slot))}))};
 }
 
 async function review(args, {sb, isAdmin}) {

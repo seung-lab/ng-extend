@@ -78,3 +78,29 @@ alter table public.access_requests add column if not exists player_note text che
 -- add them to Eyewire_2_Edit (group 203) itself.
 alter table public.access_requests add column if not exists cave_user_id bigint;
 alter table public.access_requests add column if not exists cave_granted boolean not null default false;
+
+-- 2026-10-16 (Ames: "save the wrong ones and the new ones become additional
+-- submissions"): an example replaced or removed after a request was sent is
+-- kept here, with the reviewer's marks and note, instead of being lost.
+create table if not exists public.access_request_item_history (
+  id          bigint generated always as identity primary key,
+  request_id  bigint not null references public.access_requests(id) on delete cascade,
+  kind        text not null,
+  slot        integer not null,
+  try         integer not null default 0,
+  link        text not null,
+  dataset     text,
+  note        text,
+  points      jsonb not null default '{}'::jsonb,
+  segments    jsonb not null default '[]'::jsonb,
+  position    jsonb,
+  verdict     text,
+  point_marks jsonb not null default '{}'::jsonb,
+  feedback    text,
+  saved_at    timestamptz,
+  replaced_at timestamptz not null default now()
+);
+create index if not exists access_request_item_history_req_idx on public.access_request_item_history (request_id, kind, slot);
+alter table public.access_request_item_history enable row level security;
+revoke all on public.access_request_item_history from anon, authenticated;
+grant all on public.access_request_item_history to service_role;

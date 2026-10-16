@@ -8,7 +8,7 @@ const sam = {id: U(2), display_name: 'Sam'}, celia = {id: U(3), username: 'celia
 
 /** A small stand-in for the PostgREST helper: the shapes access-request.js uses. */
 function world({installed = true} = {}) {
-  const state = {access_requests: [], access_request_items: [], pilot_members: [], told: [], slack: [], players: [], granted: [], caveAnswer: {ok: true, status: 200}};
+  const state = {access_requests: [], access_request_items: [], access_request_item_history: [], pilot_members: [], told: [], slack: [], players: [], granted: [], caveAnswer: {ok: true, status: 200}};
   let nextId = 1;
   const match = (r, q) => [...q].every(([k, v]) => {
     if (['select', 'limit', 'order', 'on_conflict'].includes(k)) return true;
@@ -249,6 +249,33 @@ test('a request with no CAVE id is granted only by hand', async () => {
   assert.equal(done.status, 'invited');
   assert.equal(done.cave_granted, false);
   assert.deepEqual(state.granted, []);
+});
+
+test('a replaced example is kept as an earlier try, with the marks it had', async () => {
+  const {state, as} = world();
+  const p = as(sam), rev = as(celia, true);
+  // While collecting, before the first send, nothing is kept.
+  await p('access.save', cut(1));
+  await p('access.save', cut(1));
+  assert.equal(state.access_request_item_history.length, 0);
+  await fillAll(p);
+  await p('access.submit', {});
+  const c7 = state.access_request_items.find(i => i.kind === 'cut' && i.slot === 7);
+  await rev('access.review', {itemId: c7.id, verdict: 'redo', feedback: 'oh no, tragic', pointMarks: {'red:0': 'off'}});
+  await rev('access.decide', {requestId: state.access_requests[0].id, outcome: 'redo'});
+  await p('access.save', {...cut(7), note: 'second go'});
+  assert.equal(state.access_request_item_history.length, 1);
+  const kept = state.access_request_item_history[0];
+  assert.equal(kept.verdict, 'redo');
+  assert.equal(kept.feedback, 'oh no, tragic');
+  assert.equal(kept.try, 1);
+  await p('access.submit', {});
+  const {requests} = await rev('access.list', {});
+  const now7 = requests[0].items.find(i => i.kind === 'cut' && i.slot === 7);
+  assert.equal(now7.note, 'second go');
+  assert.equal(now7.verdict, null);
+  assert.equal(now7.earlier.length, 1);
+  assert.equal(now7.earlier[0].feedback, 'oh no, tragic');
 });
 
 test('reviewer actions are admins only, and a missing table says what to run', async () => {

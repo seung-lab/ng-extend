@@ -107,6 +107,7 @@ function go(step: number) {
     <p v-if="error" class="nge-arv-err" role="alert">{{ error }}</p>
     <p v-else-if="saved" class="nge-arv-saved" role="status">{{ saved }}. The player sees it when you send your answer.</p>
 
+    <p v-if="!canMark" class="nge-arv-how nge-arv-locked">{{ request.status === 'redo' ? `Waiting for ${request.player_name || 'the player'} to send it again. You can mark it once it is sent.` : 'This request is closed, so its marks stay as they are.' }}</p>
     <div class="nge-arv-nav">
       <button class="nge-arv-btn" :disabled="index === 0" @click="go(-1)">Back</button>
       <button class="nge-arv-btn" :disabled="index >= items.length - 1" @click="go(1)">Next</button>

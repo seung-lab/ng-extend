@@ -37,6 +37,18 @@ function setFilter(f: AccessFilter) { filter.value = f; void load(); }
 const statusWord: Record<string, string> = { submitted: 'Waiting', redo: 'Redos asked', invited: 'Granted', draft: 'Collecting' };
 const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 const sorted = (r: AccessRequest) => [...(r.items ?? [])].sort((a, b) => (a.kind === b.kind ? a.slot - b.slot : a.kind === 'cut' ? -1 : 1));
+/** Changed by the player since the last answer was sent (Ames 2026-10-16:
+ *  "which one did she redo?"). */
+const isNew = (r: AccessRequest, it: AccessItem) => !!(r.reviewed_at && it.saved_at && it.saved_at > r.reviewed_at);
+function waitingLine(r: AccessRequest): string {
+  if (r.status !== 'redo') return '';
+  const items = r.items ?? [];
+  const changed = items.filter(i => isNew(r, i)).map(i => `${i.kind} ${i.slot}`);
+  const left = items.filter(i => i.verdict === 'redo').map(i => `${i.kind} ${i.slot}`);
+  const who = r.player_name || 'The player';
+  return `Waiting for ${who} to send again. ${changed.length ? `Changed so far: ${changed.join(', ')}.` : 'Nothing changed yet.'}${left.length ? ` Still to redo: ${left.join(', ')}.` : ''} You can mark examples once it is sent.`;
+}
+const openEarlier = ref<Record<string, boolean>>({});
 function summary(it: AccessItem): string {
   if (it.kind === 'cut') return `${it.points.red?.length ?? 0} red, ${it.points.blue?.length ?? 0} blue`;
   const n = Math.floor((it.points.merge?.length ?? 0) / 2);
@@ -122,11 +134,13 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
       </button>
 
       <div v-if="openId === r.id" class="nge-accr-body">
+        <p v-if="waitingLine(r)" class="nge-accr-waiting">{{ waitingLine(r) }}</p>
         <p v-if="r.player_note" class="nge-accr-note">Player's note: {{ r.player_note }}</p>
         <table class="nge-accr-table">
           <tbody>
             <tr v-for="(it, i) in sorted(r)" :key="it.id" :class="{ 'nge-accr-row--good': it.verdict === 'good', 'nge-accr-row--redo': it.verdict === 'redo' }">
-              <td class="nge-accr-kind">{{ it.kind === 'cut' ? 'Cut' : 'Merge' }} {{ it.slot }}</td>
+              <td class="nge-accr-kind">{{ it.kind === 'cut' ? 'Cut' : 'Merge' }} {{ it.slot }}
+                <span v-if="isNew(r, it)" class="nge-accr-new">new since your review</span></td>
               <td>
                 {{ summary(it) }}
                 <span v-if="markCount(it).good || markCount(it).off" class="nge-accr-marks">
@@ -134,6 +148,17 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
                 </span>
                 <div v-if="it.note" class="nge-accr-note">Player: {{ it.note }}</div>
                 <div v-if="it.feedback" class="nge-accr-note nge-accr-note--you">Note: {{ it.feedback }}</div>
+                <button v-if="it.earlier && it.earlier.length" class="nge-accr-earlier-btn"
+                        @click="openEarlier[`${r.id}${it.kind}${it.slot}`] = !openEarlier[`${r.id}${it.kind}${it.slot}`]">
+                  {{ it.earlier.length === 1 ? '1 earlier try' : `${it.earlier.length} earlier tries` }} {{ openEarlier[`${r.id}${it.kind}${it.slot}`] ? '▴' : '▾' }}</button>
+                <div v-if="openEarlier[`${r.id}${it.kind}${it.slot}`]" class="nge-accr-earlier">
+                  <div v-for="(h, hi) in it.earlier" :key="hi" class="nge-accr-earlier-row">
+                    <span>Try {{ h.try || hi + 1 }}: {{ summary(h) }}<template v-if="h.verdict">, marked {{ h.verdict }}</template></span>
+                    <a class="nge-accr-link" :href="h.link" target="_blank" rel="noopener" title="Open that earlier example in a new tab">open ↗</a>
+                    <div v-if="h.note" class="nge-accr-note">Player: {{ h.note }}</div>
+                    <div v-if="h.feedback" class="nge-accr-note nge-accr-note--you">Note: {{ h.feedback }}</div>
+                  </div>
+                </div>
               </td>
               <td class="nge-accr-acts">
                 <button class="nge-accr-btn" @click="reviewInView({ ...r, items: sorted(r) }, i)">Review in the view</button>
@@ -216,6 +241,11 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
 .nge-accr-decide textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; padding: 8px 10px; border: 1px solid #74859a; border-radius: 6px; background: #152434; color: #f1f5f9; }
 .nge-accr-decide-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 .nge-accr-done { color: #7CFFB2; }
+.nge-accr-waiting { margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; background: rgba(245, 209, 66, 0.1); color: #f5e3a0; }
+.nge-accr-new { display: block; font-size: 0.75rem; font-weight: 500; color: #9fd3ff; }
+.nge-accr-earlier-btn { margin-top: 4px; font: inherit; font-size: 0.85rem; color: #9fd3ff; background: none; border: none; padding: 0; cursor: pointer; }
+.nge-accr-earlier { margin-top: 4px; padding-left: 10px; border-left: 2px solid #2f4155; border-radius: 0; }
+.nge-accr-earlier-row { margin: 4px 0; color: #b6c4d4; font-size: 0.9rem; }
 .nge-accr-cave { margin: 8px 0 0; color: #f5d142; }
 .nge-accr-delete { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 12px; color: #b6c4d4; }
 </style>

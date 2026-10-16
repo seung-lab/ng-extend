@@ -26,6 +26,8 @@ export interface AccessItem {
   kind: AccessKind; slot: number; link: string; dataset: string | null; note: string | null;
   points: { red?: AccessPoint[]; blue?: AccessPoint[]; merge?: AccessPoint[] }; segments: string[]; position: number[] | null;
   saved_at?: string; verdict?: 'good' | 'redo' | null; point_marks?: Record<string, 'good' | 'off'>; feedback?: string | null;
+  /** Reviewer side: this slot's earlier examples, kept when the player replaced them. */
+  earlier?: (AccessItem & { try?: number; replaced_at?: string })[];
 }
 export interface AccessRequest {
   id: number; status: 'draft' | 'submitted' | 'redo' | 'invited'; tries: number; affiliation: string | null;
@@ -33,6 +35,7 @@ export interface AccessRequest {
   submitted_at: string | null; reviewed_at: string | null; reviewer_note: string | null;
   // Reviewer side only.
   email?: string; player_name?: string; user_id?: string; pilot_added?: boolean; items?: AccessItem[];
+  removed?: (AccessItem & { try?: number; replaced_at?: string })[];
 }
 export interface AccessMine { request: AccessRequest | null; items: AccessItem[] }
 

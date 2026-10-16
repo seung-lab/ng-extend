@@ -27,7 +27,7 @@ const HIDE_CSS = '.nge-login-blocker, .nge-login-modal, .nge-mw-blocker { displa
 const json = (body, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 // ── An in-memory database for the real rules ──────────────────────────────
-const db = { access_requests: [], access_request_items: [], pilot_members: [] };
+const db = { access_requests: [], access_request_items: [], access_request_item_history: [], pilot_members: [] };
 const told = [];
 let nextId = 1;
 function sb(pathq, init = {}) {
@@ -351,6 +351,12 @@ const RETINA_LAYERS = [
     await page.waitForSelector('.nge-accr-refresh', { timeout: 10000 });
     await page.click('.nge-accr-refresh');
     await page.waitForSelector('.nge-accr-decide', { timeout: 10000 });
+    // The replaced cut 2: new since the review, its earlier try kept with the note.
+    ok(/new since your review/.test(await page.evaluate(() => document.querySelector('.nge-accr').innerText)), 'a changed example says new since your review');
+    await page.click('.nge-accr-earlier-btn');
+    await page.waitForTimeout(300);
+    ok(/marked redo/.test(await page.evaluate(() => (document.querySelector('.nge-accr-earlier') || {}).innerText || '')) && db.access_request_item_history.length >= 1, 'the earlier try is kept and shown with its mark');
+    await full('10a-admin-earlier-try');
     ok(/Eyewire_2_Edit/.test(await page.evaluate(() => (document.querySelector('.nge-accr-cave') || {}).innerText || '')), 'the reviewer is told the grant adds them to Eyewire_2_Edit');
     await page.click('.nge-accr-btn--invite');
     await page.waitForSelector('.nge-accr-done', { timeout: 8000 });
