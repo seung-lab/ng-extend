@@ -330,6 +330,10 @@ onMounted(() => {
     // Deep-link from a 🗂 triage notification: straight to the review queue.
     activeTab.value = 'adminHub';
     adminInitialSubTab.value = 'triage';
+  } else if (props.initialTab === 'access' && !viewingOtherUser.value) {
+    // Back from reviewing an access request in the view (AccessReviewBar).
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'access';
   }
 });
 

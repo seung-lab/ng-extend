@@ -1,0 +1,279 @@
+'use strict';
+
+// Retina access requests (Ames 2026-10-16): the EyeWire II Dataset Access
+// form (blog.eyewire.org/how-to-access-the-eyewire-ii-dataset) in the game.
+// Every rule is here, with the database passed in, so it is tested without
+// credentials (access-request.test.js). Served by ewAccessRequest in index.js.
+// Tables: supabase-access-requests.sql.
+//
+//   access.mine     the player: their request, its examples and, once a
+//                   reviewer has answered, the notes on each one.
+//   access.save     the player: one example into a slot (cut 1 to 7, merge
+//                   1 to 3), while collecting or redoing.
+//   access.remove   the player: empty a slot.
+//   access.submit   the player: all ten in, send for review. Celia and
+//                   Marissa get a bell, and Slack gets a post.
+//   access.list     admins: the requests, newest first, with their examples.
+//   access.review   admins: good or redo on one example, good or off on each
+//                   of its points, a note. Not sent until access.decide.
+//   access.decide   admins: "redo" (the player redoes the examples marked
+//                   redo) or "invited" (added to pilot_members). The player
+//                   gets a bell either way. The CAVE group is still given by
+//                   hand (Ames 2026-10-16: until the automated test works).
+//
+// No pilot gate: asking for access is how a player joins.
+
+const KINDS = {cut: 7, merge: 3};
+const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
+const POINTS_MAX = 20, SEGMENTS_MAX = 20;
+const ID = /^\d{1,20}$/;
+const NOT_INSTALLED = 'Access requests are not switched on yet: run supabase-access-requests.sql in the Supabase SQL editor.';
+const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
+const missingTable = e => !e.status && /supabase (400|404)/.test(String(e && e.message));
+
+/** Plain text, trimmed, or null when empty and allowed to be. */
+function cleanText(value, max, what, required = false) {
+  if (value == null || value === '') { if (required) fail(400, `${what} is empty.`); return null; }
+  if (typeof value !== 'string') fail(400, `${what} must be text.`);
+  const text = value.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, '')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (!text) { if (required) fail(400, `${what} is empty.`); return null; }
+  if (text.length > max) fail(400, `${what} is too long: ${max} characters at most.`);
+  return text;
+}
+
+function cleanSlot(args) {
+  const kind = String(args.kind || '');
+  if (!(kind in KINDS)) fail(400, 'Unknown kind of example.');
+  const slot = Number(args.slot);
+  if (!Number.isInteger(slot) || slot < 1 || slot > KINDS[kind]) fail(400, 'Unknown slot.');
+  return {kind, slot};
+}
+
+function cleanPoint(p) {
+  if (!p || typeof p !== 'object') fail(400, 'A point is not readable.');
+  const pos = p.position;
+  if (!Array.isArray(pos) || pos.length !== 3 || !pos.every(n => typeof n === 'number' && Number.isFinite(n))) fail(400, 'A point has no position.');
+  const out = {position: pos.map(n => Math.round(n * 100) / 100)};
+  if (p.segmentId != null && ID.test(String(p.segmentId))) out.segmentId = String(p.segmentId);
+  if (p.rootId != null && ID.test(String(p.rootId))) out.rootId = String(p.rootId);
+  return out;
+}
+
+/** The example as the server keeps it. Throws with a sentence a player can act on. */
+function cleanExample(kind, args) {
+  const link = args.link;
+  // https, or a local dev server's own address (http://localhost:port).
+  if (typeof link !== 'string' || !/^(https:\/\/|http:\/\/localhost(:\d+)?\/)[^\s"'<>]+$/.test(link) || link.length > LINK_MAX) fail(400, 'The view link could not be made. Try again.');
+  const dataset = typeof args.dataset === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(args.dataset) ? args.dataset : null;
+  const note = cleanText(args.note, NOTE_MAX, 'Your note');
+  const raw = args.points && typeof args.points === 'object' ? args.points : {};
+  const red = Array.isArray(raw.red) ? raw.red : [], blue = Array.isArray(raw.blue) ? raw.blue : [];
+  if (red.length + blue.length > POINTS_MAX) fail(400, `Use ${POINTS_MAX} Multicut points at most.`);
+  const points = {red: red.map(cleanPoint), blue: blue.map(cleanPoint)};
+  const segs = Array.isArray(args.segments) ? args.segments.map(String) : [];
+  if (segs.length > SEGMENTS_MAX || !segs.every(s => ID.test(s))) fail(400, 'The pieces shown could not be read.');
+  const segments = [...new Set(segs)];
+  if (kind === 'cut' && (!points.red.length || !points.blue.length)) fail(400, 'Place red and blue Multicut points on each side of the cut first.');
+  if (kind === 'merge' && segments.length < 2) fail(400, 'Show both pieces you would join first.');
+  const pos = args.position;
+  const position = Array.isArray(pos) && pos.length === 3 && pos.every(n => typeof n === 'number' && Number.isFinite(n)) ? pos.map(n => Math.round(n)) : null;
+  return {link, dataset, note, points, segments, position};
+}
+
+async function requestOf(sb, userId) {
+  try { return (await sb(`access_requests?user_id=eq.${userId}&select=*&limit=1`))[0] || null; }
+  catch (e) { if (missingTable(e)) fail(409, NOT_INSTALLED); throw e; }
+}
+const itemsOf = (sb, requestId) => sb(`access_request_items?request_id=eq.${requestId}&select=*&order=kind.asc,slot.asc`);
+
+function needMe(me) { if (!me || !me.id) fail(403, 'Sign in and create your profile first.'); }
+function nameOf(me) { return String((me && (me.display_name || me.username)) || 'A player').slice(0, 80); }
+
+/** What a player sees: the reviewer's marks only once the review was sent. */
+function forPlayer(request, items) {
+  if (!request) return {request: null, items: []};
+  const answered = request.status === 'redo' || request.status === 'invited';
+  return {
+    request: {id: request.id, status: request.status, tries: request.tries, affiliation: request.affiliation,
+      submitted_at: request.submitted_at, reviewed_at: answered ? request.reviewed_at : null,
+      reviewer_note: answered ? request.reviewer_note : null},
+    items: items.map(i => ({kind: i.kind, slot: i.slot, link: i.link, dataset: i.dataset, note: i.note,
+      points: i.points, segments: i.segments, position: i.position, saved_at: i.saved_at,
+      ...(answered ? {verdict: i.verdict, point_marks: i.point_marks, feedback: i.feedback} : {})})),
+  };
+}
+
+async function mine(args, {sb, me}) {
+  needMe(me);
+  const request = await requestOf(sb, me.id);
+  return forPlayer(request, request ? await itemsOf(sb, request.id) : []);
+}
+
+/** The request a player may change now, made on first use. */
+async function editable(sb, me, who) {
+  let request = await requestOf(sb, me.id);
+  if (!request) {
+    request = (await sb('access_requests', {method: 'POST', body: JSON.stringify({user_id: me.id,
+      email: String(who.email || '').toLowerCase(), player_name: nameOf(me)})}))[0];
+  }
+  if (request.status === 'submitted') fail(409, 'Your examples are with a reviewer. You will hear back in your notifications.');
+  if (request.status === 'invited') fail(409, 'You were already invited to the retina.');
+  return request;
+}
+
+/** In a redo only the examples marked redo (or still empty) can change. */
+function mayChange(request, item) {
+  if (request.status !== 'redo' || !item) return true;
+  return item.verdict === 'redo' || item.verdict == null;
+}
+
+async function save(args, {sb, me, who}) {
+  needMe(me);
+  const {kind, slot} = cleanSlot(args);
+  const ex = cleanExample(kind, args);
+  const request = await editable(sb, me, who);
+  const item = (await sb(`access_request_items?request_id=eq.${request.id}&kind=eq.${kind}&slot=eq.${slot}&select=*&limit=1`))[0];
+  if (!mayChange(request, item)) fail(409, 'The reviewer marked this one good. Redo the ones marked redo.');
+  const row = {request_id: request.id, kind, slot, ...ex, saved_at: new Date().toISOString(),
+    // A new example: the old marks were about the old one.
+    verdict: null, point_marks: {}, feedback: null};
+  await sb('access_request_items?on_conflict=request_id,kind,slot', {method: 'POST',
+    headers: {Prefer: 'resolution=merge-duplicates,return=representation'}, body: JSON.stringify(row)});
+  const affiliation = cleanText(args.affiliation, AFFIL_MAX, 'Your lab or institute');
+  await sb(`access_requests?id=eq.${request.id}`, {method: 'PATCH', body: JSON.stringify({updated_at: row.saved_at,
+    player_name: nameOf(me), ...(affiliation ? {affiliation} : {})})});
+  return mine({}, {sb, me});
+}
+
+async function remove(args, {sb, me, who}) {
+  needMe(me);
+  const {kind, slot} = cleanSlot(args);
+  const request = await editable(sb, me, who);
+  const item = (await sb(`access_request_items?request_id=eq.${request.id}&kind=eq.${kind}&slot=eq.${slot}&select=*&limit=1`))[0];
+  if (item && !mayChange(request, item)) fail(409, 'The reviewer marked this one good, so it stays.');
+  if (item) await sb(`access_request_items?id=eq.${item.id}`, {method: 'DELETE'});
+  return mine({}, {sb, me});
+}
+
+async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
+  needMe(me);
+  const request = await editable(sb, me, who);
+  const items = await itemsOf(sb, request.id);
+  const count = k => items.filter(i => i.kind === k).length;
+  if (count('cut') < KINDS.cut || count('merge') < KINDS.merge) fail(400, `Save all ten first: ${count('cut')} of 7 cuts and ${count('merge')} of 3 merges so far.`);
+  if (items.some(i => i.verdict === 'redo')) fail(400, 'Redo every example marked redo first.');
+  const affiliation = cleanText(args.affiliation, AFFIL_MAX, 'Your lab or institute');
+  const at = new Date().toISOString();
+  const tries = (request.tries || 0) + 1;
+  // Only from the state it was read in, so a double click sends once.
+  const done = await sb(`access_requests?id=eq.${request.id}&status=eq.${request.status}`, {method: 'PATCH',
+    body: JSON.stringify({status: 'submitted', tries, submitted_at: at, updated_at: at, player_name: nameOf(me),
+      ...(affiliation ? {affiliation} : {})})});
+  if (!done.length) fail(409, 'Your examples are with a reviewer already.');
+  const name = nameOf(me);
+  const again = tries > 1 ? ` (try ${tries})` : '';
+  if (notifyReviewers) {
+    try { await notifyReviewers({title: `🔬 Retina access request from ${name}${again}`,
+      body: `${name} sent 7 cut and 3 merge examples for retina access${again}. Review them in the Admin Hub, Access requests.`}); }
+    catch (e) { console.warn('[access] reviewers were not told:', e && e.message); }
+  }
+  if (postSlack) {
+    try { await postSlack({name, email: request.email, tries, affiliation: affiliation || request.affiliation || null}); }
+    catch (e) { console.warn('[access] slack post failed:', e && e.message); }
+  }
+  return mine({}, {sb, me});
+}
+
+// ── Reviewers ───────────────────────────────────────────────────────────
+function needAdmin(isAdmin) { if (!isAdmin) fail(403, 'Admins only'); }
+
+async function list(args, {sb, isAdmin}) {
+  needAdmin(isAdmin);
+  const status = String(args.status || 'open');
+  const filter = status === 'all' ? '' : status === 'open' ? '&status=in.(submitted,redo)' : status === 'invited' ? '&status=eq.invited' : '&status=eq.submitted';
+  let requests;
+  try { requests = await sb(`access_requests?select=*${filter}&status=neq.draft&order=submitted_at.desc.nullslast&limit=100`); }
+  catch (e) { if (missingTable(e)) fail(409, NOT_INSTALLED); throw e; }
+  if (!requests.length) return {requests: []};
+  const ids = requests.map(r => r.id).join(',');
+  const items = await sb(`access_request_items?request_id=in.(${ids})&select=*&order=kind.asc,slot.asc`);
+  return {requests: requests.map(r => ({...r, items: items.filter(i => i.request_id === r.id)}))};
+}
+
+async function review(args, {sb, isAdmin}) {
+  needAdmin(isAdmin);
+  const id = Number(args.itemId);
+  if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown example.');
+  const item = (await sb(`access_request_items?id=eq.${id}&select=id,request_id,points&limit=1`))[0];
+  if (!item) fail(404, 'That example is gone.');
+  const patch = {};
+  if ('verdict' in args) {
+    if (args.verdict != null && !['good', 'redo'].includes(args.verdict)) fail(400, 'Mark it good or redo.');
+    patch.verdict = args.verdict || null;
+  }
+  if ('feedback' in args) patch.feedback = cleanText(args.feedback, FEEDBACK_MAX, 'The note');
+  if ('pointMarks' in args) {
+    const marks = args.pointMarks && typeof args.pointMarks === 'object' ? args.pointMarks : {};
+    const pts = item.points || {};
+    const out = {};
+    for (const [key, v] of Object.entries(marks)) {
+      const m = /^(red|blue):(\d{1,2})$/.exec(key);
+      if (!m || !Array.isArray(pts[m[1]]) || Number(m[2]) >= pts[m[1]].length) fail(400, 'Unknown point.');
+      if (v === 'good' || v === 'off') out[key] = v;
+      else if (v != null) fail(400, 'Mark a point good or off.');
+    }
+    patch.point_marks = out;
+  }
+  if (!Object.keys(patch).length) fail(400, 'Nothing to save.');
+  return (await sb(`access_request_items?id=eq.${id}`, {method: 'PATCH', body: JSON.stringify(patch)}))[0];
+}
+
+async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
+  needAdmin(isAdmin);
+  const id = Number(args.requestId);
+  if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown request.');
+  const outcome = String(args.outcome || '');
+  if (!['redo', 'invited'].includes(outcome)) fail(400, 'Ask for redos or invite.');
+  const note = cleanText(args.note, DECIDE_MAX, 'The note');
+  const request = (await sb(`access_requests?id=eq.${id}&select=*&limit=1`))[0];
+  if (!request) fail(404, 'That request is gone.');
+  if (request.status !== 'submitted') fail(409, request.status === 'invited' ? 'This player was already invited.' : 'This request is not waiting for a review.');
+  const items = await itemsOf(sb, id);
+  const redos = items.filter(i => i.verdict === 'redo').length;
+  if (outcome === 'redo' && !redos) fail(400, 'Mark at least one example redo first, so the player knows what to change.');
+  const at = new Date().toISOString();
+  let pilotAdded = false;
+  if (outcome === 'invited') {
+    await sb('pilot_members?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify({email: String(request.email).toLowerCase().trim(), enabled: true, added_by: (me && me.id) || null})});
+    pilotAdded = true;
+  }
+  const done = await sb(`access_requests?id=eq.${id}&status=eq.submitted`, {method: 'PATCH', body: JSON.stringify({
+    status: outcome, reviewed_at: at, reviewed_by: (me && me.id) || null, reviewer_note: note, updated_at: at,
+    ...(pilotAdded ? {pilot_added: true} : {})})});
+  if (!done.length) fail(409, 'Someone else answered this request just now.');
+  if (notifyPlayer) {
+    const title = outcome === 'invited' ? '🎉 You are invited to the retina' : '🔬 Notes on your retina access request';
+    const body = outcome === 'invited'
+      ? `Your examples look right. Welcome to the EyeWire II retina!${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out and in again.`
+      : `A reviewer looked at your ten examples and would like ${redos === 1 ? 'one' : redos} again.${note ? `\n\n${note}` : ''}\n\nOpen the menu, then Ask for retina access, to see the notes on each one.`;
+    try { await notifyPlayer({userId: request.user_id, title, body}); }
+    catch (e) { console.warn('[access] the player was not told:', e && e.message); }
+  }
+  return {...done[0], redos, pilot_added: pilotAdded};
+}
+
+async function handle(action, args, io) {
+  const a = args || {};
+  if (action === 'access.mine') return mine(a, io);
+  if (action === 'access.save') return save(a, io);
+  if (action === 'access.remove') return remove(a, io);
+  if (action === 'access.submit') return submit(a, io);
+  if (action === 'access.list') return list(a, io);
+  if (action === 'access.review') return review(a, io);
+  if (action === 'access.decide') return decide(a, io);
+  fail(400, `unknown action ${action}`);
+}
+
+module.exports = {handle, cleanExample, KINDS};
