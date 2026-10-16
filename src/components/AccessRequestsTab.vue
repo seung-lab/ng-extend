@@ -7,6 +7,7 @@
  * group (Eyewire_2_Edit) is still given by hand, and the tab says so.
  */
 import { ref, computed, onMounted } from 'vue';
+import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing, resetAccess,
   type AccessRequest, type AccessItem, type AccessFilter } from '../access_request';
 
@@ -155,13 +156,11 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
         </p>
         <p v-if="r.reviewer_note && r.status !== 'submitted'" class="nge-accr-note nge-accr-note--you">Your note: {{ r.reviewer_note }}</p>
         <div class="nge-accr-delete">
-          <button v-if="askingDelete !== r.id" class="nge-accr-btn" :disabled="busy === `x${r.id}`" @click="askingDelete = r.id">Delete request</button>
-          <template v-else>
-            <span>Delete {{ r.player_name || r.email }}'s request and its ten examples? They can send a new one.</span>
-            <button class="nge-accr-btn nge-accr-btn--redo nge-accr-btn--on" @click="remove(r)">Delete</button>
-            <button class="nge-accr-btn" @click="askingDelete = null">Cancel</button>
-          </template>
+          <button class="nge-accr-btn" :disabled="busy === `x${r.id}`" @click="askingDelete = r.id">Delete request</button>
         </div>
+        <ConfirmDialog v-if="askingDelete === r.id" :title="`Delete ${r.player_name || r.email}'s request?`"
+          :text="`This deletes their ten examples and every mark and note on them, for good. It cannot be undone. They would have to start again from nothing.`"
+          yes="Delete for good" @yes="remove(r)" @no="askingDelete = null" />
       </div>
     </article>
   </section>

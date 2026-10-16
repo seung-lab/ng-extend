@@ -13,6 +13,7 @@ import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample
 import { openStartLink } from '../util/start_link';
 import { pointName } from '../access_request';
 import { useDragBox } from '../util/drag_box';
+import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { useProofreadingBackendStore } from '../store';
 
 const emit = defineEmits({ hide: null });
@@ -252,14 +253,10 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 
       <p v-if="message" class="nge-acc-msg" :class="{ 'nge-acc-msg--bad': messageBad }" role="status">{{ message }}</p>
       <div v-if="backend.isAdmin && request" class="nge-acc-admin">
-        <button v-if="!askingReset" class="nge-acc-rep" :disabled="!!busy" @click="askingReset = true">Start over (admins, for testing)</button>
-        <div v-else class="nge-acc-confirm" role="alertdialog" aria-label="Start over">
-          <p>Delete this request, its ten examples and any notes on them? You can then send a new one.</p>
-          <div class="nge-acc-confirm-btns">
-            <button class="nge-acc-confirm-yes" @click="startOver">Delete and start over</button>
-            <button class="nge-acc-confirm-no" @click="askingReset = false">Cancel</button>
-          </div>
-        </div>
+        <button class="nge-acc-rep" :disabled="!!busy" @click="askingReset = true">Start over (admins, for testing)</button>
+        <ConfirmDialog v-if="askingReset" title="Start over?"
+          text="This deletes your request, its ten examples and every mark and note on them, for good. It cannot be undone."
+          yes="Delete for good" @yes="startOver" @no="askingReset = false" />
       </div>
       <p class="nge-acc-help">
         Taking more than one try is normal. You are never locked out.

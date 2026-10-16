@@ -397,7 +397,9 @@ const RETINA_LAYERS = [
     await page.click('.nge-acc-save >> nth=0');
     await page.waitForSelector('.nge-acc-admin .nge-acc-rep', { timeout: 8000 });
     await page.click('.nge-acc-admin .nge-acc-rep');
-    await page.click('.nge-acc-admin .nge-acc-confirm-yes');
+    await page.waitForSelector('.nge-cfm', { timeout: 4000 });
+    ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('nge-cfm-no')), 'Start over asks in a pop up, with Cancel focused');
+    await page.click('.nge-cfm-yes');
     await page.waitForTimeout(800);
     ok(!db.access_requests.some(r => r.user_id === REVIEWER.id) && /Started over/.test(await panelText()), 'an admin starts their own request over');
     await page.click('.nge-acc-close');
@@ -407,7 +409,14 @@ const RETINA_LAYERS = [
     await page.waitForSelector('.nge-accr-card', { timeout: 8000 });
     if (!(await page.$('.nge-accr-delete'))) await page.click('.nge-accr-head');
     await page.click('.nge-accr-delete >> text=Delete request');
-    await page.click('.nge-accr-delete >> text=/^Delete$/');
+    await page.waitForSelector('.nge-cfm', { timeout: 4000 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    ok(!(await page.$('.nge-cfm')) && db.access_requests.length === 1, 'Escape cancels a delete');
+    await page.click('.nge-accr-delete >> text=Delete request');
+    await page.waitForSelector('.nge-cfm', { timeout: 4000 });
+    await shotOf('.nge-cfm', '13-delete-popup');
+    await page.click('.nge-cfm-yes');
     await page.waitForTimeout(800);
     ok(db.access_requests.length === 0 && db.access_request_items.length === 0, "an admin deletes a player's request in the Admin Hub");
   } catch (e) {
