@@ -198,6 +198,15 @@ const RETINA_LAYERS = [
     await page.click('.nge-acc-save >> nth=0');
     await page.waitForTimeout(400);
     ok(/Ctrl\+click the two pieces/.test(await panelText()), 'a merge without merge points is refused');
+    // Two merges queued in one view: a yes is asked for first, and Cancel saves nothing.
+    await setView([], [], ['720575940561794892'], [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]);
+    await page.waitForTimeout(1100);
+    await page.click('.nge-acc-save >> nth=0');
+    await page.waitForSelector('.nge-acc-confirm', { timeout: 4000 });
+    ok(/2 merges queued/.test(await panelText()), 'two merges in one view ask for a yes');
+    await shotOf('.nge-acc', '03a-confirm-merges');
+    await page.click('.nge-acc-confirm-no');
+    ok(!db.access_request_items.some(i => i.kind === 'merge'), 'Cancel saves nothing');
     for (let i = 1; i <= 3; i++) {
       await setView([], [], ['720575940561794892', String(720575940561794000 + i)], [[[38000 + i, 16600, 1970], [38050 + i, 16620, 1972]]]);
       await page.waitForTimeout(1100);
@@ -224,6 +233,9 @@ const RETINA_LAYERS = [
     await setView([[39000, 16600, 1970]], [[39100, 16700, 1975]], ['720575940561794892']);
     await page.waitForTimeout(1100);
     await page.click('.nge-acc-item >> nth=2 >> .nge-acc-rep');
+    await page.waitForSelector('.nge-acc-confirm', { timeout: 4000 });
+    ok(/replaces the cut 3/.test(await panelText()), 'Replace asks for a yes');
+    await page.click('.nge-acc-confirm-yes');
     await page.waitForTimeout(800);
     const c3 = db.access_request_items.find(i => i.kind === 'cut' && i.slot === 3);
     ok(c3.points.red.length === 1 && c3.points.red[0].position[0] === 39000, 'cut 3 replaced with the new view');
@@ -289,6 +301,8 @@ const RETINA_LAYERS = [
     await setView([[37102, 16600, 1970]], [[37502, 16900, 1975]], ['720575940561794892']);
     await page.waitForTimeout(1100);
     await page.click('.nge-acc-save >> nth=0');
+    await page.waitForSelector('.nge-acc-confirm', { timeout: 4000 });
+    await page.click('.nge-acc-confirm-yes');
     await page.waitForTimeout(800);
     await page.click('.nge-acc-send');
     await page.waitForFunction(() => /A reviewer is looking/.test((document.querySelector('.nge-acc') || {}).innerText || ''), null, { timeout: 8000 });

@@ -50,7 +50,7 @@ function saveLabel(kind: AccessKind): string {
   if (busy.value === `${kind}${n}`) return 'Saving…';
   return itemAt(kind, n) ? `Save this view as the new ${kind} ${n}` : `Save this view as ${kind} ${n}`;
 }
-function saveNext(kind: AccessKind) { const n = nextSlot(kind); if (n !== null) void save(kind, n); }
+function saveNext(kind: AccessKind) { const n = nextSlot(kind); if (n !== null) askSave(kind, n); }
 
 // What is in the view now, refreshed while the panel is open.
 const live = ref(viewContents());
@@ -66,6 +66,23 @@ onMounted(async () => {
 onBeforeUnmount(() => window.clearInterval(timer));
 
 function say(text: string, bad = false) { message.value = text; messageBad.value = bad; }
+
+/** A save that needs a yes first (Ames 2026-10-16): several merges in one
+ *  example, or a saved example about to be replaced. */
+const confirming = ref<{ kind: AccessKind; slot: number; text: string; yes: string } | null>(null);
+function askSave(kind: AccessKind, slot: number) {
+  const reason = whyNot(kind, live.value);
+  if (reason) { say(reason, true); return; }
+  const merges = Math.floor(live.value.merge.length / 2);
+  const old = itemAt(kind, slot);
+  const parts: string[] = [];
+  if (kind === 'merge' && merges > 1) parts.push(`This view has ${merges} merges queued. They will all be saved together as merge ${slot}. For separate examples, keep one merge queued per save.`);
+  if (old) parts.push(`This replaces the ${kind} ${slot} you saved before${old.verdict === 'good' ? ', which the reviewer marked good' : ''}.`);
+  if (!parts.length) { void save(kind, slot); return; }
+  say('');
+  confirming.value = { kind, slot, text: parts.join(' '), yes: old ? `Replace ${kind} ${slot}` : `Save all ${merges} as merge ${slot}` };
+}
+function confirmYes() { const c = confirming.value; confirming.value = null; if (c) void save(c.kind, c.slot); }
 
 async function save(kind: AccessKind, slot: number) {
   const reason = whyNot(kind, live.value);
@@ -179,7 +196,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
               <button v-if="hasMarks(row.it)" class="nge-acc-more" :aria-expanded="openKey === kind + row.s"
                       @click="openKey = openKey === kind + row.s ? '' : kind + row.s">{{ openKey === kind + row.s ? 'Hide notes' : 'Notes' }}</button>
               <button v-if="canEdit" class="nge-acc-rep" :disabled="!!busy" title="Put the view you are looking at in this slot"
-                      @click="save(kind, row.s)">{{ busy === kind + row.s ? 'Saving…' : 'Replace' }}</button>
+                      @click="askSave(kind, row.s)">{{ busy === kind + row.s ? 'Saving…' : 'Replace' }}</button>
               <button v-if="canEdit" class="nge-acc-x" :disabled="!!busy"
                       :aria-label="`Remove ${kind} ${row.s}`" @click="remove(kind, row.s)">×</button>
             </div>
@@ -210,6 +227,13 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
         </button>
       </template>
 
+      <div v-if="confirming" class="nge-acc-confirm" role="alertdialog" aria-label="Confirm the save">
+        <p>{{ confirming.text }}</p>
+        <div class="nge-acc-confirm-btns">
+          <button class="nge-acc-confirm-yes" @click="confirmYes">{{ confirming.yes }}</button>
+          <button class="nge-acc-confirm-no" @click="confirming = null">Cancel</button>
+        </div>
+      </div>
       <p v-if="message" class="nge-acc-msg" :class="{ 'nge-acc-msg--bad': messageBad }" role="status">{{ message }}</p>
       <p class="nge-acc-help">
         Taking more than one try is normal. You are never locked out.
@@ -286,6 +310,12 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 .nge-acc-label { display: block; margin-top: 10px; font-size: 14px; color: rgba(220, 230, 245, 0.7); }
 .nge-acc-input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; font-size: 15px; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 5px 7px; resize: vertical; }
 .nge-acc-msg { margin: 8px 0 0; color: #7CFFB2; }
+.nge-acc-confirm { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(245, 209, 66, 0.1); border: 1px solid rgba(245, 209, 66, 0.5); line-height: 1.45; }
+.nge-acc-confirm p { margin: 0 0 8px; }
+.nge-acc-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.nge-acc-confirm-yes, .nge-acc-confirm-no { font: inherit; font-size: 14px; border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+.nge-acc-confirm-yes { color: #fff; background: rgba(245, 209, 66, 0.22); border: 1px solid rgba(245, 209, 66, 0.7); font-weight: 600; }
+.nge-acc-confirm-no { color: #dce6f5; background: none; border: 1px solid rgba(255, 255, 255, 0.25); }
 .nge-acc-msg--bad { color: #f5d142; }
 .nge-acc-help { margin: 10px 0 0; font-size: 14px; color: rgba(220, 230, 245, 0.72); }
 .nge-acc-help a { color: #9fd3ff; }
