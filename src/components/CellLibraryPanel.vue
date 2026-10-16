@@ -161,6 +161,9 @@ async function resolveClaimPoints() {
   resolving.value = true;
   try {
     await backend.refreshSegmentIds();
+    // Claims whose ID was rewritten to a later root get their listed ID back,
+    // so they match their row again (annkri, report 150).
+    if (queue.items.length) await backend.repairListedIds(queue.items.map(i => i.segId));
     await backend.refreshLiveRoots();
   } catch (e) {
     console.warn('[cellLibrary] point-based resolution failed:', e);
