@@ -2106,12 +2106,14 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-8";
+const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-9";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
 const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m (REVIEW_MENTION_IDS)
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
+// Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
+const ACCESS_CAVE_GROUP = 203;
 async function postAccessRequestToSlack(token, { name, email, tries, eyewireUsername }) {
   let channel = null;
   try { channel = await resolveChannelByName(token, "", ACCESS_SLACK_CHANNEL_NAME); } catch (e) { channel = null; }
@@ -2129,7 +2131,9 @@ async function postAccessRequestToSlack(token, { name, email, tries, eyewireUser
   if (!r.ok) throw new Error(r.error || "slack post failed");
 }
 exports.ewAccessRequest = onRequest(
-  { region: "us-central1", secrets: [ewServiceKey, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  // EW_CAVE_TOKEN (Ames's, a CAVE superadmin): Grant edit access adds the
+  // player to Eyewire_2_Edit, group 203 (Ames 2026-10-16).
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
@@ -2165,6 +2169,19 @@ exports.ewAccessRequest = onRequest(
         },
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
+        // Add a player to Eyewire_2_Edit. 422 means already a member: as good.
+        grantCave: async (caveId) => {
+          try {
+            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/group/${ACCESS_CAVE_GROUP}/user`, {
+              method: "POST", headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: caveId }), redirect: "error", signal: AbortSignal.timeout(15000),
+            });
+            let error = "";
+            if (!r.ok && r.status !== 422) { try { error = String((await r.text()) || "").slice(0, 200); } catch (e) { error = ""; } }
+            console.log("[access] CAVE grant", caveId, "group", ACCESS_CAVE_GROUP, "status", r.status);
+            return { ok: r.ok || r.status === 422, status: r.status, already: r.status === 422, error };
+          } catch (e) { return { ok: false, error: String(e && e.message).slice(0, 200) }; }
+        },
       });
       res.json({ ok: true, data });
     } catch (e) {

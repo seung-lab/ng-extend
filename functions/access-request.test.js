@@ -8,7 +8,7 @@ const sam = {id: U(2), display_name: 'Sam'}, celia = {id: U(3), username: 'celia
 
 /** A small stand-in for the PostgREST helper: the shapes access-request.js uses. */
 function world({installed = true} = {}) {
-  const state = {access_requests: [], access_request_items: [], pilot_members: [], told: [], slack: [], players: []};
+  const state = {access_requests: [], access_request_items: [], pilot_members: [], told: [], slack: [], players: [], granted: [], caveAnswer: {ok: true, status: 200}};
   let nextId = 1;
   const match = (r, q) => [...q].every(([k, v]) => {
     if (['select', 'limit', 'order', 'on_conflict'].includes(k)) return true;
@@ -38,7 +38,8 @@ function world({installed = true} = {}) {
     if (method === 'DELETE') { state[table] = rows.filter(r => !hits.includes(r)); return []; }
     return hits.map(r => ({...r}));
   };
-  const io = (me, isAdmin = false) => ({sb, me, isAdmin, who: {email: me === sam ? 'Sam@Example.org' : 'c@example.org'},
+  const io = (me, isAdmin = false) => ({sb, me, isAdmin, who: {email: me === sam ? 'Sam@Example.org' : 'c@example.org', caveId: me === sam ? 4242 : 77},
+    grantCave: async id => { state.granted.push(id); return state.caveAnswer; },
     notifyReviewers: async n => { state.told.push(n); },
     postSlack: async p => { state.slack.push(p); },
     notifyPlayer: async n => { state.players.push(n); }});
@@ -216,6 +217,38 @@ test('marks a reviewer never sent do not block a send (Ames 2026-10-16)', async 
   assert.equal(sent.request.status, 'submitted');
   assert.equal(state.access_request_items.find(i => i.id === c2.id).verdict, null);
   await rejects(p('access.save', {...cut(1), eyewireUsername: 'bad<name>'}), 409);
+});
+
+test('Grant edit access adds them in CAVE first, and says nothing when CAVE refuses', async () => {
+  const {state, as} = world();
+  const p = as(sam), rev = as(celia, true);
+  await fillAll(p);
+  await p('access.submit', {});
+  assert.equal(state.access_requests[0].cave_user_id, 4242);
+  state.caveAnswer = {ok: false, status: 403, error: 'not allowed'};
+  await rejects(rev('access.decide', {requestId: state.access_requests[0].id, outcome: 'invited'}), 502, /CAVE did not add them.*403.*Nothing was sent/);
+  assert.equal(state.access_requests[0].status, 'submitted');
+  assert.equal(state.players.length, 0);
+  assert.equal(state.pilot_members.length, 0);
+  state.caveAnswer = {ok: true, status: 422, already: true};
+  const done = await rev('access.decide', {requestId: state.access_requests[0].id, outcome: 'invited'});
+  assert.deepEqual(state.granted, [4242, 4242]);
+  assert.equal(done.cave_granted, true);
+  assert.equal(state.access_requests[0].cave_granted, true);
+  assert.equal(state.players.length, 1);
+});
+
+test('a request with no CAVE id is granted only by hand', async () => {
+  const {state, as} = world();
+  const p = as(sam), rev = as(celia, true);
+  await fillAll(p);
+  await p('access.submit', {});
+  delete state.access_requests[0].cave_user_id;
+  await rejects(rev('access.decide', {requestId: state.access_requests[0].id, outcome: 'invited'}), 409, /no CAVE id/);
+  const done = await rev('access.decide', {requestId: state.access_requests[0].id, outcome: 'invited', byHand: true});
+  assert.equal(done.status, 'invited');
+  assert.equal(done.cave_granted, false);
+  assert.deepEqual(state.granted, []);
 });
 
 test('reviewer actions are admins only, and a missing table says what to run', async () => {

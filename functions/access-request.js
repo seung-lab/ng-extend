@@ -24,9 +24,12 @@
 //                   player (or the admin, testing) starts over. Ames
 //                   2026-10-16: "I need to be able to send a test demo".
 //   access.decide   admins: "redo" (the player redoes the examples marked
-//                   redo) or "invited" (added to pilot_members). The player
-//                   gets a bell either way. The CAVE group is still given by
-//                   hand (Ames 2026-10-16: until the automated test works).
+//                   redo) or "invited": Grant edit access (Ames 2026-10-16)
+//                   adds the player to Eyewire_2_Edit in CAVE first, with the
+//                   server's CAVE token, then to pilot_members, then tells
+//                   them. If CAVE says no, nothing else happens. A request
+//                   with no CAVE id (sent before ids were kept) is granted
+//                   only with byHand: the reviewer added them in CAVE.
 //
 // No pilot gate: asking for access is how a player joins.
 
@@ -61,8 +64,8 @@ function cleanEwName(value) {
 async function patchRequest(sb, filter, body) {
   try { return await sb(`access_requests?${filter}`, {method: 'PATCH', body: JSON.stringify(body)}); }
   catch (e) {
-    if (!missingTable(e) || !('eyewire_username' in body || 'player_note' in body)) throw e;
-    const {eyewire_username, player_note, ...rest} = body;
+    if (!missingTable(e) || !['eyewire_username', 'player_note', 'cave_user_id', 'cave_granted'].some(k => k in body)) throw e;
+    const {eyewire_username, player_note, cave_user_id, cave_granted, ...rest} = body;
     return sb(`access_requests?${filter}`, {method: 'PATCH', body: JSON.stringify(rest)});
   }
 }
@@ -175,7 +178,7 @@ async function save(args, {sb, me, who}) {
     headers: {Prefer: 'resolution=merge-duplicates,return=representation'}, body: JSON.stringify(row)});
   const ewName = cleanEwName(args.eyewireUsername);
   await patchRequest(sb, `id=eq.${request.id}`, {updated_at: row.saved_at,
-    player_name: nameOf(me), ...(ewName ? {eyewire_username: ewName} : {})});
+    player_name: nameOf(me), ...(ewName ? {eyewire_username: ewName} : {}), ...caveIdOf(who)});
   return mine({}, {sb, me});
 }
 
@@ -204,6 +207,12 @@ async function withdraw(args, {sb, me}) {
   return mine({}, {sb, me});
 }
 
+/** The player's CAVE user id from their verified sign in, never the browser. */
+function caveIdOf(who) {
+  const id = Number(who && who.caveId);
+  return Number.isSafeInteger(id) && id > 0 ? {cave_user_id: id} : {};
+}
+
 function clearMarks(sb, requestId) {
   return sb(`access_request_items?request_id=eq.${requestId}`, {method: 'PATCH', body: JSON.stringify({verdict: null, point_marks: {}, feedback: null})});
 }
@@ -224,7 +233,7 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
   // Only from the state it was read in, so a double click sends once.
   const done = await patchRequest(sb, `id=eq.${request.id}&status=eq.${request.status}`, {status: 'submitted', tries,
     submitted_at: at, updated_at: at, player_name: nameOf(me), ...(ewName ? {eyewire_username: ewName} : {}),
-    player_note: playerNote});
+    player_note: playerNote, ...caveIdOf(who)});
   if (!done.length) fail(409, 'Your examples are with a reviewer already.');
   const name = nameOf(me);
   const again = tries > 1 ? ` (try ${tries})` : '';
@@ -301,7 +310,7 @@ async function reset(args, {sb, me, isAdmin}) {
   return {deleted: request.id};
 }
 
-async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
+async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
   needAdmin(isAdmin);
   const id = Number(args.requestId);
   if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown request.');
@@ -316,7 +325,21 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
   if (outcome === 'redo' && !redos) fail(400, 'Mark at least one example redo first, so the player knows what to change.');
   const at = new Date().toISOString();
   let pilotAdded = false;
+  let caveGranted = false;
   if (outcome === 'invited') {
+    // CAVE first: the player is told only once the retina really is open.
+    if (args.byHand === true) {
+      caveGranted = false;
+    } else {
+      const caveId = Number(request.cave_user_id);
+      if (!Number.isSafeInteger(caveId) || caveId <= 0) {
+        fail(409, `This request has no CAVE id (it was sent before Pyr kept them). Add ${request.email} to Eyewire_2_Edit in CAVE by hand, then use "I added them by hand". Nothing was sent.`);
+      }
+      if (!grantCave) fail(503, 'Granting in CAVE is not set up on the server. Nothing was sent.');
+      const r = await grantCave(caveId);
+      if (!r || !r.ok) fail(502, `CAVE did not add them to Eyewire_2_Edit${r && r.status ? ` (${r.status})` : ''}${r && r.error ? `: ${r.error}` : ''}. Nothing was sent to the player.`);
+      caveGranted = true;
+    }
     await sb('pilot_members?on_conflict=email', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'},
       body: JSON.stringify({email: String(request.email).toLowerCase().trim(), enabled: true, added_by: (me && me.id) || null})});
     pilotAdded = true;
@@ -324,6 +347,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
   const done = await sb(`access_requests?id=eq.${id}&status=eq.submitted`, {method: 'PATCH', body: JSON.stringify({
     status: outcome, reviewed_at: at, reviewed_by: (me && me.id) || null, reviewer_note: note, updated_at: at,
     ...(pilotAdded ? {pilot_added: true} : {})})});
+  if (caveGranted) await patchRequest(sb, `id=eq.${id}`, {cave_granted: true}).catch(() => {});
   if (!done.length) fail(409, 'Someone else answered this request just now.');
   if (notifyPlayer) {
     const title = outcome === 'invited' ? GRANTED_TITLE : '🔬 Notes on your retina access request';
@@ -333,7 +357,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
     try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
   }
-  return {...done[0], redos, pilot_added: pilotAdded};
+  return {...done[0], redos, pilot_added: pilotAdded, cave_granted: caveGranted};
 }
 
 async function handle(action, args, io) {

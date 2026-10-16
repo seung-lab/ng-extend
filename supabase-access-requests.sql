@@ -72,3 +72,9 @@ grant all on public.access_request_items to service_role;
 -- note to the reviewer that goes with the whole request.
 alter table public.access_requests add column if not exists eyewire_username text check (eyewire_username is null or length(eyewire_username) <= 60);
 alter table public.access_requests add column if not exists player_note text check (player_note is null or length(player_note) <= 1000);
+
+-- 2026-10-16 (Ames: "grant access button would be good"): the player's CAVE
+-- user id, taken from their sign in by the server, so Grant edit access can
+-- add them to Eyewire_2_Edit (group 203) itself.
+alter table public.access_requests add column if not exists cave_user_id bigint;
+alter table public.access_requests add column if not exists cave_granted boolean not null default false;

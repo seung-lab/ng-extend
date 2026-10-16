@@ -95,7 +95,8 @@ const RETINA_LAYERS = [
       const me = actingAs === 'reviewer' ? REVIEWER : PLAYER;
       try {
         const data = await handle(action, args, { sb, me, isAdmin: actingAs === 'reviewer',
-          who: { email: actingAs === 'reviewer' ? 'celia@example.org' : 't@example.org' },
+          who: { email: actingAs === 'reviewer' ? 'celia@example.org' : 't@example.org', caveId: actingAs === 'reviewer' ? 77 : 4242 },
+          grantCave: async id => { told.push({ to: 'cave', id }); return { ok: true, status: 200 }; },
           notifyReviewers: async n => { told.push({ to: 'reviewers', ...n }); },
           notifyPlayer: async n => { told.push({ to: 'player', ...n }); },
           postSlack: async p => { told.push({ to: 'slack', ...p }); } });
@@ -350,10 +351,11 @@ const RETINA_LAYERS = [
     await page.waitForSelector('.nge-accr-refresh', { timeout: 10000 });
     await page.click('.nge-accr-refresh');
     await page.waitForSelector('.nge-accr-decide', { timeout: 10000 });
-    ok(/Eyewire_2_Edit/.test(await page.evaluate(() => (document.querySelector('.nge-accr-cave') || {}).innerText || '')), 'the reviewer is reminded to add the CAVE group by hand before granting');
+    ok(/Eyewire_2_Edit/.test(await page.evaluate(() => (document.querySelector('.nge-accr-cave') || {}).innerText || '')), 'the reviewer is told the grant adds them to Eyewire_2_Edit');
     await page.click('.nge-accr-btn--invite');
     await page.waitForSelector('.nge-accr-done', { timeout: 8000 });
     ok(db.access_requests[0].status === 'invited' && db.pilot_members.some(m => m.email === 't@example.org'), 'invited and added to the pilot testers');
+    ok(told.some(t => t.to === 'cave' && t.id === 4242) && db.access_requests[0].cave_granted === true, 'Grant edit access adds the player to Eyewire_2_Edit');
     await full('10-admin-invited');
     actingAs = 'player';
     await setIdentity(false);

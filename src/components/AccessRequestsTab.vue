@@ -61,15 +61,22 @@ async function setVerdict(r: AccessRequest, it: AccessItem, verdict: 'good' | 'r
   finally { busy.value = ''; }
 }
 
-async function decide(r: AccessRequest, outcome: 'redo' | 'invited') {
+/** Requests whose grant needs the reviewer's own CAVE step (no CAVE id kept). */
+const needsHand = ref<Record<number, boolean>>({});
+async function decide(r: AccessRequest, outcome: 'redo' | 'invited', byHand = false) {
   busy.value = `d${r.id}`; error.value = '';
   try {
-    const out = await decideAccess(r.id, outcome, notes.value[r.id] || '');
+    const out = await decideAccess(r.id, outcome, notes.value[r.id] || '', byHand);
     Object.assign(r, out);
     done.value[r.id] = outcome === 'invited'
-      ? `Access granted: ${r.player_name || r.email} was told and added to the pilot testers.`
+      ? (out.cave_granted
+        ? `Access granted: ${r.player_name || r.email} is in Eyewire_2_Edit, on the pilot testers, and was told.`
+        : `Access granted by hand: ${r.player_name || r.email} is on the pilot testers and was told.`)
       : `Sent. ${r.player_name} will redo ${out.redos === 1 ? 'one example' : `${out.redos} examples`}.`;
-  } catch (e: any) { error.value = e?.message || 'That was not sent.'; }
+  } catch (e: any) {
+    error.value = e?.message || 'That was not sent.';
+    if (/no CAVE id/.test(error.value)) needsHand.value[r.id] = true;
+  }
   finally { busy.value = ''; }
 }
 // Delete a request, for a test or a player who wants a clean slate.
@@ -144,10 +151,12 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
           <label>Note to {{ r.player_name || 'the player' }} (optional, goes with your answer)
             <textarea v-model="notes[r.id]" rows="3" maxlength="4000"></textarea>
           </label>
-          <p class="nge-accr-cave">Before you grant: add <b>{{ r.email }}</b> to Eyewire_2_Edit in CAVE, by hand for now. Granting tells the player their edit access is ready.</p>
+          <p class="nge-accr-cave">Grant edit access adds <b>{{ r.email }}</b> to Eyewire_2_Edit in CAVE, then tells them. If CAVE says no, nothing is sent.</p>
           <div class="nge-accr-decide-btns">
             <button class="nge-accr-btn" :disabled="busy === `d${r.id}`" @click="decide(r, 'redo')">Ask for redos ({{ counts(r).redo }})</button>
             <button class="nge-accr-btn nge-accr-btn--invite" :disabled="busy === `d${r.id}`" @click="decide(r, 'invited')">Grant edit access</button>
+            <button v-if="needsHand[r.id]" class="nge-accr-btn" :disabled="busy === `d${r.id}`" @click="decide(r, 'invited', true)"
+                    title="Only after you added them to Eyewire_2_Edit in CAVE yourself">I added them by hand, grant</button>
           </div>
         </div>
         <p v-if="done[r.id]" class="nge-accr-done" role="status">{{ done[r.id] }}</p>

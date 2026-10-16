@@ -187,8 +187,8 @@ export async function reviewAccessItem(itemId: number, patch: { verdict?: 'good'
   return secureWrite<AccessItem>('access.review', { itemId, ...patch });
 }
 
-export async function decideAccess(requestId: number, outcome: 'redo' | 'invited', note: string) {
-  return secureWrite<AccessRequest & { redos: number; pilot_added: boolean }>('access.decide', { requestId, outcome, note });
+export async function decideAccess(requestId: number, outcome: 'redo' | 'invited', note: string, byHand = false) {
+  return secureWrite<AccessRequest & { redos: number; pilot_added: boolean; cave_granted: boolean }>('access.decide', { requestId, outcome, note, ...(byHand ? { byHand: true } : {}) });
 }
 
 /** Admins: delete a request and its examples (no id: your own), so it can
