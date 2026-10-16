@@ -42,6 +42,7 @@ import './tutorial_kit.css';
 
 import {installShowcase} from './showcase';
 import {runPendingDatasetTour} from './dataset_tour';
+import {editionDefaultFragment} from './edition_start';
 import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useUserPreferencesStore, useVolumesStore} from 'src/store';
@@ -372,9 +373,10 @@ function setupViewer() {
 
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
-        defaultFragment: typeof NEUROGLANCER_DEFAULT_STATE_FRAGMENT !== 'undefined' ?
+        // The Tracers edition opens MEC instead (src/edition_start.ts).
+        defaultFragment: editionDefaultFragment(typeof NEUROGLANCER_DEFAULT_STATE_FRAGMENT !== 'undefined' ?
             NEUROGLANCER_DEFAULT_STATE_FRAGMENT :
-            undefined
+            undefined)
       }));
   viewer.registerDisposer(hashBinding.parseError.changed.add(() => {
     const {value} = hashBinding.parseError;

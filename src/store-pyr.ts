@@ -3,6 +3,7 @@ import { defineStore, storeToRefs } from "pinia";
 import { useLoginStore, useProofreadingBackendStore } from 'src/store';
 import { supabase } from 'src/supabase';
 import { Config } from './config';
+import { TRACER_EDITION, TRACER_TOUR } from './edition';
 
 declare const CONFIG: Config | undefined;
 
@@ -174,8 +175,11 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // first-time guests. Once a user logs in we hydrate from Supabase
   // (`users.tutorial_*`) and sync writes back, so progress follows the
   // account across browsers / incognito / devices.
+  // The Tracers edition (src/edition.ts) opens on the Tracer Tour the first
+  // time, never on Get Started, whatever this browser did on live before.
+  const tracerTourUnseen = TRACER_EDITION && localStorage.getItem(`nge-tracer-tour-step`) === null;
   const activeTutorial: Ref<number> = ref(
-    parseInt(localStorage.getItem(`nge-active-tutorial`) ?? "1")
+    tracerTourUnseen ? TRACER_TOUR : parseInt(localStorage.getItem(`nge-active-tutorial`) ?? "1")
   );
 
   const tutorialStep1: Ref<number> = ref(
@@ -225,6 +229,18 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // lives on the server, so a reload starts from the menu and resumes there.
   const tutorialStep11: Ref<number> = ref(-1);
 
+  // Tutorial 12, the Tracer Tour (src/tracer-tour.ts), Tracers edition only.
+  // Local only. Unseen means it starts at the first box.
+  const tutorialStep12: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tracer-tour-step`) ?? (tracerTourUnseen ? "0" : "-1"))
+  );
+  // Saved at once, so a reload partway through comes back to this tour
+  // (and asks Continue or Exit), not to Get Started.
+  if (tracerTourUnseen) {
+    localStorage.setItem(`nge-tracer-tour-step`, `0`);
+    localStorage.setItem(`nge-active-tutorial`, `${TRACER_TOUR}`);
+  }
+
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
@@ -241,6 +257,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 9) return tutorialStep9.value;
     if (activeTutorial.value === 10) return tutorialStep10.value;
     if (activeTutorial.value === 11) return tutorialStep11.value;
+    if (activeTutorial.value === TRACER_TOUR) return tutorialStep12.value;
     return tutorialStep4.value;
   }
 
@@ -255,6 +272,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 9) tutorialStep9.value = val;
     else if (activeTutorial.value === 10) tutorialStep10.value = val;
     else if (activeTutorial.value === 11) tutorialStep11.value = val;
+    else if (activeTutorial.value === TRACER_TOUR) tutorialStep12.value = val;
     else tutorialStep4.value = val;
   }
 
@@ -275,8 +293,10 @@ export const useTutorialStore = defineStore("tutorial", () => {
         return;
       }
       if (data) {
-        // active: prefer remote if set; otherwise keep local
-        if (typeof data.tutorial_active === 'number') {
+        // active: prefer remote if set; otherwise keep local. Not on the
+        // Tracers edition: the account's live tutorial (often Get Started)
+        // must not replace the Tracer Tour there.
+        if (typeof data.tutorial_active === 'number' && !TRACER_EDITION) {
           activeTutorial.value = data.tutorial_active;
         }
         // steps: take whichever is further along to avoid losing progress
@@ -302,6 +322,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleSync() {
     if (hydrating.value) return; // don't echo our own hydration writes back
+    // The Tracers edition keeps tutorial progress in this browser only, so
+    // its tutorial 12 never reaches the account and the live site.
+    if (TRACER_EDITION) return;
     const backend = useProofreadingBackendStore();
     if (!backend.userId) return;
     if (syncTimer) clearTimeout(syncTimer);
@@ -355,6 +378,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   watch(tutorialStep10, () => {
     localStorage.setItem(`nge-tutorial-10-step`, `${tutorialStep10.value}`);
   });
+  watch(tutorialStep12, () => {
+    localStorage.setItem(`nge-tracer-tour-step`, `${tutorialStep12.value}`);
+  });
   watch(activeTutorial, () => {
     localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
     scheduleSync();
@@ -392,6 +418,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep9,
     tutorialStep10,
     tutorialStep11,
+    tutorialStep12,
     hydrateFromSupabase,
   };
 });

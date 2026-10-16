@@ -45,6 +45,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
 import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon, findDatasetBySegName, findDatasetByCanonical, canonicalDataset} from '../datasets';
 import {useTutorialStore} from '../store-pyr';
+import {TRACER_EDITION, TRACER_TOUR} from '../edition';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
 
@@ -1121,7 +1122,14 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
              tools live in the top bar, and the Cut & Merge tutorial covers
              them (the Find Path video stays in the Ask dock / Ctrl+K). -->
         <li class="nge-menu-heading" @click.stop>Guided tour</li>
-        <li>
+        <!-- The Tracers edition (src/edition.ts) has its own tour in place
+             of the Site Tour. -->
+        <li v-if="TRACER_EDITION">
+          <div class="logoutButton button nge-tour-btn" @click="tutorialStore.activeTutorial = TRACER_TOUR; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span>🧭 Tracer Tour</span>
+          </div>
+        </li>
+        <li v-else>
           <div class="logoutButton button nge-tour-btn" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
             <span>🧭 Site Tour</span>
           </div>

@@ -536,6 +536,8 @@ export const useLayersStore = defineStore('layers', () => {
   function isUserInActiveTutorial(): boolean {
     try {
       const active = parseInt(localStorage.getItem('nge-active-tutorial') ?? '1');
+      // The Tracer Tour (12) loads no views of its own.
+      if (active === 12) return false;
       const stepKey = active === 2 ? 'nge-tutorial-2-step'
                     : active === 3 ? 'nge-tutorial-3-step'
                     : 'nge-tutorial-step';
