@@ -270,7 +270,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </div>
       <p v-if="!slim" class="nge-acc-help">
         Taking more than one try is normal. You are never locked out.
-        <a href="https://connectome.quest/blog/post.html?p=getting-access-to-the-retina" target="_blank" rel="noopener">How access works ↗</a>
+        <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
       </p>
     </template>
   </div>

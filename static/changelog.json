@@ -2,6 +2,18 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-16T21:10:00Z",
+      "title": "Ask for Edit Access, right in Pyr",
+      "digest": "headline",
+      "items": [
+        "You can now ask for edit access to the retina inside the game: open the menu and choose Ask for Edit Access, at the very bottom.",
+        "Place cut or merge points on ten mistakes you find, without submitting the edits, and save each view with one click. Pyr keeps every point and your notes.",
+        "Send all ten for review. The team looks at every point and answers in your notifications, with notes on each example.",
+        "Change any example before or after you send, as often as you like. You are never locked out.",
+        "Press Slim to make the box small on a laptop screen."
+      ]
+    },
+    {
       "at": "2026-10-16T20:57:51Z",
       "title": "Open a cell from chat in a new tab",
       "digest": "minor",
