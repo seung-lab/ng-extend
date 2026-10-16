@@ -2106,11 +2106,11 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-2";
+const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-3";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
-const ACCESS_REVIEWER_USERNAMES = ["celiad", "m_sorek"];
-const ACCESS_SLACK_MENTIONS = ["U033NHWDE", "U033TSX9A"]; // celia, sorek.m (REVIEW_MENTION_IDS)
+const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
+const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m (REVIEW_MENTION_IDS)
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 async function postAccessRequestToSlack(token, { name, email, tries, affiliation }) {
   let channel = null;
