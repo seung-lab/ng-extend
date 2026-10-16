@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-16T15:48:22Z",
+      "title": "Tidier Segments headings, and a safer folder delete",
+      "digest": "minor",
+      "items": [
+        "Every heading in the Segments panel reads the same way: the eye on the left, in line with the cells' eyes, then the name and count, and a folder's color dot on the right above the cells' status marks.",
+        "Hover a heading for its buttons. The ones that remove things sit last on the right, set apart by a thin line, and the trash can is red so it never looks like copy.",
+        "A folder's ✕ asks what to do: keep its cells in view, remove only the hidden ones, or remove them all with the folder. Enter keeps them.",
+        "A long cell ID ends in … on hover so the buttons never sit on top of it, and each folder's colored line now starts at its heading."
+      ]
+    },
+    {
       "at": "2026-10-16T15:30:21Z",
       "title": "No more grey flashes when scrolling through slices",
       "items": [
