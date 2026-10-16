@@ -199,15 +199,21 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
 }
 
 // ── Who submitted each report (site_issues, admins only via the gateway) ──
-const reporters = ref<Record<string, { name: string; category: string; at: string; message?: string }>>({});
+const reporters = ref<Record<string, { name: string; category: string; at: string; message?: string; url?: string; shot?: string }>>({});
 async function loadReporters(rows: TriageRow[]) {
   const ids = [...new Set(rows.filter(r => r.source === 'site_issue' && r.source_id && !reporters.value[r.source_id]).map(r => r.source_id))];
   if (!ids.length) return;
   try {
     const { supabase } = await import('../supabase');
-    const { data } = await supabase.from('site_issues').select('id,user_name,category,created_at,message').in('id', ids);
+    // The view they were in and their screenshot, as Slack shows them (Ames
+    // 2026-10-16: "triage panel now missing view"). Older tables may lack the
+    // screenshot column, so ask again without it if need be.
+    let { data, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', ids);
+    if (error) ({ data } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url').in('id', ids));
     const next = { ...reporters.value };
-    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', message: String(i.message || '').trim() };
+    const web = (u: any) => (typeof u === 'string' && /^https:\/\//.test(u) ? u : undefined);
+    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', message: String(i.message || '').trim(),
+      url: web(i.url), shot: web(i.screenshot_url) };
     reporters.value = next;
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
 }
@@ -2587,6 +2593,10 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="fullTextOf(row)" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
+            <a v-if="reporterOf(row)?.url" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.url" target="_blank" rel="noopener noreferrer" @click.stop
+               title="The view they were in when they sent the report">↗ Open their view</a>
+            <a v-if="reporterOf(row)?.shot" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.shot" target="_blank" rel="noopener noreferrer" @click.stop
+               title="The screenshot they attached">🖼 Screenshot</a>
             <button class="nge-triage-console-btn" @click="toggleIssueConsole(row)">
               {{ issueConsole[row.id] === undefined ? '🖥 Console messages' : issueConsoleOpen[row.id] ? '▾ Console messages' : '▸ Console messages' }}
             </button>
@@ -4089,4 +4099,5 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-link:hover { color: #b3e0ff; }
 .nge-triage-light .nge-triage-link { color: #1f5fc4; }
 .nge-triage-light .nge-triage-link:hover { color: #0d3f8f; }
+.nge-triage-view-btn { text-decoration: none; display: inline-flex; align-items: center; margin-right: 6px; }
 </style>
