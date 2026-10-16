@@ -1857,3 +1857,28 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   background: color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 55%, transparent);
 }
 .nge-seg-folder--collapsed > .nge-h::after { display: none; }
+
+/* ── Variant to try (Ames 2026-10-16): cell IDs on the far right, the
+   controls on the left: eye, jump arrow, Δ, then copy and remove on hover;
+   the ID is pushed to the right end of the row. The row's own structure is
+   unchanged: the ID moves to the end of its group, and the jump arrow and Δ
+   are placed just after the eye, the way the Δ is already placed. ── */
+.neuroglancer-segment-list .neuroglancer-segment-list-entry { padding-right: 10px !important; }
+.neuroglancer-segment-list .neuroglancer-segment-list-entry > .neuroglancer-segment-list-entry-sticky { flex: 1 1 auto !important; min-width: 0; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-visible-checkbox { margin-right: 46px !important; }
+.neuroglancer-segment-list .neuroglancer-segment-list-entry > .nge-jump-btn {
+  position: absolute !important; left: calc(var(--nge-row-eye-left, 6px) + 24px); top: 14px; transform: translateY(-50%); margin: 0 !important;
+}
+.neuroglancer-segment-list .neuroglancer-segment-list-entry > .nge-lb-btn {
+  right: auto !important; left: calc(var(--nge-row-eye-left, 6px) + 44px) !important;
+}
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container,
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle {
+  position: static !important; transform: none !important; top: auto !important; right: auto !important; left: auto !important; flex: none;
+}
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container { order: 2 !important; }
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { order: 3 !important; }
+.neuroglancer-segment-list-entry:not(:hover) .neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle,
+.neuroglancer-segment-list-entry:not(:hover) .neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container { display: none !important; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-id-container { order: 10 !important; margin-left: auto !important; min-width: 0; }
+.neuroglancer-segment-list .neuroglancer-segment-list-entry:hover:not(.nge-seg-labelled) .neuroglancer-segment-list-entry-id { max-width: none !important; }
