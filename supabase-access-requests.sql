@@ -65,3 +65,5 @@ alter table public.access_requests      enable row level security;
 alter table public.access_request_items enable row level security;
 revoke all on public.access_requests      from anon, authenticated;
 revoke all on public.access_request_items from anon, authenticated;
+grant all on public.access_requests      to service_role;
+grant all on public.access_request_items to service_role;
