@@ -49,7 +49,7 @@ import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, listFilterOf, loadCellAtPlace, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
 import {ngeConfirm} from 'neuroglancer/ui/nge_confirm';
-import {openColorPalette, pickedSegments, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
+import {openColorPalette, pickedSegments, SegmentFolders, touchPick} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
 
@@ -1209,6 +1209,22 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
         actions?.onNewFolder(f.id);
       });
       heading.insertBefore(add, this.starAllButton);
+      // Touch screens: Select turns tap to pick on and off (mobile.css shows
+      // it only where the main pointer is a finger).
+      const select = document.createElement('button');
+      select.className = 'nge-seg-list-keep nge-seg-touch-select';
+      select.title = 'Tap cells to pick them, then move, show, hide, color or remove them together';
+      const paintSelect = () => {
+        select.textContent = touchPick.on ? 'Done' : 'Select';
+        select.classList.toggle('nge-on', touchPick.on);
+      };
+      paintSelect();
+      select.addEventListener('click', () => {
+        touchPick.set(!touchPick.on);
+        if (!touchPick.on) pickedSegments.clear();
+      });
+      this.registerDisposer(touchPick.changed.add(paintSelect));
+      heading.insertBefore(select, add);
       return;
     }
     if (typeof mode !== 'object') return;

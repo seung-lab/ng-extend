@@ -69,7 +69,9 @@ const moveThreshold = 10;
  * Number of milliseconds that a set of touch points must be held without moving (per moveThreshold)
  * to trigger a touchhold action.
  **/
-const holdThreshold = 1000;
+// nge (report 146): 600 ms, not 1000. Holding one finger moves the view to
+// that spot, as a right click does; a full second felt like nothing happened.
+const holdThreshold = 600;
 
 /**
  * Maximum duration of a tap.

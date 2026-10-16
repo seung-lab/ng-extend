@@ -49,6 +49,20 @@ export const pickedSegments = {
   },
 };
 
+/** nge: Select mode, for a touch screen with no Ctrl or Shift (Nseraf,
+ *  report 146). While it is on, a tap on a row picks or unpicks that cell,
+ *  as Ctrl+click does. The Select button in the In view heading turns it on
+ *  and off (src/drag_reorder.ts reads it). */
+export const touchPick = {
+  on: false,
+  changed: new NullarySignal(),
+  set(on: boolean) {
+    if (this.on === on) return;
+    this.on = on;
+    this.changed.dispatch();
+  },
+};
+
 export const FOLDERS_JSON_KEY = 'ngeFolders';
 
 export class SegmentFolders {

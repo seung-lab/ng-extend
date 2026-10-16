@@ -15,7 +15,7 @@
 //   happen because the UX feels broken if drag silently does nothing.
 
 import {Uint64} from 'neuroglancer/util/uint64';
-import {pickedSegments} from 'neuroglancer/ui/nge_segment_folders';
+import {pickedSegments, touchPick} from 'neuroglancer/ui/nge_segment_folders';
 import {getPastedSegments} from 'neuroglancer/ui/nge_pasted_segments';
 import {ngeConfirm} from 'neuroglancer/ui/nge_confirm';
 
@@ -327,15 +327,17 @@ function pickTarget(e: MouseEvent): HTMLElement | null {
   const row = t.closest(ROW_SEL) as HTMLElement | null;
   return row?.getAttribute('data-id') ? row : null;
 }
+// Select mode (touch screens, report 146): a plain tap picks, as Ctrl+click.
+const picking = (e: MouseEvent) => e.ctrlKey || e.metaKey || e.shiftKey || touchPick.on;
 document.addEventListener('mousedown', (e: MouseEvent) => {
-  if (e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey) || e.altKey) return;
+  if (e.button !== 0 || !picking(e) || e.altKey) return;
   if (!pickTarget(e)) return;
   // neuroglancer's own Ctrl/Shift row clicks stay out of it
   e.preventDefault();
   e.stopPropagation();
 }, true);
 document.addEventListener('click', (e: MouseEvent) => {
-  if (e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey) || e.altKey) return;
+  if (e.button !== 0 || !picking(e) || e.altKey) return;
   const row = pickTarget(e);
   const id = row?.getAttribute('data-id');
   if (!row || !id) return;
@@ -356,7 +358,7 @@ document.addEventListener('click', (e: MouseEvent) => {
 }, true);
 
 document.addEventListener('click', (e: MouseEvent) => {
-  if (e.button !== 0 || e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return;
+  if (e.button !== 0 || e.altKey || e.shiftKey || e.ctrlKey || e.metaKey || touchPick.on) return;
   if (performance.now() - justDragged < 300) return;
   const chip = (e.target as HTMLElement | null)?.closest(ID_SEL);
   if (!chip) return;

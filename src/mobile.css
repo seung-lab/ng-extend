@@ -473,3 +473,13 @@ body.nge-mobile .nge-cl-panel {
   line-height: 15px;
   text-align: center;
 }
+
+/* Segments panel Select button (report 146): only where the main pointer is
+   a finger. On, a tap on a row picks the cell, as Ctrl+click does. */
+.nge-seg-list-keep.nge-seg-touch-select { display: none; }
+@media (pointer: coarse) {
+  .nge-seg-list-keep.nge-seg-touch-select { display: inline-flex; align-items: center; }
+  .nge-seg-list-keep.nge-seg-touch-select.nge-on {
+    background: rgba(124, 255, 178, 0.18); border-color: #7cffb2; color: #eafff3;
+  }
+}

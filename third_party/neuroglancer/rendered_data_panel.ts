@@ -38,6 +38,8 @@ import {ViewerState} from 'neuroglancer/viewer_state';
 declare var NEUROGLANCER_SHOW_OBJECT_SELECTION_TOOLTIP: boolean|undefined;
 
 const tempVec3 = vec3.create();
+/** nge: screen pixels of finger travel per 2D slice (report 146). */
+const NGE_TOUCH_PX_PER_SLICE = 6;
 
 export interface RenderedDataViewerState extends ViewerState {
   inputEventMap: EventActionMap;
@@ -499,14 +501,23 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           this.translateByViewportPixels(detail.deltaX, detail.deltaY);
         });
 
+    // nge (Nseraf, report 146): a one finger swipe in 2D moved one slice per
+    // screen pixel, so a short swipe flew through hundreds of slices. Now one
+    // slice per NGE_TOUCH_PX_PER_SLICE pixels; the rest carries over to the
+    // next move, so slow swipes still step.
+    let ngeTouchZ = 0;
     registerActionListener(
         element, 'translate-z-via-touchtranslate', (e: ActionEvent<TouchTranslateInfo>) => {
           const {detail} = e;
           let {navigationState} = this;
+          ngeTouchZ += detail.deltaY + detail.deltaX;
+          const slices = Math.trunc(ngeTouchZ / NGE_TOUCH_PX_PER_SLICE);
+          if (slices === 0) return;
+          ngeTouchZ -= slices * NGE_TOUCH_PX_PER_SLICE;
           let offset = tempVec3;
           offset[0] = 0;
           offset[1] = 0;
-          offset[2] = detail.deltaY + detail.deltaX;
+          offset[2] = slices;
           navigationState.pose.translateVoxelsRelative(offset);
         });
 
