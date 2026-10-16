@@ -10,7 +10,10 @@
  */
 import { ref, computed, watch } from 'vue';
 import { reviewing, reviewAccessItem, openExample, flyTo, backToRequests, type AccessItem } from '../access_request';
+import { useDragBox } from '../util/drag_box';
 
+const boxEl = ref<HTMLElement | null>(null);
+const { dragging, posStyle, startDrag } = useDragBox('nge_access_review_pos', boxEl);
 const busy = ref(false);
 const error = ref('');
 const feedback = ref('');
@@ -59,8 +62,8 @@ function go(step: number) {
 </script>
 
 <template>
-  <div v-if="request && item" class="nge-arv" role="dialog" aria-label="Review an access request">
-    <div class="nge-arv-head">
+  <div v-if="request && item" ref="boxEl" class="nge-arv" :class="{ 'nge-arv--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Review an access request">
+    <div class="nge-arv-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-arv-title">{{ request.player_name || request.email }}</span>
       <span class="nge-arv-pos">{{ item.kind === 'cut' ? 'Cut' : 'Merge' }} {{ item.slot }} · {{ index + 1 }} of {{ items.length }}</span>
     </div>
@@ -101,17 +104,18 @@ function go(step: number) {
 <style scoped>
 .nge-arv {
   position: fixed; right: 16px; top: 64px; z-index: 9000;
-  width: 320px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; box-sizing: border-box;
+  width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; box-sizing: border-box;
   padding: 12px 14px;
   background: rgba(6, 10, 20, 0.95);
   border: 1px solid rgba(245, 209, 66, 0.45);
   border-radius: 12px;
   box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(8px);
-  font-family: 'Inter', 'Segoe UI', sans-serif; color: #dce6f5; font-size: 13px;
+  font-family: 'Inter', 'Segoe UI', sans-serif; color: #dce6f5; font-size: 15px;
 }
-.nge-arv-head { display: flex; align-items: baseline; gap: 8px; }
-.nge-arv-title { font-size: 15px; font-weight: 600; color: #f5d142; }
+.nge-arv-head { display: flex; align-items: baseline; gap: 8px; cursor: grab; user-select: none; touch-action: none; margin: -12px -14px 0; padding: 12px 14px 4px; }
+.nge-arv--dragging .nge-arv-head { cursor: grabbing; }
+.nge-arv-title { font-size: 17px; font-weight: 600; color: #f5d142; }
 .nge-arv-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); }
 .nge-arv-how { margin: 6px 0; line-height: 1.45; color: rgba(220, 230, 245, 0.75); overflow-wrap: anywhere; }
 .nge-arv-quote { margin: 6px 0; padding: 4px 8px; border-left: 2px solid rgba(255, 255, 255, 0.3); border-radius: 0; white-space: pre-wrap; }
@@ -122,16 +126,16 @@ function go(step: number) {
 .nge-arv-dot { width: 9px; height: 9px; border-radius: 50%; }
 .nge-arv-fly--red .nge-arv-dot { background: #e06060; }
 .nge-arv-fly--blue .nge-arv-dot { background: #5aa0ff; }
-.nge-arv-mark, .nge-arv-v, .nge-arv-btn { font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.05); color: #dce6f5; cursor: pointer; }
+.nge-arv-mark, .nge-arv-v, .nge-arv-btn { font: inherit; font-size: 14px; padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.05); color: #dce6f5; cursor: pointer; }
 .nge-arv-mark:disabled, .nge-arv-v:disabled, .nge-arv-btn:disabled { opacity: 0.5; cursor: default; }
 .nge-arv-mark--good, .nge-arv-v--good { border-color: #7CFFB2; color: #7CFFB2; background: rgba(124, 255, 178, 0.12); }
 .nge-arv-mark--off, .nge-arv-v--redo { border-color: #f5d142; color: #f5d142; background: rgba(245, 209, 66, 0.12); }
-.nge-arv-link { font: inherit; font-size: 12px; background: none; border: none; color: #9fd3ff; cursor: pointer; padding: 0; }
+.nge-arv-link { font: inherit; font-size: 14px; background: none; border: none; color: #9fd3ff; cursor: pointer; padding: 0; }
 .nge-arv-verdict { display: flex; gap: 6px; margin: 10px 0 6px; }
-.nge-arv-v { flex: 1; font-size: 13px; padding: 5px 9px; }
+.nge-arv-v { flex: 1; font-size: 15px; padding: 5px 9px; }
 .nge-arv-note { display: block; width: 100%; box-sizing: border-box; font: inherit; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 5px 7px; resize: vertical; }
 .nge-arv-err { color: #f5d142; margin: 6px 0 0; }
-.nge-arv-saved { color: rgba(124, 255, 178, 0.85); margin: 6px 0 0; font-size: 12px; }
+.nge-arv-saved { color: rgba(124, 255, 178, 0.85); margin: 6px 0 0; font-size: 14px; }
 .nge-arv-nav { display: flex; gap: 6px; margin-top: 10px; }
 .nge-arv-btn--list { margin-left: auto; }
 </style>

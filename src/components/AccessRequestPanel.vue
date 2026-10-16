@@ -8,11 +8,14 @@
  * Logic: src/access_request.ts.
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, flyTo,
+import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, flyTo,
   type AccessKind, type AccessItem } from '../access_request';
 import { openStartLink } from '../util/start_link';
+import { useDragBox } from '../util/drag_box';
 
 const emit = defineEmits({ hide: null });
+const boxEl = ref<HTMLElement | null>(null);
+const { dragging, posStyle, startDrag } = useDragBox('nge_access_panel_pos', boxEl);
 
 const loading = ref(true);
 const busy = ref('');
@@ -92,6 +95,13 @@ async function send() {
   finally { busy.value = ''; }
 }
 
+async function takeBack() {
+  busy.value = 'back';
+  try { await withdrawAccess(); say('Taken back. Change any example, then send again.'); }
+  catch (e: any) { say(e?.message || 'That did not work.', true); }
+  finally { busy.value = ''; }
+}
+
 function open(it: AccessItem) {
   if (!openStartLink(it.link)) window.open(it.link, '_blank', 'noopener');
 }
@@ -99,7 +109,7 @@ function open(it: AccessItem) {
 function summary(it: AccessItem): string {
   if (it.kind === 'cut') {
     const r = it.points.red?.length ?? 0, b = it.points.blue?.length ?? 0;
-    return `${r} red, ${b} blue ${r + b === 1 ? 'point' : 'points'}`;
+    return `${r} red, ${b} blue`;
   }
   return `${it.segments.length} pieces shown`;
 }
@@ -119,8 +129,8 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 </script>
 
 <template>
-  <div class="nge-acc" role="dialog" aria-label="Ask for retina access">
-    <div class="nge-acc-head">
+  <div ref="boxEl" class="nge-acc" :class="{ 'nge-acc--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Ask for retina access">
+    <div class="nge-acc-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-acc-title">Retina access</span>
       <button class="nge-acc-close" aria-label="Close" @click="emit('hide')">×</button>
     </div>
@@ -135,10 +145,11 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       <div v-else-if="status === 'submitted'" class="nge-acc-state">
         Sent{{ request?.submitted_at ? ` on ${when(request.submitted_at)}` : '' }}. A reviewer is looking at your examples.
         You will hear back in your notifications.
+        <button class="nge-acc-back" :disabled="!!busy" @click="takeBack">{{ busy === 'back' ? 'Taking back…' : 'Take them back to change' }}</button>
       </div>
       <div v-else-if="status === 'redo'" class="nge-acc-state nge-acc-state--redo">
         <b>A reviewer would like {{ redoLeft === 1 ? 'one example' : `${redoLeft} examples` }} again.</b>
-        Their notes are on each one below. Redo those, then send again.
+        Their notes are on each one below. Redo those (you can change any of the others too), then send again.
         <p v-if="request?.reviewer_note" class="nge-acc-quote">{{ request.reviewer_note }}</p>
       </div>
       <div v-else-if="status === 'invited'" class="nge-acc-state nge-acc-state--yes">
@@ -164,7 +175,9 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
               <span v-if="row.it.verdict" class="nge-acc-verdict">{{ row.it.verdict === 'good' ? 'good' : 'redo' }}</span>
               <button v-if="hasMarks(row.it)" class="nge-acc-more" :aria-expanded="openKey === kind + row.s"
                       @click="openKey = openKey === kind + row.s ? '' : kind + row.s">{{ openKey === kind + row.s ? 'Hide notes' : 'Notes' }}</button>
-              <button v-if="status === 'draft'" class="nge-acc-x" :disabled="!!busy"
+              <button v-if="canEdit" class="nge-acc-rep" :disabled="!!busy" title="Put the view you are looking at in this slot"
+                      @click="save(kind, row.s)">{{ busy === kind + row.s ? 'Saving…' : 'Replace' }}</button>
+              <button v-if="canEdit" class="nge-acc-x" :disabled="!!busy"
                       :aria-label="`Remove ${kind} ${row.s}`" @click="remove(kind, row.s)">×</button>
             </div>
             <div v-if="row.it.note" class="nge-acc-note">Your note: {{ row.it.note }}</div>
@@ -206,18 +219,19 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 <style scoped>
 .nge-acc {
   position: fixed; right: 16px; top: 64px; z-index: 9000;
-  width: 320px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; box-sizing: border-box;
+  width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; box-sizing: border-box;
   padding: 12px 14px;
   background: rgba(6, 10, 20, 0.95);
   border: 1px solid rgba(124, 255, 178, 0.35);
   border-radius: 12px;
   box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(8px);
-  font-family: 'Inter', 'Segoe UI', sans-serif; color: #dce6f5; font-size: 13px;
+  font-family: 'Inter', 'Segoe UI', sans-serif; color: #dce6f5; font-size: 15px;
 }
-.nge-acc-head { display: flex; align-items: center; }
-.nge-acc-title { font-size: 15px; font-weight: 600; color: #7CFFB2; }
-.nge-acc-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.nge-acc-head { display: flex; align-items: center; cursor: grab; user-select: none; touch-action: none; margin: -12px -14px 0; padding: 12px 14px 4px; }
+.nge-acc--dragging .nge-acc-head { cursor: grabbing; }
+.nge-acc-title { font-size: 17px; font-weight: 600; color: #7CFFB2; }
+.nge-acc-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-acc-close:hover { color: #fff; }
 .nge-acc-how { margin: 8px 0 10px; line-height: 1.45; color: rgba(220, 230, 245, 0.78); }
 .nge-acc-how b { color: #fff; font-weight: 600; }
@@ -225,33 +239,36 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 .nge-acc-state--redo { background: rgba(245, 209, 66, 0.1); border: 1px solid rgba(245, 209, 66, 0.35); }
 .nge-acc-state--yes { background: rgba(124, 255, 178, 0.1); border: 1px solid rgba(124, 255, 178, 0.4); }
 .nge-acc-quote { margin: 6px 0 0; padding: 6px 8px; border-left: 2px solid rgba(255, 255, 255, 0.3); border-radius: 0; white-space: pre-wrap; color: #e9eef7; }
-.nge-acc-live { font-size: 12px; color: rgba(220, 230, 245, 0.6); margin-bottom: 4px; }
+.nge-acc-live { font-size: 14px; color: rgba(220, 230, 245, 0.74); margin-bottom: 4px; }
 .nge-acc-sec { display: flex; justify-content: space-between; margin-top: 10px; font-weight: 600; color: #fff; }
 .nge-acc-count { font-weight: 500; color: rgba(220, 230, 245, 0.7); }
-.nge-acc-sub { font-size: 12px; color: rgba(220, 230, 245, 0.55); margin-bottom: 4px; }
+.nge-acc-sub { font-size: 14px; color: rgba(220, 230, 245, 0.72); margin-bottom: 4px; }
 .nge-acc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .nge-acc-item { border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 4px 6px; }
 .nge-acc-item--good { border-color: rgba(124, 255, 178, 0.45); }
 .nge-acc-item--redo { border-color: rgba(245, 209, 66, 0.6); }
 .nge-acc-row { display: flex; align-items: center; gap: 6px; }
-.nge-acc-open { flex: 1; min-width: 0; text-align: left; background: none; border: none; color: #dce6f5; cursor: pointer; padding: 2px 0; font: inherit; }
+.nge-acc-open { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; background: none; border: none; color: #dce6f5; cursor: pointer; padding: 2px 0; font: inherit; }
 .nge-acc-open:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
-.nge-acc-n { display: inline-block; width: 18px; color: rgba(220, 230, 245, 0.55); }
-.nge-acc-verdict { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
+.nge-acc-n { display: inline-block; width: 22px; color: rgba(220, 230, 245, 0.72); }
+.nge-acc-verdict { font-size: 13px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
 .nge-acc-item--good .nge-acc-verdict { color: #7CFFB2; }
 .nge-acc-item--redo .nge-acc-verdict { color: #f5d142; }
-.nge-acc-more, .nge-acc-x { background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; font: inherit; font-size: 12px; padding: 0 2px; }
-.nge-acc-x { font-size: 16px; line-height: 1; }
+.nge-acc-back { display: block; margin-top: 8px; font: inherit; font-size: 14px; color: #c9ffe0; background: none; border: 1px solid rgba(124, 255, 178, 0.45); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+.nge-acc-rep { font: inherit; font-size: 13px; color: rgba(220, 230, 245, 0.75); background: none; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 0 6px; cursor: pointer; }
+.nge-acc-rep:hover { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+.nge-acc-more, .nge-acc-x { background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; font: inherit; font-size: 14px; padding: 0 2px; }
+.nge-acc-x { font-size: 19px; line-height: 1; }
 .nge-acc-more:hover, .nge-acc-x:hover { color: #fff; }
-.nge-acc-note { font-size: 12px; color: rgba(220, 230, 245, 0.6); margin: 2px 0 0 18px; }
-.nge-acc-marks { margin: 4px 0 2px 18px; display: flex; flex-wrap: wrap; gap: 4px; }
+.nge-acc-note { font-size: 14px; color: rgba(220, 230, 245, 0.74); margin: 2px 0 0 22px; }
+.nge-acc-marks { margin: 4px 0 2px 22px; display: flex; flex-wrap: wrap; gap: 4px; }
 .nge-acc-marks .nge-acc-quote { flex-basis: 100%; margin: 0 0 4px; }
-.nge-acc-pt { display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 12px; color: #dce6f5; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; padding: 1px 6px; cursor: pointer; }
+.nge-acc-pt { display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 14px; color: #dce6f5; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; padding: 1px 6px; cursor: pointer; }
 .nge-acc-pt:hover { border-color: rgba(255, 255, 255, 0.35); }
 .nge-acc-dot { width: 8px; height: 8px; border-radius: 50%; }
 .nge-acc-pt--red .nge-acc-dot { background: #e06060; }
 .nge-acc-pt--blue .nge-acc-dot { background: #5aa0ff; }
-.nge-acc-ptmark { font-size: 11px; }
+.nge-acc-ptmark { font-size: 13px; }
 .nge-acc-ptmark--good { color: #7CFFB2; }
 .nge-acc-ptmark--off { color: #f5d142; }
 .nge-acc-save, .nge-acc-send {
@@ -262,10 +279,10 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 .nge-acc-send { margin-top: 10px; border-style: solid; background: rgba(124, 255, 178, 0.18); color: #fff; font-weight: 600; }
 .nge-acc-send:hover { background: rgba(124, 255, 178, 0.28); }
 .nge-acc-save:disabled, .nge-acc-send:disabled { opacity: 0.6; cursor: wait; }
-.nge-acc-label { display: block; margin-top: 10px; font-size: 12px; color: rgba(220, 230, 245, 0.7); }
-.nge-acc-input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; font-size: 13px; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 5px 7px; resize: vertical; }
+.nge-acc-label { display: block; margin-top: 10px; font-size: 14px; color: rgba(220, 230, 245, 0.7); }
+.nge-acc-input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; font-size: 15px; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 5px 7px; resize: vertical; }
 .nge-acc-msg { margin: 8px 0 0; color: #7CFFB2; }
 .nge-acc-msg--bad { color: #f5d142; }
-.nge-acc-help { margin: 10px 0 0; font-size: 12px; color: rgba(220, 230, 245, 0.55); }
+.nge-acc-help { margin: 10px 0 0; font-size: 14px; color: rgba(220, 230, 245, 0.72); }
 .nge-acc-help a { color: #9fd3ff; }
 </style>

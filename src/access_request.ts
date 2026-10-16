@@ -103,6 +103,13 @@ export async function removeExample(kind: AccessKind, slot: number): Promise<Acc
   return mine;
 }
 
+/** Take sent examples back to change them; the next send is a new try. */
+export async function withdrawAccess(): Promise<AccessMine> {
+  const mine = await secureWrite<AccessMine>('access.withdraw');
+  myAccess.value = mine;
+  return mine;
+}
+
 export async function submitAccess(affiliation: string): Promise<AccessMine> {
   const mine = await secureWrite<AccessMine>('access.submit', { affiliation });
   myAccess.value = mine;

@@ -11,6 +11,10 @@
 //   access.save     the player: one example into a slot (cut 1 to 7, merge
 //                   1 to 3), while collecting or redoing.
 //   access.remove   the player: empty a slot.
+//   access.withdraw the player: take sent examples back to change them,
+//                   before or during the review. Any example can be changed
+//                   while collecting or redoing, as often as they like
+//                   (Ames 2026-10-16: players modify and try again).
 //   access.submit   the player: all ten in, send for review. Celia and
 //                   Marissa get a bell, and Slack gets a post.
 //   access.list     admins: the requests, newest first, with their examples.
@@ -117,24 +121,17 @@ async function editable(sb, me, who) {
     request = (await sb('access_requests', {method: 'POST', body: JSON.stringify({user_id: me.id,
       email: String(who.email || '').toLowerCase(), player_name: nameOf(me)})}))[0];
   }
-  if (request.status === 'submitted') fail(409, 'Your examples are with a reviewer. You will hear back in your notifications.');
+  if (request.status === 'submitted') fail(409, 'Your examples are with a reviewer. To change them, take them back first.');
   if (request.status === 'invited') fail(409, 'You were already invited to the retina.');
   return request;
 }
 
-/** In a redo only the examples marked redo (or still empty) can change. */
-function mayChange(request, item) {
-  if (request.status !== 'redo' || !item) return true;
-  return item.verdict === 'redo' || item.verdict == null;
-}
 
 async function save(args, {sb, me, who}) {
   needMe(me);
   const {kind, slot} = cleanSlot(args);
   const ex = cleanExample(kind, args);
   const request = await editable(sb, me, who);
-  const item = (await sb(`access_request_items?request_id=eq.${request.id}&kind=eq.${kind}&slot=eq.${slot}&select=*&limit=1`))[0];
-  if (!mayChange(request, item)) fail(409, 'The reviewer marked this one good. Redo the ones marked redo.');
   const row = {request_id: request.id, kind, slot, ...ex, saved_at: new Date().toISOString(),
     // A new example: the old marks were about the old one.
     verdict: null, point_marks: {}, feedback: null};
@@ -151,8 +148,20 @@ async function remove(args, {sb, me, who}) {
   const {kind, slot} = cleanSlot(args);
   const request = await editable(sb, me, who);
   const item = (await sb(`access_request_items?request_id=eq.${request.id}&kind=eq.${kind}&slot=eq.${slot}&select=*&limit=1`))[0];
-  if (item && !mayChange(request, item)) fail(409, 'The reviewer marked this one good, so it stays.');
   if (item) await sb(`access_request_items?id=eq.${item.id}`, {method: 'DELETE'});
+  return mine({}, {sb, me});
+}
+
+/** Take sent examples back to change them. Back to the redo notes if there
+ *  were some, else back to collecting. The next send counts as a new try. */
+async function withdraw(args, {sb, me}) {
+  needMe(me);
+  const request = await requestOf(sb, me.id);
+  if (!request || request.status !== 'submitted') fail(409, 'There is nothing waiting for a review to take back.');
+  const back = request.reviewed_at ? 'redo' : 'draft';
+  const done = await sb(`access_requests?id=eq.${request.id}&status=eq.submitted`, {method: 'PATCH',
+    body: JSON.stringify({status: back, updated_at: new Date().toISOString()})});
+  if (!done.length) fail(409, 'A reviewer answered just now. Look at their notes first.');
   return mine({}, {sb, me});
 }
 
@@ -270,6 +279,7 @@ async function handle(action, args, io) {
   if (action === 'access.save') return save(a, io);
   if (action === 'access.remove') return remove(a, io);
   if (action === 'access.submit') return submit(a, io);
+  if (action === 'access.withdraw') return withdraw(a, io);
   if (action === 'access.list') return list(a, io);
   if (action === 'access.review') return review(a, io);
   if (action === 'access.decide') return decide(a, io);

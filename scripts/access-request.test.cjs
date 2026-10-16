@@ -160,6 +160,16 @@ const RETINA_LAYERS = [
     await page.waitForSelector('.nge-acc', { timeout: 8000 });
     await page.waitForTimeout(1200);
     ok(/Seven cuts/.test(await panelText()), 'the panel explains the ten examples');
+    // Drag it by its header: it moves and remembers where it was put.
+    const before = await page.locator('.nge-acc').boundingBox();
+    await page.mouse.move(before.x + 120, before.y + 18);
+    await page.mouse.down();
+    await page.mouse.move(before.x - 300, before.y + 140, { steps: 8 });
+    await page.mouse.up();
+    const after = await page.locator('.nge-acc').boundingBox();
+    ok(Math.round(after.x) === Math.round(before.x - 420) && Math.round(after.y) === Math.round(before.y + 122), `the box moves when dragged (${Math.round(before.x)},${Math.round(before.y)} to ${Math.round(after.x)},${Math.round(after.y)})`);
+    ok(!!(await page.evaluate(() => localStorage.getItem('nge_access_panel_pos'))), 'the box remembers where it was put');
+    ok(await page.evaluate(() => getComputedStyle(document.querySelector('.nge-acc')).fontSize) === '15px', 'the panel text is 15px');
     await shotOf('.nge-acc', '02-panel-empty');
 
     // 2. A cut with no blue point is refused with a reason.
@@ -200,6 +210,20 @@ const RETINA_LAYERS = [
     ok(db.access_requests[0].status === 'submitted', 'the request is submitted');
     ok(told.some(t => t.to === 'reviewers') && told.some(t => t.to === 'slack' && t.affiliation === 'Seung Lab'), 'reviewers get a bell and Slack gets a post');
     await shotOf('.nge-acc', '04-panel-sent');
+    // Second thoughts: take them back, replace cut 3, send again.
+    await page.click('.nge-acc-back');
+    await page.waitForSelector('.nge-acc-rep', { timeout: 8000 });
+    ok(db.access_requests[0].status === 'draft', 'taken back to change');
+    await setView([[39000, 16600, 1970]], [[39100, 16700, 1975]], ['720575940561794892']);
+    await page.waitForTimeout(1100);
+    await page.click('.nge-acc-item >> nth=2 >> .nge-acc-rep');
+    await page.waitForTimeout(800);
+    const c3 = db.access_request_items.find(i => i.kind === 'cut' && i.slot === 3);
+    ok(c3.points.red.length === 1 && c3.points.red[0].position[0] === 39000, 'cut 3 replaced with the new view');
+    await shotOf('.nge-acc', '04b-panel-taken-back');
+    await page.click('.nge-acc-send');
+    await page.waitForFunction(() => /A reviewer is looking/.test((document.querySelector('.nge-acc') || {}).innerText || ''), null, { timeout: 8000 });
+    ok(db.access_requests[0].tries === 2, 'sent again as try 2');
     await page.click('.nge-acc-close');
 
     // 4. The reviewer: Admin Hub > Access requests.
@@ -261,7 +285,7 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(800);
     await page.click('.nge-acc-send');
     await page.waitForFunction(() => /A reviewer is looking/.test((document.querySelector('.nge-acc') || {}).innerText || ''), null, { timeout: 8000 });
-    ok(db.access_requests[0].tries === 2, 'sent again as try 2');
+    ok(db.access_requests[0].tries === 3, 'sent again after the redo as try 3');
     await page.click('.nge-acc-close');
 
     // 6. The reviewer invites.

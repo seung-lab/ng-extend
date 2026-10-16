@@ -34,7 +34,7 @@ export type SecureAction =
   | 'reply.ask' | 'reply.send' | 'reply.console'
   | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon'
-  | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.list' | 'access.review' | 'access.decide'
+  | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */

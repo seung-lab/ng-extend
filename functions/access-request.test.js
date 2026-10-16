@@ -123,8 +123,10 @@ test('reviews stay hidden until sent; a redo reopens only the examples marked re
   assert.deepEqual(back.point_marks, {'red:0': 'good', 'blue:0': 'off'});
   assert.equal(seen.request.reviewer_note, 'Close! One to fix.');
 
-  await rejects(p('access.save', cut(1)), 409, /marked this one good/);
   await rejects(p('access.submit', {}), 400, /marked redo/);
+  // Any example can change in a redo, even one marked good: a new example starts unmarked.
+  await p('access.save', {...cut(1), note: 'A better one'});
+  assert.equal(state.access_request_items.find(i => i.kind === 'cut' && i.slot === 1).verdict, null);
   await p('access.save', cut(2));
   const again = await p('access.submit', {});
   assert.equal(again.request.tries, 2);
@@ -145,6 +147,30 @@ test('an invite adds the player to the pilot list and tells them', async () => {
   assert.match(state.players[0].title, /invited/);
   await rejects(rev('access.decide', {requestId: id, outcome: 'invited'}), 409, /already invited/);
   await rejects(p('access.save', cut(1)), 409, /already invited/);
+});
+
+test('a player takes sent examples back, changes them, and sends again', async () => {
+  const {state, as} = world();
+  const p = as(sam), rev = as(celia, true);
+  await rejects(p('access.withdraw', {}), 409, /nothing waiting/);
+  await fillAll(p);
+  await p('access.submit', {});
+  await rejects(p('access.save', cut(3)), 409, /take them back/);
+  const back = await p('access.withdraw', {});
+  assert.equal(back.request.status, 'draft');
+  await p('access.remove', {kind: 'merge', slot: 3});
+  await rejects(p('access.submit', {}), 400, /2 of 3 merges/);
+  await p('access.save', merge(3));
+  assert.equal((await p('access.submit', {})).request.tries, 2);
+  // After a review, taking it back returns to the notes.
+  const c4 = state.access_request_items.find(i => i.kind === 'cut' && i.slot === 4);
+  await rev('access.review', {itemId: c4.id, verdict: 'redo', feedback: 'Too close to the soma.'});
+  await rev('access.decide', {requestId: state.access_requests[0].id, outcome: 'redo'});
+  await p('access.save', cut(4));
+  await p('access.submit', {});
+  const again = await p('access.withdraw', {});
+  assert.equal(again.request.status, 'redo');
+  assert.equal(again.request.reviewer_note, null);
 });
 
 test('reviewer actions are admins only, and a missing table says what to run', async () => {
