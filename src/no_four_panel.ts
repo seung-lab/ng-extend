@@ -43,17 +43,24 @@ export function installNoFourPanel(viewer: any) {
   changed.add(check);
   check();
 
-  // The corner button that asks for 4 panel has nowhere to go now.
+  // Touch screens: a tablet gets the desktop layout but has no Space key, so
+  // the word buttons below are for any touch screen, not only a phone
+  // (Nseraf, report 157: on a tablet "3D only" left no button to go back).
+  const coarse = window.matchMedia('(pointer: coarse)');
+  const paintCoarse = () => document.body.classList.toggle('nge-coarse', coarse.matches);
+  coarse.addEventListener?.('change', paintCoarse);
+  paintCoarse();
+
+  // The corner button that asks for 4 panel has nowhere to go with a mouse
+  // (Space does it); on a touch screen it reads "2D + 3D".
   const style = document.createElement('style');
-  style.textContent = `body:not(.nge-mobile) .neuroglancer-data-panel-layout-controls button[title="Switch to 4panel layout."] { display: none; }
-${PHONE_CSS}`;
+  style.textContent = TOUCH_CSS;
   document.head.appendChild(style);
 
-  // Phone: the 4 panel button opens split screen straight away, without a
-  // trip through 4 panel. Capture phase, so neuroglancer's own click on the
+  // The 4 panel button opens split screen straight away, without a trip
+  // through 4 panel. Capture phase, so neuroglancer's own click on the
   // button never runs.
   document.addEventListener('click', e => {
-    if (!document.body.classList.contains('nge-mobile')) return;
     const b = (e.target as HTMLElement | null)?.closest?.('.neuroglancer-data-panel-layout-controls button');
     if (!b || b.getAttribute('title') !== FOUR) return;
     e.stopPropagation();
@@ -63,21 +70,32 @@ ${PHONE_CSS}`;
 }
 
 const FOUR = 'Switch to 4panel layout.';
+const ONLY3D = 'Switch to 3d layout.';
+const ONLY2D = 'Switch to xy layout.';
+const C = '.neuroglancer-data-panel-layout-controls button';
+/** Selectors for a phone (or a narrow window) and for any touch screen. */
+const touch = (rest: string) => `body.nge-mobile${rest}, body.nge-coarse${rest}`;
 
-// Phone corner buttons as words: the 4 panel button reads "2D + 3D", the
-// "3d" button reads "3D only", and the single 2D view button is not shown
-// (a phone is 3D only or split, nothing else).
-const PHONE_CSS = `
-body.nge-mobile .neuroglancer-data-panel-layout-controls button[title="${FOUR}"],
-body.nge-mobile .neuroglancer-data-panel-layout-controls button[title="Switch to 3d layout."] {
+// Corner buttons as words on a touch screen: the 4 panel button reads
+// "2D + 3D" (split screen), "3d" reads "3D only", "xy" reads "2D only". In
+// split screen "2D + 3D" is not shown. A phone is 3D only or split, so it
+// has no "2D only".
+const TOUCH_CSS = `
+body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"] { display: none; }
+${touch(` ${C}[title="${FOUR}"]`)},
+${touch(` ${C}[title="${ONLY3D}"]`)},
+${touch(` ${C}[title="${ONLY2D}"]`)} {
   width: auto !important; height: 34px !important; padding: 0 12px; border-radius: 17px;
   background: rgba(8, 14, 28, 0.82); border: 1px solid rgba(79, 207, 255, 0.55); color: #dff4ff;
   font: 600 13px/1 'Inter', 'Roboto', sans-serif; white-space: nowrap;
 }
-body.nge-mobile .neuroglancer-data-panel-layout-controls button[title="${FOUR}"] > div,
-body.nge-mobile .neuroglancer-data-panel-layout-controls button[title="Switch to 3d layout."] > div { display: none; }
-body.nge-mobile .neuroglancer-data-panel-layout-controls button[title="${FOUR}"]::after { content: '2D + 3D'; }
-body.nge-mobile .neuroglancer-data-panel-layout-controls button[title="Switch to 3d layout."]::after { content: '3D only'; }
-body.nge-mobile[data-nge-layout$="-3d"] .neuroglancer-data-panel-layout-controls button[title="${FOUR}"],
-body.nge-mobile .neuroglancer-data-panel-layout-controls button:not([title="${FOUR}"]):not([title="Switch to 3d layout."]) { display: none !important; }
+${touch(` ${C}[title="${FOUR}"] > div`)},
+${touch(` ${C}[title="${ONLY3D}"] > div`)},
+${touch(` ${C}[title="${ONLY2D}"] > div`)} { display: none; }
+${touch(` ${C}[title="${FOUR}"]::after`)} { content: '2D + 3D'; }
+${touch(` ${C}[title="${ONLY3D}"]::after`)} { content: '3D only'; }
+${touch(` ${C}[title="${ONLY2D}"]::after`)} { content: '2D only'; }
+${touch(`[data-nge-layout$="-3d"] ${C}[title="${FOUR}"]`)},
+${touch(` ${C}:not([title="${FOUR}"]):not([title="${ONLY3D}"]):not([title="${ONLY2D}"])`)},
+body.nge-mobile ${C}[title="${ONLY2D}"] { display: none !important; }
 `;

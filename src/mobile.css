@@ -479,6 +479,11 @@ body.nge-mobile .nge-cl-panel {
 .nge-seg-list-keep.nge-seg-touch-select { display: none; }
 @media (pointer: coarse) {
   .nge-seg-list-keep.nge-seg-touch-select { display: inline-flex; align-items: center; }
+  /* With Select in it the In view heading did not fit a tablet's panel and
+     its count was crushed (it read "IN VIEW (", report 157 picture): the
+     buttons go to a second line instead. */
+  .nge-seg-list-heading--inview { flex-wrap: wrap; row-gap: 4px; }
+  .nge-seg-list-heading--inview .neuroglancer-segment-list-status-message { flex: 1 0 auto; }
   .nge-seg-list-keep.nge-seg-touch-select.nge-on {
     background: rgba(124, 255, 178, 0.18); border-color: #7cffb2; color: #eafff3;
   }
