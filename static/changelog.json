@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-16T20:57:51Z",
+      "title": "Open a cell from chat in a new tab",
+      "digest": "minor",
+      "items": [
+        "A cell ID in chat is now a link: right click it and open it in a new tab, or middle click or Ctrl click it, to look at the cell without leaving what you are doing. A plain click still jumps to it here.",
+        "If you minimize the chat, it stays minimized after you reload Pyr."
+      ]
+    },
+    {
       "at": "2026-10-16T17:48:50Z",
       "title": "Claimed cells stay the cell you claimed",
       "items": [

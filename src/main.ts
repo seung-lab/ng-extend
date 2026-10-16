@@ -8,6 +8,7 @@ import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
+import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
@@ -400,6 +401,8 @@ function setupViewer() {
   startCloseGuard();
   // Saves that waited for CAVE while it was down go out once it is back.
   startCaveOutbox();
+  // A ?cell= address (a cell ID opened from chat in a new tab) opens that cell.
+  void startCellLinks();
   // Viewer settings a player chose (prefetching, chunk requests, memory) stay
   // put across the views the game opens.
   startViewerPerf(viewer);
