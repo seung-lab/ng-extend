@@ -7,7 +7,7 @@
  * group (Eyewire_2_Edit) is still given by hand, and the tab says so.
  */
 import { ref, computed, onMounted } from 'vue';
-import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing,
+import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing, resetAccess,
   type AccessRequest, type AccessItem, type AccessFilter } from '../access_request';
 
 const filter = ref<AccessFilter>('open');
@@ -69,6 +69,15 @@ async function decide(r: AccessRequest, outcome: 'redo' | 'invited') {
       ? `Invited, and added to the pilot testers. Now add ${r.email} to Eyewire_2_Edit in CAVE, by hand for now.`
       : `Sent. ${r.player_name} will redo ${out.redos === 1 ? 'one example' : `${out.redos} examples`}.`;
   } catch (e: any) { error.value = e?.message || 'That was not sent.'; }
+  finally { busy.value = ''; }
+}
+// Delete a request, for a test or a player who wants a clean slate.
+const askingDelete = ref<number | null>(null);
+async function remove(r: AccessRequest) {
+  askingDelete.value = null;
+  busy.value = `x${r.id}`; error.value = '';
+  try { await resetAccess(r.id); requests.value = requests.value.filter(x => x.id !== r.id); }
+  catch (e: any) { error.value = e?.message || 'That request was not deleted.'; }
   finally { busy.value = ''; }
 }
 const waiting = computed(() => requests.value.filter(r => r.status === 'submitted').length);
@@ -143,6 +152,14 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
           Invited {{ when(r.reviewed_at) }}{{ r.pilot_added ? ', added to the pilot testers' : '' }}. Their CAVE group (Eyewire_2_Edit) is given by hand.
         </p>
         <p v-if="r.reviewer_note && r.status !== 'submitted'" class="nge-accr-note nge-accr-note--you">Your note: {{ r.reviewer_note }}</p>
+        <div class="nge-accr-delete">
+          <button v-if="askingDelete !== r.id" class="nge-accr-btn" :disabled="busy === `x${r.id}`" @click="askingDelete = r.id">Delete request</button>
+          <template v-else>
+            <span>Delete {{ r.player_name || r.email }}'s request and its ten examples? They can send a new one.</span>
+            <button class="nge-accr-btn nge-accr-btn--redo nge-accr-btn--on" @click="remove(r)">Delete</button>
+            <button class="nge-accr-btn" @click="askingDelete = null">Cancel</button>
+          </template>
+        </div>
       </div>
     </article>
   </section>
@@ -189,4 +206,5 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
 .nge-accr-decide textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; padding: 8px 10px; border: 1px solid #74859a; border-radius: 6px; background: #152434; color: #f1f5f9; }
 .nge-accr-decide-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 .nge-accr-done { color: #7CFFB2; }
+.nge-accr-delete { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 12px; color: #b6c4d4; }
 </style>

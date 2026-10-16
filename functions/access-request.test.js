@@ -68,6 +68,7 @@ test('a player saves ten examples, sends them, and the reviewers are told', asyn
   assert.equal(state.access_requests[0].email, 'sam@example.org');
   assert.equal(state.told.length, 1);
   assert.match(state.told[0].title, /Sam/);
+  assert.match(state.told[0].image, /nurro-inspector\.png$/);
   assert.deepEqual(state.slack[0], {name: 'Sam', email: 'sam@example.org', tries: 1, affiliation: 'Seung Lab'});
   // While it is with a reviewer, nothing changes and nothing is sent twice.
   await rejects(sam_('access.save', cut(1)), 409, /with a reviewer/);
@@ -151,6 +152,7 @@ test('an invite adds the player to the pilot list and tells them', async () => {
   assert.equal(done.pilot_added, true);
   assert.deepEqual(state.pilot_members.map(m => [m.email, m.enabled, m.added_by]), [['sam@example.org', true, celia.id]]);
   assert.match(state.players[0].title, /invited/);
+  assert.match(state.players[0].image, /nurro-celebrate\.png$/);
   await rejects(rev('access.decide', {requestId: id, outcome: 'invited'}), 409, /already invited/);
   await rejects(p('access.save', cut(1)), 409, /already invited/);
 });
@@ -177,6 +179,23 @@ test('a player takes sent examples back, changes them, and sends again', async (
   const again = await p('access.withdraw', {});
   assert.equal(again.request.status, 'redo');
   assert.equal(again.request.reviewer_note, null);
+});
+
+test('an admin starts over, for a test or for a player', async () => {
+  const {state, as} = world();
+  const p = as(sam), rev = as(celia, true);
+  await fillAll(p);
+  await p('access.submit', {});
+  await rejects(p('access.reset', {}), 403);
+  await rev('access.reset', {requestId: state.access_requests[0].id});
+  assert.equal(state.access_requests.length, 0);
+  assert.equal(state.access_request_items.length, 0);
+  assert.deepEqual(await p('access.mine', {}), {request: null, items: []});
+  // An admin's own request, without an id.
+  await rev('access.save', cut(1));
+  await rev('access.reset', {});
+  assert.equal(state.access_requests.length, 0);
+  await rejects(rev('access.reset', {}), 404);
 });
 
 test('reviewer actions are admins only, and a missing table says what to run', async () => {

@@ -20,6 +20,9 @@
 //   access.list     admins: the requests, newest first, with their examples.
 //   access.review   admins: good or redo on one example, good or off on each
 //                   of its points, a note. Not sent until access.decide.
+//   access.reset    admins: delete a request and its examples, so the
+//                   player (or the admin, testing) starts over. Ames
+//                   2026-10-16: "I need to be able to send a test demo".
 //   access.decide   admins: "redo" (the player redoes the examples marked
 //                   redo) or "invited" (added to pilot_members). The player
 //                   gets a bell either way. The CAVE group is still given by
@@ -28,6 +31,10 @@
 // No pilot gate: asking for access is how a player joins.
 
 const KINDS = {cut: 7, merge: 3};
+// The pictures on the notifications (Ames 2026-10-16), from static/nurro (its
+// README is the catalog), set here and never taken from the browser.
+const NURRO = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/';
+const IMAGE = {request: NURRO + 'nurro-inspector.png', notes: NURRO + 'nurro-experiment-recap.png', invited: NURRO + 'nurro-celebrate.png'};
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
 const POINTS_MAX = 200, SEGMENTS_MAX = 50;
 const ID = /^\d{1,20}$/;
@@ -186,7 +193,7 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
   const name = nameOf(me);
   const again = tries > 1 ? ` (try ${tries})` : '';
   if (notifyReviewers) {
-    try { await notifyReviewers({title: `🔬 Retina access request from ${name}${again}`,
+    try { await notifyReviewers({image: IMAGE.request, title: `🔬 Retina access request from ${name}${again}`,
       body: `${name} sent 7 cut and 3 merge examples for retina access${again}. Click here to review them in the Admin Hub, Access requests.`}); }
     catch (e) { console.warn('[access] reviewers were not told:', e && e.message); }
   }
@@ -241,6 +248,23 @@ async function review(args, {sb, isAdmin}) {
   return (await sb(`access_request_items?id=eq.${id}`, {method: 'PATCH', body: JSON.stringify(patch)}))[0];
 }
 
+async function reset(args, {sb, me, isAdmin}) {
+  needAdmin(isAdmin);
+  let request;
+  if (args.requestId != null) {
+    const id = Number(args.requestId);
+    if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Unknown request.');
+    request = (await sb(`access_requests?id=eq.${id}&select=id,user_id&limit=1`))[0];
+  } else {
+    needMe(me);
+    request = await requestOf(sb, me.id);
+  }
+  if (!request) fail(404, 'There is no request to delete.');
+  await sb(`access_request_items?request_id=eq.${request.id}`, {method: 'DELETE'});
+  await sb(`access_requests?id=eq.${request.id}`, {method: 'DELETE'});
+  return {deleted: request.id};
+}
+
 async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
   needAdmin(isAdmin);
   const id = Number(args.requestId);
@@ -270,7 +294,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
     const body = outcome === 'invited'
       ? `Your examples look right. Welcome to the EyeWire II retina!${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out and in again.`
       : `A reviewer looked at your ten examples and would like ${redos === 1 ? 'one' : redos} again.${note ? `\n\n${note}` : ''}\n\nClick here, or open the menu and Ask for retina access, to see the notes on each one.`;
-    try { await notifyPlayer({userId: request.user_id, title, body}); }
+    try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
   }
   return {...done[0], redos, pilot_added: pilotAdded};
@@ -286,7 +310,8 @@ async function handle(action, args, io) {
   if (action === 'access.list') return list(a, io);
   if (action === 'access.review') return review(a, io);
   if (action === 'access.decide') return decide(a, io);
+  if (action === 'access.reset') return reset(a, io);
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanExample, KINDS};
+module.exports = {handle, cleanExample, KINDS, IMAGE};

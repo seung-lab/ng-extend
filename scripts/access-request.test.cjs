@@ -384,6 +384,32 @@ const RETINA_LAYERS = [
     await clickNote('🔬 Notes on your retina access request');
     await page.waitForSelector('.nge-acc', { timeout: 8000 }).catch(() => {});
     ok(await page.evaluate(() => !!document.querySelector('.nge-acc')), "the player's notification opens their panel");
+
+    // 8. Admins start over: Start over in their own panel, Delete in the Admin Hub.
+    await page.click('.nge-acc-close').catch(() => {});
+    actingAs = 'reviewer';
+    await setIdentity(true);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:access-open')));
+    await page.waitForSelector('.nge-acc', { timeout: 8000 });
+    await page.waitForTimeout(800);
+    await setView([[40000, 16600, 1970]], [[40100, 16700, 1975]], ['720575940561794892']);
+    await page.waitForTimeout(1100);
+    await page.click('.nge-acc-save >> nth=0');
+    await page.waitForSelector('.nge-acc-admin .nge-acc-rep', { timeout: 8000 });
+    await page.click('.nge-acc-admin .nge-acc-rep');
+    await page.click('.nge-acc-admin .nge-acc-confirm-yes');
+    await page.waitForTimeout(800);
+    ok(!db.access_requests.some(r => r.user_id === REVIEWER.id) && /Started over/.test(await panelText()), 'an admin starts their own request over');
+    await page.click('.nge-acc-close');
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } })));
+    await page.waitForSelector('.nge-accr-refresh', { timeout: 8000 });
+    await page.click('.nge-accr-filter >> text=All');
+    await page.waitForSelector('.nge-accr-card', { timeout: 8000 });
+    if (!(await page.$('.nge-accr-delete'))) await page.click('.nge-accr-head');
+    await page.click('.nge-accr-delete >> text=Delete request');
+    await page.click('.nge-accr-delete >> text=/^Delete$/');
+    await page.waitForTimeout(800);
+    ok(db.access_requests.length === 0 && db.access_request_items.length === 0, "an admin deletes a player's request in the Admin Hub");
   } catch (e) {
     console.log('ERROR ' + (e && e.stack || e));
     console.log('panel: ' + JSON.stringify(await panelText().catch(() => '')));

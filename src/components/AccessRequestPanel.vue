@@ -8,11 +8,12 @@
  * Logic: src/access_request.ts.
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, flyTo,
+import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, resetAccess, flyTo,
   type AccessKind, type AccessItem } from '../access_request';
 import { openStartLink } from '../util/start_link';
 import { pointName } from '../access_request';
 import { useDragBox } from '../util/drag_box';
+import { useProofreadingBackendStore } from '../store';
 
 const emit = defineEmits({ hide: null });
 const boxEl = ref<HTMLElement | null>(null);
@@ -82,6 +83,17 @@ function askSave(kind: AccessKind, slot: number) {
   say('');
   confirming.value = { kind, slot, text: parts.join(' '), yes: old ? `Replace ${kind} ${slot}` : `Save all ${merges} as merge ${slot}` };
 }
+// Admins can start their own request over, to send a test again (Ames 2026-10-16).
+const backend = useProofreadingBackendStore();
+const askingReset = ref(false);
+async function startOver() {
+  askingReset.value = false;
+  busy.value = 'reset';
+  try { await resetAccess(); say('Started over. Your examples and their notes are gone.'); }
+  catch (e: any) { say(e?.message || 'That did not work.', true); }
+  finally { busy.value = ''; }
+}
+
 function confirmYes() { const c = confirming.value; confirming.value = null; if (c) void save(c.kind, c.slot); }
 
 async function save(kind: AccessKind, slot: number) {
@@ -236,6 +248,16 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </template>
 
       <p v-if="message" class="nge-acc-msg" :class="{ 'nge-acc-msg--bad': messageBad }" role="status">{{ message }}</p>
+      <div v-if="backend.isAdmin && request" class="nge-acc-admin">
+        <button v-if="!askingReset" class="nge-acc-rep" :disabled="!!busy" @click="askingReset = true">Start over (admins, for testing)</button>
+        <div v-else class="nge-acc-confirm" role="alertdialog" aria-label="Start over">
+          <p>Delete this request, its ten examples and any notes on them? You can then send a new one.</p>
+          <div class="nge-acc-confirm-btns">
+            <button class="nge-acc-confirm-yes" @click="startOver">Delete and start over</button>
+            <button class="nge-acc-confirm-no" @click="askingReset = false">Cancel</button>
+          </div>
+        </div>
+      </div>
       <p class="nge-acc-help">
         Taking more than one try is normal. You are never locked out.
         <a href="https://connectome.quest/blog/post.html?p=getting-access-to-the-retina" target="_blank" rel="noopener">How access works ↗</a>
@@ -311,6 +333,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 .nge-acc-label { display: block; margin-top: 10px; font-size: 14px; color: rgba(220, 230, 245, 0.7); }
 .nge-acc-input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; font-size: 15px; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 5px 7px; resize: vertical; }
 .nge-acc-msg { margin: 8px 0 0; color: #7CFFB2; }
+.nge-acc-admin { margin-top: 10px; }
 .nge-acc-confirm { margin-top: 4px; padding: 8px 10px; border-radius: 8px; background: rgba(245, 209, 66, 0.1); border: 1px solid rgba(245, 209, 66, 0.5); line-height: 1.45; }
 .nge-acc-confirm p { margin: 0 0 8px; }
 .nge-acc-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }

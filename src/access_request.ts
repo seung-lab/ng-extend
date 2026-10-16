@@ -190,6 +190,13 @@ export async function decideAccess(requestId: number, outcome: 'redo' | 'invited
   return secureWrite<AccessRequest & { redos: number; pilot_added: boolean }>('access.decide', { requestId, outcome, note });
 }
 
+/** Admins: delete a request and its examples (no id: your own), so it can
+ *  start over. For testing, or a player who wants a clean slate. */
+export async function resetAccess(requestId?: number): Promise<void> {
+  await secureWrite('access.reset', requestId != null ? { requestId } : {});
+  if (requestId == null) myAccess.value = { request: null, items: [] };
+}
+
 /** The request a reviewer is looking at in the view, and which example. */
 export const reviewing = ref<{ request: AccessRequest; index: number } | null>(null);
 

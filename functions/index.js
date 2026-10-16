@@ -2106,7 +2106,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-4";
+const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-5";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2150,18 +2150,20 @@ exports.ewAccessRequest = onRequest(
     const sb = ewSb(ewServiceKey.value().trim());
     try {
       const { me, isAdmin } = await pilotContext(sb, who);
-      const note = (userIds, title, body) => {
+      const note = (userIds, title, body, image) => {
         const rows = userIds.map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500), target_type: "user",
+          ...(image ? { image_url: image, thumbnail_url: image } : {}),
           target_id: id, send_at: new Date().toISOString(), created_by: (me && me.id) || null }));
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin,
-        notifyReviewers: async ({ title, body }) => {
+        notifyReviewers: async ({ title, body, image }) => {
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
-          await note(people.map((p) => p.id).filter((id) => !me || id !== me.id), title, body);
+          // A reviewer testing with their own request is told too (Ames 2026-10-16).
+          await note(people.map((p) => p.id), title, body, image);
         },
-        notifyPlayer: ({ userId, title, body }) => note([userId], title, body),
+        notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
       });
       res.json({ ok: true, data });
