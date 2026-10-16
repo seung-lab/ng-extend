@@ -2,7 +2,7 @@
  * access_request.ts: retina access requests (Ames, 2026-10-16). The EyeWire II
  * Dataset Access form, in the game: 7 cut examples (an accidental merger, with
  * red and blue Multicut points where the player would cut) and 3 merge
- * examples (an accidental split, with both pieces shown). Each one is the
+ * examples (an accidental split, with merge points on the two pieces), the points placed but never submitted. Each one is the
  * player's view, saved as a share link plus what is in it, so a reviewer can
  * open it and judge every point. Server: functions/access-request.js
  * (ewAccessRequest). Panel: components/AccessRequestPanel.vue. Review: the
@@ -17,10 +17,13 @@ export type AccessKind = 'cut' | 'merge';
 export const ACCESS_SLOTS: Record<AccessKind, number> = { cut: 7, merge: 3 };
 
 export interface AccessPoint { position: number[]; segmentId?: string; rootId?: string }
+/** The point kinds an example carries: Multicut red and blue for a cut, the
+ *  merge tool's points for a merge (two per merge, the ends in order). */
+export type AccessColor = 'red' | 'blue' | 'merge';
 export interface AccessItem {
   id?: number; request_id?: number;
   kind: AccessKind; slot: number; link: string; dataset: string | null; note: string | null;
-  points: { red?: AccessPoint[]; blue?: AccessPoint[] }; segments: string[]; position: number[] | null;
+  points: { red?: AccessPoint[]; blue?: AccessPoint[]; merge?: AccessPoint[] }; segments: string[]; position: number[] | null;
   saved_at?: string; verdict?: 'good' | 'redo' | null; point_marks?: Record<string, 'good' | 'off'>; feedback?: string | null;
 }
 export interface AccessRequest {
@@ -40,13 +43,14 @@ export async function loadMyAccess(): Promise<AccessMine> {
   return mine;
 }
 
-/** What is in the view right now: the Multicut points and the pieces shown. */
-export function viewContents(): { red: AccessPoint[]; blue: AccessPoint[]; segments: string[] } {
-  const out = { red: [] as AccessPoint[], blue: [] as AccessPoint[], segments: [] as string[] };
+/** What is in the view right now: Multicut points, merge points, pieces shown. */
+export function viewContents(): { red: AccessPoint[]; blue: AccessPoint[]; merge: AccessPoint[]; segments: string[] } {
+  const out = { red: [] as AccessPoint[], blue: [] as AccessPoint[], merge: [] as AccessPoint[], segments: [] as string[] };
   try {
     const ml = currentSegLayer();
     const layer = ml?.layer;
-    const multicut = layer?.graphConnection?.value?.state?.multicutState;
+    const state = layer?.graphConnection?.value?.state;
+    const multicut = state?.multicutState;
     const toPoint = (s: any): AccessPoint => ({
       position: Array.from(s?.position ?? []).map(Number),
       ...(s?.segmentId != null ? { segmentId: String(s.segmentId) } : {}),
@@ -56,6 +60,16 @@ export function viewContents(): { red: AccessPoint[]; blue: AccessPoint[]; segme
     if (multicut) {
       out.red = [...multicut.sinks].map(toPoint).filter(p => p.position.length === 3);
       out.blue = [...multicut.sources].map(toPoint).filter(p => p.position.length === 3);
+    }
+    // Merge points placed with the merge tool (M, Ctrl+click two pieces) and
+    // not submitted: each pending merge has both ends and no merged root.
+    const merges = state?.mergeState?.merges?.value;
+    if (Array.isArray(merges)) {
+      for (const m of merges) {
+        if (!m?.source || !m?.sink || m.mergedRoot || m.locked) continue;
+        const a = toPoint(m.sink), b = toPoint(m.source);
+        if (a.position.length === 3 && b.position.length === 3) out.merge.push(a, b);
+      }
     }
     const visible = layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
     if (visible) out.segments = [...visible].map((s: any) => String(s));
@@ -70,7 +84,9 @@ export function whyNot(kind: AccessKind, v = viewContents()): string {
   if (kind === 'cut' && (!v.red.length || !v.blue.length)) {
     return 'Place red and blue Multicut points on each side of where you would cut. Do not press Cut.';
   }
-  if (kind === 'merge' && v.segments.length < 2) return 'Show both pieces you would join. Do not merge them.';
+  if (kind === 'merge' && v.merge.length < 2) {
+    return 'Press M and Ctrl+click the two pieces you would join. Do not press Submit merge.';
+  }
   return '';
 }
 
@@ -90,7 +106,7 @@ export async function saveExample(kind: AccessKind, slot: number, note: string, 
   if (!link) throw new Error('A link to this view could not be made. Check that you are signed in, then try again.');
   const mine = await secureWrite<AccessMine>('access.save', {
     kind, slot, link, dataset: currentDatasetTag(), note,
-    points: kind === 'cut' ? { red: v.red, blue: v.blue } : {},
+    points: kind === 'cut' ? { red: v.red, blue: v.blue } : { merge: v.merge },
     segments: v.segments, position: viewPosition(), affiliation,
   });
   myAccess.value = mine;
@@ -123,6 +139,11 @@ export function flyTo(position: number[] | null | undefined) {
     if (!viewer || !position || position.length !== 3) return;
     viewer.position.value = Float32Array.from(position);
   } catch (e) { console.warn('[access] fly to failed:', e); }
+}
+
+/** A point's name in a list: "red 2", or "merge 1a" for the first end of merge 1. */
+export function pointName(color: AccessColor, i: number): string {
+  return color === 'merge' ? `merge ${Math.floor(i / 2) + 1}${i % 2 ? 'b' : 'a'}` : `${color} ${i + 1}`;
 }
 
 /** The menu's word for where the player's request stands. */

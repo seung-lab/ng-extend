@@ -38,7 +38,8 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleStr
 const sorted = (r: AccessRequest) => [...(r.items ?? [])].sort((a, b) => (a.kind === b.kind ? a.slot - b.slot : a.kind === 'cut' ? -1 : 1));
 function summary(it: AccessItem): string {
   if (it.kind === 'cut') return `${it.points.red?.length ?? 0} red, ${it.points.blue?.length ?? 0} blue`;
-  return `${it.segments.length} pieces shown`;
+  const n = Math.floor((it.points.merge?.length ?? 0) / 2);
+  return `${n} ${n === 1 ? 'merge' : 'merges'} placed`;
 }
 function markCount(it: AccessItem) {
   const m = Object.values(it.point_marks ?? {});
@@ -87,7 +88,7 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
       </div>
     </div>
     <p class="nge-accr-how">
-      Each player sends 7 cuts (red and blue Multicut points where they would cut) and 3 merges (both pieces shown).
+      Each player sends 7 cuts (red and blue Multicut points where they would cut) and 3 merges (merge points on the two pieces), placed but not submitted.
       Open an example in the view to judge every point, mark it good or redo, then ask for redos or invite.
     </p>
     <p v-if="error" class="nge-accr-err" role="alert">{{ error }}</p>

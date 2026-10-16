@@ -129,15 +129,16 @@ const RETINA_LAYERS = [
     if (pb) { try { pb.userId = 'test-user'; pb.userName = 'Test Player'; pb.username = 'testplayer'; pb.userEmail = 't@example.org'; pb.isAdmin = admin; } catch (e) {} }
   }, admin);
   // The view's contents: red and blue Multicut points, and the pieces shown.
-  const setView = (red, blue, segs) => page.evaluate(({ red, blue, segs }) => {
+  const setView = (red, blue, segs, merges = []) => page.evaluate(({ red, blue, segs, merges }) => {
     const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina');
     const sel = (p, i) => ({ position: Float32Array.from(p), segmentId: String(100 + i), rootId: '720575940561794892' });
-    ml.layer.graphConnection.value = { state: { multicutState: { sinks: new Set(red.map(sel)), sources: new Set(blue.map(sel)) } } };
+    ml.layer.graphConnection.value = { state: { multicutState: { sinks: new Set(red.map(sel)), sources: new Set(blue.map(sel)) },
+      mergeState: { merges: { value: merges.map(([a, b], i) => ({ id: 'm' + i, locked: false, sink: sel(a, i), source: sel(b, i + 50) })) } } } };
     const g = ml.layer.displayState.segmentationGroupState.value;
     // Neuroglancer's own 64 bit ID type, taken from an ID already shown.
     window.__U64 = window.__U64 || [...g.visibleSegments][0].constructor;
     g.visibleSegments.clear(); for (const s of segs) g.visibleSegments.add(window.__U64.parseString(s));
-  }, { red, blue, segs });
+  }, { red, blue, segs, merges });
   const ok = (cond, what) => { console.log((cond ? 'PASS ' : 'FAIL ') + what); if (!cond) process.exitCode = 1; };
 
   try {
@@ -192,9 +193,9 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(1100);
     await page.click('.nge-acc-save >> nth=0');
     await page.waitForTimeout(400);
-    ok(/Show both pieces/.test(await panelText()), 'a merge with one piece is refused');
+    ok(/Ctrl\+click the two pieces/.test(await panelText()), 'a merge without merge points is refused');
     for (let i = 1; i <= 3; i++) {
-      await setView([], [], ['720575940561794892', String(720575940561794000 + i)]);
+      await setView([], [], ['720575940561794892', String(720575940561794000 + i)], [[[38000 + i, 16600, 1970], [38050 + i, 16620, 1972]]]);
       await page.waitForTimeout(1100);
       await page.click('.nge-acc-save >> nth=0');
       await page.waitForFunction(n => document.querySelectorAll('.nge-acc-item').length >= n, 7 + i, { timeout: 8000 });
@@ -203,6 +204,8 @@ const RETINA_LAYERS = [
     const c1 = db.access_request_items.find(i => i.kind === 'cut' && i.slot === 1);
     ok(c1 && c1.points.red.length === 2 && c1.points.blue.length === 1 && /nglstate\/api\/v1\/\d+/.test(c1.link), 'cut 1 keeps its two red, one blue points and a short link');
     ok(c1 && c1.note === 'The merger starts at the soma.', 'cut 1 keeps the player note');
+    const m1 = db.access_request_items.find(i => i.kind === 'merge' && i.slot === 1);
+    ok(m1 && m1.points.merge.length === 2 && m1.points.merge[0].position[0] === 38001, 'merge 1 keeps its two merge points');
     await page.fill('.nge-acc-input >> nth=1', 'Seung Lab');
     await shotOf('.nge-acc', '03-panel-full');
     await page.click('.nge-acc-send');

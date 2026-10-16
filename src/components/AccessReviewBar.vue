@@ -9,7 +9,7 @@
  * answer from the Admin Hub (AccessRequestsTab).
  */
 import { ref, computed, watch } from 'vue';
-import { reviewing, reviewAccessItem, openExample, flyTo, backToRequests, type AccessItem } from '../access_request';
+import { reviewing, reviewAccessItem, openExample, flyTo, backToRequests, pointName, type AccessItem } from '../access_request';
 import { useDragBox } from '../util/drag_box';
 
 const boxEl = ref<HTMLElement | null>(null);
@@ -29,8 +29,8 @@ watch(item, it => { feedback.value = it?.feedback ?? ''; saved.value = ''; error
 const points = computed(() => {
   const it = item.value;
   if (!it) return [];
-  const out: { key: string; color: 'red' | 'blue'; n: number; position: number[] }[] = [];
-  for (const color of ['red', 'blue'] as const) (it.points[color] ?? []).forEach((p, i) => out.push({ key: `${color}:${i}`, color, n: i + 1, position: p.position }));
+  const out: { key: string; color: 'red' | 'blue' | 'merge'; n: string; position: number[] }[] = [];
+  for (const color of ['red', 'blue', 'merge'] as const) (it.points[color] ?? []).forEach((p, i) => out.push({ key: `${color}:${i}`, color, n: pointName(color, i), position: p.position }));
   return out;
 });
 
@@ -68,20 +68,20 @@ function go(step: number) {
       <span class="nge-arv-pos">{{ item.kind === 'cut' ? 'Cut' : 'Merge' }} {{ item.slot }} · {{ index + 1 }} of {{ items.length }}</span>
     </div>
     <p class="nge-arv-how">
-      {{ item.kind === 'cut' ? 'Two cells wrongly joined: red and blue points mark where the player would cut.' : 'One cell wrongly broken in two: both pieces should be shown.' }}
+      {{ item.kind === 'cut' ? 'Two cells wrongly joined: red and blue points mark where the player would cut.' : 'One cell wrongly broken in two: each merge joins its point a to its point b.' }}
     </p>
     <p v-if="item.note" class="nge-arv-quote">Player: {{ item.note }}</p>
 
     <div v-if="points.length" class="nge-arv-pts">
       <div v-for="p in points" :key="p.key" class="nge-arv-pt">
         <button class="nge-arv-fly" :class="`nge-arv-fly--${p.color}`" title="Fly to this point" @click="flyTo(p.position)">
-          <span class="nge-arv-dot"></span>{{ p.color }} {{ p.n }}
+          <span class="nge-arv-dot"></span>{{ p.n }}
         </button>
         <button class="nge-arv-mark" :class="{ 'nge-arv-mark--good': item.point_marks?.[p.key] === 'good' }" :disabled="busy || !canMark" @click="markPoint(p.key, 'good')">good</button>
         <button class="nge-arv-mark" :class="{ 'nge-arv-mark--off': item.point_marks?.[p.key] === 'off' }" :disabled="busy || !canMark" @click="markPoint(p.key, 'off')">off</button>
       </div>
     </div>
-    <p v-else class="nge-arv-how">{{ item.segments.length }} pieces shown: {{ item.segments.join(', ') }}</p>
+    <p v-else class="nge-arv-how">No points were saved with this example.</p>
     <button v-if="item.position" class="nge-arv-link" @click="flyTo(item.position)">Back to where the player was looking</button>
 
     <div class="nge-arv-verdict">
@@ -126,6 +126,7 @@ function go(step: number) {
 .nge-arv-dot { width: 9px; height: 9px; border-radius: 50%; }
 .nge-arv-fly--red .nge-arv-dot { background: #e06060; }
 .nge-arv-fly--blue .nge-arv-dot { background: #5aa0ff; }
+.nge-arv-fly--merge .nge-arv-dot { background: #ff7ad9; }
 .nge-arv-mark, .nge-arv-v, .nge-arv-btn { font: inherit; font-size: 14px; padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.05); color: #dce6f5; cursor: pointer; }
 .nge-arv-mark:disabled, .nge-arv-v:disabled, .nge-arv-btn:disabled { opacity: 0.5; cursor: default; }
 .nge-arv-mark--good, .nge-arv-v--good { border-color: #7CFFB2; color: #7CFFB2; background: rgba(124, 255, 178, 0.12); }

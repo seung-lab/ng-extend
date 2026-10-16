@@ -11,6 +11,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, flyTo,
   type AccessKind, type AccessItem } from '../access_request';
 import { openStartLink } from '../util/start_link';
+import { pointName } from '../access_request';
 import { useDragBox } from '../util/drag_box';
 
 const emit = defineEmits({ hide: null });
@@ -111,19 +112,21 @@ function summary(it: AccessItem): string {
     const r = it.points.red?.length ?? 0, b = it.points.blue?.length ?? 0;
     return `${r} red, ${b} blue`;
   }
-  return `${it.segments.length} pieces shown`;
+  const n = Math.floor((it.points.merge?.length ?? 0) / 2);
+  return `${n} ${n === 1 ? 'merge' : 'merges'} placed`;
 }
 function pointList(it: AccessItem) {
-  const out: { key: string; color: 'red' | 'blue'; n: number; position: number[]; mark?: 'good' | 'off' }[] = [];
-  for (const color of ['red', 'blue'] as const) {
-    (it.points[color] ?? []).forEach((p, i) => out.push({ key: `${color}:${i}`, color, n: i + 1, position: p.position, mark: it.point_marks?.[`${color}:${i}`] }));
+  const out: { key: string; color: 'red' | 'blue' | 'merge'; n: string; position: number[]; mark?: 'good' | 'off' }[] = [];
+  for (const color of ['red', 'blue', 'merge'] as const) {
+    (it.points[color] ?? []).forEach((p, i) => out.push({ key: `${color}:${i}`, color, n: pointName(color, i), position: p.position, mark: it.point_marks?.[`${color}:${i}`] }));
   }
   return out;
 }
 const hasMarks = (it: AccessItem) => !!it.feedback || Object.keys(it.point_marks ?? {}).length > 0;
 const liveLine = computed(() => {
   const v = live.value;
-  return `In view: ${v.red.length} red, ${v.blue.length} blue ${v.red.length + v.blue.length === 1 ? 'point' : 'points'}, ${v.segments.length} ${v.segments.length === 1 ? 'piece' : 'pieces'} shown`;
+  const m = Math.floor(v.merge.length / 2);
+  return `In view: ${v.red.length} red, ${v.blue.length} blue, ${m} ${m === 1 ? 'merge' : 'merges'} placed`;
 });
 const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
 </script>
@@ -139,8 +142,8 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
     <template v-else>
       <p v-if="status === 'draft'" class="nge-acc-how">
         Find ten mistakes on cells that are not tutorial cells, in the Sandbox or the retina.
-        <b>Suggest each one, do not edit it.</b> Seven cuts: place red and blue Multicut points where you would cut.
-        Three merges: show both pieces you would join. Then save the view here.
+        <b>Place the points, but do not submit the edit.</b> Seven cuts: red and blue Multicut points on each side of
+        where you would cut. Three merges: press M and Ctrl+click the two pieces you would join. Then save the view here.
       </p>
       <div v-else-if="status === 'submitted'" class="nge-acc-state">
         Sent{{ request?.submitted_at ? ` on ${when(request.submitted_at)}` : '' }}. A reviewer is looking at your examples.
@@ -164,7 +167,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
           <span>{{ kind === 'cut' ? 'Cuts' : 'Merges' }}</span>
           <span class="nge-acc-count">{{ countOf(kind) }} of {{ ACCESS_SLOTS[kind] }}</span>
         </div>
-        <div class="nge-acc-sub">{{ kind === 'cut' ? 'Two cells wrongly joined' : 'One cell wrongly broken in two' }}</div>
+        <div class="nge-acc-sub">{{ kind === 'cut' ? 'Two cells wrongly joined: Multicut points, not cut' : 'One cell wrongly broken in two: merge points, not merged' }}</div>
         <ul class="nge-acc-list">
           <li v-for="row in filled(kind)" :key="kind + row.s" class="nge-acc-item"
               :class="{ 'nge-acc-item--good': row.it.verdict === 'good', 'nge-acc-item--redo': row.it.verdict === 'redo' }">
@@ -185,7 +188,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
               <p v-if="row.it.feedback" class="nge-acc-quote">{{ row.it.feedback }}</p>
               <button v-for="p in pointList(row.it)" :key="p.key" class="nge-acc-pt" :class="`nge-acc-pt--${p.color}`"
                       title="Fly to this point" @click="flyTo(p.position)">
-                <span class="nge-acc-dot"></span>{{ p.color }} {{ p.n }}<span v-if="p.mark" class="nge-acc-ptmark" :class="`nge-acc-ptmark--${p.mark}`">{{ p.mark }}</span>
+                <span class="nge-acc-dot"></span>{{ p.n }}<span v-if="p.mark" class="nge-acc-ptmark" :class="`nge-acc-ptmark--${p.mark}`">{{ p.mark }}</span>
               </button>
             </div>
           </li>
@@ -268,6 +271,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 .nge-acc-dot { width: 8px; height: 8px; border-radius: 50%; }
 .nge-acc-pt--red .nge-acc-dot { background: #e06060; }
 .nge-acc-pt--blue .nge-acc-dot { background: #5aa0ff; }
+.nge-acc-pt--merge .nge-acc-dot { background: #ff7ad9; }
 .nge-acc-ptmark { font-size: 13px; }
 .nge-acc-ptmark--good { color: #7CFFB2; }
 .nge-acc-ptmark--off { color: #f5d142; }

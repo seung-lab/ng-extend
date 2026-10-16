@@ -48,7 +48,7 @@ function world({installed = true} = {}) {
 const rejects = (p, status, re) => assert.rejects(p, e => e.status === status && (!re || re.test(e.message)));
 const LINK = 'https://connectome.quest/play/#!middleauth+https://global.daf-apis.com/nglstate/api/v1/1';
 const cut = slot => ({kind: 'cut', slot, link: LINK, dataset: 'pinky', points: {red: [{position: [1, 2, 3], segmentId: '11', rootId: '99'}], blue: [{position: [4, 5, 6]}]}, segments: ['99']});
-const merge = slot => ({kind: 'merge', slot, link: LINK, dataset: 'pinky', points: {}, segments: ['5', '6']});
+const merge = slot => ({kind: 'merge', slot, link: LINK, dataset: 'pinky', points: {merge: [{position: [1, 1, 1]}, {position: [2, 2, 2]}]}, segments: ['5', '6']});
 
 async function fillAll(player) {
   for (let s = 1; s <= 7; s++) await player('access.save', cut(s));
@@ -78,7 +78,8 @@ test('each example is checked before it is kept', async () => {
   const {as} = world();
   const p = as(sam);
   await rejects(p('access.save', {...cut(1), points: {red: [{position: [1, 2, 3]}], blue: []}}), 400, /red and blue/);
-  await rejects(p('access.save', {...merge(1), segments: ['5']}), 400, /both pieces/);
+  await rejects(p('access.save', {...merge(1), points: {}}), 400, /merge points/);
+  await rejects(p('access.save', {...merge(1), points: {merge: [{position: [1, 1, 1]}]}}), 400, /both of its points/);
   await rejects(p('access.save', {...cut(8)}), 400, /slot/);
   await rejects(p('access.save', {...merge(4)}), 400, /slot/);
   await rejects(p('access.save', {...cut(1), link: 'javascript:alert(1)'}), 400);

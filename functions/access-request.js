@@ -72,14 +72,17 @@ function cleanExample(kind, args) {
   const dataset = typeof args.dataset === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(args.dataset) ? args.dataset : null;
   const note = cleanText(args.note, NOTE_MAX, 'Your note');
   const raw = args.points && typeof args.points === 'object' ? args.points : {};
-  const red = Array.isArray(raw.red) ? raw.red : [], blue = Array.isArray(raw.blue) ? raw.blue : [];
-  if (red.length + blue.length > POINTS_MAX) fail(400, `Use ${POINTS_MAX} Multicut points at most.`);
-  const points = {red: red.map(cleanPoint), blue: blue.map(cleanPoint)};
+  const list = k => (Array.isArray(raw[k]) ? raw[k] : []);
+  const red = list('red'), blue = list('blue'), merge = list('merge');
+  if (red.length + blue.length + merge.length > POINTS_MAX) fail(400, `Use ${POINTS_MAX} points at most.`);
+  // Merge points come in twos: the two ends of each merge, in order.
+  if (merge.length % 2) fail(400, 'A merge needs both of its points.');
+  const points = kind === 'cut' ? {red: red.map(cleanPoint), blue: blue.map(cleanPoint)} : {merge: merge.map(cleanPoint)};
   const segs = Array.isArray(args.segments) ? args.segments.map(String) : [];
   if (segs.length > SEGMENTS_MAX || !segs.every(s => ID.test(s))) fail(400, 'The pieces shown could not be read.');
   const segments = [...new Set(segs)];
   if (kind === 'cut' && (!points.red.length || !points.blue.length)) fail(400, 'Place red and blue Multicut points on each side of the cut first.');
-  if (kind === 'merge' && segments.length < 2) fail(400, 'Show both pieces you would join first.');
+  if (kind === 'merge' && !points.merge.length) fail(400, 'Place the merge points on the two pieces first, without submitting the merge.');
   const pos = args.position;
   const position = Array.isArray(pos) && pos.length === 3 && pos.every(n => typeof n === 'number' && Number.isFinite(n)) ? pos.map(n => Math.round(n)) : null;
   return {link, dataset, note, points, segments, position};
@@ -227,7 +230,7 @@ async function review(args, {sb, isAdmin}) {
     const pts = item.points || {};
     const out = {};
     for (const [key, v] of Object.entries(marks)) {
-      const m = /^(red|blue):(\d{1,2})$/.exec(key);
+      const m = /^(red|blue|merge):(\d{1,2})$/.exec(key);
       if (!m || !Array.isArray(pts[m[1]]) || Number(m[2]) >= pts[m[1]].length) fail(400, 'Unknown point.');
       if (v === 'good' || v === 'off') out[key] = v;
       else if (v != null) fail(400, 'Mark a point good or off.');
