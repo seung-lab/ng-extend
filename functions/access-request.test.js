@@ -68,7 +68,7 @@ test('a player saves ten examples, sends them, and the reviewers are told', asyn
   assert.equal(state.access_requests[0].email, 'sam@example.org');
   assert.equal(state.told.length, 1);
   assert.match(state.told[0].title, /Sam/);
-  assert.match(state.told[0].image, /nurro-inspector\.png$/);
+  assert.match(state.told[0].image, /brax-slice\.png$/);
   assert.deepEqual(state.slack[0], {name: 'Sam', email: 'sam@example.org', tries: 1, affiliation: 'Seung Lab'});
   // While it is with a reviewer, nothing changes and nothing is sent twice.
   await rejects(sam_('access.save', cut(1)), 409, /with a reviewer/);

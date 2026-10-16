@@ -34,7 +34,10 @@ const KINDS = {cut: 7, merge: 3};
 // The pictures on the notifications (Ames 2026-10-16), from static/nurro (its
 // README is the catalog), set here and never taken from the browser.
 const NURRO = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro/';
-const IMAGE = {request: NURRO + 'nurro-inspector.png', notes: NURRO + 'nurro-experiment-recap.png', invited: NURRO + 'nurro-celebrate.png'};
+// Brax's slice on a new request (Ames 2026-10-16), pinned to the commit that
+// added it, so the address works before and after the branch is merged.
+const BRAX = 'https://raw.githubusercontent.com/seung-lab/ng-extend/ee4677eeb1a5a95267f8cb28f41ba38714a97d84/static/access/brax-slice.png';
+const IMAGE = {request: BRAX, notes: NURRO + 'nurro-experiment-recap.png', invited: NURRO + 'nurro-celebrate.png'};
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
 const POINTS_MAX = 200, SEGMENTS_MAX = 50;
 const ID = /^\d{1,20}$/;
