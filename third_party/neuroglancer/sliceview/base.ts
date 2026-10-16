@@ -595,7 +595,7 @@ export const MAX_EXPENSIVE_FALLBACK_SCALES = 1;
 /** Pyr: the coarsest scale always stays: one clipped chunk that covers the panel and paints first. */
 export const KEEP_COARSEST_SCALE = true;
 
-function uncompressedChunkBytes(source: TransformedSource): number {
+export function uncompressedChunkBytes(source: TransformedSource): number {
   const spec: any = source.source.spec;
   const chunkDataSize: ArrayLike<number> = spec.chunkDataSize;
   let bytes: number = (DATA_TYPE_BYTES as any)[spec.dataType] ?? 1;

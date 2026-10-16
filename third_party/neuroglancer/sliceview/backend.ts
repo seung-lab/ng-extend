@@ -16,20 +16,35 @@
 
 import 'neuroglancer/render_layer_backend';
 
-import {Chunk, ChunkConstructor, ChunkRenderLayerBackend, ChunkSource, getNextMarkGeneration, withChunkManager} from 'neuroglancer/chunk_manager/backend';
+import {Chunk, ChunkConstructor, ChunkManager, ChunkRenderLayerBackend, ChunkSource, getNextMarkGeneration, withChunkManager} from 'neuroglancer/chunk_manager/backend';
 import {ChunkPriorityTier, ChunkState} from 'neuroglancer/chunk_manager/base';
 import {SharedWatchableValue} from 'neuroglancer/shared_watchable_value';
-import { filterVisibleSources, forEachPlaneIntersectingVolumetricChunk, MultiscaleVolumetricDataRenderLayer, SLICEVIEW_ADD_VISIBLE_LAYER_RPC_ID, SLICEVIEW_REMOVE_VISIBLE_LAYER_RPC_ID, SLICEVIEW_RENDERLAYER_RPC_ID, SLICEVIEW_RPC_ID, SliceViewBase, SliceViewChunkSource as SliceViewChunkSourceInterface, SliceViewChunkSpecification, SliceViewRenderLayer as SliceViewRenderLayerInterface, TransformedSource, getNormalizedChunkLayout} from 'neuroglancer/sliceview/base';
+import { EXPENSIVE_FALLBACK_CHUNK_BYTES, filterVisibleSources, forEachPlaneIntersectingVolumetricChunk, MultiscaleVolumetricDataRenderLayer, SLICEVIEW_ADD_VISIBLE_LAYER_RPC_ID, SLICEVIEW_REMOVE_VISIBLE_LAYER_RPC_ID, SLICEVIEW_RENDERLAYER_RPC_ID, SLICEVIEW_RPC_ID, SliceViewBase, SliceViewChunkSource as SliceViewChunkSourceInterface, SliceViewChunkSpecification, SliceViewProjectionParameters, SliceViewRenderLayer as SliceViewRenderLayerInterface, TransformedSource, getNormalizedChunkLayout, uncompressedChunkBytes} from 'neuroglancer/sliceview/base';
 import {ChunkLayout} from 'neuroglancer/sliceview/chunk_layout';
 import {WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {erf} from 'neuroglancer/util/erf';
-import {vec3, vec3Key} from 'neuroglancer/util/geom';
+import {transformVectorByMat4Transpose, vec3, vec3Key} from 'neuroglancer/util/geom';
 import {VelocityEstimator} from 'neuroglancer/util/velocity_estimation';
 import {getBasePriority, getPriorityTier, withSharedVisibility} from 'neuroglancer/visibility_priority/backend';
 import {registerRPC, registerSharedObject, RPC, SharedObjectCounterpart} from 'neuroglancer/worker_rpc';
 
 export const BASE_PRIORITY = -1e12;
 export const SCALE_PRIORITY_MULTIPLIER = 1e9;
+
+// Pyr (EyeWire II), 2026-10-16: the 2D panel went flat grey for up to a few seconds each time
+// scrolling crossed into a new block of slices (a player's recording, and Celia on 10-14). The
+// Retina stores 16 slices per chunk at EVERY scale (z is never downsampled), so after a crossing
+// no chunk of any scale is on hand to draw, not even a blurry one, until the new slab arrives.
+// Prefetch does not cover it: neuroglancer prefetches only while the view is moving, so the first
+// crossing after a pause always started empty, and while moving it waits behind the visible set
+// (PREFETCH_WAITS_FOR_VISIBLE). So the slab on each side of the current one is kept loaded at the
+// COARSE_NEIGHBOUR_SCALES coarsest fallback scales whose chunks are cheap, in the VISIBLE tier,
+// ranked just below the same scale on screen and above every finer scale (at 25 Mbps the sharp
+// chunks of one slab take seconds, and a neighbour queued behind them never arrived in time).
+// A crossing then shows a blurry picture that sharpens. Image layers only
+// (capExpensiveFallbacks); a pyramid of expensive chunks (the Sandbox) is left as it was. Retina at
+// tracing zoom: about 15 extra chunks of a few KB.
+const COARSE_NEIGHBOUR_SCALES = 2;
 
 // Temporary values used by SliceView.updateVisibleChunk
 const tempChunkPosition = vec3.create();
@@ -133,6 +148,12 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
               // visible chunk, we don't continue prefetching in the same direction.
               chunk.markGeneration = curMarkGeneration;
             });
+        if (priorityTier === ChunkPriorityTier.VISIBLE && layer.capExpensiveFallbacks &&
+            i > 0 && i >= numVisibleSources - COARSE_NEIGHBOUR_SCALES &&
+            uncompressedChunkBytes(tsource) <= EXPENSIVE_FALLBACK_CHUNK_BYTES) {
+          requestNeighbourSlabs(chunkManager, projectionParameters, tsource, curVisibleChunks,
+                                sourceBasePriority - SCALE_PRIORITY_MULTIPLIER / 2);
+        }
         if (prefetchOffsets.length !== 0) {
           const {curPositionInChunks} = tsource;
           for (const visibleChunk of curVisibleChunks) {
@@ -361,6 +382,45 @@ export class SliceViewRenderLayerBackend extends SharedObjectCounterpart impleme
   filterVisibleSources(sliceView: SliceViewBase, sources: readonly TransformedSource[]):
       Iterable<TransformedSource> {
     return filterVisibleSources(sliceView, this, sources);
+  }
+}
+
+const tempLocalNormal = vec3.create();
+
+/** Pyr: see COARSE_NEIGHBOUR_SCALES. Requests the chunks one slab before and after each visible
+ *  chunk along the chunk dimension the panel looks down (z in an xy panel; every dimension counts
+ *  as a display dimension here, so it is found from the panel's normal). An oblique panel has no
+ *  such dimension and is skipped. The chunks are not counted as needed, so the loading numbers
+ *  still describe the screen. */
+function requestNeighbourSlabs(
+    chunkManager: ChunkManager, projectionParameters: SliceViewProjectionParameters,
+    tsource: TransformedSource, visibleChunks: SliceViewChunk[], priority: number) {
+  const normal = transformVectorByMat4Transpose(
+      tempLocalNormal, projectionParameters.viewportNormalInGlobalCoordinates,
+      tsource.chunkLayout.transform);
+  const length = vec3.length(normal);
+  let dim = 0;
+  for (let i = 1; i < 3; ++i) {
+    if (Math.abs(normal[i]) > Math.abs(normal[dim])) dim = i;
+  }
+  if (!(length > 0) || Math.abs(normal[dim]) < 0.99 * length) return;
+  // A mark of their own: the visible chunks' mark stops prefetch in that direction.
+  const markGeneration = getNextMarkGeneration();
+  const {curPositionInChunks, lowerClipBound, upperClipBound} = tsource;
+  const size = tsource.source.spec.chunkDataSize[dim];
+  const minChunk = Math.floor(lowerClipBound[dim] / size);
+  const maxChunk = Math.ceil(upperClipBound[dim] / size) - 1;
+  for (const visibleChunk of visibleChunks) {
+    for (const step of [1, -1]) {
+      curPositionInChunks.set(visibleChunk.chunkGridPosition);
+      const index = curPositionInChunks[dim] + step;
+      if (index < minChunk || index > maxChunk) continue;
+      curPositionInChunks[dim] = index;
+      const chunk = tsource.source.getChunk(curPositionInChunks);
+      if (chunk.markGeneration === markGeneration) continue;
+      chunk.markGeneration = markGeneration;
+      chunkManager.requestChunk(chunk, ChunkPriorityTier.VISIBLE, priority);
+    }
   }
 }
 

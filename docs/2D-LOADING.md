@@ -176,6 +176,32 @@ of that level in 256x256x8 chunks would cut it to about 8.8 MB per view and
 a third of the requests. Whether the 16 nm level may be lossy is the dataset
 owners' decision.
 
+## Grey panel when scrolling through Retina slices (2026-10-16)
+
+A player's recording, and Celia on 10-14: the whole 2D panel went flat grey
+for a moment while scrolling through slices, sometimes with grey blocks. Every
+whole-panel grey started at a 16-slice block boundary. The Retina stores 16
+slices per chunk at every scale (z is never downsampled), so after a crossing
+no chunk at any scale was on hand, not even a blurry one. Prefetch did not
+cover it: neuroglancer prefetches only while the view is moving, so the first
+crossing after a pause always started empty, and while moving it waits behind
+the visible set (`PREFETCH_WAITS_FOR_VISIBLE`).
+
+Fix (`sliceview/backend.ts`, `COARSE_NEIGHBOUR_SCALES`): image layers keep the
+slab on each side of the current one loaded at the two coarsest fallback scales
+whose chunks are cheap, requested as visible, ranked just below the same scale
+on screen and above every finer scale. The depth axis comes from the panel's
+normal (every dimension counts as a display dimension in this code). The
+Sandbox (4 MiB chunks) and segmentation layers are unchanged. Retina at
+tracing zoom asks for about 20 more requests of a few KB.
+
+Measured with a scratch harness (Retina at x 40508, y 63301 from slice 1520,
+crossSectionScale 1, a burst of 6 slices at 60 ms then a 1.5 s pause, 96
+slices, 25 Mbps with 40 ms latency, screencast frames tested for a flat panel):
+live 6 grey episodes per run, 6.6 and 8.0 s in total (2 runs); with the fix
+none in 3 runs, and the first full view equally fast (about 8 s). On the fast
+link, scrolling steadily, none either way except one at the start on live.
+
 ## Open items
 
 - The curated production start states (nglstate 5631012797153280 and
