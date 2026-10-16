@@ -37,13 +37,35 @@ const NURRO = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-
 // Brax's slice on a new request (Ames 2026-10-16), pinned to the commit that
 // added it, so the address works before and after the branch is merged.
 const BRAX = 'https://raw.githubusercontent.com/seung-lab/ng-extend/ee4677eeb1a5a95267f8cb28f41ba38714a97d84/static/access/brax-slice.png';
-const IMAGE = {request: BRAX, notes: NURRO + 'nurro-experiment-recap.png', invited: NURRO + 'nurro-celebrate.png'};
+// Fly neurons by neurotransmitter on access granted (Ames 2026-10-16), pinned the same way.
+const GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/18309c4c1fc327d83e7dfff540f83485f8bf52b9/static/access/fly-neurons-by-neurotransmitter.jpg';
+const GRANTED_TITLE = '🎉 Congratulations! Your edit access has been granted!';
+const IMAGE = {request: BRAX, notes: NURRO + 'nurro-experiment-recap.png', invited: GRANTED};
+const EW_NAME_MAX = 60;
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
 const POINTS_MAX = 200, SEGMENTS_MAX = 50;
 const ID = /^\d{1,20}$/;
 const NOT_INSTALLED = 'Access requests are not switched on yet: run supabase-access-requests.sql in the Supabase SQL editor.';
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 const missingTable = e => !e.status && /supabase (400|404)/.test(String(e && e.message));
+
+/** The player's EyeWire username, or null. */
+function cleanEwName(value) {
+  const name = cleanText(value, EW_NAME_MAX, 'Your EyeWire username');
+  if (name && !/^[A-Za-z0-9_.\- ]+$/.test(name)) fail(400, 'An EyeWire username has letters, numbers, dots, dashes and underscores only.');
+  return name;
+}
+
+/** A PATCH of the request that drops the 2026-10-16 columns when their SQL
+ *  has not been run yet, so saving and sending never break on it. */
+async function patchRequest(sb, filter, body) {
+  try { return await sb(`access_requests?${filter}`, {method: 'PATCH', body: JSON.stringify(body)}); }
+  catch (e) {
+    if (!missingTable(e) || !('eyewire_username' in body || 'player_note' in body)) throw e;
+    const {eyewire_username, player_note, ...rest} = body;
+    return sb(`access_requests?${filter}`, {method: 'PATCH', body: JSON.stringify(rest)});
+  }
+}
 
 /** Plain text, trimmed, or null when empty and allowed to be. */
 function cleanText(value, max, what, required = false) {
@@ -113,6 +135,7 @@ function forPlayer(request, items) {
   const answered = request.status === 'redo' || request.status === 'invited';
   return {
     request: {id: request.id, status: request.status, tries: request.tries, affiliation: request.affiliation,
+      eyewire_username: request.eyewire_username ?? null, player_note: request.player_note ?? null,
       submitted_at: request.submitted_at, reviewed_at: answered ? request.reviewed_at : null,
       reviewer_note: answered ? request.reviewer_note : null},
     items: items.map(i => ({kind: i.kind, slot: i.slot, link: i.link, dataset: i.dataset, note: i.note,
@@ -135,7 +158,7 @@ async function editable(sb, me, who) {
       email: String(who.email || '').toLowerCase(), player_name: nameOf(me)})}))[0];
   }
   if (request.status === 'submitted') fail(409, 'Your examples are with a reviewer. To change them, take them back first.');
-  if (request.status === 'invited') fail(409, 'You were already invited to the retina.');
+  if (request.status === 'invited') fail(409, 'Your edit access was already granted.');
   return request;
 }
 
@@ -150,9 +173,9 @@ async function save(args, {sb, me, who}) {
     verdict: null, point_marks: {}, feedback: null};
   await sb('access_request_items?on_conflict=request_id,kind,slot', {method: 'POST',
     headers: {Prefer: 'resolution=merge-duplicates,return=representation'}, body: JSON.stringify(row)});
-  const affiliation = cleanText(args.affiliation, AFFIL_MAX, 'Your lab or institute');
-  await sb(`access_requests?id=eq.${request.id}`, {method: 'PATCH', body: JSON.stringify({updated_at: row.saved_at,
-    player_name: nameOf(me), ...(affiliation ? {affiliation} : {})})});
+  const ewName = cleanEwName(args.eyewireUsername);
+  await patchRequest(sb, `id=eq.${request.id}`, {updated_at: row.saved_at,
+    player_name: nameOf(me), ...(ewName ? {eyewire_username: ewName} : {})});
   return mine({}, {sb, me});
 }
 
@@ -172,10 +195,17 @@ async function withdraw(args, {sb, me}) {
   const request = await requestOf(sb, me.id);
   if (!request || request.status !== 'submitted') fail(409, 'There is nothing waiting for a review to take back.');
   const back = request.reviewed_at ? 'redo' : 'draft';
+  // Marks a reviewer made on this try were never sent: they go, so they can
+  // not block the next send unseen (Ames 2026-10-16).
+  if (back === 'draft') await clearMarks(sb, request.id);
   const done = await sb(`access_requests?id=eq.${request.id}&status=eq.submitted`, {method: 'PATCH',
     body: JSON.stringify({status: back, updated_at: new Date().toISOString()})});
   if (!done.length) fail(409, 'A reviewer answered just now. Look at their notes first.');
   return mine({}, {sb, me});
+}
+
+function clearMarks(sb, requestId) {
+  return sb(`access_request_items?request_id=eq.${requestId}`, {method: 'PATCH', body: JSON.stringify({verdict: null, point_marks: {}, feedback: null})});
 }
 
 async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
@@ -184,14 +214,17 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
   const items = await itemsOf(sb, request.id);
   const count = k => items.filter(i => i.kind === k).length;
   if (count('cut') < KINDS.cut || count('merge') < KINDS.merge) fail(400, `Save all ten first: ${count('cut')} of 7 cuts and ${count('merge')} of 3 merges so far.`);
-  if (items.some(i => i.verdict === 'redo')) fail(400, 'Redo every example marked redo first.');
-  const affiliation = cleanText(args.affiliation, AFFIL_MAX, 'Your lab or institute');
+  // Only marks the player can see count: those of an answered review.
+  if (request.status === 'redo' && items.some(i => i.verdict === 'redo')) fail(400, 'Redo every example marked redo first.');
+  if (request.status === 'draft' && items.some(i => i.verdict || Object.keys(i.point_marks || {}).length || i.feedback)) await clearMarks(sb, request.id);
+  const ewName = cleanEwName(args.eyewireUsername);
+  const playerNote = cleanText(args.note, NOTE_MAX, 'Your note');
   const at = new Date().toISOString();
   const tries = (request.tries || 0) + 1;
   // Only from the state it was read in, so a double click sends once.
-  const done = await sb(`access_requests?id=eq.${request.id}&status=eq.${request.status}`, {method: 'PATCH',
-    body: JSON.stringify({status: 'submitted', tries, submitted_at: at, updated_at: at, player_name: nameOf(me),
-      ...(affiliation ? {affiliation} : {})})});
+  const done = await patchRequest(sb, `id=eq.${request.id}&status=eq.${request.status}`, {status: 'submitted', tries,
+    submitted_at: at, updated_at: at, player_name: nameOf(me), ...(ewName ? {eyewire_username: ewName} : {}),
+    player_note: playerNote});
   if (!done.length) fail(409, 'Your examples are with a reviewer already.');
   const name = nameOf(me);
   const again = tries > 1 ? ` (try ${tries})` : '';
@@ -201,7 +234,7 @@ async function submit(args, {sb, me, who, notifyReviewers, postSlack}) {
     catch (e) { console.warn('[access] reviewers were not told:', e && e.message); }
   }
   if (postSlack) {
-    try { await postSlack({name, email: request.email, tries, affiliation: affiliation || request.affiliation || null}); }
+    try { await postSlack({name, email: request.email, tries, eyewireUsername: ewName || request.eyewire_username || null}); }
     catch (e) { console.warn('[access] slack post failed:', e && e.message); }
   }
   return mine({}, {sb, me});
@@ -277,7 +310,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
   const note = cleanText(args.note, DECIDE_MAX, 'The note');
   const request = (await sb(`access_requests?id=eq.${id}&select=*&limit=1`))[0];
   if (!request) fail(404, 'That request is gone.');
-  if (request.status !== 'submitted') fail(409, request.status === 'invited' ? 'This player was already invited.' : 'This request is not waiting for a review.');
+  if (request.status !== 'submitted') fail(409, request.status === 'invited' ? 'This player was already granted access.' : 'This request is not waiting for a review.');
   const items = await itemsOf(sb, id);
   const redos = items.filter(i => i.verdict === 'redo').length;
   if (outcome === 'redo' && !redos) fail(400, 'Mark at least one example redo first, so the player knows what to change.');
@@ -293,9 +326,9 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer}) {
     ...(pilotAdded ? {pilot_added: true} : {})})});
   if (!done.length) fail(409, 'Someone else answered this request just now.');
   if (notifyPlayer) {
-    const title = outcome === 'invited' ? '🎉 You are invited to the retina' : '🔬 Notes on your retina access request';
+    const title = outcome === 'invited' ? GRANTED_TITLE : '🔬 Notes on your retina access request';
     const body = outcome === 'invited'
-      ? `Your examples look right. Welcome to the EyeWire II retina!${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out and in again.`
+      ? `Your ten examples looked great. The EyeWire II retina is now open to you for editing, and every cell you proofread there becomes part of a real map of the retina.${note ? `\n\n${note}` : ''}\n\nIf the retina still says View only, sign out of Pyr and back in. Thank you for doing science with us!`
       : `A reviewer looked at your ten examples and would like ${redos === 1 ? 'one' : redos} again.${note ? `\n\n${note}` : ''}\n\nClick here, or open the menu and Ask for retina access, to see the notes on each one.`;
     try { await notifyPlayer({userId: request.user_id, title, body, image: outcome === 'invited' ? IMAGE.invited : IMAGE.notes}); }
     catch (e) { console.warn('[access] the player was not told:', e && e.message); }
@@ -317,4 +350,4 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanExample, KINDS, IMAGE};
+module.exports = {handle, cleanExample, KINDS, IMAGE, GRANTED_TITLE};

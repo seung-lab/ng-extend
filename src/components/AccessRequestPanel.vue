@@ -24,7 +24,7 @@ const busy = ref('');
 const message = ref('');
 const messageBad = ref(false);
 const note = ref('');
-const affiliation = ref('');
+const ewName = ref('');
 const openKey = ref('');
 
 const request = computed(() => myAccess.value?.request ?? null);
@@ -51,6 +51,9 @@ function saveLabel(kind: AccessKind): string {
   if (busy.value === `${kind}${n}`) return 'Saving…';
   return itemAt(kind, n) ? `Save this view as the new ${kind} ${n}` : `Save this view as ${kind} ${n}`;
 }
+/** Where the note goes: with the next example saved, or, once all ten are
+ *  in, with the request itself when it is sent (Ames 2026-10-16). */
+const noteGoes = computed(() => (nextSlot('cut') !== null || nextSlot('merge') !== null) ? 'goes with your next save' : 'sent with your request');
 function saveNext(kind: AccessKind) { const n = nextSlot(kind); if (n !== null) askSave(kind, n); }
 
 // What is in the view now, refreshed while the panel is open.
@@ -60,7 +63,7 @@ onMounted(async () => {
   timer = window.setInterval(() => { live.value = viewContents(); }, 1000);
   try {
     const mine = await loadMyAccess();
-    affiliation.value = mine.request?.affiliation ?? '';
+    ewName.value = mine.request?.eyewire_username ?? '';
   } catch (e: any) { say(e?.message || 'Your request could not be loaded.', true); }
   finally { loading.value = false; }
 });
@@ -102,7 +105,7 @@ async function save(kind: AccessKind, slot: number) {
   busy.value = `${kind}${slot}`;
   say('');
   try {
-    await saveExample(kind, slot, note.value, affiliation.value);
+    await saveExample(kind, slot, note.value, ewName.value);
     note.value = '';
     say(`Saved as ${kind} ${slot}. Its points were cleared from the view for the next one; the saved view keeps them.`);
   } catch (e: any) { say(e?.message || 'That could not be saved.', true); }
@@ -120,7 +123,7 @@ async function send() {
   if (total.value < 10) { say(`Save all ten first: ${countOf('cut')} of 7 cuts and ${countOf('merge')} of 3 merges so far.`, true); return; }
   if (redoLeft.value) { say('Redo every example marked redo first.', true); return; }
   busy.value = 'send';
-  try { await submitAccess(affiliation.value); say('Sent. You will hear back in your notifications.'); }
+  try { await submitAccess(ewName.value, note.value); note.value = ''; say('Sent. You will hear back in your notifications.'); }
   catch (e: any) { say(e?.message || 'That could not be sent.', true); }
   finally { busy.value = ''; }
 }
@@ -185,7 +188,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
         <p v-if="request?.reviewer_note" class="nge-acc-quote">{{ request.reviewer_note }}</p>
       </div>
       <div v-else-if="status === 'invited'" class="nge-acc-state nge-acc-state--yes">
-        <b>You are invited to the retina!</b> If it still says View only, sign out and in again.
+        <b>Congratulations! Your edit access has been granted!</b> The retina is open to you for editing. If it still says View only, sign out of Pyr and back in.
         <p v-if="request?.reviewer_note" class="nge-acc-quote">{{ request.reviewer_note }}</p>
       </div>
 
@@ -236,11 +239,11 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </template>
 
       <template v-if="canEdit">
-        <label class="nge-acc-label">Note for the reviewer, with the next save (optional)
+        <label class="nge-acc-label">Note for the reviewer, {{ noteGoes }} (optional)
           <textarea v-model="note" class="nge-acc-input" rows="2" maxlength="1000" placeholder="Where the merger starts, what you checked"></textarea>
         </label>
-        <label class="nge-acc-label">Lab or institute, for researchers (optional)
-          <input v-model="affiliation" class="nge-acc-input" maxlength="200" />
+        <label class="nge-acc-label">Your EyeWire username, if you played EyeWire (optional)
+          <input v-model="ewName" class="nge-acc-input" maxlength="60" />
         </label>
         <button class="nge-acc-send" :disabled="busy === 'send'" @click="send">
           {{ busy === 'send' ? 'Sending…' : `Send for review (${total} of 10)` }}

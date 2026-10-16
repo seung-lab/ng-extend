@@ -67,3 +67,8 @@ revoke all on public.access_requests      from anon, authenticated;
 revoke all on public.access_request_items from anon, authenticated;
 grant all on public.access_requests      to service_role;
 grant all on public.access_request_items to service_role;
+
+-- 2026-10-16 (Ames): the player's EyeWire username instead of a lab, and a
+-- note to the reviewer that goes with the whole request.
+alter table public.access_requests add column if not exists eyewire_username text check (eyewire_username is null or length(eyewire_username) <= 60);
+alter table public.access_requests add column if not exists player_note text check (player_note is null or length(player_note) <= 1000);

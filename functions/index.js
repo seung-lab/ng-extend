@@ -2106,18 +2106,18 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-6";
+const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-8";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
 const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m (REVIEW_MENTION_IDS)
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
-async function postAccessRequestToSlack(token, { name, email, tries, affiliation }) {
+async function postAccessRequestToSlack(token, { name, email, tries, eyewireUsername }) {
   let channel = null;
   try { channel = await resolveChannelByName(token, "", ACCESS_SLACK_CHANNEL_NAME); } catch (e) { channel = null; }
   if (!channel) channel = REVIEW_CHANNEL_ID;
   const text = [
-    `:microscope: *Retina access request*${tries > 1 ? ` (try ${tries})` : ""} from *${name}* (${email})${affiliation ? `, ${affiliation}` : ""}`,
+    `:microscope: *Retina access request*${tries > 1 ? ` (try ${tries})` : ""} from *${name}* (${email})${eyewireUsername ? `, EyeWire username ${eyewireUsername}` : ""}`,
     "7 cut and 3 merge examples are waiting in the Admin Hub, Access requests.",
     ACCESS_SLACK_MENTIONS.map((id) => `<@${id}>`).join(" "),
   ].join("\n");

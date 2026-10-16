@@ -222,12 +222,12 @@ const RETINA_LAYERS = [
     ok(c1 && c1.note === 'The merger starts at the soma.', 'cut 1 keeps the player note');
     const m1 = db.access_request_items.find(i => i.kind === 'merge' && i.slot === 1);
     ok(m1 && m1.points.merge.length === 2 && m1.points.merge[0].position[0] === 38001, 'merge 1 keeps its two merge points');
-    await page.fill('.nge-acc-input >> nth=1', 'Seung Lab');
+    await page.fill('.nge-acc-input >> nth=1', 'testplayer_ew');
     await shotOf('.nge-acc', '03-panel-full');
     await page.click('.nge-acc-send');
     await page.waitForFunction(() => /A reviewer is looking/.test((document.querySelector('.nge-acc') || {}).innerText || ''), null, { timeout: 8000 });
     ok(db.access_requests[0].status === 'submitted', 'the request is submitted');
-    ok(told.some(t => t.to === 'reviewers') && told.some(t => t.to === 'slack' && t.affiliation === 'Seung Lab'), 'reviewers get a bell and Slack gets a post');
+    ok(told.some(t => t.to === 'reviewers') && told.some(t => t.to === 'slack' && t.eyewireUsername === 'testplayer_ew'), 'reviewers get a bell and Slack gets a post');
     await shotOf('.nge-acc', '04-panel-sent');
     // Second thoughts: take them back, replace cut 3, send again.
     await page.click('.nge-acc-back');
@@ -344,10 +344,10 @@ const RETINA_LAYERS = [
     await page.waitForSelector('.nge-accr-refresh', { timeout: 10000 });
     await page.click('.nge-accr-refresh');
     await page.waitForSelector('.nge-accr-decide', { timeout: 10000 });
+    ok(/Eyewire_2_Edit/.test(await page.evaluate(() => (document.querySelector('.nge-accr-cave') || {}).innerText || '')), 'the reviewer is reminded to add the CAVE group by hand before granting');
     await page.click('.nge-accr-btn--invite');
     await page.waitForSelector('.nge-accr-done', { timeout: 8000 });
     ok(db.access_requests[0].status === 'invited' && db.pilot_members.some(m => m.email === 't@example.org'), 'invited and added to the pilot testers');
-    ok(/Eyewire_2_Edit/.test(await page.evaluate(() => document.querySelector('.nge-accr-done').innerText)), 'the reviewer is reminded to add the CAVE group by hand');
     await full('10-admin-invited');
     actingAs = 'player';
     await setIdentity(false);

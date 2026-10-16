@@ -29,6 +29,7 @@ export interface AccessItem {
 }
 export interface AccessRequest {
   id: number; status: 'draft' | 'submitted' | 'redo' | 'invited'; tries: number; affiliation: string | null;
+  eyewire_username?: string | null; player_note?: string | null;
   submitted_at: string | null; reviewed_at: string | null; reviewer_note: string | null;
   // Reviewer side only.
   email?: string; player_name?: string; user_id?: string; pilot_added?: boolean; items?: AccessItem[];
@@ -99,7 +100,7 @@ function viewPosition(): number[] | null {
 }
 
 /** Save the view as one example. Throws a sentence the player can act on. */
-export async function saveExample(kind: AccessKind, slot: number, note: string, affiliation: string): Promise<AccessMine> {
+export async function saveExample(kind: AccessKind, slot: number, note: string, eyewireUsername: string): Promise<AccessMine> {
   const v = viewContents();
   const reason = whyNot(kind, v);
   if (reason) throw new Error(reason);
@@ -108,7 +109,7 @@ export async function saveExample(kind: AccessKind, slot: number, note: string, 
   const mine = await secureWrite<AccessMine>('access.save', {
     kind, slot, link, dataset: currentDatasetTag(), note,
     points: kind === 'cut' ? { red: v.red, blue: v.blue } : { merge: v.merge },
-    segments: v.segments, position: viewPosition(), affiliation,
+    segments: v.segments, position: viewPosition(), eyewireUsername,
   });
   myAccess.value = mine;
   clearToolPoints(kind);
@@ -143,8 +144,8 @@ export async function withdrawAccess(): Promise<AccessMine> {
   return mine;
 }
 
-export async function submitAccess(affiliation: string): Promise<AccessMine> {
-  const mine = await secureWrite<AccessMine>('access.submit', { affiliation });
+export async function submitAccess(eyewireUsername: string, note: string): Promise<AccessMine> {
+  const mine = await secureWrite<AccessMine>('access.submit', { eyewireUsername, note });
   myAccess.value = mine;
   return mine;
 }

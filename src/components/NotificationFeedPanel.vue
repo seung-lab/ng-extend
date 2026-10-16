@@ -180,7 +180,7 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
-  if (accessTitle === '🔬 Notes on your retina access request' || accessTitle === '🎉 You are invited to the retina') {
+  if (accessTitle === '🔬 Notes on your retina access request' || (accessTitle === '🎉 Congratulations! Your edit access has been granted!' || accessTitle === '🎉 You are invited to the retina')) {
     document.dispatchEvent(new CustomEvent('nge:access-open'));
     emit('hide');
     return;

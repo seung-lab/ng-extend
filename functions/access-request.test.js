@@ -60,16 +60,17 @@ test('a player saves ten examples, sends them, and the reviewers are told', asyn
   const sam_ = as(sam);
   assert.deepEqual(await sam_('access.mine', {}), {request: null, items: []});
   await fillAll(sam_);
-  const sent = await sam_('access.submit', {affiliation: '  Seung Lab '});
+  const sent = await sam_('access.submit', {eyewireUsername: '  sam_ew ', note: 'My first try.'});
   assert.equal(sent.request.status, 'submitted');
   assert.equal(sent.request.tries, 1);
-  assert.equal(sent.request.affiliation, 'Seung Lab');
+  assert.equal(sent.request.eyewire_username, 'sam_ew');
+  assert.equal(sent.request.player_note, 'My first try.');
   assert.equal(sent.items.length, 10);
   assert.equal(state.access_requests[0].email, 'sam@example.org');
   assert.equal(state.told.length, 1);
   assert.match(state.told[0].title, /Sam/);
   assert.match(state.told[0].image, /brax-slice\.png$/);
-  assert.deepEqual(state.slack[0], {name: 'Sam', email: 'sam@example.org', tries: 1, affiliation: 'Seung Lab'});
+  assert.deepEqual(state.slack[0], {name: 'Sam', email: 'sam@example.org', tries: 1, eyewireUsername: 'sam_ew'});
   // While it is with a reviewer, nothing changes and nothing is sent twice.
   await rejects(sam_('access.save', cut(1)), 409, /with a reviewer/);
   await rejects(sam_('access.submit', {}), 409);
@@ -151,10 +152,10 @@ test('an invite adds the player to the pilot list and tells them', async () => {
   assert.equal(done.status, 'invited');
   assert.equal(done.pilot_added, true);
   assert.deepEqual(state.pilot_members.map(m => [m.email, m.enabled, m.added_by]), [['sam@example.org', true, celia.id]]);
-  assert.match(state.players[0].title, /invited/);
-  assert.match(state.players[0].image, /nurro-celebrate\.png$/);
-  await rejects(rev('access.decide', {requestId: id, outcome: 'invited'}), 409, /already invited/);
-  await rejects(p('access.save', cut(1)), 409, /already invited/);
+  assert.match(state.players[0].title, /Congratulations! Your edit access has been granted!/);
+  assert.match(state.players[0].image, /fly-neurons-by-neurotransmitter\.jpg$/);
+  await rejects(rev('access.decide', {requestId: id, outcome: 'invited'}), 409, /already granted/);
+  await rejects(p('access.save', cut(1)), 409, /already granted/);
 });
 
 test('a player takes sent examples back, changes them, and sends again', async () => {
@@ -196,6 +197,25 @@ test('an admin starts over, for a test or for a player', async () => {
   await rev('access.reset', {});
   assert.equal(state.access_requests.length, 0);
   await rejects(rev('access.reset', {}), 404);
+});
+
+test('marks a reviewer never sent do not block a send (Ames 2026-10-16)', async () => {
+  const {state, as} = world();
+  const p = as(sam), rev = as(celia, true);
+  await fillAll(p);
+  await p('access.submit', {});
+  const c2 = state.access_request_items.find(i => i.kind === 'cut' && i.slot === 2);
+  await rev('access.review', {itemId: c2.id, verdict: 'redo', pointMarks: {'red:0': 'off'}, feedback: 'half done'});
+  await p('access.withdraw', {});
+  const back = state.access_request_items.find(i => i.id === c2.id);
+  assert.equal(back.verdict, null);
+  assert.deepEqual(back.point_marks, {});
+  // And data left over from before the fix: a hidden redo on a draft.
+  back.verdict = 'redo';
+  const sent = await p('access.submit', {});
+  assert.equal(sent.request.status, 'submitted');
+  assert.equal(state.access_request_items.find(i => i.id === c2.id).verdict, null);
+  await rejects(p('access.save', {...cut(1), eyewireUsername: 'bad<name>'}), 409);
 });
 
 test('reviewer actions are admins only, and a missing table says what to run', async () => {

@@ -33,7 +33,7 @@ async function load() {
 onMounted(load);
 function setFilter(f: AccessFilter) { filter.value = f; void load(); }
 
-const statusWord: Record<string, string> = { submitted: 'Waiting', redo: 'Redos asked', invited: 'Invited', draft: 'Collecting' };
+const statusWord: Record<string, string> = { submitted: 'Waiting', redo: 'Redos asked', invited: 'Granted', draft: 'Collecting' };
 const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 const sorted = (r: AccessRequest) => [...(r.items ?? [])].sort((a, b) => (a.kind === b.kind ? a.slot - b.slot : a.kind === 'cut' ? -1 : 1));
 function summary(it: AccessItem): string {
@@ -66,7 +66,7 @@ async function decide(r: AccessRequest, outcome: 'redo' | 'invited') {
     const out = await decideAccess(r.id, outcome, notes.value[r.id] || '');
     Object.assign(r, out);
     done.value[r.id] = outcome === 'invited'
-      ? `Invited, and added to the pilot testers. Now add ${r.email} to Eyewire_2_Edit in CAVE, by hand for now.`
+      ? `Access granted: ${r.player_name || r.email} was told and added to the pilot testers.`
       : `Sent. ${r.player_name} will redo ${out.redos === 1 ? 'one example' : `${out.redos} examples`}.`;
   } catch (e: any) { error.value = e?.message || 'That was not sent.'; }
   finally { busy.value = ''; }
@@ -92,13 +92,13 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
       <div class="nge-accr-filters" role="tablist">
         <button v-for="f in FILTERS" :key="f" class="nge-accr-filter"
                 :class="{ 'nge-accr-filter--on': filter === f }" role="tab" :aria-selected="filter === f" @click="setFilter(f)">
-          {{ f === 'open' ? 'Open' : f === 'submitted' ? 'Waiting' : f === 'invited' ? 'Invited' : 'All' }}
+          {{ f === 'open' ? 'Open' : f === 'submitted' ? 'Waiting' : f === 'invited' ? 'Granted' : 'All' }}
         </button>
       </div>
     </div>
     <p class="nge-accr-how">
       Each player sends 7 cuts (red and blue Multicut points where they would cut) and 3 merges (merge points on the two pieces), placed but not submitted.
-      Open an example in the view to judge every point, mark it good or redo, then ask for redos or invite.
+      Open an example in the view to judge every point, mark it good or redo, then ask for redos or grant edit access.
     </p>
     <p v-if="error" class="nge-accr-err" role="alert">{{ error }}</p>
     <p v-if="loading" class="nge-accr-how">Loading…</p>
@@ -107,13 +107,14 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
     <article v-for="r in requests" :key="r.id" class="nge-accr-card" :class="`nge-accr-card--${r.status}`">
       <button class="nge-accr-head" :aria-expanded="openId === r.id" @click="openId = openId === r.id ? null : r.id">
         <span class="nge-accr-name">{{ r.player_name || r.email }}</span>
-        <span class="nge-accr-meta">{{ r.email }}<template v-if="r.affiliation"> · {{ r.affiliation }}</template></span>
+        <span class="nge-accr-meta">{{ r.email }}<template v-if="r.eyewire_username"> · EyeWire: {{ r.eyewire_username }}</template><template v-else-if="r.affiliation"> · {{ r.affiliation }}</template></span>
         <span class="nge-accr-meta">Sent {{ when(r.submitted_at) }}<template v-if="r.tries > 1"> · try {{ r.tries }}</template></span>
         <span class="nge-accr-status">{{ statusWord[r.status] || r.status }}</span>
         <span class="nge-accr-tally">{{ counts(r).good }} good · {{ counts(r).redo }} redo · {{ counts(r).open }} to check</span>
       </button>
 
       <div v-if="openId === r.id" class="nge-accr-body">
+        <p v-if="r.player_note" class="nge-accr-note">Player's note: {{ r.player_note }}</p>
         <table class="nge-accr-table">
           <tbody>
             <tr v-for="(it, i) in sorted(r)" :key="it.id" :class="{ 'nge-accr-row--good': it.verdict === 'good', 'nge-accr-row--redo': it.verdict === 'redo' }">
@@ -142,14 +143,15 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
           <label>Note to {{ r.player_name || 'the player' }} (optional, goes with your answer)
             <textarea v-model="notes[r.id]" rows="3" maxlength="4000"></textarea>
           </label>
+          <p class="nge-accr-cave">Before you grant: add <b>{{ r.email }}</b> to Eyewire_2_Edit in CAVE, by hand for now. Granting tells the player their edit access is ready.</p>
           <div class="nge-accr-decide-btns">
             <button class="nge-accr-btn" :disabled="busy === `d${r.id}`" @click="decide(r, 'redo')">Ask for redos ({{ counts(r).redo }})</button>
-            <button class="nge-accr-btn nge-accr-btn--invite" :disabled="busy === `d${r.id}`" @click="decide(r, 'invited')">Invite to the retina</button>
+            <button class="nge-accr-btn nge-accr-btn--invite" :disabled="busy === `d${r.id}`" @click="decide(r, 'invited')">Grant edit access</button>
           </div>
         </div>
         <p v-if="done[r.id]" class="nge-accr-done" role="status">{{ done[r.id] }}</p>
         <p v-else-if="r.status === 'invited'" class="nge-accr-done">
-          Invited {{ when(r.reviewed_at) }}{{ r.pilot_added ? ', added to the pilot testers' : '' }}. Their CAVE group (Eyewire_2_Edit) is given by hand.
+          Access granted {{ when(r.reviewed_at) }}{{ r.pilot_added ? ', added to the pilot testers' : '' }}. Their CAVE group (Eyewire_2_Edit) is given by hand.
         </p>
         <p v-if="r.reviewer_note && r.status !== 'submitted'" class="nge-accr-note nge-accr-note--you">Your note: {{ r.reviewer_note }}</p>
         <div class="nge-accr-delete">
@@ -206,5 +208,6 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
 .nge-accr-decide textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; padding: 8px 10px; border: 1px solid #74859a; border-radius: 6px; background: #152434; color: #f1f5f9; }
 .nge-accr-decide-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 .nge-accr-done { color: #7CFFB2; }
+.nge-accr-cave { margin: 8px 0 0; color: #f5d142; }
 .nge-accr-delete { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 12px; color: #b6c4d4; }
 </style>
