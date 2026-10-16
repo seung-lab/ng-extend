@@ -122,6 +122,10 @@ async function loadOtherUser() {
 loadOtherUser();
 // Clicking another name while a profile is open swaps the profile shown.
 watch(() => props.viewUserId, () => { void loadOtherUser(); });
+// Your own awards are read again each time the profile opens: they were read
+// once at sign in, so one given during the session (a group award included)
+// stayed hidden until a reload (Ames 2026-10-16, Alpha 20).
+onMounted(() => { if (!props.viewUserId) void backendStore.loadMySpecialBadges(); });
 
 // ── Weekly podium counts (🥇/🥈/🥉) ─────────────────────────────────
 // Two podiums: edits (split+merge wins) and completions (cell-mark wins).
