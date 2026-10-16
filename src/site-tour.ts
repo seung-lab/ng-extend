@@ -342,7 +342,7 @@ Click any user's name in chat or the leaderboard to open *their* profile.`,
     title: "🍔 Tutorials & Help",
     text: `The burger menu holds this **Site Tour** and four tutorials: **Get Started** (navigation), **Advanced Interface** (every panel), **Merge** and **Cut** (practice on real cells, one learner at a time).
 
-Below them: the **Proofreading Guide** and the **Forum**.`,
+Below them: the **Forum**.`,
     position: { element: "#hamburger", side: "left", offset: { x: -10, y: 0 } },
     highlight: true,
   },

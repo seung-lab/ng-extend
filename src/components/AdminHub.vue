@@ -867,6 +867,9 @@ async function logWithRepliesSeen(row: TriageRow): Promise<any[]> {
     .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
 }
 
+/** Which reply forms show the "What they will see" preview: none until asked. */
+const replyPreviewOpen = ref<Record<string, boolean>>({});
+
 /** Undo a dismiss (Ames 2026-10-15: "can I undismiss?"). The report goes
  *  back to Needs your decision; its log, messages and replies are kept. */
 async function undismiss(row: TriageRow) {
@@ -2745,6 +2748,8 @@ function practiceWhen(iso: string | null) {
                 <button type="button" title="Bulleted list: each selected line becomes a bullet" @click="fmtLines('- ', 'List item', reporterComposer(row))">• Bullets</button>
                 <button type="button" title="Numbered list: each selected line gets 1, 2, 3" @click="fmtLines(i => `${i + 1}. `, 'List item', reporterComposer(row))">1. Numbers</button>
                 <span class="nge-admin-fmthint">Or start lines with "- " or "1. ". Pasted lists keep their numbers.</span>
+                <button type="button" class="nge-triage-preview-toggle" :aria-pressed="replyPreviewOpen[row.id] ? 'true' : 'false'"
+                        title="Show the message as the player will see it" @click="replyPreviewOpen[row.id] = !replyPreviewOpen[row.id]">{{ replyPreviewOpen[row.id] ? 'Hide preview' : 'Preview' }}</button>
               </div>
               <textarea
                 :ref="el => { reporterEls[row.id] = el; }"
@@ -2754,7 +2759,8 @@ function practiceWhen(iso: string | null) {
                 @paste="onNotifPaste($event, reporterComposer(row))"
                 @keydown.stop @keyup.stop @keypress.stop
               ></textarea>
-              <div v-if="reporterDrafts[row.id]?.trim()" class="nge-admin-fmtpreview nge-triage-fmtpreview">
+              <!-- Only when asked for (Ames 2026-10-16: "I keep accidentally clicking there"). -->
+              <div v-if="replyPreviewOpen[row.id] && reporterDrafts[row.id]?.trim()" class="nge-admin-fmtpreview nge-triage-fmtpreview">
                 <div class="nge-admin-fmtpreview-label">What they will see</div>
                 <div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(reporterDrafts[row.id], true)"></div>
               </div>
@@ -4105,4 +4111,6 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-light .nge-triage-link { color: #1f5fc4; }
 .nge-triage-light .nge-triage-link:hover { color: #0d3f8f; }
 .nge-triage-view-btn { text-decoration: none; display: inline-flex; align-items: center; margin-right: 6px; }
+.nge-triage-preview-toggle { margin-left: auto; }
+.nge-triage-preview-toggle[aria-pressed="true"] { border-color: rgba(79, 207, 255, 0.7); }
 </style>
