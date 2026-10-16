@@ -22,7 +22,7 @@ import {supabase} from './supabase';
 import {quietly, setAnnotationCounterUser} from './util/annotation_counter';
 import {isStreakMilestone, nextStreakMilestone, streakLine} from './util/streak_milestones';
 import {emitScriptEvent} from './script_api';
-import {getRootsFromSupervoxels, getRootFromSupervoxel, latestDescendants} from './widgets/pcg_service';
+import {ancestorAmong, getRootsFromSupervoxels, getRootFromSupervoxel, latestDescendants} from './widgets/pcg_service';
 import {SegmentationUserLayer} from "neuroglancer/segmentation_user_layer";
 import {makeLayer} from "neuroglancer/layer";
 import pinVtkUrl from '../static/tags/pin.vtk';
@@ -4552,24 +4552,82 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   function pointKey(pt: ClaimPoint): string { return `${pt[0]},${pt[1]},${pt[2]}`; }
 
-  /** Batch-refresh cached segment_ids by resolving supervoxel → current root via PCG.
-   *  Correctly follows edits and splits. */
+  /** The current root of every claim that carries a supervoxel, by task id,
+   *  so a claimed cell is still recognised after edits (isTaskCell). */
+  const currentRoots = ref<Record<number, string>>({});
+
+  /** Look up the current root of every claim that carries a supervoxel.
+   *
+   *  It used to WRITE that root into the claim's segment_id, here and in the
+   *  database. But segment_id is how a claim is matched to its row in the
+   *  cell list and the sheet, and since 10-05 Cell Library claims carry a
+   *  supervoxel too, so the first edit to a claimed cell broke the match:
+   *  completing it said the cell was not in the sheet, and the claim showed as
+   *  a second cell (annkri, report 150, 2026-10-16). The root now lives beside
+   *  the claim instead; repairListedIds puts back the IDs already rewritten. */
   async function refreshSegmentIds(): Promise<void> {
     const tasksWithSv = tasks.value.filter(t => t.supervoxel_id);
     if (!tasksWithSv.length) return;
 
     const svIds = tasksWithSv.map(t => t.supervoxel_id!);
     const resolved = await getRootsFromSupervoxels(svIds);
+    const next = { ...currentRoots.value };
     for (const task of tasksWithSv) {
-      const newRoot = resolved.get(task.supervoxel_id!);
-      if (newRoot && newRoot !== task.segment_id) {
-        task.segment_id = newRoot;
-        supabase.from('proofreading_tasks')
-          .update({ segment_id: newRoot })
-          .eq('id', task.id)
-          .then(() => {}, () => {});
-      }
+      const root = resolved.get(task.supervoxel_id!);
+      // An anchor on another cell (an old cell-menu claim took whatever was
+      // selected) must not make that cell this claim.
+      if (root && await anchorFits(task, root)) next[task.id] = root;
+      else delete next[task.id];
     }
+    currentRoots.value = next;
+  }
+
+  /** Later versions of a listed cell, asked once per ID per visit. */
+  const descendantsSeen = new Map<string, Promise<string[] | null>>();
+  /** True when `root` (where a claim's anchor is now) is the claim's cell: its
+   *  listed ID or a later version of it. Unknown (the lookup failed) counts as
+   *  true, as before. */
+  async function anchorFits(t: ProofreadingTask, root: string): Promise<boolean> {
+    const listed = String(t.segment_id || '');
+    if (!listed || root === listed) return true;
+    let ends = descendantsSeen.get(listed);
+    if (!ends) { ends = latestDescendants(listed).catch(() => null); descendantsSeen.set(listed, ends); }
+    const found = await ends;
+    return !found || found.includes(root);
+  }
+
+  /** True when this claim is the cell `segId`: the ID it was listed under, or
+   *  the cell's ID now, after edits. */
+  function isTaskCell(t: ProofreadingTask, segId: string): boolean {
+    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId;
+  }
+
+  /** Put back the listed ID of my open claims whose segment_id was rewritten
+   *  to a later root (see refreshSegmentIds). `listed`: the cell list's
+   *  segment IDs. A claim is changed only when exactly one listed ID is in
+   *  its edit history and no other claim of mine already holds that ID; a
+   *  claim on a cell that is not in the list is left alone. Returns how many
+   *  were put back. */
+  async function repairListedIds(listed: string[]): Promise<number> {
+    const ids = [...new Set(listed.filter(id => /^\d+$/.test(id)))];
+    if (!ids.length || !userId.value) return 0;
+    const known = new Set(ids);
+    let fixed = 0;
+    for (const t of myActiveClaims()) {
+      const now = String(t.segment_id || '');
+      if (!/^\d+$/.test(now) || known.has(now)) continue;
+      const hit = await ancestorAmong(now, ids).catch(() => undefined);
+      if (!hit) continue;
+      if (tasks.value.some(o => o !== t && o.segment_id === hit && o.assigned_to === userId.value
+          && (o.status === 'assigned' || o.status === 'in_progress'))) continue;
+      const { error: upErr } = await supabase.from('proofreading_tasks').update({ segment_id: hit }).eq('id', t.id);
+      if (upErr) { console.warn('[backend] could not put back the listed ID of claim', t.id, upErr.message); continue; }
+      console.info(`[backend] claim ${t.id}: listed ID ${hit} put back (it had been rewritten to ${now})`);
+      currentRoots.value = { ...currentRoots.value, [t.id]: now };
+      t.segment_id = hit;
+      fixed++;
+    }
+    return fixed;
   }
 
   // ── What each of my claims is NOW ─────────────────────────────────────
@@ -4599,7 +4657,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const sv = anchorOf(t);
     if (sv) {
       const root = await getRootFromSupervoxel(sv);
-      if (root) return root;
+      if (root && await anchorFits(t, root)) return root;
     }
     const ends = await latestDescendants(String(t.segment_id));
     if (!ends) return liveRoots.value[t.id] ?? null;      // lookup failed: keep what we had
@@ -4739,10 +4797,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     };
   }
 
-  /** Is a segment claimed? Checks by matching cached segment_id on any active task. */
+  /** Is a segment claimed? By the ID a claim was listed under, or its ID now. */
   function isClaimedSegment(segId: string): {claimed: boolean; byMe: boolean; byName?: string} {
     const task = tasks.value.find(
-      t => t.segment_id === segId && (t.status === 'assigned' || t.status === 'in_progress'),
+      t => isTaskCell(t, segId) && (t.status === 'assigned' || t.status === 'in_progress'),
     );
     if (!task) return { claimed: false, byMe: false };
     return {
@@ -4870,7 +4928,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Release a claim by segment ID (finds matching task by cached segment_id). */
   async function releaseBySegment(segId: string): Promise<boolean> {
     const task = tasks.value.find(
-      t => t.segment_id === segId && t.assigned_to === userId.value &&
+      t => isTaskCell(t, segId) && t.assigned_to === userId.value &&
            (t.status === 'assigned' || t.status === 'in_progress'),
     );
     if (!task) return false;
@@ -5875,7 +5933,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
     claimCell, releaseCell, releaseBySegment, releaseTaskById, reopenTask, saveWorkingLink, loadMyActiveClaims, isClaimedPoint, isClaimedSegment, myActiveClaimCount,
-    refreshSegmentIds,
+    refreshSegmentIds, currentRoots, isTaskCell, repairListedIds,
     liveRoots, refreshLiveRoots, anchorClaimAt,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub

@@ -86,7 +86,7 @@ setSegmentLabelRequester(ids => {
 import {getDatasetCaveConfig} from '../config';
 import {currentSegLayerName} from '../datasets';
 import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
-import {getSelectedSupervoxelId} from './pcg_service';
+import {getRootFromSupervoxel, getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
 import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
 import {labSheetRowsFor, labSheetLines, labSheetSummary, type LabSheetRow} from '../util/lab_sheet';
@@ -930,7 +930,12 @@ export class ButtonService {
           const claimPoint: ClaimPoint = vp
             ? [Math.round(vp[0]), Math.round(vp[1]), Math.round(vp[2])]
             : [0, 0, 0];
-          const supervoxelId = getSelectedSupervoxelId();
+          // The selected supervoxel is whatever the mouse last pointed at,
+          // which can be a neighbouring cell. It becomes the claim's anchor
+          // for good, so keep it only when it is this cell (annkri, report
+          // 150); otherwise the claim is anchored later, at its soma.
+          const selected = getSelectedSupervoxelId();
+          const supervoxelId = selected && await getRootFromSupervoxel(selected).catch(() => null) === segmentIDString ? selected : null;
           const result = await backend.claimCell(claimPoint, segmentIDString, supervoxelId || undefined);
           if (result.ok) {
             claimBtn.textContent = '✓ Claimed!';
