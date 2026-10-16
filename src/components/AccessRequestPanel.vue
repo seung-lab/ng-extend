@@ -18,6 +18,11 @@ import { useProofreadingBackendStore } from '../store';
 
 const emit = defineEmits({ hide: null });
 const boxEl = ref<HTMLElement | null>(null);
+// A slim box for laptop screens (Ames 2026-10-16): what is in view, the two
+// Save buttons and Send. Remembered in this browser.
+const SLIM_KEY = 'nge_access_panel_slim';
+const slim = ref((() => { try { return localStorage.getItem(SLIM_KEY) === '1'; } catch { return false; } })());
+function toggleSlim() { slim.value = !slim.value; try { localStorage.setItem(SLIM_KEY, slim.value ? '1' : '0'); } catch { /* private mode */ } }
 const { dragging, posStyle, startDrag } = useDragBox('nge_access_panel_pos', boxEl);
 
 const loading = ref(true);
@@ -165,30 +170,35 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 </script>
 
 <template>
-  <div ref="boxEl" class="nge-acc" :class="{ 'nge-acc--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Ask for retina access">
+  <div ref="boxEl" class="nge-acc" :class="{ 'nge-acc--dragging': dragging, 'nge-acc--slim': slim }" :style="posStyle" role="dialog" aria-label="Ask for retina access">
     <div class="nge-acc-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-acc-title">Retina access</span>
+      <button class="nge-acc-size" :title="slim ? 'Show everything' : 'Make the box smaller'" :aria-pressed="slim" @click="toggleSlim">{{ slim ? 'Full' : 'Slim' }}</button>
       <button class="nge-acc-close" aria-label="Close" @click="emit('hide')">×</button>
     </div>
 
     <div v-if="loading" class="nge-acc-how">Loading your request…</div>
     <template v-else>
-      <p v-if="status === 'draft'" class="nge-acc-how">
-        Find ten mistakes on cells that are not tutorial cells, in the Sandbox or the retina.
-        <b>Place the points, but do not submit the edit.</b> Seven cuts: red and blue Multicut points on each side of
-        where you would cut. Three merges: press M and Ctrl+click the two pieces you would join. Then save the view here.
-      </p>
-      <div v-else-if="status === 'submitted'" class="nge-acc-state">
+      <p v-if="slim && status === 'submitted'" class="nge-acc-slimline">Sent. Waiting for a review.</p>
+      <p v-else-if="slim && status === 'redo'" class="nge-acc-slimline nge-acc-slimline--redo">{{ redoLeft === 1 ? '1 example' : `${redoLeft} examples` }} to redo. Full shows the notes.</p>
+      <p v-else-if="slim && status === 'invited'" class="nge-acc-slimline nge-acc-slimline--yes">Your edit access has been granted!</p>
+      <ul v-else-if="status === 'draft' && !slim" class="nge-acc-how nge-acc-steps">
+        <li>Find ten mistakes on cells that are not tutorial cells, in the Sandbox or the retina.</li>
+        <li><b>Seven cuts:</b> place red and blue Multicut (cut) points on each side of where you would cut.</li>
+        <li><b>Three merges:</b> press M, then Ctrl+click the two pieces to place merge points.</li>
+        <li><b>Place the cut or merge points, but do not submit the edit.</b> Then save the view here.</li>
+      </ul>
+      <div v-else-if="status === 'submitted' && !slim" class="nge-acc-state">
         Sent{{ request?.submitted_at ? ` on ${when(request.submitted_at)}` : '' }}. A reviewer is looking at your examples.
         You will hear back in your notifications.
         <button class="nge-acc-back" :disabled="!!busy" @click="takeBack">{{ busy === 'back' ? 'Taking back…' : 'Take them back to change' }}</button>
       </div>
-      <div v-else-if="status === 'redo'" class="nge-acc-state nge-acc-state--redo">
+      <div v-else-if="status === 'redo' && !slim" class="nge-acc-state nge-acc-state--redo">
         <b>A reviewer would like {{ redoLeft === 1 ? 'one example' : `${redoLeft} examples` }} again.</b>
         Their notes are on each one below. Redo those (you can change any of the others too), then send again.
         <p v-if="request?.reviewer_note" class="nge-acc-quote">{{ request.reviewer_note }}</p>
       </div>
-      <div v-else-if="status === 'invited'" class="nge-acc-state nge-acc-state--yes">
+      <div v-else-if="status === 'invited' && !slim" class="nge-acc-state nge-acc-state--yes">
         <b>Congratulations! Your edit access has been granted!</b> The retina is open to you for editing. If it still says View only, sign out of Pyr and back in.
         <p v-if="request?.reviewer_note" class="nge-acc-quote">{{ request.reviewer_note }}</p>
       </div>
@@ -200,9 +210,9 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
           <span>{{ kind === 'cut' ? 'Cuts' : 'Merges' }}</span>
           <span class="nge-acc-count">{{ countOf(kind) }} of {{ ACCESS_SLOTS[kind] }}</span>
         </div>
-        <div class="nge-acc-sub">{{ kind === 'cut' ? 'Two cells wrongly joined: Multicut points, not cut' : 'One cell wrongly broken in two: merge points, not merged' }}</div>
+        <div v-if="!slim" class="nge-acc-sub">{{ kind === 'cut' ? 'Two cells wrongly joined: Multicut points, not cut' : 'One cell wrongly broken in two: merge points, not merged' }}</div>
         <ul class="nge-acc-list">
-          <li v-for="row in filled(kind)" :key="kind + row.s" class="nge-acc-item"
+          <li v-for="row in (slim ? [] : filled(kind))" :key="kind + row.s" class="nge-acc-item"
               :class="{ 'nge-acc-item--good': row.it.verdict === 'good', 'nge-acc-item--redo': row.it.verdict === 'redo' }">
             <div class="nge-acc-row">
               <button class="nge-acc-open" title="Go back to this view" @click="open(row.it)">
@@ -240,10 +250,10 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </template>
 
       <template v-if="canEdit">
-        <label class="nge-acc-label">Note for the reviewer, {{ noteGoes }} (optional)
+        <label v-if="!slim" class="nge-acc-label">Note for the reviewer, {{ noteGoes }} (optional)
           <textarea v-model="note" class="nge-acc-input" rows="2" maxlength="1000" placeholder="Where the merger starts, what you checked"></textarea>
         </label>
-        <label class="nge-acc-label">Your EyeWire username, if you played EyeWire (optional)
+        <label v-if="!slim" class="nge-acc-label">Your EyeWire username (optional)
           <input v-model="ewName" class="nge-acc-input" maxlength="60" />
         </label>
         <button class="nge-acc-send" :disabled="busy === 'send'" @click="send">
@@ -252,13 +262,13 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </template>
 
       <p v-if="message" class="nge-acc-msg" :class="{ 'nge-acc-msg--bad': messageBad }" role="status">{{ message }}</p>
-      <div v-if="backend.isAdmin && request" class="nge-acc-admin">
+      <div v-if="backend.isAdmin && request && !slim" class="nge-acc-admin">
         <button class="nge-acc-rep" :disabled="!!busy" @click="askingReset = true">Start over (admins, for testing)</button>
         <ConfirmDialog v-if="askingReset" title="Start over?"
           text="This deletes your request, its ten examples and every mark and note on them, for good. It cannot be undone."
           yes="Delete for good" @yes="startOver" @no="askingReset = false" />
       </div>
-      <p class="nge-acc-help">
+      <p v-if="!slim" class="nge-acc-help">
         Taking more than one try is normal. You are never locked out.
         <a href="https://connectome.quest/blog/post.html?p=getting-access-to-the-retina" target="_blank" rel="noopener">How access works ↗</a>
       </p>
@@ -283,6 +293,18 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 .nge-acc-title { font-size: 17px; font-weight: 600; color: #7CFFB2; }
 .nge-acc-close { margin-left: auto; background: none; border: none; color: rgba(255, 255, 255, 0.55); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-acc-close:hover { color: #fff; }
+.nge-acc-size { margin-left: auto; margin-right: 8px; font: inherit; font-size: 13px; color: rgba(220, 230, 245, 0.8); background: none; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 6px; padding: 1px 8px; cursor: pointer; }
+.nge-acc-size:hover { color: #fff; border-color: rgba(255, 255, 255, 0.45); }
+.nge-acc-size + .nge-acc-close { margin-left: 0; }
+.nge-acc-steps { padding-left: 18px; }
+.nge-acc-steps li { margin: 3px 0; }
+.nge-acc--slim { width: 270px; }
+.nge-acc--slim .nge-acc-sec { margin-top: 6px; }
+.nge-acc--slim .nge-acc-save { padding: 4px 8px; }
+.nge-acc--slim .nge-acc-send { margin-top: 8px; }
+.nge-acc-slimline { margin: 6px 0; color: rgba(220, 230, 245, 0.85); }
+.nge-acc-slimline--redo { color: #f5d142; }
+.nge-acc-slimline--yes { color: #7CFFB2; }
 .nge-acc-how { margin: 8px 0 10px; line-height: 1.45; color: rgba(220, 230, 245, 0.78); }
 .nge-acc-how b { color: #fff; font-weight: 600; }
 .nge-acc-state { margin: 8px 0 10px; padding: 8px 10px; border-radius: 8px; line-height: 1.45; background: rgba(255, 255, 255, 0.05); }

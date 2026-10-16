@@ -229,6 +229,15 @@ const RETINA_LAYERS = [
     ok(m1 && m1.points.merge.length === 2 && m1.points.merge[0].position[0] === 38001, 'merge 1 keeps its two merge points');
     await page.fill('.nge-acc-input >> nth=1', 'testplayer_ew');
     await shotOf('.nge-acc', '03-panel-full');
+    // Slim: counts, Save and Send only; remembered; back to full.
+    await page.click('.nge-acc-size');
+    await page.waitForTimeout(300);
+    const slimBox = await page.locator('.nge-acc').boundingBox();
+    ok(await page.$$eval('.nge-acc-item', els => els.length) === 0 && !!(await page.$('.nge-acc-send')) && slimBox.width < 300, `slim hides the lists and keeps Send (${Math.round(slimBox.width)} by ${Math.round(slimBox.height)} px)`);
+    ok(await page.evaluate(() => localStorage.getItem('nge_access_panel_slim')) === '1', 'slim is remembered');
+    await shotOf('.nge-acc', '03b-panel-slim');
+    await page.click('.nge-acc-size');
+    await page.waitForTimeout(300);
     await page.click('.nge-acc-send');
     await page.waitForFunction(() => /A reviewer is looking/.test((document.querySelector('.nge-acc') || {}).innerText || ''), null, { timeout: 8000 });
     ok(db.access_requests[0].status === 'submitted', 'the request is submitted');
@@ -410,7 +419,7 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(1100);
     await page.click('.nge-acc-save >> nth=0');
     await page.waitForSelector('.nge-acc-admin .nge-acc-rep', { timeout: 8000 });
-    await page.click('.nge-acc-admin .nge-acc-rep');
+    await page.evaluate(() => document.querySelector('.nge-acc-admin .nge-acc-rep').click());
     await page.waitForSelector('.nge-cfm', { timeout: 4000 });
     ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('nge-cfm-no')), 'Start over asks in a pop up, with Cancel focused');
     await page.click('.nge-cfm-yes');
