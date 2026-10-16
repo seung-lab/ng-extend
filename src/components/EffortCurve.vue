@@ -57,6 +57,13 @@ let backstop = 0;
 let ro: ResizeObserver | null = null;
 let teardown: (() => void) | null = null;
 let drawnWidth = 0;
+let settle = 0;
+/** The animated draw waits until the width has been still for a moment: the
+ *  profile's frame is still widening for up to a second after it opens, and
+ *  a draw begun early was redrawn finished a quarter second in, which read
+ *  as a broken animation on a zoomed in screen (Ames 2026-10-16). A change
+ *  that lands mid draw starts the draw again at the new width. */
+function scheduleDraw(delay = 250) { clearTimeout(settle); settle = window.setTimeout(() => render(true), delay); }
 
 const SVG = 'http://www.w3.org/2000/svg';
 function el<K extends keyof SVGElementTagNameMap>(name: K, attrs: Record<string, string | number>): SVGElementTagNameMap[K] {
@@ -169,6 +176,9 @@ function render(animate: boolean) {
     cancelAnimationFrame(raf); clearTimeout(backstop);
     land(1);
     done.value = true;
+    // a width change missed while drawing: redraw finished at the width it has now
+    const now = Math.round(host!.getBoundingClientRect().width);
+    if (now && Math.abs(now - drawnWidth) > 1) setTimeout(() => { if (fig.value === host) render(false); }, 0);
   }
   if (!animate || reducedMotion()) {
     arrive();
@@ -211,12 +221,13 @@ function render(animate: boolean) {
 }
 
 onMounted(() => {
-  render(true);
+  if (reducedMotion()) render(true); else scheduleDraw(450);  // the frame's opening takes about that long
   if (typeof ResizeObserver !== 'undefined' && fig.value) {
     ro = new ResizeObserver(entries => {
       const w = Math.round(entries[0]?.contentRect.width ?? 0);
-      // the first report is the width it was just drawn at; only a real change redraws, finished
-      if (w && drawnWidth && Math.abs(w - drawnWidth) > 1 && fig.value?.querySelector('svg')) render(false);
+      if (!w || (drawnWidth && Math.abs(w - drawnWidth) <= 1)) return;  // the width it was drawn at
+      // before or during the draw: draw (again) once the width is still; after it: redraw finished, no replay
+      if (!fig.value?.querySelector('svg') || !done.value) scheduleDraw(); else render(false);
     });
     ro.observe(fig.value);
   }
@@ -224,7 +235,7 @@ onMounted(() => {
 watch(() => props.days, () => render(true));
 watch(() => props.span, () => render(true));
 watch(() => props.height, () => render(false));
-onBeforeUnmount(() => { clear(); ro?.disconnect(); ro = null; });
+onBeforeUnmount(() => { clear(); clearTimeout(settle); ro?.disconnect(); ro = null; });
 </script>
 
 <template>

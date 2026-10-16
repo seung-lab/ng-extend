@@ -1544,7 +1544,10 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 <img :src="getBadgeUrl(latestExplorationBadge.imageKey)" :alt="latestExplorationBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestExplorationBadge.slug}`" />
               </div>
             <div class="nge-profile-windows">
-              <EffortCurve v-if="scopedCellDays && scopedCellDays.length" :days="scopedCellDays" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
+              <!-- No curve on the compact layout (a laptop, or a small screen
+                   zoomed in): the draw stuttered and the sliver it had there
+                   was not worth the room (Ames 2026-10-16, Annkri's profile). -->
+              <EffortCurve v-if="scopedCellDays && scopedCellDays.length && !compactRows" :days="scopedCellDays" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
               <div class="nge-profile-stat-row">
                 <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                   {label:'Today',    val:overviewCells.today},
@@ -1644,7 +1647,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
             <!-- The same rows as the three numbers, as a line from the first
                  day to today (Ames 2026-10-11). Nothing while they load, and
                  nothing for the career fallback, which has no days. -->
-            <EffortCurve v-if="scopedEditDays && scopedEditDays.length" :days="scopedEditDays" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" :height="tinyRows ? 26 : compactRows ? 36 : 76" />
+            <EffortCurve v-if="scopedEditDays && scopedEditDays.length && !compactRows" :days="scopedEditDays" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                 {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
