@@ -97,7 +97,14 @@ export async function planMenuCompletion(segId: string): Promise<MenuCompletionP
 
   const backend = useProofreadingBackendStore();
   await backend.loadTasks(dataset);
-  const task = backend.tasks.find(t => t.segment_id === row!.segId);
+  let task = backend.tasks.find(t => t.segment_id === row!.segId);
+  if (!task && backend.tasks.some(t => t.assigned_to === backend.userId && backend.isTaskCell(t, segId))) {
+    // My claim on this cell, still under a rewritten ID: put the listed ID
+    // back first, or the cell was claimed a second time and the sheet refused
+    // it (annkri, report 150).
+    await backend.repairListedIds(rows.map(r => r.segId));
+    task = backend.tasks.find(t => t.segment_id === row!.segId);
+  }
   plan.task = task;
   if (task?.status === 'completed') {
     plan.blocked = task.assigned_to === backend.userId ? undefined

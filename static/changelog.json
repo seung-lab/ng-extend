@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-16T17:48:50Z",
+      "title": "Claimed cells stay the cell you claimed",
+      "items": [
+        "After you edit a cell you claimed, completing it no longer says the cell is not in the sheet, and the claim no longer turns into a neighbouring cell.",
+        "Claims already affected are put back to their own cell the next time you open the Cell Library."
+      ]
+    },
+    {
       "at": "2026-10-16T15:48:22Z",
       "title": "Tidier Segments headings, and a safer folder delete",
       "digest": "minor",
