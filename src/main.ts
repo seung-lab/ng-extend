@@ -71,6 +71,7 @@ import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/uti
 import {getLayerScales} from "./widgets/widget_utils";
 import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 import pyrIconUrl from './images/pyr-icon.png';
+import {clearStaleCutPoints} from './util/stale_cut_points';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
 // Injected by scripts/build-prod.js as the short git sha. Guarded with typeof
@@ -957,6 +958,15 @@ function observeSplitMergeTools() {
       try {
         const segLayer = viewer?.selectedLayer?.layer?.layer;
         const gc = segLayer?.graphConnection?.value;
+        // Cut mode just opened: points left on a cell that is not shown would
+        // make the tool hide every other cell. Clear them, offering Undo.
+        if (!wasMulticutActive && gc?.state?.multicutState) {
+          const cleared = clearStaleCutPoints(segLayer);
+          if (cleared !== null) {
+            store.markCleared();
+            if (cleared > 0) store.showStaleCutCleared(cleared);
+          }
+        }
         if (gc?.state?.multicutState) {
           const ms = gc.state.multicutState;
           const sinkCount = ms.sinks?.size ?? 0;

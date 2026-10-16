@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useSplitMergeOverlayStore } from 'src/store';
 import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
+import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points';
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -132,7 +133,17 @@ function previewCut() {
   (document.querySelector('.graphene-multicut .nge-cut-preview-button') as HTMLElement | null)?.click();
 }
 
+function undoStaleClear() {
+  store.showStaleCutCleared(null);
+  undoStaleCutClear();
+}
+// Once the notice goes, so does the chance to undo; a new point placed
+// meanwhile starts a fresh cut, and the notice makes way for it.
+watch(() => store.staleCutCleared, n => { if (n === null) forgetStaleCutClear(); });
+watch(totalPoints, n => { if (n > 0 && store.staleCutCleared) store.showStaleCutCleared(null); });
+
 function clearPoints() {
+  store.showStaleCutCleared(null);
   // Flag the clear FIRST so the DOM scanner doesn't misread the points
   // resetting to 0 as a split submit ("Submitting split...").
   store.markCleared();
@@ -330,7 +341,14 @@ function cancelTool() {
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
           </div>
 
-          <div class="nge-smo-hint nge-smo-hint--left" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
+          <!-- Points left on a cell that is not shown were cleared as cut
+               mode opened, so the player's own cells stay on screen
+               (util/stale_cut_points.ts). Undo puts them back. -->
+          <div v-if="store.staleCutCleared" class="nge-smo-stale" role="status">
+            <span>Cleared {{ store.staleCutCleared }} point{{ store.staleCutCleared !== 1 ? 's' : '' }} left on another cell.</span>
+            <button class="nge-smo-action-btn nge-smo-stale-undo" @click="undoStaleClear" title="Put the points back. Cut mode then shows only their cell.">Undo</button>
+          </div>
+          <div v-else class="nge-smo-hint nge-smo-hint--left" :class="{ 'error-hint': hasInlineResult && resultIsError, 'nge-smo-hint--now': needsSwap }">{{ contextHint }}</div>
 
           <!-- At the right end: whether the bar stays after a cut. Off by
                default (Ames: one cut, then move on); on for a run of cuts on
@@ -722,6 +740,21 @@ function cancelTool() {
 .merge-hint {
   color: #80d8a8;
 }
+
+/* "Cleared 3 points left on another cell. Undo" in place of the hint. */
+.nge-smo-stale {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #fff;
+  white-space: nowrap;
+}
+.nge-smo-stale > span { overflow: hidden; text-overflow: ellipsis; }
+.nge-smo-stale-undo { flex-shrink: 0; pointer-events: auto; font-weight: 600; }
 
 /* Actions & keyboard shortcuts */
 .nge-smo-actions--left { margin-left: 14px; }

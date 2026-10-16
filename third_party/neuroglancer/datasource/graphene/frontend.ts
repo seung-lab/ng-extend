@@ -847,6 +847,10 @@ class MulticutState extends RefCounted implements Trackable {
 
   sinks = new WatchableSet<SegmentSelection>();
   sources = new WatchableSet<SegmentSelection>();
+  /** Pyr: true while the cut tool is open. Only then is the cell with the
+   *  points kept on screen; closed, the player may hide it, and Pyr clears
+   *  the points left on it when cut mode next opens. */
+  toolActive = false;
 
   constructor(
       public focusSegment = new TrackableValue<Uint64|undefined>(undefined, x => x),
@@ -1127,8 +1131,8 @@ class GraphConnection extends SegmentationGraphSourceConnection {
 
   private visibleSegmentsChanged(segments: Uint64[]|null, added: boolean) {
     const {segmentsState} = this;
-    const {focusSegment: {value: focusSegment}} = this.graph.state.multicutState;
-    if (focusSegment && !segmentsState.visibleSegments.has(focusSegment)) {
+    const {focusSegment: {value: focusSegment}, toolActive} = this.graph.state.multicutState;
+    if (toolActive && focusSegment && !segmentsState.visibleSegments.has(focusSegment)) {
       if (segmentsState.selectedSegments.has(focusSegment)) {
         StatusMessage.showTemporaryMessage(`Can't hide active multicut segment.`, 3000);
       } else {
@@ -2191,6 +2195,8 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
     const priorHighlightColor = displayState.highlightColor.value;
 
 
+    multicutState.toolActive = true;
+    activation.registerDisposer(() => { multicutState.toolActive = false; });
     activation.bindInputEventMap(MULTICUT_SEGMENTS_INPUT_EVENT_MAP);
     activation.registerDisposer(() => {
       resetMulticutDisplay();

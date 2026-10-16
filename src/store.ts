@@ -3258,6 +3258,15 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   }
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Points left on a cell that is not shown, cleared as cut mode opened
+   *  (util/stale_cut_points.ts): how many, while the bar offers Undo. */
+  const staleCutCleared = ref<number | null>(null);
+  let staleCutTimer: ReturnType<typeof setTimeout> | null = null;
+  function showStaleCutCleared(count: number | null) {
+    if (staleCutTimer) { clearTimeout(staleCutTimer); staleCutTimer = null; }
+    staleCutCleared.value = count;
+    if (count !== null) staleCutTimer = setTimeout(() => { staleCutCleared.value = null; staleCutTimer = null; }, 8000);
+  }
 
   /** Record that the user just cleared the placed points. */
   function markCleared() {
@@ -3282,6 +3291,7 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
         resultFlash.value = '';
         resultText.value = '';
         if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+        showStaleCutCleared(null);
       }
     }
   }
@@ -3372,9 +3382,9 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   return {
     toolActive, activeGroup, redPointCount, bluePointCount,
     mergeSubmissionCount, mergeSegments, mergeRows, autoSubmit, submitting, statusMessage, resultFlash, resultText,
-    pendingClose, closingTool, clearedAt, keepCutOpen,
+    pendingClose, closingTool, clearedAt, keepCutOpen, staleCutCleared,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,
-    showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared, setKeepCutOpen,
+    showResult, dismissResult, beginSuccessClose, removeMergeSegment, markCleared, setKeepCutOpen, showStaleCutCleared,
   };
 });
 
