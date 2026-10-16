@@ -380,10 +380,15 @@ export async function readSavedQuestWork(): Promise<void> {
  */
 export function leaveQuestFor(segId: string | null | undefined) {
   const a = questWork.active;
-  if (!a || (segId && segId === a.segmentId) || !questOnScreen(a.segmentId) || questWork.opening) return;
-  // saveQuestWork reads the view before its first await, so this is the quest.
-  if (workSignature() !== lastSavedSig) void saveQuestWork(a.segmentId);
-  markQuestOnScreen(null);
+  if (questWork.opening || (a && segId && segId === a.segmentId)) return;
+  if (a && questOnScreen(a.segmentId)) {
+    // saveQuestWork reads the view before its first await, so this is the quest.
+    if (workSignature() !== lastSavedSig) void saveQuestWork(a.segmentId);
+    markQuestOnScreen(null);
+  }
+  // The quest's layers go even when this tab does not count the quest as on
+  // screen (a new tab, a link that carried them): annkri 2026-10-16 still had
+  // them on cells she only looked at, and in a claim's saved view.
   try {
     const lm = (window as any)['viewer']?.layerManager;
     const isAnnotation = (ml: any) => ml?.layer?.type === 'annotation' || ml?.layer?.constructor?.type === 'annotation';

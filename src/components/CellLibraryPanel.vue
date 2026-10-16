@@ -553,6 +553,9 @@ async function switchToClaim(cell: CellRow) {
   // Already working on this claim: its layers are loaded, so just move the
   // camera. Reloading its saved view would drop anything done since the save.
   if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+  // A quest on screen is saved and its layers put away BEFORE the claim's
+  // view is saved or opened, so they never end up in the claim (annkri #145).
+  document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
   if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
@@ -572,6 +575,8 @@ async function prepareJump(segId: string): Promise<{ ok: boolean; keep: boolean 
   if (jumpAddsToView()) return { ok: true, keep: true };
   const t = workingTaskId ? backend.tasks.find(x => x.id === workingTaskId) : null;
   if (t && String(t.segment_id) === segId) return { ok: true, keep: true };
+  // As in switchToClaim: the quest goes before the working claim is saved.
+  document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId } }));
   if (!(await leaveCurrentWork(null))) return { ok: false, keep: false };
   setWorkingTask(null);
   return { ok: true, keep: false };
