@@ -41,6 +41,7 @@ const draftImageDetail = ref<1 | 2 | 4>(1);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftSegShowId = ref(false);
+const draftCalm = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
 const draftOfferRestore = ref(true);
@@ -114,6 +115,7 @@ onMounted(() => {
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
+  draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
@@ -171,7 +173,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -449,6 +451,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
               <input type="checkbox" v-model="draftSegShowId" />
               <span class="nge-settings-toggle-label">Show the segment ID under a cell's label</span>
+            </label>
+            <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
+              <input type="checkbox" v-model="draftCalm" />
+              <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">
               <span class="nge-settings-toggle-label">When I complete a cell, show</span>

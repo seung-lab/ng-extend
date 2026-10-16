@@ -8,6 +8,7 @@ import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
+import { startCalm } from './util/calm';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
 import { startCutPreview } from './util/cut_preview';
@@ -165,6 +166,8 @@ window.addEventListener('DOMContentLoaded', () => {
   (window as any).__ngeBuild =
       typeof NGE_BUILD !== 'undefined' ? NGE_BUILD : null;
   installErrorReporting(app);
+  // Calm screen, before anything is drawn: some panels ask once whether to move.
+  startCalm();
   app.use(pinia);
   const {initializeWithViewer} = useLayersStore();
   const {loadVolumes} = useVolumesStore();

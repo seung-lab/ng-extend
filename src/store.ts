@@ -1070,6 +1070,9 @@ export interface UserPreferences {
    *  settings, put back whenever a new view resets them (src/util/viewer_perf.ts,
    *  Krzysztof 2026-10-15). Absent: neuroglancer's defaults. */
   viewerPerf?: ViewerPerf;
+  /** Calm screen: no animations or glows in the interface (src/util/calm.ts,
+   *  annkri #144, Ames 2026-10-16). Defaults to false. */
+  calmScreen?: boolean;
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
@@ -1104,7 +1107,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

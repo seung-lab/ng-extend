@@ -1702,3 +1702,18 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-seg-list-heading--folder > .nge-seg-folder-nested { flex: none; margin-left: 2px; color: rgba(200, 215, 240, 0.42) !important; font-size: 12px; padding: 0 2px; }
 
 .nge-seg-list-heading--folder > .nge-seg-folder-nested { min-width: 26px; text-align: left; }
+
+/* Calm screen (Settings; src/util/calm.ts; annkri #144, 2026-10-16). Every
+   animation lands on its last frame at once and nothing eases, as under the
+   reduced motion rules, and text loses its glow. Panels add body.nge-calm rules
+   of their own for glows drawn with shadows or filters. The cells and the 3D
+   view are canvases and are not touched. */
+body.nge-calm *, body.nge-calm *::before, body.nge-calm *::after {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  text-shadow: none !important;
+  scroll-behavior: auto !important;
+}
