@@ -5117,6 +5117,8 @@ body.nge-mobile .nge-track-achievements { padding-left: 0; border-left: none; }
    text luminance, focus outlines, and colour that carries meaning (the bar
    fill, the Last 14 days legend, the merge and split icons). */
 body.nge-calm .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) { background: #080c14 !important; backdrop-filter: none !important; }
+/* the modal's drifting particle layer (ModalOverlay.vue) is the dot field behind the frame */
+body.nge-calm .nge-profile-modal :deep(.nge-holo-modal-particles) { display: none; }
 /* inline text-shadows on a few numbers (the base's rule cannot reach inline styles) */
 body.nge-calm .nge-profile-stat-val { text-shadow: none !important; }
 body.nge-calm .nge-profile-name { text-shadow: none; }
