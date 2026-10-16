@@ -250,6 +250,13 @@ function fixedNote(row) {
 // written from the row's state; "send update" sends that draft, "update:
 // <words>" sends their own wording, and ignoring it sends nothing. The Admin
 // Hub has the same composer. Every send is logged in feedback_log with role
+/** Admin Hub text for a Slack quote: every line quoted, not only the first,
+ *  and Markdown **bold** as Slack's *bold*, so a list sent to a player reads
+ *  as a list in the thread too (Ames 2026-10-16). */
+function slackQuote(text) {
+  return String(text || '').replace(/\*\*([^*\n]+)\*\*/g, '*$1*').split('\n').map(l => `> ${l}`).join('\n');
+}
+
 // 'reporter_update' (Admin Hub sends are echoed here). pollThreads and
 // collectNotes skip these commands so they are never read as tester replies.
 // "sender" too (Ames 2026-10-04).
@@ -302,7 +309,7 @@ async function reporterUpdates() {
     // Admin Hub sends that have not been mentioned in the thread yet.
     for (const e of log) {
       if (e.role === 'reporter_update' && e.via === 'admin' && !e.echoed) {
-        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:\n> ${e.text}`).catch(() => {});
+        await say(row, `✉️ Update sent to the reporter from the Admin Hub by ${e.by || 'an admin'}${e.ask ? ', asking for a reply' : ''}:\n${slackQuote(e.text)}`).catch(() => {});
         e.echoed = true;
         changed = true;
       }

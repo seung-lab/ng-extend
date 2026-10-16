@@ -4,10 +4,13 @@ import { marked } from 'marked';
 /** One policy for streamed Guide text and stored player/notification text. */
 export function renderSafeMarkdown(text: string, notification = false): string {
   let html: string;
+  // A line that starts with a typed or pasted bullet ("• ") is a list item,
+  // as "- " is (Ames 2026-10-16, Update submitter).
+  const md = String(text || '').replace(/^([ \t]*)[•·◦▪‣][ \t]+/gm, '$1- ');
   try {
-    html = marked.parse(text || '', { gfm: true, breaks: true, async: false }) as string;
+    html = marked.parse(md, { gfm: true, breaks: true, async: false }) as string;
   } catch {
-    html = (text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],

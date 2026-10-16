@@ -765,6 +765,15 @@ const reporterSending = ref<string | null>(null);
 /** "Ask for a reply" ticked in an open composer, keyed by row id (Ames
  *  2026-10-13). Off unless ticked: an ordinary update is exactly as before. */
 const reporterAsk = ref<Record<string, boolean>>({});
+/** The open boxes themselves, so the format buttons act on the right one. */
+const reporterEls: Record<string, HTMLTextAreaElement | null> = {};
+function reporterComposer(row: TriageRow): Composer {
+  return {
+    get el() { return reporterEls[row.id] ?? null; },
+    get: () => reporterDrafts.value[row.id] || '',
+    set: v => { reporterDrafts.value[row.id] = v; },
+  };
+}
 
 /** Draft from the card's state. Never includes the internal reviewer comment.
  *  The quote is the whole submission, as the card shows it (the report's full
@@ -1040,49 +1049,63 @@ const notifBody = ref('');
 // result as players will see it.
 const notifBodyEl = ref<HTMLTextAreaElement | null>(null);
 const notifPreview = computed(() => renderSafeMarkdown(notifBody.value, true));
-function replaceSelection(text: string, selectFrom?: number, selectTo?: number) {
-  const el = notifBodyEl.value;
-  if (!el) { notifBody.value += text; return; }
+/** A text box the format buttons act on: the Notifications body, or a
+ *  card's "Update submitter" box (Ames 2026-10-16: her numbered list to
+ *  Nseraf lost its numbers, so that box got the same buttons and preview). */
+type Composer = { el: HTMLTextAreaElement | null; get: () => string; set: (v: string) => void };
+const notifComposer: Composer = {
+  get el() { return notifBodyEl.value; },
+  get: () => notifBody.value,
+  set: v => { notifBody.value = v; },
+};
+function replaceSelection(text: string, selectFrom?: number, selectTo?: number, c: Composer = notifComposer) {
+  const el = c.el;
+  if (!el) { c.set(c.get() + text); return; }
   const a = el.selectionStart, b = el.selectionEnd;
-  notifBody.value = el.value.slice(0, a) + text + el.value.slice(b);
+  c.set(el.value.slice(0, a) + text + el.value.slice(b));
   requestAnimationFrame(() => {
     el.focus();
     el.setSelectionRange(a + (selectFrom ?? text.length), a + (selectTo ?? text.length));
   });
 }
-function onNotifPaste(e: ClipboardEvent) {
+function onNotifPaste(e: ClipboardEvent, c: Composer = notifComposer) {
   const html = e.clipboardData?.getData('text/html') || '';
   if (!html || !htmlHasFormatting(html)) return;   // plain paste as usual
   const md = htmlToMarkdown(html);
   if (!md) return;
   e.preventDefault();
-  replaceSelection(md);
+  replaceSelection(md, undefined, undefined, c);
 }
 /** Wrap the selection in a marker (bold, italic), or drop in a placeholder. */
-function fmtWrap(mark: string, placeholder: string) {
-  const el = notifBodyEl.value;
+function fmtWrap(mark: string, placeholder: string, c: Composer = notifComposer) {
+  const el = c.el;
   const sel = el ? el.value.slice(el.selectionStart, el.selectionEnd) : '';
   const inner = sel || placeholder;
-  replaceSelection(`${mark}${inner}${mark}`, mark.length, mark.length + inner.length);
+  replaceSelection(`${mark}${inner}${mark}`, mark.length, mark.length + inner.length, c);
 }
-/** Start each selected line with a prefix (heading, bullet). */
-function fmtLines(prefix: string, placeholder: string) {
-  const el = notifBodyEl.value;
+/** Start each selected line with a prefix (heading, bullet, or "1. ", "2. "
+ *  counted down the selection). A marker already there is swapped, not
+ *  doubled, so a bulleted list can be turned into a numbered one. */
+function fmtLines(prefix: string | ((i: number) => string), placeholder: string, c: Composer = notifComposer) {
+  const el = c.el;
   if (!el) return;
   const v = el.value;
   const a = v.lastIndexOf('\n', el.selectionStart - 1) + 1;
   let b = v.indexOf('\n', el.selectionEnd);
   if (b < 0) b = v.length;
+  const pre = typeof prefix === 'string' ? () => prefix : prefix;
+  let n = 0;
   const lines = (v.slice(a, b) || placeholder).split('\n')
-    .map(l => prefix + l.replace(/^(#{1,4}\s+|[-*]\s+)/, ''));
+    // A blank line stays blank and does not take a number.
+    .map(l => (l.trim() ? pre(n++) + l.replace(/^\s*(#{1,4}\s+|[-*\u2022\u00b7]\s+|\d{1,3}[.)]\s+)/, '') : l));
   el.setSelectionRange(a, b);
-  replaceSelection(lines.join('\n'));
+  replaceSelection(lines.join('\n'), undefined, undefined, c);
 }
-function fmtLink() {
-  const el = notifBodyEl.value;
+function fmtLink(c: Composer = notifComposer) {
+  const el = c.el;
   const sel = el ? el.value.slice(el.selectionStart, el.selectionEnd) : '';
   const text = sel || 'link text';
-  replaceSelection(`[${text}](https://)`, text.length + 3, text.length + 11);
+  replaceSelection(`[${text}](https://)`, text.length + 3, text.length + 11, c);
 }
 const notifTargetType = ref<'all' | 'group' | 'user'>('all');
 const notifTargetId = ref('');
@@ -2067,10 +2090,11 @@ function practiceWhen(iso: string | null) {
           <button type="button" title="Italic" @click="fmtWrap('*', 'italic text')"><i>I</i></button>
           <button type="button" title="Heading" @click="fmtLines('## ', 'Heading')">H</button>
           <button type="button" title="Bullet list" @click="fmtLines('- ', 'List item')">• List</button>
-          <button type="button" title="Link" @click="fmtLink">Link</button>
+          <button type="button" title="Numbered list" @click="fmtLines(i => `${i + 1}. `, 'List item')">1. List</button>
+          <button type="button" title="Link" @click="fmtLink()">Link</button>
           <span class="nge-admin-fmthint">Paste formatted text and it keeps its bold, headings, lists and links.</span>
         </div>
-        <textarea ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste"></textarea>
+        <textarea ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste($event)"></textarea>
         <div v-if="notifBody.trim()" class="nge-admin-fmtpreview">
           <div class="nge-admin-fmtpreview-label">Preview</div>
           <div class="nge-admin-fmtpreview-body" v-html="notifPreview"></div>
@@ -2677,7 +2701,8 @@ function practiceWhen(iso: string | null) {
             <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
                  :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
               <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
-              <span class="nge-triage-spec-text nge-triage-thread-text"><template v-for="(pt, pi) in linkParts(u.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
+              <div v-if="!u.reply" class="nge-triage-spec-text nge-triage-thread-md"><div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(u.text, true)"></div><span class="nge-triage-reporter-by">{{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></div>
+              <span v-else class="nge-triage-spec-text nge-triage-thread-text"><template v-for="(pt, pi) in linkParts(u.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
               <!-- What came with a reply: a screenshot, their view, console messages. -->
               <div v-if="u.reply && (u.screenshot_url || u.view_url || u.console_lines || u.dataset)" class="nge-triage-reply-parts">
                 <a v-if="u.screenshot_url" :href="u.screenshot_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the full screenshot">
@@ -2697,12 +2722,27 @@ function practiceWhen(iso: string | null) {
                     title="Takes the New reply marker off. The card goes back to where it was; nothing else about it changes."
                     @click="markRepliesSeen(row)">✓ Reply read</button>
             <template v-if="reporterDrafts[row.id] !== undefined">
+              <!-- Lists and bold, as the player will see them (Ames 2026-10-16).
+                   The text is Markdown; the feed draws it through
+                   renderSafeMarkdown, never as raw HTML. -->
+              <div class="nge-admin-fmtbar nge-triage-fmtbar" role="toolbar" aria-label="Formatting">
+                <button type="button" title="Bold" @click="fmtWrap('**', 'bold text', reporterComposer(row))"><b>B</b></button>
+                <button type="button" title="Bulleted list: each selected line becomes a bullet" @click="fmtLines('- ', 'List item', reporterComposer(row))">• Bullets</button>
+                <button type="button" title="Numbered list: each selected line gets 1, 2, 3" @click="fmtLines(i => `${i + 1}. `, 'List item', reporterComposer(row))">1. Numbers</button>
+                <span class="nge-admin-fmthint">Or start lines with "- " or "1. ". Pasted lists keep their numbers.</span>
+              </div>
               <textarea
+                :ref="el => { reporterEls[row.id] = el; }"
                 v-model="reporterDrafts[row.id]"
                 class="nge-triage-message nge-triage-comment"
-                rows="3"
+                rows="6"
+                @paste="onNotifPaste($event, reporterComposer(row))"
                 @keydown.stop @keyup.stop @keypress.stop
               ></textarea>
+              <div v-if="reporterDrafts[row.id]?.trim()" class="nge-admin-fmtpreview nge-triage-fmtpreview">
+                <div class="nge-admin-fmtpreview-label">What they will see</div>
+                <div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(reporterDrafts[row.id], true)"></div>
+              </div>
               <!-- Off / On, as a two way switch in the board's own style (Ames
                    2026-10-13: "the black check box is weird"). The lit side
                    is how it is now. -->
@@ -3844,6 +3884,21 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-reporter-by { color: rgba(255,255,255,0.45); }
 /* A reply the submitter was asked for (Ames 2026-10-13). */
 .nge-triage-thread-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Update submitter: format buttons, preview, and a sent update drawn as the
+   player sees it (Ames 2026-10-16). */
+.nge-triage-fmtbar { margin: 6px 0 4px; }
+.nge-triage-fmtpreview { margin-top: 6px; }
+.nge-triage-thread-md { overflow-wrap: anywhere; }
+.nge-triage-thread-md .nge-admin-fmtpreview-body { max-height: none; overflow: visible; }
+.nge-triage-light .nge-triage-fmtbar button { color: #1f4f8a; background: #e6eefb; border-color: #b9cbe6; }
+.nge-triage-light .nge-triage-fmtbar button:hover { background: #d6e4f8; border-color: #8fb0dc; }
+.nge-triage-light .nge-triage-fmtbar .nge-admin-fmthint { color: #6b788d; }
+.nge-triage-light .nge-triage-fmtpreview { background: #f6f8fc; border-color: #b9cbe6; }
+.nge-triage-light .nge-admin-fmtpreview-label { color: #6b788d; }
+.nge-triage-light .nge-admin-fmtpreview-body { color: #22304a; }
+.nge-triage-light .nge-admin-fmtpreview-body :deep(strong) { color: #101b2e; }
+.nge-triage-light .nge-admin-fmtpreview-body :deep(li::marker) { color: #3a7bd5; }
+.nge-triage-light .nge-admin-fmtpreview-body :deep(a) { color: #1f62b8; }
 .nge-triage-note--reply { margin-left: 18px; background: rgba(126,224,255,0.07); border-left: 2px solid rgba(126,224,255,0.45); }
 .nge-triage-note--unread { background: rgba(126,224,255,0.16); border-left-color: #7ee0ff; }
 .nge-triage-rec--reply { background: #7ee0ff; color: #06202c; font-weight: 700; }
