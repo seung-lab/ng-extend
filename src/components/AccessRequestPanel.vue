@@ -212,6 +212,14 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
           <li v-if="canEdit && nextSlot(kind) !== null">
             <button class="nge-acc-save" :disabled="!!busy" @click="saveNext(kind)">{{ saveLabel(kind) }}</button>
           </li>
+          <!-- The yes, right under the button that asked for it. -->
+          <li v-if="confirming && confirming.kind === kind" class="nge-acc-confirm" role="alertdialog" aria-label="Confirm the save">
+            <p>{{ confirming.text }}</p>
+            <div class="nge-acc-confirm-btns">
+              <button class="nge-acc-confirm-yes" @click="confirmYes">{{ confirming.yes }}</button>
+              <button class="nge-acc-confirm-no" @click="confirming = null">Cancel</button>
+            </div>
+          </li>
         </ul>
       </template>
 
@@ -227,13 +235,6 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
         </button>
       </template>
 
-      <div v-if="confirming" class="nge-acc-confirm" role="alertdialog" aria-label="Confirm the save">
-        <p>{{ confirming.text }}</p>
-        <div class="nge-acc-confirm-btns">
-          <button class="nge-acc-confirm-yes" @click="confirmYes">{{ confirming.yes }}</button>
-          <button class="nge-acc-confirm-no" @click="confirming = null">Cancel</button>
-        </div>
-      </div>
       <p v-if="message" class="nge-acc-msg" :class="{ 'nge-acc-msg--bad': messageBad }" role="status">{{ message }}</p>
       <p class="nge-acc-help">
         Taking more than one try is normal. You are never locked out.
@@ -310,7 +311,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 .nge-acc-label { display: block; margin-top: 10px; font-size: 14px; color: rgba(220, 230, 245, 0.7); }
 .nge-acc-input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; font-size: 15px; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 5px 7px; resize: vertical; }
 .nge-acc-msg { margin: 8px 0 0; color: #7CFFB2; }
-.nge-acc-confirm { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(245, 209, 66, 0.1); border: 1px solid rgba(245, 209, 66, 0.5); line-height: 1.45; }
+.nge-acc-confirm { margin-top: 4px; padding: 8px 10px; border-radius: 8px; background: rgba(245, 209, 66, 0.1); border: 1px solid rgba(245, 209, 66, 0.5); line-height: 1.45; }
 .nge-acc-confirm p { margin: 0 0 8px; }
 .nge-acc-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
 .nge-acc-confirm-yes, .nge-acc-confirm-no { font: inherit; font-size: 14px; border-radius: 6px; padding: 4px 12px; cursor: pointer; }
