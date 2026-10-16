@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-16T21:35:00Z",
+      "title": "Tablets: back to 2D with 3D, and a tidy Segments heading",
+      "digest": "minor",
+      "items": [
+        "On a tablet, choosing 3D only now leaves a 2D + 3D button to go back, and split screen has 2D only and 3D only buttons.",
+        "On a touch screen the In view heading in the Segments panel no longer stacks Select on top of the count, so Select works with one tap."
+      ]
+    },
+    {
       "at": "2026-10-16T21:10:00Z",
       "title": "Ask for Edit Access, right in Pyr",
       "digest": "headline",
