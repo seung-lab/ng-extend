@@ -48,7 +48,7 @@ import svg_plus from 'ikonate/icons/plus.svg';
 import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, listFilterOf, loadCellAtPlace, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
-import {ngeConfirm} from 'neuroglancer/ui/nge_confirm';
+import {ngeChoose, ngeConfirm} from 'neuroglancer/ui/nge_confirm';
 import {openColorPalette, pickedSegments, SegmentFolders, touchPick} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
@@ -1323,17 +1323,48 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
           if (f.collapsed) folders.setCollapsed(f.id, false);
           actions?.onNewFolder(child.id);
         }),
-        icon('\u2715', 'Ungroup: the folder goes, its cells stay in view', async () => {
+        icon('\u2715', 'Delete this folder (it asks whether its cells stay in view)', async () => {
           const f = folder();
           if (!f) return;
-          const cells = folders.cellsIn(f.id).length;
+          // nge: one button for a folder's cells and the folder itself (Ames
+          // 2026-10-16): keep the cells in view, remove only the hidden ones
+          // (keeping the folder), or remove them all with the folder.
+          const cells: Uint64[] = [];
+          for (const s of folders.cellsIn(f.id)) {
+            const id = new Uint64();
+            if (id.tryParseString(s) && group.selectedSegments.has(id)) cells.push(id);
+          }
+          const hidden = cells.filter(id => !group.visibleSegments.has(id));
           const inner = folders.subtree(f.id).length - 1;
-          if (cells || inner) {
-            const what = [cells ? `${cells} cell${cells === 1 ? '' : 's'}` : '',
-                          inner ? `${inner} folder${inner === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
-            if (!await ngeConfirm(`Its ${what} stay in view, out of this folder.`, {
-                  title: `Ungroup "${f.name}"?`, ok: 'Ungroup', danger: false,
-                })) return;
+          if (!cells.length && !inner) {
+            folders.remove(f.id);
+            return;
+          }
+          const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+          const what = [cells.length ? plural(cells.length, 'cell') : '',
+                        inner ? plural(inner, 'folder') : ''].filter(Boolean).join(' and ');
+          type Pick = 'keep'|'hidden'|'all';
+          const choices: {label: string, value: Pick, danger?: boolean}[] = [
+            {label: 'Keep cells in view', value: 'keep'}];
+          if (hidden.length && hidden.length < cells.length) {
+            choices.push({label: `Remove ${plural(hidden.length, 'hidden cell')}`, value: 'hidden', danger: true});
+          }
+          if (cells.length) choices.push({label: 'Remove cells too', value: 'all', danger: true});
+          const note = hidden.length && hidden.length < cells.length ?
+              ' Removing only the hidden cells keeps the folder.' : '';
+          const pick = await ngeChoose(`It holds ${what}.${note}`, {
+            title: `Delete the folder "${f.name}"?`, choices, defaultValue: 'keep',
+          });
+          if (pick === null) return;
+          if (pick === 'hidden') {
+            group.selectedSegments.delete(hidden);
+            return;
+          }
+          if (pick === 'all') {
+            // everything goes: the cells, the folder and the folders inside it
+            group.selectedSegments.delete(cells);
+            for (const id of folders.subtree(f.id).reverse()) folders.remove(id);
+            return;
           }
           folders.remove(f.id);
         }, 'nge-seg-folder-ungroup'));
@@ -1397,9 +1428,75 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
   startRename?: () => void;
 
   headingText() {
+    return '';
+  }
+
+  /**
+   * nge: every heading in one order (Celia and Ames 2026-10-15): the name on
+   * the left, then the eye, always at the same place on every heading, then
+   * a space of one width where the count and "+N" show at rest and copy,
+   * remove, a folder inside and ungroup show on hover. + Folder (In view) and
+   * Move down (Pasted) stay at the end. The eye never moves.
+   */
+  arrangeHeading() {
+    const heading = this.selectionStatusContainer;
     const {mode} = this.listSource;
-    if (typeof mode === 'object') return '\u00b7 ';
-    return mode === 'pasted' ? 'Pasted \u00b7 ' : 'In view \u00b7 ';
+    const kind = typeof mode === 'object' ? 'folder' : mode;
+    const make = (cls: string) => {
+      const e = document.createElement('span');
+      e.className = cls;
+      return e;
+    };
+    heading.classList.add('nge-h');
+    let label = heading.querySelector<HTMLElement>('.nge-seg-folder-name');
+    if (!label) {
+      label = make('nge-h-label');
+      label.textContent = kind === 'pasted' ? 'Pasted' : 'In view';
+    }
+    const region = make('nge-h-region');
+    const swap = make('nge-h-swap');
+    const rest = make('nge-h-rest');
+    const hover = make('nge-h-hover');
+    rest.append(this.selectionStatusMessage);
+    const nested = heading.querySelector('.nge-seg-folder-nested');
+    if (nested) rest.append(nested);
+    // Safe actions first, then a thin line, then the ones that remove things
+    // at the far right, apart from the rest (tester feedback 2026-10-16: the
+    // remove button sat too close to the others).
+    const divider = make('nge-h-divider');
+    hover.append(this.copyAllSegmentsButton);
+    if (kind === 'folder') {
+      const icons = [...heading.querySelectorAll<HTMLElement>('.nge-seg-folder-icon')];
+      const plus = icons.find(b => !b.classList.contains('nge-seg-folder-ungroup'));
+      const ungroup = icons.find(b => b.classList.contains('nge-seg-folder-ungroup'));
+      if (plus) hover.append(plus);
+      // a folder's cells are removed from its ✕ (it asks), so no trash can
+      this.starAllButton.style.display = 'none';
+      hover.append(divider);
+      if (ungroup) hover.append(ungroup);
+    }
+    // In view and Pasted: remove all is the last thing on the right, after
+    // + Folder or Move down, the way a folder's cross is (Ames 2026-10-16:
+    // "trash should consistently be on the right"). Its place is kept at
+    // rest so + Folder never moves.
+    const danger = make('nge-h-danger');
+    if (kind !== 'folder') danger.append(divider, this.starAllButton);
+    swap.append(rest, hover);
+    region.append(swap);
+    // + Folder (and Select on touch screens) on In view, Move down on Pasted
+    const tails = [...heading.querySelectorAll<HTMLElement>('.nge-seg-touch-select, .nge-seg-folder-new, .nge-seg-list-keep')];
+    if (kind !== 'folder') for (const t of tails) region.append(t);
+    if (kind !== 'folder') region.append(danger);
+    heading.querySelector('.nge-seg-folder-actions')?.remove();
+    // Headings mirror the rows (Ames 2026-10-16): the fold arrow, then the
+    // eye in the same column as the rows' eyes, then the name, the count (or
+    // the buttons on hover), and a folder's color dot at the far right where
+    // the rows keep their status mark.
+    const caret = heading.querySelector<HTMLElement>('.nge-seg-folder-caret');
+    const swatch = heading.querySelector<HTMLElement>('.nge-seg-folder-color');
+    if (caret) heading.append(caret);
+    heading.append(this.visibilityToggleAllButton, label, region);
+    if (swatch) heading.append(swatch);
   }
 
   /** A folder's heading acts on its cells and the cells of the folders
@@ -1727,6 +1824,7 @@ export class SegmentDisplayTab extends Tab {
                         source.segmentationDisplayState, source.parentElement,
                         property => queryIncludesColumn(undefined, property.id));
                     removeChildren(vlist.header);
+                    grp.arrangeHeading();
                     owner.registerDisposer(grp.statusChanged.add(() => updateListDisplayState()));
                     return {source, vlist, grp};
                   };

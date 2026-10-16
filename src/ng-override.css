@@ -1532,8 +1532,8 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .neuroglancer-segment-list-entry .nge-lb-btn { margin-left: 4px !important; }
 .neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container,
 .neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { left: auto !important; top: 17px !important; }
-.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { right: 70px !important; }
-.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container { right: 94px !important; }
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle { right: 101px !important; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container { right: 70px !important; }
 
 /* the folder colour dot is a button; its palette */
 button.nge-seg-folder-color { -webkit-appearance: none; appearance: none; padding: 0; }
@@ -1719,3 +1719,141 @@ body.nge-calm *, body.nge-calm *::before, body.nge-calm *::after {
 }
 /* The field of tiny dots over every popup window (ModalOverlay.vue). */
 body.nge-calm .nge-holo-modal-particles { display: none !important; }
+/* ── Headings in one order (Celia and Ames 2026-10-15) ─────────────────────
+ * name · eye (same place on every heading) · count, which copy, remove, +
+ * and ungroup cover on hover · + Folder or Move down at the end. */
+.neuroglancer-segment-list-status.nge-h { display: flex; align-items: center; gap: 2px; position: relative; }
+.nge-h .nge-h-label, .nge-h .nge-seg-folder-name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nge-h .nge-h-label {
+  font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: rgba(200, 215, 240, 0.85); padding-left: 4px;
+}
+.nge-h.nge-seg-list-heading--pasted .nge-h-label { color: #7cffb2; }
+.nge-h > .neuroglancer-eye-icon { flex: none; order: 0; }
+.nge-h .nge-h-region { flex: none; width: 112px; display: flex; align-items: center; gap: 4px; }
+.nge-h .nge-h-swap { position: relative; flex: 1 1 auto; min-width: 0; height: 22px; display: flex; align-items: center; }
+.nge-h .nge-h-rest, .nge-h .nge-h-hover { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+.nge-h .nge-h-rest .neuroglancer-segment-list-status-message { flex: none; margin: 0 !important; padding: 0 !important; }
+.nge-h .nge-h-rest .nge-seg-folder-nested { min-width: 0 !important; margin-left: 4px; }
+.nge-h .nge-h-hover { position: absolute; left: 0; top: 0; bottom: 0; }
+.nge-h .nge-h-hover > * { visibility: visible !important; display: inline-flex !important; }
+.nge-seg-folder--collapsed > .nge-h .nge-h-hover .nge-seg-remove-all { display: none !important; }
+.nge-h .nge-h-region .nge-seg-list-keep { margin-left: auto !important; margin-right: 0 !important; flex: none; }
+@media (hover: hover) {
+  .nge-h .nge-h-hover { opacity: 0; pointer-events: none; }
+  .nge-h:hover .nge-h-hover { opacity: 1; pointer-events: auto; }
+  .nge-h:hover .nge-h-rest { visibility: hidden; }
+}
+@media (hover: none) {
+  /* touch: no hover, so the buttons stay and the count sits before them */
+  .nge-h .nge-h-region { width: auto; }
+  .nge-h .nge-h-hover { position: static; }
+}
+
+/* the thin line between a heading's safe actions and its removing ones */
+.nge-h .nge-h-hover > .nge-h-divider {
+  display: inline-block !important; width: 1px; height: 14px; margin: 0 4px;
+  background: rgba(140, 180, 235, 0.35);
+}
+
+@media (hover: hover) { .nge-h:hover .nge-h-rest, .nge-h:hover .nge-h-rest * { visibility: hidden !important; } }
+
+/* the choice box: buttons wrap when there are several */
+.nge-confirm-buttons--choices { flex-wrap: wrap; }
+.nge-seg-list-group--folder .nge-h-hover .nge-seg-remove-all { display: none !important; }
+
+.nge-confirm:has(.nge-confirm-buttons--choices) { max-width: min(560px, calc(100vw - 32px)); }
+
+/* Heading buttons: room between them, lined up against the right edge (the
+   ungroup cross ends where + Folder ends); the eye stays where it is. */
+.nge-h .nge-h-hover { left: auto !important; right: 0; justify-content: flex-end; gap: 8px !important; }
+.nge-h .nge-h-hover > .nge-h-divider { margin: 0 2px !important; }
+.nge-h .nge-h-region { gap: 8px; }
+
+/* Pyr's own confirm box in the quest card's look (AchievementToast.vue
+   .nge-qcard): dark glass, a cyan edge that glows along the top, Orbitron
+   title, buttons on the right. */
+.nge-confirm {
+  position: relative; min-width: 380px; padding: 20px 22px 18px !important; border-radius: 16px !important;
+  background: radial-gradient(ellipse at 50% 30%, rgba(0, 60, 120, 0.15) 0%, transparent 70%),
+    linear-gradient(145deg, rgba(8, 12, 24, 0.97) 0%, rgba(14, 18, 32, 0.96) 50%, rgba(6, 10, 22, 0.97) 100%) !important;
+  border: 1px solid rgba(126, 224, 255, 0.32) !important;
+  box-shadow: 0 0 60px rgba(0, 220, 255, 0.12), 0 18px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(196, 228, 255, 0.10) !important;
+  backdrop-filter: blur(10px) saturate(1.2);
+  color: #e4eaf5 !important;
+}
+.nge-confirm::before {
+  content: ""; position: absolute; left: 10%; right: 10%; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(126, 224, 255, 0.95) 50%, transparent);
+  box-shadow: 0 0 12px rgba(126, 224, 255, 0.6);
+}
+.nge-confirm-title {
+  font-family: 'Orbitron', 'Inter', sans-serif !important; font-size: 15px !important; font-weight: 700 !important;
+  letter-spacing: 0.06em; color: #f2f7ff !important; text-shadow: 0 0 14px rgba(126, 224, 255, 0.35);
+  margin-bottom: 8px !important;
+}
+.nge-confirm-message { color: #9fb0c8 !important; font-size: 13.5px !important; }
+.nge-confirm-buttons { justify-content: flex-end !important; gap: 10px !important; margin-top: 18px !important; }
+.nge-confirm-buttons button { border-radius: 8px !important; padding: 7px 14px !important; }
+.nge-confirm-ok:not(.nge-confirm-danger) {
+  background: rgba(126, 224, 255, 0.16) !important; color: #e8f8ff !important;
+  border: 1px solid rgba(126, 224, 255, 0.55) !important; box-shadow: 0 0 14px rgba(0, 220, 255, 0.18);
+}
+.nge-confirm-ok:not(.nge-confirm-danger):hover { background: rgba(126, 224, 255, 0.26) !important; }
+.nge-confirm-ok.nge-confirm-danger {
+  background: rgba(224, 96, 96, 0.18) !important; color: #ffd6d6 !important;
+  border: 1px solid rgba(224, 96, 96, 0.7) !important;
+}
+.nge-confirm-ok.nge-confirm-danger:hover { background: rgba(224, 96, 96, 0.32) !important; }
+
+/* remove all at the far right of In view and Pasted, held in place at rest */
+.nge-h .nge-h-region { width: 132px !important; }
+.nge-h .nge-h-danger { flex: none; display: inline-flex; align-items: center; gap: 8px; }
+.nge-h .nge-h-danger > .nge-h-divider { display: inline-block; width: 1px; height: 14px; background: rgba(140, 180, 235, 0.35); }
+.nge-h .nge-h-danger > .nge-seg-remove-all { display: inline-flex !important; }
+@media (hover: hover) {
+  .nge-h:not(:hover) .nge-h-danger { visibility: hidden; }
+  .nge-h:hover .nge-h-danger, .nge-h:hover .nge-h-danger > * { visibility: visible !important; }
+}
+
+/* Headings mirror the rows: arrow, eye, name, count or buttons, color dot */
+.nge-h .nge-seg-folder-caret, .nge-h .nge-h-caret-space { flex: none; width: 14px; }
+.nge-h > .neuroglancer-eye-icon { margin-left: 0 !important; }
+.nge-h .nge-h-label, .nge-h .nge-seg-folder-name { padding-left: 4px; }
+.nge-h.nge-seg-list-heading--folder .nge-h-region { width: 110px !important; }
+.nge-h > .nge-seg-folder-color { margin: 0 4px 0 8px !important; flex: none; }
+
+/* columns line up with the rows: the eyes, the counts, the dot near the Δ */
+.nge-h .nge-seg-folder-caret { width: 10px !important; padding: 0 !important; }
+.nge-h.nge-seg-list-heading--folder .nge-h-region { width: 96px !important; }
+.nge-h > .nge-seg-folder-color { margin: 0 12px 0 8px !important; }
+
+/* On hover a long ID ends in "..." before the copy and remove buttons, so
+   they never sit on top of it (nested folders make rows narrower). At rest
+   the ID shows in full. (Ames 2026-10-16) */
+.neuroglancer-segment-list-entry:hover:not(.nge-seg-labelled) .neuroglancer-segment-list-entry-id {
+  max-width: calc(100cqw - 124px) !important;
+  overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
+}
+/* The trash can is red, so it never reads as the copy button beside it */
+.neuroglancer-segment-list-entry .nge-seg-list-remove > svg,
+.neuroglancer-segment-list-status .nge-seg-remove-all > svg { stroke: rgba(236, 120, 120, 0.9) !important; }
+.neuroglancer-segment-list-entry .nge-seg-list-remove:hover > svg,
+.neuroglancer-segment-list-status .nge-seg-remove-all:hover > svg { stroke: #ff8a8a !important; }
+
+/* the color dot centered on the rows' status mark column */
+.nge-h > .nge-seg-folder-color { margin: 0 18px 0 8px !important; }
+.nge-h.nge-seg-list-heading--folder .nge-h-region { width: 90px !important; }
+
+/* Pasted: room for its count, Move down and the trash slot */
+.nge-h.nge-seg-list-heading--pasted .nge-h-region { width: auto !important; min-width: 132px; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-swap { flex: 0 0 auto; min-width: 34px; }
+
+/* the folder's colored rail runs up through its heading bar too (Ames 2026-10-16) */
+.nge-seg-list-group--folder > .nge-h::after {
+  content: ""; position: absolute; left: 10px; top: 0; bottom: -1px; width: 1px; pointer-events: none;
+  background: color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 55%, transparent);
+}
+.nge-seg-folder--collapsed > .nge-h::after { display: none; }
