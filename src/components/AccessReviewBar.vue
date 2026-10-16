@@ -49,6 +49,15 @@ function markPoint(key: string, mark: 'good' | 'off') {
   if (marks[key] === mark) delete marks[key]; else marks[key] = mark;
   void save({ pointMarks: marks });
 }
+/** Every point of this example good, or every one off, in one click
+ *  (Ames 2026-10-16); a second click on the same one clears them. */
+function markAll(mark: 'good' | 'off') {
+  const keys = points.value.map(p => p.key);
+  const marks = item.value?.point_marks ?? {};
+  const already = keys.length > 0 && keys.every(k => marks[k] === mark);
+  void save({ pointMarks: already ? {} : Object.fromEntries(keys.map(k => [k, mark])) });
+}
+const allMarked = (mark: 'good' | 'off') => points.value.length > 0 && points.value.every(p => item.value?.point_marks?.[p.key] === mark);
 function setVerdict(v: 'good' | 'redo') { void save({ verdict: item.value?.verdict === v ? null : v }); }
 function saveNote() { if ((item.value?.feedback ?? '') !== feedback.value) void save({ feedback: feedback.value }); }
 
@@ -72,6 +81,11 @@ function go(step: number) {
     </p>
     <p v-if="item.note" class="nge-arv-quote">Player: {{ item.note }}</p>
 
+    <div v-if="points.length" class="nge-arv-all">
+      <span>All {{ points.length }} points</span>
+      <button class="nge-arv-mark" :class="{ 'nge-arv-mark--good': allMarked('good') }" :disabled="busy || !canMark" @click="markAll('good')">all good</button>
+      <button class="nge-arv-mark" :class="{ 'nge-arv-mark--off': allMarked('off') }" :disabled="busy || !canMark" @click="markAll('off')">all off</button>
+    </div>
     <div v-if="points.length" class="nge-arv-pts">
       <div v-for="p in points" :key="p.key" class="nge-arv-pt">
         <button class="nge-arv-fly" :class="`nge-arv-fly--${p.color}`" title="Fly to this point" @click="flyTo(p.position)">
@@ -119,6 +133,8 @@ function go(step: number) {
 .nge-arv-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); }
 .nge-arv-how { margin: 6px 0; line-height: 1.45; color: rgba(220, 230, 245, 0.75); overflow-wrap: anywhere; }
 .nge-arv-quote { margin: 6px 0; padding: 4px 8px; border-left: 2px solid rgba(255, 255, 255, 0.3); border-radius: 0; white-space: pre-wrap; }
+.nge-arv-all { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+.nge-arv-all span { flex: 1; color: rgba(220, 230, 245, 0.8); }
 .nge-arv-pts { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
 .nge-arv-pt { display: flex; align-items: center; gap: 6px; }
 .nge-arv-fly { flex: 1; display: inline-flex; align-items: center; gap: 6px; font: inherit; color: #dce6f5; background: none; border: none; cursor: pointer; text-align: left; padding: 2px 0; }

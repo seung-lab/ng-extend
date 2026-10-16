@@ -9,6 +9,7 @@
  * Admin Hub's Access requests tab.
  */
 import { ref } from 'vue';
+import { makeLayer } from 'neuroglancer/layer';
 import { secureWrite } from './secure_write';
 import { mintShortStateLink } from './util/state_link';
 import { currentSegLayer, currentDatasetTag } from './datasets';
@@ -200,17 +201,87 @@ export function reviewInView(request: AccessRequest, index: number) {
   if (it) openExample(it);
 }
 
-/** Load an example's view in place; a link we cannot load opens in a new tab. */
+/** Load an example's view in place, then draw its points (see
+ *  showReviewPoints); a link we cannot load opens in a new tab. */
 export function openExample(it: AccessItem) {
   try {
     const hash = new URL(it.link).hash;
-    if (hash.startsWith('#!')) { window.location.hash = hash; return; }
+    if (hash.startsWith('#!')) {
+      if (window.location.hash !== hash) window.location.hash = hash;
+      showReviewPoints(it);
+      return;
+    }
   } catch { /* fall through */ }
   window.open(it.link, '_blank', 'noopener');
+}
+
+// ── Review mode: the example's points, drawn by Pyr (Ames 2026-10-16) ─────
+// Neuroglancer draws Multicut and merge points only while its tool is on,
+// so a reviewer opening the link saw the cells and no points. Review mode
+// adds them as annotation layers of their own, and makes the cells partly
+// see through (Ames: "default to partial opacity in review mode"), so a point
+// inside or behind a cell still shows. Both go when review mode ends.
+const REVIEW_LAYERS: Record<AccessColor, { name: string; color: string }> = {
+  red: { name: 'Review red', color: '#ff4040' },
+  blue: { name: 'Review blue', color: '#4f7bff' },
+  merge: { name: 'Review merge', color: '#ff4fd8' },
+};
+const REVIEW_ALPHA = 0.5;
+let reviewTimer: number | undefined;
+
+function segLayers(): any[] {
+  const v = (window as any).viewer;
+  return (v?.layerManager?.managedLayers ?? []).filter((ml: any) => ml?.layer?.displayState?.objectAlpha);
+}
+
+function placeReviewPoints(it: AccessItem): boolean {
+  const v = (window as any).viewer;
+  if (!v?.layerSpecification) return false;
+  const managed = v.layerManager?.managedLayers ?? [];
+  for (const ml of [...managed]) if (Object.values(REVIEW_LAYERS).some(r => r.name === ml.name)) v.layerManager.removeManagedLayer(ml);
+  for (const color of ['red', 'blue', 'merge'] as const) {
+    const pts = it.points[color] ?? [];
+    if (!pts.length) continue;
+    const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: 2,
+      annotations: pts.map((p, i) => ({ type: 'point', id: `${color}-${i}`, point: p.position, description: pointName(color, i) })) };
+    v.layerSpecification.add(makeLayer(v.layerSpecification, REVIEW_LAYERS[color].name, spec));
+  }
+  for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = REVIEW_ALPHA;
+  return true;
+}
+
+/** The link loads a moment after the hash changes and replaces the layers,
+ *  so the points are put back until they hold. */
+export function showReviewPoints(it: AccessItem) {
+  window.clearInterval(reviewTimer);
+  let tries = 0;
+  const want = (['red', 'blue', 'merge'] as const).filter(c => (it.points[c] ?? []).length).map(c => REVIEW_LAYERS[c].name);
+  const have = () => {
+    const names = ((window as any).viewer?.layerManager?.managedLayers ?? []).map((l: any) => l.name);
+    return want.every(n => names.includes(n)) && segLayers().every(ml => ml.layer.displayState.objectAlpha.value === REVIEW_ALPHA);
+  };
+  reviewTimer = window.setInterval(() => {
+    tries++;
+    if (tries === 2 || (tries > 2 && !have())) placeReviewPoints(it);
+    if (tries > 12) window.clearInterval(reviewTimer);
+  }, 300);
+}
+
+/** Review mode ends: the drawn points go, the cells are solid again. */
+export function endReview() {
+  window.clearInterval(reviewTimer);
+  try {
+    const v = (window as any).viewer;
+    for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
+      if (Object.values(REVIEW_LAYERS).some(r => r.name === ml.name)) v.layerManager.removeManagedLayer(ml);
+    }
+    for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 1;
+  } catch (e) { console.warn('[access] could not end review mode:', e); }
 }
 
 /** Back to the list in the Admin Hub. */
 export function backToRequests() {
   reviewing.value = null;
+  endReview();
   document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
 }

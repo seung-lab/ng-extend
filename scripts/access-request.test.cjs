@@ -265,6 +265,24 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(800);
     ok(await page.evaluate(() => !document.querySelector('.nge-profile-shell')), 'the profile closed for the view');
     ok(/Cut 2/.test(await page.evaluate(() => document.querySelector('.nge-arv').innerText)), 'the review bar shows cut 2');
+    // Review mode draws the example's points itself, and the cells are see through.
+    await page.waitForTimeout(4500);
+    const rv = await page.evaluate(() => {
+      const ls = window.viewer.layerManager.managedLayers;
+      const n = name => { const l = ls.find(x => x.name === name); return l ? l.layer.localAnnotations.toJSON().length : 0; };
+      const seg = ls.find(x => x.layer && x.layer.displayState && x.layer.displayState.objectAlpha);
+      return { red: n('Review red'), blue: n('Review blue'), alpha: seg ? seg.layer.displayState.objectAlpha.value : null };
+    });
+    ok(rv.red === 2 && rv.blue === 1 && rv.alpha === 0.5, `review mode draws the points and the cells are half see through (${JSON.stringify(rv)})`);
+    // All points of an example in one click, and a second click clears them.
+    await page.click('.nge-arv-all >> text=all good');
+    await page.waitForTimeout(500);
+    let c2m = db.access_request_items.find(i => i.kind === 'cut' && i.slot === 2).point_marks;
+    ok(Object.keys(c2m).length === 3 && Object.values(c2m).every(v => v === 'good'), `all good marks every point (${JSON.stringify(c2m)})`);
+    await page.click('.nge-arv-all >> text=all good');
+    await page.waitForTimeout(500);
+    c2m = db.access_request_items.find(i => i.kind === 'cut' && i.slot === 2).point_marks;
+    ok(Object.keys(c2m).length === 0, 'a second click clears them');
     // Fly to blue 1, mark it off, red 1 good, the example redo, with a note.
     await page.click('.nge-arv-fly--blue');
     await page.waitForTimeout(300);
@@ -284,6 +302,13 @@ const RETINA_LAYERS = [
     await full('07-review-in-view');
     // Back to the request and ask for redos.
     await page.click('.nge-arv-btn--list');
+    await page.waitForTimeout(500);
+    const leftReview = await page.evaluate(() => {
+      const ls = window.viewer.layerManager.managedLayers;
+      const seg = ls.find(x => x.layer && x.layer.displayState && x.layer.displayState.objectAlpha);
+      return { review: ls.filter(x => /^Review /.test(x.name)).length, alpha: seg ? seg.layer.displayState.objectAlpha.value : null };
+    });
+    ok(leftReview.review === 0 && leftReview.alpha === 1, `leaving review mode removes the points and makes the cells solid (${JSON.stringify(leftReview)})`);
     await page.waitForSelector('.nge-accr-decide textarea', { timeout: 10000 });
     await page.fill('.nge-accr-decide textarea', 'Close! One to fix.');
     await page.click('.nge-accr-decide-btns >> text=Ask for redos');
