@@ -1717,3 +1717,5 @@ body.nge-calm *, body.nge-calm *::before, body.nge-calm *::after {
   text-shadow: none !important;
   scroll-behavior: auto !important;
 }
+/* The field of tiny dots over every popup window (ModalOverlay.vue). */
+body.nge-calm .nge-holo-modal-particles { display: none !important; }

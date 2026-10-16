@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isCalm } from '../util/calm';
 /**
  * ConfettiCelebration.vue
  * Full-screen confetti burst for milestone celebrations.
@@ -273,6 +274,8 @@ function animateSparkles() {
  * @param intensity - particle count multiplier (1 = subtle, 2 = medium, 3 = dramatic)
  */
 function sparkle(intensity: number = 1) {
+  // Calm screen: no shimmer of stars across the screen (annkri #144).
+  if (isCalm()) return;
   resizeCanvas();
   underUI.value = true;
   // Phones get a thinner field too — density reads as obstruction there.
