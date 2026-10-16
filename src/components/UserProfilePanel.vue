@@ -5101,4 +5101,82 @@ body.nge-mobile .nge-track-achievements { padding-left: 0; border-left: none; }
 .nge-profile-col--right .nge-profile-activity-chart { max-width: 340px; }
 /* A number that can not be read says so; it is never shown as zero. */
 .nge-profile-stat-unavailable { font-size: 0.82em; color: rgba(200, 215, 240, 0.55); }
+
+/* ══ Calm screen (body.nge-calm; Settings > User Interface, off by default) ══
+   Annkri (#144): "too many glowing / bright elements stealing focus ... it
+   gets too much and strenuous to look at over time". The base in
+   ng-override.css already stops every animation and transition and clears
+   text-shadow on everything, and reports prefers-reduced-motion while calm,
+   so the curves land finished and the numbers do not roll. This block is
+   the profile's share (2026-10-16, Ames said go): the glows around art and
+   tiles go, each row keeps ONE accent (the lit part of its progress bar),
+   the All time numbers take the plain face and colour, the Scout report's
+   numbers one colour, the frame a flat dark instead of the game showing
+   through, the favourite's art smaller, and the Trophy Case's glows go.
+   What does not change: the layout, the earned art itself (never dimmed),
+   text luminance, focus outlines, and colour that carries meaning (the bar
+   fill, the Last 14 days legend, the merge and split icons). */
+body.nge-calm .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) { background: #080c14 !important; backdrop-filter: none !important; }
+/* inline text-shadows on a few numbers (the base's rule cannot reach inline styles) */
+body.nge-calm .nge-profile-stat-val { text-shadow: none !important; }
+body.nge-calm .nge-profile-name { text-shadow: none; }
+/* glows around art and tiles */
+body.nge-calm .nge-profile-feature-icon,
+body.nge-calm .nge-profile-section--completions .nge-profile-feature-icon,
+body.nge-calm .nge-profile-section--edits .nge-profile-feature-icon,
+body.nge-calm .nge-profile-badge--selected .nge-profile-badge-img,
+body.nge-calm .nge-profile-badge--latest .nge-profile-badge-img,
+body.nge-calm .nge-profile-badge--building.nge-profile-badge--selected .nge-profile-badge-img,
+body.nge-calm .nge-profile-badge--building.nge-profile-badge--latest .nge-profile-badge-img,
+body.nge-calm .nge-profile-viz-badge-icon,
+body.nge-calm .nge-trophy-badge-icon,
+body.nge-calm .nge-trophy-featured-icon,
+body.nge-calm .nge-badge-zoom-img { filter: none; }
+body.nge-calm .nge-profile-badge--selected,
+body.nge-calm .nge-profile-badge--building.nge-profile-badge--selected,
+body.nge-calm :is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge--viewall:hover .nge-profile-badge-img,
+body.nge-calm .nge-profile-podium-tile--gold,
+body.nge-calm .nge-trophy-badge--selected,
+body.nge-calm .nge-trophy-badge--building.nge-trophy-badge--selected,
+body.nge-calm .nge-trophy-featured,
+body.nge-calm .nge-trophy-fav.is-shown,
+body.nge-calm .nge-trophy-ring--1,
+body.nge-calm .nge-trophy-ring--2,
+body.nge-calm .nge-trophy-orbit-dot,
+body.nge-calm .nge-badge-zoom-ring,
+body.nge-calm .nge-special-modal { box-shadow: none; }
+/* the Trophy Case's selected and favourite marks keep a plain ring, so the state still reads */
+body.nge-calm .nge-trophy-badge--selected { box-shadow: 0 0 0 1px rgba(170, 200, 240, 0.45) inset; }
+body.nge-calm .nge-trophy-badge--favorited { box-shadow: 0 0 0 1.5px rgba(255, 215, 0, 0.35) inset; }
+body.nge-calm .nge-profile-badge--selected { box-shadow: 0 0 0 1px rgba(170, 200, 240, 0.35) inset; }
+/* one accent per row: the label and the trace go plain, the lit bar stays in the track colour */
+body.nge-calm .nge-track-head .nge-profile-section-label { color: #9bb; }
+body.nge-calm .nge-track-wire, body.nge-calm .nge-track-pads { --trace: rgba(201, 228, 255, 0.22); --pad: rgba(201, 228, 255, 0.32); }
+body.nge-calm .nge-track-count { color: #9bb; }
+/* All time in the plain face and colour; its size alone marks it */
+body.nge-calm .nge-profile-stat-col--all .nge-profile-stat-label { color: #9bb; opacity: 1; }
+body.nge-calm .nge-profile-stat-col--all .nge-profile-stat-val,
+body.nge-calm .nge-track-row--days .nge-profile-stat-val--hero,
+body.nge-calm .nge-profile-section--days .nge-profile-stat-val--hero {
+  font-family: ui-monospace, 'Cascadia Code', monospace; letter-spacing: -0.02em; color: #d8dde8;
+}
+body.nge-calm .nge-profile-stat-val--hero, body.nge-calm .nge-profile-stat-tile--build .nge-profile-stat-val { color: #d8dde8; }
+/* the curves: a plain line, no bands, no coloured total (the figure stays, the colour goes) */
+body.nge-calm .nge-profile-windows :deep(.nge-effort-band),
+body.nge-calm .nge-profile-windows :deep(.nge-effort-band--today) { fill: rgba(255, 255, 255, 0.035); }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-band-edge) { stroke: rgba(201, 228, 255, 0.3); }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-band-label) { fill: rgba(201, 228, 255, 0.5); }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-line) { stroke: rgba(216, 221, 232, 0.85); }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-head) { fill: #d8dde8; }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-halo) { display: none; }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-area) { opacity: 0.5; }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-total) { fill: #d8dde8; }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-span) { color: rgba(201, 228, 255, 0.5); }
+body.nge-calm .nge-profile-windows :deep(.nge-effort-span.is-on) { color: #e6eefc; background: rgba(201, 228, 255, 0.14); }
+/* the Scout report's numbers in one colour (inline colours otherwise) */
+body.nge-calm .nge-profile-stat-row--scout .nge-profile-stat-val { color: #d8dde8 !important; }
+/* the favourite, the brightest thing on the page, a size down */
+body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, 18vh); height: min(150px, 18vh); }
+/* the streak's flame and count sit still in the plain colours */
+body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 </style>
