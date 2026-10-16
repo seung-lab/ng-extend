@@ -1853,7 +1853,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 
 /* the folder's colored rail runs up through its heading bar too (Ames 2026-10-16) */
 .nge-seg-list-group--folder > .nge-h::after {
-  content: ""; position: absolute; left: 10px; top: 0; bottom: -1px; width: 1px; pointer-events: none;
+  content: ""; position: absolute; left: 10px; top: calc(50% + 8px); bottom: -1px; width: 1px; pointer-events: none;
   background: color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 55%, transparent);
 }
 .nge-seg-folder--collapsed > .nge-h::after { display: none; }
