@@ -75,7 +75,7 @@ async function save(kind: AccessKind, slot: number) {
   try {
     await saveExample(kind, slot, note.value, affiliation.value);
     note.value = '';
-    say(`Saved as ${kind} ${slot}.`);
+    say(`Saved as ${kind} ${slot}. Its points were cleared from the view for the next one; the saved view keeps them.`);
   } catch (e: any) { say(e?.message || 'That could not be saved.', true); }
   finally { busy.value = ''; }
 }

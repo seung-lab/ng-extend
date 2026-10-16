@@ -84,6 +84,11 @@ test('each example is checked before it is kept', async () => {
   await rejects(p('access.save', {...merge(4)}), 400, /slot/);
   await rejects(p('access.save', {...cut(1), link: 'javascript:alert(1)'}), 400);
   await rejects(p('access.save', {...cut(1), points: {red: [{position: [1, 2]}], blue: [{position: [1, 2, 3]}]}}), 400, /position/);
+  // Players place many points: 27 red and 29 blue is fine, past 200 is not.
+  const many = (n, x) => Array.from({length: n}, (_, i) => ({position: [x + i, 2, 3]}));
+  await p('access.save', {...cut(5), points: {red: many(27, 0), blue: many(29, 100)}});
+  await rejects(p('access.save', {...cut(6), points: {red: many(150, 0), blue: many(51, 500)}}), 400, /200 points/);
+  await p('access.remove', {kind: 'cut', slot: 5});
   await rejects(p('access.submit', {}), 400, /0 of 7 cuts/);
   await p('access.save', cut(1));
   await rejects(p('access.submit', {}), 400, /1 of 7 cuts and 0 of 3/);

@@ -132,7 +132,7 @@ const RETINA_LAYERS = [
   const setView = (red, blue, segs, merges = []) => page.evaluate(({ red, blue, segs, merges }) => {
     const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina');
     const sel = (p, i) => ({ position: Float32Array.from(p), segmentId: String(100 + i), rootId: '720575940561794892' });
-    ml.layer.graphConnection.value = { state: { multicutState: { sinks: new Set(red.map(sel)), sources: new Set(blue.map(sel)) },
+    ml.layer.graphConnection.value = { state: { multicutState: { sinks: new Set(red.map(sel)), sources: new Set(blue.map(sel)), reset() { this.sinks.clear(); this.sources.clear(); } },
       mergeState: { merges: { value: merges.map(([a, b], i) => ({ id: 'm' + i, locked: false, sink: sel(a, i), source: sel(b, i + 50) })) } } } };
     const g = ml.layer.displayState.segmentationGroupState.value;
     // Neuroglancer's own 64 bit ID type, taken from an ID already shown.
@@ -188,6 +188,10 @@ const RETINA_LAYERS = [
       await page.waitForTimeout(1100);
       await page.click('.nge-acc-save >> nth=0');
       await page.waitForFunction(n => document.querySelectorAll('.nge-acc-item').length >= n, i, { timeout: 8000 });
+      if (i === 1) {
+        await page.waitForTimeout(1200);
+        ok(/In view: 0 red, 0 blue/.test(await panelText()), 'the points are cleared from the view after a save');
+      }
     }
     await setView([], [], ['720575940561794892']);
     await page.waitForTimeout(1100);

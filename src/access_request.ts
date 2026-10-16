@@ -110,7 +110,23 @@ export async function saveExample(kind: AccessKind, slot: number, note: string, 
     segments: v.segments, position: viewPosition(), affiliation,
   });
   myAccess.value = mine;
+  clearToolPoints(kind);
   return mine;
+}
+
+/** Clear the points just saved, so the next example starts fresh (Ames
+ *  2026-10-16: points from earlier examples piled up). The saved link keeps
+ *  them. Through the cut and merge bar's own Clear when it is open, else
+ *  straight on the layer's state. */
+function clearToolPoints(kind: AccessKind) {
+  try {
+    const detail: { kind: AccessKind; done?: boolean } = { kind };
+    document.dispatchEvent(new CustomEvent('nge:clear-tool-points', { detail }));
+    if (detail.done) return;
+    const state = currentSegLayer()?.layer?.graphConnection?.value?.state;
+    if (kind === 'merge') { if (state?.mergeState?.merges) state.mergeState.merges.value = []; }
+    else state?.multicutState?.reset?.();
+  } catch (e) { console.warn('[access] could not clear the points:', e); }
 }
 
 export async function removeExample(kind: AccessKind, slot: number): Promise<AccessMine> {

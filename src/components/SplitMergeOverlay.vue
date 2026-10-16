@@ -149,6 +149,16 @@ function clearMerges() {
   icon?.click();
 }
 
+// Retina access (src/access_request.ts): after an example is saved, its
+// points are cleared the way the Clear button does it, so the next example
+// starts fresh. `done` tells the caller the tool's own clear was found.
+document.addEventListener('nge:clear-tool-points', ((e: CustomEvent) => {
+  const d = e.detail || {};
+  if (d.kind === 'merge') {
+    if (document.querySelector('.graphene-merge-segments .neuroglancer-icon[title="Clear pending merges"]')) { clearMerges(); d.done = true; }
+  } else if (document.querySelector('.graphene-multicut .neuroglancer-icon')) { clearPoints(); d.done = true; }
+}) as EventListener);
+
 // ── Where the Merge Queue sits (Ames 2026-10-09) ────────────────────────
 // It used to open on the bottom left, on top of the chat. Now it opens
 // beside the chat when the chat is there, and it can be dragged by its

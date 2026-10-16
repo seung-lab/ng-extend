@@ -29,7 +29,7 @@
 
 const KINDS = {cut: 7, merge: 3};
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
-const POINTS_MAX = 20, SEGMENTS_MAX = 20;
+const POINTS_MAX = 200, SEGMENTS_MAX = 50;
 const ID = /^\d{1,20}$/;
 const NOT_INSTALLED = 'Access requests are not switched on yet: run supabase-access-requests.sql in the Supabase SQL editor.';
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
