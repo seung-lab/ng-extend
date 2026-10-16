@@ -1205,7 +1205,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li class="nge-menu-heading" @click.stop>Edit access</li>
         <li>
           <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">✦</span><span>Ask for retina access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+            <span class="nge-menu-num">✦</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
           </div>
         </li>
       </template>

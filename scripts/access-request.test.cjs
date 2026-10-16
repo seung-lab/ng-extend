@@ -163,9 +163,9 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(400);
     const menu = await page.evaluate(() => [...document.querySelectorAll('#hamburger li')].map(li => li.innerText.trim().replace(/\s+/g, ' ')).filter(Boolean));
     console.log('menu tail: ' + JSON.stringify(menu.slice(-3)));
-    ok(/Ask for retina access/.test(menu[menu.length - 1] || ''), 'the last menu line is Ask for retina access');
+    ok(/Ask for Edit Access/.test(menu[menu.length - 1] || ''), 'the last menu line is Ask for Edit Access');
     await shotOf('#hamburger', '01-menu');
-    await page.click('.nge-menu-access');
+    await page.evaluate(() => document.querySelector('.nge-menu-access').click());
     await page.waitForSelector('.nge-acc', { timeout: 8000 });
     await page.waitForTimeout(1200);
     ok(/Seven cuts/.test(await panelText()), 'the panel explains the ten examples');

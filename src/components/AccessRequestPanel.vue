@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * AccessRequestPanel: "Ask for retina access" (Ames, 2026-10-16). The EyeWire
+ * AccessRequestPanel: "Ask for Edit Access" (Ames, 2026-10-16). The EyeWire
  * II Dataset Access form in the game: save 7 cut examples and 3 merge
  * examples straight from the view, then send them for review. Reviewers'
  * notes come back here, on each example and each point. A narrow panel on
@@ -170,7 +170,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
 </script>
 
 <template>
-  <div ref="boxEl" class="nge-acc" :class="{ 'nge-acc--dragging': dragging, 'nge-acc--slim': slim }" :style="posStyle" role="dialog" aria-label="Ask for retina access">
+  <div ref="boxEl" class="nge-acc" :class="{ 'nge-acc--dragging': dragging, 'nge-acc--slim': slim }" :style="posStyle" role="dialog" aria-label="Ask for Edit Access">
     <div class="nge-acc-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-acc-title">Retina access</span>
       <button class="nge-acc-size" :title="slim ? 'Show everything' : 'Make the box smaller'" :aria-pressed="slim" @click="toggleSlim">{{ slim ? 'Full' : 'Slim' }}</button>
