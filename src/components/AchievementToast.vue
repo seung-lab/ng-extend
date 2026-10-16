@@ -1218,7 +1218,9 @@ function playBatchChime() {
   top: 64px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10001;
+  /* Above the Cell Library (10010), which it was drawn under on a 1920 by
+     1080 screen (Krzysztof #147); below the screenshot window (10040). */
+  z-index: 10020;
   width: 520px;
   max-width: calc(100vw - 32px);
   padding: 22px 28px 24px;
