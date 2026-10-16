@@ -797,7 +797,7 @@ function playBatchChime() {
 .nge-hero-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10000;
+  z-index: 10020; /* above the Cell Library (10010), as the quest card */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1177,7 +1177,7 @@ function playBatchChime() {
   position: fixed;
   top: 52px;
   right: 16px;
-  z-index: 9999;
+  z-index: 10020; /* above the Cell Library (10010), as the quest card */
   display: flex;
   flex-direction: column;
   gap: 8px;
