@@ -24,6 +24,7 @@ function openNurroProfile() {
   document.dispatchEvent(new CustomEvent('nge:open-nurro-profile'));
 }
 import { canonicalDataset, datasetDisplayName, switchToDataset, segLayerName, DATASETS } from '../datasets';
+import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
@@ -44,7 +45,10 @@ const searchOpen = ref(false);
 const searchText = ref('');
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
-const collapsed = ref(false);
+// Minimized stays minimized after a reload (Krzysztof #152, 2026-10-16).
+const COLLAPSED_KEY = 'nge_chat_collapsed';
+const collapsed = ref((() => { try { return localStorage.getItem(COLLAPSED_KEY) === '1'; } catch { return false; } })());
+watch(collapsed, v => { try { localStorage.setItem(COLLAPSED_KEY, v ? '1' : '0'); } catch { /* a private window */ } });
 /** Segment id most recently copied, for the brief "copied" tick. */
 const copiedSegId = ref<string | null>(null);
 /** Pending cross-dataset jump awaiting confirmation. `dataset` is the raw
@@ -1037,6 +1041,15 @@ function datasetLabel(ds: string | null | undefined): string {
  * authoritative either way. Only jump when we know the datasets agree; if they
  * don't (or the message predates dataset stamping) ask first.
  */
+/** A cell ID in chat is a link (Krzysztof #153): Ctrl, Cmd, Shift or the
+ *  middle button leave it to the browser, which opens it in a new tab or
+ *  window; a plain click jumps here, as before. */
+function onSegLinkClick(e: MouseEvent, segRef: string, msgDataset: string | null | undefined) {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault();
+  onSegClick(segRef, msgDataset);
+}
+
 function onSegClick(segRef: string, msgDataset: string | null | undefined) {
   const active = activeDatasetName();
   const sameDataset = msgDataset && active &&
@@ -1430,14 +1443,12 @@ function toggleCollapse() {
                       @keydown.enter="openUserProfile(part.text.slice(1))"
                       :title="'Open ' + part.text.slice(1) + '’s profile'"
                     >{{ part.text }}</span>
-                    <span v-else-if="part.type === 'segment'" class="nge-chat-seg-chip"><span
+                    <span v-else-if="part.type === 'segment'" class="nge-chat-seg-chip"><a
                         class="nge-chat-seg-link"
-                        role="button"
-                        tabindex="0"
-                        @click="onSegClick(part.text, msg.dataset)"
-                        @keydown.enter="onSegClick(part.text, msg.dataset)"
-                        :title="'Jump to segment ' + part.text.slice(1) + (msg.dataset ? ' in ' + msg.dataset : '')"
-                      >{{ part.text }}</span><span
+                        :href="cellLinkHref(part.text, msg.dataset)"
+                        @click="onSegLinkClick($event, part.text, msg.dataset)"
+                        :title="'Jump to segment ' + part.text.slice(1) + (msg.dataset ? ' in ' + msg.dataset : '') + '. Right click or middle click to open it in a new tab.'"
+                      >{{ part.text }}</a><span
                         class="nge-chat-seg-ds"
                         :title="msg.dataset || 'Sent before the dataset was recorded'"
                       >{{ datasetLabel(msg.dataset) }}</span><button
@@ -2036,6 +2047,7 @@ function toggleCollapse() {
 }
 .nge-chat-seg-link {
   color: #80ffc0;
+  text-decoration: none; /* a real link now (#153), drawn as before */
   padding: 1px 2px 1px 6px;
   font-size: 12px;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
