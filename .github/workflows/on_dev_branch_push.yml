@@ -156,11 +156,13 @@ jobs:
           # (triage builds and pushed branches) whose last deploy is over a day
           # old and that serves no traffic is deleted. Pushing the branch, or a
           # triage retry, brings it back. Never the live branch, master, main,
-          # this deploy's own version, or anything serving traffic. createTime
+          # this deploy's own version, or anything serving traffic. The
+          # Princeton Tracers play on princeton-tracers (src/edition.ts), so it
+          # is kept like the live branch (Ames 2026-10-16). createTime
           # is RFC 3339 UTC, so a plain string comparison orders it.
           cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)
           awk -v me="$APP_VERSION" -v cutoff="$cutoff" \
-            '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|master|main)$/ && $3 != "" && substr($3, 1, 19) < cutoff {print $1}' versions.txt \
+            '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|princeton-tracers|master|main)$/ && $3 != "" && substr($3, 1, 19) < cutoff {print $1}' versions.txt \
             > stale.txt || true
           echo "Closing $(grep -c . stale.txt || true) test site(s) older than 24 hours"
           xargs -r -n 20 gcloud app versions delete --project=seung-lab --service=brain-wire --quiet < stale.txt || echo "::warning::some old test sites could not be deleted"
@@ -171,7 +173,7 @@ jobs:
           total=$(grep -c . versions.txt || true)
           # Free up to 30 slots, and always keep brain-wire's 15 newest.
           awk -v me="$APP_VERSION" \
-            '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|master|main)$/ {print $1}' versions.txt \
+            '$1 != "" && ($2 + 0) == 0 && $1 != me && $1 !~ /^(eyewire-ii-community|princeton-tracers|master|main)$/ {print $1}' versions.txt \
             | head -n $(( total > 15 ? total - 15 : 0 )) | head -n 30 > drop.txt || true
           echo "Deleting the $(grep -c . drop.txt || true) oldest idle versions"
           xargs -r -n 20 gcloud app versions delete --project=seung-lab --service=brain-wire --quiet < drop.txt
