@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-17T01:21:00Z",
+      "title": "A tidier Learn more menu",
+      "digest": "minor",
+      "items": [
+        "The old Proofreading Guide link is gone from the menu and the command search, because it no longer matched Pyr. The tutorials in the menu cover everything it did."
+      ]
+    },
+    {
       "at": "2026-10-16T21:35:00Z",
       "title": "Tablets: back to 2D with 3D, and a tidy Segments heading",
       "digest": "minor",
