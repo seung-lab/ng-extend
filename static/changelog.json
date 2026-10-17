@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-17T23:59:00Z",
+      "title": "Cut mode keeps your cells on screen",
+      "items": [
+        "Pressing C no longer hides the cells you are working on to show some old cell. Cut points left on a cell you are not showing, from an earlier visit or a saved view, are cleared as cut mode opens, and the cut bar offers Undo for a few seconds.",
+        "A cell with cut points on it can now be hidden or removed while cut mode is closed. Before, it kept coming back.",
+        "Ask for Edit Access: a cut example saves only while the cell its points are on is shown, so the reviewer sees the cell with the points."
+      ]
+    },
+    {
       "at": "2026-10-17T23:52:41Z",
       "title": "Quests load all day",
       "digest": "minor",

@@ -49,8 +49,8 @@ export async function loadMyAccess(): Promise<AccessMine> {
 }
 
 /** What is in the view right now: Multicut points, merge points, pieces shown. */
-export function viewContents(): { red: AccessPoint[]; blue: AccessPoint[]; merge: AccessPoint[]; segments: string[] } {
-  const out = { red: [] as AccessPoint[], blue: [] as AccessPoint[], merge: [] as AccessPoint[], segments: [] as string[] };
+export function viewContents(): { red: AccessPoint[]; blue: AccessPoint[]; merge: AccessPoint[]; segments: string[]; cutCell?: string } {
+  const out = { red: [] as AccessPoint[], blue: [] as AccessPoint[], merge: [] as AccessPoint[], segments: [] as string[], cutCell: undefined as string | undefined };
   try {
     const ml = currentSegLayer();
     const layer = ml?.layer;
@@ -65,6 +65,9 @@ export function viewContents(): { red: AccessPoint[]; blue: AccessPoint[]; merge
     if (multicut) {
       out.red = [...multicut.sinks].map(toPoint).filter(p => p.position.length === 3);
       out.blue = [...multicut.sources].map(toPoint).filter(p => p.position.length === 3);
+      // The cell the points are on. It can be hidden while cut mode is
+      // closed, and a saved view must show it (whyNot).
+      if (multicut.focusSegment?.value != null) out.cutCell = String(multicut.focusSegment.value);
     }
     // Merge points placed with the merge tool (M, Ctrl+click two pieces) and
     // not submitted: each pending merge has both ends and no merged root.
@@ -89,6 +92,8 @@ export function whyNot(kind: AccessKind, v = viewContents()): string {
   if (kind === 'cut' && (!v.red.length || !v.blue.length)) {
     return 'Place red and blue Multicut points on each side of where you would cut. Do not press Cut.';
   }
+  // A view whose points sit on a hidden cell shows the reviewer points in empty space.
+  if (kind === 'cut' && v.cutCell && !v.segments.includes(v.cutCell)) return 'Show the cell your points are on, then save.';
   if (kind === 'merge' && v.merge.length < 2) {
     return 'Press M and Ctrl+click the two pieces you would join. Do not press Submit merge.';
   }

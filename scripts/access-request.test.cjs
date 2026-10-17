@@ -19,7 +19,7 @@ const fs = require('fs');
 const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
 const { handle } = require('../functions/access-request');
 
-const BASE = 'http://localhost:3497/';
+const BASE = process.env.BASE || 'http://localhost:3497/';
 const CHROME = 'C:/Users/amyle/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe';
 const OUT = process.argv[2] || path.join(__dirname, 'shots-access');
 fs.mkdirSync(OUT, { recursive: true });
@@ -137,14 +137,16 @@ const RETINA_LAYERS = [
     if (pb) { try { pb.userId = 'test-user'; pb.userName = 'Test Player'; pb.username = 'testplayer'; pb.userEmail = 't@example.org'; pb.isAdmin = admin; } catch (e) {} }
   }, admin);
   // The view's contents: red and blue Multicut points, and the pieces shown.
+  // As in Neuroglancer, Multicut points sit on one cell, its focus segment.
   const setView = (red, blue, segs, merges = []) => page.evaluate(({ red, blue, segs, merges }) => {
     const ml = window.viewer.layerManager.managedLayers.find(l => l.name === 'stroeh_mouse_retina');
-    const sel = (p, i) => ({ position: Float32Array.from(p), segmentId: String(100 + i), rootId: '720575940561794892' });
-    ml.layer.graphConnection.value = { state: { multicutState: { sinks: new Set(red.map(sel)), sources: new Set(blue.map(sel)), reset() { this.sinks.clear(); this.sources.clear(); } },
-      mergeState: { merges: { value: merges.map(([a, b], i) => ({ id: 'm' + i, locked: false, sink: sel(a, i), source: sel(b, i + 50) })) } } } };
     const g = ml.layer.displayState.segmentationGroupState.value;
     // Neuroglancer's own 64 bit ID type, taken from an ID already shown.
     window.__U64 = window.__U64 || [...g.visibleSegments][0].constructor;
+    const sel = (p, i) => ({ position: Float32Array.from(p), segmentId: String(100 + i), rootId: '720575940561794892' });
+    const focus = { value: red.length || blue.length ? window.__U64.parseString('720575940561794892') : undefined };
+    ml.layer.graphConnection.value = { state: { multicutState: { focusSegment: focus, sinks: new Set(red.map(sel)), sources: new Set(blue.map(sel)), reset() { focus.value = undefined; this.sinks.clear(); this.sources.clear(); } },
+      mergeState: { merges: { value: merges.map(([a, b], i) => ({ id: 'm' + i, locked: false, sink: sel(a, i), source: sel(b, i + 50) })) } } } };
     g.visibleSegments.clear(); for (const s of segs) g.visibleSegments.add(window.__U64.parseString(s));
   }, { red, blue, segs, merges });
   const ok = (cond, what) => { console.log((cond ? 'PASS ' : 'FAIL ') + what); if (!cond) process.exitCode = 1; };
@@ -188,6 +190,15 @@ const RETINA_LAYERS = [
     await page.waitForTimeout(400);
     ok(/red and blue Multicut points/.test(await panelText()), 'a cut without blue points is refused');
     ok(db.access_request_items.length === 0, 'nothing was saved');
+    // Red and blue on a cell the player has hidden: the reviewer would see
+    // points in empty space, so the save asks for the cell first.
+    await setView([[37100, 16600, 1970]], [[37200, 16700, 1975]], ['720575940561794999']);
+    await page.waitForTimeout(1200);
+    await page.click('.nge-acc-save >> nth=0');
+    await page.waitForTimeout(400);
+    ok(/Show the cell your points are on, then save\./.test(await panelText()), 'a cut whose cell is hidden is refused');
+    ok(db.access_request_items.length === 0, 'nothing was saved');
+    await shotOf('.nge-acc', '02b-cut-cell-hidden');
 
     // 3. Seven cuts and three merges.
     for (let i = 1; i <= 7; i++) {
