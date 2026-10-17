@@ -1189,12 +1189,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>
-        <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" rel="noopener"
-                href="https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/">Proofreading Guide ↗</a></span>
-          </div>
-        </li>
+        <!-- The Proofreading Guide link was taken out (Ames 2026-10-16): the old
+             guide no longer matches Pyr. -->
         <li>
           <div class="logoutButton button">
             <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
