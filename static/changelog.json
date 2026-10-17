@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-17T23:52:41Z",
+      "title": "Quests load all day",
+      "digest": "minor",
+      "items": [
+        "The quest list no longer stops loading partway through the day with a Too Many Requests error. It had a daily limit that was far too low for busy questers."
+      ]
+    },
+    {
       "at": "2026-10-17T01:21:00Z",
       "title": "A tidier Learn more menu",
       "digest": "minor",
