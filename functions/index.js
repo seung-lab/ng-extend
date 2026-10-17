@@ -1117,7 +1117,12 @@ function clientIp(req) {
 // Atomically check+increment the per-IP windows. Returns {ok} or {ok:false,scope}.
 async function rateLimit(req, loggedIn, prefix = "a") {
   // Browser login flags do not establish identity. Keep the anonymous tier.
-  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : RL_TIERS.anon;
+  // Quest list reads (Krzysztof #159, #161, 2026-10-17): a quest player reads
+  // the list about five times a cell, and the anonymous 60 a day ran out by
+  // mid-day. The list is served from the server's five minute copy, so these
+  // reads cost the sheet nothing; they get limits of their own.
+  const QUEST_READS = prefix === "read:quests";
+  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
   const refs = [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
   try {
@@ -1126,7 +1131,7 @@ async function rateLimit(req, loggedIn, prefix = "a") {
       const now=Date.now(), next=[];
       for(let i=0;i<refs.length;i++) {
         const d=snapshots[i].exists?snapshots[i].data():{};
-        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : {perMin:60,perDay:1500}) : tier;
+        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : {perMin:60,perDay:1500}) : tier;
         const minute=now-(d.minStart||0)>=60000, day=now-(d.dayStart||0)>=86400000;
         const minCount=minute?0:(d.minCount||0), dayCount=day?0:(d.dayCount||0);
         if(minCount>=limits.perMin || dayCount>=limits.perDay) return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
