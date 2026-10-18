@@ -22,6 +22,8 @@ const props = defineProps<{
     last: boolean,
     stepIndex: number,
     totalSteps: number,
+    /** "Part 1 of 4 · Mark what you see": stepIndex and totalSteps then count within it. */
+    partLabel?: string,
 }>();
 
 const emit = defineEmits<{
@@ -492,7 +494,7 @@ async function onHtmlClick(e: MouseEvent) {
                 <span class="nge-chip-scan" aria-hidden="true"></span>
                 <div class="nge-chip-drag" title="Drag anywhere on this box to move it">
                     <span class="nge-chip-grip" aria-hidden="true">⠿</span>
-                    <span class="nge-chip-readout">{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
+                    <span class="nge-chip-readout"><template v-if="partLabel">{{ partLabel }} · </template>{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
                 </div>
                 <button class="exit" @click="inExitConfirm = true">×</button>
                 <div class="title" v-if="computedStep.title">
@@ -1445,4 +1447,7 @@ async function onHtmlClick(e: MouseEvent) {
 }
 .nge-tut-copy:hover { background: rgba(74, 158, 255, 0.26); }
 .nge-tut-copy--done { color: #b9f5c6; border-color: rgba(142, 232, 160, 0.7); }
+.nge-tut-checklist li { transition: color 0.3s; }
+.nge-tut-checklist li.nge-tut-done { color: #9ff0b8; }
+.nge-tut-checklist li.nge-tut-done::marker { content: '✓  '; color: #3dff9a; font-weight: 700; }
 </style>

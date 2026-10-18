@@ -8,7 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
-import { BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
+import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
 
 /**
  * The Cut track is staged (Ames, 2026-10-05): the same two cells in the same
@@ -244,11 +244,9 @@ The red and blue dots on the images show where the points go.`,
 
 The cells you practised on are put back for the next person. Happy proofreading!
 
-Good, you've learned the basics of cut. Now see if you can find and cut **all ${SANDBOX_TOTAL} mergers** in the Merger Sandbox, without the preset points.
+Good, you've learned the basics of cut. Next is **Advanced Interface**: annotations, finding your way, working with many cells, and using **Find Path** to track down where a merger starts. After that, the Merger Sandbox's **${SANDBOX_TOTAL} mergers** put it all to work.
 
-<button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the ${SANDBOX_TOTAL} mergers</button>
-
-**Coming soon:** a harder Cut tutorial, where you use **Find Path** to track down where two neurons were fused.
+<div style="text-align:center;margin:16px 0 18px">` + startTutorialButton(2, 'Start Advanced Interface') + `</div>
 
 <a href="` + CHEAT_SHEET_URL + `" target="_blank" rel="noopener" style="color:#7ecaff">Open the cheat sheet in a new tab ↗</a>`,
     position: MIDDLE,

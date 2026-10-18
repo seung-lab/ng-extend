@@ -49,11 +49,21 @@ const currentStep = computed(() => {
 const activeStep = computed(() => {
     const index = currentStep.value;
     if (index >= 0 && index < steps.value.length) {
+        // A step in a part counts within its part only (Step.part).
+        const part = steps.value[index].part;
+        let from = 0, to = steps.value.length - 1;
+        if (part) {
+            from = index; while (from > 0 && steps.value[from - 1].part === part) from--;
+            to = index; while (to < steps.value.length - 1 && steps.value[to + 1].part === part) to++;
+        }
         return {
             index: index,
             step: steps.value[index],
             first: index === 0,
             last: index === steps.value.length - 1,
+            shownIndex: index - from,
+            shownTotal: to - from + 1,
+            partLabel: part || '',
         }
     } else {
         return null;
@@ -264,7 +274,7 @@ const exitIntro = () => {
         </div>
     </div>
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
-        :last="activeStep.last" :stepIndex="activeStep.index" :totalSteps="steps.length"
+        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel"
         v-on:next="next"
         v-on:back="back" v-on:exitIntro="exitIntro" />
 

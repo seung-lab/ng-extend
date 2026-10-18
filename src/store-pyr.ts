@@ -162,6 +162,10 @@ export interface Step {
   clickAfterState?: string;
   floatingImage?: string;
   onEnter?: () => void | Promise<void>;
+  /** A tutorial in parts (Ames 2026-10-18: 33 dashes looked intimidating): the
+   *  steps that share a part name count and draw their progress on their own,
+   *  under that name. */
+  part?: string;
   /** Glow-ring around the targeted element + hide the chip arrow.
    *  Used by the Site Tour (Tutorial 4); existing tutorials keep arrows. */
   highlight?: boolean;

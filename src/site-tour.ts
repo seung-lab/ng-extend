@@ -340,7 +340,7 @@ Click any user's name in chat or the leaderboard to open *their* profile.`,
   // ── 18. Hamburger menu ───────────────────────────────────────
   {
     title: "🍔 Tutorials & Help",
-    text: `The burger menu holds this **Site Tour** and four tutorials: **Get Started** (navigation), **Advanced Interface** (every panel), **Merge** and **Cut** (practice on real cells, one learner at a time).
+    text: `The burger menu holds this **Site Tour** and the tutorials, best taken in order: **Get Started** (navigation), **Merge** and **Cut** (practice on real cells, one learner at a time), **Advanced Interface** (annotations, cells and Find Path), then the **Merger Sandbox**.
 
 Below them: the **Forum**.`,
     position: { element: "#hamburger", side: "left", offset: { x: -10, y: 0 } },

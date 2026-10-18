@@ -1151,21 +1151,23 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           </div>
         </li>
         <li>
-          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span class="nge-menu-num">2</span><span>Advanced Interface</span>
-          </div>
-        </li>
-        <li>
           <!-- Merge and Cut run on practice cells one learner at a time: the
                start goes through a gate (tutorial-3.ts) that offers a place in
                line when the cells are held. -->
           <div class="logoutButton button nge-menu-item" @click="startTutorial(3); closeHamburger()">
-            <span class="nge-menu-num">3</span><span>Merge</span>
+            <span class="nge-menu-num">2</span><span>Merge</span>
           </div>
         </li>
         <li>
           <div class="logoutButton button nge-menu-item" @click="startTutorial(5); closeHamburger()">
-            <span class="nge-menu-num">4</span><span>Cut</span>
+            <span class="nge-menu-num">3</span><span>Cut</span>
+          </div>
+        </li>
+        <!-- Advanced Interface after Merge and Cut, then the Merger Sandbox
+             (Ames 2026-10-18: the ideal order). -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 2; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num">4</span><span>Advanced Interface</span>
           </div>
         </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
