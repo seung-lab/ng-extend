@@ -84,6 +84,9 @@ class LayerWidget extends RefCounted {
     const closeElement = makeCloseButton();
     closeElement.title = 'Remove layer from this layer group';
     closeElement.addEventListener('click', (event: MouseEvent) => {
+      // Pyr: some layers may not be removed (the Sandbox's own image and
+      // segmentation layers, Ames 2026-10-18). See src/util/locked_layers.ts.
+      if (layerLocked(this.layer)) { event.stopPropagation(); return; }
       if (this.panel.layerManager === this.panel.manager.rootLayers) {
         // The layer bar corresponds to a TopLevelLayerListSpecification.  That means there is just
         // a single layer group, archive the layer unconditionally.
@@ -105,6 +108,7 @@ class LayerWidget extends RefCounted {
     const deleteElement = makeDeleteButton();
     deleteElement.title = 'Delete this layer';
     deleteElement.addEventListener('click', (event: MouseEvent) => {
+      if (layerLocked(this.layer)) { event.stopPropagation(); return; }
       void deleteLayerFromUi(this.layer);
       event.stopPropagation();
     });
@@ -182,6 +186,7 @@ class LayerWidget extends RefCounted {
       delete element.dataset.tinted;
     }
     element.dataset.visible = layer.visible.toString();
+    if (layerLocked(layer)) element.dataset.ngeLocked = 'true'; else delete element.dataset.ngeLocked;
     element.dataset.selected = (layer === this.panel.selectedLayer.layer).toString();
     element.dataset.pick = layer.pickEnabled.toString();
     element.title = classicLayerClicks()
@@ -193,6 +198,12 @@ class LayerWidget extends RefCounted {
     this.element.remove();
     super.disposed();
   }
+}
+
+/** Pyr sets window.__ngeLayerLocked(managedLayer) to keep a layer's remove
+ *  and delete buttons away (src/util/locked_layers.ts). */
+function layerLocked(layer: ManagedUserLayer): boolean {
+  try { return !!(window as any).__ngeLayerLocked?.(layer); } catch { return false; }
 }
 
 export class LayerBar extends RefCounted {

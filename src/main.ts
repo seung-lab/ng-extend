@@ -8,6 +8,7 @@ import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
+import { startLockedLayers } from './util/locked_layers';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startViewerPerf } from './util/viewer_perf';
@@ -402,6 +403,8 @@ function setupViewer() {
   startCloseGuard();
   // Saves that waited for CAVE while it was down go out once it is back.
   startCaveOutbox();
+  // The Sandbox's own 2D and 3D layers cannot be removed or deleted.
+  startLockedLayers();
   // A ?cell= address (a cell ID opened from chat in a new tab) opens that cell.
   void startCellLinks();
   // Viewer settings a player chose (prefetching, chunk requests, memory) stay

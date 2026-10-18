@@ -1,4 +1,17 @@
-import { Step } from "./store-pyr";
+import { Step, useTutorialStore } from "./store-pyr";
+import { useUserPreferencesStore } from "./store";
+
+/** How a layer chip is selected and hidden. Since 2026-10-11 a plain click
+ *  selects and a right click hides; Classic layer tabs in Settings swaps them
+ *  (as tutorial-3.ts selectClick). The steps used to say it the old way round
+ *  (Ames 2026-10-18). */
+const classicLayers = () => { try { return useUserPreferencesStore().prefs.classicLayerClicks === true; } catch { return false; } };
+const SELECT_CLICK = () => (classicLayers() ? 'RIGHT-CLICK' : 'CLICK');
+const HIDE_CLICK = () => (classicLayers() ? 'CLICK' : 'RIGHT-CLICK');
+/** A copy button for coordinates (TutorialStep.vue onHtmlClick). */
+const copyButton = (coords: string) => `<button type="button" class="nge-tut-copy" data-nge-copy="${coords}">📋 Copy ${coords}</button>`;
+/** The soma the tutorial starts on (its saved view, read 2026-10-18). */
+const SOMA = '75744, 56704, 656';
 // 132KB web-sized JPEG; the 18MB source PNG stays out of the bundle.
 import scytheHero from './images/scythe_hero_web.jpg';
 import imgWheresNurro from './images/wheres-nurro.png';
@@ -25,6 +38,67 @@ function glowCoordinates() {
   if (!el) return;
   el.classList.add('nge-tour-target');
   setTimeout(() => el.classList.remove('nge-tour-target'), 20000);
+}
+
+/** The visible segment IDs of the segmentation layer. */
+function visibleIds(): Set<string> {
+  try {
+    for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+      const vs = ml.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+      if (vs) return new Set([...vs].map((x: any) => x.toString()));
+    }
+  } catch { /* the viewer is not ready */ }
+  return new Set();
+}
+/** Move on by itself once `count` new cells have joined the view (any cells:
+ *  the Sandbox's cells are edited by players, so their IDs change). Stops
+ *  when the learner leaves the step. As tutorial-1.ts advanceWhenSegmentAdded. */
+function nextWhenCellsAdded(count: number) {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  setTimeout(() => {
+    const base = visibleIds();
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      const added = [...visibleIds()].filter(id => !base.has(id)).length;
+      if (added >= count) {
+        clearInterval(timer);
+        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+      }
+    }, 400);
+  }, 1500);
+}
+/** Move on by itself once an annotation layer has been added. */
+function nextWhenAnnotationLayerAdded() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const count = () => ((window as any).viewer?.layerManager?.managedLayers ?? [])
+    .filter((ml: any) => !ml.archived && (ml.layer?.constructor?.type ?? ml.layer?.type ?? ml.initialSpecification?.type) === 'annotation').length;
+  setTimeout(() => {
+    const base = count();
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      if (count() > base) {
+        clearInterval(timer);
+        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+      }
+    }, 400);
+  }, 1200);
+}
+/** Glow the Render tab's controls worth trying first (Ames 2026-10-18). */
+function glowRenderControls() {
+  setTimeout(() => {
+    const want = /^(Opacity \(on\)|Opacity \(3d\)|Silhouette \(3d\)|Saturation)$/i;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('.neuroglancer-layer-side-panel-tab-view label, .neuroglancer-layer-side-panel-tab-view .neuroglancer-layer-control-label'))) {
+      const text = (el.textContent || '').trim();
+      if (!want.test(text)) continue;
+      const row = (el.closest('.neuroglancer-layer-control-container, .neuroglancer-layer-control-row, label') as HTMLElement) || el;
+      row.classList.add('nge-tour-target');
+      setTimeout(() => row.classList.remove('nge-tour-target'), 25000);
+    }
+  }, 600);
 }
 
 export const steps: Step[] = [
@@ -121,9 +195,11 @@ Click the copy icon in the glowing coordinates box, bottom left, to COPY our cur
   //6 -- Coordinates pt 2
   {
     text: `
-One of our collaborators would like us to check out a precise location on this cell. 
+One of our collaborators would like us to check out a spot in this dataset. Here it is:
 
-The X coordinate for our new location is 456789. <strong>Click the x number in the coordinates box, bottom left, and type it in</strong>. Press "Enter" to jump to the new location.`,
+${copyButton('87298, 52545, 998')}
+
+<strong>Copy it, then press CTRL+V anywhere in the viewer to PASTE it</strong>. Pyr jumps straight to that spot. (Not in a text box: there it would just paste the numbers.)`,
     width: "500px",
     position: { element: "body", x: 0.24, y: 0.66 },
     onEnter: glowCoordinates,
@@ -135,9 +211,11 @@ The X coordinate for our new location is 456789. <strong>Click the x number in t
     text: `
 Oh sorry, that wasn't right! That was the amount owed on my cat's latest vet bill 😿. Now we're lost in neuron space!
 
-That's okay, remember that we COPIED the coorinates for the cell's soma. 
+That's okay: let's go back to the cell's soma. We copied its spot a moment ago, but the new numbers replaced it, so here it is again:
 
-<strong>CTRL+V anywhere in the interface to PASTE them</strong> and we'll jump back to the right spot.`,
+${copyButton(SOMA)}
+
+<strong>Copy it and press CTRL+V anywhere in the viewer</strong> to jump back to the right spot.`,
     width: "500px",
     position: MIDDLE,
     state:
@@ -157,7 +235,7 @@ Let's keep investigating.`,
   //9 -- Using layers, show/hide
   {
     text: `
-This LAYER has a blue border to indicate it is currently selected.`,
+This LAYER has a light running around its border: that means it is the one selected.`,
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(2)",
       side: "bottom",
@@ -168,10 +246,10 @@ This LAYER has a blue border to indicate it is currently selected.`,
   },
     //10 -- Using layers, select
   {
-    text: `
-<strong>RIGHT-CLICK</strong> to select this layer instead.  
+    get text() { return `
+<strong>${SELECT_CLICK()}</strong> to select this layer instead.
 
-If you did it correctly it will have a blue border!`,
+If it worked, the light moves to its border!`; },
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
@@ -180,12 +258,12 @@ If you did it correctly it will have a blue border!`,
   },
    //10 -- Using layers, select
   {
-    text: `
-<strong>LEFT-CLICK</strong> on they layer to SHOW or HIDE it. 
+    get text() { return `
+<strong>${HIDE_CLICK()}</strong> on the layer to SHOW or HIDE it.
 
-<strong>Pressing the LAYER NUMBER</strong> on your keyboard also works. In this case the number is "2." 
+<strong>Pressing the LAYER NUMBER</strong> on your keyboard also works. In this case the number is "2."
 
-Try both ways!`,
+Try both ways!`; },
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(3) > div.neuroglancer-layer-item-value-container",
       side: "bottom",
@@ -195,11 +273,11 @@ Try both ways!`,
   //11 -- Layer Toolbox
   {
     text: `
-Look here! This SIDE PANEL opened up when the layer was selected.
+Look here! This SIDE PANEL opened when you selected the layer.
 
-You can see the NAME of the selected layer in this <span style="color: #b0d0ff; background: linear-gradient(135deg, rgba(20, 35, 65, 0.95), rgba(15, 25, 50, 0.95)); padding: 2px 8px; border-radius: 3px; border: 1px solid rgba(74, 158, 255, 0.3); font-weight: 600;">BLUE BOX</span> as well as the LAYER TYPE in <span style="color: white; background-color: #1e3a5f; font-weight: bold;">DARK BLUE</span>.`,
+Its title is the layer's NAME. You can open and close it any time with the Layer side panel button, at the right end of the top bar.`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      element: ".neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -209,11 +287,11 @@ You can see the NAME of the selected layer in this <span style="color: #b0d0ff; 
   //12 -- Layer Toolbox cont.
   {
     text: `
-This layer type is <span style="color: white; background-color: #1e3a5f; font-weight: bold;">seg</span> or "segmentation layer" which shows the 3D model.
+<strong>3D segmentation</strong> is a SEGMENTATION layer: it holds the cells, shown as shapes in 3D and outlined in the 2D view.
 
-Other layer types include IMG which indicates the EM image layer, and ANN for annotation layer.`,
+<strong>2D EM</strong> is an IMAGE layer, the electron microscopy pictures themselves, and the layers you add with <strong>+</strong> are ANNOTATION layers, for your own points and notes.`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      element: ".neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -225,39 +303,92 @@ These TABS correspond to your selected layer.
 
 We are currently in the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Segments</span> tab which shows the segment ID for our visible cell. `,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-tab-view-bar",
       side: "left",
       offset: { x: 0, y: 0 },
     },
   },
   //14 -- Layer Toolbox Tabs cont.
+  //16a -- Add a cell by its ID
   {
     text: `
-If we add more cells, their IDs will appear here as well. `,
+Let's add more cells. The box at the top of the Segments tab takes cell IDs. Copy this one:
+
+${copyButton('648518346354852928')}
+
+<strong>Click the box, then press CTRL+V</strong>. The cell appears in 3D and in the list.`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(4) > div:nth-child(2) > span",
+      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
       side: "left",
       offset: { x: 0, y: 0 },
     },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/6222746955546624",
+    onEnter: () => nextWhenCellsAdded(1),
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
+  },
+  //16b -- Add several at once
+  {
+    text: `
+You can paste several IDs at once, separated by commas:
+
+${copyButton('648518346353636160, 648518346354708544')}
+
+<strong>Paste them into the same box.</strong>`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    onEnter: () => nextWhenCellsAdded(2),
+  },
+  //16c -- Add the cell at a spot
+  {
+    text: `
+The box also takes coordinates: it adds whichever cell is at that spot. Copy these:
+
+${copyButton('77499, 61988, 423')}
+
+<strong>Paste them into the box too.</strong>`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
+    onEnter: () => nextWhenCellsAdded(1),
+  },
+  //16d -- The rows
+  {
+    text: `
+Each cell in view has a row here, with its ID. You can:
+
+- click the eye to show or hide a cell, and the trash can to take it out of view
+- click the arrow ↗ to fly to a cell
+- click the triangle at the end of the row to mark it Proofread or give it a cell type
+
+Make folders with <strong>+ Folder</strong> to keep cells together.`,
+    position: {
+      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-segment-list-entry",
+      side: "left",
+      offset: { x: 0, y: 0 },
+    },
   },
   //15 -- Layer Toolbox Tabs "Render"
   {
     text: `
-<span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Render</span> is another important tab. Here you can alter the visualization of your cell.
+<span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Render</span> is another important tab. Here you change how your cells look.
 
-We've opened the 2D view so you can see how the render controls affect the 2D as well.
+We've lit up a few worth trying: <strong>Opacity (on)</strong> for the cell in the 2D view, <strong>Opacity (3d)</strong> and <strong>Silhouette (3d)</strong> for the 3D view, and <strong>Saturation</strong> for its colors. We've opened the 2D view so you can see both.
 
-Try it! We'll restore the default view in the next slide.`,
+Try them! We'll restore the default view in the next slide.`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-tab-view-bar",
       side: "left",
       offset: { x: 0, y: 0 },
     },
     state: 
         //"middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
     "middleauth+https://global.daf-apis.com/nglstate/api/v1/5352335057354752",
+    onEnter: glowRenderControls,
   },
   //16 -- Add annotation layer
   {
@@ -274,6 +405,7 @@ Let's try adding an ANNOTATION LAYER.
     state:
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
     onEnter() {
+      nextWhenAnnotationLayerAdded();
       // Highlight the + button with a pulsing glow so it's easy to find
       let style = document.getElementById('nge-tutorial-highlight');
       if (!style) { style = document.createElement('style'); style.id = 'nge-tutorial-highlight'; document.head.appendChild(style); }
@@ -301,9 +433,9 @@ Let's try adding an ANNOTATION LAYER.
   //17 -- Remove new layer
   {
     text: `
-That made an ANNOTATION LAYER. (CTRL+CLICK the "+" makes a BLANK data LAYER instead, which you will rarely need.)
+That made an ANNOTATION LAYER. (CTRL+CLICK on the "+" makes a BLANK data layer instead, which you will rarely need.)
 
-A layer is just as easy to take away. Let's practise: <strong>Hover on the new layer, and click the "X" to remove it.</strong>`,
+A layer is just as easy to take away. <strong>Hover on the new layer and click its trash can</strong> to delete it.`,
     width: "500px",
     position: {
       element: "#neuroglancer-container > div > div > div:nth-child(2) > div:nth-child(2) > div.neuroglancer-layer-group-viewer > div.neuroglancer-layer-panel > div:nth-child(4)",
@@ -312,26 +444,12 @@ A layer is just as easy to take away. Let's practise: <strong>Hover on the new l
     },
   },
    //5 -- Layers menu
-  {
-    text: `
-Our new layer was removed, but it was not deleted permanently!
-
-You can view all layers by opening <strong>Settings ⚙️</strong> in the toolbar, then clicking <strong>☰ Layer List Panel</strong> at the bottom.
-
-Try it! Open the Layer List Panel, and you'll see the hidden layer. <strong>Click the EYE icon</strong> to reveal it, then <strong>click the 🗑️</strong> to delete it permanently.
-
-⚠️<em>Be careful with the</em> 🗑️ <em>function! Any trashed layers are UNRECOVERABLE.</em>`,
-    width: "500px",
-    position: OVER_3D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
-  },
    //5 -- Share to save
   {
     text: `
-It's recommended to hit the SHARE button to save your work at frequent intervals in case you accidentally delete something important! 
+Pyr saves your view as you go: next time you open it, it offers to take you back where you left off. A cell you claim has its own <strong>Save view</strong> in the Cell Library, and quest work saves itself.
 
-⚠️<em>SHARE only copies the link to your clipboard, to save it you must PASTE the link in a location convenient to you.</em>`,
+The <strong>SHARE</strong> button is for sending your view to someone: it copies a link to your clipboard, ready to paste in chat or anywhere else.`,
     position: {
       element: "#insertNGTopBar > div > div:nth-child(4) > div",
       side: "bottom",
@@ -386,7 +504,7 @@ Let's take a look at the Annotation Layer Panel.
 
 Let's give our tab another name. Click into the <span style="color: #b0d0ff; background: linear-gradient(135deg, rgba(20, 35, 65, 0.95), rgba(15, 25, 50, 0.95)); padding: 2px 8px; border-radius: 3px; border: 1px solid rgba(74, 158, 255, 0.3); font-weight: 600;">BLUE BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-side-panel-titlebar.neuroglancer-layer-side-panel-title",
+      element: ".neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -398,7 +516,7 @@ Let's give our tab another name. Click into the <span style="color: #b0d0ff; bac
     text: `
 Now it's time to add some annotations! Select the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Annotations</span> tab to begin.`,
     position: {
-      element: "#neuroglancer-container > div > div > div.neuroglancer-side-panel-column > div:nth-child(2) > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-tab-view-bar",
+      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-tab-view-bar",
       side: "left",
       offset: { x: 0, y: 0 },
     },
@@ -468,7 +586,7 @@ You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0
   //22
   {
     text: `
-Now you have a basic understanding of the EyeWire II interface! For additional training you can find more resources under the 📖 resources menu at the top right.`,
+Now you have a basic understanding of the Pyr interface! For more practice, the ☰ menu at the top right has the other tutorials, the Merger Sandbox and the Forum.`,
     position: {
       element: "#hamburger > button",
       side: "left",
@@ -510,9 +628,10 @@ Note that the <span style="color: #7df;">CYAN TEXT</span> indicates a KEYBOARD o
     },
   },
   {
-    text: `Ready for the next step? Try the **Merge & Split Tutorial** to learn how to fuse branches and cut away errors.
+    text: `
+Ready for the next step? Try the <strong>Merge</strong> and <strong>Cut</strong> tutorials to learn how to join pieces of a cell and cut away mistakes, then practice in the <strong>Merger Sandbox</strong>.
 
-When you're ready, submit a set of **10 annotated test edits** (5 splits and 5 merges) to <a href="mailto:support@eyewire.org" style="color: #7df;">support@eyewire.org</a> to gain access to the Production dataset. Thanks for being a part of the neuroscience community! 🧠 For Science!`,
+When you are ready to edit real cells, choose <strong>Ask for Edit Access</strong> in the ☰ menu. Thanks for being a part of the neuroscience community! 🧠 For Science!`,
     position: MIDDLE,
     image:
       imgTutorialFinal,

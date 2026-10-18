@@ -1906,3 +1906,6 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 3px rgba(126, 224, 255, 0.15);
 }
 .neuroglancer-segment-display-tab .neuroglancer-segment-list-query::placeholder { color: rgba(200, 215, 240, 0.55); }
+
+/* Layers that cannot be removed (src/util/locked_layers.ts): no ✕, no trash. */
+.neuroglancer-layer-item[data-nge-locked="true"] .neuroglancer-layer-item-button-container { display: none !important; }

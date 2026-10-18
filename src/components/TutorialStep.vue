@@ -453,6 +453,22 @@ onUnmounted(() => {
     }
 });
 
+
+/** A step can offer text to copy: <button data-nge-copy="75744, 56704, 656">.
+ *  Coordinates to paste are handed over this way instead of being typed or
+ *  remembered (Ames 2026-10-18: "I didn't copy them!! ... give me coords to
+ *  copy, paste"). */
+async function onHtmlClick(e: MouseEvent) {
+  const btn = (e.target as HTMLElement | null)?.closest?.('[data-nge-copy]') as HTMLElement | null;
+  if (!btn) return;
+  e.preventDefault();
+  const text = btn.dataset.ngeCopy || '';
+  try { await navigator.clipboard.writeText(text); } catch { /* the numbers stay on screen to copy by hand */ }
+  const was = btn.textContent;
+  btn.textContent = 'Copied ✓';
+  btn.classList.add('nge-tut-copy--done');
+  setTimeout(() => { btn.textContent = was; btn.classList.remove('nge-tut-copy--done'); }, 1600);
+}
 </script>
 
 <template>
@@ -489,7 +505,7 @@ onUnmounted(() => {
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
-                <div class="html" v-if="computedStep.html" v-html="computedStep.html"></div>
+                <div class="html" v-if="computedStep.html" v-html="computedStep.html" @click="onHtmlClick"></div>
                 <div class="nge-chip-foot">
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
@@ -1422,4 +1438,11 @@ onUnmounted(() => {
     color: rgba(190, 215, 240, 0.65);
     margin-top: 2px;
 }
+.nge-tut-copy {
+  display: inline-flex; align-items: center; gap: 6px; margin: 2px 0; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  font: 600 13px 'JetBrains Mono', ui-monospace, monospace; color: #cfe9ff;
+  background: rgba(74, 158, 255, 0.14); border: 1px solid rgba(126, 202, 255, 0.5);
+}
+.nge-tut-copy:hover { background: rgba(74, 158, 255, 0.26); }
+.nge-tut-copy--done { color: #b9f5c6; border-color: rgba(142, 232, 160, 0.7); }
 </style>
