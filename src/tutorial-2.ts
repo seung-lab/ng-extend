@@ -198,7 +198,7 @@ Click the copy icon in the glowing coordinates box, bottom left, to COPY our cur
     text: `
 One of our collaborators would like us to check out a spot in this dataset. Here it is:
 
-${copyButton('87298, 52545, 998')}
+${copyButton('456789, 56704, 656')}
 
 <strong>Copy it, then press CTRL+V anywhere in the viewer to PASTE it</strong>. Pyr jumps straight to that spot. (Not in a text box: there it would just paste the numbers.)`,
     width: "500px",
