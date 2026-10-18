@@ -212,7 +212,15 @@ async function loadReporters(rows: TriageRow[]) {
     let { data, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', ids);
     if (error) ({ data } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url').in('id', ids));
     const next = { ...reporters.value };
-    const web = (u: any) => (typeof u === 'string' && /^https:\/\//.test(u) ? u : undefined);
+    // An older report saved "page @ x,y,z" when no short link could be made;
+    // as a link that went to a missing page (Ames 2026-10-18). Read it as the
+    // spot it names: the game, opened there (src/util/cell_link.ts, ?at=).
+    const web = (u: any) => {
+      if (typeof u !== 'string' || !/^https:\/\//.test(u)) return undefined;
+      const m = u.match(/^(https:\/\/[^\s]+?)\s*@\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (m) { try { const x = new URL(m[1]); x.search = ''; x.hash = ''; x.searchParams.set('at', [m[2], m[3], m[4]].map(n => Math.round(Number(n))).join(',')); return x.toString(); } catch { return undefined; } }
+      return /\s/.test(u) ? undefined : u;
+    };
     for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', message: String(i.message || '').trim(),
       url: web(i.url), shot: web(i.screenshot_url) };
     reporters.value = next;

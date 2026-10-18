@@ -14,6 +14,16 @@
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { canonicalDataset, currentSegLayer, DATASETS, segLayerName, switchToDataset } from '../datasets';
 
+/** A spot as a web address: <the game>/?at=x,y,z&ds=<dataset>. Used when a
+ *  short link to a whole view cannot be made (a report sent without one,
+ *  Ames 2026-10-18: the old "page @ x,y,z" text made a link to a missing page). */
+export function spotLinkHref(pos: ArrayLike<number>, dataset?: string | null): string {
+  const u = new URL(window.location.pathname, window.location.origin);
+  u.searchParams.set('at', [0, 1, 2].map(i => Math.round(Number(pos[i]) || 0)).join(','));
+  if (dataset) u.searchParams.set('ds', dataset);
+  return u.toString();
+}
+
 export function cellLinkHref(segId: string, dataset?: string | null): string {
   const u = new URL(window.location.pathname, window.location.origin);
   u.searchParams.set('cell', segId.replace('#', ''));
@@ -48,10 +58,12 @@ export async function startCellLinks() {
   const params = new URLSearchParams(window.location.search);
   const segId = (params.get('cell') || '').replace('#', '');
   const ds = params.get('ds');
-  if (!/^\d{1,20}$/.test(segId)) return;
+  const at = (params.get('at') || '').split(',').map(Number);
+  const spot = at.length === 3 && at.every(n => Number.isFinite(n)) ? at : null;
+  if (!/^\d{1,20}$/.test(segId) && !spot) return;
   // Take the words out of the address, keeping the view after the '#'.
   try {
-    params.delete('cell'); params.delete('ds');
+    params.delete('cell'); params.delete('ds'); params.delete('at');
     const q = params.toString();
     history.replaceState(history.state, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash);
   } catch { /* the address keeps them; harmless */ }
@@ -64,6 +76,10 @@ export async function startCellLinks() {
   if (target && (!active || canonicalDataset(ds!) !== canonicalDataset(active))) {
     const ok = await switchToDataset(target, { forJump: true });
     if (ok) await wait(1200);
+  }
+  if (spot) {
+    try { (window as any).viewer.navigationState.position.value = Float32Array.from(spot); } catch { /* the view stays put */ }
+    return;
   }
   for (let i = 0; i < 10 && !showCell(segId); i++) await wait(500);
 }

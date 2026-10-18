@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { spotLinkHref } from '../util/cell_link';
+import { currentSegLayer } from '../datasets';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { version, reloadForUpdate } from '../util/version_watch';
 import { caveToken } from '../secure_write';
@@ -106,10 +108,12 @@ async function submit() {
     stage.value = 'send';
     let pageUrl = shortLink;
     if (!pageUrl) {
+      // No short link: a link to the same spot on the same dataset, which
+      // opens (src/util/cell_link.ts). It used to be "page @ x,y,z", which
+      // made a link to a page that does not exist (Ames 2026-10-18).
       const v: any = (window as any)['viewer'];
       const pos = v?.navigationState?.position?.value;
-      const at = pos ? ` @ ${Math.round(pos[0])},${Math.round(pos[1])},${Math.round(pos[2])}` : '';
-      pageUrl = `${window.location.origin}${window.location.pathname}${at}`;
+      pageUrl = pos ? spotLinkHref(pos, currentSegLayer()?.name || null) : `${window.location.origin}${window.location.pathname}`;
     }
     const shot = screenshotUrl.value;
     // The submitIssue Cloud Function only relays message/category/url/
