@@ -82,6 +82,7 @@ function nextWhenAnnotationLayerAdded() {
       if (!here()) { clearInterval(timer); return; }
       if (count() > base) {
         clearInterval(timer);
+        document.getElementById('nge-tutorial-highlight')?.remove();
         setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
       }
     }, 400);
@@ -471,28 +472,11 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
       side: "bottom",
       offset: { x: 0, y: 7 },
     },
+    // A "do you remember?" step: the + is not lit up (that gave the answer
+    // away), and it moves on by itself once the layer is made (Ames 2026-10-18).
     onEnter() {
-      let style = document.getElementById('nge-tutorial-highlight');
-      if (!style) { style = document.createElement('style'); style.id = 'nge-tutorial-highlight'; document.head.appendChild(style); }
-      style.textContent = `
-        .neuroglancer-layer-add-button {
-          animation: nge-pulse-highlight 1.2s ease-in-out infinite !important;
-          border-radius: 4px !important;
-          position: relative;
-          z-index: 1;
-          /* Big enough to read as a plus (Nik took it for an airplane). */
-          transform: scale(1.7);
-          transform-origin: left center;
-          margin-right: 18px !important;
-          color: #fff !important;
-          border-color: #7ee0ff !important;
-          background: rgba(126, 224, 255, 0.22) !important;
-        }
-        @keyframes nge-pulse-highlight {
-          0%, 100% { box-shadow: 0 0 8px 3px rgba(80, 160, 255, 0.7), inset 0 0 4px rgba(80, 160, 255, 0.3); }
-          50% { box-shadow: 0 0 18px 6px rgba(80, 160, 255, 1), inset 0 0 8px rgba(80, 160, 255, 0.5); }
-        }
-      `;
+      document.getElementById('nge-tutorial-highlight')?.remove();
+      nextWhenAnnotationLayerAdded();
     },
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/6312137807888384",
