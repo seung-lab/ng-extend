@@ -166,6 +166,9 @@ export interface Step {
    *  steps that share a part name count and draw their progress on their own,
    *  under that name. */
   part?: string;
+  /** Shown only while this holds; skipped otherwise (the Site Tour's streak
+   *  step needs the streak chip, which only a player with a streak has). */
+  onlyIf?: () => boolean;
   /** Glow-ring around the targeted element + hide the chip arrow.
    *  Used by the Site Tour (Tutorial 4); existing tutorials keep arrows. */
   highlight?: boolean;

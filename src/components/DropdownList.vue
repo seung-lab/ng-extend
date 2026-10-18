@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useDropdownListStore } from 'src/store';
-import { computed } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 
 const dropdownListStore = useDropdownListStore();
 const uuid = dropdownListStore.getDropdownId();
@@ -19,6 +19,17 @@ function toggleVisible() {
 const isActive = computed(() => {
   return dropdownListStore.activeDropdowns[props.dropdownGroup] === uuid;
 });
+
+// A press anywhere outside closes it (Ames 2026-10-18). Capture phase, since
+// the viewer's panels stop the event before it reaches the document.
+const root = ref<HTMLElement | null>(null);
+function onOutside(e: PointerEvent) {
+  if (!isActive.value || !root.value) return;
+  if (root.value.contains(e.target as Node)) return;
+  dropdownListStore.activeDropdowns[props.dropdownGroup] = undefined;
+}
+onMounted(() => document.addEventListener('pointerdown', onOutside, true));
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, true));
 
 // const props = {
 //   dropdownGroup: string;
@@ -99,7 +110,7 @@ const isActive = computed(() => {
 </script>
 
 <template>
-  <div class="dropdownList" :id="id" :class="{ open: isActive }">
+  <div ref="root" class="dropdownList" :id="id" :class="{ open: isActive }">
     <button @click="toggleVisible">
       <slot name="buttonTitle"></slot>
     </button>

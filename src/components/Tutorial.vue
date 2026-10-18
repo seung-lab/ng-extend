@@ -170,6 +170,12 @@ watch(() => useProofreadingBackendStore().userId, async id => {
     }
 }, { immediate: true });
 
+/** The first step from `i` on (going `dir`) whose onlyIf holds. */
+function stepFrom(i: number, dir: 1 | -1): number {
+    const all = steps.value;
+    while (i >= 0 && i < all.length - 1 && all[i]?.onlyIf && !all[i].onlyIf!()) i += dir;
+    return i;
+}
 // `auto` is true when a step moved itself on (the practice watch); only a
 // press of the button can mean Skip.
 const next = (_auto?: unknown) => {
@@ -183,7 +189,7 @@ const next = (_auto?: unknown) => {
     if (isLastStep && tutorialNum === TEST_TUTORIAL && testContinue()) return;
     // The last box closes the tutorial outright, by its length, so nothing
     // that moves the step at the same moment can leave it showing.
-    store.setTutorialStep(isLastStep ? steps.value.length : store.getTutorialStep() + 1);
+    store.setTutorialStep(isLastStep ? steps.value.length : stepFrom(store.getTutorialStep() + 1, 1));
     if (isLastStep) {
         console.info(`[tutorial] finished tutorial ${tutorialNum}; step is now ${store.getTutorialStep()} of ${steps.value.length}`);
         // The sandbox records each merger as it is cut, not the box closing.
@@ -225,7 +231,7 @@ watch(() => store.activeTutorial, (now, before) => {
 // to the success box).
 // Never on the last box: finishing a tutorial is the learner's own click.
 document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(true); });
-const back = () => { store.setTutorialStep(Math.max(0, store.getTutorialStep() - 1)); };
+const back = () => { store.setTutorialStep(Math.max(0, stepFrom(store.getTutorialStep() - 1, -1))); };
 // ── Resuming on page load (Nseraf 2026-09-29) ──
 // Progress follows the account, so a tutorial left partway used to restart
 // its current step on every visit, and each step loads its own view: Nseraf,

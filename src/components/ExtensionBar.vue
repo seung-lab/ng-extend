@@ -1140,8 +1140,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
              them (the Find Path video stays in the Ask dock / Ctrl+K). -->
         <li class="nge-menu-heading" @click.stop>Guided tour</li>
         <li>
-          <div class="logoutButton button nge-tour-btn" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
-            <span>🧭 Site Tour</span>
+          <div class="logoutButton button nge-menu-item" @click="tutorialStore.activeTutorial = 4; tutorialStore.setTutorialStep(0); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">🧭</span><span>Site Tour</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Tutorials</li>
@@ -2215,21 +2215,6 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   background-color: rgba(255, 255, 255, 0.04);
 }
 
-/* Site Tour entry uses the same "selected tab" treatment as the Seg
-   panel: the rgba(74,158,255,0.1) fill + a 2px accent line on the
-   leading edge (left for a vertical menu, top for horizontal tabs). */
-#hamburger li .nge-tour-btn {
-  color: rgba(220, 235, 255, 0.98);
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  background: rgba(74, 158, 255, 0.1);
-  border-left: 2px solid rgba(74, 158, 255, 0.5);
-}
-#hamburger li:hover .nge-tour-btn {
-  background: rgba(74, 158, 255, 0.18);
-  border-left-color: rgba(74, 158, 255, 0.8);
-}
-
 #hamburger li a {
   color: unset;
   text-decoration: unset;
@@ -2273,4 +2258,6 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   font-size: 10.5px;
   font-weight: 600;
 }
+/* The Site Tour's compass sits in the same circle as the numbers. */
+.nge-menu-num--icon { font-size: 10px; line-height: 1; }
 </style>

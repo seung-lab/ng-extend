@@ -142,6 +142,8 @@ Drop it into chat, email, or the forum and the recipient lands exactly where you
 Your streak is shown next to your name on the leaderboard.`,
     position: { element: ".nge-streak-chip", side: "bottom", offset: { x: 0, y: 14 } },
     highlight: true,
+    // The chip only shows once there is a streak (Ames 2026-10-18: "no streak").
+    onlyIf: () => !!document.querySelector(".nge-streak-chip"),
   },
 
   // ── 6. Cut Mode ──────────────────────────────────────────────
