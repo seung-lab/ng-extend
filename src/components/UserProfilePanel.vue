@@ -2618,16 +2618,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) padding-box !important;
 }
 
-@property --nge-holo-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes ngeHoloEdgeSpin {
-  to { --nge-holo-angle: 360deg; }
-}
-
 /* Scanline removed — holographic border glow handled by ModalOverlay */
 
 /* Close animation — overrides materialize with higher specificity */
