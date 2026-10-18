@@ -88,6 +88,21 @@ function nextWhenAnnotationLayerAdded() {
     }, 400);
   }, 1200);
 }
+/** Move on by itself once an annotation layer is called "Tutorial". */
+function nextWhenRenamedTutorial() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const timer = setInterval(() => {
+    if (!here()) { clearInterval(timer); return; }
+    const named = ((window as any).viewer?.layerManager?.managedLayers ?? [])
+      .some((ml: any) => !ml.archived && /^tutorial$/i.test(String(ml.name || '').trim()));
+    if (named) {
+      clearInterval(timer);
+      setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+    }
+  }, 400);
+}
 /** Glow the Render tab's controls worth trying first (Ames 2026-10-18). */
 function glowRenderControls() {
   setTimeout(() => {
@@ -484,14 +499,15 @@ Back to our ANNOTATION LAYER. Do you remember how to add it? Try it! If you forg
   //13 -- Annotation Layer Panel
   {
     text: `
-Let's take a look at the Annotation Layer Panel.
+This is the annotation layer's side panel. Let's give the layer a name of its own.
 
-Let's give our tab another name. Click into the <span style="color: #b0d0ff; background: linear-gradient(135deg, rgba(20, 35, 65, 0.95), rgba(15, 25, 50, 0.95)); padding: 2px 8px; border-radius: 3px; border: 1px solid rgba(74, 158, 255, 0.3); font-weight: 600;">BLUE BOX</span> here and <strong>DELETE the current text. TYPE IN new text.</strong> Let's call it "Tutorial."`,
+<strong>Click the layer's name at the top of the panel</strong> (or the ✏️ pencil next to it), replace it with <strong>Tutorial</strong>, and press Enter.`,
     position: {
-      element: ".neuroglancer-layer-side-panel-title",
+      element: ".neuroglancer-layer-side-panel-name",
       side: "left",
       offset: { x: 0, y: 0 },
     },
+    onEnter: nextWhenRenamedTutorial,
     state: 
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
   },
