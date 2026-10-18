@@ -1885,3 +1885,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .nge-ann-advanced > summary { cursor: pointer; user-select: none; padding: 2px 0; }
 .nge-ann-advanced[open] > summary { margin-bottom: 6px; }
 .nge-ann-advanced > label { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+
+/* the layer panel's delete button turns red on hover (Ames 2026-10-18) */
+.neuroglancer-layer-side-panel-title .nge-title-delete:hover { background-color: rgba(224, 96, 96, 0.18) !important; border-radius: 4px; }
+.neuroglancer-layer-side-panel-title .nge-title-delete:hover > svg { fill: #ff8a8a !important; stroke: #ff8a8a !important; }
