@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-18T23:07:26Z",
+      "title": "A cleaner annotation layer panel",
+      "digest": "minor",
+      "items": [
+        "An annotation layer's panel now shows its name at the top like a file name. Click the pencil (or the name) to rename it.",
+        "The tools start right under the name, and the delete button turns red when you point at it.",
+        "Settings for filtering annotations by linked cells are under Advanced at the bottom of the panel."
+      ]
+    },
+    {
       "at": "2026-10-17T23:59:00Z",
       "title": "Cut mode keeps your cells on screen",
       "items": [
