@@ -546,11 +546,21 @@ export class AnnotationUserLayer extends Base {
       label.title =
           'Display all annotations if filtering by related segments is enabled but no segments are selected';
       label.appendChild(checkbox.element);
-      tab.element.appendChild(label);
+      // nge: researcher settings (filtering annotations by linked cells) sit
+      // under a closed Advanced line at the bottom (Ames 2026-10-18).
+      const advanced = document.createElement('details');
+      advanced.className = 'nge-ann-advanced';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Advanced';
+      advanced.append(summary, label,
+          tab.registerDisposer(new LinkedSegmentationLayersWidget(this.linkedSegmentationLayers)).element);
+      tab.element.appendChild(advanced);
+      // the tools and the list are added after this: keep Advanced last
+      const keepLast = () => { if (advanced.parentElement && advanced.nextSibling) advanced.parentElement.appendChild(advanced); };
+      const watch = new MutationObserver(keepLast);
+      watch.observe(tab.element, {childList: true});
+      tab.registerDisposer(() => watch.disconnect());
     }
-    tab.element.appendChild(
-        tab.registerDisposer(new LinkedSegmentationLayersWidget(this.linkedSegmentationLayers))
-            .element);
   }
 
   toJSON() {

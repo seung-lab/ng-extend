@@ -1857,3 +1857,31 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   background: color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 55%, transparent);
 }
 .nge-seg-folder--collapsed > .nge-h::after { display: none; }
+
+/* ── Annotation layer panel (Ames 2026-10-18): the name as a file name style
+   header with a pencil, then remove and close; no type chip, no pin; the
+   single Annotations tab label is not shown; researcher settings under
+   Advanced. ── */
+.nge-ann-layer .neuroglancer-layer-side-panel-type,
+.nge-ann-layer .nge-title-pin,
+.nge-ann-layer .nge-title-pick { display: none !important; }
+.nge-ann-layer .neuroglancer-layer-side-panel-name {
+  flex: 1 1 auto; min-width: 0;
+  font-family: Inter, system-ui, sans-serif !important; font-size: 15px !important; font-weight: 600 !important;
+  color: #f2f7ff !important; background: transparent !important;
+  border: 1px solid transparent !important; border-radius: 6px; padding: 3px 6px !important;
+}
+.nge-ann-layer .neuroglancer-layer-side-panel-name:hover { border-color: rgba(140, 180, 235, 0.3) !important; }
+.nge-ann-layer .neuroglancer-layer-side-panel-name:focus {
+  border-color: rgba(126, 224, 255, 0.6) !important; background: rgba(10, 15, 30, 0.9) !important; outline: none;
+}
+.nge-title-rename {
+  flex: none; background: none; border: none; cursor: pointer; padding: 0 6px;
+  font-size: 15px; color: rgba(200, 215, 240, 0.7);
+}
+.nge-title-rename:hover { color: #fff; }
+.nge-ann-panel .neuroglancer-tab-view-bar:has(> .neuroglancer-tab-label:only-of-type) { display: none !important; }
+.nge-ann-advanced { margin: 10px 4px 4px; font-family: Inter, system-ui, sans-serif; font-size: 12px; color: rgba(200, 215, 240, 0.75); }
+.nge-ann-advanced > summary { cursor: pointer; user-select: none; padding: 2px 0; }
+.nge-ann-advanced[open] > summary { margin-bottom: 6px; }
+.nge-ann-advanced > label { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }

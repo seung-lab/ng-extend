@@ -196,6 +196,26 @@ class LayerSidePanel extends SidePanel {
     // switches meant nothing to them (Ames 2026-10-14). Their title is the
     // friendly name the layer bar shows (tutorial-3.ts fills it in).
     const kind = (layer.constructor as any).type;
+    // nge: an annotation layer's title reads like a file name: its name, a
+    // pencil to rename it, then remove and close. No type chip (changing an
+    // annotation layer's type breaks it) and no pin (Ames 2026-10-18).
+    if (kind === 'annotation') {
+      titleBar.classList.add('nge-ann-layer');
+      element.classList.add('nge-ann-panel');
+      const nameInput = titleBar.querySelector<HTMLInputElement>('.neuroglancer-layer-side-panel-name');
+      if (nameInput) {
+        const pencil = document.createElement('button');
+        pencil.className = 'nge-title-rename';
+        pencil.type = 'button';
+        pencil.textContent = '\u270e';
+        pencil.title = 'Rename this layer';
+        pencil.addEventListener('click', () => {
+          nameInput.focus();
+          nameInput.select();
+        });
+        nameInput.after(pencil);
+      }
+    }
     if (kind === 'segmentation' || kind === 'image') {
       titleBar.classList.add('nge-locked-layer');
       const title = document.createElement('span');
