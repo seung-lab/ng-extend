@@ -577,7 +577,9 @@ That's the whole interface! Next: put it to work in the <strong>Merger Sandbox</
 
 <button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the Merger Sandbox</button>
 
-When you are ready to edit real cells, choose <strong>Ask for Edit Access</strong> in the ☰ menu. Thanks for being a part of the neuroscience community! 🧠 For Science!`,
+When you are ready to edit real cells, choose <strong>Ask for Edit Access</strong> in the ☰ menu. <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
+
+Thanks for being a part of the neuroscience community! 🧠 For Science!`,
     position: MIDDLE,
     image:
       imgTutorialFinal,
