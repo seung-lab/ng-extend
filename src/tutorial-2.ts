@@ -496,17 +496,6 @@ Let's give our tab another name. Click into the <span style="color: #b0d0ff; bac
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
   },
     //13 -- Annotation Layer Panel
-  {
-    text: `
-Now it's time to add some annotations! Select the <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Annotations</span> tab to begin.`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-tab-view .neuroglancer-tab-view-bar",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5934606860681216",
-  },
   //14 -- Add annotation point
   {
     text: `
