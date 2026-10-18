@@ -559,20 +559,6 @@ Check out <strong>AI</strong> here! That's Nurro, your guide. Press <strong>Ctrl
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-The help menu is auto-computed, and some instructions can be a little difficult to understand at first glance.
-
-Note that the <span style="color: #7df;">CYAN TEXT</span> indicates a KEYBOARD or MOUSE COMMAND. The <span style="color: #aab;">GRAY TEXT</span> indicates the ACTION that will be taken.`,
-    position: {
-      element: "#neuroglancer-container > div > div > div:nth-child(2) > div.neuroglancer-side-panel > div.neuroglancer-side-panel-titlebar",
-      side: "right",
-      offset: { x: 0, y: 0 },
-    },
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5414723718742016",
-  },
-  {
-    part: "Part 4 of 4 · Put it together",
-    text: `
 That's the whole interface! Next: put it to work in the <strong>Merger Sandbox</strong>. Seven cells, each with a merger to find and cut.
 
 <button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the Merger Sandbox</button>
