@@ -64,6 +64,10 @@ let dragStart = { mx: 0, my: 0, px: 0, py: 0 };
 
 function startDrag(e: MouseEvent) {
   if (isResizing.value) return;
+  // A press on one of the strip's buttons (expand, search, close) is a click,
+  // not a drag. It used to pin the chat where the minimized strip sat, near
+  // the bottom, so expanding it opened mostly below the screen (Krzysztof #163).
+  if ((e.target as HTMLElement | null)?.closest?.('button')) return;
   isDragging.value = true;
   const el = panelEl.value;
   if (!el) return;
@@ -222,10 +226,13 @@ const positionStyle = computed(() => {
       : {};
   }
   if (posX.value !== null && posY.value !== null) {
+    // Quiet mode keeps the bottom edge where it was. Never below the screen's
+    // bottom, nor above its top, whatever the saved spot (#163).
+    const wanted = posY.value + panelHeight.value - shownHeight.value;
+    const top = Math.max(0, Math.min(wanted, window.innerHeight - shownHeight.value - 8));
     return {
       left: posX.value + 'px',
-      // Quiet mode keeps the bottom edge where it was.
-      top: (posY.value + panelHeight.value - shownHeight.value) + 'px',
+      top: top + 'px',
       right: 'auto',
       bottom: 'auto',
     };
