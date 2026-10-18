@@ -135,8 +135,9 @@ function injectNeuronFavicon() {
   link.type = 'image/png';
   link.href = pyrIconUrl;
   document.head.appendChild(link);
-  // Also set the page title
-  document.title = 'EyeWire II — neuroglancer';
+  // Also set the page title (neuroglancer's bindTitle keeps it, see
+  // third_party/neuroglancer/ui/title.ts)
+  document.title = 'Pyr · EyeWire II';
 }
 
 /** "?triage=board": the admin triage board on its own, without the game. */

@@ -7,7 +7,8 @@
       "digest": "minor",
       "items": [
         "Your profile no longer shifts as its numbers and curves load in: each row has its full height from the start.",
-        "The light that ran around the edge of the profile is gone, now that the profile fills the window."
+        "The light that ran around the edge of the profile is gone, now that the profile fills the window.",
+        "The browser tab now says Pyr, not neuroglancer."
       ]
     },
     {
