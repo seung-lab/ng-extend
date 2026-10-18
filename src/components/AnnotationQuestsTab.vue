@@ -233,8 +233,8 @@ async function runCheck(r: QuestRow) {
     if (!at.root) { check.value = { busy: false, ok: false, message: at.problem || 'Could not check the crosshairs.' }; return; }
     if (at.root === r.segmentId) { check.value = { busy: false, ok: true, message: 'The crosshairs are inside this cell.' }; return; }
     const hit = await ancestorAmong(at.root, [r.segmentId]);
-    if (hit) { check.value = { busy: false, ok: true, message: `The crosshairs are inside this cell. It has been edited since the sheet was made, so its ID is now ${at.root.slice(-6)}.` }; return; }
-    check.value = { busy: false, ok: false, message: `The crosshairs are inside ${at.root.slice(-6)}, which is not this cell. Move them into the cell and check again.` };
+    if (hit) { check.value = { busy: false, ok: true, message: `The crosshairs are inside this cell. It has been edited since the sheet was made, so its ID is now ${at.root}.` }; return; }
+    check.value = { busy: false, ok: false, message: `The crosshairs are inside ${at.root}, which is not this cell. Move them into the cell and check again.` };
   } catch (e: any) { check.value = { busy: false, ok: false, message: `Could not check the crosshairs: ${e?.message || e}` }; }
 }
 function startSubmit(r: QuestRow) {
