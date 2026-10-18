@@ -6,7 +6,7 @@
       "title": "Your profile opens without a jump",
       "digest": "minor",
       "items": [
-        "Your profile no longer shifts as its numbers and curves load in: each row has its full height from the start.",
+        "Your profile builds from the top down: each row appears whole, with its line, numbers and curve, once its numbers are in, instead of pieces landing as they arrive. Nothing shifts.",
         "The light that ran around the edge of the profile is gone, now that the profile fills the window.",
         "The browser tab now says Pyr, not neuroglancer."
       ]

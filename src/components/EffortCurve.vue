@@ -43,6 +43,8 @@ const props = defineProps<{
   span?: number;
   /** The ranges to offer, in days; 0 is all. Shown when given. */
   spans?: number[];
+  /** False holds the draw (the row has not had its turn yet); the box keeps its height. */
+  active?: boolean;
 }>();
 const emit = defineEmits<{ (e: 'update:span', days: number): void }>();
 function spanLabel(s: number): string { return s ? s + 'd' : 'All'; }
@@ -91,6 +93,7 @@ function render(animate: boolean) {
   const host = plot.value;
   clear();
   if (!host) return;
+  if (props.active === false) { startLabel.value = ''; summary.value = ''; return; }
   const all = props.days;
   const span = props.span ?? 0;
   // the past N days and today, as the 7D band counts them
@@ -222,10 +225,12 @@ function render(animate: boolean) {
 }
 
 onMounted(() => {
-  if (reducedMotion()) render(true); else scheduleDraw(450);  // the frame's opening takes about that long
+  if (props.active === false) { /* drawn when the row goes live */ }
+  else if (reducedMotion()) render(true); else scheduleDraw(450);  // the frame's opening takes about that long
   if (typeof ResizeObserver !== 'undefined' && plot.value) {
     ro = new ResizeObserver(entries => {
       const w = Math.round(entries[0]?.contentRect.width ?? 0);
+      if (props.active === false) return;
       if (!w || (drawnWidth && Math.abs(w - drawnWidth) <= 1)) return;  // the width it was drawn at
       // before or during the draw: draw (again) once the width is still; after it: redraw finished, no replay
       if (!plot.value?.querySelector('svg') || !done.value) scheduleDraw(); else render(false);
@@ -233,7 +238,8 @@ onMounted(() => {
     ro.observe(plot.value);
   }
 });
-watch(() => props.days, () => render(true));
+watch(() => props.days, () => { if (props.active !== false) render(true); });
+watch(() => props.active, on => { if (on) render(true); else clear(); });
 watch(() => props.span, () => render(true));
 watch(() => props.height, () => render(false));
 onBeforeUnmount(() => { clear(); clearTimeout(settle); ro?.disconnect(); ro = null; });

@@ -1312,6 +1312,36 @@ onUnmounted(() => { headsRo?.disconnect(); headsRo = null; clearTimeout(headsTim
 watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
        () => displayedExplorationBadges.value.length, () => displayedBuildingBadges.value.length,
        () => earnedLoyaltyBadges.value.earned.length], scheduleTrackHeads);
+// ── The Overview builds top to bottom (Ames 2026-10-17: "load one section
+// at a time, top to bottom") ────────────────────────────────────────────────
+// A row is live once its data is in and the row above has had its turn: its
+// head trace, count, numbers, curve and tiles then appear together, instead
+// of each piece landing whenever its answer arrives (the head's line was
+// re-fitted after its count rolled, the curve drew seconds after the
+// numbers). Reduced motion and Calm screen skip the gaps.
+const revealStage = ref(0);  // 0 none, 1 cells, 2 edits, 3 days, 4 the rest
+const cellsReady = computed(() => scopedCells.value !== null || scopedCellsFailed.value);
+const editsReady = computed(() => scopedEdits.value !== null || scopedEditsFailed.value);
+const STAGE_GAP = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 420;
+let stageTimer = 0;
+let stageAt = 0;
+function stageReady(k: number): boolean { return k === 1 ? cellsReady.value : k === 2 ? editsReady.value : true; }
+function advanceStage() {
+  clearTimeout(stageTimer);
+  const next = revealStage.value + 1;
+  if (next > 4 || !stageReady(next)) return;  // the data watcher calls again
+  const wait = Math.max(0, stageAt + STAGE_GAP - performance.now());
+  stageTimer = window.setTimeout(() => {
+    if (!stageReady(next)) return;
+    revealStage.value = next;
+    stageAt = performance.now();
+    void nextTick(layoutTrackHeads);
+    advanceStage();
+  }, wait);
+}
+onMounted(() => { stageAt = performance.now() - STAGE_GAP + (STAGE_GAP ? 380 : 0); advanceStage(); });  // the first row after the frame's open
+watch([cellsReady, editsReady], () => advanceStage());
+onUnmounted(() => clearTimeout(stageTimer));
 </script>
 
 <template>
@@ -1517,7 +1547,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
 
           <div class="nge-track-rows">
 
-            <div class="nge-track-row nge-track-row--cells">
+            <div class="nge-track-row nge-track-row--cells" :class="{ 'is-live': revealStage >= 1 }">
               <!-- One head for the row (Ames 2026-10-11): the label, a circuit
                    trace to a pad, a second pad the same small distance away in
                    every row, and from it the bar toward the next Achievement,
@@ -1529,7 +1559,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 <div class="nge-track-wire" aria-hidden="true"></div>
                 <div class="nge-track-pads" aria-hidden="true"></div>
                 <div class="nge-track-bar" :title="(nextExplorationAchievement) ? (nextExplorationAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
-                <div v-if="nextExplorationAchievement" class="nge-track-count" :title="(nextExplorationAchievement).remaining.toLocaleString() + ' more cells to your next Achievement'"><RollUp :value="(nextExplorationAchievement).remaining" /> to go</div>
+                <div v-if="nextExplorationAchievement" class="nge-track-count" :title="(nextExplorationAchievement).remaining.toLocaleString() + ' more cells to your next Achievement'">{{ (nextExplorationAchievement).remaining.toLocaleString() }} to go</div>
               </div>
               <div class="nge-track-stats">
           <!-- Cells completed on this dataset, in the game, by the completed
@@ -1547,7 +1577,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               <!-- No curve on the compact layout (a laptop, or a small screen
                    zoomed in): the draw stuttered and the sliver it had there
                    was not worth the room (Ames 2026-10-16, Annkri's profile). -->
-              <EffortCurve v-if="!compactRows" :days="scopedCellDays ?? []" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
+              <EffortCurve v-if="!compactRows" :active="revealStage >= 1" :days="scopedCellDays ?? []" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
               <div class="nge-profile-stat-row">
                 <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                   {label:'Today',    val:overviewCells.today},
@@ -1555,7 +1585,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                   {label:'All Time', val:overviewCells.all},
                 ]" :key="i">
                   <div class="nge-profile-stat-label">{{ col.label }}</div>
-                  <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
+                  <div class="nge-profile-stat-val"><RollUp :value="revealStage >= 1 ? col.val : 0" /></div>
                 </div>
               </div>
             </div>
@@ -1618,7 +1648,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
             </div>
 
-            <div class="nge-track-row nge-track-row--edits">
+            <div class="nge-track-row nge-track-row--edits" :class="{ 'is-live': revealStage >= 2 }">
               <!-- One head for the row (Ames 2026-10-11): the label, a circuit
                    trace to a pad, a second pad the same small distance away in
                    every row, and from it the bar toward the next Achievement,
@@ -1630,7 +1660,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 <div class="nge-track-wire" aria-hidden="true"></div>
                 <div class="nge-track-pads" aria-hidden="true"></div>
                 <div class="nge-track-bar" :title="(nextBuildingAchievement) ? (nextBuildingAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
-                <div v-if="nextBuildingAchievement" class="nge-track-count" :title="(nextBuildingAchievement).remaining.toLocaleString() + ' more edits to your next Achievement'"><RollUp :value="(nextBuildingAchievement).remaining" /> to go</div>
+                <div v-if="nextBuildingAchievement" class="nge-track-count" :title="(nextBuildingAchievement).remaining.toLocaleString() + ' more edits to your next Achievement'">{{ (nextBuildingAchievement).remaining.toLocaleString() }} to go</div>
               </div>
               <div class="nge-track-stats">
           <!-- Edits stats -->
@@ -1647,7 +1677,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
             <!-- The same rows as the three numbers, as a line from the first
                  day to today (Ames 2026-10-11). Nothing while they load, and
                  nothing for the career fallback, which has no days. -->
-            <EffortCurve v-if="!compactRows" :days="scopedEditDays ?? []" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
+            <EffortCurve v-if="!compactRows" :active="revealStage >= 2" :days="scopedEditDays ?? []" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                 {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
@@ -1655,7 +1685,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 {label:'All Time', val:overviewEdits.all.edits,   merges:overviewEdits.all.merges,   splits:overviewEdits.all.splits},
               ]" :key="i">
                 <div class="nge-profile-stat-label">{{ col.label }}</div>
-                <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
+                <div class="nge-profile-stat-val"><RollUp :value="revealStage >= 2 ? col.val : 0" /></div>
                 <div class="nge-profile-stat-breakdown">
                   <span class="nge-profile-stat-bp" title="Merges">
                     <svg class="nge-profile-stat-icon nge-profile-stat-icon--merge" viewBox="0 0 16 16" fill="none">
@@ -1739,7 +1769,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
             </div>
 
-            <div v-if="totalDays > 0 || LOYALTY_BADGES.length" class="nge-track-row nge-track-row--days">
+            <div v-if="totalDays > 0 || LOYALTY_BADGES.length" class="nge-track-row nge-track-row--days" :class="{ 'is-live': revealStage >= 3 }">
               <!-- One head for the row (Ames 2026-10-11): the label, a circuit
                    trace to a pad, a second pad the same small distance away in
                    every row, and from it the bar toward the next Achievement,
@@ -1751,7 +1781,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 <div class="nge-track-wire" aria-hidden="true"></div>
                 <div class="nge-track-pads" aria-hidden="true"></div>
                 <div class="nge-track-bar" :title="(nextLoyaltyAchievement) ? (nextLoyaltyAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
-                <div v-if="nextLoyaltyAchievement" class="nge-track-count" :title="(nextLoyaltyAchievement).remaining.toLocaleString() + ' more days to your next Achievement'"><RollUp :value="(nextLoyaltyAchievement).remaining" /> to go</div>
+                <div v-if="nextLoyaltyAchievement" class="nge-track-count" :title="(nextLoyaltyAchievement).remaining.toLocaleString() + ' more days to your next Achievement'">{{ (nextLoyaltyAchievement).remaining.toLocaleString() }} to go</div>
               </div>
               <div class="nge-track-stats">
           <!-- Days: total days shown up (never resets), the streaks, and the
@@ -1767,7 +1797,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
               <div class="nge-profile-stat-col" title="Every day you have shown up, ever. This never resets.">
                 <div class="nge-profile-stat-label">Total days</div>
-                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="totalDays" /></div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="revealStage >= 3 ? totalDays : 0" /></div>
                 <!-- no pills and no bar (Ames 2026-10-06: "unnecessary", "too much"): the count says it -->
                 <div class="nge-days-next" :title="`Next milestone: day ${nextDay}`">{{ (nextDay - totalDays).toLocaleString() }} {{ nextDay - totalDays === 1 ? 'day' : 'days' }} to day {{ nextDay.toLocaleString() }}</div>
               </div>
@@ -1824,7 +1854,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
             </div>
 
-            <div class="nge-track-row nge-track-row--rest">
+            <div class="nge-track-row nge-track-row--rest" :class="{ 'is-live': revealStage >= 4 }">
               <div class="nge-track-stats">
           <!-- Your recently completed cells: the browser's own history, or,
                when that is empty, the server's completions (recentCells). The
@@ -4842,14 +4872,12 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
   flex: 0 1 120px; min-width: 16px;
   --nge-track-run: 1;
   background: linear-gradient(var(--trace), var(--trace)) left 50% / calc(100% * var(--nge-track-run)) 1.4px no-repeat;
-  animation: ngeTrackRun 420ms cubic-bezier(0.3, 0, 0.2, 1) 1 both;
 }
 .nge-track-pads {
   flex: none; width: 22px;
   background:
     radial-gradient(circle at 4.5px 50%, #0a1223 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
     radial-gradient(circle at 13.5px 50%, #0a1223 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px);
-  animation: ngeTrackPads 180ms linear 420ms 1 both;
 }
 .nge-track-bar {
   flex: 1 1 0; min-width: 24px;
@@ -4858,18 +4886,21 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
   background:
     linear-gradient(var(--trace), var(--trace)) left 50% / calc(100% * var(--frac, 1) * var(--nge-track-fill)) 1.4px no-repeat,
     linear-gradient(rgba(201, 228, 255, 0.14), rgba(201, 228, 255, 0.14)) left 50% / 100% 1.4px no-repeat;
-  animation: ngeTrackFill 560ms cubic-bezier(0.3, 0, 0.2, 1) 560ms 1 both;
 }
-.nge-track-row--edits .nge-track-wire { animation-delay: 120ms; }
-.nge-track-row--edits .nge-track-pads { animation-delay: 540ms; }
-.nge-track-row--edits .nge-track-bar  { animation-delay: 680ms; }
-.nge-track-row--days  .nge-track-wire { animation-delay: 240ms; }
-.nge-track-row--days  .nge-track-pads { animation-delay: 660ms; }
-.nge-track-row--days  .nge-track-bar  { animation-delay: 800ms; }
+/* the trace draws when its row goes live (the rows take turns, so no per
+   row delays any more) */
+.nge-track-row.is-live .nge-track-wire { animation: ngeTrackRun 420ms cubic-bezier(0.3, 0, 0.2, 1) 1 both; }
+.nge-track-row.is-live .nge-track-pads { animation: ngeTrackPads 180ms linear 420ms 1 both; }
+.nge-track-row.is-live .nge-track-bar  { animation: ngeTrackFill 560ms cubic-bezier(0.3, 0, 0.2, 1) 560ms 1 both; }
+/* a row that has not had its turn keeps its label and its space; the rest
+   of it fades in when it goes live (Ames 2026-10-17) */
+.nge-track-row > *, .nge-track-head > * { transition: opacity 0.3s ease-out; }
+.nge-track-row:not(.is-live) > :not(.nge-track-head),
+.nge-track-row:not(.is-live) .nge-track-head > :not(.nge-profile-section-label) { opacity: 0; pointer-events: none; }
 @keyframes ngeTrackRun  { 0% { --nge-track-run: 0; }  100% { --nge-track-run: 1; } }
 @keyframes ngeTrackPads { 0% { opacity: 0; } 100% { opacity: 1; } }
 @keyframes ngeTrackFill { 0% { --nge-track-fill: 0; } 100% { --nge-track-fill: 1; } }
-@media (prefers-reduced-motion: reduce) { .nge-track-wire, .nge-track-pads, .nge-track-bar { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-track-row.is-live :is(.nge-track-wire, .nge-track-pads, .nge-track-bar) { animation: none; } .nge-track-row > *, .nge-track-head > * { transition: none; } }
 /* quiet: it is a note at the end of the bar, not a number to read first */
 .nge-track-count {
   margin-left: 10px;
