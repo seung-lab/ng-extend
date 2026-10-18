@@ -48,6 +48,7 @@ const emit = defineEmits<{ (e: 'update:span', days: number): void }>();
 function spanLabel(s: number): string { return s ? s + 'd' : 'All'; }
 
 const fig = ref<HTMLElement | null>(null);
+const plot = ref<HTMLElement | null>(null);  // the svg's box, the drawn height from the start
 const done = ref(false);
 const startLabel = ref('');
 const summary = ref('');
@@ -82,12 +83,12 @@ function reducedMotion(): boolean { return !!window.matchMedia?.('(prefers-reduc
 function clear() {
   if (teardown) { teardown(); teardown = null; }
   cancelAnimationFrame(raf); clearTimeout(backstop);
-  const old = fig.value?.querySelector('svg'); if (old) old.remove();
+  const old = plot.value?.querySelector('svg'); if (old) old.remove();
   done.value = false;
 }
 
 function render(animate: boolean) {
-  const host = fig.value;
+  const host = plot.value;
   clear();
   if (!host) return;
   const all = props.days;
@@ -158,7 +159,7 @@ function render(animate: boolean) {
   cur.appendChild(curLine); cur.appendChild(curDot); cur.appendChild(curText);
   svg.appendChild(cur);
 
-  host.insertBefore(svg, host.firstChild);
+  host.appendChild(svg);
 
   const len = line.getTotalLength();
   function land(p: number) {
@@ -178,7 +179,7 @@ function render(animate: boolean) {
     done.value = true;
     // a width change missed while drawing: redraw finished at the width it has now
     const now = Math.round(host!.getBoundingClientRect().width);
-    if (now && Math.abs(now - drawnWidth) > 1) setTimeout(() => { if (fig.value === host) render(false); }, 0);
+    if (now && Math.abs(now - drawnWidth) > 1) setTimeout(() => { if (plot.value === host) render(false); }, 0);
   }
   if (!animate || reducedMotion()) {
     arrive();
@@ -222,14 +223,14 @@ function render(animate: boolean) {
 
 onMounted(() => {
   if (reducedMotion()) render(true); else scheduleDraw(450);  // the frame's opening takes about that long
-  if (typeof ResizeObserver !== 'undefined' && fig.value) {
+  if (typeof ResizeObserver !== 'undefined' && plot.value) {
     ro = new ResizeObserver(entries => {
       const w = Math.round(entries[0]?.contentRect.width ?? 0);
       if (!w || (drawnWidth && Math.abs(w - drawnWidth) <= 1)) return;  // the width it was drawn at
       // before or during the draw: draw (again) once the width is still; after it: redraw finished, no replay
-      if (!fig.value?.querySelector('svg') || !done.value) scheduleDraw(); else render(false);
+      if (!plot.value?.querySelector('svg') || !done.value) scheduleDraw(); else render(false);
     });
-    ro.observe(fig.value);
+    ro.observe(plot.value);
   }
 });
 watch(() => props.days, () => render(true));
@@ -240,6 +241,8 @@ onBeforeUnmount(() => { clear(); clearTimeout(settle); ro?.disconnect(); ro = nu
 
 <template>
   <figure ref="fig" class="nge-effort" :class="{ 'is-done': done }" :style="{ '--c': color, '--h': (height ?? 76) + 'px' }" :aria-label="summary">
+    <!-- the plot keeps its height before the record arrives, so the rows below never move -->
+    <div ref="plot" class="nge-effort-plot"></div>
     <figcaption class="nge-effort-cap">
       <span class="nge-effort-cap-start">{{ startLabel }}</span>
       <!-- the range: one choice shared by every curve on the page (the parent holds it) -->
@@ -253,6 +256,7 @@ onBeforeUnmount(() => { clear(); clearTimeout(settle); ro?.disconnect(); ro = nu
 
 <style scoped>
 .nge-effort { margin: 10px 0 0; position: relative; min-width: 0; }
+.nge-effort-plot { height: var(--h, 76px); min-width: 0; }
 .nge-effort :deep(.nge-effort-svg) {
   display: block; width: 100%; height: var(--h, 76px); overflow: visible;
   touch-action: pan-y;

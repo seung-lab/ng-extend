@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-18T00:09:00Z",
+      "title": "Your profile opens without a jump",
+      "digest": "minor",
+      "items": [
+        "Your profile no longer shifts as its numbers and curves load in: each row has its full height from the start.",
+        "The light that ran around the edge of the profile is gone, now that the profile fills the window."
+      ]
+    },
+    {
       "at": "2026-10-17T23:52:41Z",
       "title": "Quests load all day",
       "digest": "minor",

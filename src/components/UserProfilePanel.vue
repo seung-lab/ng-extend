@@ -21,7 +21,6 @@ import {getToolbarIconDef} from '../data/toolbar-icons';
 // The same drawing the top bar uses for Week in Science (Ames 2026-10-05).
 const recapIconSvg = getToolbarIconDef('recap')?.svg || '';
 import MyCellsTab from 'components/MyCellsTab.vue';
-import { runPanelTrace } from '../util/holo_trace';
 import { isMobileRef } from '../util/mobile';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
@@ -245,8 +244,6 @@ const tagsIFixed = computed(() =>
   issueTagStore.tags.filter((t: IssueTag) =>
     t.status === 'resolved' && t.resolvedById && t.resolvedById === backendStore.userId && inScope(t.dataset)));
 
-// The particle trace: an arc of light runs the shell boundary once when the
-// profile arrives (scifi-ui hologram.js section 1, via util/holo_trace).
 const shellEl = ref<HTMLElement | null>(null);
 
 /**
@@ -264,6 +261,8 @@ function clampProfile() {
   const vh = window.innerHeight, vw = window.innerWidth;
   const target = overlay ?? shell;
   const r = target.getBoundingClientRect();
+  // a frame that fills the window is full screen by design, not clipped
+  if (r.width >= vw - 2 && r.height >= vh - 2) return;
   const clipped = r.bottom > vh - 4 || r.top < 4 || r.right > vw - 4 || r.left < 4;
   if (!clipped) return;
   console.warn('[profile] clip watchdog engaged:', {
@@ -302,16 +301,9 @@ onUnmounted(() => {
 watch(() => shellEl.value, () => requestAnimationFrame(clampProfile));
 watch(() => activeTab.value, () => { requestAnimationFrame(clampProfile); setTimeout(clampProfile, 320); });
 
-onMounted(() => {
-  // Trace the visible rounded box (the overlay), not the square inner shell:
-  // on the shell the light ran a guessed 15px corner 15px inside a 10px box,
-  // so its corners never matched the border it was circling (Amy 2026-09-28).
-  setTimeout(() => {
-    const box = shellEl.value?.closest('.overlay-content') as HTMLElement | null;
-    const host = box ?? shellEl.value;
-    if (host) runPanelTrace(host);
-  }, 60);
-});
+// The arc of light that ran the frame's edge once on open (util/holo_trace)
+// is gone with the orbiting border light: the frame fills the window now
+// (Ames 2026-10-17: "we don't need the light bar trace around the edge").
 
 // Deep-link: open directly on a given tab (e.g. from the toolbar/command palette
 // "Your Week in Science" action).
@@ -1555,7 +1547,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               <!-- No curve on the compact layout (a laptop, or a small screen
                    zoomed in): the draw stuttered and the sliver it had there
                    was not worth the room (Ames 2026-10-16, Annkri's profile). -->
-              <EffortCurve v-if="scopedCellDays && scopedCellDays.length && !compactRows" :days="scopedCellDays" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
+              <EffortCurve v-if="!compactRows" :days="scopedCellDays ?? []" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
               <div class="nge-profile-stat-row">
                 <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                   {label:'Today',    val:overviewCells.today},
@@ -1655,7 +1647,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
             <!-- The same rows as the three numbers, as a line from the first
                  day to today (Ames 2026-10-11). Nothing while they load, and
                  nothing for the career fallback, which has no days. -->
-            <EffortCurve v-if="scopedEditDays && scopedEditDays.length && !compactRows" :days="scopedEditDays" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
+            <EffortCurve v-if="!compactRows" :days="scopedEditDays ?? []" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                 {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
@@ -2620,28 +2612,10 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
    2026-09-29, screen recording). Stop alphas are the old ones x 0.7, the
    ring's former opacity. */
 .nge-profile-modal :deep(.nge-overlay) {
-  animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both, ngeHoloEdgeSpin 8s linear infinite;
-  background:
-    linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) padding-box,
-    conic-gradient(
-      from var(--nge-holo-angle, 0deg),
-      transparent 0%,
-      rgba(74, 158, 255, 0.0) 10%,
-      rgba(74, 158, 255, 0.245) 14%,
-      rgba(0, 210, 255, 0.105) 18%,
-      transparent 22%,
-      transparent 35%,
-      rgba(160, 120, 255, 0.175) 39%,
-      rgba(120, 80, 220, 0.07) 43%,
-      transparent 47%,
-      transparent 60%,
-      rgba(0, 255, 200, 0.14) 64%,
-      rgba(74, 158, 255, 0.056) 68%,
-      transparent 72%,
-      transparent 85%,
-      rgba(74, 158, 255, 0.105) 89%,
-      transparent 93%
-    ) border-box !important;
+  animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* the orbiting conic light under the border is gone: the frame fills the
+     window now, so its edge is the screen's (Ames 2026-10-17) */
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) padding-box !important;
 }
 
 @property --nge-holo-angle {
