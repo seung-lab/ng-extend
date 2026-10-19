@@ -9,7 +9,8 @@
  * started from the menu, the leaderboard does not open on arrival, the
  * Loyalty achievement card and the welcome sparkle do not play, and the
  * split screen tip does not show. Everything still works when opened by
- * hand. Add `?popups` to the address to get them all back for a test.
+ * hand. Add `?popups` to the address to get them all back for a test
+ * (`?quiet` gives the quiet start on any host).
  *
  * The live game, the Princeton tracers' site, GitHub Pages and local dev
  * servers are not test sites here, so nothing changes there.
@@ -17,8 +18,11 @@
 function quietTestHost(): boolean {
   if (typeof location === 'undefined') return false;
   try {
-    if (new URLSearchParams(location.search).has('popups')) return false;
-  } catch { /* an odd address: treat it as a test site */ }
+    const q = new URLSearchParams(location.search);
+    if (q.has('popups')) return false;
+    // the quiet start anywhere, to test it on a local dev server
+    if (q.has('quiet')) return true;
+  } catch { /* an odd address: decide by the host */ }
   const h = location.hostname;
   if (!h.endsWith('-dot-brain-wire-dot-seung-lab.ue.r.appspot.com')) return false;
   return !h.startsWith('eyewire-ii-community-dot-') && !h.startsWith('princeton-tracers-dot-');

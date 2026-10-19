@@ -265,7 +265,10 @@ if (QUIET_TEST_HOST) {
     const started = () => { startedHere.value = true; resumeDecided.value = true; };
     document.addEventListener('nge:tutorial-start', started);
     document.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement | null)?.closest?.('#hamburger .nge-menu-item')) started();
+        // the menu is a custom element: look along the click's whole path
+        const path = e.composedPath() as Element[];
+        if (path.some(n => n instanceof Element && n.classList.contains('nge-menu-item')) &&
+            path.some(n => n instanceof Element && n.id === 'hamburger')) started();
     }, true);
     // Other starts (the dataset tours, the Merger Sandbox, the test) begin at
     // step 0 or follow a click; the account's saved progress arriving after
