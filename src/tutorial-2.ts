@@ -752,9 +752,12 @@ This box always shows where you are. <strong>Click its copy icon</strong> to cop
   {
     part: "Part 3 of 4 · Find your way",
     get text() { return `
-Now back to our cell. <strong>Show it again</strong> with its eye in the Segments panel, then copy the soma's spot and <strong>press CTRL+V anywhere in the viewer</strong> to jump back:
+Now let's go back to our cell:
 
-${copyButton(SOMA)}`; },
+<ol class="nge-tut-steps">
+<li>In the Segments panel, <strong>click the eye</strong> next to our cell to show it again.</li>
+<li>Copy the soma's spot, then <strong>press CTRL+V anywhere in the viewer</strong> to jump there: ${copyButton(SOMA)}</li>
+</ol>`; },
     width: "460px",
     position: OVER_3D,
     onEnter: () => nextWhenAt(SOMA),
@@ -826,7 +829,7 @@ Can you help out with this final task? Each line ticks itself off as you do it:
 <li data-check="spot">Go to this location: ${copyButton('82190, 58009, 381')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>
 <li data-check="layer">Add a new annotation layer and name it <strong>Top Secret Location</strong>&nbsp;${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it', '.neuroglancer-layer-add-button, .nge-title-rename')}</li>
 <li data-check="layout">Open the 2 panel view (2D + 3D)&nbsp;${hint('Press SPACE')}</li>
-<li data-check="point">There is a merger here! Scroll through the 2D slices to find where the wrong piece joins the cell, then CTRL+CLICK to put a point at the origin of the merger&nbsp;${hint('Scroll the mouse wheel over the 2D view to move through the slices. Find Path from the soma to the odd branch shows where it joins')}</li>
+<li data-check="point">There is a merger here! CTRL+CLICK to place annotation points around where the merger starts&nbsp;${hint('Scroll the mouse wheel over the 2D view to move through the slices. Find Path from the soma to the odd branch shows where it joins')}</li>
 </ol>`,
     position: OVER_3D,
     state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4777677526401024",

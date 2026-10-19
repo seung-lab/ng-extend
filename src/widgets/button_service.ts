@@ -24,6 +24,16 @@ function cellLabel(status: CellStatus|null|undefined): string {
 let placeLoad = 0;
 setPlaceCellLoader(async (group: any) => {
   const mine = ++placeLoad;
+  // The cell is read from the 2D image, which loads only in a 2D view close
+  // enough in: open one and zoom in when there is none (Ames 2026-10-19:
+  // "pasting coords into Seg panel doesn't show the corresponding mesh").
+  try {
+    const v = (window as any).viewer;
+    const l = v.layout.toJSON();
+    const name = typeof l === 'string' ? l : l?.type;
+    if (name === '3d') v.layout.restoreState('xy-3d');
+    if (v.navigationState.zoomFactor.value > 12) v.navigationState.zoomFactor.value = 3;
+  } catch { /* no viewer */ }
   let found: Awaited<ReturnType<typeof cellAtCrosshair>> | null = null;
   for (let i = 0; i < 16; ++i) {
     await new Promise(r => setTimeout(r, 500));
