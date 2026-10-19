@@ -535,10 +535,6 @@ export const RETINAL_CELL_TYPES: string[] = [
   'Bipolar Cell',
   'ON Bipolar Cell',
   'OFF Bipolar Cell',
-  // The bipolar types, in the codes the lab's cell sheet and its AI predictions
-  // use (Ames 2026-10-19: the cell types of this dataset, and the AI-predicted
-  // ones shown in the game), so a type saved here matches theirs exactly.
-  'RBC', 't1', 't2', 't3a', 't3b', 't4', 't5t', 't5o', 't5i', 't6', 't7', 't8', 't9', 'XBC', 'GluMI',
   'Horizontal Cell',
   'Rod Photoreceptor',
   'Cone Photoreceptor',
@@ -601,9 +597,11 @@ export const MEC_CELL_TYPES: string[] = [
  *  seeing amacrine cells in MEC"). Takes the canonical dataset key; an
  *  unrecognised dataset gets only the neutral choices, never another tissue's
  *  types. Users can still free-type any value. */
-/** How a type reads in the lists (Ames 2026-10-19: "5o bipolar (t5o)"). The
- *  code itself is what is saved, so the data matches the lab's sheet. Types
- *  not listed here read as they are. */
+/** How a type code reads (Ames 2026-10-19: "5o bipolar (t5o)"): the lab's
+ *  AI predicts bipolar types in these codes, shown in the Cell Library and the
+ *  Cell Profile. They are not in the pick lists: a player cannot reliably tell
+ *  the fine bipolar types apart (Ames 2026-10-19). Unknown codes read as they
+ *  are. */
 const CELL_TYPE_LABELS: Record<string, string> = {
   RBC: 'Rod bipolar (RBC)', t1: '1 bipolar (t1)', t2: '2 bipolar (t2)', t3a: '3a bipolar (t3a)', t3b: '3b bipolar (t3b)',
   t4: '4 bipolar (t4)', t5t: '5t bipolar (t5t)', t5o: '5o bipolar (t5o)', t5i: '5i bipolar (t5i)', t6: '6 bipolar (t6)',
