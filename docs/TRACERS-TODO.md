@@ -9,8 +9,15 @@ Everything behind it is shared with the public game (live branch
 **The rule (Ames, 2026-10-19): we don't mix paid and volunteers.** The
 Tracers are paid; the citizen scientists are volunteers. Tracers must never
 appear with the citizen scientists: not on the leaderboard, not in chat, not
-in stats, Achievements or the daily and weekly notes. Every item below serves
-that rule.
+in stats, Achievements or the daily and weekly notes, and they should not get
+the announcements sent to players either. Every item below serves that rule.
+
+**The shape (agreed with Ames):** the Tracers get their own database and their
+own server. A lab owned Supabase project, and a lab owned Firebase (or Cloud
+Run) project for the functions, both chosen on the Tracers site by
+`TRACER_EDITION`. CAVE stays shared: it is the same segmentation, and edit
+rights stay with CAVE groups. With separate data, the separation is true by
+construction rather than by filters.
 
 Everything that differs on the Tracers site checks one flag, `TRACER_EDITION`
 in `src/edition.ts`, which is true only on that address or with `?tracers`.
@@ -54,11 +61,15 @@ must never appear in the citizen scientists' chat.
 4. In the chat store (`src/store.ts`, "Chat Store", around the
    `eyewire-ii-chat-verified` channel), pick the client and gateway URL from
    `TRACER_EDITION`.
-5. Things that also post into chat and would need a Tracers answer, or to be
+5. Notifications (the bell): announcements, help request answers and
+   Achievement notices live in `notifications` and `notification_reads`.
+   On their own database the Tracers get only their own; check that the
+   Admin Hub can send to them.
+6. Things that also post into chat and would need a Tracers answer, or to be
    switched off on that site: notifications with "post to chat"
    (`notifications.post_to_chat`), the daily "Today in Pyr" note, the weekly
    recap, the chat announcements workflow, and Nurro's daily summary of chat.
-6. Test with two accounts: one on the Tracers site, one on live. Neither may
+7. Test with two accounts: one on the Tracers site, one on live. Neither may
    see the other's messages, presence or reactions.
 
 ### 2. Their own leaderboard
