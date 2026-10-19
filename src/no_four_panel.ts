@@ -60,12 +60,25 @@ export function installNoFourPanel(viewer: any) {
   style.textContent = TOUCH_CSS;
   document.head.appendChild(style);
 
+  // Neuroglancer titles that button "Switch to 4panel layout.", which is not
+  // what it does here. Mark it and give it its real tooltip (Ames
+  // 2026-10-19). Mutation callbacks run before the next paint, so the
+  // styles below, keyed on the mark, never miss a frame.
+  const mark = () => {
+    for (const b of document.querySelectorAll<HTMLElement>(`${C}[title="${FOUR}"]`)) {
+      b.dataset.ngeSplit = '1';
+      b.title = SPLIT_TIP;
+    }
+  };
+  new MutationObserver(mark).observe(document.body, { childList: true, subtree: true });
+  mark();
+
   // The 4 panel button opens split screen straight away, without a trip
   // through 4 panel. Capture phase, so neuroglancer's own click on the
   // button never runs.
   document.addEventListener('click', e => {
     const b = (e.target as HTMLElement | null)?.closest?.('.neuroglancer-data-panel-layout-controls button');
-    if (!b || b.getAttribute('title') !== FOUR) return;
+    if (!b || (b.getAttribute('title') !== FOUR && !(b as HTMLElement).dataset.ngeSplit)) return;
     e.stopPropagation();
     e.preventDefault();
     viewer.layout.restoreState(lastSplit);
@@ -73,6 +86,7 @@ export function installNoFourPanel(viewer: any) {
 }
 
 const FOUR = 'Switch to 4panel layout.';
+const SPLIT_TIP = 'Split screen: the 2D image beside the 3D view (Space)';
 const ONLY3D = 'Switch to 3d layout.';
 const ONLY2D = 'Switch to xy layout.';
 const C = '.neuroglancer-data-panel-layout-controls button';
@@ -84,29 +98,23 @@ const touch = (rest: string) => `body.nge-mobile${rest}, body.nge-coarse${rest}`
 // split screen "2D + 3D" is not shown. A phone is 3D only or split, so it
 // has no "2D only".
 const TOUCH_CSS = `
-body:not(.nge-mobile):not(.nge-coarse)[data-nge-layout$="-3d"] ${C}[title="${FOUR}"] { display: none; }
-body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"] {
-  width: auto !important; height: 26px !important; padding: 0 10px; border-radius: 13px;
-  background: rgba(8, 14, 28, 0.82); border: 1px solid rgba(79, 207, 255, 0.55); color: #dff4ff;
-  font: 600 12px/1 'Inter', 'Roboto', sans-serif; white-space: nowrap; cursor: pointer;
-}
-body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"] > div { display: none; }
-body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"]::after { content: '2D + 3D'; }
-body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"]:hover { background: rgba(79, 207, 255, 0.18); }
-${touch(` ${C}[title="${FOUR}"]`)},
+body:not(.nge-mobile):not(.nge-coarse)[data-nge-layout$="-3d"] ${C}[data-nge-split] { display: none; }
+body:not(.nge-mobile):not(.nge-coarse) ${C}[data-nge-split] > div { display: none; }
+body:not(.nge-mobile):not(.nge-coarse) ${C}[data-nge-split]::after { content: '◫'; }
+${touch(` ${C}[data-nge-split]`)},
 ${touch(` ${C}[title="${ONLY3D}"]`)},
 ${touch(` ${C}[title="${ONLY2D}"]`)} {
   width: auto !important; height: 34px !important; padding: 0 12px; border-radius: 17px;
   background: rgba(8, 14, 28, 0.82); border: 1px solid rgba(79, 207, 255, 0.55); color: #dff4ff;
   font: 600 13px/1 'Inter', 'Roboto', sans-serif; white-space: nowrap;
 }
-${touch(` ${C}[title="${FOUR}"] > div`)},
+${touch(` ${C}[data-nge-split] > div`)},
 ${touch(` ${C}[title="${ONLY3D}"] > div`)},
 ${touch(` ${C}[title="${ONLY2D}"] > div`)} { display: none; }
-${touch(` ${C}[title="${FOUR}"]::after`)} { content: '2D + 3D'; }
+${touch(` ${C}[data-nge-split]::after`)} { content: '2D + 3D'; }
 ${touch(` ${C}[title="${ONLY3D}"]::after`)} { content: '3D only'; }
 ${touch(` ${C}[title="${ONLY2D}"]::after`)} { content: '2D only'; }
-${touch(`[data-nge-layout$="-3d"] ${C}[title="${FOUR}"]`)},
-${touch(` ${C}:not([title="${FOUR}"]):not([title="${ONLY3D}"]):not([title="${ONLY2D}"])`)},
+${touch(`[data-nge-layout$="-3d"] ${C}[data-nge-split]`)},
+${touch(` ${C}:not([data-nge-split]):not([title="${ONLY3D}"]):not([title="${ONLY2D}"])`)},
 body.nge-mobile ${C}[title="${ONLY2D}"] { display: none !important; }
 `;

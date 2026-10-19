@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T19:43:01Z",
+      "title": "New full screen and split screen buttons",
+      "digest": "minor",
+      "items": [
+        "With a mouse, the corner buttons of the 2D and 3D views are now icons in the style of the rest of Pyr, and each spells out what it does when you point at it: 3D only, 2D only, or 2D + 3D to come back to split screen."
+      ]
+    },
+    {
       "at": "2026-10-19T16:40:00Z",
       "title": "Your profile opens without a jump",
       "digest": "minor",
