@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T20:29:09Z",
+      "title": "Type a cell as you complete it",
+      "items": [
+        "The Cell Library's Complete form now has an optional Cell type: pick from the list or type your own, and it is saved together with the completion, so there is no separate step in the Cell Profile."
+      ]
+    },
+    {
       "at": "2026-10-19T20:27:43Z",
       "title": "Boxes, circles, arrows and text on screenshots",
       "items": [
