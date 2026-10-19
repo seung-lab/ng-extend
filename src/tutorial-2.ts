@@ -1,4 +1,5 @@
 import { Step, useTutorialStore } from "./store-pyr";
+import { RESOURCES_MENU_SVG } from "./data/toolbar-icons";
 import { drawSearchLine } from "./tutorial_pointer";
 import { lantern } from "./util/lantern";
 import { setStatedColor } from "./widgets/widget_utils";
@@ -161,6 +162,30 @@ function nextWhenLanternOn() {
   }, 400);
 }
 
+/** A small "?" that shows a hint on hover (Ames 2026-10-18). */
+const hint = (text: string) => `<span class="nge-tut-hint" tabindex="0" data-hint="Hint: ${text}" aria-label="Hint: ${text}">?</span>`;
+
+/** Select 3D segmentation and show its Segments tab in the side panel. */
+function openSegmentsTab() {
+  setTimeout(() => {
+    const viewer = (window as any).viewer;
+    const seg = (viewer?.layerManager?.managedLayers ?? []).find((ml: any) => !ml.archived && ml.layer?.type === 'segmentation');
+    if (!seg) return;
+    viewer.selectedLayer.layer = seg;
+    viewer.selectedLayer.visible = true;
+    setTimeout(() => {
+      const tab = Array.from(document.querySelectorAll<HTMLElement>('.neuroglancer-layer-side-panel .neuroglancer-tab-label'))
+        .find(t => /segments/i.test(t.textContent || ''));
+      tab?.click();
+    }, 400);
+  }, 1500);
+}
+/** Close enough in 2D to see the branches (the memo spot opened far out,
+ *  Ames 2026-10-18: "I got stuck on 4"). */
+function zoomIn2D() {
+  try { (window as any).viewer.navigationState.zoomFactor.value = 2; } catch { /* no viewer */ }
+}
+
 /** The visible segment IDs of the segmentation layer. */
 function visibleIds(): Set<string> {
   try {
@@ -295,6 +320,7 @@ function watchMission() {
     for (const [key, test] of Object.entries(checks)) {
       if (done.has(key) || !test()) continue;
       done.add(key);
+      if (key === 'spot') zoomIn2D();
       document.querySelector(`.nge-tut-checklist [data-check="${key}"]`)?.classList.add('nge-tut-done');
     }
     if (done.has('point')) {
@@ -671,14 +697,14 @@ Oh great, I finally found that very important memo from our collaborators! It wa
 Can you help out with this final task? Each line ticks itself off as you do it:
 
 <ol class="nge-tut-checklist">
-<li data-check="spot">Go to this location: ${copyButton('87298, 52545, 998')}</li>
-<li data-check="layer">Add a new annotation layer and name it <strong>Top Secret Location</strong></li>
-<li data-check="layout">Open the 2 panel view (2D + 3D)</li>
-<li data-check="point">There is a missing branch here! Scroll through the 2D slices until you find it, then CTRL+CLICK to put a point where the branch should continue</li>
+<li data-check="spot">Go to this location: ${copyButton('87298, 52545, 998')} ${hint('Copy it, then press CTRL+V anywhere in the viewer')}</li>
+<li data-check="layer">Add a new annotation layer and name it <strong>Top Secret Location</strong> ${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it')}</li>
+<li data-check="layout">Open the 2 panel view (2D + 3D) ${hint('Press SPACE')}</li>
+<li data-check="point">There is a missing branch here! Scroll through the 2D slices until you find it, then CTRL+CLICK to put a point where the branch should continue ${hint('Scroll the mouse wheel over the 2D view to move through the slices. Watch for a branch that stops suddenly')}</li>
 </ol>`,
     position: OVER_3D,
     state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4777677526401024",
-    onEnter: watchMission,
+    onEnter() { openSegmentsTab(); watchMission(); },
   },
   {
     part: "Part 4 of 4 · Put it together",
@@ -691,23 +717,19 @@ You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-Check out <strong>AI</strong> here! That's Nurro, your guide. Press <strong>Ctrl+K</strong> (<strong>⌘K</strong> on Mac) to quickly search for tools, actions, and help resources, or just ask a question.`,
-    position: {
-      // Was ".nge-cmd-trigger" — that chip was removed from the toolbar and the
-      // palette now lives inside the Ask dock, so anchor to the Ask button.
-      element: ".nge-ask-btn",
-      side: "bottom",
-      offset: { x: 0, y: 7 },
-    },
+Stuck, or found something odd? <strong>Chat</strong> is where the Pyr community helps each other. Ask a question, share your view, or just say hi: the community is the best place for help and for working together.`,
+    width: "460px",
+    position: { element: '#extensionBar [data-icon-id="chat"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
   },
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-That's the whole interface! Next: put it to work in the <strong>Merger Sandbox</strong>. Seven cells, each with a merger to find and cut.
+That's a high level view of the interface! 😉 Next: put it to work in the <strong>Merger Sandbox</strong>. Seven cells, each with a merger to find and cut.
 
 <button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the Merger Sandbox</button>
 
-When you are ready to edit real cells, choose <strong>Ask for Edit Access</strong> in the ☰ menu. <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
+When you are ready to edit real cells, choose <strong>Ask for Edit Access</strong> in the <span class="nge-tut-burger">${RESOURCES_MENU_SVG}</span> hamburger menu (chomp it up!). <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
 
 Thanks for being a part of the neuroscience community! 🧠 For Science!`,
     position: MIDDLE,

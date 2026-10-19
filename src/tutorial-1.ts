@@ -1,4 +1,5 @@
 import { Step, useTutorialStore } from "./store-pyr";
+import { RESOURCES_MENU_SVG } from "./data/toolbar-icons";
 import { ngePointScale } from "neuroglancer/annotation/point";
 import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
 import { responseJson } from "neuroglancer/util/http_request";
@@ -570,7 +571,7 @@ Hit next to reveal the answer.`,
   },
   {
     // Links open a new tab, so the learner is not taken away from the app.
-    text: `Citizen scientists: when you are ready to map real neurons in Pyr, choose <strong>Ask for Edit Access</strong> in the ☰ menu. <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
+    text: `Citizen scientists: when you are ready to map real neurons in Pyr, choose <strong>Ask for Edit Access</strong> in the <span class="nge-tut-burger">${RESOURCES_MENU_SVG}</span> hamburger menu. <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
 
 Questions? Email <a href="mailto:support@eyewire.org">support@eyewire.org</a>.
 

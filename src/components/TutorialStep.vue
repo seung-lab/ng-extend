@@ -343,10 +343,16 @@ onMounted(async () => {
         // Advanced Interface: the annotation layers the player filled keep
         // their points when a step loads its own view (Ames 2026-10-18:
         // "when I hit next it deleted my annotations!").
-        const keep = tutorialStore.activeTutorial === 2 ? playerAnnotationLayers() : [];
-        if (keep.length) setStateRewriter(async (st: any) => withLayers(st, keep));
+        // Its views also leave the Selection panel shut: it sat where the
+        // layer side panel goes.
+        const advanced = tutorialStore.activeTutorial === 2;
+        const keep = advanced ? playerAnnotationLayers() : [];
+        if (advanced) setStateRewriter(async (st: any) => {
+            if (st && typeof st === 'object') st.selection = { ...(st.selection || {}), visible: false };
+            return keep.length ? withLayers(st, keep) : st;
+        });
         try { await settleWithin(loadState(props.step.state), 'loading the step view'); }
-        finally { if (keep.length) setStateRewriter(null); }
+        finally { if (advanced) setStateRewriter(null); }
     }
     if (props.step.clickAfterState) {
         const el = await waitForElement(props.step.clickAfterState);
@@ -1518,4 +1524,19 @@ async function onHtmlClick(e: MouseEvent) {
   80% { opacity: 1; }
   100% { opacity: 0; }
 }
+/* A hint mark on a tutorial line (tutorial-2.ts hint). */
+.nge-tut-hint {
+  display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; margin-left: 4px;
+  border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.55); color: #9fd4ff; font: 700 11px Inter, sans-serif;
+  cursor: help; vertical-align: 2px;
+}
+.nge-tut-hint { position: relative; }
+.nge-tut-hint:hover, .nge-tut-hint:focus { background: rgba(74, 158, 255, 0.25); color: #fff; outline: none; }
+.nge-tut-hint:hover::after, .nge-tut-hint:focus::after {
+  content: attr(data-hint); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+  width: max-content; max-width: 240px; padding: 7px 10px; border-radius: 6px; z-index: 5;
+  background: #0b1424; border: 1px solid rgba(126, 202, 255, 0.5); color: #e6f2ff;
+  font: 500 12.5px/1.4 Inter, sans-serif; text-align: left; white-space: normal; pointer-events: none;
+}
+.nge-tut-burger svg { width: 1.15em !important; height: 1.15em !important; vertical-align: -0.2em; }
 </style>
