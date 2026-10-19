@@ -520,7 +520,38 @@ onUnmounted(() => {
  *  Coordinates to paste are handed over this way instead of being typed or
  *  remembered (Ames 2026-10-18: "I didn't copy them!! ... give me coords to
  *  copy, paste"). */
+/** A hint "?" shows its text in one pop up, placed on screen above the
+ *  mark (or below it near the top), outside the box so the box's edge cannot
+ *  cut it off (Ames 2026-10-19: two hints at once, clipped). */
+let hintPop: HTMLElement | null = null;
+function hideHint() { hintPop?.remove(); hintPop = null; }
+function onHtmlOver(e: MouseEvent) {
+  const mark = (e.target as HTMLElement | null)?.closest?.('.nge-tut-hint') as HTMLElement | null;
+  if (!mark) return;
+  hideHint();
+  const pop = document.createElement('div');
+  pop.className = 'nge-tut-hint-pop';
+  pop.textContent = mark.dataset.hint || '';
+  document.body.appendChild(pop);
+  const r = mark.getBoundingClientRect(), p = pop.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - p.width - 8, r.left + r.width / 2 - p.width / 2));
+  const above = r.top - p.height - 8;
+  pop.style.left = `${left}px`;
+  pop.style.top = `${above >= 8 ? above : r.bottom + 8}px`;
+  hintPop = pop;
+  mark.addEventListener('mouseleave', hideHint, { once: true });
+}
+onUnmounted(hideHint);
+
 async function onHtmlClick(e: MouseEvent) {
+  const mark = (e.target as HTMLElement | null)?.closest?.('.nge-tut-hint[data-show]') as HTMLElement | null;
+  if (mark) {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>(mark.dataset.show || ''))) {
+      el.classList.add('nge-tour-target');
+      setTimeout(() => el.classList.remove('nge-tour-target'), 5000);
+    }
+    return;
+  }
   const btn = (e.target as HTMLElement | null)?.closest?.('[data-nge-copy]') as HTMLElement | null;
   if (!btn) return;
   e.preventDefault();
@@ -567,7 +598,7 @@ async function onHtmlClick(e: MouseEvent) {
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
-                <div class="html" v-if="computedStep.html" v-html="computedStep.html" @click="onHtmlClick"></div>
+                <div class="html" v-if="computedStep.html" v-html="computedStep.html" @click="onHtmlClick" @mouseover="onHtmlOver"></div>
                 <div class="nge-chip-foot">
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
@@ -1588,12 +1619,12 @@ async function onHtmlClick(e: MouseEvent) {
   cursor: help; vertical-align: 2px;
 }
 .nge-tut-hint { position: relative; }
-.nge-tut-hint:hover, .nge-tut-hint:focus { background: rgba(74, 158, 255, 0.25); color: #fff; outline: none; }
-.nge-tut-hint:hover::after, .nge-tut-hint:focus::after {
-  content: attr(data-hint); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
-  width: max-content; max-width: 240px; padding: 7px 10px; border-radius: 6px; z-index: 5;
-  background: #0b1424; border: 1px solid rgba(126, 202, 255, 0.5); color: #e6f2ff;
-  font: 500 12.5px/1.4 Inter, sans-serif; text-align: left; white-space: normal; pointer-events: none;
+.nge-tut-hint[data-show] { cursor: pointer; }
+.nge-tut-hint:hover { background: rgba(74, 158, 255, 0.25); color: #fff; outline: none; }
+.nge-tut-hint-pop {
+  position: fixed; z-index: 100003; max-width: 260px; padding: 7px 10px; border-radius: 6px; pointer-events: none;
+  background: #0b1424; border: 1px solid rgba(126, 202, 255, 0.5); color: #e6f2ff; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font: 500 13px/1.4 Inter, sans-serif;
 }
 .nge-tut-burger svg { width: 1.15em !important; height: 1.15em !important; vertical-align: -0.2em; }
 /* The box's own button rules kept a long copy button on one line, running

@@ -164,7 +164,9 @@ function nextWhenLanternOn(on = true) {
 }
 
 /** A small "?" that shows a hint on hover (Ames 2026-10-18). */
-const hint = (text: string) => `<span class="nge-tut-hint" tabindex="0" data-hint="Hint: ${text}" aria-label="Hint: ${text}">?</span>`;
+/** With `show`, a selector: clicking the "?" lights that spot (Ames
+ *  2026-10-19: "a secondary show me where to click"). */
+const hint = (text: string, show?: string) => `<span class="nge-tut-hint" data-hint="Hint: ${text}${show ? ' (click to see where)' : ''}"${show ? ` data-show="${show}"` : ''} aria-label="Hint: ${text}">?</span>`;
 
 /** Select 3D segmentation and show its Segments tab in the side panel. */
 function openSegmentsTab() {
@@ -798,14 +800,18 @@ Oh great, I finally found that very important memo from our collaborators! It wa
 Can you help out with this final task? Each line ticks itself off as you do it:
 
 <ol class="nge-tut-checklist">
-<li data-check="spot">Go to this location: ${copyButton('87298, 52545, 998')} ${hint('Copy it, then press CTRL+V anywhere in the viewer')}</li>
-<li data-check="layer">Add a new annotation layer and name it <strong>Top Secret Location</strong> ${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it')}</li>
-<li data-check="layout">Open the 2 panel view (2D + 3D) ${hint('Press SPACE')}</li>
-<li data-check="point">There is a missing branch here! Scroll through the 2D slices until you find it, then CTRL+CLICK to put a point where the branch should continue ${hint('Scroll the mouse wheel over the 2D view to move through the slices. Watch for a branch that stops suddenly')}</li>
+<li data-check="spot">Go to this location: ${copyButton('87298, 52545, 998')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>
+<li data-check="layer">Add a new annotation layer and name it <strong>Top Secret Location</strong>&nbsp;${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it', '.neuroglancer-layer-add-button, .nge-title-rename')}</li>
+<li data-check="layout">Open the 2 panel view (2D + 3D)&nbsp;${hint('Press SPACE')}</li>
+<li data-check="point">There is a missing branch here! Scroll through the 2D slices until you find it, then CTRL+CLICK to put a point where the branch should continue&nbsp;${hint('Scroll the mouse wheel over the 2D view to move through the slices. Watch for a branch that stops suddenly')}</li>
 </ol>`,
     position: OVER_3D,
     state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4777677526401024",
-    onEnter() { openSegmentsTab(); watchMission(); },
+    onEnter() {
+      openSegmentsTab(); watchMission();
+      // The axis lines mark the spot to search around (Ames 2026-10-19).
+      setTimeout(() => { try { (window as any).viewer.showAxisLines.value = true; } catch { /* no viewer */ } }, 1500);
+    },
   },
   {
     part: "Part 4 of 4 · Put it together",
