@@ -251,12 +251,20 @@ const typing = ref<{ x: number; y: number; uv: { u: number; v: number }; value: 
 const typingEl = ref<HTMLInputElement | null>(null);
 const PEN_COLORS = ['#ff4d4d', '#ffd24d', '#5be3ff', '#ffffff'];
 const penColor = ref(PEN_COLORS[0]);
+/** Text has a colour of its own, white to start (Ames 2026-10-19). The
+ *  swatches set the colour of the tool in hand. */
+const textColor = ref('#ffffff');
+const activeColor = computed(() => tool.value === 'text' ? textColor.value : penColor.value);
+function setColor(c: string) {
+  if (tool.value === 'text') textColor.value = c; else penColor.value = c;
+  if (typing.value) void nextTick(() => typingEl.value?.focus());
+}
 /** Any colour, from the browser's picker (Amy 2026-09-29). */
 const customColor = ref('#b388ff');
-const customActive = computed(() => !PEN_COLORS.includes(penColor.value));
+const customActive = computed(() => !PEN_COLORS.includes(activeColor.value));
 function pickCustom(e: Event) {
   customColor.value = (e.target as HTMLInputElement).value;
-  penColor.value = customColor.value;
+  setColor(customColor.value);
 }
 const penSize = ref(3);
 let drawing = false;
@@ -686,7 +694,17 @@ function onPointerDown(e: PointerEvent) {
     // A line of text being typed elsewhere is kept first.
     commitTyping();
     e.preventDefault();
-    typing.value = { x: e.clientX, y: e.clientY, uv, value: '' };
+    // Text already there is picked up and moved instead.
+    const hit = textAt(e);
+    if (hit) {
+      movingText = { mark: hit, dx: uv.u - hit.points[0].u, dy: uv.v - hit.points[0].v };
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      return;
+    }
+    // Placed in the picture's own box (the dialog is transformed, so screen
+    // coordinates put it somewhere else, Ames 2026-10-19).
+    const box = (e.target as HTMLElement).getBoundingClientRect();
+    typing.value = { x: e.clientX - box.left, y: e.clientY - box.top, uv, value: '' };
     void nextTick(() => typingEl.value?.focus());
     return;
   }
@@ -697,7 +715,44 @@ function onPointerDown(e: PointerEvent) {
   strokes.value.push({ color: penColor.value, size: sizeFrac, points: kind ? [uv, uv] : [uv], kind });
   renderMarkup();
 }
+/** The text mark under the pointer, topmost first, or null. */
+function textAt(e: PointerEvent): Stroke | null {
+  const cv = markupEl.value;
+  if (!cv) return null;
+  const box = cv.getBoundingClientRect();
+  const x = ((e.clientX - box.left) / box.width) * cv.width;
+  const y = ((e.clientY - box.top) / box.height) * cv.height;
+  const r = imgRect.value, ctx = cv.getContext('2d')!;
+  for (let i = strokes.value.length - 1; i >= 0; i--) {
+    const m = strokes.value[i];
+    if (m.kind !== 'text') continue;
+    const px = Math.max(8, m.size * r.h);
+    ctx.font = `600 ${px}px Inter, Roboto, system-ui, sans-serif`;
+    const w = ctx.measureText(m.text || '').width;
+    const x0 = r.x + m.points[0].u * r.w, y0 = r.y + m.points[0].v * r.h;
+    const pad = px * 0.25;
+    if (x >= x0 - pad && x <= x0 + w + pad && y >= y0 - pad && y <= y0 + px * 1.2 + pad) return m;
+  }
+  return null;
+}
+/** A text mark being dragged, and where in it it was picked up. */
+let movingText: { mark: Stroke; dx: number; dy: number } | null = null;
+
 function onPointerMove(e: PointerEvent) {
+  if (movingText) {
+    const cv = markupEl.value, r = imgRect.value;
+    if (!cv) return;
+    const box = cv.getBoundingClientRect();
+    const x = ((e.clientX - box.left) / box.width) * cv.width;
+    const y = ((e.clientY - box.top) / box.height) * cv.height;
+    movingText.mark.points[0] = { u: clamp((x - r.x) / r.w - movingText.dx, 0, 1), v: clamp((y - r.y) / r.h - movingText.dy, 0, 1) };
+    renderMarkup();
+    return;
+  }
+  if (tool.value === 'text' && markupEl.value) {
+    // A hand over text that can be moved.
+    markupEl.value.style.cursor = textAt(e) ? 'move' : '';
+  }
   if (!drawing) return;
   const cur = strokes.value[strokes.value.length - 1];
   if (!cur) return;
@@ -732,7 +787,7 @@ function commitTyping() {
   const text = (t?.value || '').trim();
   if (!t || !text) return;
   const imgCssH = imgRect.value.h / previewDpr();
-  strokes.value.push({ kind: 'text', text: text.slice(0, 200), color: penColor.value,
+  strokes.value.push({ kind: 'text', text: text.slice(0, 200), color: textColor.value,
     size: textPx(penSize.value) / Math.max(1, imgCssH), points: [t.uv] });
   renderMarkup();
 }
@@ -742,6 +797,7 @@ function onTypingKey(e: KeyboardEvent) {
 }
 function onPointerUp(e: PointerEvent) {
   drawing = false;
+  movingText = null;
   (e.target as Element).releasePointerCapture?.(e.pointerId);
 }
 
@@ -1053,17 +1109,17 @@ async function download() {
           <div class="nge-shotdlg-swatches">
             <button v-for="c in PEN_COLORS" :key="c"
                     class="nge-shotdlg-swatch"
-                    :class="{ 'is-active': penColor === c }"
+                    :class="{ 'is-active': activeColor === c }"
                     :style="{ '--sw': c }"
-                    @click="penColor = c"
+                    @click="setColor(c)"
                     :title="c"
                     :aria-label="`Pen color ${c}`"
-                    :aria-pressed="penColor === c" />
+                    :aria-pressed="activeColor === c" />
             <label class="nge-shotdlg-swatch nge-shotdlg-swatch--custom"
                    :class="{ 'is-active': customActive }"
-                   :style="customActive ? { '--sw': penColor } : {}"
+                   :style="customActive ? { '--sw': activeColor } : {}"
                    title="Any colour">
-              <input type="color" :value="customColor" @input="pickCustom" @click="penColor = customColor"
+              <input type="color" :value="customColor" @input="pickCustom" @click="setColor(customColor)"
                      aria-label="Pick any pen colour" />
             </label>
           </div>
@@ -1115,7 +1171,7 @@ async function download() {
                       @pointercancel="onPointerUp" />
               <!-- The text tool's box, where the click was; Enter keeps it. -->
               <input v-if="typing" ref="typingEl" v-model="typing.value" class="nge-shotdlg-typing"
-                     :style="{ left: typing.x + 'px', top: typing.y + 'px', color: penColor, fontSize: textPx(penSize) + 'px' }"
+                     :style="{ left: (typing.x - 3) + 'px', top: (typing.y - 1) + 'px', color: textColor, fontSize: textPx(penSize) + 'px' }"
                      maxlength="200" placeholder="Type, then Enter" aria-label="Text to add to the picture"
                      @keydown.stop="onTypingKey" @keyup.stop @keypress.stop @blur="commitTyping" />
               <div v-if="wholeScreen && !screenCap" class="nge-shotdlg-wait">
@@ -1530,7 +1586,7 @@ async function download() {
 .nge-shotdlg-markup--text { cursor: text; }
 /* the line of text being typed, over the picture where it will land */
 .nge-shotdlg-typing {
-  position: fixed; z-index: 5; min-width: 140px; margin: 0; padding: 0 2px;
+  position: absolute; z-index: 5; min-width: 140px; margin: 0; padding: 0 2px; box-sizing: content-box;
   font-family: Inter, Roboto, system-ui, sans-serif; font-weight: 600; line-height: 1.15;
   background: rgba(4, 10, 20, 0.55); border: 1px dashed rgba(126, 224, 255, 0.7); border-radius: 3px;
   outline: none; text-shadow: 0 0 3px #000, 0 0 2px #000;
