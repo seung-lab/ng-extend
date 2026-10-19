@@ -1,4 +1,11 @@
 {
+  "pinky_nf_v2": {
+    "dimensions": [4e-9, 4e-9, 4e-8],
+    "position": [75743.5, 56704.5, 656.5],
+    "crossSectionScale": 2.5,
+    "projectionOrientation": [-0.026123709976673126, -0.9990066289901733, -0.010010872967541218, -0.03468627110123634],
+    "projectionScale": 42493.1
+  },
   "flywire_public": {
     "dimensions": [4e-9, 4e-9, 4e-8],
     "position": [131000.0, 55000.0, 3500.0],
