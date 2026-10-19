@@ -50,7 +50,7 @@ You start in **MEC**. This tour walks the top bar from left to right. Press **Ne
   },
   {
     title: "Dataset Selector",
-    text: `Switch datasets here. Each one is its own volume with its own cells and Cell Library. Datasets you can view but not edit are marked **View only**.`,
+    text: `Switch datasets here. Each one is its own volume with its own cells and Cell Library. What you can edit is linked to your CAVE token: a dataset your token can view but not edit is marked **View only**.`,
     position: below(".nge-dataset-btn"),
     highlight: true,
   },
