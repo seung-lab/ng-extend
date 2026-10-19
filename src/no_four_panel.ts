@@ -67,10 +67,22 @@ export function installNoFourPanel(viewer: any) {
   // frame.
   const mark = () => {
     for (const b of document.querySelectorAll<HTMLElement>(`${C}[title]`)) {
-      const kind = BUTTONS[b.getAttribute('title') || ''];
+      const title = b.getAttribute('title') || '';
+      const kind = BUTTONS[title] ?? (/^Switch to (xy|xz|yz)-3d layout\.$/.test(title) ? 'split'
+        : /^Switch to (xy|xz|yz) layout\.$/.test(title) ? 'xy' : undefined);
       if (!kind) continue;
       b.dataset.ngeBtn = kind;
-      b.title = TIPS[kind];
+      b.dataset.ngeLabel = LABELS[kind];
+      // The words show on hover with a mouse (Ames 2026-10-19), so no
+      // tooltip on top of them; screen readers get the full sentence.
+      b.removeAttribute('title');
+      b.setAttribute('aria-label', TIPS[kind]);
+    }
+    // A single 2D view gets neuroglancer's own split screen button as well
+    // as the 4 panel one, which here does the same: show one of them.
+    for (const box of document.querySelectorAll<HTMLElement>('.neuroglancer-data-panel-layout-controls')) {
+      const splits = [...box.querySelectorAll<HTMLElement>('button[data-nge-btn="split"]')];
+      for (const extra of splits.slice(1)) extra.dataset.ngeBtn = 'dup';
     }
   };
   new MutationObserver(mark).observe(document.body, { childList: true, subtree: true });
@@ -81,7 +93,7 @@ export function installNoFourPanel(viewer: any) {
   // button never runs.
   document.addEventListener('click', e => {
     const b = (e.target as HTMLElement | null)?.closest?.(C) as HTMLElement | null;
-    if (!b || (b.getAttribute('title') !== FOUR && b.dataset.ngeBtn !== 'split')) return;
+    if (!b || (b.getAttribute('title') !== FOUR && b.dataset.ngeBtn !== 'split' && b.dataset.ngeBtn !== 'dup')) return;
     e.stopPropagation();
     e.preventDefault();
     viewer.layout.restoreState(lastSplit);
@@ -98,6 +110,8 @@ const TIPS = {
   '3d': 'Full screen 3D (Space)',
   xy: 'Full screen 2D (Space)',
 };
+/** What each button says: on hover with a mouse, always on a touch screen. */
+const LABELS = { split: '2D + 3D', '3d': '3D only', xy: '2D only' };
 const C = '.neuroglancer-data-panel-layout-controls button';
 const B = (kind: string) => `${C}[data-nge-btn="${kind}"]`;
 /** Selectors for a phone (or a narrow window) and for any touch screen. */
@@ -119,7 +133,7 @@ const ICON_FULL = icon(`<path d='M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5
 const CORNER_CSS = `
 ${mouse(' .neuroglancer-data-panel-layout-controls')} { gap: 4px; }
 ${mouse(` ${C}[data-nge-btn]`)} {
-  width: 24px !important; height: 24px !important; padding: 0 !important;
+  width: auto !important; min-width: 24px; height: 24px !important; padding: 0 4px !important;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 6px !important; border: 1px solid rgba(126, 224, 255, 0.35) !important;
   background: rgba(8, 14, 28, 0.78) !important; color: rgba(214, 236, 255, 0.9) !important;
@@ -128,16 +142,22 @@ ${mouse(` ${C}[data-nge-btn]`)} {
 }
 ${mouse(` ${C}[data-nge-btn]:hover`)}, ${mouse(` ${C}[data-nge-btn]:focus-visible`)} {
   color: #ffffff !important; border-color: rgba(126, 224, 255, 0.8) !important;
-  background: rgba(126, 224, 255, 0.14) !important; box-shadow: 0 0 12px rgba(126, 224, 255, 0.3); outline: none;
+  background: rgba(14, 38, 58, 0.95) !important; box-shadow: 0 0 12px rgba(126, 224, 255, 0.3); outline: none;
 }
 ${mouse(` ${C}[data-nge-btn] > div`)} { display: none; }
+${mouse(` ${C}[data-nge-btn]::before`)} {
+  content: attr(data-nge-label); max-width: 0; overflow: hidden; white-space: nowrap;
+  font: 600 12px/1 'Inter', 'Roboto', sans-serif; letter-spacing: 0.01em;
+  transition: max-width 0.18s ease, margin 0.18s ease;
+}
+${mouse(` ${C}[data-nge-btn]:hover::before`)}, ${mouse(` ${C}[data-nge-btn]:focus-visible::before`)} { max-width: 90px; margin: 0 6px 0 4px; }
 ${mouse(` ${C}[data-nge-btn]::after`)} {
-  content: ''; width: 14px; height: 14px; background-color: currentColor;
+  content: ''; flex: none; width: 14px; height: 14px; background-color: currentColor;
   -webkit-mask: var(--nge-icon) center / contain no-repeat; mask: var(--nge-icon) center / contain no-repeat;
 }
 ${mouse(` ${B('split')}`)} { --nge-icon: ${ICON_SPLIT}; }
 ${mouse(` ${B('3d')}`)}, ${mouse(` ${B('xy')}`)} { --nge-icon: ${ICON_FULL}; }
-${mouse(`[data-nge-layout$="-3d"] ${B('split')}`)} { display: none !important; }
+${mouse(`[data-nge-layout$="-3d"] ${B('split')}`)}, ${C}[data-nge-btn="dup"] { display: none !important; }
 ${touch(` ${B('split')}`)},
 ${touch(` ${B('3d')}`)},
 ${touch(` ${B('xy')}`)} {
@@ -146,9 +166,7 @@ ${touch(` ${B('xy')}`)} {
   font: 600 13px/1 'Inter', 'Roboto', sans-serif; white-space: nowrap;
 }
 ${touch(` ${C}[data-nge-btn] > div`)} { display: none; }
-${touch(` ${B('split')}::after`)} { content: '2D + 3D'; }
-${touch(` ${B('3d')}::after`)} { content: '3D only'; }
-${touch(` ${B('xy')}::after`)} { content: '2D only'; }
+${touch(` ${C}[data-nge-btn]::after`)} { content: attr(data-nge-label); }
 ${touch(`[data-nge-layout$="-3d"] ${B('split')}`)},
 ${touch(` ${C}:not([data-nge-btn])`)},
 body.nge-mobile ${B('xy')} { display: none !important; }
