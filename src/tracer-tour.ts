@@ -63,7 +63,9 @@ You start in **MEC**. This tour walks the top bar from left to right. Press **Ne
   {
     title: "Cell Library",
     titleIcon: icon("cells"),
-    text: `**Shift+L.** The work list for this dataset. Find an **Available** cell and **Claim** it, then mark it **Complete** when it is done. How many cells you can hold at once depends on the dataset.
+    text: `**Shift+L.** This is how citizen scientists find and organize their tasks. Currently you see their cells and quests, but you can easily add your own using CAVE tables or spreadsheets.
+
+Find an **Available** cell and **Claim** it, then mark it **Complete** when it is done. How many cells you can hold at once depends on the dataset.
 
 Other tabs hold help requests, Scout Tags, your claims and your saved links. Some datasets put an **instructions** link in the header, and the **tour** link replays the dataset's tour of its cell types.`,
     position: onIcon("cells"),
