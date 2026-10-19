@@ -608,6 +608,37 @@ async function onHtmlClick(e: MouseEvent) {
 .introductionStepAnchor.right>* {
     transform: translate(0, -50%);
 }
+/* The pointer: a notch that grows out of the box's own edge, centred exactly
+   on the target (Ames 2026-10-19: the old triangle sat off its target and
+   "looks lame compared to the rest of the UI"). A square turned 45 degrees,
+   filled like the box so it covers the box's border where they meet, with
+   the two outer edges lit. The anchor point is the target's centre line. */
+.introductionStepAnchor .arrow {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    box-sizing: border-box;
+    background: rgb(14, 21, 36);
+    border: 0 solid rgba(126, 214, 255, 0.85);
+    transform: rotate(45deg) !important;
+    filter: drop-shadow(0 0 5px rgba(110, 200, 255, 0.55));
+    z-index: 3;
+    animation: nge-notch-glow 2.4s ease-in-out infinite;
+}
+@keyframes nge-notch-glow {
+    0%, 100% { filter: drop-shadow(0 0 4px rgba(110, 200, 255, 0.45)); }
+    50%      { filter: drop-shadow(0 0 9px rgba(110, 200, 255, 0.85)); }
+}
+@media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow { animation: none; } }
+/* Box below its target: the notch points up from the box's top edge. */
+.introductionStepAnchor.bottom .arrow { left: -8px; top: 6px; border-top-width: 1.5px; border-left-width: 1.5px; }
+/* Box right of its target: points left. */
+.introductionStepAnchor.right .arrow { left: 6px; top: -8px; border-left-width: 1.5px; border-bottom-width: 1.5px; }
+/* Box left of its target: points right. */
+.introductionStepAnchor.left .arrow { left: -22px; top: -8px; border-top-width: 1.5px; border-right-width: 1.5px; }
+/* Box above its target: points down. */
+.introductionStepAnchor.top .arrow { left: -8px; top: -22px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+
 .introductionStepAnchor.right .chip { transform: translate(0, -36px); }
 
 .introductionStepAnchor.left>* {
@@ -624,47 +655,24 @@ async function onHtmlClick(e: MouseEvent) {
     transform: translate(-50%, -50%);
 }
 
-.introductionStepAnchor .arrow {
-    position: absolute;
-    border: 14px solid transparent;
-    filter: drop-shadow(0 0 10px rgba(80, 160, 255, 0.6));
-    z-index: 3;
-}
 
-.introductionStepAnchor.right .arrow {
-    border-right: 14px solid rgba(120, 180, 255, 0.6);
-    right: -14px;
-}
 
 .introductionStepAnchor.right .chip {
     left: 14px !important;
 }
 
-.introductionStepAnchor.bottom .arrow {
-    border-bottom: 14px solid rgba(120, 180, 255, 0.6);
-    bottom: -14px;
-}
 
 .introductionStepAnchor.bottom .chip {
     top: 14px !important;
 }
 
-.introductionStepAnchor.left .arrow {
-    border-left: 14px solid rgba(120, 180, 255, 0.6);
-    right: -14px;
-    top: 50%;
-    transform: translateY(-50%);
-}
 
 .introductionStepAnchor.left .chip {
     right: 14px !important;
     left: auto !important;
 }
 
-.introductionStepAnchor.top .arrow {
-    border-top: 14px solid rgba(120, 180, 255, 0.6);
-    top: -14px;
-}
+
 
 .chip {
     position: absolute;
