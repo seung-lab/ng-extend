@@ -198,6 +198,14 @@ export class SharedProjectionParameters<T extends ProjectionParameters =
       rpc: RPC, public base: WatchableValueChangeInterface<T>, public updateInterval: number = 10) {
     super();
     this.initializeCounterpart(rpc, {value: base.value});
+    // Pyr (EyeWire II), 2026-10-19: the counterpart already has this
+    // displayDimensionRenderInfo. Left undefined, the first update after
+    // creation sent it again, the backend made a new object of it, and a layer
+    // added in between (sliceview/backend.ts addVisibleLayer keeps the object
+    // it saw) was skipped by updateVisibleSources for good: a 2D panel built by
+    // a layout switch or a view loaded in place sometimes drew nothing new
+    // until it was rebuilt (Space twice). Krzysztof #174, Nseraf #166.
+    this.prevDisplayDimensionRenderInfo = base.value.displayDimensionRenderInfo;
     this.registerDisposer(base.changed.add(this.update));
   }
 
