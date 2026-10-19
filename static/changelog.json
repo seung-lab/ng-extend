@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T16:35:55Z",
+      "title": "Numbered annotations, in folders",
+      "digest": "headline",
+      "items": [
+        "Every annotation in a layer's list now has a number, in the list's order.",
+        "+ Folder makes a folder for your annotations. Name it, fold it, put one folder inside another, or delete it.",
+        "Drag an annotation's row to move it up or down the list, or onto a folder to put it in.",
+        "Ctrl+click or Shift+click picks several annotations to move to a folder or delete together.",
+        "Pick a color on a folder's dot to draw its annotations in that color. Untick Color its annotations to give them the layer's color again.",
+        "Your order and folders are saved with the layer, so saved views and shared links keep them."
+      ]
+    },
+    {
       "at": "2026-10-19T16:24:30Z",
       "title": "A way back from 3D only",
       "items": [
