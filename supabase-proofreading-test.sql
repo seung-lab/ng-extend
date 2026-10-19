@@ -13,7 +13,7 @@
 -- Function
 --   pilot_test_action(p_user, p_action, p_args)  status, claim, heartbeat,
 --                               cleaned, record. Service role only; called by
---                               ewSecureWrite (functions/proofreading-test.js).
+--                               ewProofreadingTest (functions/proofreading-test.js).
 --                               No pilot membership needed: the test is how a
 --                               player earns it.
 BEGIN;
@@ -84,12 +84,15 @@ CREATE TABLE IF NOT EXISTS public.proofreading_test_checks (
   point_a jsonb,       -- viewer voxel [x, y, z], where a sits (or the endpoint)
   point_b jsonb,
   radius_nm integer,   -- endpoint only
-  weight integer NOT NULL DEFAULT 1 CHECK (weight BETWEEN 0 AND 100),
+  weight integer NOT NULL DEFAULT 1 CHECK (weight BETWEEN 0 AND 1000000),  -- a piece weighs its size in supervoxels
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (kind = 'endpoint' OR (supervoxel_a <> '' AND supervoxel_b <> '' AND supervoxel_a <> supervoxel_b)),
   CHECK (kind <> 'endpoint' OR point_a IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS proofreading_test_checks_test_idx ON public.proofreading_test_checks (test_id, ordinal);
+-- Weights are piece sizes in supervoxels since 2026-10-19; the first cap was 100.
+ALTER TABLE public.proofreading_test_checks DROP CONSTRAINT IF EXISTS proofreading_test_checks_weight_check;
+ALTER TABLE public.proofreading_test_checks ADD CONSTRAINT proofreading_test_checks_weight_check CHECK (weight BETWEEN 0 AND 1000000);
 
 CREATE TABLE IF NOT EXISTS public.proofreading_test_attempts (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

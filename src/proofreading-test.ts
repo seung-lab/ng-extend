@@ -54,7 +54,7 @@ export interface TestResult {
   timedOut?: boolean;
   granted?: { pilot: boolean; groups: { id: number; ok: boolean }[] };
   found?: number; errors?: number; damaged?: number; percent?: number; endpoints?: number; endpointsFound?: number; stray?: number;
-  checks?: { kind: string; label: string; ok: boolean; point: number[] | null }[];
+  checks?: { kind: string; label: string; ok: boolean; point: number[] | null; weight?: number }[];
 }
 
 /** What the server last said about the test and this player. null until
@@ -482,9 +482,16 @@ async function submitWork() {
   refreshTestStatus();
 }
 
-/** Detail feedback: a Pyr pin on each miss, for two minutes. */
+/** The misses, damage first, then the biggest pieces, then the ends. */
+function missesInOrder(checks: NonNullable<TestResult['checks']>) {
+  const rank = (k: string) => (k === 'keep' || k === 'apart' ? 0 : k === 'endpoint' ? 2 : 1);
+  return checks.filter(c => !c.ok).sort((a, b) => rank(a.kind) - rank(b.kind) || (b.weight ?? 1) - (a.weight ?? 1));
+}
+
+/** Detail feedback: a Pyr pin on each miss, for two minutes; at most 25,
+ *  the most important first (a whole cell can have dozens). */
 function showMisses(checks: NonNullable<TestResult['checks']>) {
-  const missed = checks.filter(c => !c.ok && Array.isArray(c.point));
+  const missed = missesInOrder(checks).filter(c => Array.isArray(c.point)).slice(0, 25);
   if (!missed.length) return;
   showPyrMarkers(missed.map(c => c.point as number[]), missed.map(c => c.label || c.kind), 120);
 }
@@ -523,8 +530,15 @@ function resultText(): string {
     parts.push(`**Score: ${percentWord(r)}.** ${bits.join('; ')}.`);
     if (!r.passed && r.damaged) parts.push('Damage to the real cell fails the test on its own, however many mistakes you found. Cut only where two different cells touch, and look at the 2D images before you place a point.');
     if (r.checks) {
-      const missed = r.checks.filter(c => !c.ok);
-      if (missed.length) parts.push('Pins mark what was missed for the next two minutes: ' + missed.map(c => c.label || c.kind).join(', ') + '.');
+      const missed = missesInOrder(r.checks);
+      const broken = missed.filter(c => c.kind === 'keep' || c.kind === 'apart');
+      const pieces = missed.filter(c => c.kind === 'merge' || c.kind === 'cut');
+      const ends = missed.filter(c => c.kind === 'endpoint');
+      const lines: string[] = [];
+      if (broken.length) lines.push(`Cut off from the real cell: ${broken.slice(0, 5).map(c => c.label).join(', ')}${broken.length > 5 ? ` and ${broken.length - 5} more` : ''}.`);
+      if (pieces.length) lines.push(`Biggest misses: ${pieces.slice(0, 5).map(c => c.label).join('; ')}${pieces.length > 5 ? `; and ${pieces.length - 5} smaller` : ''}.`);
+      if (ends.length) lines.push(`${ends.length} branch end${ends.length === 1 ? '' : 's'} not marked.`);
+      if (lines.length) parts.push(lines.join(' ') + ' Pins mark them on the cell for two minutes, the most important first.');
     }
   }
   if (!r.passed) {

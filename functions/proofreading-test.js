@@ -149,9 +149,12 @@ function decide(test, results, stray = 0) {
   const scored = [...errors, ...ends];
   const available = scored.reduce((n, r) => n + (r.weight ?? 1), 0);
   const earned = scored.filter(r => r.ok).reduce((n, r) => n + (r.weight ?? 1), 0);
-  const percent = available ? Math.round(100 * earned / available) : 100;
+  // The pass uses the exact share; the number shown is rounded down, so it
+  // never says 90 to a player who missed a mark of 90 by a fraction.
+  const exact = available ? 100 * earned / available : 100;
+  const percent = Math.floor(exact + 1e-9);
   const mark = Number.isFinite(Number(test.pass_mark)) ? Number(test.pass_mark) : 100;
-  const passed = percent >= mark && (!test.damage_fails || damage.length === 0);
+  const passed = exact + 1e-9 >= mark && (!test.damage_fails || damage.length === 0);
   return {passed, found: errors.filter(r => r.ok).length, errors: errors.length, damaged: damage.length, percent,
     endpoints: ends.length, endpointsFound: ends.filter(r => r.ok).length, stray};
 }
@@ -165,7 +168,7 @@ function feedback(test, decision, results, granted) {
   Object.assign(out, {found: decision.found, errors: decision.errors, damaged: decision.damaged, percent: decision.percent,
     endpoints: decision.endpoints, endpointsFound: decision.endpointsFound, stray: decision.stray});
   if (test.feedback === 'detail') {
-    out.checks = results.map(r => ({kind: r.kind, label: r.label, ok: r.ok,
+    out.checks = results.map(r => ({kind: r.kind, label: r.label, ok: r.ok, weight: r.weight ?? 1,
       point: r.ok ? null : (r.kind === 'endpoint' ? r.point_a : (r.point_b || r.point_a))}));
   }
   return out;

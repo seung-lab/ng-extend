@@ -91,6 +91,10 @@ test('scoring: every cut, merge and endpoint counts, damage fails outright', () 
   const half = decide(T, [...graphResults(CHECKS, {...roots, 301: '800'}, 'end'), ...endpointResults(CHECKS, []).results], 0);
   assert.equal(half.percent, 33); assert.equal(half.passed, false);
   assert.equal(decide({...T, pass_mark: 30}, [...graphResults(CHECKS, {...roots, 301: '800'}, 'end'), ...endpointResults(CHECKS, []).results], 0).passed, true);
+  // 89.6 percent against a mark of 90: shown as 89, not a pass.
+  const nearly = decide({...T, pass_mark: 90}, [{kind: 'merge', ok: true, weight: 896}, {kind: 'merge', ok: false, weight: 104}], 0);
+  assert.equal(nearly.percent, 89); assert.equal(nearly.passed, false);
+  assert.equal(decide({...T, pass_mark: 90}, [{kind: 'merge', ok: true, weight: 9}, {kind: 'merge', ok: false, weight: 1}], 0).passed, true, 'exactly 90 passes');
 });
 
 test('endpoints: within the radius in nm, one point serves one endpoint, strays are counted', () => {
@@ -226,6 +230,7 @@ test('submit: detail feedback names each miss with a place to look; none says on
     if (level === 'detail') {
       const miss = out.checks.find(c => c.kind === 'cut');
       assert.deepEqual(miss.point, [2, 2, 2]);
+      assert.equal(miss.weight, 1, 'each check says what it weighs, so the page can list the biggest misses first');
       assert.equal(out.checks.find(c => c.kind === 'keep').point, null);
     }
   }

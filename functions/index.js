@@ -2014,7 +2014,7 @@ exports.ewSecureWrite = onRequest(
 // minutes both times. This function is deployed only from the branch that
 // has it, and it alone binds the CAVE token:
 //   firebase deploy --only functions:ewProofreadingTest --project eyewire-ii-e4d52
-const EW_TEST_CODE_VERSION = "2026-10-14-proofreading-test-5";
+const EW_TEST_CODE_VERSION = "2026-10-19-proofreading-test-6";
 exports.ewProofreadingTest = onRequest(
   // 120 s: scoring reads the graph and undoes the player's edits.
   { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, timeoutSeconds: 120 },
