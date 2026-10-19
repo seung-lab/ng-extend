@@ -227,8 +227,28 @@ const frameCss = ref({ w: 0, h: 0 });
 // the stroke width as a fraction of the image height, so they survive a
 // dialog resize and render at the same relative weight at any output
 // resolution (the preview is WYSIWYG for the downloaded PNG).
-type Stroke = { color: string; size: number; points: { u: number; v: number }[] };
+type Stroke = { color: string; size: number; points: { u: number; v: number }[];
+  /** What the mark is (Celia, report 173, 2026-10-19). A pen stroke when
+   *  absent. Shapes keep two points, the corners of the box they were dragged
+   *  across (an arrow: tail, then head). Text keeps one point, its top left,
+   *  and its size is the letter height as a fraction of the image height. */
+  kind?: Tool; text?: string };
 const strokes = ref<Stroke[]>([]);
+/** Pen, outlined shapes, arrow and text; outlines only (Ames 2026-10-19). */
+type Tool = 'pen' | 'rect' | 'ellipse' | 'arrow' | 'text';
+const tool = ref<Tool>('pen');
+const TOOLS: { id: Tool; label: string; title: string; icon: string }[] = [
+  { id: 'pen', label: 'Pen', title: 'Draw freehand', icon: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>' },
+  { id: 'rect', label: 'Box', title: 'Rectangle: drag across. Shift for a square.', icon: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>' },
+  { id: 'ellipse', label: 'Circle', title: 'Circle: drag across. Shift for a perfect circle.', icon: '<ellipse cx="12" cy="12" rx="8" ry="6.5"/>' },
+  { id: 'arrow', label: 'Arrow', title: 'Arrow: drag from the tail to the point.', icon: '<path d="M5 19L19 5"/><path d="M10 5h9v9"/>' },
+  { id: 'text', label: 'Text', title: 'Text: click where it goes, type, press Enter.', icon: '<path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/>' },
+];
+/** Letter height on screen for a Size setting: 1 to 12 gives 13 to 46 px. */
+const textPx = (size: number) => 10 + size * 3;
+/** The text being typed: where it sits on screen and in the image. */
+const typing = ref<{ x: number; y: number; uv: { u: number; v: number }; value: string } | null>(null);
+const typingEl = ref<HTMLInputElement | null>(null);
 const PEN_COLORS = ['#ff4d4d', '#ffd24d', '#5be3ff', '#ffffff'];
 const penColor = ref(PEN_COLORS[0]);
 /** Any colour, from the browser's picker (Amy 2026-09-29). */
@@ -565,6 +585,7 @@ function renderStrokes(ctx: CanvasRenderingContext2D, rect: { x: number; y: numb
     if (s.points.length === 0) continue;
     ctx.strokeStyle = s.color;
     ctx.fillStyle = s.color;
+    if (s.kind && s.kind !== 'pen') { renderShape(ctx, rect, s); continue; }
     ctx.lineWidth = Math.max(1, s.size * rect.h);
     if (s.points.length === 1) {
       const p = s.points[0];
@@ -586,6 +607,43 @@ function renderStrokes(ctx: CanvasRenderingContext2D, rect: { x: number; y: numb
     ctx.stroke();
   }
   ctx.restore();
+}
+
+/** A shape or a line of text, on the same image rect as the pen strokes. */
+function renderShape(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, s: Stroke) {
+  const at = (p: { u: number; v: number }) => [rect.x + p.u * rect.w, rect.y + p.v * rect.h];
+  if (s.kind === 'text') {
+    const [x, y] = at(s.points[0]);
+    const px = Math.max(8, s.size * rect.h);
+    ctx.font = `600 ${px}px Inter, Roboto, system-ui, sans-serif`;
+    ctx.textBaseline = 'top';
+    // A dark edge keeps the letters readable over the EM, light or dark.
+    ctx.lineWidth = Math.max(2, px / 5);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.strokeText(s.text || '', x, y);
+    ctx.fillText(s.text || '', x, y);
+    return;
+  }
+  if (s.points.length < 2) return;
+  const [x0, y0] = at(s.points[0]);
+  const [x1, y1] = at(s.points[s.points.length - 1]);
+  ctx.lineWidth = Math.max(1, s.size * rect.h);
+  ctx.beginPath();
+  if (s.kind === 'rect') {
+    ctx.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+  } else if (s.kind === 'ellipse') {
+    ctx.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, 0, Math.PI * 2);
+  } else if (s.kind === 'arrow') {
+    const a = Math.atan2(y1 - y0, x1 - x0);
+    const head = Math.max(10, ctx.lineWidth * 4);
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    for (const side of [-1, 1]) {
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x1 - head * Math.cos(a + side * 0.5), y1 - head * Math.sin(a + side * 0.5));
+    }
+  }
+  ctx.stroke();
 }
 
 function renderMarkup() {
@@ -621,23 +679,66 @@ function pointerToImgUV(e: PointerEvent): { u: number; v: number } | null {
 function onPointerDown(e: PointerEvent) {
   const uv = pointerToImgUV(e);
   if (!uv) return;
-  drawing = true;
-  (e.target as Element).setPointerCapture?.(e.pointerId);
   // penSize is in CSS pixels on screen; store it as a fraction of the image
   // height (imgRect.h is in backing pixels, hence the DPR factor).
   const imgCssH = imgRect.value.h / previewDpr();
+  if (tool.value === 'text') {
+    // A line of text being typed elsewhere is kept first.
+    commitTyping();
+    e.preventDefault();
+    typing.value = { x: e.clientX, y: e.clientY, uv, value: '' };
+    void nextTick(() => typingEl.value?.focus());
+    return;
+  }
+  drawing = true;
+  (e.target as Element).setPointerCapture?.(e.pointerId);
   const sizeFrac = penSize.value / Math.max(1, imgCssH);
-  strokes.value.push({ color: penColor.value, size: sizeFrac, points: [uv] });
+  const kind = tool.value === 'pen' ? undefined : tool.value;
+  strokes.value.push({ color: penColor.value, size: sizeFrac, points: kind ? [uv, uv] : [uv], kind });
   renderMarkup();
 }
 function onPointerMove(e: PointerEvent) {
   if (!drawing) return;
-  const uv = pointerToImgUV(e);
-  if (!uv) return;
   const cur = strokes.value[strokes.value.length - 1];
   if (!cur) return;
+  if (cur.kind && cur.kind !== 'pen') {
+    // A shape follows the pointer even past the image's edge, clamped to it.
+    const cv = markupEl.value, r = imgRect.value;
+    if (!cv) return;
+    const box = cv.getBoundingClientRect();
+    const x = ((e.clientX - box.left) / box.width) * cv.width;
+    const y = ((e.clientY - box.top) / box.height) * cv.height;
+    let u = clamp((x - r.x) / r.w, 0, 1), v = clamp((y - r.y) / r.h, 0, 1);
+    if (e.shiftKey && cur.kind !== 'arrow') {
+      // Shift: a square or a circle (equal sides in image pixels).
+      const p0 = cur.points[0];
+      const side = Math.max(Math.abs(u - p0.u) * r.w, Math.abs(v - p0.v) * r.h);
+      u = clamp(p0.u + Math.sign(u - p0.u || 1) * side / r.w, 0, 1);
+      v = clamp(p0.v + Math.sign(v - p0.v || 1) * side / r.h, 0, 1);
+    }
+    cur.points[1] = { u, v };
+    renderMarkup();
+    return;
+  }
+  const uv = pointerToImgUV(e);
+  if (!uv) return;
   cur.points.push(uv);
   renderMarkup();
+}
+/** Keep the text being typed as a mark (empty text is dropped). */
+function commitTyping() {
+  const t = typing.value;
+  typing.value = null;
+  const text = (t?.value || '').trim();
+  if (!t || !text) return;
+  const imgCssH = imgRect.value.h / previewDpr();
+  strokes.value.push({ kind: 'text', text: text.slice(0, 200), color: penColor.value,
+    size: textPx(penSize.value) / Math.max(1, imgCssH), points: [t.uv] });
+  renderMarkup();
+}
+function onTypingKey(e: KeyboardEvent) {
+  if (e.key === 'Enter') { e.preventDefault(); commitTyping(); }
+  else if (e.key === 'Escape') { e.preventDefault(); typing.value = null; }
 }
 function onPointerUp(e: PointerEvent) {
   drawing = false;
@@ -645,10 +746,12 @@ function onPointerUp(e: PointerEvent) {
 }
 
 function undo() {
+  typing.value = null;
   strokes.value.pop();
   renderMarkup();
 }
 function clearMarkup() {
+  typing.value = null;
   strokes.value = [];
   renderMarkup();
 }
@@ -932,8 +1035,21 @@ async function download() {
 
       <div class="nge-shotdlg-main">
         <!-- Pen tools: a HUD strip across the top of the image. -->
-        <div class="nge-shotdlg-toolbar" role="toolbar" aria-label="Pen tools">
-          <span class="nge-shotdlg-tlabel">Pen</span>
+        <div class="nge-shotdlg-toolbar" role="toolbar" aria-label="Drawing tools">
+          <div class="nge-shotdlg-tools" role="radiogroup" aria-label="Tool">
+            <button v-for="t in TOOLS" :key="t.id" type="button"
+                    class="nge-shotdlg-tool nge-shotdlg-tool--pick" :class="{ 'is-active': tool === t.id }"
+                    role="radio" :aria-checked="tool === t.id" :title="t.title"
+                    @click="commitTyping(); tool = t.id">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="t.icon" />
+              <span>{{ t.label }}</span>
+            </button>
+          </div>
+
+          <span class="nge-shotdlg-sep" aria-hidden="true" />
+
+          <span class="nge-shotdlg-tlabel">Colour</span>
           <div class="nge-shotdlg-swatches">
             <button v-for="c in PEN_COLORS" :key="c"
                     class="nge-shotdlg-swatch"
@@ -956,9 +1072,9 @@ async function download() {
 
           <span class="nge-shotdlg-tlabel">Size</span>
           <input type="range" min="1" max="12" step="1" v-model.number="penSize"
-                 class="nge-shotdlg-pen-size" :title="`Brush size: ${penSize}px`"
-                 aria-label="Brush size" />
-          <span class="nge-shotdlg-readout nge-shotdlg-readout-size">{{ penSize }}<span class="nge-shotdlg-unit">px</span></span>
+                 class="nge-shotdlg-pen-size" :title="tool === 'text' ? `Text size: ${textPx(penSize)}px` : `Line width: ${penSize}px`"
+                 :aria-label="tool === 'text' ? 'Text size' : 'Line width'" />
+          <span class="nge-shotdlg-readout nge-shotdlg-readout-size">{{ tool === 'text' ? textPx(penSize) : penSize }}<span class="nge-shotdlg-unit">px</span></span>
 
           <span class="nge-shotdlg-sep" aria-hidden="true" />
 
@@ -992,11 +1108,16 @@ async function download() {
                :style="{ width: frameCss.w + 'px', height: frameCss.h + 'px' }">
             <div class="nge-shotdlg-clip">
               <canvas ref="previewEl" class="nge-shotdlg-preview" />
-              <canvas ref="markupEl" class="nge-shotdlg-markup"
+              <canvas ref="markupEl" class="nge-shotdlg-markup" :class="`nge-shotdlg-markup--${tool}`"
                       @pointerdown="onPointerDown"
                       @pointermove="onPointerMove"
                       @pointerup="onPointerUp"
                       @pointercancel="onPointerUp" />
+              <!-- The text tool's box, where the click was; Enter keeps it. -->
+              <input v-if="typing" ref="typingEl" v-model="typing.value" class="nge-shotdlg-typing"
+                     :style="{ left: typing.x + 'px', top: typing.y + 'px', color: penColor, fontSize: textPx(penSize) + 'px' }"
+                     maxlength="200" placeholder="Type, then Enter" aria-label="Text to add to the picture"
+                     @keydown.stop="onTypingKey" @keyup.stop @keypress.stop @blur="commitTyping" />
               <div v-if="wholeScreen && !screenCap" class="nge-shotdlg-wait">
                 <b>Whole screen capture</b>
                 <span>Press Capture screen. The picture appears here, ready to draw on.</span>
@@ -1396,6 +1517,25 @@ async function download() {
   opacity: 0.4;
   cursor: default;
 }
+/* the tool picker: one lit at a time */
+.nge-shotdlg-tools { display: inline-flex; gap: 4px; }
+.nge-shotdlg-tool--pick { padding: 0 9px; }
+.nge-shotdlg-tool--pick.is-active {
+  background: rgb(var(--sd-cyan) / 0.22);
+  border-color: rgb(var(--sd-cyan) / 0.85);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgb(var(--sd-cyan) / 0.25);
+}
+.nge-shotdlg-markup--rect, .nge-shotdlg-markup--ellipse, .nge-shotdlg-markup--arrow { cursor: crosshair; }
+.nge-shotdlg-markup--text { cursor: text; }
+/* the line of text being typed, over the picture where it will land */
+.nge-shotdlg-typing {
+  position: fixed; z-index: 5; min-width: 140px; margin: 0; padding: 0 2px;
+  font-family: Inter, Roboto, system-ui, sans-serif; font-weight: 600; line-height: 1.15;
+  background: rgba(4, 10, 20, 0.55); border: 1px dashed rgba(126, 224, 255, 0.7); border-radius: 3px;
+  outline: none; text-shadow: 0 0 3px #000, 0 0 2px #000;
+}
+.nge-shotdlg-typing::placeholder { color: rgba(220, 235, 250, 0.55); text-shadow: none; }
 
 /* ---- stage + frame ---- */
 .nge-shotdlg-stage {
