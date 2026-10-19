@@ -2,6 +2,24 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T13:46:12Z",
+      "title": "A new Advanced Interface tutorial",
+      "digest": "headline",
+      "items": [
+        "Advanced Interface is rebuilt in four short parts: marking what you see, working with cells, finding your way, and putting it together to find where a merger starts.",
+        "The tutorials now run Get Started, Merge, Cut, Advanced Interface, then the Merger Sandbox.",
+        "Tutorial boxes sit right next to what they point at, with a new arrow, copy buttons for coordinates and IDs, and hints you can hover.",
+        "Many steps move on by themselves when you do the thing they ask.",
+        "New annotation layers start with golden Pyr gems.",
+        "The Render tab is split into Colors, 2D view, 3D view and More, each with its own Opacity.",
+        "Pasting coordinates into the Segments box opens the 2D view close in, so the cell there is found.",
+        "Opening Highlight closes Find Path, and Submit stops pulsing once a path is found.",
+        "The menu closes when you click outside it.",
+        "In the Sandbox, 2D EM and 3D segmentation can no longer be removed by accident.",
+        "Chat no longer opens below the screen after a reload, and the Quest ID check shows the full ID."
+      ]
+    },
+    {
       "at": "2026-10-19T00:54:09Z",
       "title": "An easier to spot search box in Segments",
       "digest": "minor",
