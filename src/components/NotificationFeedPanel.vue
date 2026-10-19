@@ -172,6 +172,19 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
+  // Retina access requests (Ames 2026-10-16): a reviewer's note opens Admin
+  // Hub > Access requests; a player's notes or invite open their panel.
+  const accessTitle = String(notif.title || '');
+  if (accessTitle.startsWith('🔬 Retina access request from')) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
+    emit('hide');
+    return;
+  }
+  if (accessTitle === '🔬 Notes on your retina access request' || (accessTitle === '🎉 Congratulations! Your edit access has been granted!' || accessTitle === '🎉 You are invited to the retina')) {
+    document.dispatchEvent(new CustomEvent('nge:access-open'));
+    emit('hide');
+    return;
+  }
   // Triage alerts open the triage board on its own page, in a new tab
   // (Ames 2026-10-05), so the game stays where it is.
   if ((notif.title || '').startsWith('🗂')) {

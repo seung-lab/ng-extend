@@ -1857,3 +1857,52 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   background: color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 55%, transparent);
 }
 .nge-seg-folder--collapsed > .nge-h::after { display: none; }
+
+/* ── Annotation layer panel (Ames 2026-10-18): the name as a file name style
+   header with a pencil, then remove and close; no type chip, no pin; the
+   single Annotations tab label is not shown; researcher settings under
+   Advanced. ── */
+.nge-ann-layer .neuroglancer-layer-side-panel-type,
+.nge-ann-layer .nge-title-pin,
+.nge-ann-layer .nge-title-pick { display: none !important; }
+.nge-ann-layer .neuroglancer-layer-side-panel-name {
+  flex: 1 1 auto; min-width: 0;
+  font-family: Inter, system-ui, sans-serif !important; font-size: 15px !important; font-weight: 600 !important;
+  color: #f2f7ff !important; background: transparent !important;
+  border: 1px solid transparent !important; border-radius: 6px; padding: 3px 6px !important;
+}
+.nge-ann-layer .neuroglancer-layer-side-panel-name:hover { border-color: rgba(140, 180, 235, 0.3) !important; }
+.nge-ann-layer .neuroglancer-layer-side-panel-name:focus {
+  border-color: rgba(126, 224, 255, 0.6) !important; background: rgba(10, 15, 30, 0.9) !important; outline: none;
+}
+.nge-title-rename {
+  flex: none; background: none; border: none; cursor: pointer; padding: 0 6px;
+  font-size: 15px; color: rgba(200, 215, 240, 0.7);
+}
+.nge-title-rename:hover { color: #fff; }
+.nge-ann-panel .neuroglancer-tab-view-bar:has(> .neuroglancer-tab-label:only-of-type) { display: none !important; }
+.nge-ann-advanced { margin: 10px 4px 4px; font-family: Inter, system-ui, sans-serif; font-size: 12px; color: rgba(200, 215, 240, 0.75); }
+.nge-ann-advanced > summary { cursor: pointer; user-select: none; padding: 2px 0; }
+.nge-ann-advanced[open] > summary { margin-bottom: 6px; }
+.nge-ann-advanced > label { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+
+/* the layer panel's delete button turns red on hover (Ames 2026-10-18) */
+.neuroglancer-layer-side-panel-title .nge-title-delete:hover { background-color: rgba(224, 96, 96, 0.18) !important; border-radius: 4px; }
+.neuroglancer-layer-side-panel-title .nge-title-delete:hover > svg { fill: #ff8a8a !important; stroke: #ff8a8a !important; }
+
+/* The Segments search box reads as a box to type in, with room around it
+   (Ames 2026-10-18: "too squished and doesn't read as a text input box"). */
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query {
+  box-sizing: border-box; height: 34px; margin: 6px 6px 10px !important;
+  width: calc(100% - 12px) !important;
+  padding: 6px 11px !important; font-size: 13px !important;
+  background: rgba(8, 13, 26, 0.95) !important;
+  border: 1px solid rgba(140, 180, 235, 0.42) !important; border-radius: 8px !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query:hover { border-color: rgba(140, 180, 235, 0.7) !important; }
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query:focus {
+  border-color: rgba(126, 224, 255, 0.9) !important; outline: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 3px rgba(126, 224, 255, 0.15);
+}
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query::placeholder { color: rgba(200, 215, 240, 0.55); }

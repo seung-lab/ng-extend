@@ -12,6 +12,8 @@ import ProofreadingQueuePanel from "components/ProofreadingQueuePanel.vue";
 import CommandPalette from "components/CommandPalette.vue";
 import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
+import AccessRequestPanel from "components/AccessRequestPanel.vue";
+import AccessReviewBar from "components/AccessReviewBar.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
@@ -116,6 +118,12 @@ import { testStatus } from '../proofreading-test';
 function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
+import { myAccess, loadMyAccess, accessStatusLabel } from '../access_request';
+import { datasetAccess } from '../util/dataset_access';
+const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
+// Where the player's request stands, for the menu line: asked once a session
+// is known, quietly (a failure only leaves the line without a status).
+watch(() => login.sessions.length, n => { if (n && !myAccess.value) loadMyAccess().catch(() => {}); }, { immediate: true });
 
 function closeHamburger() {
   dropdownStore.activeDropdowns['extension-bar-right'] = undefined;
@@ -375,6 +383,14 @@ document.addEventListener('nge:open-dataset-stats', (e) => {
 const showSettings = ref(false);
 const showQueue = ref(false);
 const showFeed = ref(false);
+// Retina access requests (Ames 2026-10-16): the Dataset Access form in the
+// game, last in the burger menu. src/access_request.ts.
+const showAccess = ref(false);
+function openAccessPanel() { showAccess.value = true; closeHamburger(); }
+document.addEventListener('nge:access-open', () => { showAccess.value = true; });
+// A reviewer opened an example from Admin Hub > Access requests: out of the
+// profile, into the view, with the review bar (AccessReviewBar).
+document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
 /** Chat visibility persists across reloads so closing it stays closed.
  *  Default = open on first visit (key absent in localStorage). */
 const CHAT_VISIBLE_KEY = 'nge_chat_visible_v1';
@@ -911,6 +927,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     @open-dataset-stats="openDatasetStatsHome()"
   />
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
+  <access-request-panel v-if="showAccess" @hide="showAccess = false" />
+  <access-review-bar />
   <!-- Help requests now live in Cell Library's Help tab -->
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
@@ -1179,15 +1197,19 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>
-        <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" rel="noopener"
-                href="https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/">Proofreading Guide ↗</a></span>
-          </div>
-        </li>
+        <!-- The Proofreading Guide link was taken out (Ames 2026-10-16): the old
+             guide no longer matches Pyr. -->
         <li>
           <div class="logoutButton button">
             <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
+          </div>
+        </li>
+        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
+             game. Last in the menu, where a player looks for what comes next. -->
+        <li class="nge-menu-heading" @click.stop>Edit access</li>
+        <li>
+          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
+            <span class="nge-menu-num">✦</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
           </div>
         </li>
       </template>

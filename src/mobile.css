@@ -483,3 +483,15 @@ body.nge-mobile .nge-cl-panel {
     background: rgba(124, 255, 178, 0.18); border-color: #7cffb2; color: #eafff3;
   }
 }
+
+/* Touch screens (report 157): the headings keep their buttons out at all
+   times (no hover), and with Select the In view heading holds the count,
+   copy, Select, + Folder and remove all. ng-override.css fixes the button
+   area at 132 px, which piled them on top of each other on a tablet. Here
+   the area takes the room it needs and the heading wraps to a second line
+   when the panel is narrow. */
+@media (hover: none) {
+  .nge-h .nge-h-region { width: auto !important; flex: 0 0 auto; }
+  .nge-h.nge-seg-list-heading--inview { flex-wrap: wrap; height: auto !important; min-height: 22px; row-gap: 6px; }
+  .nge-h.nge-seg-list-heading--inview .nge-h-region { margin-left: auto; }
+}

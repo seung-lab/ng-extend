@@ -307,15 +307,8 @@ function buildActions(): PaletteItem[] {
   });
 
   // ── Help & Learning ──
-  items.push({
-    id: 'help-proofread-guide',
-    label: 'Proofreading Guide',
-    description: 'How to proofread neurons — blog post',
-    category: 'help',
-    icon: '📖',
-    aliases: ['guide', 'tutorial', 'how to', 'proofreading', 'help', 'learn'],
-    action: () => window.open('https://blog.pyr.ai/2024/12/20/proofreading-101-climb-into-spelunker/', '_blank'),
-  });
+  // The old Proofreading Guide is gone from here and the menu (Ames
+  // 2026-10-16): it no longer matches Pyr.
   items.push({
     id: 'help-merge-video',
     label: 'Merge Video Tutorial',

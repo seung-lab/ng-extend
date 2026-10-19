@@ -1117,7 +1117,12 @@ function clientIp(req) {
 // Atomically check+increment the per-IP windows. Returns {ok} or {ok:false,scope}.
 async function rateLimit(req, loggedIn, prefix = "a") {
   // Browser login flags do not establish identity. Keep the anonymous tier.
-  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : RL_TIERS.anon;
+  // Quest list reads (Krzysztof #159, #161, 2026-10-17): a quest player reads
+  // the list about five times a cell, and the anonymous 60 a day ran out by
+  // mid-day. The list is served from the server's five minute copy, so these
+  // reads cost the sheet nothing; they get limits of their own.
+  const QUEST_READS = prefix === "read:quests";
+  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
   const refs = [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
   try {
@@ -1126,7 +1131,7 @@ async function rateLimit(req, loggedIn, prefix = "a") {
       const now=Date.now(), next=[];
       for(let i=0;i<refs.length;i++) {
         const d=snapshots[i].exists?snapshots[i].data():{};
-        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : {perMin:60,perDay:1500}) : tier;
+        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : {perMin:60,perDay:1500}) : tier;
         const minute=now-(d.minStart||0)>=60000, day=now-(d.dayStart||0)>=86400000;
         const minCount=minute?0:(d.minCount||0), dayCount=day?0:(d.dayCount||0);
         if(minCount>=limits.perMin || dayCount>=limits.perDay) return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
@@ -2096,6 +2101,97 @@ exports.ewReportReply = onRequest(
     } catch (e) {
       console.warn("[ewReportReply]", action, who.email, e.message);
       res.status(e.status || 500).json({ error: e.status ? e.message : "That could not be sent. Please try again." });
+    }
+  }
+);
+
+// ── Retina access requests (Ames 2026-10-16): a function of its own ──────
+// The EyeWire II Dataset Access form in the game: 7 cut and 3 merge
+// examples, reviewed by Celia and Marissa in the Admin Hub. Rules in
+// access-request.js; client in src/access_request.ts. No pilot gate: asking
+// is how a player joins. Kept out of ewSecureWrite for the reason above.
+//   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
+const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-11";
+// Who is told of a new request: a bell to these Pyr usernames, and a post in
+// #access_test (or #citsci_feedback until that channel exists) tagging them.
+const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
+const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m (REVIEW_MENTION_IDS)
+const ACCESS_SLACK_CHANNEL_NAME = "access_test";
+// Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
+const ACCESS_CAVE_GROUP = 203;
+async function postAccessRequestToSlack(token, { name, email, tries, eyewireUsername }) {
+  let channel = null;
+  try { channel = await resolveChannelByName(token, "", ACCESS_SLACK_CHANNEL_NAME); } catch (e) { channel = null; }
+  if (!channel) channel = REVIEW_CHANNEL_ID;
+  const text = [
+    `:microscope: *Retina access request*${tries > 1 ? ` (try ${tries})` : ""} from *${name}* (${email})${eyewireUsername ? `, EyeWire username ${eyewireUsername}` : ""}`,
+    "7 cut and 3 merge examples are waiting in the Admin Hub, Access requests.",
+    ACCESS_SLACK_MENTIONS.map((id) => `<@${id}>`).join(" "),
+  ].join("\n");
+  let r = await slackPost(token, "chat.postMessage", { channel, text, unfurl_links: false });
+  if (!r.ok && r.error === "not_in_channel") {
+    await slackPost(token, "conversations.join", { channel });
+    r = await slackPost(token, "chat.postMessage", { channel, text, unfurl_links: false });
+  }
+  if (!r.ok) throw new Error(r.error || "slack post failed");
+}
+exports.ewAccessRequest = onRequest(
+  // EW_CAVE_TOKEN (Ames's, a CAVE superadmin): Grant edit access adds the
+  // player to Eyewire_2_Edit, group 203 (Ames 2026-10-16).
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_ACCESS_CODE_VERSION }); return; }
+      let tables = true;
+      try { await probe("access_requests?select=id&limit=1"); await probe("access_request_items?select=id&limit=1"); } catch (e) { tables = false; }
+      res.json({ ok: true, db: true, tables, code: EW_ACCESS_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("access.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      const note = (userIds, title, body, image) => {
+        const rows = userIds.map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500), target_type: "user",
+          ...(image ? { image_url: image, thumbnail_url: image } : {}),
+          target_id: id, send_at: new Date().toISOString(), created_by: (me && me.id) || null }));
+        return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
+      };
+      const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin,
+        notifyReviewers: async ({ title, body, image }) => {
+          const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
+          const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
+          // A reviewer testing with their own request is told too (Ames 2026-10-16).
+          await note(people.map((p) => p.id), title, body, image);
+        },
+        notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
+        postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
+        // Add a player to Eyewire_2_Edit. 422 means already a member: as good.
+        grantCave: async (caveId) => {
+          try {
+            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/group/${ACCESS_CAVE_GROUP}/user`, {
+              method: "POST", headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: caveId }), redirect: "error", signal: AbortSignal.timeout(15000),
+            });
+            let error = "";
+            if (!r.ok && r.status !== 422) { try { error = String((await r.text()) || "").slice(0, 200); } catch (e) { error = ""; } }
+            console.log("[access] CAVE grant", caveId, "group", ACCESS_CAVE_GROUP, "status", r.status);
+            return { ok: r.ok || r.status === 422, status: r.status, already: r.status === 422, error };
+          } catch (e) { return { ok: false, error: String(e && e.message).slice(0, 200) }; }
+        },
+      });
+      res.json({ ok: true, data });
+    } catch (e) {
+      console.warn("[ewAccessRequest]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That did not go through. Please try again." });
     }
   }
 );
