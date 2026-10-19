@@ -106,7 +106,7 @@ setSegmentLabelRequester(ids => {
 });
 import {getDatasetCaveConfig} from '../config';
 import {currentSegLayerName} from '../datasets';
-import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
+import {useHelpRequestStore, useProofreadingBackendStore, useProofreadingQueueStore, type ClaimPoint} from '../store';
 import {getRootFromSupervoxel, getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
 import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
@@ -698,6 +698,25 @@ export class ButtonService {
       labTypeLine.hidden = !text;
     };
     showLabType();
+    // What the lab's AI predicts this cell is, from the cell sheet's AI column
+    // (Ames 2026-10-19), when the cell is one of the list's: by its listed ID,
+    // its final ID, or the ID one of your claims has now.
+    const aiType = (() => {
+      try {
+        const backend = useProofreadingBackendStore();
+        const claim = backend.tasks.find(t => backend.liveRoots[t.id] === segmentIDString);
+        const listed = claim ? String(claim.segment_id) : segmentIDString;
+        const row = useProofreadingQueueStore().items.find(i => i.segId === listed || i.finalSegId === segmentIDString);
+        return row?.aiType || '';
+      } catch { return ''; }
+    })();
+    if (aiType) {
+      const aiLine = document.createElement('div');
+      aiLine.classList.add('nge-lb-status-line', 'nge-lb-ai-type');
+      aiLine.textContent = `AI predicted: ${aiType}`;
+      aiLine.title = ["The type the lab's AI predicts for this cell, from the cell sheet.", ...explainCellType(aiType)].join(String.fromCharCode(10));
+      cellTypeSection.insertBefore(aiLine, select);
+    }
     let typeLine: HTMLDivElement | null = null;
     if (roCfg.cellTypeReadOnly) {
       select.style.display = 'none';

@@ -535,6 +535,10 @@ export const RETINAL_CELL_TYPES: string[] = [
   'Bipolar Cell',
   'ON Bipolar Cell',
   'OFF Bipolar Cell',
+  // The bipolar types, in the codes the lab's cell sheet and its AI predictions
+  // use (Ames 2026-10-19: the cell types of this dataset, and the AI-predicted
+  // ones shown in the game), so a type saved here matches theirs exactly.
+  'RBC', 't1', 't2', 't3a', 't3b', 't4', 't5t', 't5o', 't5i', 't6', 't7', 't8', 't9', 'XBC', 'GluMI',
   'Horizontal Cell',
   'Rod Photoreceptor',
   'Cone Photoreceptor',

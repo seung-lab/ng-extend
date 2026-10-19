@@ -339,6 +339,8 @@ const cells = computed(() => {
         nucleusId: task?.final_nucleus_id ?? null,
         // The cell's ID after your edits, when it differs from the listed one.
         liveSegId: (task && backend.liveRoots[task.id] && backend.liveRoots[task.id] !== item.segId) ? backend.liveRoots[task.id] : null as string | null,
+        // What the lab's AI predicts this cell is (the sheet's AI column).
+        aiType: item.aiType || '',
       };
     });
 
@@ -354,6 +356,7 @@ const cells = computed(() => {
         dataset: (t as any).dataset || '',
         sheetAssignee: '',
         sheetHold: '',
+        aiType: '',
         taskId: t.id,
         status: t.status,
         assignedTo: t.assigned_to,
@@ -379,6 +382,7 @@ const cells = computed(() => {
     dataset: (t as any).dataset || '',
     sheetAssignee: '',
     sheetHold: '',
+    aiType: '',
     taskId: t.id,
     status: t.status,
     assignedTo: t.assigned_to,
@@ -881,6 +885,8 @@ function cellTypesFor(cell: CellRow): string[] {
   return currentCellTypes();
 }
 const typeTitle = (t: string) => explainCellType(t).join(String.fromCharCode(10)) || undefined;
+/** The AI tag's hover text: what it is, and the code spelled out. */
+const aiTypeTitle = (t: string) => ["The type the lab's AI predicts for this cell, from the cell sheet.", ...explainCellType(t)].join(String.fromCharCode(10));
 
 /** Fill the type in with what the cell already has, once its ID is known. */
 async function prefillCellType(root: string) {
@@ -3502,6 +3508,7 @@ const panelStyle = computed(() => ({
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
+                  <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
               </div>
@@ -3587,6 +3594,11 @@ const panelStyle = computed(() => ({
                        placeholder="Or type your own" maxlength="120" aria-label="Or type your own cell type"
                        @input="completing.cellTypeCustom.trim() && (completing.cellType = '')"
                        @keydown.stop @keyup.stop @keypress.stop />
+              </div>
+              <div v-if="cell.aiType" class="nge-cl-complete-ai">
+                <span :title="aiTypeTitle(cell.aiType)">The lab's AI predicts <b>{{ cell.aiType }}</b></span>
+                <button v-if="cellTypesFor(cell).includes(cell.aiType) && completing.cellType !== cell.aiType" type="button" class="nge-cl-btn"
+                        @click="completing.cellType = cell.aiType; completing.cellTypeCustom = ''">Use {{ cell.aiType }}</button>
               </div>
               <div v-if="completing.typeNote" class="nge-cl-complete-msg nge-cl-complete-msg--bad">{{ completing.typeNote }}</div>
             </template>
@@ -4163,6 +4175,9 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-complete-linkrow { display: flex; gap: 6px; align-items: center; }
 .nge-cl-complete-typerow { display: flex; gap: 6px; }
+.nge-cl-ai-type { background: rgba(178, 140, 255, 0.14); color: #c9b2ff; text-transform: none; }
+.nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
+.nge-cl-complete-ai b { color: #c9b2ff; }
 .nge-cl-complete-type { flex: 1 1 0; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-search-input { flex: 1; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-btn { white-space: nowrap; }

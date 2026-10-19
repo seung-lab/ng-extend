@@ -2899,6 +2899,7 @@ export interface QueueItem {
   sheetStatus?: string;       // status text from the sheet (Stroeh: 'Status' column); '' if none
   assignee?: string;          // who's on it, from the sheet (Stroeh: 'Proofreader'); '' if none
   startLink?: string;         // curated starting view (Stroeh: 'Start link', column E); opened on Claim
+  aiType?: string;            // the type the lab's AI predicts (Stroeh: 'AI-predicted BC type'); '' if none
 }
 
 export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => {
@@ -3059,6 +3060,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
       const iStatus   = col('status');
       const iAssignee = firstCol('proofreader', 'claimedby', 'assignee');
       const iStartLink = col('startlink');
+      const iAiType    = firstCol('aipredicted', 'predictedtype');
 
       if (iSeg < 0) { error.value = 'Could not find a Segment ID column'; loading.value = false; return; }
 
@@ -3082,6 +3084,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
           sheetStatus: (iStatus >= 0 ? (row[iStatus] || '').trim() : '') || '',
           assignee:    (iAssignee >= 0 ? (row[iAssignee] || '').trim() : '') || '',
           startLink:   (iStartLink >= 0 ? (row[iStartLink] || '').trim() : '') || '',
+          aiType:      (iAiType >= 0 ? (row[iAiType] || '').trim().slice(0, 40) : '') || '',
         });
       }
 

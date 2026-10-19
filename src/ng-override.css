@@ -1950,3 +1950,6 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .neuroglancer-segment-list .neuroglancer-segment-list-entry { padding-right: 72px !important; }
 .neuroglancer-segment-list-entry > .neuroglancer-segment-list-entry-sticky { min-width: 0 !important; flex: 0 1 auto !important; }
 .neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-id-container { min-width: 0 !important; flex: 0 1 auto !important; overflow: hidden !important; }
+
+/* The lab AI's predicted type in the Cell Profile (Ames 2026-10-19) */
+.nge-lb-ai-type { color: #c9b2ff; }
