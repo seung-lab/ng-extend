@@ -1647,4 +1647,5 @@ async function onHtmlClick(e: MouseEvent) {
   display: inline-block; padding: 1px 9px; border-radius: 5px 5px 0 0; font-weight: 600; font-size: 0.92em;
   color: #e8f3ff; background: rgba(40, 70, 110, 0.6); border: 1px solid rgba(126, 202, 255, 0.45); border-bottom-color: transparent;
 }
+.nge-tut-found { color: #9ff0b8; font-weight: 600; margin-top: 8px; }
 </style>

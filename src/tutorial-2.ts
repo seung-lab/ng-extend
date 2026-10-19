@@ -400,7 +400,7 @@ function watchMission() {
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
-  const SPOT = [87298, 52545, 998];
+  const SPOT = [82190, 58009, 381];
   const secret = /top\s*secret/i;
   const checks: Record<string, () => boolean> = {
     spot: () => {
@@ -424,9 +424,16 @@ function watchMission() {
     }
     if (done.has('point')) {
       clearInterval(timer);
-      // Found it: the celebration, then on.
+      // Found it: the celebration and a word, and the player moves on when
+      // ready (Ames 2026-10-19: "I don't like that this box auto-moves").
       document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
-      setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 2600);
+      const list = document.querySelector('.nge-tut-checklist');
+      if (list && !document.querySelector('.nge-tut-found')) {
+        const p = document.createElement('p');
+        p.className = 'nge-tut-found';
+        p.textContent = 'Nice find! Press Next when you are ready.';
+        list.after(p);
+      }
     }
   }, 500);
 }
@@ -800,10 +807,10 @@ Oh great, I finally found that very important memo from our collaborators! It wa
 Can you help out with this final task? Each line ticks itself off as you do it:
 
 <ol class="nge-tut-checklist">
-<li data-check="spot">Go to this location: ${copyButton('87298, 52545, 998')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>
+<li data-check="spot">Go to this location: ${copyButton('82190, 58009, 381')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>
 <li data-check="layer">Add a new annotation layer and name it <strong>Top Secret Location</strong>&nbsp;${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it', '.neuroglancer-layer-add-button, .nge-title-rename')}</li>
 <li data-check="layout">Open the 2 panel view (2D + 3D)&nbsp;${hint('Press SPACE')}</li>
-<li data-check="point">There is a missing branch here! Scroll through the 2D slices until you find it, then CTRL+CLICK to put a point where the branch should continue&nbsp;${hint('Scroll the mouse wheel over the 2D view to move through the slices. Watch for a branch that stops suddenly')}</li>
+<li data-check="point">There is a merger here! Scroll through the 2D slices to find where the wrong piece joins the cell, then CTRL+CLICK to put a point at the origin of the merger&nbsp;${hint('Scroll the mouse wheel over the 2D view to move through the slices. Find Path from the soma to the odd branch shows where it joins')}</li>
 </ol>`,
     position: OVER_3D,
     state: "middleauth+https://global.daf-apis.com/nglstate/api/v1/4777677526401024",
@@ -813,13 +820,17 @@ Can you help out with this final task? Each line ticks itself off as you do it:
       setTimeout(() => { try { (window as any).viewer.showAxisLines.value = true; } catch { /* no viewer */ } }, 1500);
     },
   },
+  // The "add a description and tag" step and its video are out until the
+  // video is redone (Ames 2026-10-19: the video is out of date). Video:
+  // https://www.youtube.com/watch?v=vnAqH91EgNQ (playlist index 6).
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-Optional: Add a description and tag to your annotation point. <em>Skip to the next slide if you prefer not to complete this task!</em>
-
-You can <a href="https://www.youtube.com/watch?v=vnAqH91EgNQ&list=PLZlCbXsRJFCw0BLFWKrc49JHKWK1o41Ud&index=6" target="_blank"> watch this video</a> to learn about adding descriptions and tags.`,
-    position: OVER_3D,
+Thank you! Nurro will investigate that merger right away.`,
+    image:
+      imgWheresNurro,
+    width: "400px",
+    position: MIDDLE,
   },
   {
     part: "Part 4 of 4 · Put it together",
@@ -832,13 +843,13 @@ Stuck, or found something odd? <strong>Chat</strong> is where the Pyr community 
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-That's a high level view of the interface! 😉 Next: put it to work in the <strong>Merger Sandbox</strong>. Seven cells, each with a merger to find and cut.
+That's a high level view of the interface! Next: put it to work in the <strong>Merger Sandbox</strong>. Seven cells, each with a merger to find and cut.
 
 <button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the Merger Sandbox</button>
 
 When you are ready to edit real cells, choose <strong>Ask for Edit Access</strong> in the <span class="nge-tut-burger">${RESOURCES_MENU_SVG}</span> hamburger menu (chomp it up!). <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
 
-Thanks for being a part of the neuroscience community! 🧠 For Science!`,
+Thanks for being a part of the neuroscience community! For Science!`,
     position: MIDDLE,
     image:
       imgTutorialFinal,
