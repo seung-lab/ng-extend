@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T16:01:15Z",
+      "title": "Tidier Segments panel on tablets",
+      "digest": "minor",
+      "items": [
+        "On a tablet the Segments panel buttons no longer pile up on top of the first cell after a split, a merge or a tap.",
+        "Each cell's remove button is now at the far right of its row, right under the heading's remove all.",
+        "In the report form, the box for console messages is greyed out when there are none to send."
+      ]
+    },
+    {
       "at": "2026-10-19T15:54:03Z",
       "title": "Pasted coordinates show their cell",
       "digest": "minor",

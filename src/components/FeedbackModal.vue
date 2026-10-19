@@ -35,6 +35,7 @@ const attachView = ref(true);
 // Recent console warnings and errors (util/console_buffer.ts), for the team.
 const attachConsole = ref(true);
 const consoleCount = ref(recentConsoleCount());
+const onConsoleToggle = (e: Event) => { attachConsole.value = (e.target as HTMLInputElement).checked; };
 const done = ref(false);
 const error = ref('');
 
@@ -433,8 +434,11 @@ onBeforeUnmount(() => {
           <input type="checkbox" v-model="attachView" />
           <span>Attach my current view, a share link so the team sees exactly what I see</span>
         </label>
-        <label class="nge-fb-attach">
-          <input type="checkbox" v-model="attachConsole" :disabled="!consoleCount" />
+        <!-- With nothing to attach the box is greyed out and empty (Ames
+             2026-10-19: it showed ticked, as if something would be sent). -->
+        <label class="nge-fb-attach" :class="{ 'nge-fb-attach--off': !consoleCount }">
+          <input type="checkbox" :checked="attachConsole && !!consoleCount" :disabled="!consoleCount"
+                 @change="onConsoleToggle" />
           <span>Attach recent console messages<template v-if="consoleCount"> ({{ consoleCount }} recent warnings and errors, passwords and tokens removed)</template><template v-else> (none so far)</template></span>
         </label>
 
@@ -589,6 +593,8 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nge-fb-attach input { accent-color: #7890ff; }
+.nge-fb-attach--off { opacity: 0.45; cursor: default; }
+.nge-fb-attach--off input { cursor: default; }
 .nge-fb-shot-row {
   display: flex;
   align-items: center;

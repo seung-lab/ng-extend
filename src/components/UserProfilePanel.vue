@@ -4311,7 +4311,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-trophy-track-grip:hover, .nge-trophy-track-nudge:hover, .nge-trophy-track-grip:focus-visible, .nge-trophy-track-nudge:focus-visible {
   color: #dcebff; border-color: rgba(120, 190, 255, 0.45); background: rgba(120, 190, 255, 0.08); outline: none;
 }
-@media (hover: none) { .nge-trophy-track-move { opacity: 1; } }
+@media (hover: none), (pointer: coarse) { .nge-trophy-track-move { opacity: 1; } }
 
 @media (min-width: 901px) {
   body:not(.nge-mobile) .nge-profile-shell--trophy { width: 97vw; max-width: none; height: 94vh; max-height: 94vh; }

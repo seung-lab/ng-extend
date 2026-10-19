@@ -1342,7 +1342,12 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 /* The trash can is an action, not a state: it shows on the row under the
    pointer (and the heading's on its heading), like the copy button. The eye
    is a state and always shows (Ames 2026-10-14). */
-@media (hover: hover) {
+/* "Show on hover" is for a mouse only (Nseraf, report 169, 2026-10-19). Some
+   tablets report a finger as able to hover, so these rules used to hide
+   buttons there and the touch layout (hover: none) never applied; a tap then
+   left a hover stuck and the heading's buttons piled up on the first row.
+   Every touch rule here and in mobile.css also takes (pointer: coarse). */
+@media (hover: hover) and (pointer: fine) {
   .neuroglancer-segment-list-entry:not(:hover) .nge-seg-list-remove { visibility: hidden; }
   .neuroglancer-segment-list-status:not(:hover) .nge-seg-remove-all { visibility: hidden !important; }
 }
@@ -1414,7 +1419,7 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-seg-folder-icon:first-of-type { margin-left: auto; }
 .nge-seg-folder-icon:hover { color: #fff; }
 .nge-seg-folder-ungroup:hover { color: #e06060; }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon { visibility: hidden; }
 }
 .nge-seg-list--folder {
@@ -1474,7 +1479,7 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-seg-list-heading--folder > .nge-seg-copy-visible { display: none !important; }
 .nge-seg-list-heading--folder .nge-seg-folder-name { flex: 1 1 auto; min-width: 40px; max-width: none; }
 .nge-seg-list-heading--folder .neuroglancer-segment-list-status-message { flex: none; }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon { display: none !important; }
 }
 .nge-seg-folder-icon:first-of-type { margin-left: 0; }
@@ -1511,7 +1516,7 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 
 /* the heading's icons keep their place while hidden, so nothing on the
    heading moves when the pointer comes over it (Ames 2026-10-14) */
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .nge-seg-list-heading--folder:not(:hover) .nge-seg-folder-icon { display: inline-block !important; visibility: hidden; }
 }
 
@@ -1557,7 +1562,7 @@ button.nge-seg-folder-color { -webkit-appearance: none; appearance: none; paddin
 body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; user-select: none !important; }
 .neuroglancer-segment-display-tab .neuroglancer-segment-list-entry-id { cursor: grab; }
 
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .nge-seg-list-heading--folder:not(:hover) > .nge-seg-folder-copy { visibility: hidden !important; }
 }
 
@@ -1608,7 +1613,7 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 .nge-seg-list-heading--inview .nge-seg-remove-all,
 .nge-seg-list-heading--pasted .nge-seg-remove-all { margin-left: 4px; }
 .nge-seg-list-heading--inview .nge-seg-folder-new { margin-left: auto; }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .neuroglancer-segment-list-status:not(:hover) .nge-seg-remove-all { visibility: hidden !important; }
 }
 .neuroglancer-segment-list-status .nge-seg-remove-all:hover { background-color: rgba(224, 96, 96, 0.18) !important; }
@@ -1690,7 +1695,7 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-seg-folder-actions .nge-seg-folder-copy,
 .nge-seg-folder-actions .nge-seg-remove-all { visibility: visible !important; display: inline-flex !important; }
 .nge-seg-folder--collapsed > .neuroglancer-segment-list-status .nge-seg-folder-actions .nge-seg-remove-all { display: none !important; }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .nge-seg-folder-actions {
     position: absolute; right: 0; top: 0; bottom: 0; z-index: 3;
     padding: 0 6px 0 22px;
@@ -1741,12 +1746,12 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .nge-h .nge-h-hover > * { visibility: visible !important; display: inline-flex !important; }
 .nge-seg-folder--collapsed > .nge-h .nge-h-hover .nge-seg-remove-all { display: none !important; }
 .nge-h .nge-h-region .nge-seg-list-keep { margin-left: auto !important; margin-right: 0 !important; flex: none; }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .nge-h .nge-h-hover { opacity: 0; pointer-events: none; }
   .nge-h:hover .nge-h-hover { opacity: 1; pointer-events: auto; }
   .nge-h:hover .nge-h-rest { visibility: hidden; }
 }
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   /* touch: no hover, so the buttons stay and the count sits before them */
   .nge-h .nge-h-region { width: auto; }
   .nge-h .nge-h-hover { position: static; }
@@ -1758,7 +1763,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   background: rgba(140, 180, 235, 0.35);
 }
 
-@media (hover: hover) { .nge-h:hover .nge-h-rest, .nge-h:hover .nge-h-rest * { visibility: hidden !important; } }
+@media (hover: hover) and (pointer: fine) { .nge-h:hover .nge-h-rest, .nge-h:hover .nge-h-rest * { visibility: hidden !important; } }
 
 /* the choice box: buttons wrap when there are several */
 .nge-confirm-buttons--choices { flex-wrap: wrap; }
@@ -1813,7 +1818,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .nge-h .nge-h-danger { flex: none; display: inline-flex; align-items: center; gap: 8px; }
 .nge-h .nge-h-danger > .nge-h-divider { display: inline-block; width: 1px; height: 14px; background: rgba(140, 180, 235, 0.35); }
 .nge-h .nge-h-danger > .nge-seg-remove-all { display: inline-flex !important; }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .nge-h:not(:hover) .nge-h-danger { visibility: hidden; }
   .nge-h:hover .nge-h-danger, .nge-h:hover .nge-h-danger > * { visibility: visible !important; }
 }
@@ -1926,3 +1931,22 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 }
 @keyframes nge-seg-finding { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .nge-from-place { margin-left: 6px; font: 600 10px 'JetBrains Mono', ui-monospace, monospace; color: #9fe3ff; white-space: nowrap; }
+
+/* The trash is the last thing on the row, at the far right, under the
+   heading's remove all (Nseraf, report 169; Ames 2026-10-19: never between
+   the jump arrow and the Δ). Copy stays right after the cell's chip. The Δ
+   keeps room for it, so nothing moves when it shows on hover. */
+.neuroglancer-segment-list-entry { position: relative; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-copy-container {
+  position: static !important; transform: none !important;
+  left: auto !important; right: auto !important; top: auto !important; flex: none !important;
+  order: 3 !important; margin-left: 4px !important;
+}
+.neuroglancer-segment-list-entry-sticky > .nge-seg-list-toggle {
+  left: auto !important; right: 6px !important; top: 50% !important; transform: translateY(-50%) !important;
+}
+/* the Δ moves left by the trash's width, and the row keeps that much more room */
+.neuroglancer-segment-list .neuroglancer-segment-list-entry .nge-lb-btn { right: 40px !important; }
+.neuroglancer-segment-list .neuroglancer-segment-list-entry { padding-right: 72px !important; }
+.neuroglancer-segment-list-entry > .neuroglancer-segment-list-entry-sticky { min-width: 0 !important; flex: 0 1 auto !important; }
+.neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-id-container { min-width: 0 !important; flex: 0 1 auto !important; overflow: hidden !important; }
