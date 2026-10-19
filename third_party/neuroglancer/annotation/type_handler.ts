@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {Annotation, AnnotationPropertySpec, AnnotationType, annotationTypeHandlers, getPropertyOffsets, propertyTypeDataType} from 'neuroglancer/annotation';
+import {Annotation, AnnotationPropertySpec, AnnotationType, annotationTypeHandlers, getPropertyOffsets, isNgeColorProperty, NGE_COLOR_PROPERTY, propertyTypeDataType} from 'neuroglancer/annotation';
 import {AnnotationLayer} from 'neuroglancer/annotation/renderlayer';
 import {PerspectiveViewRenderContext} from 'neuroglancer/perspective_view/render_layer';
 import {ChunkDisplayTransformParameters} from 'neuroglancer/render_coordinate_transform';
@@ -228,6 +228,11 @@ export abstract class AnnotationRenderHelper extends AnnotationRenderHelperBase 
         for (let i = 0, numProperties = properties.length; i < numProperties; ++i) {
           const property = properties[i];
           const functionName = `prop_${property.identifier}`;
+          // nge: the folder color is always there for defaultColor() below.
+          if (isNgeColorProperty(property)) {
+            referencedProperties.push(i);
+            continue;
+          }
           if (!controlsReferencedProperties.includes(property.identifier) &&
               !processedCode.match(new RegExp(`\\b${functionName}\\b`))) {
             continue;
@@ -251,8 +256,16 @@ export abstract class AnnotationRenderHelper extends AnnotationRenderHelperBase 
 
         builder.addVertexCode(glsl_COLORMAPS);
 
+        // nge: an annotation a folder has colored draws in that color; the
+        // rest keep the layer's (annotation/index.ts NGE_COLOR_PROPERTY).
+        const ngeColor = properties.some(isNgeColorProperty);
+        builder.addVertexCode(ngeColor ? `
+vec3 defaultColor() {
+  vec4 ngeFolderColor = prop_${NGE_COLOR_PROPERTY}();
+  return ngeFolderColor.a > 0.0 ? ngeFolderColor.rgb : uColor;
+}` : `
+vec3 defaultColor() { return uColor; }`);
         builder.addVertexCode(`
-vec3 defaultColor() { return uColor; }
 highp uint getPickBaseOffset() { return uint(gl_InstanceID) * ${this.pickIdsPerInstance}u; }
 `);
         // nge (polyline port): a polyline's instances are its lines, and each

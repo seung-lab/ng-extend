@@ -20,7 +20,7 @@ import 'neuroglancer/annotation/point';
 import 'neuroglancer/annotation/ellipsoid';
 import 'neuroglancer/annotation/polyline';
 
-import {AnnotationBase, AnnotationSerializer, AnnotationSource, AnnotationType, annotationTypes, formatAnnotationPropertyValue, SerializedAnnotations} from 'neuroglancer/annotation';
+import {AnnotationBase, AnnotationSerializer, AnnotationSource, AnnotationType, annotationTypes, formatAnnotationPropertyValue, isNgeColorProperty, SerializedAnnotations} from 'neuroglancer/annotation';
 import {findFirstInSortedArray} from 'neuroglancer/util/array';
 import {AnnotationLayerState, OptionalSegmentationDisplayState} from 'neuroglancer/annotation/annotation_layer_state';
 import {ANNOTATION_PERSPECTIVE_RENDER_LAYER_UPDATE_SOURCES_RPC_ID, ANNOTATION_RENDER_LAYER_RPC_ID, ANNOTATION_RENDER_LAYER_UPDATE_SEGMENTATION_RPC_ID, ANNOTATION_SPATIALLY_INDEXED_RENDER_LAYER_RPC_ID, forEachVisibleAnnotationChunk} from 'neuroglancer/annotation/base';
@@ -577,7 +577,8 @@ function AnnotationRenderLayer<TBase extends AnyConstructor<VisibilityTrackedRen
       const {pickedAnnotationBuffer} = pickState;
       if (pickedAnnotationBuffer === undefined) return undefined;
       const {properties} = this.base.source;
-      if (properties.length === 0) return undefined;
+      // nge: the hidden folder color is not a value to show.
+      if (properties.length === 0 || isNgeColorProperty(properties[0])) return undefined;
       const {
         pickedAnnotationBufferBaseOffset,
         pickedAnnotationType,
