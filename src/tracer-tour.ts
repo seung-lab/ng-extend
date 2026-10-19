@@ -83,7 +83,7 @@ Other tabs hold help requests, Scout Tags, your claims and your saved links. Som
     titleIcon: icon("highlight"),
     text: `**Shift+H.** Mark what you have checked. **Hold H and click** two points on a cell and the stretch between them is painted: **Checked**, **Needs a look** or **Problem**, or a label of your own.
 
-Not every dataset has it yet: on MEC the icon says so.`,
+Not every dataset has it: it needs skeletons, so it is not on MEC.`,
     position: onIcon("highlight"),
     highlight: true,
   },
