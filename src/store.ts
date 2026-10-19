@@ -1,4 +1,5 @@
 import { startViewHash } from './util/start_view';
+import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
 import { taskAction } from './pilot_actions';
 import { syncCellToSheet } from './sheet_sync';
@@ -737,6 +738,8 @@ export const useLayersStore = defineStore('layers', () => {
       if (stateRewriter) {
         try { response = await stateRewriter(response); } catch (e) { console.warn('loadState: rewrite failed (non-fatal):', e); }
       }
+      // A Sandbox view saved far out opens with its 2D view close in.
+      response = closeInSandboxView(response);
       // Set layout first to avoid localPositionValid crashes during layout transitions
       // Mobile: curated views open fullscreen 3D like everything else.
       if (isMobileRef.value) response.layout = '3d';

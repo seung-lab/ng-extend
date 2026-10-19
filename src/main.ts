@@ -9,6 +9,7 @@ import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
 import { startLockedLayers } from './util/locked_layers';
+import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startViewerPerf } from './util/viewer_perf';
@@ -405,6 +406,8 @@ function setupViewer() {
   startCaveOutbox();
   // The Sandbox's own 2D and 3D layers cannot be removed or deleted.
   startLockedLayers();
+  // The Sandbox's 2D view opens close enough in for its cells to load.
+  startSandboxZoom();
   // A ?cell= address (a cell ID opened from chat in a new tab) opens that cell.
   void startCellLinks();
   // Viewer settings a player chose (prefetching, chunk requests, memory) stay
