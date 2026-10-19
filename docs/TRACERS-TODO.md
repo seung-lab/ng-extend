@@ -6,6 +6,12 @@ from the `princeton-tracers` branch. Today it is only a different front end.
 Everything behind it is shared with the public game (live branch
 `eyewire-ii-community`), and much of it runs on Ames's personal accounts.
 
+**The rule (Ames, 2026-10-19): we don't mix paid and volunteers.** The
+Tracers are paid; the citizen scientists are volunteers. Tracers must never
+appear with the citizen scientists: not on the leaderboard, not in chat, not
+in stats, Achievements or the daily and weekly notes. Every item below serves
+that rule.
+
 Everything that differs on the Tracers site checks one flag, `TRACER_EDITION`
 in `src/edition.ts`, which is true only on that address or with `?tracers`.
 Keep new work behind that flag so the branch keeps merging cleanly from live.
@@ -21,14 +27,17 @@ Keep new work behind that flag so the branch keeps merging cleanly from live.
 | Scheduled jobs that read or write the database | 17 GitHub Actions workflows with `SUPABASE` secrets (CAVE sync, sheet sync, digest, weekly recap, practice reset, triage) | seung-lab repo secrets |
 | Edit permissions | CAVE (HiMC for MEC, Eyewire_2_Edit for Retina), plus the `pilot_members` table | CAVE admins / Admin Hub |
 
-So a Tracer's chat message, claim or completion lands in the same tables as
-everyone else's, and is seen by the public players.
+So today a Tracer's chat message, claim, edit or completion lands in the same
+tables as everyone else's, shows on the public leaderboard and in the public
+stats, and is seen by the public players. Until steps 1 to 3 are done, that
+breaks the rule above.
 
 ## To do, in order
 
 ### 1. Their own chat (first)
 
-Goal: Tracers chat with Tracers only, on a server that is not Ames's.
+Goal: Tracers chat with Tracers only, on a server that is not Ames's. They
+must never appear in the citizen scientists' chat.
 
 1. Create a new Supabase project owned by the lab (not a personal account).
    This project is the start of step 2 as well, so set it up for the long run.
@@ -52,7 +61,28 @@ Goal: Tracers chat with Tracers only, on a server that is not Ames's.
 6. Test with two accounts: one on the Tracers site, one on live. Neither may
    see the other's messages, presence or reactions.
 
-### 2. Move off Ames's personal Supabase
+### 2. Their own leaderboard
+
+Goal: Tracers rank with Tracers only, and never appear on the citizen
+scientists' leaderboard.
+
+1. The leaderboard reads `users` (edit and cell counts) through
+   `loadLeaderboard()` in `src/store.ts`, plus the views `leaderboard_board`
+   and `user_edit_counts`, and the weekly winners snapshot
+   (`weekly_winners`, `weekly-winners-snapshot.yml`).
+2. Once the Tracers have their own database (step 3) their board is separate
+   by construction. Until then, the public board must leave Tracers out: mark
+   them (for example a `tracer` flag on `users`, or a group) and filter them
+   out of every public ranking, the Dataset Stats, the weekly recap and the
+   daily digest. That filter goes on live, so it needs Ames's go.
+3. Edit counts come from CAVE (`cave-edits-sync.yml`) by CAVE user id, so a
+   Tracer's edits on MEC or Retina would be credited to the public board even
+   with a separate database. The sync must skip Tracer CAVE ids for the
+   public game, and credit them to the Tracers' board instead.
+4. Check each place a person's rank or count is shown: Leaderboard, profile,
+   Your Week in Science, Dataset Stats, chat name colors, Achievements.
+
+### 3. Move off Ames's personal Supabase
 
 Goal: nothing the Tracers use lives on `javthknksdcrlhiaaptj`.
 
@@ -74,7 +104,7 @@ Goal: nothing the Tracers use lives on `javthknksdcrlhiaaptj`.
 6. Admin: the Admin Hub (`admins` table, Pilot testers) must work on the new
    project, so someone can let Tracers in.
 
-### 3. Then, worth deciding
+### 4. Then, worth deciding
 
 - **Nurro:** runs on Ames's personal Anthropic credit. Turn it off on the
   Tracers site, or give it a lab key.
@@ -83,9 +113,6 @@ Goal: nothing the Tracers use lives on `javthknksdcrlhiaaptj`.
 - **Practice tutorials:** the Merge and Cut practice cells are shared and
   only one learner at a time can use each. Hide them on the Tracers site, or
   leave them.
-- **Leaderboard and stats:** these follow automatically once the database is
-  separate, but say so to the Tracers, since today they rank with the public
-  players.
 
 ## Rules of the repo that apply
 

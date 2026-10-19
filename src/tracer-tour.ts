@@ -40,7 +40,7 @@ document.addEventListener("nge:tracer-meet-cells", () => {
 export const steps: Step[] = [
   {
     title: "Welcome, Princeton Tracers",
-    text: `This is **Pyr**, the EyeWire II game, set up for you. It is the same game and the same data as the public site: your merges and cuts are real edits to the segmentation, and you share chat, the Cell Library and the leaderboard with the players.
+    text: `This is **Pyr**, the EyeWire II game, set up for you. Your merges and cuts are real edits to the segmentation.
 
 You start in **MEC**. This tour walks the top bar from left to right. Press **Next**, or **×** to leave any time. It is in the burger menu (top right) whenever you want it again.`,
     position: MIDDLE,
