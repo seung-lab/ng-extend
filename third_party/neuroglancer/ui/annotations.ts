@@ -23,7 +23,10 @@ import './annotations.css';
 
 // @ts-ignore (image import, bundled by esbuild)
 import pyrIconUrl from '../../../static/badges/pyr/pyr-icon.png';
-import {Annotation, AnnotationId, AnnotationPropertySerializer, AnnotationReference, AnnotationSource, annotationToJson, AnnotationType, annotationTypeHandlers, AxisAlignedBoundingBox, Ellipsoid, formatNumericProperty, Line, PolyLine} from 'neuroglancer/annotation';
+import {Annotation, AnnotationId, AnnotationPropertySerializer, AnnotationReference, AnnotationSource, annotationToJson, AnnotationType, annotationTypeHandlers, AxisAlignedBoundingBox, Ellipsoid, formatNumericProperty, isNgeColorProperty, Line, PolyLine} from 'neuroglancer/annotation';
+import {displayOrder, pickedAnnotations} from 'neuroglancer/ui/nge_annotation_folders';
+import {AnnotationListHost, bindAnnotationListDrag, makeFolderHeading, makePickBar, setRenameNext, takeRenameNext} from 'neuroglancer/ui/nge_annotation_list';
+import {SegmentFolder, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
 import {MultiscaleAnnotationSource} from 'neuroglancer/annotation/frontend_source';
 import {AnnotationLayer, PerspectiveViewAnnotationLayer, SliceViewAnnotationLayer, SpatiallyIndexedPerspectiveViewAnnotationLayer, SpatiallyIndexedSliceViewAnnotationLayer} from 'neuroglancer/annotation/renderlayer';
@@ -175,6 +178,24 @@ function visitTransformedAnnotationGeometry(
   });
 }
 
+/** nge: a row of the annotation list: an annotation with its number, or a
+ *  folder's heading (ui/nge_annotation_folders.ts). */
+type NgeListItem = {
+  kind: 'annotation', state: AnnotationLayerState, annotation: Annotation, number: number,
+  depth: number, folder?: SegmentFolder, key: string,
+}|{
+  kind: 'folder', state: AnnotationLayerState, folder: SegmentFolder, depth: number, count: number,
+  key: string,
+};
+
+const ngeObjectIds = new WeakMap<object, number>();
+let ngeNextObjectId = 0;
+function ngeObjectId(x: object) {
+  let id = ngeObjectIds.get(x);
+  if (id === undefined) ngeObjectIds.set(x, id = ++ngeNextObjectId);
+  return id;
+}
+
 interface AnnotationLayerViewAttachedState {
   refCounted: RefCounted;
   annotations: Annotation[];
@@ -197,7 +218,18 @@ export class AnnotationLayerView extends Tab {
     changed: new Signal<(splices: ArraySpliceOp[]) => void>(),
   };
   private virtualList = new VirtualList({source: this.virtualListSource});
-  private listElements: {state: AnnotationLayerState, annotation: Annotation}[] = [];
+  private listElements: NgeListItem[] = [];
+  /** nge: every annotation row in order, those in folded folders too (the
+   *  numbers and the arrows go through all of them). */
+  private ngeAllAnnotations: NgeListItem[] = [];
+  /** nge: where each annotation's row is in the list. */
+  private ngeRowIndex = new Map<AnnotationLayerState, Map<AnnotationId, number>>();
+  private ngeKeys: string[] = [];
+  /** nge: the next redraw replaces every row (columns or positions changed). */
+  private ngeRedrawAll = true;
+  private ngeRefreshPending = false;
+  private ngeNewFolderButton = document.createElement('button');
+  private ngePickBar: {element: HTMLElement, update: () => void}|undefined;
   private updated = false;
   private mutableControls = document.createElement('div');
   private headerRow = document.createElement('div');
@@ -235,6 +267,8 @@ export class AnnotationLayerView extends Tab {
             (annotation) => this.updateAnnotationElement(annotation, state)));
         refCounted.registerDisposer(source.childDeleted.add(
             (annotationId) => this.deleteAnnotationElement(annotationId, state)));
+        // nge: a new order, or a whole list restored, sends only `changed`
+        refCounted.registerDisposer(source.changed.add(this.ngeScheduleRefresh));
       }
       refCounted.registerDisposer(state.transform.changed.add(this.forceUpdateView));
       newAttachedAnnotationStates.set(
@@ -248,7 +282,154 @@ export class AnnotationLayerView extends Tab {
 
   private forceUpdateView = () => {
     this.updated = false;
+    this.ngeRedrawAll = true;
     this.updateView();
+  };
+
+  /** nge: the layer's own annotations, the ones folders and dragging act on. */
+  private ngeLocalState(): AnnotationLayerState|undefined {
+    const local = (this.layer as any).localAnnotations as AnnotationSource|undefined;
+    if (local === undefined || local.readonly) return undefined;
+    return this.annotationStates.states.find(s => s.source === local);
+  }
+
+  private ngeFolders(): SegmentFolders|undefined {
+    return (this.layer as any).ngeAnnFolders as SegmentFolders|undefined;
+  }
+
+  private ngeRefresh = () => {
+    if (!this.visible) {
+      this.updated = false;
+      return;
+    }
+    if (!this.updated) {
+      this.updateView();
+      return;
+    }
+    this.ngeRebuild();
+    this.resetOnUpdate();
+  };
+
+  private ngeScheduleRefresh = () => {
+    if (this.ngeRefreshPending) return;
+    this.ngeRefreshPending = true;
+    Promise.resolve().then(() => {
+      this.ngeRefreshPending = false;
+      if (!this.wasDisposed) this.ngeRefresh();
+    });
+  };
+
+  /**
+   * nge: work out the rows (folders, numbers) and tell the list which ones
+   * changed. Rows are compared by a key, so only the rows that differ are
+   * drawn again.
+   */
+  private ngeRebuild() {
+    const items: NgeListItem[] = [];
+    const all: NgeListItem[] = [];
+    const rowIndex = new Map<AnnotationLayerState, Map<AnnotationId, number>>();
+    const folders = this.ngeFolders();
+    const localState = this.ngeLocalState();
+    const picked = pickedAnnotations.ids;
+    let number = 0;
+    let isMutable = false;
+    for (const [state, info] of this.attachedAnnotationStates) {
+      if (!state.source.readonly) isMutable = true;
+      if (state.chunkTransform.value.error !== undefined) continue;
+      const annotations = Array.from(state.source as AnnotationSource);
+      info.annotations = annotations;
+      const {idToIndex} = info;
+      idToIndex.clear();
+      for (let i = 0, length = annotations.length; i < length; ++i) {
+        idToIndex.set(annotations[i].id, i);
+      }
+      const rows = new Map<AnnotationId, number>();
+      rowIndex.set(state, rows);
+      const withFolders = folders !== undefined && state === localState;
+      const order = withFolders ? displayOrder(annotations, folders!) :
+          annotations.map(annotation => ({kind: 'annotation' as const, annotation, depth: 0, hidden: false, folder: undefined as string|undefined}));
+      const present = withFolders ? new Set(annotations.map(a => a.id)) : undefined;
+      for (const entry of order) {
+        if (entry.kind === 'folder') {
+          if (entry.hidden) continue;
+          const count = folders!.cellsIn(entry.folder.id).filter(id => present!.has(id)).length;
+          items.push({
+            kind: 'folder', state, folder: entry.folder, depth: entry.depth, count,
+            key: `f:${entry.folder.id}:${ngeObjectId(entry.folder)}:${entry.depth}:${count}`,
+          });
+          continue;
+        }
+        ++number;
+        const folder = entry.folder === undefined ? undefined : folders!.value.find(f => f.id === entry.folder);
+        const item: NgeListItem = {
+          kind: 'annotation', state, annotation: entry.annotation, number, depth: entry.depth, folder,
+          key: `a:${ngeObjectId(state)}:${entry.annotation.id}:${ngeObjectId(entry.annotation)}:${number}:` +
+              `${entry.depth}:${folder ? ngeObjectId(folder) : ''}:${picked.has(entry.annotation.id) ? 1 : 0}`,
+        };
+        all.push(item);
+        if (entry.hidden) continue;
+        rows.set(entry.annotation.id, items.length);
+        items.push(item);
+      }
+    }
+    const oldKeys = this.ngeKeys;
+    const oldLength = this.virtualListSource.length;
+    const newKeys = items.map(x => x.key);
+    let pre = 0, suf = 0;
+    if (!this.ngeRedrawAll && oldKeys.length === oldLength) {
+      while (pre < oldKeys.length && pre < newKeys.length && oldKeys[pre] === newKeys[pre]) ++pre;
+      while (suf < oldKeys.length - pre && suf < newKeys.length - pre &&
+             oldKeys[oldKeys.length - 1 - suf] === newKeys[newKeys.length - 1 - suf]) {
+        ++suf;
+      }
+    }
+    const redrawAll = this.ngeRedrawAll;
+    this.ngeRedrawAll = false;
+    this.listElements = items;
+    this.ngeAllAnnotations = all;
+    this.ngeRowIndex = rowIndex;
+    this.ngeKeys = newKeys;
+    this.updateListLength();
+    // room for the longest number
+    this.element.style.setProperty('--nge-ann-num-width', `${Math.max(2, String(number).length) + 1}ch`);
+    if (redrawAll || pre !== oldLength || pre !== newKeys.length) {
+      this.virtualListSource.changed!.dispatch([{
+        retainCount: pre, deleteCount: oldLength - pre - suf, insertCount: newKeys.length - pre - suf,
+      }]);
+    }
+    this.mutableControls.style.display = isMutable ? 'contents' : 'none';
+    this.ngeNewFolderButton.style.display = localState !== undefined && folders !== undefined ? '' : 'none';
+    this.ngePickBar?.update();
+  }
+
+  /** nge: open the folders an annotation is folded away in. */
+  private ngeUnfoldFor(state: AnnotationLayerState, id: AnnotationId) {
+    const folders = this.ngeFolders();
+    if (folders === undefined || state !== this.ngeLocalState()) return false;
+    let cur = folders.folderOf(id);
+    let opened = false;
+    for (let guard = 0; cur !== undefined && guard < 100; ++guard) {
+      if (cur.collapsed) {
+        folders.setCollapsed(cur.id, false);
+        opened = true;
+      }
+      const parent: string|undefined = cur.parent;
+      cur = parent === undefined ? undefined : folders.value.find(f => f.id === parent);
+    }
+    return opened;
+  }
+
+  /** nge: what the drag and the pick bar need from this list. */
+  private ngeHost: AnnotationListHost = {
+    list: this.virtualList.element,
+    source: () => this.ngeLocalState()?.source as AnnotationSource|undefined,
+    folders: () => this.ngeLocalState() === undefined ? undefined : this.ngeFolders(),
+    displayIds: () => {
+      const local = this.ngeLocalState();
+      return this.ngeAllAnnotations.filter(x => x.state === local).map(
+          x => (x as {annotation: Annotation}).annotation.id);
+    },
+    refresh: () => this.ngeRefresh(),
   };
 
   private globalDimensionIndices: number[] = [];
@@ -490,14 +671,50 @@ export class AnnotationLayerView extends Tab {
       return b;
     };
     stepper.append(arrow(-1, '‹', 'Previous annotation'), arrow(1, '›', 'Next annotation'));
+    // nge: + Folder (Ames 2026-10-19), as in the Segments panel; picked
+    // annotations go straight in.
+    const newFolder = this.ngeNewFolderButton;
+    newFolder.type = 'button';
+    newFolder.className = 'nge-seg-list-keep nge-seg-folder-new nge-ann-folder-new';
+    newFolder.textContent = '+ Folder';
+    newFolder.title = 'Make a folder, then drag annotations onto it by their numbers (picked ones go straight in)';
+    newFolder.addEventListener('mousedown', event => event.stopPropagation());
+    newFolder.addEventListener('click', event => {
+      event.stopPropagation();
+      const folders = this.ngeFolders();
+      const source = this.ngeHost.source();
+      if (folders === undefined || source === undefined) return;
+      const f = folders.create('New folder');
+      setRenameNext(f.id);
+      const picked = this.ngeHost.displayIds().filter(id => pickedAnnotations.ids.has(id));
+      if (picked.length) {
+        folders.move(picked, f.id);
+        pickedAnnotations.clear();
+      }
+      // the heading is drawn at the top: show it
+      this.virtualList.element.scrollTop = 0;
+    });
     topRow.append(topBox, topLabel, stepper, countEl);
     this.updateListLength();
     this.element.appendChild(topRow);
+    // its own line over the list, so the arrows stay centred above
+    const listTools = document.createElement('div');
+    listTools.className = 'nge-ann-list-tools';
+    listTools.appendChild(newFolder);
+    this.element.appendChild(listTools);
 
     this.element.appendChild(this.headerRow);
     const {virtualList} = this;
     virtualList.element.classList.add('neuroglancer-annotation-list');
     this.element.appendChild(virtualList.element);
+    // nge: the picked annotations' bar, dragging by the number, and the
+    // folders' changes redraw the list.
+    this.ngePickBar = makePickBar(this.ngeHost);
+    this.element.appendChild(this.ngePickBar.element);
+    this.registerDisposer(bindAnnotationListDrag(this.ngeHost));
+    this.registerDisposer(pickedAnnotations.changed.add(this.ngeRefresh));
+    const folders = this.ngeFolders();
+    if (folders !== undefined) this.registerDisposer(folders.changed.add(this.ngeRefresh));
     this.virtualList.element.addEventListener('mouseleave', () => {
       this.displayState.hoverState.value = undefined;
     });
@@ -527,7 +744,8 @@ export class AnnotationLayerView extends Tab {
       let tries = 0;
       const reveal = () => {
         if (this.wasDisposed) return;
-        const index = this.listElements.findIndex(e => e.state === state && e.annotation.id === id);
+        if (tries === 0) this.ngeUnfoldFor(state, id);
+        const index = this.ngeRowIndex.get(state)?.get(id) ?? -1;
         if (index >= 0 && this.virtualList.element.offsetHeight > 0) {
           this.virtualList.scrollItemIntoView(index);
           return;
@@ -543,13 +761,10 @@ export class AnnotationLayerView extends Tab {
   private getRenderedAnnotationListElement(
       state: AnnotationLayerState, id: AnnotationId, scrollIntoView: boolean = false): HTMLElement
       |undefined {
-    const attached = this.attachedAnnotationStates.get(state);
-    if (attached == undefined) return undefined;
-    const index = attached.idToIndex.get(id);
-    if (index === undefined) return undefined;
-    const listIndex = attached.listOffset + index;
+    const listIndex = this.ngeRowIndex.get(state)?.get(id);
+    if (listIndex === undefined) return undefined;
     if (scrollIntoView) {
-      this.virtualList.scrollItemIntoView(index)
+      this.virtualList.scrollItemIntoView(listIndex);
     }
     return this.virtualList.getItemElement(listIndex);
   }
@@ -637,9 +852,36 @@ export class AnnotationLayerView extends Tab {
   }
 
   private render(index: number) {
-    const {annotation, state} = this.listElements[index];
+    const item = this.listElements[index];
+    if (item.kind === 'folder') {
+      const folders = this.ngeFolders()!;
+      return makeFolderHeading(
+          item.folder, item.depth, item.count, folders, item.state.source as AnnotationSource,
+          takeRenameNext(item.folder.id));
+    }
+    const {annotation, state} = item;
     const {layer, gridTemplate, globalDimensionIndices, localDimensionIndices} = this;
     const [element, elementColumnWidths] = makeAnnotationListElement(layer, annotation, state, gridTemplate, globalDimensionIndices, localDimensionIndices);
+    // nge: the number, in the list's order (Ames 2026-10-19). On the layer's
+    // own annotations it is also the handle to drag the row by.
+    const num = document.createElement('div');
+    num.className = 'nge-ann-num';
+    num.textContent = String(item.number);
+    num.style.gridColumn = 'num';
+    num.style.gridRow = '1';
+    element.prepend(num);
+    if (state === this.ngeLocalState()) {
+      element.dataset.ngePickable = '';
+      num.title = `Annotation ${item.number}. Drag to move it, or onto a folder to put it in. Ctrl+click picks several.`;
+    } else {
+      num.title = `Annotation ${item.number}`;
+    }
+    element.classList.toggle('nge-ann-picked', pickedAnnotations.ids.has(annotation.id));
+    if (item.depth > 0) {
+      element.classList.add('nge-ann-in-folder');
+      element.style.setProperty('--nge-ann-depth', String(item.depth));
+      element.style.setProperty('--nge-folder-color', item.folder?.color ?? '#8cb4eb');
+    }
     for (const [column, width] of elementColumnWidths.entries()) {
       this.setColumnWidth(column, width);
     }
@@ -686,9 +928,15 @@ export class AnnotationLayerView extends Tab {
       deletePlaceholder.style.gridColumn = `delete`;
 
       removeChildren(headerRow);
+      // nge: the numbers' column
+      const numHeader = document.createElement('div');
+      numHeader.className = 'nge-ann-num-header';
+      numHeader.style.gridColumn = 'num';
+      numHeader.textContent = '#';
+      headerRow.appendChild(numHeader);
       headerRow.appendChild(symbolPlaceholder);
       let i = 0;
-      let gridTemplate = '[symbol] 2ch';
+      let gridTemplate = '[num] var(--nge-ann-num-width, 3ch) [symbol] 2ch';
       const addDimension = (coordinateSpace: CoordinateSpace, dimIndex: number) => {
         const dimWidget = document.createElement('div');
         dimWidget.classList.add('neuroglancer-annotations-view-dimension');
@@ -721,50 +969,32 @@ export class AnnotationLayerView extends Tab {
       this.gridTemplate = gridTemplate;
       headerRow.style.gridTemplateColumns = gridTemplate;
       this.prevCoordinateSpaceGeneration = this.curCoordinateSpaceGeneration;
+      this.ngeRedrawAll = true;
     }
     if (this.updated) {
       return;
     }
-
-    let isMutable = false;
-    const {listElements} = this;
-    listElements.length = 0;
-    for (const [state, info] of this.attachedAnnotationStates) {
-      if (!state.source.readonly) isMutable = true;
-      if (state.chunkTransform.value.error !== undefined) continue;
-      const {source} = state;
-      const annotations = Array.from(source);
-      info.annotations = annotations;
-      const {idToIndex} = info;
-      idToIndex.clear();
-      for (let i = 0, length = annotations.length; i < length; ++i) {
-        idToIndex.set(annotations[i].id, i);
-      }
-      for (const annotation of annotations) {
-        listElements.push({state, annotation});
-      }
-    }
-    const oldLength = this.virtualListSource.length;
-    this.updateListLength();
-    this.virtualListSource.changed!.dispatch(
-        [{retainCount: 0, deleteCount: oldLength, insertCount: listElements.length}]);
-    this.mutableControls.style.display = isMutable ? 'contents' : 'none';
+    this.ngeRebuild();
     this.resetOnUpdate();
   }
 
   /** Select the annotation before or after the selected one and go to it. */
   private ngeStepAnnotation(delta: number) {
-    const {listElements} = this;
+    // nge: in the numbers' order, through folded folders too (they open)
+    const listElements = this.ngeAllAnnotations;
     const n = listElements.length;
     if (!n) return;
     const selected = this.selectedAnnotationState.value;
     const at = selected === undefined ? -1 : listElements.findIndex(
-        e => e.state === selected.annotationLayerState && e.annotation.id === selected.annotationId);
+        e => e.state === selected.annotationLayerState &&
+            (e as {annotation: Annotation}).annotation.id === selected.annotationId);
     // Nothing selected yet: Next starts at the first, Previous at the last.
     const index = at < 0 ? (delta > 0 ? 0 : n - 1) : (at + delta + n) % n;
-    const {annotation, state} = listElements[index];
+    const {annotation, state} = listElements[index] as {annotation: Annotation, state: AnnotationLayerState};
+    this.ngeUnfoldFor(state, annotation.id);
     this.layer.selectAnnotation(state, annotation.id, true);
-    this.virtualList.scrollItemIntoView(index);
+    const row = this.ngeRowIndex.get(state)?.get(annotation.id);
+    if (row !== undefined) this.virtualList.scrollItemIntoView(row);
     try {
       const chunkTransform = state.chunkTransform.value as ChunkTransformParameters;
       const {layerRank} = chunkTransform;
@@ -778,89 +1008,31 @@ export class AnnotationLayerView extends Tab {
   }
 
   private updateListLength() {
-    let length = 0;
-    for (const info of this.attachedAnnotationStates.values()) {
-      info.listOffset = length;
-      length += info.annotations.length;
-    }
-    this.virtualListSource.length = length;
+    // nge: the rows (folder headings too); the count says annotations only
+    this.virtualListSource.length = this.listElements.length;
+    const length = this.ngeAllAnnotations.length;
     if (this.ngeCountEl) this.ngeCountEl.textContent = `${length.toLocaleString()} ${length === 1 ? 'annotation' : 'annotations'}`;
   }
 
   private addAnnotationElement(annotation: Annotation, state: AnnotationLayerState) {
-    if (!this.visible) {
-      this.updated = false;
-      return;
-    }
-    if (!this.updated) {
-      this.updateView();
-      return;
-    }
-    const info = this.attachedAnnotationStates.get(state);
-    if (info !== undefined) {
-      const index = info.annotations.length;
-      info.annotations.push(annotation);
-      info.idToIndex.set(annotation.id, index);
-      const spliceStart = info.listOffset + index;
-      this.listElements.splice(spliceStart, 0, {state, annotation});
-      this.updateListLength();
-      this.virtualListSource.changed!.dispatch(
-          [{retainCount: spliceStart, deleteCount: 0, insertCount: 1}]);
-    }
-    this.resetOnUpdate();
+    annotation; state;
+    // nge: the rows are worked out again (numbers and folders move with any
+    // change) and only those that changed are drawn again.
+    this.ngeRefresh();
   }
 
   private updateAnnotationElement(annotation: Annotation, state: AnnotationLayerState) {
-    if (!this.visible) {
-      this.updated = false;
-      return;
-    }
-    if (!this.updated) {
-      this.updateView();
-      return;
-    }
-    const info = this.attachedAnnotationStates.get(state);
-    if (info !== undefined) {
-      const index = info.idToIndex.get(annotation.id);
-      if (index !== undefined) {
-        const updateStart = info.listOffset + index;
-        info.annotations[index] = annotation;
-        this.listElements[updateStart].annotation = annotation;
-        this.virtualListSource.changed!.dispatch(
-            [{retainCount: updateStart, deleteCount: 1, insertCount: 1}]);
-      }
-    }
-    this.resetOnUpdate();
+    annotation; state;
+    // nge: the rows are worked out again (numbers and folders move with any
+    // change) and only those that changed are drawn again.
+    this.ngeRefresh();
   }
 
   private deleteAnnotationElement(annotationId: string, state: AnnotationLayerState) {
-    if (!this.visible) {
-      this.updated = false;
-      return;
-    }
-    if (!this.updated) {
-      this.updateView();
-      return;
-    }
-    const info = this.attachedAnnotationStates.get(state);
-    if (info !== undefined) {
-      const {idToIndex} = info;
-      const index = idToIndex.get(annotationId);
-      if (index !== undefined) {
-        const spliceStart = info.listOffset + index;
-        const {annotations} = info;
-        annotations.splice(index, 1);
-        idToIndex.delete(annotationId);
-        for (let i = index, length = annotations.length; i < length; ++i) {
-          idToIndex.set(annotations[i].id, i);
-        }
-        this.listElements.splice(spliceStart, 1);
-        this.updateListLength();
-        this.virtualListSource.changed!.dispatch(
-            [{retainCount: spliceStart, deleteCount: 1, insertCount: 0}]);
-      }
-    }
-    this.resetOnUpdate();
+    annotationId; state;
+    // nge: the rows are worked out again (numbers and folders move with any
+    // change) and only those that changed are drawn again.
+    this.ngeRefresh();
   }
 
   private resetOnUpdate() {
@@ -1914,6 +2086,8 @@ export function UserLayerWithAnnotationsMixin<TBase extends {new (...args: any[]
 
                       for (let i = 0, count = properties.length; i < count; ++i) {
                         const property = properties[i];
+                        // nge: the folder color is set from the folder
+                        if (isNgeColorProperty(property)) continue;
                         const label = document.createElement('label');
                         label.classList.add('neuroglancer-annotation-property');
                         const idElement = document.createElement('span');
@@ -2130,6 +2304,12 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
     // EyeWire II: Highlight mode styles the rows of its newest mark by id.
     element.dataset.ngeId = String(annotation.id);
     element.style.setProperty('--nge-ann-color', serializeColor(state.displayState.color.value));
+    // nge: an annotation its folder colors shows that color here too
+    const ngeColorAt = state.source.properties.findIndex(isNgeColorProperty);
+    const ngePainted = ngeColorAt < 0 ? 0 : (annotation.properties[ngeColorAt] ?? 0);
+    if (ngePainted !== 0) {
+      element.style.setProperty('--nge-ann-color', serializeColor(unpackRGB(ngePainted)));
+    }
     element.style.gridTemplateColumns = gridTemplate;
     const icon = document.createElement('div');
     icon.className = 'neuroglancer-annotation-icon';
