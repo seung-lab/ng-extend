@@ -745,9 +745,14 @@ async function echoAppDecisions() {
     const byHand = row.status === 'approved' && /^By hand\b/.test(row.approver_note || '');
     // Kept as an idea for later (AdminHub.vue LATER_NOTE): not built either.
     const later = row.status === 'approved' && /^Later\b/.test(row.approver_note || '');
-    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state && !byHand && !later;
+    // On the To do list (AdminHub.vue TODO_NOTE, Ames 2026-10-19): a larger
+    // job done by hand when its turn comes, never built by the robot.
+    const todo = row.status === 'approved' && /^To do\b/.test(row.approver_note || '');
+    const building = LOOP && row.status === 'approved' && isBuildable(row) && !row.impl_state && !byHand && !later && !todo;
     const note = row.approver_note ? ` with the note "${row.approver_note}"` : '';
-    const posted = await say(row, later
+    const posted = await say(row, todo
+      ? `Added to the To do list in the Admin Hub by ${row.reviewed_by}. The robot is not building it. 📋`
+      : later
       ? `Kept as an idea for later in the Admin Hub by ${row.reviewed_by}. The robot is not building it. 💡`
       : byHand
       ? `Marked in progress in the Admin Hub by ${row.reviewed_by}: it is being fixed by hand, so the robot is not building it. ✓`
