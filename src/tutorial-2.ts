@@ -194,8 +194,6 @@ You've merged and cut your first cells. Now let's take a deeper dive into the in
 During this tutorial, you may make a mistake, accidentally delete something or become lost. 
 
 You can step backwards in the tutorial to retry. If you are still lost, just keep going and we will restore the workspace within 1 or 2 slides.`,
-    image:
-      imgWheresNurro,
     position: MIDDLE,
     width: "400px",
     state:
