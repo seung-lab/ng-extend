@@ -1889,3 +1889,20 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 /* the layer panel's delete button turns red on hover (Ames 2026-10-18) */
 .neuroglancer-layer-side-panel-title .nge-title-delete:hover { background-color: rgba(224, 96, 96, 0.18) !important; border-radius: 4px; }
 .neuroglancer-layer-side-panel-title .nge-title-delete:hover > svg { fill: #ff8a8a !important; stroke: #ff8a8a !important; }
+
+/* The Segments search box reads as a box to type in, with room around it
+   (Ames 2026-10-18: "too squished and doesn't read as a text input box"). */
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query {
+  box-sizing: border-box; height: 34px; margin: 6px 6px 10px !important;
+  width: calc(100% - 12px) !important;
+  padding: 6px 11px !important; font-size: 13px !important;
+  background: rgba(8, 13, 26, 0.95) !important;
+  border: 1px solid rgba(140, 180, 235, 0.42) !important; border-radius: 8px !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query:hover { border-color: rgba(140, 180, 235, 0.7) !important; }
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query:focus {
+  border-color: rgba(126, 224, 255, 0.9) !important; outline: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 3px rgba(126, 224, 255, 0.15);
+}
+.neuroglancer-segment-display-tab .neuroglancer-segment-list-query::placeholder { color: rgba(200, 215, 240, 0.55); }
