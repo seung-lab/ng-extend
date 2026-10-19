@@ -840,6 +840,9 @@ const completing = ref<{
    *  from the list, or typed. Optional. `typeKnown` is the type the cell
    *  already had, so an unchanged type is not written again. */
   cellType: string; cellTypeCustom: string; typeKnown: string; typeAnnotationId?: number; typeNote: string;
+  /** The lab's AI has a type for this cell: it stands, and nothing is saved,
+   *  unless the player says it is wrong (Ames 2026-10-19). */
+  correcting: boolean;
 } | null>(null);
 
 function cellKey(cell: CellRow): string { return String(cell.taskId ?? cell.segId); }
@@ -905,7 +908,7 @@ async function prefillCellType(root: string) {
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
   completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
-    cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '' };
+    cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '', correcting: false };
   void runCrosshairCheck(cell).then(() => {
     const root = completing.value?.check?.root;
     if (root && cellTypesFor(cell).length) void prefillCellType(root);
@@ -993,7 +996,9 @@ async function submitComplete(cell: CellRow) {
     // The type first: if it cannot be saved the form stays open and says why,
     // and nothing is completed yet.
     c.typeNote = '';
-    const type = (c.cellTypeCustom.trim() || c.cellType).trim().slice(0, 120);
+    // With an AI type, only a correction is saved: the AI's own guess is not
+    // written as the player's.
+    const type = cell.aiType && !c.correcting ? '' : (c.cellTypeCustom.trim() || c.cellType).trim().slice(0, 120);
     const server = activeCaveServer();
     if (type && type !== c.typeKnown && cellTypesFor(cell).length) {
       if (!server) { c.typeNote = 'The cell type could not be saved: no CAVE server for this dataset.'; return; }
@@ -3582,24 +3587,32 @@ const panelStyle = computed(() => ({
             <!-- The cell's type, saved with the completion (Nseraf 2026-10-19):
                  the same list as the Cell Profile, or typed. Optional. -->
             <template v-if="cellTypesFor(cell).length">
-              <label class="nge-cl-complete-label">Cell type (optional)</label>
-              <div class="nge-cl-complete-typerow">
-                <select v-model="completing.cellType" class="nge-cl-search-input nge-cl-complete-type"
-                        aria-label="Cell type" @change="completing.cellTypeCustom = ''"
-                        @keydown.stop @keyup.stop @keypress.stop>
-                  <option value="">Choose a type</option>
-                  <option v-for="t in cellTypesFor(cell)" :key="t" :value="t" :title="typeTitle(t)">{{ cellTypeLabel(t) }}</option>
-                </select>
-                <input v-model="completing.cellTypeCustom" class="nge-cl-search-input nge-cl-complete-type"
-                       placeholder="Or type your own" maxlength="120" aria-label="Or type your own cell type"
-                       @input="completing.cellTypeCustom.trim() && (completing.cellType = '')"
-                       @keydown.stop @keyup.stop @keypress.stop />
+              <label class="nge-cl-complete-label">{{ cell.aiType ? 'Cell type' : 'Cell type (optional)' }}</label>
+              <!-- The lab's AI type stands; a player only says when it is wrong
+                   (Ames 2026-10-19), and only that correction is saved. -->
+              <div v-if="cell.aiType && !completing.correcting" class="nge-cl-complete-ai">
+                <span :title="aiTypeTitle(cell.aiType)"><b>{{ cellTypeLabel(cell.aiType) }}</b>, the lab's AI prediction</span>
+                <button type="button" class="nge-cl-btn" @click="completing.correcting = true"
+                        title="Only if you are sure the AI is wrong. What you choose is saved as your correction.">Wrong? Correct it</button>
               </div>
-              <div v-if="cell.aiType" class="nge-cl-complete-ai">
-                <span :title="aiTypeTitle(cell.aiType)">The lab's AI predicts <b>{{ cellTypeLabel(cell.aiType) }}</b></span>
-                <button v-if="cellTypesFor(cell).includes(cell.aiType) && completing.cellType !== cell.aiType" type="button" class="nge-cl-btn"
-                        @click="completing.cellType = cell.aiType; completing.cellTypeCustom = ''">Use {{ cell.aiType }}</button>
-              </div>
+              <template v-else>
+                <div v-if="cell.aiType" class="nge-cl-complete-ai">
+                  <span>The AI said <b :title="aiTypeTitle(cell.aiType)">{{ cellTypeLabel(cell.aiType) }}</b>. Your choice is saved as a correction.</span>
+                  <button type="button" class="nge-cl-btn" @click="completing.correcting = false; completing.cellType = ''; completing.cellTypeCustom = ''">Keep the AI's type</button>
+                </div>
+                <div class="nge-cl-complete-typerow">
+                  <select v-model="completing.cellType" class="nge-cl-search-input nge-cl-complete-type"
+                          aria-label="Cell type" @change="completing.cellTypeCustom = ''"
+                          @keydown.stop @keyup.stop @keypress.stop>
+                    <option value="">Choose a type</option>
+                    <option v-for="t in cellTypesFor(cell)" :key="t" :value="t" :title="typeTitle(t)">{{ cellTypeLabel(t) }}</option>
+                  </select>
+                  <input v-model="completing.cellTypeCustom" class="nge-cl-search-input nge-cl-complete-type"
+                         placeholder="Or type your own" maxlength="120" aria-label="Or type your own cell type"
+                         @input="completing.cellTypeCustom.trim() && (completing.cellType = '')"
+                         @keydown.stop @keyup.stop @keypress.stop />
+                </div>
+              </template>
               <div v-if="completing.typeNote" class="nge-cl-complete-msg nge-cl-complete-msg--bad">{{ completing.typeNote }}</div>
             </template>
             <label class="nge-cl-complete-label">Link to your finished cell</label>
