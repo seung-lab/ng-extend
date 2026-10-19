@@ -289,6 +289,8 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
   //2 + image 2
   {
     text: `
+We are finding out how neurons connect to each other and which paths signals take through the brain. That map of every neuron and every connection is called a connectome. New to it? <a href="https://connectome.quest/atlas/" target="_blank" rel="noopener">Connectome 101</a> explains it, in a new tab.
+
 To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
     position: MIDDLE,
     image:
