@@ -72,22 +72,6 @@ Other tabs hold help requests, Scout Tags, your claims and your saved links. Som
     highlight: true,
   },
   {
-    title: "Cut",
-    titleIcon: icon("split"),
-    text: `**C.** **Ctrl+click** red points on one cell, press **G** for blue, **Ctrl+click** blue points on the other, then **Submit cut** (or **Enter**).
-
-**Preview** on the cut bar colors the two sides in 3D before you commit. Nothing is cut until you submit.`,
-    position: onIcon("split"),
-    highlight: true,
-  },
-  {
-    title: "Merge",
-    titleIcon: icon("merge"),
-    text: `**M.** **Ctrl+click** each of the two pieces, then **Submit merge** (or **Enter**).`,
-    position: onIcon("merge"),
-    highlight: true,
-  },
-  {
     title: "Find Path",
     titleIcon: icon("findPath"),
     text: `**F.** **Ctrl+click** two points on one segment and it draws the shortest route between them through the cell. Useful to find where a merger joins the cell you are tracing.`,
