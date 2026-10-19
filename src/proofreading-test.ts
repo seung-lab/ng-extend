@@ -45,7 +45,9 @@ export interface TestStatus {
   last?: { outcome: string; found: number; errors: number; damaged: number; percent: number; submitted_at: string } | null;
   wait_until?: string | null; can_start?: boolean;
 }
-interface StartResult { test: TestInfo; session: string; attempt: number; resumed: boolean; checks: number; endpoints: number; root: string | null; deadline?: string | null; }
+interface StartResult { test: TestInfo; session: string; attempt: number; resumed: boolean; checks: number; endpoints: number; root: string | null; deadline?: string | null;
+  /** The cell is still being put back (a long history): call again. */
+  resetting?: boolean; left?: number; }
 export interface TestResult {
   passed: boolean; feedback: string;
   /** Scored because the time limit ran out. */
@@ -390,8 +392,18 @@ async function startWork() {
     steps: ['Holding the cell for you', 'Putting it back to its start', 'Loading the cell', 'Almost there'],
   });
   let got: StartResult | null = null;
-  try { got = await secureWrite<StartResult>('test.start'); }
-  catch (e: any) { session.error = String(e?.message || e); }
+  // A long history is put back over several calls (2026-10-19): each call
+  // works for at most about a minute and the claim is kept in between.
+  for (let round = 0; round < 12; round++) {
+    try { got = await secureWrite<StartResult>('test.start'); }
+    catch (e: any) { session.error = String(e?.message || e); got = null; break; }
+    if (!got?.resetting) break;
+    startDatasetTransition({
+      id: 'proofreading-test', label: 'Your cell', eyebrow: 'Proofreading Test · Getting', thumbnail: imgProfessorNurro, contain: true, hold: true,
+      steps: [`Putting the cell back: ${got.left ?? 'a few'} edits to go`, 'Still putting it back', 'Almost there'],
+    });
+  }
+  if (got?.resetting) { session.error = 'The test cell is taking a while to put back. Try again in a few minutes.'; got = null; }
   if (!got) { session.phase = 'busy'; releaseDatasetTransition(); return; }
   session.test = got.test;
   session.nonce = got.session;

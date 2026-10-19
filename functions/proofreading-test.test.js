@@ -19,7 +19,9 @@ function fakeGraph(start) {
   const g = {roots: {...start}, log: [], details: {}, undone: [], groupAdds: [], nextOp: 2000};
   g.edit = (changes, when = Date.now()) => { // changes: {sv: newRoot}
     const id = g.nextOp++;
-    g.log.push({operation_id: id, timestamp: when, before: {...g.roots}});
+    // An undo reverses this edit only, as the chunkedgraph's does.
+    const before = {}; for (const k of Object.keys(changes)) before[k] = g.roots[k];
+    g.log.push({operation_id: id, timestamp: when, before});
     Object.assign(g.roots, changes);
     g.details[String(id)] = {operation_status: 0};
     return id;
@@ -30,8 +32,11 @@ function fakeGraph(start) {
     let m;
     if ((m = u.pathname.match(/\/node\/(\d+)\/root$/))) return json({root_id: g.roots[m[1]]});
     if ((m = u.pathname.match(/\/root\/(\d+)\/tabular_change_log$/))) {
-      // Every logged op is in every root's history (one cell).
-      return json({[m[1]]: g.log.map(op => ({operation_id: op.operation_id, timestamp: op.timestamp}))});
+      // Every logged op is in every root's history (one cell), except one
+      // the test hides until another has been undone (as a cut on a piece no
+      // registered spot sits on stays out of the cell's history).
+      const shown = g.log.filter(op => !(g.hiddenUntil && g.hiddenUntil[op.operation_id] !== undefined && !g.undone.includes(g.hiddenUntil[op.operation_id])));
+      return json({[m[1]]: shown.map(op => ({operation_id: op.operation_id, timestamp: op.timestamp}))});
     }
     if (u.pathname.endsWith('/operation_details')) {
       const ids = JSON.parse(u.searchParams.get('operation_ids'));
@@ -41,7 +46,7 @@ function fakeGraph(start) {
       const {operation_id} = JSON.parse(init.body);
       const op = g.log.find(o => o.operation_id === operation_id);
       g.undone.push(operation_id);
-      g.roots = {...op.before};
+      Object.assign(g.roots, op.before);
       const id = g.nextOp++;
       g.log.push({operation_id: id, timestamp: Date.now(), before: null});
       g.details[String(id)] = {operation_status: 0, undo_operation_id: operation_id};
@@ -129,8 +134,46 @@ test('start: a resumed session keeps the player\'s edits', async () => {
   const g = fakeGraph(START);
   g.edit({201: '700'});
   const {rpc} = fakeRpc({resumed: true});
-  const out = await handle({action: 'test.start', args: {}, who, me, io: io(g, rpc)});
+  const putBackDone = {...T, claimed_at: '2026-10-19T10:00:00Z', last_reset_at: '2026-10-19T10:01:00Z'};
+  const out = await handle({action: 'test.start', args: {}, who, me, io: {...io(g, rpc), sb: async path => path.startsWith('proofreading_tests?') ? [putBackDone] : CHECKS}});
   assert.equal(out.resumed, true); assert.deepEqual(g.undone, []); assert.equal(g.roots[201], '700'); assert.equal(out.root, '900');
+});
+
+test('start: an edit that shows only once another is undone is found in a second pass', async () => {
+  const g = fakeGraph(START);
+  const base = Date.parse(T.baseline_at);
+  const first = g.edit({301: '900'}, base + 60000);     // a piece merged on
+  const hidden = g.edit({201: '700'}, base + 120000);   // a cut the cell's history shows only later
+  g.hiddenUntil = {[hidden]: first};
+  const {rpc, calls} = fakeRpc({});
+  const out = await handle({action: 'test.start', args: {}, who, me, io: io(g, rpc)});
+  assert.equal(out.resetting, undefined); assert.equal(out.session, SESSION);
+  assert.deepEqual(g.undone.sort(), [first, hidden].sort());
+  assert.deepEqual({201: g.roots[201], 301: g.roots[301]}, {201: '900', 301: '800'}, 'back at the start');
+  assert.ok(calls.some(c => c.action === 'cleaned'), 'always marked as put back');
+  assert.ok(!calls.some(c => c.action === 'record'), 'nothing recorded as an error');
+});
+
+test('start: a long history is put back over several calls, never in one that runs out of time', async () => {
+  const g = fakeGraph(START);
+  const base = Date.parse(T.baseline_at);
+  for (let i = 0; i < 5; i++) g.edit({201: i % 2 ? '900' : '700'}, base + 60000 * (i + 1));
+  // Each undo takes 30 ms here, and a call may spend 50 ms.
+  const slow = async (url, init) => { if (String(url).includes('/undo')) await new Promise(r => setTimeout(r, 30)); return g.fetch(url, init); };
+  const state = {resumed: false};
+  const {rpc, calls} = fakeRpc(state);
+  const claimedAt = new Date(Date.now() - 1000).toISOString();
+  const row = () => ({...T, claimed_at: claimedAt, last_reset_at: calls.some(c => c.action === 'cleaned') ? new Date().toISOString() : '2026-10-11T02:30:00Z'});
+  const callIo = {...io(g, rpc), fetch: slow, resetBudgetMs: 50, sb: async path => path.startsWith('proofreading_tests?') ? [row()] : CHECKS};
+  const firstCall = await handle({action: 'test.start', args: {}, who, me, io: callIo});
+  assert.equal(firstCall.resetting, true); assert.ok(firstCall.left > 0); assert.ok(g.undone.length > 0 && g.undone.length < 5);
+  assert.ok(!calls.some(c => c.action === 'record'), 'running out of time is not a failure');
+  state.resumed = true;   // the page calls again: the same claim
+  let out = firstCall;
+  for (let i = 0; i < 10 && out.resetting; i++) out = await handle({action: 'test.start', args: {}, who, me, io: callIo});
+  assert.equal(out.resetting, undefined); assert.equal(out.root, '900');
+  assert.equal(g.roots[201], '900', 'back at the start');
+  assert.ok(calls.some(c => c.action === 'cleaned'));
 });
 
 test('start: a cell that will not go back to its start is reported, never handed over', async () => {

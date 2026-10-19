@@ -51,11 +51,15 @@ test('pilot_test_action: one player at a time, holds, tries, the pass opens the 
     await assert.rejects(() => call(A, 'heartbeat', {id, session: B}), /has ended/);
     await assert.rejects(() => call(B, 'heartbeat', {id, session: c1.session}), /has ended/);
     assert.ok((await call(A, 'heartbeat', {id, session: c1.session})).expires_at);
-    // The time limit (60 minutes by default): the clock starts at the claim,
-    // and renewing the hold never reaches past the limit plus two minutes.
-    assert.ok(Math.abs(Date.parse(c1.deadline_at) - Date.now() - 60 * 60000) < 60000, 'the deadline is an hour from the claim');
-    assert.equal(again.deadline_at, c1.deadline_at, 'a reload keeps the same clock');
-    assert.equal((await call(A, 'status')).deadline_at, c1.deadline_at);
+    // The time limit (60 minutes by default): no clock while the cell is
+    // being put back; it starts when the cell is handed over, and renewing the
+    // hold never reaches past the limit plus two minutes.
+    assert.equal(c1.deadline_at, null, 'no clock at the claim');
+    const handed = await call(A, 'cleaned', {id, session: c1.session});
+    assert.ok(Math.abs(Date.parse(handed.deadline_at) - Date.now() - 60 * 60000) < 60000, 'the deadline is an hour from the hand over');
+    assert.equal((await call(A, 'cleaned', {id, session: c1.session})).deadline_at, handed.deadline_at, 'handed over twice, one clock');
+    assert.equal((await call(A, 'claim')).deadline_at, handed.deadline_at, 'a reload keeps the same clock');
+    assert.equal((await call(A, 'status')).deadline_at, handed.deadline_at);
     assert.equal((await call(B, 'status')).deadline_at, null, 'nobody else is told');
     assert.equal((await call(A, 'status')).test.time_limit_minutes, 60);
     await db.exec(`UPDATE proofreading_tests SET deadline_at = now() + interval '1 minute' WHERE id='${id}'`);

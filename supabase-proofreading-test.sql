@@ -223,11 +223,11 @@ BEGIN
       END IF;
     END IF;
     was := t.status;
-    -- The clock starts now: the limit runs from the claim, and the hold can
-    -- be renewed up to the limit plus the grace, never further.
+    -- No clock yet: it starts when the cell is handed over ('cleaned'), so
+    -- time spent putting a long history back is not the player's.
     UPDATE public.proofreading_tests SET status = 'in_use', claimed_by = p_user, claimed_at = now(),
-        deadline_at = now() + make_interval(mins => time_limit_minutes),
-        expires_at = least(now() + make_interval(mins => hold_minutes), now() + make_interval(mins => time_limit_minutes) + grace),
+        deadline_at = NULL,
+        expires_at = now() + make_interval(mins => hold_minutes),
         claim_nonce = gen_random_uuid(), reset_nonce = NULL,
         uses = uses + 1, updated_at = now()
       WHERE id = t.id RETURNING * INTO t;
@@ -247,10 +247,15 @@ BEGIN
         WHERE id = t.id RETURNING * INTO t;
       RETURN jsonb_build_object('expires_at', t.expires_at, 'deadline_at', t.deadline_at);
     ELSIF p_action = 'cleaned' THEN
-      -- The server put the cell back to its start under this claim.
-      UPDATE public.proofreading_tests SET last_reset_at = now(), reset_failures = 0, last_error = NULL, updated_at = now()
+      -- The server put the cell back to its start under this claim and hands
+      -- it over: the time limit starts now (2026-10-19), and the hold can be
+      -- renewed up to the limit plus the grace, never further.
+      UPDATE public.proofreading_tests SET last_reset_at = now(), reset_failures = 0, last_error = NULL,
+          deadline_at = coalesce(deadline_at, now() + make_interval(mins => time_limit_minutes)),
+          expires_at = least(expires_at, coalesce(deadline_at, now() + make_interval(mins => time_limit_minutes)) + grace),
+          updated_at = now()
         WHERE id = t.id RETURNING * INTO t;
-      RETURN jsonb_build_object('ok', true);
+      RETURN jsonb_build_object('ok', true, 'deadline_at', t.deadline_at);
     ELSIF p_action = 'record' THEN
       IF coalesce(p_args->>'outcome', '') NOT IN ('pass', 'fail', 'abandoned', 'error') THEN RAISE EXCEPTION 'Unknown outcome'; END IF;
       UPDATE public.proofreading_test_attempts SET outcome = p_args->>'outcome', submitted_at = now(),

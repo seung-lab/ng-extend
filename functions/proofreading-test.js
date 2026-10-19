@@ -186,35 +186,66 @@ function adminNote(me, decision, timedOut = false) {
 /** Undo every operation on the cell after the baseline, newest first. The
  *  roots are the current roots of the check supervoxels; every edit that
  *  touched the cell is in one of their histories. Returns how many. */
-async function undoAfterBaseline(test, roots, cave, assertLease) {
+/** One pass: undo the operations after the baseline still in effect in the
+ *  histories of these roots, newest first, until `until` (ms). */
+async function undoPass(test, roots, cave, assertLease, until) {
   const base = pcgBase(test);
   const ops = new Map();
   for (const root of new Set(Object.values(roots))) {
     const data = await cave.get(`${base}/root/${root}/tabular_change_log?filtered=false`);
     for (const op of operationsAfter(data, root, test.baseline_at)) ops.set(op.operationId, op);
   }
-  if (!ops.size) return 0;
+  if (!ops.size) return {found: 0, undone: 0, signature: '', outOfTime: false};
   const ids = [...ops.keys()], details = {};
   for (let i = 0; i < ids.length; i += 100) {
     Object.assign(details, await cave.get(`${base}/operation_details?int64_as_str=1&operation_ids=${encodeURIComponent(JSON.stringify(ids.slice(i, i + 100)))}`));
   }
   const active = remainingOperations([...ops.values()], details);
+  const signature = active.map(op => op.operationId).join(',');
+  let undone = 0;
   for (const op of active) {
+    if (Date.now() > until) return {found: active.length, undone, signature, outOfTime: true};
     await assertLease();
     await cave.post(`${base}/undo?int64_as_str=1`, {operation_id: op.operationId});
+    undone++;
   }
-  return active.length;
+  return {found: active.length, undone, signature, outOfTime: false};
 }
 
-/** Put the cell back to its start: undo what came after the baseline, then
- *  check every graph check is in its start state. */
-async function putBack(test, checks, cave, assertLease) {
+/**
+ * Put the cell back to its start: undo what came after the baseline, then
+ * check every graph check is in its start state.
+ *
+ * In passes (2026-10-19): an edit on a piece that no registered spot sits on
+ * can be missing from these histories until the edits around it are undone.
+ * A tracer's 63 direct edits on the cell were only partly found by a single
+ * pass, which left the cell half reset (src/practice.ts found the same for
+ * practice cells). A pass that finds the same edits as the one before is the
+ * end: those cannot be undone further.
+ *
+ * Within `budgetMs`: a long history is put back over several calls rather
+ * than running into the function's own time limit. `partial` means time ran
+ * out with edits left; calling again carries on.
+ */
+async function putBack(test, checks, cave, assertLease, budgetMs = Infinity) {
+  const until = Date.now() + budgetMs;
   let roots = await readRoots(test, checks, cave.get);
-  const undone = await undoAfterBaseline(test, roots, cave, assertLease);
-  if (undone) roots = await readRoots(test, checks, cave.get);
+  let undone = 0, last = '';
+  for (let pass = 0; pass < 12; pass++) {
+    const r = await undoPass(test, roots, cave, assertLease, until);
+    undone += r.undone;
+    if (r.undone) roots = await readRoots(test, checks, cave.get);
+    if (r.outOfTime) return {clean: false, partial: true, undone, left: r.found - r.undone, wrong: wrongAtStart(checks, roots), roots};
+    if (!r.found || r.signature === last) break;
+    last = r.signature;
+  }
   const wrong = wrongAtStart(checks, roots);
-  return {clean: wrong.length === 0, undone, wrong, roots};
+  return {clean: wrong.length === 0, partial: false, undone, left: 0, wrong, roots};
 }
+
+/** How long one start may spend putting the cell back before it hands the
+ *  rest to the next call (the function itself stops at 120 s). */
+const RESET_BUDGET_MS = 75000;
 
 /** Add the player to each CAVE group the test names. 422 means already a
  *  member, which is as good. */
@@ -273,29 +304,38 @@ async function handle({action, args, who, me, io}) {
     }
     // The cell's root as it is now: the saved view names the root it had at
     // registration, which a resumed session's own edits have replaced.
-    let root = null;
-    if (!claim.resumed) {
-      // Whatever the last player (or anyone) did since the baseline comes
-      // off before the cell is shown.
+    let root = null, deadline = claim.deadline_at || null;
+    // Put back under this claim already (a reload mid test): the player's
+    // own edits stay. Otherwise whatever was done since the baseline comes
+    // off before the cell is shown, carrying on from an earlier call that
+    // ran out of time.
+    const cleanedForThisClaim = !!(full.last_reset_at && full.claimed_at && Date.parse(full.last_reset_at) >= Date.parse(full.claimed_at));
+    if (!claim.resumed || !cleanedForThisClaim) {
       const cave = caveClient(io);
       let put;
-      try { put = await putBack(full, checks, cave, () => rpc('heartbeat', {id, session})); }
+      try { put = await putBack(full, checks, cave, () => rpc('heartbeat', {id, session}), io.resetBudgetMs ?? RESET_BUDGET_MS); }
       catch (e) {
         await rpc('record', {id, session, outcome: 'error', clean: false, error: String(e && e.message).slice(0, 300)}).catch(() => {});
         fail(503, 'The test cell could not be put back to its start. Try again in a few minutes.');
       }
+      // Out of time with edits left: the claim stays, and the page calls
+      // again to carry on.
+      if (put.partial) return {resetting: true, left: put.left, undone: put.undone, test: claim.test, session, attempt: claim.attempt};
       if (!put.clean) {
         await rpc('record', {id, session, outcome: 'error', clean: false, error: 'Not at its start after the undo: ' + put.wrong.join('; ').slice(0, 300)}).catch(() => {});
         fail(503, 'The test cell is not in its starting state. An admin has been told; try again later.');
       }
-      if (put.undone) await rpc('cleaned', {id, session});
+      // Always marked, so a reload knows the cell was put back under this
+      // claim. The clock starts here, when the cell is handed over.
+      const cleaned = await rpc('cleaned', {id, session});
+      if (cleaned && cleaned.deadline_at) deadline = cleaned.deadline_at;
       root = put.roots[full.anchor_supervoxel] || null;
     } else {
       try { root = await rootOf(caveClient(io).get, pcgBase(full), full.anchor_supervoxel); } catch (e) { root = null; }
     }
     return {test: claim.test, session, attempt: claim.attempt, resumed: !!claim.resumed, root,
       // When the time limit on this try runs out (null: no limit).
-      deadline: claim.deadline_at || null,
+      deadline,
       // Things to fix are the cuts and merges; a keep or apart check is
       // something not to break, and is not counted for the player.
       checks: checks.filter(c => ERROR_KINDS.includes(c.kind)).length, endpoints: checks.filter(c => c.kind === 'endpoint').length};
@@ -343,4 +383,4 @@ async function handle({action, args, who, me, io}) {
   fail(400, 'Unknown test action');
 }
 
-module.exports = {handle, adminNote, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoAfterBaseline, grantGroups, EXPECT};
+module.exports = {handle, adminNote, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoPass, grantGroups, RESET_BUDGET_MS, EXPECT};
