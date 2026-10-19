@@ -1701,7 +1701,11 @@ const ewRecordActivity = (key, sb, ctx, who, token, value) => recordActivity({
 });
 
 const EW_NOTIF_FIELDS = ["title", "body", "image_url", "thumbnail_url", "target_type", "target_id", "send_at", "expires_at", "post_to_chat", "chat_posted_at"];
-const EW_TRIAGE_FIELDS = ["status", "proposed_message", "approver_note", "impl_state", "reviewed_by", "reviewed_at", "result_note", "tested_by", "tested_at", "feedback_log", "approver_slack_id"];
+// todo_rank, todo_size: the To do column's order and S/M/L tag
+// (supabase-triage-todo.sql, Ames 2026-10-19).
+const EW_TRIAGE_FIELDS = ["status", "proposed_message", "approver_note", "impl_state", "reviewed_by", "reviewed_at", "result_note", "tested_by", "tested_at", "feedback_log", "approver_slack_id", "todo_rank", "todo_size"];
+const ewTodoRank = v => (v === null || Number.isFinite(v) ? v : (() => { throw ewErr(400, "bad todo_rank"); })());
+const ewTodoSize = v => (v === null || ["S", "M", "L"].includes(v) ? v : (() => { throw ewErr(400, "bad todo_size"); })());
 const ewPick = (obj, keys) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keys.includes(k)));
 const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for science!", "Your practice cell is ready"];
 const ewErr = (status, msg) => Object.assign(new Error(msg), { status });
@@ -1838,10 +1842,36 @@ exports.ewSecureWrite = onRequest(
         case "triage.update": {
           needAdmin();
           if (!/^[0-9a-f-]{36}$/i.test(String(args.id))) throw ewErr(400, "bad id");
-          out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(ewPick(args.fields, EW_TRIAGE_FIELDS)) }))[0];
+          const fields = ewPick(args.fields, EW_TRIAGE_FIELDS);
+          if ("todo_rank" in fields) ewTodoRank(fields.todo_rank);
+          if ("todo_size" in fields) ewTodoSize(fields.todo_size);
+          out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(fields) }))[0];
+          // Moving or sizing a To do card changes nothing the bridge mirrors.
+          const onlyTodo = Object.keys(fields).every(k => k === "todo_rank" || k === "todo_size");
           // An Admin Hub decision: the bridge mirrors it to Slack and starts
           // any build now instead of on its next timer.
-          await wakeWorkflow("slack-triage-bridge.yml", "admin hub");
+          if (!onlyTodo) await wakeWorkflow("slack-triage-bridge.yml", "admin hub");
+          break;
+        }
+        // A To do typed in on the board, not from a player report (Ames
+        // 2026-10-19). Saved as an approved card whose note starts "To do",
+        // so the robot never builds it. decision_slack_ts is set so the
+        // bridge never posts it to Slack, and with no report behind it
+        // nobody is notified.
+        case "triage.todo": {
+          needAdmin();
+          const title = String(args.title || "").trim();
+          const note = String(args.note || "").trim();
+          if (!title || title.length > 200 || note.length > 4000) throw ewErr(400, "A To do needs a title (200 characters at most)");
+          const by = me?.display_name || who.email;
+          out = (await sb("feedback_triage", { method: "POST", body: JSON.stringify({
+            source: "todo", source_id: crypto.randomUUID(),
+            source_excerpt: note ? `${title}\n\n${note}` : title,
+            recommendation: "nothing", status: "approved",
+            approver_note: `To do: added on the board by ${by}.`,
+            reviewed_by: by, reviewed_at: new Date().toISOString(), decision_slack_ts: "board",
+            todo_rank: ewTodoRank(args.rank ?? null), todo_size: ewTodoSize(args.size ?? null),
+          }) }))[0];
           break;
         }
         // ── any signed in user, fixed shapes only ──
