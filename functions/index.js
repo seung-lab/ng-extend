@@ -1853,27 +1853,6 @@ exports.ewSecureWrite = onRequest(
           if (!onlyTodo) await wakeWorkflow("slack-triage-bridge.yml", "admin hub");
           break;
         }
-        // A To do typed in on the board, not from a player report (Ames
-        // 2026-10-19). Saved as an approved card whose note starts "To do",
-        // so the robot never builds it. decision_slack_ts is set so the
-        // bridge never posts it to Slack, and with no report behind it
-        // nobody is notified.
-        case "triage.todo": {
-          needAdmin();
-          const title = String(args.title || "").trim();
-          const note = String(args.note || "").trim();
-          if (!title || title.length > 200 || note.length > 4000) throw ewErr(400, "A To do needs a title (200 characters at most)");
-          const by = me?.display_name || who.email;
-          out = (await sb("feedback_triage", { method: "POST", body: JSON.stringify({
-            source: "todo", source_id: crypto.randomUUID(),
-            source_excerpt: note ? `${title}\n\n${note}` : title,
-            recommendation: "nothing", status: "approved",
-            approver_note: `To do: added on the board by ${by}.`,
-            reviewed_by: by, reviewed_at: new Date().toISOString(), decision_slack_ts: "board",
-            todo_rank: ewTodoRank(args.rank ?? null), todo_size: ewTodoSize(args.size ?? null),
-          }) }))[0];
-          break;
-        }
         // ── any signed in user, fixed shapes only ──
         case "notification.self": {
           if (!me) throw ewErr(403, "no EyeWire II profile");
@@ -2003,6 +1982,40 @@ exports.ewSecureWrite = onRequest(
               if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
               throw e;
             }
+            break;
+          }
+          // The admins' To do board (supabase-admin-todos.sql, Ames
+          // 2026-10-19): every rule is in todos.js. A tag reaches the person
+          // twice: the bell in Pyr, and a Slack message that pings them.
+          if (typeof action === "string" && action.startsWith("todo.")) {
+            needAdmin();
+            const { todoAction, restDb, slackIdOf } = require("./todos");
+            const byName = me?.display_name || me?.username || who.email;
+            const site = EW_ORIGINS.some(o => o.test(String(req.headers.origin || ""))) && !/localhost/.test(String(req.headers.origin))
+              ? String(req.headers.origin) : "https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com";
+            const tag = async (people, card, what, said) => {
+              const link = `${site}/?triage=board&todo=${card.id}`;
+              const quote = String(said || "").replace(/\s+/g, " ").slice(0, 200);
+              const rows = people.map(p => ({ title: `📋 ${byName} ${what} a To do`.slice(0, 120),
+                body: `${card.title}${quote ? `\n\n"${quote}"` : ""}\n\n${link}`.slice(0, 500),
+                target_type: "user", target_id: p.id, send_at: new Date().toISOString(), created_by: me?.id || null }));
+              try { await sb("notifications", { method: "POST", body: JSON.stringify(rows) }); }
+              catch (e) { console.warn("[todo] bell failed:", e.message); }
+              const pings = people.map(p => { const id = slackIdOf(p); return id ? `<@${id}>` : `@${p.name}`; }).join(" ");
+              try {
+                const r = await slackPost(slackBotToken.value().trim(), "chat.postMessage", { channel: REVIEW_CHANNEL_ID, unfurl_links: false,
+                  text: `📋 ${pings} ${byName} ${what} a To do: *${card.title}*${quote ? `\n> ${quote}` : ""}\n<${link}|Open it on the To do board>` });
+                if (!r.ok) console.warn("[todo] slack failed:", r.error);
+              } catch (e) { console.warn("[todo] slack failed:", e.message); }
+            };
+            try {
+              out = await todoAction(action, args, { db: restDb(sb), me, byName, tag });
+            } catch (e) {
+              // Until the SQL is run the table is missing: say so plainly.
+              if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
+              throw e;
+            }
+            if (args.fields && args.fields.triage_id) await wakeWorkflow("slack-triage-bridge.yml", "to do board");
             break;
           }
           // Saved teams (supabase-teams.sql): every rule is in teams.js.

@@ -10,6 +10,7 @@ import {supabase} from '../supabase';
 import RollUp from 'components/RollUp.vue';
 import CellTypeCheck from 'components/CellTypeCheck.vue';
 import AccessRequestsTab from 'components/AccessRequestsTab.vue';
+import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
@@ -137,11 +138,7 @@ interface TriageRow {
   tested_by?: string | null;
   slack_ts?: string | null;
   slack_channel?: string | null;
-  // The To do list (supabase-triage-todo.sql): its order and S/M/L tag.
-  todo_rank?: number | null;
-  todo_size?: TodoSize | null;
 }
-type TodoSize = 'S' | 'M' | 'L';
 type ImplState = 'queued' | 'implementing' | 'needs_info' | 'testing' | 'changes_requested'
   | 'answer_queued' | 'answering' | 'deploy_queued' | 'deploying' | 'deployed'
   | 'live_test_queued' | 'live_testing' | 'revert_queued' | 'reverting' | 'failed';
@@ -262,7 +259,7 @@ const shortDate = (iso: string) => {
 // Slack and this tab write the same rows, so a dismiss, stop or "good" in a
 // Slack thread moves the card here too (after Refresh).
 type TriageGroupKey = 'decide' | 'progress' | 'todo' | 'later' | 'done' | 'dismissed';
-const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, todo: true, later: false, done: false, dismissed: false });
+const triageOpen = ref<Record<TriageGroupKey, boolean>>({ decide: true, progress: true, todo: false, later: false, done: false, dismissed: false });
 
 // The card you are working on stays marked, and stays in view when the list
 // reloads after an action (Ames 2026-10-05: sending an update reloaded the
@@ -340,7 +337,7 @@ const triageGroups = computed(() => {
   const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
     { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Triage zero. Nicely done.', closed: false },
     { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
-    { key: 'todo', icon: '📋', title: 'To do', hint: 'Bigger jobs we mean to do', empty: 'Nothing on the list.', closed: false },
+    { key: 'todo', icon: '📋', title: 'On the To do board', hint: 'Reports planned there', empty: 'No reports on the To do board.', closed: true },
     { key: 'later', icon: '💡', title: 'Ideas for later', hint: 'Good ideas, not now', empty: 'No ideas put by.', closed: true },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
@@ -349,8 +346,6 @@ const triageGroups = computed(() => {
     const rows = triageRows.value.filter(r => triageGroupOf(r) === d.key && triageMatches(r));
     // New replies first: an old card would otherwise land at the bottom.
     if (d.key === 'decide') return { ...d, rows: [...rows.filter(hasNewReply), ...rows.filter(r => !hasNewReply(r))] };
-    // The To do list in its own order (dragged), unranked cards last.
-    if (d.key === 'todo') return { ...d, rows: [...rows].sort((a, b) => (a.todo_rank ?? Infinity) - (b.todo_rank ?? Infinity)) };
     return { ...d, rows };
   });
 });
@@ -516,9 +511,10 @@ function cheerFor(row: TriageRow) {
 // Done and Dismissed start folded to a narrow rail, so the two columns that
 // need attention get the width (Ames 2026-10-10). Click a column's heading
 // to fold or open it; the choice is remembered.
-const TRIAGE_FOLD_KEY = 'nge_triage_folded_v3';
+// v4: the To do column became "On the To do board", folded (2026-10-19).
+const TRIAGE_FOLD_KEY = 'nge_triage_folded_v4';
 const triageFolded = ref<Record<TriageGroupKey, boolean>>((() => {
-  const start = { decide: false, progress: false, todo: false, later: true, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
+  const start = { decide: false, progress: false, todo: true, later: true, done: true, dismissed: true } as Record<TriageGroupKey, boolean>;
   try { return { ...start, ...(JSON.parse(localStorage.getItem(TRIAGE_FOLD_KEY) || '{}') || {}) }; } catch { return start; }
 })());
 function toggleFold(key: TriageGroupKey) {
@@ -575,22 +571,16 @@ const isByHand = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (
  *  scripts/slack-triage-bridge.mjs looks for the same word. */
 const LATER_NOTE = 'Later';
 const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(LATER_NOTE);
-/** On the To do list (Ames 2026-10-19: "a 'todo' list for some of the larger
- *  items that is separate from 'ideas'"). Kept like Later: approved, never
- *  queued, a note that starts with these words, which
- *  scripts/slack-triage-bridge.mjs looks for too. A To do typed in on the
- *  board has source 'todo' and no report behind it. */
+/** On the To do board (Ames 2026-10-19: "I want this to live in ToDo, not in
+ *  the bug report world"). A report sent there gets a card on the admins'
+ *  own To do board (TodoBoard.vue, functions/todos.js) and is kept like
+ *  Later: approved, never queued, a note that starts with these words, which
+ *  scripts/slack-triage-bridge.mjs looks for too. */
 const TODO_NOTE = 'To do';
 const isTodo = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(TODO_NOTE);
-const isOwnTodo = (r: TriageRow) => r.source === 'todo';
-/** Until supabase-triage-todo.sql has run, the rows have no todo_rank and
- *  writing one would fail: the list then keeps its plain order. */
-const hasTodoColumns = computed(() => triageRows.value.some(r => 'todo_rank' in r));
-const nextTodoRank = () => Math.max(0, ...triageRows.value.filter(isTodo).map(r => r.todo_rank ?? 0)) + 1;
-async function markInProgress(row: TriageRow, to: boolean | 'todo' = false) {
+async function markInProgress(row: TriageRow, later = false) {
   if (triageActing.value) return;
   triageActing.value = row.id;
-  const later = to === true, todo = to === 'todo';
   try {
     const who = backend.userName || backend.userEmail || 'admin';
     const comment = (triageNotes.value[row.id] ?? '').trim();
@@ -598,18 +588,35 @@ async function markInProgress(row: TriageRow, to: boolean | 'todo' = false) {
       status: 'approved',
       // A build the robot had waiting is taken off its list.
       impl_state: null,
-      approver_note: todo
-        ? `${TODO_NOTE}: a bigger job on the list, not being built by the robot.${comment ? ' ' + comment : ''}`
-        : later
+      approver_note: later
         ? `${LATER_NOTE}: a good idea kept for later, not being built now.${comment ? ' ' + comment : ''}`
         : `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
-      // A new To do goes to the bottom of the list.
-      ...(todo && hasTodoColumns.value ? { todo_rank: nextTodoRank() } : {}),
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
     } });
     if (later) { await loadTriage(); return; }
-    triageOpen.value[todo ? 'todo' : 'progress'] = true;
+    triageOpen.value.progress = true;
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+/** A card on the To do board for this report, at the bottom of To do. The
+ *  server also puts the report on To do here, so the robot never builds it,
+ *  and the bridge tells its Slack thread. A comment typed on the card goes
+ *  onto the new card's notes. */
+async function sendToTodoBoard(row: TriageRow) {
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  try {
+    const n = triageNumbers.value[row.id];
+    const first = (fullTextOf(row) || 'Report').replace(/\s+/g, ' ').trim();
+    const title = `${n ? `#${n} ` : ''}${first.length > 120 ? first.slice(0, 117) + '...' : first}`;
+    const notes = (triageNotes.value[row.id] ?? '').trim();
+    await secureWrite('todo.save', { fields: { title, notes, triage_id: row.id } });
+    delete triageNotes.value[row.id];
     await loadTriage();
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
@@ -618,92 +625,16 @@ async function markInProgress(row: TriageRow, to: boolean | 'todo' = false) {
   }
 }
 
-// ── The To do list: size, order, and jobs of our own ──
-// Only the one card changes, and nothing is posted to Slack for it (the
-// server does not wake the bridge for these fields).
-async function saveTodoFields(row: TriageRow, fields: { todo_rank?: number | null; todo_size?: TodoSize | null }) {
-  const before = { todo_rank: row.todo_rank, todo_size: row.todo_size };
-  Object.assign(row, fields);   // moves at once; put back if the save fails
-  try {
-    await secureWrite('triage.update', { id: row.id, fields });
-  } catch (e: any) {
-    Object.assign(row, before);
-    triageError.value = e?.message ?? String(e);
-  }
+// The To do board, on this same page: "?triage=board&todo" opens it, and
+// "&todo=<card id>" opens it on that card (the link a tag sends).
+const todoParam = new URLSearchParams(window.location.search).get('todo');
+const todoView = ref(todoParam !== null);
+const todoFocus = /^[0-9a-f-]{36}$/i.test(todoParam || '') ? todoParam : null;
+const todoBoardUrl = `${boardUrl}&todo`;
+function openTodoBoard() {
+  if (props.standalone || triageBoard.value) todoView.value = true;
+  else window.open(todoBoardUrl, '_blank', 'noopener');
 }
-const TODO_SIZES: (TodoSize | null)[] = [null, 'S', 'M', 'L'];
-const TODO_SIZE_PICKS: TodoSize[] = ['S', 'M', 'L'];
-const TODO_SIZE_WORDS: Record<TodoSize, string> = { S: 'Small, an hour or so', M: 'Medium, a session or two', L: 'Large, days' };
-function cycleTodoSize(row: TriageRow) {
-  const next = TODO_SIZES[(TODO_SIZES.indexOf(row.todo_size ?? null) + 1) % TODO_SIZES.length];
-  void saveTodoFields(row, { todo_size: next });
-}
-
-// Drag a card by its grip to a new place in the list. It lands above the
-// card it is dropped on (below it on the lower half) and takes a rank
-// between its new neighbours, so only that card is written. Cards that
-// have no rank yet (on the list before the order existed) are numbered once.
-const todoDragId = ref<string | null>(null);
-const todoDropAt = ref<{ id: string; after: boolean } | null>(null);
-function onTodoDragStart(e: DragEvent, row: TriageRow) {
-  todoDragId.value = row.id;
-  const card = (e.target as HTMLElement).closest('.nge-triage-card');
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', row.id);
-    if (card) e.dataTransfer.setDragImage(card, 16, 16);
-  }
-}
-function onTodoDragOver(e: DragEvent, row: TriageRow) {
-  if (!todoDragId.value || todoDragId.value === row.id) { todoDropAt.value = null; return; }
-  e.preventDefault();
-  const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  todoDropAt.value = { id: row.id, after: e.clientY > box.top + box.height / 2 };
-}
-function onTodoDragEnd() { todoDragId.value = null; todoDropAt.value = null; }
-async function onTodoDrop(e: DragEvent, list: TriageRow[]) {
-  e.preventDefault();
-  const id = todoDragId.value, at = todoDropAt.value;
-  onTodoDragEnd();
-  if (!id || !at || id === at.id) return;
-  const moving = list.find(r => r.id === id);
-  if (!moving) return;
-  const rest = list.filter(r => r.id !== id);
-  const i = rest.findIndex(r => r.id === at.id) + (at.after ? 1 : 0);
-  if (rest.some(r => r.todo_rank == null)) {
-    // Number the whole list once, in the order it now shows.
-    const order = [...rest.slice(0, i), moving, ...rest.slice(i)];
-    await Promise.all(order.map((r, k) => (r.todo_rank === k + 1 ? null : saveTodoFields(r, { todo_rank: k + 1 }))));
-    return;
-  }
-  const above = rest[i - 1]?.todo_rank, below = rest[i]?.todo_rank;
-  const rank = above == null ? (below as number) - 1 : below == null ? above + 1 : (above + below) / 2;
-  await saveTodoFields(moving, { todo_rank: rank });
-}
-
-// A To do of our own, not from a report: a title, a note if wanted, a size.
-const todoAdding = ref(false);
-const todoDraft = ref<{ title: string; note: string; size: TodoSize | null }>({ title: '', note: '', size: null });
-const todoSaving = ref(false);
-async function addOwnTodo() {
-  const title = todoDraft.value.title.trim();
-  if (!title || todoSaving.value) return;
-  todoSaving.value = true;
-  try {
-    await secureWrite('triage.todo', { title, note: todoDraft.value.note.trim(), size: todoDraft.value.size, rank: nextTodoRank() });
-    todoDraft.value = { title: '', note: '', size: null };
-    todoAdding.value = false;
-    triageOpen.value.todo = true;
-    await loadTriage();
-  } catch (e: any) {
-    triageError.value = e?.message ?? String(e);
-  } finally {
-    todoSaving.value = false;
-  }
-}
-/** A To do of our own shows its title on the first line, its note below. */
-const ownTodoTitle = (r: TriageRow) => (r.source_excerpt || '').split('\n')[0];
-const ownTodoNote = (r: TriageRow) => (r.source_excerpt || '').split('\n').slice(1).join('\n').trim();
 
 async function loadTriage() {
   triageLoading.value = true;
@@ -771,8 +702,6 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
   if (status === 'done' && presetNote !== undefined) {
     // "Send and mark done": what was just told to the submitter is the note.
     resultNote = presetNote;
-  } else if (status === 'done' && isOwnTodo(row)) {
-    // Our own To do has no Slack thread to tell.
   } else if (status === 'done') {
     const typed = window.prompt('One line for the Slack update (what was fixed?). Leave it blank to skip the note; Cancel leaves the card where it is.', '');
     if (typed === null) return;
@@ -2157,6 +2086,7 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab nge-admin-subtab--badges" :class="{ 'nge-admin-subtab--active': adminSubTab === 'badges' }" @click="adminSubTab = 'badges'">Special Badges</button>
       <!-- Triage lives on its own page: the full board, in a new tab (Ames 2026-10-05). -->
       <a class="nge-admin-subtab nge-admin-subtab--triage" :href="boardUrl" target="_blank" rel="noopener" title="Opens the triage board in a new tab">Triage ↗</a>
+      <a class="nge-admin-subtab nge-admin-subtab--triage" :href="todoBoardUrl" target="_blank" rel="noopener" title="Opens the admins' own To do board in a new tab">To do ↗</a>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'access' }" @click="adminSubTab = 'access'" title="Players' ten examples for retina access">Access requests</button>
@@ -2577,6 +2507,10 @@ function practiceWhen(iso: string | null) {
            profile panel's backdrop filter would otherwise trap a fixed box. -->
       <Teleport to="body" :disabled="!triageBoard || standalone">
       <div class="nge-admin-block" :class="{ 'nge-triage-board': triageBoard, 'nge-triage-light': triageBoard && triageLight }">
+        <!-- The admins' own To do board, in place of the reports (Ames 2026-10-19). -->
+        <TodoBoard v-if="todoView" :light="triageBoard && triageLight" :focus-id="todoFocus" :report-numbers="triageNumbers"
+                   :standalone="standalone" @back="todoView = false; loadTriage()" />
+        <template v-else>
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
           <!-- The page on its own has no game around it: a way back, in a new
@@ -2585,6 +2519,8 @@ function practiceWhen(iso: string | null) {
           <button v-if="!standalone" class="nge-admin-action-btn" @click="triageBoard = !triageBoard"
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
+          <button class="nge-admin-action-btn nge-triage-todo-open" @click="openTodoBoard"
+                  title="The admins' own planning board: To do, Doing, Done">📋 To do board</button>
           <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
             <!-- Level: one for every 25 reports closed. The ring fills toward the next. -->
             <div class="nge-hud-level" :class="{ 'nge-hud-level--up': triageCheer?.levelUp }"
@@ -2705,47 +2641,14 @@ function practiceWhen(iso: string | null) {
           <span class="nge-triage-group-hint">{{ g.hint }}</span>
         </button>
         <template v-if="triageBoard ? !isFolded(g.key) : triageOpen[g.key]">
-        <!-- A To do of our own, not from a report (Ames 2026-10-19). -->
-        <div v-if="g.key === 'todo'" class="nge-triage-todo-add">
-          <button v-if="!todoAdding" class="nge-admin-action-btn nge-triage-todo-add-btn" @click="todoAdding = true"
-                  title="Add a job of your own to the list. It is not sent to Slack and nobody is notified.">＋ Add a To do</button>
-          <form v-else class="nge-triage-todo-form" @submit.prevent="addOwnTodo">
-            <input v-model="todoDraft.title" class="nge-triage-todo-title-input" maxlength="200" placeholder="What needs doing"
-                   aria-label="To do title" @keydown.stop @keyup.stop @keypress.stop @keydown.esc="todoAdding = false" />
-            <textarea v-model="todoDraft.note" class="nge-triage-message nge-triage-comment" rows="3" maxlength="4000"
-                      placeholder="Notes (optional)" aria-label="To do notes" @keydown.stop @keyup.stop @keypress.stop></textarea>
-            <div class="nge-triage-actions">
-              <span class="nge-triage-todo-size-pick" role="radiogroup" aria-label="Size">
-                <button v-for="s in TODO_SIZE_PICKS" :key="s" type="button" role="radio"
-                        class="nge-triage-todo-size" :class="{ 'nge-triage-todo-size--on': todoDraft.size === s }"
-                        :aria-checked="todoDraft.size === s ? 'true' : 'false'" :title="TODO_SIZE_WORDS[s]"
-                        @click="todoDraft.size = todoDraft.size === s ? null : s">{{ s }}</button>
-              </span>
-              <button type="submit" class="nge-admin-primary-btn" :disabled="todoSaving || !todoDraft.title.trim()">{{ todoSaving ? 'Adding…' : 'Add to the list' }}</button>
-              <button type="button" class="nge-admin-action-btn" :disabled="todoSaving" @click="todoAdding = false">Cancel</button>
-            </div>
-          </form>
-        </div>
         <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
-             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id, 'nge-triage-card--reply': hasNewReply(row),
-                       'nge-triage-card--dragging': todoDragId === row.id,
-                       'nge-triage-card--drop-above': todoDropAt?.id === row.id && !todoDropAt.after,
-                       'nge-triage-card--drop-below': todoDropAt?.id === row.id && todoDropAt.after }]"
-             @click="triageSelected = row.id"
-             @dragover="g.key === 'todo' && onTodoDragOver($event, row)"
-             @drop="g.key === 'todo' && onTodoDrop($event, g.rows)">
+             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id, 'nge-triage-card--reply': hasNewReply(row) }]"
+             @click="triageSelected = row.id">
           <div class="nge-triage-meta">
-            <span v-if="g.key === 'todo' && hasTodoColumns && !triageWords.length" class="nge-triage-todo-grip" draggable="true" aria-hidden="true"
-                  title="Drag to move it up or down the list"
-                  @dragstart.stop="onTodoDragStart($event, row)" @dragend="onTodoDragEnd" @click.stop>⠿</span>
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
-            <button v-if="isTodo(row) && hasTodoColumns" type="button" class="nge-triage-todo-size" :class="{ 'nge-triage-todo-size--on': row.todo_size, 'nge-triage-todo-size--unset': !row.todo_size }"
-                    :title="(row.todo_size ? TODO_SIZE_WORDS[row.todo_size] + '. ' : '') + 'Click to change the size: S, M, L, or none.'"
-                    @click.stop="cycleTodoSize(row)">{{ row.todo_size || 'Size' }}</button>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
-            <span v-if="isOwnTodo(row)" class="nge-triage-rec nge-triage-rec--todo">Our own To do</span>
-            <span v-else class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
-            <span v-if="!isOwnTodo(row)" class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
+            <span class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
+            <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
             <span v-if="isByHand(row)" class="nge-triage-impl" title="Marked in progress by hand. The robot is not building this.">by hand</span>
             <span v-if="row.impl_state" class="nge-triage-impl" :class="`nge-triage-impl--${row.impl_state}`">{{ IMPL_LABELS[row.impl_state] }}</span>
@@ -2755,11 +2658,7 @@ function practiceWhen(iso: string | null) {
             <span class="nge-triage-avatar" aria-hidden="true" :style="{ '--hue': avatarHue(reporterOf(row)?.name || '') }">{{ (reporterOf(row)?.name || '?').slice(0, 1).toUpperCase() }}</span>
             <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
-          <template v-if="isOwnTodo(row)">
-            <div class="nge-triage-todo-title">{{ ownTodoTitle(row) }}</div>
-            <div v-if="ownTodoNote(row)" class="nge-triage-rationale nge-triage-todo-note"><template v-for="(pt, pi) in linkParts(ownTodoNote(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
-          </template>
-          <div v-else-if="fullTextOf(row)" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
+          <div v-if="fullTextOf(row)" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
             <a v-if="reporterOf(row)?.url" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.url" target="_blank" rel="noopener noreferrer" @click.stop
                title="The view they were in when they sent the report">↗ Open their view</a>
@@ -2832,8 +2731,8 @@ function practiceWhen(iso: string | null) {
                     title="You are fixing this yourself, for example in a Claude chat. Moves the card to In progress. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row)">▶ In progress</button>
             <button v-if="row.status === 'proposed' || isByHand(row) || isLater(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
-                    title="A bigger job we mean to do. Moves the card to the bottom of the To do list. The robot does not build it and nothing is sent to the reporter."
-                    @click="markInProgress(row, 'todo')">📋 To do</button>
+                    title="A bigger job to plan. Puts a card for it on the To do board and moves this report under On the To do board. The robot does not build it and nothing is sent to the reporter."
+                    @click="sendToTodoBoard(row)">📋 To do</button>
             <button v-if="row.status === 'proposed' || isByHand(row) || isTodo(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
                     title="A good idea, but not now. Moves the card to Ideas for later. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row, true)">💡 Later</button>
@@ -2842,7 +2741,7 @@ function practiceWhen(iso: string | null) {
                     @click="setTriageStatus(row, 'done')">✓ Done</button>
             <!-- Dismiss at any stage after approval too (a failed or unwanted
                  build), and Discard for junk (Ames 2026-10-05). -->
-            <button v-if="row.status === 'approved' && !isOwnTodo(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
+            <button v-if="row.status === 'approved'" class="nge-admin-action-btn" :disabled="triageActing === row.id || isGoingLive(row)"
                     :title="isGoingLive(row) ? 'It is on, or on its way to, the live site. Revert it in the Slack thread first.' : 'It was built another way, so the robot is not needed. Stops its work, cancels any build in progress and moves the card to Dismissed.'"
                     @click="setTriageStatus(row, 'dismissed', false, true)">Dismiss: built independently</button>
             <button v-if="triageGroupOf(row) !== 'done' && !isDiscarded(row)" class="nge-admin-action-btn nge-triage-discard-btn" :disabled="triageActing === row.id || isGoingLive(row)"
@@ -2971,6 +2870,7 @@ function practiceWhen(iso: string | null) {
         </template>
         </div>
         </div>
+        </template>
       </div>
       </Teleport>
     </div>
@@ -4246,44 +4146,13 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 @keyframes nge-admin-step-now { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
 @media (prefers-reduced-motion: reduce) { .nge-admin-step--now .nge-admin-step-mark { animation: none; } }
 
-/* ── The To do list (Ames 2026-10-19) ── */
+/* ── The To do board's column and button (Ames 2026-10-19) ── */
 .nge-triage-board .nge-triage-col--todo { border-top: 3px solid #7c9cff; }
 .nge-triage-light .nge-triage-col--todo { border-top-color: #4a63d6; }
-.nge-triage-rec--todo { background: rgba(124, 156, 255, 0.16); color: #b3c4ff; }
-.nge-triage-light .nge-triage-rec--todo { background: #e4e9fd; color: #2c3f9e; }
-.nge-triage-todo-title { font-size: 14px; font-weight: 600; line-height: 1.4; color: #eef2ff; overflow-wrap: anywhere; }
-.nge-triage-light .nge-triage-todo-title { color: #18212f; }
-.nge-triage-todo-note { white-space: pre-wrap; overflow-wrap: anywhere; }
-.nge-triage-todo-size {
-  font: 700 11px/1 'Consolas', 'SF Mono', monospace; min-width: 22px;
-  padding: 3px 7px; border-radius: 4px; cursor: pointer;
-  background: rgba(124, 156, 255, 0.1); border: 1px solid rgba(124, 156, 255, 0.35); color: #b3c4ff;
-}
-.nge-triage-todo-size--on { background: #5b7cf0; border-color: #5b7cf0; color: #fff; }
-.nge-triage-todo-size--unset { font-family: inherit; font-weight: 600; opacity: 0.7; }
-.nge-triage-todo-size:hover { border-color: #9db3ff; }
-.nge-triage-light .nge-triage-todo-size { background: #f0f3fe; border-color: #b8c4f2; color: #2c3f9e; }
-.nge-triage-light .nge-triage-todo-size--on { background: #3f5bd0; border-color: #3f5bd0; color: #fff; }
-.nge-triage-todo-size-pick { display: inline-flex; gap: 4px; margin-right: 6px; }
-.nge-triage-todo-grip {
-  cursor: grab; user-select: none; font-size: 15px; line-height: 1; padding: 0 2px;
-  color: rgba(179, 196, 255, 0.6);
-}
-.nge-triage-todo-grip:hover { color: #b3c4ff; }
-.nge-triage-light .nge-triage-todo-grip { color: #8090c0; }
-.nge-triage-card--dragging { opacity: 0.4; }
-.nge-triage-card--drop-above { box-shadow: 0 -3px 0 0 #7c9cff; }
-.nge-triage-card--drop-below { box-shadow: 0 3px 0 0 #7c9cff; }
-.nge-triage-todo-add { margin: 8px 0; }
-.nge-triage-todo-add-btn { width: 100%; border-style: dashed; }
-.nge-triage-todo-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; background: rgba(124, 156, 255, 0.06); border: 1px solid rgba(124, 156, 255, 0.25); }
-.nge-triage-light .nge-triage-todo-form { background: #f3f5fd; border-color: #c9d2f2; }
-.nge-triage-todo-title-input {
-  background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px;
-  color: #e6eefc; font: inherit; font-size: 13.5px; padding: 6px 9px;
-}
-.nge-triage-todo-title-input:focus { outline: none; border-color: rgba(120, 190, 255, 0.8); }
-.nge-triage-light .nge-triage-todo-title-input { background: #fff; border-color: #b9c6da; color: #18212f; }
+.nge-triage-todo-open { color: #b3c4ff; border-color: rgba(124, 156, 255, 0.45); }
+.nge-triage-light .nge-triage-todo-open { color: #2c3f9e; border-color: #b8c4f2; }
+/* The To do board fills the board's window. */
+.nge-triage-board > .nge-todo { flex: 1 1 auto; }
 </style>
 
 <style>
