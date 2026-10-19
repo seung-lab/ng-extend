@@ -41,6 +41,22 @@ breaks the rule above.
 
 ## To do, in order
 
+### 0. A lab owned Supabase (Ames, 2026-10-19: the lab has none yet)
+
+Everything below needs it, so it comes first. Creating the account and
+entering billing is for a person to do, not an agent.
+
+1. Sign in at supabase.com with a lab account, not a personal one (a shared
+   lab Google account or lab email), so it outlives any one person.
+2. Create an organization for the lab and put billing on a lab card.
+3. Invite Ames and Bun as members, with Owner or Admin rights.
+4. Create the Tracers project in it. Write the project URL and publishable
+   key into `src/supabase.ts` (behind `TRACER_EDITION`); the service key goes
+   only into server secrets, never the repo.
+5. Later, worth asking: Supabase can move a project between organizations,
+   so the public game's project (`javthknksdcrlhiaaptj`, on Ames's personal
+   account today) could move into the lab organization too.
+
 ### 1. Their own chat (first)
 
 Goal: Tracers chat with Tracers only, on a server that is not Ames's. They
