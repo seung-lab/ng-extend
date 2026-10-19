@@ -170,18 +170,21 @@ const hint = (text: string, show?: string) => `<span class="nge-tut-hint" data-h
 
 /** Select 3D segmentation and show its Segments tab in the side panel. */
 function openSegmentsTab() {
-  setTimeout(() => {
+  // Kept at it for a few seconds: the step's view loads after the box, and
+  // can bring the Render tab back (Ames 2026-10-19: "should open to Segments").
+  let tries = 0;
+  const timer = setInterval(() => {
+    if (++tries > 24) { clearInterval(timer); return; }
     const viewer = (window as any).viewer;
     const seg = (viewer?.layerManager?.managedLayers ?? []).find((ml: any) => !ml.archived && ml.layer?.type === 'segmentation');
     if (!seg) return;
-    viewer.selectedLayer.layer = seg;
-    viewer.selectedLayer.visible = true;
-    setTimeout(() => {
-      const tab = Array.from(document.querySelectorAll<HTMLElement>('.neuroglancer-layer-side-panel .neuroglancer-tab-label'))
-        .find(t => /segments/i.test(t.textContent || ''));
-      tab?.click();
-    }, 400);
-  }, 1500);
+    if (viewer.selectedLayer.layer !== seg || !viewer.selectedLayer.visible) { viewer.selectedLayer.layer = seg; viewer.selectedLayer.visible = true; return; }
+    const tab = Array.from(document.querySelectorAll<HTMLElement>('.neuroglancer-tab-label'))
+      .find(t => (t.textContent || '').trim() === 'Segments');
+    if (!tab) return;
+    if (!tab.classList.contains('neuroglancer-selected-tab-label')) tab.click();
+    else if (tries > 8) clearInterval(timer);
+  }, 250);
 }
 /** Close enough in 2D to see the branches (the memo spot opened far out,
  *  Ames 2026-10-18: "I got stuck on 4"). */
@@ -273,8 +276,10 @@ const TUTORIAL_HIGHLIGHT = '#ff6ec7';
 function pinkHighlights() {
   const store = useTutorialStore();
   const tutorial = store.activeTutorial;
+  // The Highlight box shows Checked in pink too (util/highlight.ts).
+  (window as any).__ngeCheckedColor = TUTORIAL_HIGHLIGHT;
   const timer = setInterval(() => {
-    if (store.activeTutorial !== tutorial) { clearInterval(timer); return; }
+    if (store.activeTutorial !== tutorial) { clearInterval(timer); (window as any).__ngeCheckedColor = undefined; return; }
     for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
       if (ml.archived || ml.name !== 'Checked ✓') continue;
       try {
@@ -767,7 +772,7 @@ Now let's go back to our cell:
     text: `
 Now let's put it together. <strong>Find Path</strong> draws the route through a cell between two points.
 
-<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, and press <strong>Enter</strong>.
+<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <strong>Enter</strong> (or click <strong>Submit</strong> in the Find Path bar at the bottom).
 
 We've made the cell see through, so the path stands out.`,
     width: "500px",
@@ -816,7 +821,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
 <strong>Close Lantern</strong> when you want the whole cell back: the ✕ in its box, or SHIFT+N again.`,
     width: "500px",
     position: OVER_3D,
-    onEnter: () => nextWhenLanternOn(false),
+    onEnter: () => { if (!lantern.on) lantern.on = true; nextWhenLanternOn(false); },
   },
   {
     part: "Part 4 of 4 · Put it together",

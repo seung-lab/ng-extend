@@ -37,6 +37,10 @@ export function highlightStyles(): HighlightStyle[] {
     return c && HEX.test(c) ? c.toLowerCase() : fallback;
   };
   const out = DEFAULT_HIGHLIGHT_STYLES.map(d => ({ ...d, color: colorOf(d.key, d.color) }));
+  // A tutorial can show Checked in its own color for a while, never saved
+  // (tutorial-2.ts sets it: pink against the blue cell, Ames 2026-10-19).
+  const shown = (window as any).__ngeCheckedColor;
+  if (typeof shown === 'string' && HEX.test(shown)) out[0] = { ...out[0], color: shown };
   for (const s of saved) {
     if (out.length >= MAX_HIGHLIGHT_STYLES) break;
     if (!s || typeof s.key !== 'string' || !s.key.startsWith('c_')) continue;
@@ -47,7 +51,13 @@ export function highlightStyles(): HighlightStyle[] {
   return out;
 }
 export function saveHighlightStyles(styles: HighlightStyle[]) {
-  useUserPreferencesStore().save({ highlightStyles: styles.map(({ key, label, color }) => ({ key, label, color })) });
+  // The tutorial's Checked color is never saved: keep the player's own.
+  const shown = (window as any).__ngeCheckedColor;
+  let mineChecked: string | undefined;
+  try { mineChecked = (useUserPreferencesStore().prefs.highlightStyles ?? []).find((s: any) => s?.key === 'checked')?.color; } catch { /* none */ }
+  const list = styles.map(({ key, label, color }) => ({ key, label, color }))
+    .map(s => (shown && s.key === 'checked' && s.color === shown) ? { ...s, color: mineChecked ?? DEFAULT_HIGHLIGHT_STYLES[0].color } : s);
+  useUserPreferencesStore().save({ highlightStyles: list });
 }
 /** Recolour a style's existing marks too: its layer takes the new colour and
  *  the tint follows. */
