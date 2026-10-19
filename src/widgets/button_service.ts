@@ -7,7 +7,7 @@ import {cellAtCrosshair, supervoxelAtPlace} from '../util/crosshair_cell';
 import {getPcgInfo} from './pcg_service';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
-import {currentCellTypes} from '../datasets';
+import {currentCellTypes, cellTypeLabel} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
@@ -681,7 +681,7 @@ export class ButtonService {
     for (const ct of currentCellTypes()) {
       const opt = document.createElement('option');
       opt.value = ct;
-      opt.textContent = ct;
+      opt.textContent = cellTypeLabel(ct);
       { const spelled = explainCellType(ct); if (spelled.length) opt.title = spelled.join(String.fromCharCode(10)); }
       if (cachedStatus?.cellType === ct) opt.selected = true;
       select.appendChild(opt);
@@ -713,7 +713,7 @@ export class ButtonService {
     if (aiType) {
       const aiLine = document.createElement('div');
       aiLine.classList.add('nge-lb-status-line', 'nge-lb-ai-type');
-      aiLine.textContent = `AI predicted: ${aiType}`;
+      aiLine.textContent = `AI predicted: ${cellTypeLabel(aiType)}`;
       aiLine.title = ["The type the lab's AI predicts for this cell, from the cell sheet.", ...explainCellType(aiType)].join(String.fromCharCode(10));
       cellTypeSection.insertBefore(aiLine, select);
     }

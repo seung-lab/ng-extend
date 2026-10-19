@@ -601,6 +601,17 @@ export const MEC_CELL_TYPES: string[] = [
  *  seeing amacrine cells in MEC"). Takes the canonical dataset key; an
  *  unrecognised dataset gets only the neutral choices, never another tissue's
  *  types. Users can still free-type any value. */
+/** How a type reads in the lists (Ames 2026-10-19: "5o bipolar (t5o)"). The
+ *  code itself is what is saved, so the data matches the lab's sheet. Types
+ *  not listed here read as they are. */
+const CELL_TYPE_LABELS: Record<string, string> = {
+  RBC: 'Rod bipolar (RBC)', t1: '1 bipolar (t1)', t2: '2 bipolar (t2)', t3a: '3a bipolar (t3a)', t3b: '3b bipolar (t3b)',
+  t4: '4 bipolar (t4)', t5t: '5t bipolar (t5t)', t5o: '5o bipolar (t5o)', t5i: '5i bipolar (t5i)', t6: '6 bipolar (t6)',
+  t7: '7 bipolar (t7)', t8: '8 bipolar (t8)', t9: '9 bipolar (t9)', XBC: 'X bipolar (XBC)',
+  GluMI: 'Glutamatergic monopolar interneuron (GluMI)',
+};
+export const cellTypeLabel = (type: string): string => CELL_TYPE_LABELS[type] || type;
+
 export function cellTypesForDataset(canonical: string): string[] {
   switch (canonical) {
     case 'stroeh_mouse_retina': return RETINAL_CELL_TYPES;

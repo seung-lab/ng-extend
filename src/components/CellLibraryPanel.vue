@@ -37,7 +37,7 @@ import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -3588,7 +3588,7 @@ const panelStyle = computed(() => ({
                         aria-label="Cell type" @change="completing.cellTypeCustom = ''"
                         @keydown.stop @keyup.stop @keypress.stop>
                   <option value="">Choose a type</option>
-                  <option v-for="t in cellTypesFor(cell)" :key="t" :value="t" :title="typeTitle(t)">{{ t }}</option>
+                  <option v-for="t in cellTypesFor(cell)" :key="t" :value="t" :title="typeTitle(t)">{{ cellTypeLabel(t) }}</option>
                 </select>
                 <input v-model="completing.cellTypeCustom" class="nge-cl-search-input nge-cl-complete-type"
                        placeholder="Or type your own" maxlength="120" aria-label="Or type your own cell type"
@@ -3596,7 +3596,7 @@ const panelStyle = computed(() => ({
                        @keydown.stop @keyup.stop @keypress.stop />
               </div>
               <div v-if="cell.aiType" class="nge-cl-complete-ai">
-                <span :title="aiTypeTitle(cell.aiType)">The lab's AI predicts <b>{{ cell.aiType }}</b></span>
+                <span :title="aiTypeTitle(cell.aiType)">The lab's AI predicts <b>{{ cellTypeLabel(cell.aiType) }}</b></span>
                 <button v-if="cellTypesFor(cell).includes(cell.aiType) && completing.cellType !== cell.aiType" type="button" class="nge-cl-btn"
                         @click="completing.cellType = cell.aiType; completing.cellTypeCustom = ''">Use {{ cell.aiType }}</button>
               </div>
