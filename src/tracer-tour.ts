@@ -127,7 +127,9 @@ It is about the view only. It does not undo a merge or a cut.`,
   {
     title: "Batch Processor",
     titleIcon: icon("batch"),
-    text: `Name a group of segment IDs and act on all of them at once: recolor, complete, annotate, copy the IDs or remove them from view.`,
+    text: `Name a group of segment IDs and act on all of them at once: recolor, complete, annotate, copy the IDs or remove them from view.
+
+This has largely been replaced by **folders** in the Segments panel.`,
     position: onIcon("batch"),
     highlight: true,
   },
