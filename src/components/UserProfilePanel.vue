@@ -21,7 +21,6 @@ import {getToolbarIconDef} from '../data/toolbar-icons';
 // The same drawing the top bar uses for Week in Science (Ames 2026-10-05).
 const recapIconSvg = getToolbarIconDef('recap')?.svg || '';
 import MyCellsTab from 'components/MyCellsTab.vue';
-import { runPanelTrace } from '../util/holo_trace';
 import { isMobileRef } from '../util/mobile';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
@@ -245,8 +244,6 @@ const tagsIFixed = computed(() =>
   issueTagStore.tags.filter((t: IssueTag) =>
     t.status === 'resolved' && t.resolvedById && t.resolvedById === backendStore.userId && inScope(t.dataset)));
 
-// The particle trace: an arc of light runs the shell boundary once when the
-// profile arrives (scifi-ui hologram.js section 1, via util/holo_trace).
 const shellEl = ref<HTMLElement | null>(null);
 
 /**
@@ -264,6 +261,11 @@ function clampProfile() {
   const vh = window.innerHeight, vw = window.innerWidth;
   const target = overlay ?? shell;
   const r = target.getBoundingClientRect();
+  // a frame that fills the window is full screen by design, not clipped; it
+  // is read while its open animation still scales it (0.97), and before its
+  // first layout its rect is empty, so neither of those may count as clipped
+  if (!r.width || !r.height) return;
+  if (r.width >= vw * 0.95 && r.height >= vh * 0.95) return;
   const clipped = r.bottom > vh - 4 || r.top < 4 || r.right > vw - 4 || r.left < 4;
   if (!clipped) return;
   console.warn('[profile] clip watchdog engaged:', {
@@ -302,16 +304,9 @@ onUnmounted(() => {
 watch(() => shellEl.value, () => requestAnimationFrame(clampProfile));
 watch(() => activeTab.value, () => { requestAnimationFrame(clampProfile); setTimeout(clampProfile, 320); });
 
-onMounted(() => {
-  // Trace the visible rounded box (the overlay), not the square inner shell:
-  // on the shell the light ran a guessed 15px corner 15px inside a 10px box,
-  // so its corners never matched the border it was circling (Amy 2026-09-28).
-  setTimeout(() => {
-    const box = shellEl.value?.closest('.overlay-content') as HTMLElement | null;
-    const host = box ?? shellEl.value;
-    if (host) runPanelTrace(host);
-  }, 60);
-});
+// The arc of light that ran the frame's edge once on open (util/holo_trace)
+// is gone with the orbiting border light: the frame fills the window now
+// (Ames 2026-10-17: "we don't need the light bar trace around the edge").
 
 // Deep-link: open directly on a given tab (e.g. from the toolbar/command palette
 // "Your Week in Science" action).
@@ -1320,6 +1315,41 @@ onUnmounted(() => { headsRo?.disconnect(); headsRo = null; clearTimeout(headsTim
 watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
        () => displayedExplorationBadges.value.length, () => displayedBuildingBadges.value.length,
        () => earnedLoyaltyBadges.value.earned.length], scheduleTrackHeads);
+// ── The Overview builds top to bottom (Ames 2026-10-17: "load one section
+// at a time, top to bottom") ────────────────────────────────────────────────
+// A row is live once its data is in and the row above has had its turn: its
+// head trace, count, numbers, curve and tiles then appear together, instead
+// of each piece landing whenever its answer arrives (the head's line was
+// re-fitted after its count rolled, the curve drew seconds after the
+// numbers). The first open of a session plays the build at full pace (the
+// first row 0.3 s in, then 0.26 s apart), later opens at half that, and
+// reduced motion and Calm screen skip the gaps (Ames 2026-10-17: "do you
+// think it loads too slowly?").
+const revealStage = ref(0);  // 0 none, 1 cells, 2 edits, 3 days, 4 the rest
+const cellsReady = computed(() => scopedCells.value !== null || scopedCellsFailed.value);
+const editsReady = computed(() => scopedEdits.value !== null || scopedEditsFailed.value);
+const quickBuild = (() => { try { const seen = sessionStorage.getItem('nge-profile-built'); sessionStorage.setItem('nge-profile-built', '1'); return !!seen; } catch { return false; } })();
+const STAGE_GAP = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : quickBuild ? 130 : 260;
+const FIRST_AT = STAGE_GAP ? (quickBuild ? 150 : 300) : 0;  // just after the frame's 0.28 s open, so the first head is fitted to a still frame
+let stageTimer = 0;
+let stageAt = 0;
+function stageReady(k: number): boolean { return k === 1 ? cellsReady.value : k === 2 ? editsReady.value : true; }
+function advanceStage() {
+  clearTimeout(stageTimer);
+  const next = revealStage.value + 1;
+  if (next > 4 || !stageReady(next)) return;  // the data watcher calls again
+  const wait = Math.max(0, stageAt + STAGE_GAP - performance.now());
+  stageTimer = window.setTimeout(() => {
+    if (!stageReady(next)) return;
+    revealStage.value = next;
+    stageAt = performance.now();
+    void nextTick(layoutTrackHeads);
+    advanceStage();
+  }, wait);
+}
+onMounted(() => { stageAt = performance.now() - STAGE_GAP + FIRST_AT; advanceStage(); });  // the first row as the frame's open ends
+watch([cellsReady, editsReady], () => advanceStage());
+onUnmounted(() => clearTimeout(stageTimer));
 </script>
 
 <template>
@@ -1525,7 +1555,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
 
           <div class="nge-track-rows">
 
-            <div class="nge-track-row nge-track-row--cells">
+            <div class="nge-track-row nge-track-row--cells" :class="{ 'is-live': revealStage >= 1 }">
               <!-- One head for the row (Ames 2026-10-11): the label, a circuit
                    trace to a pad, a second pad the same small distance away in
                    every row, and from it the bar toward the next Achievement,
@@ -1537,7 +1567,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 <div class="nge-track-wire" aria-hidden="true"></div>
                 <div class="nge-track-pads" aria-hidden="true"></div>
                 <div class="nge-track-bar" :title="(nextExplorationAchievement) ? (nextExplorationAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
-                <div v-if="nextExplorationAchievement" class="nge-track-count" :title="(nextExplorationAchievement).remaining.toLocaleString() + ' more cells to your next Achievement'"><RollUp :value="(nextExplorationAchievement).remaining" /> to go</div>
+                <div v-if="nextExplorationAchievement" class="nge-track-count" :title="(nextExplorationAchievement).remaining.toLocaleString() + ' more cells to your next Achievement'">{{ (nextExplorationAchievement).remaining.toLocaleString() }} to go</div>
               </div>
               <div class="nge-track-stats">
           <!-- Cells completed on this dataset, in the game, by the completed
@@ -1555,7 +1585,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               <!-- No curve on the compact layout (a laptop, or a small screen
                    zoomed in): the draw stuttered and the sliver it had there
                    was not worth the room (Ames 2026-10-16, Annkri's profile). -->
-              <EffortCurve v-if="scopedCellDays && scopedCellDays.length && !compactRows" :days="scopedCellDays" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
+              <EffortCurve v-if="!compactRows" :active="revealStage >= 1" :days="scopedCellDays ?? []" color="144 255 242" unit="cells" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
               <div class="nge-profile-stat-row">
                 <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                   {label:'Today',    val:overviewCells.today},
@@ -1563,7 +1593,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                   {label:'All Time', val:overviewCells.all},
                 ]" :key="i">
                   <div class="nge-profile-stat-label">{{ col.label }}</div>
-                  <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
+                  <div class="nge-profile-stat-val"><RollUp :value="revealStage >= 1 ? col.val : 0" /></div>
                 </div>
               </div>
             </div>
@@ -1626,7 +1656,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
             </div>
 
-            <div class="nge-track-row nge-track-row--edits">
+            <div class="nge-track-row nge-track-row--edits" :class="{ 'is-live': revealStage >= 2 }">
               <!-- One head for the row (Ames 2026-10-11): the label, a circuit
                    trace to a pad, a second pad the same small distance away in
                    every row, and from it the bar toward the next Achievement,
@@ -1638,7 +1668,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 <div class="nge-track-wire" aria-hidden="true"></div>
                 <div class="nge-track-pads" aria-hidden="true"></div>
                 <div class="nge-track-bar" :title="(nextBuildingAchievement) ? (nextBuildingAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
-                <div v-if="nextBuildingAchievement" class="nge-track-count" :title="(nextBuildingAchievement).remaining.toLocaleString() + ' more edits to your next Achievement'"><RollUp :value="(nextBuildingAchievement).remaining" /> to go</div>
+                <div v-if="nextBuildingAchievement" class="nge-track-count" :title="(nextBuildingAchievement).remaining.toLocaleString() + ' more edits to your next Achievement'">{{ (nextBuildingAchievement).remaining.toLocaleString() }} to go</div>
               </div>
               <div class="nge-track-stats">
           <!-- Edits stats -->
@@ -1655,7 +1685,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
             <!-- The same rows as the three numbers, as a line from the first
                  day to today (Ames 2026-10-11). Nothing while they load, and
                  nothing for the career fallback, which has no days. -->
-            <EffortCurve v-if="scopedEditDays && scopedEditDays.length && !compactRows" :days="scopedEditDays" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
+            <EffortCurve v-if="!compactRows" :active="revealStage >= 2" :days="scopedEditDays ?? []" color="255 208 138" unit="edits" :span="curveSpan" :spans="CURVE_SPANS" @update:span="setCurveSpan" />
             <div class="nge-profile-stat-row">
               <div class="nge-profile-stat-col" :class="{ 'nge-profile-stat-col--all': i === 2 }" v-for="(col, i) in [
                 {label:'Today',    val:overviewEdits.today.edits, merges:overviewEdits.today.merges, splits:overviewEdits.today.splits},
@@ -1663,7 +1693,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 {label:'All Time', val:overviewEdits.all.edits,   merges:overviewEdits.all.merges,   splits:overviewEdits.all.splits},
               ]" :key="i">
                 <div class="nge-profile-stat-label">{{ col.label }}</div>
-                <div class="nge-profile-stat-val"><RollUp :value="col.val" /></div>
+                <div class="nge-profile-stat-val"><RollUp :value="revealStage >= 2 ? col.val : 0" /></div>
                 <div class="nge-profile-stat-breakdown">
                   <span class="nge-profile-stat-bp" title="Merges">
                     <svg class="nge-profile-stat-icon nge-profile-stat-icon--merge" viewBox="0 0 16 16" fill="none">
@@ -1747,7 +1777,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
             </div>
 
-            <div v-if="totalDays > 0 || LOYALTY_BADGES.length" class="nge-track-row nge-track-row--days">
+            <div v-if="totalDays > 0 || LOYALTY_BADGES.length" class="nge-track-row nge-track-row--days" :class="{ 'is-live': revealStage >= 3 }">
               <!-- One head for the row (Ames 2026-10-11): the label, a circuit
                    trace to a pad, a second pad the same small distance away in
                    every row, and from it the bar toward the next Achievement,
@@ -1759,7 +1789,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
                 <div class="nge-track-wire" aria-hidden="true"></div>
                 <div class="nge-track-pads" aria-hidden="true"></div>
                 <div class="nge-track-bar" :title="(nextLoyaltyAchievement) ? (nextLoyaltyAchievement).pct + '% of the way to your next Achievement' : 'Every Achievement on this track is yours'"></div>
-                <div v-if="nextLoyaltyAchievement" class="nge-track-count" :title="(nextLoyaltyAchievement).remaining.toLocaleString() + ' more days to your next Achievement'"><RollUp :value="(nextLoyaltyAchievement).remaining" /> to go</div>
+                <div v-if="nextLoyaltyAchievement" class="nge-track-count" :title="(nextLoyaltyAchievement).remaining.toLocaleString() + ' more days to your next Achievement'">{{ (nextLoyaltyAchievement).remaining.toLocaleString() }} to go</div>
               </div>
               <div class="nge-track-stats">
           <!-- Days: total days shown up (never resets), the streaks, and the
@@ -1775,7 +1805,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
               <div class="nge-profile-stat-col" title="Every day you have shown up, ever. This never resets.">
                 <div class="nge-profile-stat-label">Total days</div>
-                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="totalDays" /></div>
+                <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="revealStage >= 3 ? totalDays : 0" /></div>
                 <!-- no pills and no bar (Ames 2026-10-06: "unnecessary", "too much"): the count says it -->
                 <div class="nge-days-next" :title="`Next milestone: day ${nextDay}`">{{ (nextDay - totalDays).toLocaleString() }} {{ nextDay - totalDays === 1 ? 'day' : 'days' }} to day {{ nextDay.toLocaleString() }}</div>
               </div>
@@ -1832,7 +1862,7 @@ watch([activeTab, compactRows, tinyRows, overviewEdits, overviewCells,
               </div>
             </div>
 
-            <div class="nge-track-row nge-track-row--rest">
+            <div class="nge-track-row nge-track-row--rest" :class="{ 'is-live': revealStage >= 4 }">
               <div class="nge-track-stats">
           <!-- Your recently completed cells: the browser's own history, or,
                when that is empty, the server's completions (recentCells). The
@@ -2337,7 +2367,6 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               >
                 <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
-                <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
             </div>
@@ -2369,7 +2398,6 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               >
                 <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
-                <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
             </div>
@@ -2401,7 +2429,6 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               >
                 <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" :class="`nge-badge--${badge.slug}`" />
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
-                <div class="nge-trophy-badge-desc" :title="badge.description">{{ badge.description }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days of science</div>
               </div>
             </div>
@@ -2428,7 +2455,6 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               >
                 <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
-                <div v-if="award.badge?.description" class="nge-trophy-badge-desc" :title="award.badge.description">{{ award.badge.description }}</div>
               </div>
             </div>
           </div>
@@ -2620,38 +2646,10 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
    2026-09-29, screen recording). Stop alphas are the old ones x 0.7, the
    ring's former opacity. */
 .nge-profile-modal :deep(.nge-overlay) {
-  animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both, ngeHoloEdgeSpin 8s linear infinite;
-  background:
-    linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) padding-box,
-    conic-gradient(
-      from var(--nge-holo-angle, 0deg),
-      transparent 0%,
-      rgba(74, 158, 255, 0.0) 10%,
-      rgba(74, 158, 255, 0.245) 14%,
-      rgba(0, 210, 255, 0.105) 18%,
-      transparent 22%,
-      transparent 35%,
-      rgba(160, 120, 255, 0.175) 39%,
-      rgba(120, 80, 220, 0.07) 43%,
-      transparent 47%,
-      transparent 60%,
-      rgba(0, 255, 200, 0.14) 64%,
-      rgba(74, 158, 255, 0.056) 68%,
-      transparent 72%,
-      transparent 85%,
-      rgba(74, 158, 255, 0.105) 89%,
-      transparent 93%
-    ) border-box !important;
-}
-
-@property --nge-holo-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes ngeHoloEdgeSpin {
-  to { --nge-holo-angle: 360deg; }
+  animation: ngeProfileMaterialize 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* the orbiting conic light under the border is gone: the frame fills the
+     window now, so its edge is the screen's (Ames 2026-10-17) */
+  background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%) padding-box !important;
 }
 
 /* Scanline removed — holographic border glow handled by ModalOverlay */
@@ -4153,15 +4151,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* Two lines, then an ellipsis (the full text is the tooltip). It used to be
    a plain height cap, which cut sentences mid-word with no sign they
    continued (fit audit 2026-09-28). */
-.nge-trophy-badge-desc {
-  font-size: 0.62em;
-  color: #8f9ab0;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 
 .nge-trophy-badge-threshold {
   font-size: 0.6em;
@@ -4878,14 +4867,12 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
   flex: 0 1 120px; min-width: 16px;
   --nge-track-run: 1;
   background: linear-gradient(var(--trace), var(--trace)) left 50% / calc(100% * var(--nge-track-run)) 1.4px no-repeat;
-  animation: ngeTrackRun 420ms cubic-bezier(0.3, 0, 0.2, 1) 1 both;
 }
 .nge-track-pads {
   flex: none; width: 22px;
   background:
     radial-gradient(circle at 4.5px 50%, #0a1223 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px),
     radial-gradient(circle at 13.5px 50%, #0a1223 0 0.9px, var(--pad) 1.3px 2.1px, transparent 2.5px);
-  animation: ngeTrackPads 180ms linear 420ms 1 both;
 }
 .nge-track-bar {
   flex: 1 1 0; min-width: 24px;
@@ -4894,18 +4881,36 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
   background:
     linear-gradient(var(--trace), var(--trace)) left 50% / calc(100% * var(--frac, 1) * var(--nge-track-fill)) 1.4px no-repeat,
     linear-gradient(rgba(201, 228, 255, 0.14), rgba(201, 228, 255, 0.14)) left 50% / 100% 1.4px no-repeat;
-  animation: ngeTrackFill 560ms cubic-bezier(0.3, 0, 0.2, 1) 560ms 1 both;
 }
-.nge-track-row--edits .nge-track-wire { animation-delay: 120ms; }
-.nge-track-row--edits .nge-track-pads { animation-delay: 540ms; }
-.nge-track-row--edits .nge-track-bar  { animation-delay: 680ms; }
-.nge-track-row--days  .nge-track-wire { animation-delay: 240ms; }
-.nge-track-row--days  .nge-track-pads { animation-delay: 660ms; }
-.nge-track-row--days  .nge-track-bar  { animation-delay: 800ms; }
+/* the trace draws when its row goes live (the rows take turns, so no per
+   row delays any more) */
+.nge-track-row.is-live .nge-track-wire { animation: ngeTrackRun 420ms cubic-bezier(0.3, 0, 0.2, 1) 1 both; }
+.nge-track-row.is-live .nge-track-pads { animation: ngeTrackPads 180ms linear 420ms 1 both; }
+.nge-track-row.is-live .nge-track-bar  { animation: ngeTrackFill 560ms cubic-bezier(0.3, 0, 0.2, 1) 560ms 1 both; }
+/* a row that has not had its turn keeps its label and its space (Ames
+   2026-10-17) */
+.nge-track-row:not(.is-live) > :not(.nge-track-head),
+.nge-track-row:not(.is-live) .nge-track-head > :not(.nge-profile-section-label) { opacity: 0; pointer-events: none; }
+/* and when it goes live everything comes in from the top down (Ames: "the
+   badges are building in from the bottom"): the stats settle down from
+   above, the tiles follow one after another left to right, the count lands
+   once its bar has filled. The sections' own roll in, which slid up from
+   below out of step with the row, is off inside the rows. */
+@keyframes ngeRowIn { 0% { opacity: 0; transform: translateY(-6px); } 100% { opacity: 1; transform: none; } }
+.nge-track-row .nge-profile-section { animation: none; }
+.nge-track-row.is-live > .nge-track-stats,
+.nge-track-row.is-live > .nge-track-achievements--rest { animation: ngeRowIn 0.3s ease-out both; }
+.nge-track-row.is-live .nge-track-count { animation: ngeRowIn 0.3s ease-out 0.55s both; }
+.nge-track-row.is-live .nge-track-achievements .nge-profile-badge { animation: ngeRowIn 0.26s ease-out both; }
+.nge-track-row.is-live .nge-track-achievements .nge-profile-badge:nth-child(2) { animation-delay: 70ms; }
+.nge-track-row.is-live .nge-track-achievements .nge-profile-badge:nth-child(3) { animation-delay: 140ms; }
+.nge-track-row.is-live .nge-track-achievements .nge-profile-badge:nth-child(4) { animation-delay: 210ms; }
+.nge-track-row.is-live .nge-track-achievements .nge-profile-badge:nth-child(5) { animation-delay: 280ms; }
+.nge-track-row.is-live .nge-track-achievements .nge-profile-badge:nth-child(n+6) { animation-delay: 350ms; }
 @keyframes ngeTrackRun  { 0% { --nge-track-run: 0; }  100% { --nge-track-run: 1; } }
 @keyframes ngeTrackPads { 0% { opacity: 0; } 100% { opacity: 1; } }
 @keyframes ngeTrackFill { 0% { --nge-track-fill: 0; } 100% { --nge-track-fill: 1; } }
-@media (prefers-reduced-motion: reduce) { .nge-track-wire, .nge-track-pads, .nge-track-bar { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .nge-track-row.is-live :is(.nge-track-wire, .nge-track-pads, .nge-track-bar, .nge-track-count, .nge-track-stats, .nge-track-achievements--rest, .nge-profile-badge) { animation: none; } }
 /* quiet: it is a note at the end of the bar, not a number to read first */
 .nge-track-count {
   margin-left: 10px;
