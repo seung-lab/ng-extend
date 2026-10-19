@@ -57,17 +57,20 @@ export function installNoFourPanel(viewer: any) {
   // Space (wolfryder101, report 168, 2026-10-19). Now it shows wherever the
   // view is not split already.
   const style = document.createElement('style');
-  style.textContent = TOUCH_CSS;
+  style.textContent = CORNER_CSS;
   document.head.appendChild(style);
 
-  // Neuroglancer titles that button "Switch to 4panel layout.", which is not
-  // what it does here. Mark it and give it its real tooltip (Ames
-  // 2026-10-19). Mutation callbacks run before the next paint, so the
-  // styles below, keyed on the mark, never miss a frame.
+  // Neuroglancer titles the corner buttons "Switch to 4panel layout." and so
+  // on, which is not what they do here. Mark each with what it does and give
+  // it a tooltip that says so (Ames 2026-10-19). Mutation callbacks run
+  // before the next paint, so the styles, keyed on the mark, never miss a
+  // frame.
   const mark = () => {
-    for (const b of document.querySelectorAll<HTMLElement>(`${C}[title="${FOUR}"]`)) {
-      b.dataset.ngeSplit = '1';
-      b.title = SPLIT_TIP;
+    for (const b of document.querySelectorAll<HTMLElement>(`${C}[title]`)) {
+      const kind = BUTTONS[b.getAttribute('title') || ''];
+      if (!kind) continue;
+      b.dataset.ngeBtn = kind;
+      b.title = TIPS[kind];
     }
   };
   new MutationObserver(mark).observe(document.body, { childList: true, subtree: true });
@@ -77,8 +80,8 @@ export function installNoFourPanel(viewer: any) {
   // through 4 panel. Capture phase, so neuroglancer's own click on the
   // button never runs.
   document.addEventListener('click', e => {
-    const b = (e.target as HTMLElement | null)?.closest?.('.neuroglancer-data-panel-layout-controls button');
-    if (!b || (b.getAttribute('title') !== FOUR && !(b as HTMLElement).dataset.ngeSplit)) return;
+    const b = (e.target as HTMLElement | null)?.closest?.(C) as HTMLElement | null;
+    if (!b || (b.getAttribute('title') !== FOUR && b.dataset.ngeBtn !== 'split')) return;
     e.stopPropagation();
     e.preventDefault();
     viewer.layout.restoreState(lastSplit);
@@ -86,35 +89,67 @@ export function installNoFourPanel(viewer: any) {
 }
 
 const FOUR = 'Switch to 4panel layout.';
-const SPLIT_TIP = 'Split screen: the 2D image beside the 3D view (Space)';
-const ONLY3D = 'Switch to 3d layout.';
-const ONLY2D = 'Switch to xy layout.';
+/** Neuroglancer's title of each corner button, and what it does here. */
+const BUTTONS: Record<string, 'split' | '3d' | 'xy'> = {
+  [FOUR]: 'split', 'Switch to 3d layout.': '3d', 'Switch to xy layout.': 'xy',
+};
+const TIPS = {
+  split: 'Split screen: 2D beside 3D (Space)',
+  '3d': 'Full screen 3D (Space)',
+  xy: 'Full screen 2D (Space)',
+};
 const C = '.neuroglancer-data-panel-layout-controls button';
+const B = (kind: string) => `${C}[data-nge-btn="${kind}"]`;
 /** Selectors for a phone (or a narrow window) and for any touch screen. */
 const touch = (rest: string) => `body.nge-mobile${rest}, body.nge-coarse${rest}`;
+const mouse = (rest: string) => `body:not(.nge-mobile):not(.nge-coarse)${rest}`;
 
-// Corner buttons as words on a touch screen: the 4 panel button reads
-// "2D + 3D" (split screen), "3d" reads "3D only", "xy" reads "2D only". In
-// split screen "2D + 3D" is not shown. A phone is 3D only or split, so it
-// has no "2D only".
-const TOUCH_CSS = `
-body:not(.nge-mobile):not(.nge-coarse)[data-nge-layout$="-3d"] ${C}[data-nge-split] { display: none; }
-body:not(.nge-mobile):not(.nge-coarse) ${C}[data-nge-split] > div { display: none; }
-body:not(.nge-mobile):not(.nge-coarse) ${C}[data-nge-split]::after { content: '◫'; }
-${touch(` ${C}[data-nge-split]`)},
-${touch(` ${C}[title="${ONLY3D}"]`)},
-${touch(` ${C}[title="${ONLY2D}"]`)} {
+// Line icons in the site's style, drawn in the button's text colour.
+const icon = (paths: string) => `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'>${paths}</svg>`)}")`;
+const ICON_SPLIT = icon(`<rect x='1.8' y='2.8' width='12.4' height='10.4' rx='1.8'/><path d='M8 3.2v9.6'/>`);
+const ICON_FULL = icon(`<path d='M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10'/>`);
+
+// With a mouse (Ames 2026-10-19: "match our site"): small dark rounded
+// squares with a thin cyan edge and a line icon, lit cyan on hover, like the
+// site's other window buttons. Full screen on the panel you are in, split
+// screen to come back; split screen is not offered while the view is split.
+// On a touch screen they are words instead: "2D + 3D", "3D only" and
+// "2D only". A phone is 3D only or split, so it has no "2D only".
+const CORNER_CSS = `
+${mouse(' .neuroglancer-data-panel-layout-controls')} { gap: 4px; }
+${mouse(` ${C}[data-nge-btn]`)} {
+  width: 24px !important; height: 24px !important; padding: 0 !important;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px !important; border: 1px solid rgba(126, 224, 255, 0.35) !important;
+  background: rgba(8, 14, 28, 0.78) !important; color: rgba(214, 236, 255, 0.9) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+${mouse(` ${C}[data-nge-btn]:hover`)}, ${mouse(` ${C}[data-nge-btn]:focus-visible`)} {
+  color: #ffffff !important; border-color: rgba(126, 224, 255, 0.8) !important;
+  background: rgba(126, 224, 255, 0.14) !important; box-shadow: 0 0 12px rgba(126, 224, 255, 0.3); outline: none;
+}
+${mouse(` ${C}[data-nge-btn] > div`)} { display: none; }
+${mouse(` ${C}[data-nge-btn]::after`)} {
+  content: ''; width: 14px; height: 14px; background-color: currentColor;
+  -webkit-mask: var(--nge-icon) center / contain no-repeat; mask: var(--nge-icon) center / contain no-repeat;
+}
+${mouse(` ${B('split')}`)} { --nge-icon: ${ICON_SPLIT}; }
+${mouse(` ${B('3d')}`)}, ${mouse(` ${B('xy')}`)} { --nge-icon: ${ICON_FULL}; }
+${mouse(`[data-nge-layout$="-3d"] ${B('split')}`)} { display: none !important; }
+${touch(` ${B('split')}`)},
+${touch(` ${B('3d')}`)},
+${touch(` ${B('xy')}`)} {
   width: auto !important; height: 34px !important; padding: 0 12px; border-radius: 17px;
   background: rgba(8, 14, 28, 0.82); border: 1px solid rgba(79, 207, 255, 0.55); color: #dff4ff;
   font: 600 13px/1 'Inter', 'Roboto', sans-serif; white-space: nowrap;
 }
-${touch(` ${C}[data-nge-split] > div`)},
-${touch(` ${C}[title="${ONLY3D}"] > div`)},
-${touch(` ${C}[title="${ONLY2D}"] > div`)} { display: none; }
-${touch(` ${C}[data-nge-split]::after`)} { content: '2D + 3D'; }
-${touch(` ${C}[title="${ONLY3D}"]::after`)} { content: '3D only'; }
-${touch(` ${C}[title="${ONLY2D}"]::after`)} { content: '2D only'; }
-${touch(`[data-nge-layout$="-3d"] ${C}[data-nge-split]`)},
-${touch(` ${C}:not([data-nge-split]):not([title="${ONLY3D}"]):not([title="${ONLY2D}"])`)},
-body.nge-mobile ${C}[title="${ONLY2D}"] { display: none !important; }
+${touch(` ${C}[data-nge-btn] > div`)} { display: none; }
+${touch(` ${B('split')}::after`)} { content: '2D + 3D'; }
+${touch(` ${B('3d')}::after`)} { content: '3D only'; }
+${touch(` ${B('xy')}::after`)} { content: '2D only'; }
+${touch(`[data-nge-layout$="-3d"] ${B('split')}`)},
+${touch(` ${C}:not([data-nge-btn])`)},
+body.nge-mobile ${B('xy')} { display: none !important; }
 `;
