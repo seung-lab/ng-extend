@@ -23,7 +23,8 @@ import {
   isLiveHelp,
 } from '../store';
 import { getDatasetCaveConfig } from '../config';
-import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
+import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem } from '../widgets/lightbulb_service';
+import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
@@ -35,7 +36,7 @@ import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -816,6 +817,10 @@ const completing = ref<{
   key: string; link: string; notes: string; status: string; minting: boolean;
   checking: boolean; ok: boolean; message: string; submitting: boolean;
   check: CrosshairCell | null;
+  /** The cell's type, saved with the completion (Nseraf 2026-10-19): a pick
+   *  from the list, or typed. Optional. `typeKnown` is the type the cell
+   *  already had, so an unchanged type is not written again. */
+  cellType: string; cellTypeCustom: string; typeKnown: string; typeAnnotationId?: number; typeNote: string;
 } | null>(null);
 
 function cellKey(cell: CellRow): string { return String(cell.taskId ?? cell.segId); }
@@ -853,10 +858,37 @@ function rememberStatus(cell: CellRow, status: string) {
 /** True when this cell's dataset asks for an ending and none is picked yet. */
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
+/** The type list, when the cell is on the dataset on screen and that
+ *  dataset's types may be written here (as in the Cell Profile). */
+function cellTypesFor(cell: CellRow): string[] {
+  if (canonicalDataset(cell.dataset || '') !== currentDatasetTag()) return [];
+  if (getDatasetCaveConfig(currentSegLayerName()).cellTypeReadOnly) return [];
+  return currentCellTypes();
+}
+const typeTitle = (t: string) => explainCellType(t).join(String.fromCharCode(10)) || undefined;
+
+/** Fill the type in with what the cell already has, once its ID is known. */
+async function prefillCellType(root: string) {
+  const c = completing.value;
+  const server = activeCaveServer();
+  if (!c || !root || !server) return;
+  const st = await getCellStatus(server, root).catch(() => null);
+  if (completing.value !== c || !st) return;
+  c.typeAnnotationId = st.cellTypeAnnotationId;
+  c.typeKnown = st.cellType || '';
+  if (!c.cellType && !c.cellTypeCustom && c.typeKnown) {
+    if (currentCellTypes().includes(c.typeKnown)) c.cellType = c.typeKnown; else c.cellTypeCustom = c.typeKnown;
+  }
+}
+
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
-  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
-  void runCrosshairCheck(cell);
+  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
+    cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '' };
+  void runCrosshairCheck(cell).then(() => {
+    const root = completing.value?.check?.root;
+    if (root && cellTypesFor(cell).length) void prefillCellType(root);
+  });
   void useCurrentViewLink();  // prefilled with the current view; editable (Amy 2026-09-28)
 }
 
@@ -936,6 +968,21 @@ async function submitComplete(cell: CellRow) {
     if (c.link.trim() === autoCompleteLink) {
       const fresh = await mintShortStateLink().catch(() => null);
       if (fresh) { c.link = fresh; autoCompleteLink = fresh; }
+    }
+    // The type first: if it cannot be saved the form stays open and says why,
+    // and nothing is completed yet.
+    c.typeNote = '';
+    const type = (c.cellTypeCustom.trim() || c.cellType).trim().slice(0, 120);
+    const server = activeCaveServer();
+    if (type && type !== c.typeKnown && cellTypesFor(cell).length) {
+      if (!server) { c.typeNote = 'The cell type could not be saved: no CAVE server for this dataset.'; return; }
+      const saved = await saveCellType(server, c.check.root, type, c.typeAnnotationId, true, c.check.position as [number, number, number]);
+      if (!saved) {
+        c.typeNote = `The cell type was not saved${getLastCellTypeProblem() ? ': ' + getLastCellTypeProblem() : ''}. Press Mark complete to try again, or clear the type.`;
+        return;
+      }
+      c.typeKnown = type;
+      document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segId: c.check.root } }));
     }
     const claimsBefore = myOpenClaims.value;
     await completeCell(cell, {
@@ -3510,6 +3557,24 @@ const panelStyle = computed(() => ({
                 >{{ o.value }}</button>
               </div>
             </template>
+            <!-- The cell's type, saved with the completion (Nseraf 2026-10-19):
+                 the same list as the Cell Profile, or typed. Optional. -->
+            <template v-if="cellTypesFor(cell).length">
+              <label class="nge-cl-complete-label">Cell type (optional)</label>
+              <div class="nge-cl-complete-typerow">
+                <select v-model="completing.cellType" class="nge-cl-search-input nge-cl-complete-type"
+                        aria-label="Cell type" @change="completing.cellTypeCustom = ''"
+                        @keydown.stop @keyup.stop @keypress.stop>
+                  <option value="">Choose a type</option>
+                  <option v-for="t in cellTypesFor(cell)" :key="t" :value="t" :title="typeTitle(t)">{{ t }}</option>
+                </select>
+                <input v-model="completing.cellTypeCustom" class="nge-cl-search-input nge-cl-complete-type"
+                       placeholder="Or type your own" maxlength="120" aria-label="Or type your own cell type"
+                       @input="completing.cellTypeCustom.trim() && (completing.cellType = '')"
+                       @keydown.stop @keyup.stop @keypress.stop />
+              </div>
+              <div v-if="completing.typeNote" class="nge-cl-complete-msg nge-cl-complete-msg--bad">{{ completing.typeNote }}</div>
+            </template>
             <label class="nge-cl-complete-label">Link to your finished cell</label>
             <div class="nge-cl-complete-linkrow">
               <input
@@ -4082,6 +4147,8 @@ const panelStyle = computed(() => ({
   box-shadow: 0 0 10px rgba(68, 170, 255, 0.3);
 }
 .nge-cl-complete-linkrow { display: flex; gap: 6px; align-items: center; }
+.nge-cl-complete-typerow { display: flex; gap: 6px; }
+.nge-cl-complete-type { flex: 1 1 0; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-search-input { flex: 1; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-btn { white-space: nowrap; }
 .nge-cl-complete-msg { font-size: 0.8em; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
