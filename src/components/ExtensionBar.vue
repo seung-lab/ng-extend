@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { QUIET_TEST_HOST } from '../util/test_host';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -349,6 +350,8 @@ const leaderboardPeek = ref(false);
 // (Ames 2026-09-28), unless you turned that off on the leaderboard, a
 // tutorial is running, another window is open, or you're on a phone.
 function maybeOpenLeaderboardOnArrival() {
+  // Not on a branch test site (util/test_host.ts).
+  if (QUIET_TEST_HOST) return;
   try {
     if (localStorage.getItem('nge-leaderboard-on-open') === '0') return;
     if (sessionStorage.getItem('nge-lb-greeted') === '1') return;

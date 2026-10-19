@@ -685,3 +685,5 @@ textarea.neuroglancer-annotation-details-description:focus {
 .nge-ann-folder.nge-folder-drop-before { box-shadow: inset 0 3px 0 rgba(140, 200, 255, 0.95); }
 .nge-ann-folder.nge-folder-drop-after { box-shadow: inset 0 -3px 0 rgba(140, 200, 255, 0.95); }
 .nge-ann-pick-bar { margin: 4px 6px; }
+/* the whole row drags, so a drag never selects its text */
+.neuroglancer-annotation-list-entry[data-nge-pickable] { user-select: none; -webkit-user-select: none; }
