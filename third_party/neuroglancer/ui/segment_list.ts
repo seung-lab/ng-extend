@@ -1580,8 +1580,19 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
         if (viewer && viewer.coordinateSpace?.value?.rank === place.length) {
           viewer.navigationState.position.value = Float32Array.from(place);
           StatusMessage.showTemporaryMessage(`Moved to ${place.join(', ')}. Finding the cell there\u2026`);
-          // and the cell there joins the list, under Pasted
-          loadCellAtPlace(group);
+          // The coordinates stay in the box, marked as being looked up, until
+          // the cell there has joined the list under Pasted (Ames 2026-10-19:
+          // "they should at least appear in the text input box").
+          debouncedUpdateQueryModel.cancel();
+          queryElement.value = place.join(', ');
+          queryElement.classList.add('nge-seg-query--finding');
+          queryElement.readOnly = true;
+          void loadCellAtPlace(group).finally(() => {
+            queryElement.classList.remove('nge-seg-query--finding');
+            queryElement.readOnly = false;
+            clearQuery();
+          });
+          return true;
         } else {
           StatusMessage.showTemporaryMessage('This view does not have three coordinates.');
         }

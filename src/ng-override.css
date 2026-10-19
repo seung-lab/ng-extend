@@ -1917,3 +1917,12 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   color: rgba(120, 180, 255, 0.75);
 }
 .nge-render-group:not(:has(.neuroglancer-layer-control-container)) { display: none; }
+
+/* Pasted coordinates being looked up (segment_list.ts), and the found row's tag. */
+.neuroglancer-segment-list-query.nge-seg-query--finding {
+  color: #9fe3ff !important; font-style: normal;
+  background-image: linear-gradient(90deg, transparent, rgba(126, 214, 255, 0.18), transparent) !important;
+  background-size: 200% 100% !important; animation: nge-seg-finding 1.2s linear infinite;
+}
+@keyframes nge-seg-finding { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.nge-from-place { margin-left: 6px; font: 600 10px 'JetBrains Mono', ui-monospace, monospace; color: #9fe3ff; white-space: nowrap; }

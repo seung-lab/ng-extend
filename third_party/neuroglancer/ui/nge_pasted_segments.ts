@@ -122,12 +122,12 @@ export function listFilterOf(text: string): string {
 /** Set by the app: find the cell at the view's centre once it has loaded,
  *  for a pasted coordinate (Ames 2026-10-14: "can we make it load the segID
  *  for that coord?"). */
-let placeCellLoader: ((group: any) => void)|undefined;
-export function setPlaceCellLoader(fn: (group: any) => void) {
+let placeCellLoader: ((group: any) => Promise<void>|void)|undefined;
+export function setPlaceCellLoader(fn: (group: any) => Promise<void>|void) {
   placeCellLoader = fn;
 }
-export function loadCellAtPlace(group: any) {
-  placeCellLoader?.(group);
+export function loadCellAtPlace(group: any): Promise<void> {
+  return Promise.resolve(placeCellLoader?.(group));
 }
 
 /** True when a row's cell matches the words typed in the box: the ID or the

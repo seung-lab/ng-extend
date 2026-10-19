@@ -205,6 +205,10 @@ async function updateChipPosition() {
     let cssClass = undefined;
 
     const element = await waitForElement(step.position.element);
+    // The layer bar and panels settle just after a step's view loads: wait
+    // for the target to hold still, so the box opens in place instead of
+    // sliding over a moment later (Ames 2026-10-19).
+    if (element) await targetSettled(element);
     if (element) {
         const rect = element.getBoundingClientRect();
 
@@ -286,11 +290,28 @@ async function updateChipPosition() {
 /** Keep the box on its target while the step shows: the layer bar and
  *  panels can shift after the box opens (Ames 2026-10-19: the pointer sat
  *  beside the +, not under it). */
+/** Resolves once the element's place has held for three frames (1 s at most). */
+async function targetSettled(el: Element) {
+    let last = '', same = 0;
+    const t0 = performance.now();
+    while (same < 3 && performance.now() - t0 < 1000) {
+        await new Promise(r => requestAnimationFrame(r));
+        const r = el.getBoundingClientRect();
+        const now = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}`;
+        same = now === last ? same + 1 : 0;
+        last = now;
+    }
+}
 let followTimer = 0;
 function followTarget(element: Element | null, step: Step) {
     window.clearInterval(followTimer);
     if (!element || !isNextToElementPostition(step.position)) return;
     const pos = step.position;
+    // Once the player clicks the target, the box stays put: the click itself
+    // can move it (the + slides along when a layer is added).
+    const stop = (e: Event) => { if ((e.target as Element | null)?.closest?.(pos.element)) window.clearInterval(followTimer); };
+    document.addEventListener('pointerdown', stop, { capture: true, once: false });
+    onUnmounted(() => document.removeEventListener('pointerdown', stop, true));
     followTimer = window.setInterval(() => {
         if (dragging.value || !computedStep.value.left) return;
         const el = element.isConnected ? element : document.querySelector(pos.element);
@@ -543,6 +564,23 @@ function onHtmlOver(e: MouseEvent) {
 }
 onUnmounted(hideHint);
 
+// Next pressed before the step's action: say so once (Tutorial.vue).
+function onNudge() {
+  const html = root.value?.querySelector('.chip .html');
+  const chip = root.value?.querySelector('.chip');
+  if (html && !html.querySelector('.nge-tut-nudge')) {
+    const p = document.createElement('p');
+    p.className = 'nge-tut-nudge';
+    p.textContent = "Give it a try first! Press Next again to skip this one.";
+    html.appendChild(p);
+  }
+  chip?.classList.remove('nge-chip--nudge');
+  void (chip as HTMLElement | undefined)?.offsetWidth;
+  chip?.classList.add('nge-chip--nudge');
+}
+document.addEventListener('nge:tutorial-nudge', onNudge);
+onUnmounted(() => document.removeEventListener('nge:tutorial-nudge', onNudge));
+
 async function onHtmlClick(e: MouseEvent) {
   const mark = (e.target as HTMLElement | null)?.closest?.('.nge-tut-hint[data-show]') as HTMLElement | null;
   if (mark) {
@@ -573,7 +611,7 @@ async function onHtmlClick(e: MouseEvent) {
         <div class="ng-extend introductionStepAnchor chipBuildIn"
             :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight, 'nge-quick-anim': !computedStep.modal }]"
             :style="{ left: computedStep.left, top: computedStep.top, visibility: computedStep.left ? undefined : 'hidden', transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
-            <div class="arrow"><svg viewBox="0 0 20 30" width="20" height="30" aria-hidden="true"><path class="nge-chev nge-chev-1" d="M3 10 L10 3 L17 10"/><path class="nge-chev nge-chev-2" d="M3 18 L10 11 L17 18"/><path class="nge-chev nge-chev-3" d="M3 26 L10 19 L17 26"/></svg></div>
+            <div class="arrow"><svg viewBox="0 0 44 16" width="44" height="16" aria-hidden="true"><path class="nge-tab-fill" d="M0 17 C 10 16, 16 3, 22 1 C 28 3, 34 16, 44 17 Z"/><path class="nge-tab-edge" d="M0 15.5 C 10 15, 16 3, 22 1 C 28 3, 34 15, 44 15.5"/><path class="nge-tab-chev" d="M16 11 L22 6 L28 11"/></svg></div>
 
             <div v-if="!inExitConfirm" class="chip"
                 :class="{ modal: computedStep.modal, noborder: computedStep.noborder, 'nge-chip--dragging': dragging }" :style="chipBounds"
@@ -668,44 +706,42 @@ async function onHtmlClick(e: MouseEvent) {
 .introductionStepAnchor.right>* {
     transform: translate(0, -50%);
 }
-/* The pointer: three chevrons that light up in turn, running from the box
-   to its target, centred exactly on it (Ames 2026-10-19: "make it a cooler
-   arrow"). Drawn pointing up and turned for each side. */
+/* The pointer: a tab that grows out of the box's own edge, its point on the
+   target's edge so it never covers it, with a small chevron inside that
+   pulses twice then rests (Ames 2026-10-19: "a better arrow that feels like
+   it's an extension of the box", "covering up the layer too much"). Drawn
+   pointing up and turned for each side; its base overlaps the box's border
+   so the two read as one piece. */
 .introductionStepAnchor .arrow {
     position: absolute;
-    width: 20px;
-    height: 30px;
+    width: 44px;
+    height: 16px;
     z-index: 3;
     border: none;
-    filter: drop-shadow(0 0 4px rgba(110, 210, 255, 0.9)) drop-shadow(0 0 10px rgba(60, 160, 255, 0.55));
+    filter: drop-shadow(0 -2px 6px rgba(74, 150, 224, 0.35));
 }
 .introductionStepAnchor .arrow svg { display: block; overflow: visible; }
-.introductionStepAnchor .arrow .nge-chev {
-    fill: none; stroke: #8fe3ff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
-    /* Sweeps twice when the box arrives, then rests fully lit (Ames
-       2026-10-19: the endless run was annoying). */
-    opacity: 0.9; animation: nge-chev-run 1.2s ease-in-out 2 backwards;
+.introductionStepAnchor .arrow .nge-tab-fill { fill: rgb(14, 21, 36); }
+.introductionStepAnchor .arrow .nge-tab-edge { fill: none; stroke: rgba(110, 190, 255, 0.75); stroke-width: 1.2; }
+.introductionStepAnchor .arrow .nge-tab-chev {
+    fill: none; stroke: #8fe3ff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    animation: nge-tab-pulse 1.1s ease-in-out 2;
 }
-/* The chevron nearest the box lights first, the tip last. */
-.introductionStepAnchor .arrow .nge-chev-3 { animation-delay: 0s; }
-.introductionStepAnchor .arrow .nge-chev-2 { animation-delay: 0.2s; }
-.introductionStepAnchor .arrow .nge-chev-1 { animation-delay: 0.4s; }
-@keyframes nge-chev-run {
-    0%, 100% { opacity: 0.25; }
-    35%      { opacity: 1; stroke: #ffffff; }
-    60%      { opacity: 0.55; }
+@keyframes nge-tab-pulse {
+    0%, 100% { stroke: #8fe3ff; transform: translateY(0); }
+    50%      { stroke: #ffffff; transform: translateY(-2px); }
 }
-@media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow .nge-chev { animation: none; opacity: 0.9; } }
+@media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow .nge-tab-chev { animation: none; } }
 /* A box in the middle of the screen points at nothing. */
 .introductionStepAnchor.center .arrow { display: none; }
-/* Box below its target: points up, the last chevron just above the box. */
-.introductionStepAnchor.bottom .arrow { left: -10px; top: -15px; transform: none !important; }
+/* Box below its target: the tab points up from the box's top edge. */
+.introductionStepAnchor.bottom .arrow { left: -22px; top: 0px; transform: none !important; }
 /* Box right of its target: points left. */
-.introductionStepAnchor.right .arrow { left: 3px; top: -15px; transform: rotate(-90deg) !important; }
+.introductionStepAnchor.right .arrow { left: -14px; top: -8px; transform: rotate(-90deg) !important; }
 /* Box left of its target: points right. */
-.introductionStepAnchor.left .arrow { left: -23px; top: -15px; transform: rotate(90deg) !important; }
+.introductionStepAnchor.left .arrow { left: -30px; top: -8px; transform: rotate(90deg) !important; }
 /* Box above its target: points down. */
-.introductionStepAnchor.top .arrow { left: -10px; top: -15px; transform: rotate(180deg) !important; }
+.introductionStepAnchor.top .arrow { left: -22px; top: -16px; transform: rotate(180deg) !important; }
 
 .introductionStepAnchor.right .chip { transform: translate(0, -36px); }
 
@@ -726,7 +762,7 @@ async function onHtmlClick(e: MouseEvent) {
 
 
 .introductionStepAnchor.right .chip {
-    left: 24px !important;
+    left: 14px !important;
 }
 
 
@@ -736,7 +772,7 @@ async function onHtmlClick(e: MouseEvent) {
 
 
 .introductionStepAnchor.left .chip {
-    right: 24px !important;
+    right: 14px !important;
     left: auto !important;
 }
 
@@ -1654,4 +1690,24 @@ async function onHtmlClick(e: MouseEvent) {
   color: #e8f3ff; background: rgba(40, 70, 110, 0.6); border: 1px solid rgba(126, 202, 255, 0.45); border-bottom-color: transparent;
 }
 .nge-tut-found { color: #9ff0b8; font-weight: 600; margin-top: 8px; }
+/* Pressed Next before doing the step (tutorial-2.ts pending). */
+.nge-tut-nudge { color: #ffd27a; font-weight: 600; margin-top: 6px; }
+.chip.nge-chip--nudge { animation: nge-chip-nudge 0.45s ease-in-out; }
+@keyframes nge-chip-nudge { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+/* A key to press, written in the text. */
+.nge-tut-key-big {
+  display: inline-block; padding: 1px 8px; margin: 0 2px; border-radius: 5px; font: 700 0.95em 'JetBrains Mono', ui-monospace, monospace;
+  color: #fff; background: rgba(74, 158, 255, 0.25); border: 1px solid rgba(126, 214, 255, 0.8); box-shadow: 0 2px 0 rgba(126, 214, 255, 0.5);
+}
+/* Sparkles on the eye a step asks for (tutorial-2.ts sparkleEye). */
+.nge-tut-sparkle { position: relative; overflow: visible !important; filter: drop-shadow(0 0 6px #fff6a8) drop-shadow(0 0 10px #ffd84d); animation: nge-spark-glow 1s ease-in-out infinite; }
+.nge-tut-sparkle::before, .nge-tut-sparkle::after {
+  content: '✦'; position: absolute; color: #fff6a8; pointer-events: none; font-size: 10px; line-height: 1;
+  animation: nge-spark-twinkle 1.2s ease-in-out infinite;
+}
+.nge-tut-sparkle::before { left: -9px; top: -8px; }
+.nge-tut-sparkle::after { right: -9px; bottom: -7px; animation-delay: 0.6s; font-size: 8px; }
+@keyframes nge-spark-glow { 50% { filter: drop-shadow(0 0 10px #fff6a8) drop-shadow(0 0 16px #ffd84d); } }
+@keyframes nge-spark-twinkle { 0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); } 50% { opacity: 1; transform: scale(1.2) rotate(90deg); } }
+@media (prefers-reduced-motion: reduce) { .nge-tut-sparkle, .nge-tut-sparkle::before, .nge-tut-sparkle::after { animation: none; } }
 </style>

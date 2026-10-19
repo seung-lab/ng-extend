@@ -34,8 +34,10 @@ setPlaceCellLoader(async (group: any) => {
     if (name === '3d') v.layout.restoreState('xy-3d');
     if (v.navigationState.zoomFactor.value > 12) v.navigationState.zoomFactor.value = 3;
   } catch { /* no viewer */ }
+  let at = '';
+  try { at = Array.from((window as any).viewer.navigationState.position.value as Float32Array).map(v => Math.round(v)).join(', '); } catch { /* none */ }
   let found: Awaited<ReturnType<typeof cellAtCrosshair>> | null = null;
-  for (let i = 0; i < 16; ++i) {
+  for (let i = 0; i < 30; ++i) {
     await new Promise(r => setTimeout(r, 500));
     if (mine !== placeLoad) return;  // a newer paste took over
     found = await cellAtCrosshair();
@@ -55,7 +57,19 @@ setPlaceCellLoader(async (group: any) => {
     return;
   }
   addPastedSegments(group, [Uint64.parseString(id)]);
-  StatusMessage.showTemporaryMessage(`Added the cell there: ${id}`, 4000);
+  StatusMessage.showTemporaryMessage(`Added the cell at ${at}: ${id}`, 5000);
+  // Its row says where it came from for a while.
+  if (at) setTimeout(() => {
+    for (const row of Array.from(document.querySelectorAll<HTMLElement>(`.neuroglancer-segment-list-entry[data-id="${id}"]`))) {
+      if (row.querySelector('.nge-from-place')) continue;
+      const tag = document.createElement('span');
+      tag.className = 'nge-from-place';
+      tag.textContent = `\u{1F4CD} ${at}`;
+      tag.title = 'Found at these coordinates';
+      row.querySelector('.neuroglancer-segment-list-entry-id')?.after(tag) ?? row.appendChild(tag);
+      setTimeout(() => tag.remove(), 10000);
+    }
+  }, 400);
 });
 
 // A search by name in the Seg panel asks for the names of the cells whose rows

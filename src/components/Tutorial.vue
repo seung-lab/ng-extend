@@ -178,7 +178,18 @@ function stepFrom(i: number, dir: 1 | -1): number {
 }
 // `auto` is true when a step moved itself on (the practice watch); only a
 // press of the button can mean Skip.
+// A step waiting on the player's action (tutorial-2.ts sets
+// window.__ngeStepPending): the first Next pressed without it says "try it
+// first", the second skips (Ames 2026-10-19: "can it detect if I didn't do it?").
+let nudged = -1;
 const next = (_auto?: unknown) => {
+    const w = window as any;
+    if (_auto !== true && w.__ngeStepPending && nudged !== store.getTutorialStep()) {
+        nudged = store.getTutorialStep();
+        document.dispatchEvent(new CustomEvent('nge:tutorial-nudge'));
+        return;
+    }
+    w.__ngeStepPending = false;
     const isLastStep = activeStep.value?.last;
     const tutorialNum = store.activeTutorial;
     // The Merger Sandbox's last box leads to the next merger.
@@ -231,7 +242,7 @@ watch(() => store.activeTutorial, (now, before) => {
 // to the success box).
 // Never on the last box: finishing a tutorial is the learner's own click.
 document.addEventListener('nge:tutorial-next', () => { if (activeStep.value && !activeStep.value.last) next(true); });
-const back = () => { store.setTutorialStep(Math.max(0, stepFrom(store.getTutorialStep() - 1, -1))); };
+const back = () => { (window as any).__ngeStepPending = false; store.setTutorialStep(Math.max(0, stepFrom(store.getTutorialStep() - 1, -1))); };
 // ── Resuming on page load (Nseraf 2026-09-29) ──
 // Progress follows the account, so a tutorial left partway used to restart
 // its current step on every visit, and each step loads its own view: Nseraf,

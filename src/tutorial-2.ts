@@ -1,6 +1,7 @@
 import { Step, useTutorialStore } from "./store-pyr";
 import { RESOURCES_MENU_SVG } from "./data/toolbar-icons";
 import { lantern } from "./util/lantern";
+import { highlightStyles } from "./util/highlight";
 import { setStatedColor } from "./widgets/widget_utils";
 import { Uint64 } from "neuroglancer/util/uint64";
 import { useUserPreferencesStore } from "./store";
@@ -38,6 +39,7 @@ const OVER_3D = {
 
 /** Move on by itself once the view has jumped to `spot` ("x, y, z"). */
 function nextWhenAt(spot: string) {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -55,7 +57,7 @@ function nextWhenAt(spot: string) {
       if (!here()) { clearInterval(timer); return; }
       if (at() && !already) {
         clearInterval(timer);
-        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1500);
+        setTimeout(() => { if (here()) advance(); }, 1500);
       }
     }, 400);
   }, 2500);
@@ -121,6 +123,7 @@ const FAKE_ROW = `<div class="nge-tut-row nge-tut-row--hover" aria-hidden="true"
  *  a big "Path found!" when it arrives, then on. The cells come back to
  *  full strength once the player is past the next box. */
 function findPathStep() {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const segLayers = () => ((window as any).viewer?.layerManager?.managedLayers ?? [])
@@ -142,14 +145,39 @@ function findPathStep() {
     document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
     setTimeout(() => {
       banner.remove();
-      if (store.activeTutorial === tutorial && store.getTutorialStep() === step) document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
+      if (store.activeTutorial === tutorial && store.getTutorialStep() === step) advance();
     }, 2600);
   };
   document.addEventListener('nge:path-found', onFound);
 }
 
+/** Move on once a highlight in a color other than Checked is drawn. */
+function nextWhenOtherHighlight() {
+  waitForAction();
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const others = () => {
+    const names = highlightStyles().filter(st => st.key !== 'checked').map(st => st.layer);
+    let n = 0;
+    for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+      if (ml.archived || !names.includes(ml.name)) continue;
+      try { n += (ml.layer?.localAnnotations?.toJSON?.() ?? []).length; } catch { /* not loaded */ }
+    }
+    return n;
+  };
+  const base = others();
+  const timer = setInterval(() => {
+    if (!here()) { clearInterval(timer); return; }
+    if (others() > base) {
+      clearInterval(timer);
+      setTimeout(() => { if (here()) advance(); }, 1500);
+    }
+  }, 500);
+}
 /** Move on once Lantern is lit (or, with `on` false, put out). */
 function nextWhenLanternOn(on = true) {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -158,7 +186,7 @@ function nextWhenLanternOn(on = true) {
     if (!here()) { clearInterval(timer); return; }
     if (lantern.on === on && was !== on) {
       clearInterval(timer);
-      setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+      setTimeout(() => { if (here()) advance(); }, 1200);
     }
   }, 400);
 }
@@ -222,6 +250,7 @@ function markSegChip() {
 }
 /** Move on once 3D segmentation is the selected layer. */
 function nextWhenSegSelected() {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -232,13 +261,14 @@ function nextWhenSegSelected() {
       if (!here()) { clearInterval(timer); return; }
       if (selected() && !was) {
         clearInterval(timer);
-        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+        setTimeout(() => { if (here()) advance(); }, 1200);
       }
     }, 300);
   }, 800);
 }
 /** Move on once 3D segmentation has been hidden and shown again. */
 function nextWhenSegHiddenAndShown() {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -250,7 +280,7 @@ function nextWhenSegHiddenAndShown() {
     if (!seg.visible) hidden = true;
     else if (hidden) {
       clearInterval(timer);
-      setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+      setTimeout(() => { if (here()) advance(); }, 1200);
     }
   }, 250);
 }
@@ -290,6 +320,33 @@ function pinkHighlights() {
   }, 400);
 }
 
+/** Moves on, and the step no longer waits on the player. */
+function advance() {
+  (window as any).__ngeStepPending = false;
+  document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
+}
+/** This step waits on the player's action (Tutorial.vue nudges on Next). */
+function waitForAction() { (window as any).__ngeStepPending = true; }
+
+/** Sparkles around the eye of our cell's row (Ames 2026-10-19: "bring
+ *  attention to the eye, sparkles or something silly"), while the step shows. */
+const OUR_CELL = '648518346353862024';
+function sparkleEye() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const timer = setInterval(() => {
+    const here = store.activeTutorial === tutorial && store.getTutorialStep() === step;
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(`.neuroglancer-segment-list-entry[data-id="${OUR_CELL}"]`));
+    const eyes = rows.map(r => r.querySelector<HTMLElement>('.neuroglancer-eye-icon')).filter(Boolean) as HTMLElement[];
+    if (!here) {
+      clearInterval(timer);
+      document.querySelectorAll('.nge-tut-sparkle').forEach(e => e.classList.remove('nge-tut-sparkle'));
+      return;
+    }
+    eyes.forEach(e => e.classList.add('nge-tut-sparkle'));
+  }, 400);
+}
+
 /** The visible segment IDs of the segmentation layer. */
 function visibleIds(): Set<string> {
   try {
@@ -304,6 +361,7 @@ function visibleIds(): Set<string> {
  *  the Sandbox's cells are edited by players, so their IDs change). Stops
  *  when the learner leaves the step. As tutorial-1.ts advanceWhenSegmentAdded. */
 function nextWhenCellsAdded(count: number) {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -316,7 +374,7 @@ function nextWhenCellsAdded(count: number) {
       const added = fresh.length;
       if (added >= count) {
         clearInterval(timer);
-        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+        setTimeout(() => { if (here()) advance(); }, 1200);
       }
     }, 400);
   }, 1500);
@@ -342,6 +400,7 @@ function colorNewCell(id: string) {
 }
 /** Move on by itself once an annotation layer has been added. */
 function nextWhenAnnotationLayerAdded() {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -354,13 +413,14 @@ function nextWhenAnnotationLayerAdded() {
       if (count() > base) {
         clearInterval(timer);
         document.getElementById('nge-tutorial-highlight')?.remove();
-        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+        setTimeout(() => { if (here()) advance(); }, 1200);
       }
     }, 400);
   }, 1200);
 }
 /** Move on by itself once an annotation layer is called "Tutorial". */
 function nextWhenRenamedTutorial() {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -370,7 +430,7 @@ function nextWhenRenamedTutorial() {
       .some((ml: any) => !ml.archived && /^tutorial$/i.test(String(ml.name || '').trim()));
     if (named) {
       clearInterval(timer);
-      setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+      setTimeout(() => { if (here()) advance(); }, 1200);
     }
   }, 400);
 }
@@ -385,6 +445,7 @@ function annotationsIn(names: RegExp): number {
 }
 /** Move on once something has been highlighted (src/util/highlight.ts layers). */
 function nextWhenHighlighted() {
+  waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
@@ -394,7 +455,7 @@ function nextWhenHighlighted() {
     if (!here()) { clearInterval(timer); return; }
     if (annotationsIn(marked) > base) {
       clearInterval(timer);
-      setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1500);
+      setTimeout(() => { if (here()) advance(); }, 1500);
     }
   }, 500);
 }
@@ -406,7 +467,7 @@ function watchMission() {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
   const SPOT = [82190, 58009, 381];
-  const secret = /top\s*secret/i;
+  const secret = /secret\s*hideout/i;
   const checks: Record<string, () => boolean> = {
     spot: () => {
       try {
@@ -742,14 +803,14 @@ Then copy this spot and <strong>paste it into the box at the top of the Segments
 ${copyButton(MERGER_SPOT)}`; },
     width: "460px",
     position: { element: SEG_BOX, side: "left", offset: { x: 0, y: 0 } },
-    onEnter: () => { openSegmentsTab(); nextWhenCellsAdded(1); pointAtSegBox(); },
+    onEnter: () => { openSegmentsTab(); sparkleEye(); nextWhenCellsAdded(1); pointAtSegBox(); },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
   {
     part: "Part 3 of 4 · Find your way",
     text: `
-This box always shows where you are. <strong>Click its copy icon</strong> to copy this spot, ready to share with a teammate in chat.`,
+This box always shows where you are. If you ever need to share your spot with a teammate, <strong>click its copy icon</strong> to copy it.`,
     width: "460px",
     position: { element: "#extensionBar .neuroglancer-position-widget", side: "right", offset: { x: 0, y: 0 } },
     highlight: true,
@@ -765,14 +826,14 @@ Now let's go back to our cell:
 </ol>`; },
     width: "460px",
     position: OVER_3D,
-    onEnter: () => nextWhenAt(SOMA),
+    onEnter: () => { sparkleEye(); nextWhenAt(SOMA); },
   },
   {
     part: "Part 4 of 4 · Put it together",
     text: `
 Now let's put it together. <strong>Find Path</strong> draws the route through a cell between two points.
 
-<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <strong>Enter</strong> (or click <strong>Submit</strong> in the Find Path bar at the bottom).
+<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> to trace the path (or click <strong>Submit</strong> in the Find Path bar at the bottom).
 
 We've made the cell see through, so the path stands out.`,
     width: "500px",
@@ -805,6 +866,14 @@ One more tool for keeping track: <strong>Highlight</strong> marks the parts of a
   {
     part: "Part 4 of 4 · Put it together",
     text: `
+Now pick a <strong>different color</strong> in the Highlight box (<strong>Needs a look</strong>, or make your own with <strong>+ Add</strong>), then <strong>CTRL+CLICK two points</strong> along another branch.`,
+    width: "500px",
+    position: OVER_3D,
+    onEnter: () => nextWhenOtherHighlight(),
+  },
+  {
+    part: "Part 4 of 4 · Put it together",
+    text: `
 For a big cell, <strong>Lantern</strong> lights the part around where you are and dims the rest, so you can check it one part at a time.
 
 <strong>Press SHIFT+N</strong> (or the glowing lantern on the top bar) to light it.`,
@@ -832,7 +901,7 @@ Can you help out with this final task? Each line ticks itself off as you do it:
 
 <ol class="nge-tut-checklist">
 <li data-check="spot">Go to this location: ${copyButton('82190, 58009, 381')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>
-<li data-check="layer">Add a new annotation layer and name it <strong>Top Secret Location</strong>&nbsp;${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it', '.neuroglancer-layer-add-button, .nge-title-rename')}</li>
+<li data-check="layer">Add a new annotation layer and name it <strong>Secret Hideout</strong>&nbsp;${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it', '.neuroglancer-layer-add-button, .nge-title-rename')}</li>
 <li data-check="layout">Open the 2 panel view (2D + 3D)&nbsp;${hint('Press SPACE')}</li>
 <li data-check="point">There is a merger here! CTRL+CLICK to place annotation points around where the merger starts&nbsp;${hint('Scroll the mouse wheel over the 2D view to move through the slices. Find Path from the soma to the odd branch shows where it joins')}</li>
 </ol>`,
