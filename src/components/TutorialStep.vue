@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { isNextToElementPostition, useTutorialStore, type Step } from '../store-pyr';
-import { useLayersStore } from 'src/store';
+import { useLayersStore, setStateRewriter } from 'src/store';
 import { marked } from 'marked';
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 
@@ -13,6 +13,25 @@ const root = ref<HTMLElement | null>(null);
 // The intro tutorial's advance buttons teach the Enter shortcut (Ames,
 // 2026-09-29). Not in Merge or Cut, where Enter submits the edit.
 const tutorialStore = useTutorialStore();
+
+/** The annotation layers in view that hold at least one annotation. */
+function playerAnnotationLayers(): any[] {
+    try {
+        const layers = (window as any).viewer?.state?.toJSON()?.layers;
+        const list = Array.isArray(layers) ? layers : Object.entries(layers ?? {}).map(([name, l]: [string, any]) => ({ ...l, name }));
+        return list.filter((l: any) => l?.type === 'annotation' && Array.isArray(l.annotations) && l.annotations.length > 0);
+    } catch { return []; }
+}
+/** A saved view with these layers added, unless it has one of that name. */
+function withLayers(state: any, keep: any[]): any {
+    if (Array.isArray(state.layers)) {
+        const names = new Set(state.layers.map((l: any) => l.name));
+        state.layers.push(...keep.filter(l => !names.has(l.name)));
+    } else if (state.layers && typeof state.layers === 'object') {
+        for (const l of keep) if (!(l.name in state.layers)) { const { name, ...rest } = l; state.layers[name] = rest; }
+    }
+    return state;
+}
 const nextTip = computed(() => tutorialStore.activeTutorial === 1 ? 'Protip: press Enter to advance' : undefined);
 
 
@@ -321,7 +340,13 @@ function settleWithin(p: Promise<unknown> | unknown, what: string): Promise<void
 onMounted(async () => {
     const startT = performance.now();
     if (props.step.state) {
-        await settleWithin(loadState(props.step.state), 'loading the step view');
+        // Advanced Interface: the annotation layers the player filled keep
+        // their points when a step loads its own view (Ames 2026-10-18:
+        // "when I hit next it deleted my annotations!").
+        const keep = tutorialStore.activeTutorial === 2 ? playerAnnotationLayers() : [];
+        if (keep.length) setStateRewriter(async (st: any) => withLayers(st, keep));
+        try { await settleWithin(loadState(props.step.state), 'loading the step view'); }
+        finally { if (keep.length) setStateRewriter(null); }
     }
     if (props.step.clickAfterState) {
         const el = await waitForElement(props.step.clickAfterState);
@@ -570,13 +595,19 @@ async function onHtmlClick(e: MouseEvent) {
     /* filter: drop-shadow(0 8px 4px rgba(0, 0, 0, 0.25)); overwrites backdrop-filter*/
 }
 
+/* Beside its target, the box starts just above it and the arrow points at
+   it, so a target near the top or bottom of the screen keeps its box next
+   to it (Ames 2026-10-18: "next to the element it points to"). The clamp
+   then only ever slides the box along its target's edge. */
 .introductionStepAnchor.right>* {
     transform: translate(0, -50%);
 }
+.introductionStepAnchor.right .chip { transform: translate(0, -36px); }
 
 .introductionStepAnchor.left>* {
     transform: translate(-100%, -50%);
 }
+.introductionStepAnchor.left .chip { transform: translate(0, -36px); }
 
 .introductionStepAnchor.top>*,
 .introductionStepAnchor.bottom>* {
@@ -1444,10 +1475,47 @@ async function onHtmlClick(e: MouseEvent) {
   display: inline-flex; align-items: center; gap: 6px; margin: 2px 0; padding: 4px 10px; border-radius: 6px; cursor: pointer;
   font: 600 13px 'JetBrains Mono', ui-monospace, monospace; color: #cfe9ff;
   background: rgba(74, 158, 255, 0.14); border: 1px solid rgba(126, 202, 255, 0.5);
+  /* A long set of IDs wraps inside the box instead of running out of it. */
+  max-width: 100%; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; text-align: left;
 }
 .nge-tut-copy:hover { background: rgba(74, 158, 255, 0.26); }
 .nge-tut-copy--done { color: #b9f5c6; border-color: rgba(142, 232, 160, 0.7); }
 .nge-tut-checklist li { transition: color 0.3s; }
 .nge-tut-checklist li.nge-tut-done { color: #9ff0b8; }
 .nge-tut-checklist li.nge-tut-done::marker { content: '✓  '; color: #3dff9a; font-weight: 700; }
+/* A pretend Segments row, drawn like the panel's (tutorial-2.ts FAKE_ROW). */
+.nge-tut-row {
+  display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; padding: 6px 10px;
+  background: rgba(10, 16, 30, 0.9); border: 1px solid rgba(126, 202, 255, 0.25); border-radius: 6px;
+}
+.nge-tut-row-eye { color: #8fb8e8; display: inline-flex; }
+.nge-tut-row-id {
+  font: 600 11px 'JetBrains Mono', ui-monospace, monospace; color: #04121f;
+  background: #35b9ff; border-radius: 3px; padding: 1px 5px;
+}
+.nge-tut-row-gap { flex: 1; }
+.nge-tut-row-fly { color: #9db4d6; }
+.nge-tut-row-tri { color: #e8edf5; font-size: 12px; }
+.nge-tut-legend { display: grid; gap: 4px; margin: 8px 0 12px; }
+.nge-tut-legend > div { display: flex; align-items: center; gap: 10px; }
+.nge-tut-key {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 22px; padding: 0 4px; border-radius: 4px;
+  background: rgba(74, 158, 255, 0.12); border: 1px solid rgba(126, 202, 255, 0.35); color: #cfe9ff; font-size: 12px;
+}
+.nge-tut-key--id { background: #35b9ff; color: #04121f; font: 700 10px 'JetBrains Mono', ui-monospace, monospace; border: none; }
+/* "Path found!" across the middle of the screen. */
+.nge-tut-banner {
+  position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 100002; pointer-events: none;
+  font: 800 clamp(34px, 4vw, 64px) 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; color: #b8ffd6;
+  text-shadow: 0 0 18px rgba(80, 255, 160, 0.75), 0 0 42px rgba(80, 255, 160, 0.45);
+  animation: nge-tut-banner-in 2.6s ease-out both;
+}
+@keyframes nge-tut-banner-in {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  25% { transform: translate(-50%, -50%) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
 </style>

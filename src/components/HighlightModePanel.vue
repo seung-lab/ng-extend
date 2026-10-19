@@ -6,6 +6,7 @@
  * proofreader can see which branches they have already checked.
  */
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { startLoader, type Live } from '../find_path_status';
 import { claimTouchTaps } from '../util/touch_tap';
@@ -398,6 +399,10 @@ let stopLayerWatch = () => { /* set on mount */ };
 // is theirs, as Ctrl+click is.
 let stopTouchTaps = () => { /* set on mount */ };
 onMounted(() => {
+  // Opening Highlight closes Find Path, whose Ctrl+click would otherwise take
+  // every point (Ames 2026-10-18: "highlight doesn't work"). Merge and Cut
+  // stay open, with H+click for highlights.
+  if (document.querySelector('.graphene-find-path')) exitGrapheneTool();
   refresh();
   stopTouchTaps = claimTouchTaps((x, y) => (editToolOpen() ? null : () => { void place(x, y); }));
   stopLayerWatch = onLayersChanged(() => { shown.value = highlightsShown(); });

@@ -1,4 +1,8 @@
 import { Step, useTutorialStore } from "./store-pyr";
+import { drawSearchLine } from "./tutorial_pointer";
+import { lantern } from "./util/lantern";
+import { setStatedColor } from "./widgets/widget_utils";
+import { Uint64 } from "neuroglancer/util/uint64";
 import { useUserPreferencesStore } from "./store";
 
 /** How a layer chip is selected and hidden. Since 2026-10-11 a plain click
@@ -12,6 +16,8 @@ const HIDE_CLICK = () => (classicLayers() ? 'CLICK' : 'RIGHT-CLICK');
 const copyButton = (coords: string) => `<button type="button" class="nge-tut-copy" data-nge-copy="${coords}">📋 Copy ${coords}</button>`;
 /** The soma the tutorial starts on (its saved view, read 2026-10-18). */
 const SOMA = '75744, 56704, 656';
+/** A spot out along one of the cell's branches (inside cell 648518346353084129). */
+const COLLAB_SPOT = '77499, 61988, 423';
 // 132KB web-sized JPEG; the 18MB source PNG stays out of the bundle.
 import imgWheresNurro from './images/wheres-nurro.png';
 import imgNurroAtHome from './images/nurro-at-home600.png';
@@ -30,13 +36,129 @@ const OVER_3D = {
   y: 0.15,
 };
 
-/** Glow on the coordinates box (bottom left) for a while. */
-function glowCoordinates() {
-  const el = Array.from(document.querySelectorAll('.neuroglancer-position-widget'))
-    .find(e => !e.closest('.neuroglancer-layer-item')) as HTMLElement | undefined;
-  if (!el) return;
-  el.classList.add('nge-tour-target');
-  setTimeout(() => el.classList.remove('nge-tour-target'), 20000);
+/** Move on by itself once the view has jumped to `spot` ("x, y, z"). */
+function nextWhenAt(spot: string) {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const want = spot.split(',').map(Number);
+  const at = () => {
+    try {
+      const p = (window as any).viewer.navigationState.position.value;
+      return Math.abs(p[0] - want[0]) < 30 && Math.abs(p[1] - want[1]) < 30 && Math.abs(p[2] - want[2]) < 3;
+    } catch { return false; }
+  };
+  // Wait for the step's view to load, which may itself sit on the spot.
+  setTimeout(() => {
+    const already = at();
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      if (at() && !already) {
+        clearInterval(timer);
+        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1500);
+      }
+    }, 400);
+  }, 2500);
+}
+/** Step 4 needs an annotation layer: the player's own if they made one,
+ *  otherwise the + makes it now (so it gets the Pyr gem tool). */
+function ensureAnnotationLayer() {
+  setTimeout(() => {
+    const viewer = (window as any).viewer;
+    const layers = viewer?.layerManager?.managedLayers ?? [];
+    const ann = layers.filter((ml: any) => !ml.archived && ml.layer?.type === 'annotation');
+    if (ann.length === 0) {
+      (document.querySelector('.neuroglancer-layer-add-button') as HTMLElement | null)?.click();
+      return;
+    }
+    // Open its panel if another layer's is showing.
+    const mine = ann[ann.length - 1];
+    if (viewer.selectedLayer.layer !== mine) { viewer.selectedLayer.layer = mine; viewer.selectedLayer.visible = true; }
+  }, 600);
+}
+
+const SEG_BOX = '.neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query';
+/** Show where to paste: the box glows, and a Find Path style search line runs
+ *  from the tutorial box to it every few seconds until the player clicks
+ *  into it (Ames 2026-10-18: "bring more attention to where to paste IDs"). */
+function pointAtSegBox() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  let box: HTMLElement | null = null;
+  const draw = () => {
+    box = document.querySelector<HTMLElement>(SEG_BOX);
+    const chip = document.querySelector('.introductionStepAnchor .chip');
+    if (!box || !chip || document.activeElement === box) return;
+    box.classList.add('nge-tour-target');
+    const a = chip.getBoundingClientRect(), b = box.getBoundingClientRect();
+    drawSearchLine({ x: a.right - 40, y: a.top + 40 }, { x: b.left + 24, y: b.top + b.height / 2 }, 2400);
+  };
+  setTimeout(draw, 900);
+  const timer = setInterval(() => {
+    if (!here()) { clearInterval(timer); box?.classList.remove('nge-tour-target'); return; }
+    draw();
+  }, 4500);
+}
+
+/** Glow the layer side panel button (top bar, far right) for a while. */
+function glowPanelButton() {
+  setTimeout(() => {
+    const el = document.querySelector<HTMLElement>('#ngFarRight > .neuroglancer-icon:last-child');
+    if (!el) return;
+    el.classList.add('nge-tour-target');
+    setTimeout(() => el.classList.remove('nge-tour-target'), 20000);
+  }, 800);
+}
+/** The eye from the Segments panel, and a pretend row built from the
+ *  panel's own parts (Ames 2026-10-18: "make a fake row with the icons"). */
+const EYE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const FAKE_ROW = `<div class="nge-tut-row" aria-hidden="true"><span class="nge-tut-row-eye">${EYE_ICON}</span><span class="nge-tut-row-id">648518346354852928</span><span class="nge-tut-row-gap"></span><span class="nge-tut-row-fly">↗</span><span class="nge-tut-row-tri">▲</span></div>`;
+
+/** Find Path in the tutorial: the cells go see through so the path shows,
+ *  a big "Path found!" when it arrives, then on. The cells come back to
+ *  full strength once the player is past the next box. */
+function findPathStep() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const segLayers = () => ((window as any).viewer?.layerManager?.managedLayers ?? [])
+    .filter((ml: any) => ml?.layer?.displayState?.objectAlpha);
+  setTimeout(() => { for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 0.35; }, 1500);
+  const restore = setInterval(() => {
+    const s = store.getTutorialStep();
+    if (store.activeTutorial === tutorial && (s === step || s === step + 1)) return;
+    clearInterval(restore);
+    for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 1;
+  }, 500);
+  const onFound = () => {
+    if (store.activeTutorial !== tutorial || store.getTutorialStep() !== step) return;
+    document.removeEventListener('nge:path-found', onFound);
+    const banner = document.createElement('div');
+    banner.className = 'nge-tut-banner';
+    banner.textContent = 'Path found!';
+    document.body.appendChild(banner);
+    document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
+    setTimeout(() => {
+      banner.remove();
+      if (store.activeTutorial === tutorial && store.getTutorialStep() === step) document.dispatchEvent(new CustomEvent('nge:tutorial-next'));
+    }, 2600);
+  };
+  document.addEventListener('nge:path-found', onFound);
+}
+
+/** Move on once Lantern is lit. */
+function nextWhenLanternOn() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const was = lantern.on;
+  const timer = setInterval(() => {
+    if (!here()) { clearInterval(timer); return; }
+    if (lantern.on && !was) {
+      clearInterval(timer);
+      setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
+    }
+  }, 400);
 }
 
 /** The visible segment IDs of the segmentation layer. */
@@ -60,13 +182,34 @@ function nextWhenCellsAdded(count: number) {
     const base = visibleIds();
     const timer = setInterval(() => {
       if (!here()) { clearInterval(timer); return; }
-      const added = [...visibleIds()].filter(id => !base.has(id)).length;
+      const fresh = [...visibleIds()].filter(id => !base.has(id));
+      fresh.forEach(colorNewCell);
+      const added = fresh.length;
       if (added >= count) {
         clearInterval(timer);
         setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 1200);
       }
     }, 400);
   }, 1500);
+}
+/** Each cell the player adds gets its own color, so a new cell stands
+ *  apart from the ones already in view (Ames 2026-10-18). */
+const NEW_CELL_COLORS = [0xf5d142, 0x7cffb2, 0xb48cff, 0xff7aa8];
+const colored = new Set<string>();
+function colorNewCell(id: string) {
+  if (colored.has(id)) return;
+  try {
+    for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+      const map = ml.layer?.displayState?.segmentationColorGroupState?.value?.segmentStatedColors;
+      if (!map) continue;
+      const rgb = NEW_CELL_COLORS[colored.size % NEW_CELL_COLORS.length];
+      // packed as 0xBBGGRR
+      const packed = ((rgb >> 16) & 0xff) | (((rgb >> 8) & 0xff) << 8) | ((rgb & 0xff) << 16);
+      setStatedColor(map, Uint64.parseString(id), packed);
+      colored.add(id);
+      return;
+    }
+  } catch { /* the layer is not ready */ }
 }
 /** Move on by itself once an annotation layer has been added. */
 function nextWhenAnnotationLayerAdded() {
@@ -180,7 +323,7 @@ export const steps: Step[] = [
   {
     part: "Part 1 of 4 · Mark what you see",
     text: `
-You've merged and cut your first cells. Now let's take a deeper dive into the interface, in four short parts: marking what you see, finding your way, working with cells, and putting it together to find where a merger starts.`,
+You've merged and cut your first cells. Now let's take a deeper dive into the interface, in four short parts: marking what you see, working with cells, finding your way, and putting it together to find where a merger starts.`,
     image:
       imgWheresNurro,
     position: MIDDLE,
@@ -242,108 +385,26 @@ They live in an ANNOTATION LAYER. <strong>CLICK the "+" to add one.</strong>`,
   {
     part: "Part 1 of 4 · Mark what you see",
     text: `
-This is the annotation layer's side panel. Let's give the layer a name of its own.
+This is your new layer's side panel. Let's give the layer a name of its own.
 
-<strong>Click the layer's name at the top of the panel</strong> (or the ✏️ pencil next to it), replace it with <strong>Tutorial</strong>, and press Enter.`,
+<strong>Click the ✎ pencil next to the layer's name</strong> (or the name itself), type <strong>Tutorial</strong> and press Enter.`,
     position: {
-      element: ".neuroglancer-layer-side-panel-name",
+      element: ".neuroglancer-layer-side-panel-title",
       side: "left",
       offset: { x: 0, y: 0 },
     },
-    onEnter: nextWhenRenamedTutorial,
-    state: 
-        "middleauth+https://global.daf-apis.com/nglstate/api/v1/5451570511609856",
+    onEnter() { ensureAnnotationLayer(); nextWhenRenamedTutorial(); },
   },
   {
     part: "Part 1 of 4 · Mark what you see",
     text: `
-The point tool is already picked. <strong>CTRL+CLICK anywhere on the cell</strong> to place a point. Try placing a few!`,
+The Pyr gem tool is already picked. <strong>CTRL+CLICK anywhere on the cell</strong> to drop a gem. Try placing a few!
+
+Each gem is listed in the panel: click one there to add a note to it. Your gems stay with you for the rest of the tutorial. Press Next when you're ready to move on.`,
     position: OVER_3D,
   },
   {
-    part: "Part 2 of 4 · Find your way",
-    text: `
-Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text at the top of the screen. The help text may need a few seconds to load.
-
-If you get confused in the future, hovering may help!`,
-    image:
-      imgNurroAtHome,
-    position: MIDDLE,
-    width: "400px",
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 2 of 4 · Find your way",
-    text: `
-Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
-
-These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
-
-<strong>Press "A" again</strong> to remove them. Many of our keyboard commands act as a toggle switch between SHOW and HIDE.`,
-    width: "500px",
-    position: OVER_3D,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 2 of 4 · Find your way",
-    text: `
-Let's explore a bit! But before we do, we'd like to be able to easily return to the soma in case we get lost. 
-
-Click the copy icon in the glowing coordinates box, bottom left, to COPY our current location.`,
-    width: "500px",
-    position: { element: "body", x: 0.24, y: 0.66 },
-    // The coordinates box now sits in the bottom left corner. Anchored to it
-    // with side "bottom", this box opened below the screen and the tutorial
-    // seemed to quit (Ames, 2026-10-06). It sits just above the corner now,
-    // and the coordinates box glows.
-    onEnter: glowCoordinates,
-     state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 2 of 4 · Find your way",
-    text: `
-One of our collaborators would like us to check out a spot in this dataset. Here it is:
-
-${copyButton('456789, 56704, 656')}
-
-<strong>Copy it, then press CTRL+V anywhere in the viewer to PASTE it</strong>. Pyr jumps straight to that spot. (Not in a text box: there it would just paste the numbers.)`,
-    width: "500px",
-    position: { element: "body", x: 0.24, y: 0.66 },
-    onEnter: glowCoordinates,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 2 of 4 · Find your way",
-    text: `
-Oh sorry, that wasn't right! That was the amount owed on my cat's latest vet bill 😿. Now we're lost in neuron space!
-
-That's okay: let's go back to the cell's soma. We copied its spot a moment ago, but the new numbers replaced it, so here it is again:
-
-${copyButton(SOMA)}
-
-<strong>Copy it and press CTRL+V anywhere in the viewer</strong> to jump back to the right spot.`,
-    width: "500px",
-    position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/6180235000152064",
-  },
-  {
-    part: "Part 2 of 4 · Find your way",
-    text: `
-Great! We're back in view of our cell again. 
-
-Let's keep investigating.`,
-    width: "500px",
-    position: MIDDLE,
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     text: `
 This LAYER has a light running around its border: that means it is the one selected.`,
     position: {
@@ -355,7 +416,7 @@ This LAYER has a light running around its border: that means it is the one selec
         "middleauth+https://global.daf-apis.com/nglstate/api/v1/5077771186339840",
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     get text() { return `
 <strong>${SELECT_CLICK()}</strong> to select this layer instead.
 
@@ -367,7 +428,7 @@ If it worked, the light moves to its border!`; },
     },
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     get text() { return `
 <strong>${HIDE_CLICK()}</strong> on the layer to SHOW or HIDE it.
 
@@ -381,11 +442,12 @@ Try both ways!`; },
     },
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     text: `
-Look here! This SIDE PANEL opened when you selected the layer.
+Selecting a layer opens its SIDE PANEL. This one is <strong>3D segmentation</strong>, where the cells live: you'll work here and in the annotation layers you add with <strong>+</strong>.
 
-Its title is the layer's NAME. You can open and close it any time with the Layer side panel button, at the right end of the top bar.`,
+The glowing button at the right end of the top bar opens and closes the side panel any time.`,
+    onEnter: glowPanelButton,
     position: {
       element: ".neuroglancer-layer-side-panel-title",
       side: "left",
@@ -395,19 +457,7 @@ Its title is the layer's NAME. You can open and close it any time with the Layer
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
-    text: `
-<strong>3D segmentation</strong> is a SEGMENTATION layer: it holds the cells, shown as shapes in 3D and outlined in the 2D view.
-
-<strong>2D EM</strong> is an IMAGE layer, the electron microscopy pictures themselves, and the layers you add with <strong>+</strong> are ANNOTATION layers, for your own points and notes.`,
-    position: {
-      element: ".neuroglancer-layer-side-panel-title",
-      side: "left",
-      offset: { x: 0, y: 0 },
-    },
-  },
-  {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     text: `
 Let's add more cells. The box at the top of the Segments tab takes cell IDs. Copy this one:
 
@@ -419,13 +469,15 @@ ${copyButton('648518346354852928')}
       side: "left",
       offset: { x: 0, y: 0 },
     },
-    onEnter: () => nextWhenCellsAdded(1),
+    onEnter: () => { nextWhenCellsAdded(1); pointAtSegBox(); },
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5647622615334912",
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     text: `
+Good job! You added a second pyramidal neuron. Pyramidal neurons are the main excitatory neurons of the brain, and the cells Pyr is named after!
+
 You can paste several IDs at once, separated by commas:
 
 ${copyButton('648518346353636160, 648518346354708544')}
@@ -436,10 +488,10 @@ ${copyButton('648518346353636160, 648518346354708544')}
       side: "left",
       offset: { x: 0, y: 0 },
     },
-    onEnter: () => nextWhenCellsAdded(2),
+    onEnter: () => { nextWhenCellsAdded(2); pointAtSegBox(); },
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     text: `
 The box also takes coordinates: it adds whichever cell is at that spot. Copy these:
 
@@ -451,16 +503,21 @@ ${copyButton('77499, 61988, 423')}
       side: "left",
       offset: { x: 0, y: 0 },
     },
-    onEnter: () => nextWhenCellsAdded(1),
+    onEnter: () => { nextWhenCellsAdded(1); pointAtSegBox(); },
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     text: `
-Each cell in view has a row here, with its ID. You can:
+Each cell in view has a row here, like this one:
 
-- click the eye to show or hide a cell, and the trash can to take it out of view
-- click the arrow ↗ to fly to a cell
-- click the triangle at the end of the row to mark it Proofread or give it a cell type
+${FAKE_ROW}
+
+<div class="nge-tut-legend">
+<div><span class="nge-tut-key">${EYE_ICON}</span>shows or hides the cell</div>
+<div><span class="nge-tut-key nge-tut-key--id">ID</span>the cell's ID</div>
+<div><span class="nge-tut-key">↗</span>flies to the cell</div>
+<div><span class="nge-tut-key">▲</span>marks it Proofread or gives it a cell type</div>
+</div>
 
 Make folders with <strong>+ Folder</strong> to keep cells together.`,
     position: {
@@ -470,7 +527,7 @@ Make folders with <strong>+ Folder</strong> to keep cells together.`,
     },
   },
   {
-    part: "Part 3 of 4 · Cells in the Segments panel",
+    part: "Part 2 of 4 · Working with cells",
     text: `
 <span style="color: white; background-color: black; font-weight: bold; border: 1px solid white;">Render</span> is another important tab. Here you change how your cells look.
 
@@ -488,13 +545,80 @@ Try them! We'll restore the default view in the next slide.`,
     onEnter: glowRenderControls,
   },
   {
+    part: "Part 3 of 4 · Find your way",
+    text: `
+Many elements in the interface have hover states with help text. Try hovering your mouse over some of the buttons or white text at the top of the screen. The help text may need a few seconds to load.
+
+If you get confused in the future, hovering may help!`,
+    image:
+      imgNurroAtHome,
+    position: MIDDLE,
+    width: "400px",
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    text: `
+Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
+
+These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
+
+<strong>Press "A" again</strong> to remove them. Many of our keyboard commands act as a toggle switch between SHOW and HIDE.`,
+    width: "500px",
+    position: OVER_3D,
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    text: `
+Before we explore, let's save a way back to the cell's soma, where we are now.
+
+This box shows where you are. <strong>Click its copy icon</strong> to COPY our current location.`,
+    width: "500px",
+    position: { element: "#extensionBar .neuroglancer-position-widget", side: "right", offset: { x: 0, y: 0 } },
+    highlight: true,
+     state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    text: `
+One of our collaborators would like us to check out a spot on this cell. Here it is:
+
+${copyButton(COLLAB_SPOT)}
+
+<strong>Copy it, then press CTRL+V anywhere in the viewer to PASTE it</strong>. Pyr jumps straight to that spot. (Not in a text box: there it would just paste the numbers.)`,
+    width: "500px",
+    position: OVER_3D,
+    onEnter: () => nextWhenAt(COLLAB_SPOT),
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    text: `
+Now let's go back to the soma. Paste the spot you copied from the coordinates box (or copy it again here):
+
+${copyButton(SOMA)}
+
+<strong>Press CTRL+V anywhere in the viewer</strong> to jump back.`,
+    width: "500px",
+    position: OVER_3D,
+    onEnter: () => nextWhenAt(SOMA),
+  },
+  {
     part: "Part 4 of 4 · Put it together",
     text: `
 Now let's put it together. <strong>Find Path</strong> draws the route through a cell between two points.
 
-<strong>Press F</strong> (or the Find Path button on the top bar), then <strong>CTRL+CLICK the soma</strong> and <strong>CTRL+CLICK the end of a branch</strong>, and press <strong>Enter</strong>.`,
+<strong>Press F</strong> (or the Find Path button on the top bar), then <strong>CTRL+CLICK the soma</strong> and <strong>CTRL+CLICK the end of a branch</strong>, and press <strong>Enter</strong>.
+
+We've made the cell see through, so the path stands out.`,
     width: "500px",
     position: OVER_3D,
+    onEnter: findPathStep,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
   },
@@ -503,19 +627,41 @@ Now let's put it together. <strong>Find Path</strong> draws the route through a 
     text: `
 That's how you find where a merger starts. When a branch looks wrong, put one point on the soma and one on the wrong branch, and Find Path shows exactly where the wrong piece joins the cell. That join is where you cut.
 
-Mark the spot with an annotation point, so you or a teammate can find it again.`,
+If you are scouting mergers, you can then tag the spot with the glowing <strong>Tag</strong> tool on the top bar, so you or a teammate can find it again.`,
     width: "500px",
-    position: OVER_3D,
+    position: { element: '#extensionBar [data-icon-id="tags"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
   },
   {
     part: "Part 4 of 4 · Put it together",
     text: `
 One more tool for keeping track: <strong>Highlight</strong> marks the parts of a cell you have already checked, so you never look twice.
 
-<strong>Press SHIFT+H</strong> (or the Highlight button on the top bar), pick <strong>Checked</strong>, then <strong>CTRL+CLICK two points along a branch</strong>. The branch between them lights up.`,
+<strong>Press SHIFT+H</strong> (or the glowing Highlight button on the top bar), pick <strong>Checked</strong>, then <strong>CTRL+CLICK two points along a branch</strong>. The branch between them lights up.`,
+    width: "500px",
+    position: { element: '#extensionBar [data-icon-id="highlight"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+    onEnter: () => nextWhenHighlighted(),
+  },
+  {
+    part: "Part 4 of 4 · Put it together",
+    text: `
+For a big cell, <strong>Lantern</strong> lights the part around where you are and dims the rest, so you can check it one part at a time.
+
+<strong>Press SHIFT+N</strong> (or the glowing lantern on the top bar) to light it.`,
+    width: "500px",
+    position: { element: '#extensionBar [data-icon-id="lantern"]', side: "bottom", offset: { x: 0, y: 14 } },
+    highlight: true,
+    onEnter: nextWhenLanternOn,
+  },
+  {
+    part: "Part 4 of 4 · Put it together",
+    text: `
+Move around the cell: the light follows you. In the Lantern box, <strong>Size</strong> sets how much of the cell is lit and <strong>Flame</strong> how bright.
+
+Press <strong>SHIFT+N</strong> again whenever you want the whole cell back.`,
     width: "500px",
     position: OVER_3D,
-    onEnter: () => nextWhenHighlighted(),
   },
   {
     part: "Part 4 of 4 · Put it together",

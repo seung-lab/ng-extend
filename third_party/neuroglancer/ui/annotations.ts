@@ -938,7 +938,9 @@ function armNewAnnotationLayer(managedLayer: any, triesLeft = 20) {
     if (triesLeft > 0) setTimeout(() => armNewAnnotationLayer(managedLayer, triesLeft - 1), 50);
     return;
   }
-  displayState.ngeMarker.value = 'dot';
+  // A Pyr gem, in the layer's golden yellow (Ames 2026-10-18: "let's use
+  // golden yellow Pyr gems as the default").
+  displayState.ngeMarker.value = 'pyr';
   // 1.5 only until the player has set a size of their own on a slider: a new
   // layer was always forced to 1.5, which undid the remembered size the
   // moment the layer was made (Ames 2026-10-12: "not working").

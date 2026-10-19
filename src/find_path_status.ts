@@ -214,6 +214,11 @@ function apply(li: HTMLElement, kind: Kind) {
   if (kind === 'done') {
     ui.innerHTML = '<span class="nge-fp-check">✓</span><span class="nge-fp-label">Path found</span>';
     li.appendChild(ui);
+    // Submit stops pulsing until a point moves (Ames 2026-10-18: "Submit at
+    // bottom keeps pulsing"), and anyone waiting on a path hears of it.
+    foundPoints = pointsNow();
+    document.body.classList.add('nge-fp-found');
+    document.dispatchEvent(new CustomEvent('nge:path-found'));
     return;
   }
   const cv = document.createElement('canvas');
@@ -242,6 +247,12 @@ function apply(li: HTMLElement, kind: Kind) {
   startLoader(cv, l);
 }
 
+/** The find path points as text, to notice when one moves. */
+let foundPoints = '';
+function pointsNow(): string {
+  return document.querySelector('.graphene-find-path .find-path-annotations')?.textContent ?? '';
+}
+
 function rescan() {
   const container = document.getElementById('statusContainer');
   let working = false;
@@ -256,6 +267,9 @@ function rescan() {
   // Lines neuroglancer has already removed: stop their animation.
   for (const li of Array.from(live.keys())) if (!li.isConnected) stop(li);
   document.body.classList.toggle('nge-fp-busy', working);
+  if (document.body.classList.contains('nge-fp-found') && (working || pointsNow() !== foundPoints)) {
+    document.body.classList.remove('nge-fp-found');
+  }
 }
 
 let queued = false;

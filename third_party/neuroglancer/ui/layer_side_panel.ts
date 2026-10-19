@@ -214,6 +214,10 @@ class LayerSidePanel extends SidePanel {
           nameInput.select();
         });
         nameInput.after(pencil);
+        // Enter or Escape finishes the rename and leaves the box.
+        nameInput.addEventListener('keydown', (e: KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === 'Escape') nameInput.blur();
+        });
       }
     }
     if (kind === 'segmentation' || kind === 'image') {
