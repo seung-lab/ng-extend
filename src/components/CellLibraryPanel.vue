@@ -3587,7 +3587,7 @@ const panelStyle = computed(() => ({
             <!-- The cell's type, saved with the completion (Nseraf 2026-10-19):
                  the same list as the Cell Profile, or typed. Optional. -->
             <template v-if="cellTypesFor(cell).length">
-              <label class="nge-cl-complete-label">{{ cell.aiType ? 'Cell type' : 'Cell type (optional)' }}</label>
+              <label class="nge-cl-complete-label">Cell type (optional)</label>
               <!-- The lab's AI type stands; a player only says when it is wrong
                    (Ames 2026-10-19), and only that correction is saved. -->
               <div v-if="cell.aiType && !completing.correcting" class="nge-cl-complete-ai">
