@@ -49,14 +49,6 @@ You start in **MEC**. This tour walks the top bar from left to right. Press **Ne
     onEnter: () => { document.dispatchEvent(new CustomEvent("nge:close-all-panels")); },
   },
   {
-    title: "Nurro, and the Command Bar",
-    text: `**Ctrl+K** (**⌘K** on Mac), or click **AI**. Type to search every action, panel and recent cell, and press **Enter** to run it.
-
-Ask a question in plain words instead and Nurro, the guide, answers from what the game can do.`,
-    position: below(".nge-ask-btn"),
-    highlight: true,
-  },
-  {
     title: "Dataset Selector",
     text: `Switch datasets here. Each one is its own volume with its own cells and Cell Library. Datasets you can view but not edit are marked **View only**.`,
     position: below(".nge-dataset-btn"),
