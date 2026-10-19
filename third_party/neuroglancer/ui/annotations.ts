@@ -677,7 +677,7 @@ export class AnnotationLayerView extends Tab {
     newFolder.type = 'button';
     newFolder.className = 'nge-seg-list-keep nge-seg-folder-new nge-ann-folder-new';
     newFolder.textContent = '+ Folder';
-    newFolder.title = 'Make a folder, then drag annotations onto it by their numbers (picked ones go straight in)';
+    newFolder.title = 'Make a folder, then drag annotations onto it (picked ones go straight in)';
     newFolder.addEventListener('mousedown', event => event.stopPropagation());
     newFolder.addEventListener('click', event => {
       event.stopPropagation();
@@ -872,7 +872,7 @@ export class AnnotationLayerView extends Tab {
     element.prepend(num);
     if (state === this.ngeLocalState()) {
       element.dataset.ngePickable = '';
-      num.title = `Annotation ${item.number}. Drag to move it, or onto a folder to put it in. Ctrl+click picks several.`;
+      num.title = `Annotation ${item.number}. Drag the row to move it, or onto a folder to put it in. Ctrl+click picks several.`;
     } else {
       num.title = `Annotation ${item.number}`;
     }

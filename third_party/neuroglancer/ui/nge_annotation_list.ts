@@ -56,14 +56,18 @@ export function makeFolderHeading(
   swatch.style.background = folder.color ?? '#8cb4eb';
   swatch.title = folder.paint ?
       'This folder colors its annotations. Click to pick another color.' :
-      'Folder color. Turn on "Color its annotations" to draw them in it.';
+      'Folder color. Pick a color to draw its annotations in it.';
   swatch.addEventListener('click', event => {
     event.stopPropagation();
     const f = current();
     if (!f) return;
     openColorPalette(swatch, f.color, hex => {
       const cur = current();
-      if (cur && cur.color !== hex) folders.setColor(cur.id, hex);
+      if (!cur) return;
+      if (cur.color !== hex) folders.setColor(cur.id, hex);
+      // picking a color recolors the folder's annotations (Ames 2026-10-19:
+      // "recolor doesn't seem to work?"); the box below turns it off again
+      if (!cur.paint) folders.setPaint(cur.id, true);
     }, `Color for ${f.name}`, {
       label: 'Color its annotations',
       value: !!f.paint,
@@ -283,9 +287,10 @@ export function bindAnnotationListDrag(host: AnnotationListHost): () => void {
     if (e.button !== 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const t = e.target as HTMLElement|null;
     if (!t || host.source() === undefined) return;
-    const num = t.closest('.nge-ann-num') as HTMLElement|null;
-    const row = num?.closest('.neuroglancer-annotation-list-entry[data-nge-pickable]') as HTMLElement|null;
-    if (num && row?.dataset.ngeId) {
+    // the whole row is the handle (Ames 2026-10-19), not its buttons; a
+    // click that does not move still selects the row
+    const row = t.closest('.neuroglancer-annotation-list-entry[data-nge-pickable]') as HTMLElement|null;
+    if (row?.dataset.ngeId && !t.closest('button, .neuroglancer-icon, input, textarea, a')) {
       drag = {kind: 'annotation', id: row.dataset.ngeId, startX: e.clientX, startY: e.clientY, active: false, line: makeLine()};
       return;
     }

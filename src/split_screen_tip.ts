@@ -7,6 +7,8 @@
 //
 // Shown once per browser; "Got it", Escape, or leaving 4 panel dismisses it.
 
+import {QUIET_TEST_HOST} from './util/test_host';
+
 const SEEN_KEY = 'nge_tip_split_screen_v1';
 const TARGET_CLASS = 'nge-split-tip-target';
 
@@ -196,4 +198,5 @@ function install(attempts = 40) {
   onLayoutChanged(viewer);  // already in 4 panel on load
 }
 
-if (!seen()) install();
+// not on a branch test site (util/test_host.ts)
+if (!seen() && !QUIET_TEST_HOST) install();

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { QUIET_TEST_HOST } from '../util/test_host';
 import TutorialStep from "components/TutorialStep.vue";
 
 import { computed, ref, watch } from "vue";
@@ -245,6 +246,28 @@ watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) =>
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu
 });
 const needsResumePrompt = computed(() => !resumeDecided.value && !!activeStep.value && activeStep.value.index > 0);
+// A branch test site starts with empty storage, so Get Started (or the resume
+// card) came up on every one (util/test_host.ts). There, nothing shows until
+// a tutorial is started from the menu.
+const startedHere = ref(false);
+if (QUIET_TEST_HOST) {
+    const started = () => { startedHere.value = true; resumeDecided.value = true; };
+    document.addEventListener('nge:tutorial-start', started);
+    document.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement | null)?.closest?.('#hamburger .nge-menu-item')) started();
+    }, true);
+    // Other starts (the dataset tours, the Merger Sandbox, the test) begin at
+    // step 0 or follow a click; the account's saved progress arriving after
+    // sign in does neither, so it stays quiet.
+    let lastGesture = 0;
+    for (const type of ['pointerdown', 'keydown']) {
+        document.addEventListener(type, (e) => { if (e.isTrusted) lastGesture = performance.now(); }, true);
+    }
+    watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
+        if (stepNow === 0 || performance.now() - lastGesture < 3000) startedHere.value = true;
+    });
+}
+const quietOnLoad = computed(() => QUIET_TEST_HOST && !startedHere.value);
 const resumeName = computed(() => TUTORIAL_NAMES[store.activeTutorial] ?? 'the tutorial');
 function continueTutorial() { resumeDecided.value = true; }
 function exitFromPrompt() { resumeDecided.value = true; exitIntro(); }
@@ -269,6 +292,7 @@ const exitIntro = () => {
 </script>
 
 <template>
+    <template v-if="!quietOnLoad">
     <div v-if="needsResumePrompt" class="ng-extend nge-tut-resume" role="dialog" aria-label="Resume tutorial">
         <div class="nge-tut-resume-text">
             You're partway through <strong>{{ resumeName }}</strong>
@@ -283,6 +307,7 @@ const exitIntro = () => {
         :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel"
         v-on:next="next"
         v-on:back="back" v-on:exitIntro="exitIntro" />
+    </template>
 
 </template>
 
