@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T16:24:30Z",
+      "title": "A way back from 3D only",
+      "items": [
+        "After you switch to 3D only, a 2D + 3D button in the corner of the 3D view brings the 2D image back. Space still does the same."
+      ]
+    },
+    {
       "at": "2026-10-19T16:20:00Z",
       "title": "Proofreading Test results, biggest misses first",
       "items": [

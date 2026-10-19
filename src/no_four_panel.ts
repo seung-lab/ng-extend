@@ -51,8 +51,11 @@ export function installNoFourPanel(viewer: any) {
   coarse.addEventListener?.('change', paintCoarse);
   paintCoarse();
 
-  // The corner button that asks for 4 panel has nowhere to go with a mouse
-  // (Space does it); on a touch screen it reads "2D + 3D".
+  // The corner button that asks for 4 panel reads "2D + 3D" and opens split
+  // screen. With a mouse it used to be hidden everywhere (Space does the
+  // same), which left 3D only with no way back for anyone who did not know
+  // Space (wolfryder101, report 168, 2026-10-19). Now it shows wherever the
+  // view is not split already.
   const style = document.createElement('style');
   style.textContent = TOUCH_CSS;
   document.head.appendChild(style);
@@ -81,7 +84,15 @@ const touch = (rest: string) => `body.nge-mobile${rest}, body.nge-coarse${rest}`
 // split screen "2D + 3D" is not shown. A phone is 3D only or split, so it
 // has no "2D only".
 const TOUCH_CSS = `
-body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"] { display: none; }
+body:not(.nge-mobile):not(.nge-coarse)[data-nge-layout$="-3d"] ${C}[title="${FOUR}"] { display: none; }
+body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"] {
+  width: auto !important; height: 26px !important; padding: 0 10px; border-radius: 13px;
+  background: rgba(8, 14, 28, 0.82); border: 1px solid rgba(79, 207, 255, 0.55); color: #dff4ff;
+  font: 600 12px/1 'Inter', 'Roboto', sans-serif; white-space: nowrap; cursor: pointer;
+}
+body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"] > div { display: none; }
+body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"]::after { content: '2D + 3D'; }
+body:not(.nge-mobile):not(.nge-coarse) ${C}[title="${FOUR}"]:hover { background: rgba(79, 207, 255, 0.18); }
 ${touch(` ${C}[title="${FOUR}"]`)},
 ${touch(` ${C}[title="${ONLY3D}"]`)},
 ${touch(` ${C}[title="${ONLY2D}"]`)} {
