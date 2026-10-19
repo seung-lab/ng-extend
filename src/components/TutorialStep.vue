@@ -280,7 +280,36 @@ async function updateChipPosition() {
     }
 
     nextTick(clampChip);
+    followTarget(element, step);
 }
+
+/** Keep the box on its target while the step shows: the layer bar and
+ *  panels can shift after the box opens (Ames 2026-10-19: the pointer sat
+ *  beside the +, not under it). */
+let followTimer = 0;
+function followTarget(element: Element | null, step: Step) {
+    window.clearInterval(followTimer);
+    if (!element || !isNextToElementPostition(step.position)) return;
+    const pos = step.position;
+    followTimer = window.setInterval(() => {
+        if (dragging.value || !computedStep.value.left) return;
+        const el = element.isConnected ? element : document.querySelector(pos.element);
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        if (!rect.width && !rect.height) return;
+        const { x: xOff, y: yOff } = pos.offset || { x: 0, y: 0 };
+        let left = 0, top = 0;
+        if (pos.side === 'right') { left = rect.right - xOff; top = rect.top + rect.height / 2 + yOff; }
+        else if (pos.side === 'left') { left = rect.left + xOff; top = rect.top + rect.height / 2 + yOff; }
+        else if (pos.side === 'bottom') { left = rect.left + rect.width / 2 + xOff; top = rect.bottom + yOff; }
+        else { left = rect.left + rect.width / 2 + xOff; top = rect.top - yOff; }
+        const l = `${left}px`, t = `${top}px`;
+        if (computedStep.value.left !== l || computedStep.value.top !== t) {
+            computedStep.value = { ...computedStep.value, left: l, top: t };
+        }
+    }, 250);
+}
+onUnmounted(() => window.clearInterval(followTimer));
 
 /** Keep the chip on screen. Additive, so it can run again after the chip
  *  grows (a practice status box or countdown appended under the text used
@@ -513,7 +542,7 @@ async function onHtmlClick(e: MouseEvent) {
         <div class="ng-extend introductionStepAnchor chipBuildIn"
             :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight, 'nge-quick-anim': !computedStep.modal }]"
             :style="{ left: computedStep.left, top: computedStep.top, visibility: computedStep.left ? undefined : 'hidden', transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
-            <div class="arrow"></div>
+            <div class="arrow"><svg viewBox="0 0 24 22" width="24" height="22" aria-hidden="true"><path class="nge-arrow-fill" d="M9 23 L9 12 L1 12 L12 1 L23 12 L15 12 L15 23 Z"/><path class="nge-arrow-edge" d="M9 22 L9 12 L1 12 L12 1 L23 12 L15 12 L15 22"/></svg></div>
 
             <div v-if="!inExitConfirm" class="chip"
                 :class="{ modal: computedStep.modal, noborder: computedStep.noborder, 'nge-chip--dragging': dragging }" :style="chipBounds"
@@ -608,36 +637,38 @@ async function onHtmlClick(e: MouseEvent) {
 .introductionStepAnchor.right>* {
     transform: translate(0, -50%);
 }
-/* The pointer: a notch that grows out of the box's own edge, centred exactly
-   on the target (Ames 2026-10-19: the old triangle sat off its target and
-   "looks lame compared to the rest of the UI"). A square turned 45 degrees,
-   filled like the box so it covers the box's border where they meet, with
-   the two outer edges lit. The anchor point is the target's centre line. */
+/* The pointer: an arrow, head on a short shaft, coming out of the box's own
+   edge and centred exactly on the target (Ames 2026-10-19: "more arrow-ey",
+   "make sure it points to the item"). Filled like the box, outer edges lit,
+   its base laid over the box's border so the two read as one piece. Drawn
+   pointing up and turned for each side. */
 .introductionStepAnchor .arrow {
     position: absolute;
-    width: 16px;
-    height: 16px;
-    box-sizing: border-box;
-    background: rgb(14, 21, 36);
-    border: 0 solid rgba(126, 214, 255, 0.85);
-    transform: rotate(45deg) !important;
-    filter: drop-shadow(0 0 5px rgba(110, 200, 255, 0.55));
+    width: 24px;
+    height: 22px;
     z-index: 3;
-    animation: nge-notch-glow 2.4s ease-in-out infinite;
+    border: none;
+    filter: drop-shadow(0 0 5px rgba(110, 200, 255, 0.55));
+    animation: nge-arrow-glow 2.4s ease-in-out infinite;
 }
-@keyframes nge-notch-glow {
+.introductionStepAnchor .arrow svg { display: block; overflow: visible; }
+.introductionStepAnchor .arrow .nge-arrow-fill { fill: rgb(14, 21, 36); }
+.introductionStepAnchor .arrow .nge-arrow-edge { fill: none; stroke: rgba(126, 214, 255, 0.9); stroke-width: 1.5; stroke-linejoin: round; }
+@keyframes nge-arrow-glow {
     0%, 100% { filter: drop-shadow(0 0 4px rgba(110, 200, 255, 0.45)); }
     50%      { filter: drop-shadow(0 0 9px rgba(110, 200, 255, 0.85)); }
 }
 @media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow { animation: none; } }
-/* Box below its target: the notch points up from the box's top edge. */
-.introductionStepAnchor.bottom .arrow { left: -8px; top: 6px; border-top-width: 1.5px; border-left-width: 1.5px; }
+/* A box in the middle of the screen points at nothing. */
+.introductionStepAnchor.center .arrow { display: none; }
+/* Box below its target: points up; the base sits on the box's top edge. */
+.introductionStepAnchor.bottom .arrow { left: -12px; top: -7px; transform: none !important; }
 /* Box right of its target: points left. */
-.introductionStepAnchor.right .arrow { left: 6px; top: -8px; border-left-width: 1.5px; border-bottom-width: 1.5px; }
+.introductionStepAnchor.right .arrow { left: 2px; top: -11px; transform: rotate(-90deg) !important; }
 /* Box left of its target: points right. */
-.introductionStepAnchor.left .arrow { left: -22px; top: -8px; border-top-width: 1.5px; border-right-width: 1.5px; }
+.introductionStepAnchor.left .arrow { left: -26px; top: -11px; transform: rotate(90deg) !important; }
 /* Box above its target: points down. */
-.introductionStepAnchor.top .arrow { left: -8px; top: -22px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.introductionStepAnchor.top .arrow { left: -12px; top: -15px; transform: rotate(180deg) !important; }
 
 .introductionStepAnchor.right .chip { transform: translate(0, -36px); }
 
@@ -658,7 +689,7 @@ async function onHtmlClick(e: MouseEvent) {
 
 
 .introductionStepAnchor.right .chip {
-    left: 14px !important;
+    left: 24px !important;
 }
 
 
@@ -668,7 +699,7 @@ async function onHtmlClick(e: MouseEvent) {
 
 
 .introductionStepAnchor.left .chip {
-    right: 14px !important;
+    right: 24px !important;
     left: auto !important;
 }
 
@@ -1299,9 +1330,27 @@ async function onHtmlClick(e: MouseEvent) {
     outline: 2px solid rgba(0, 200, 255, 0.85) !important;
     outline-offset: 3px;
     border-radius: 6px;
-    animation: nge-tour-pulse 1.6s ease-in-out infinite;
+    animation: nge-tour-pulse 1.6s ease-in-out infinite !important;
     transition: outline-color 0.2s;
 }
+/* A ring of light that breathes around the target, drawn on its own layer
+   so a button's own shadow or animation cannot hide it (Ames 2026-10-19:
+   "the top bar icon is not glowing"). Inputs have no ::after and keep the
+   outline above. */
+.nge-tour-target::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 9px;
+    border: 2px solid rgba(110, 225, 255, 0.95);
+    pointer-events: none;
+    animation: nge-tour-ring 1.4s ease-in-out infinite;
+}
+@keyframes nge-tour-ring {
+    0%, 100% { opacity: 0.55; box-shadow: 0 0 8px 1px rgba(0, 200, 255, 0.55), inset 0 0 6px rgba(0, 200, 255, 0.35); transform: scale(1); }
+    50%      { opacity: 1;    box-shadow: 0 0 22px 6px rgba(0, 220, 255, 0.9), inset 0 0 10px rgba(0, 220, 255, 0.55); transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-tour-target::after { animation: none; opacity: 1; } }
 @keyframes nge-tour-pulse {
     0%, 100% {
         box-shadow:
@@ -1547,4 +1596,24 @@ async function onHtmlClick(e: MouseEvent) {
   font: 500 12.5px/1.4 Inter, sans-serif; text-align: left; white-space: normal; pointer-events: none;
 }
 .nge-tut-burger svg { width: 1.15em !important; height: 1.15em !important; vertical-align: -0.2em; }
+/* The box's own button rules kept a long copy button on one line, running
+   out of the box (Ames 2026-10-19). */
+.chip .nge-tut-copy {
+  display: inline-flex !important; max-width: 100% !important; white-space: normal !important;
+  overflow-wrap: anywhere !important; word-break: break-word; text-align: left !important; height: auto !important;
+  line-height: 1.4 !important;
+}
+/* The pretend row in its hover state, matching the Segments panel. */
+.nge-tut-row--hover { background: rgba(30, 48, 80, 0.75); border-color: rgba(126, 202, 255, 0.4); }
+.nge-tut-row-id { background: #f5d142; }
+.nge-tut-row-trash { color: #ff7a7a; display: inline-flex; }
+.nge-tut-row-copy { color: #9db4d6; display: inline-flex; }
+.nge-tut-row-tri { position: relative; }
+.nge-tut-row-tri i { position: absolute; right: -6px; top: -5px; width: 7px; height: 7px; border-radius: 50%; background: #f5a623; }
+.nge-tut-key--trash { color: #ff7a7a; }
+/* A layer tab named in the text, drawn like the side panel's tabs. */
+.nge-tut-tab {
+  display: inline-block; padding: 1px 9px; border-radius: 5px 5px 0 0; font-weight: 600; font-size: 0.92em;
+  color: #e8f3ff; background: rgba(40, 70, 110, 0.6); border: 1px solid rgba(126, 202, 255, 0.45); border-bottom-color: transparent;
+}
 </style>

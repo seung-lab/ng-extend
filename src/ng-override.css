@@ -1909,3 +1909,11 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 
 /* Layers that cannot be removed (src/util/locked_layers.ts): no ✕, no trash. */
 .neuroglancer-layer-item[data-nge-locked="true"] .neuroglancer-layer-item-button-container { display: none !important; }
+
+/* Render tab sections (ui/segmentation_display_options_tab.ts). */
+.nge-render-section {
+  margin: 12px 4px 4px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(120, 180, 255, 0.75);
+}
+.nge-render-group:not(:has(.neuroglancer-layer-control-container)) { display: none; }

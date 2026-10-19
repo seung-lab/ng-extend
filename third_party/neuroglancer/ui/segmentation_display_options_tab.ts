@@ -70,8 +70,46 @@ export class DisplayOptionsTab extends Tab {
       element.appendChild(widget.element);
     }
 
+    // nge: the controls in sections, the 2D view's apart from the 3D view's,
+    // each with its own Opacity (Ames 2026-10-19: "divide this list into 2D
+    // and 3D"). Labels shown here drop the "(on)"/"(3d)" the section now
+    // says; the tools keep their own names. Each row carries its original
+    // label in data-nge-control (the tutorial lights rows by it).
+    const SECTIONS: {title: string, labels: Record<string, string>}[] = [
+      {title: 'Colors', labels: {'Color seed': 'Color seed', 'Fixed color': 'Fixed color', 'Saturation': 'Saturation'}},
+      {title: '2D view', labels: {'Opacity (on)': 'Opacity', 'Opacity (off)': 'Other cells', 'Resolution (slice)': 'Resolution'}},
+      {title: '3D view', labels: {'Opacity (3d)': 'Opacity', 'Silhouette (3d)': 'Silhouette', 'Resolution (mesh)': 'Resolution'}},
+    ];
+    // Each section is a group: its heading and its rows. A group whose rows
+    // are all unavailable (no 2D layer, say) hides, heading and all (CSS).
+    let group = element;
+    const heading = (title: string) => {
+      group = document.createElement('div');
+      group.className = 'nge-render-group';
+      const h = document.createElement('div');
+      h.className = 'nge-render-section';
+      h.textContent = title;
+      group.appendChild(h);
+      element.appendChild(group);
+    };
+    const addControl = (control: typeof LAYER_CONTROLS[number], label: string) => {
+      const row = addLayerControlToOptionsTab(this, layer, this.visibility, {...control, label});
+      row.dataset.ngeControl = control.label;
+      group.appendChild(row);
+    };
+    const placed = new Set<string>();
+    for (const section of SECTIONS) {
+      heading(section.title);
+      for (const control of LAYER_CONTROLS) {
+        const label = section.labels[control.label];
+        if (label === undefined) continue;
+        placed.add(control.label);
+        addControl(control, label);
+      }
+    }
+    heading('More');
     for (const control of LAYER_CONTROLS) {
-      element.appendChild(addLayerControlToOptionsTab(this, layer, this.visibility, control));
+      if (!placed.has(control.label)) addControl(control, control.label);
     }
 
     // nge: the volume's bounding box, shown or not and its colour (Ames
