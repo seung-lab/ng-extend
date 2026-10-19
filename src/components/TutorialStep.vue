@@ -573,7 +573,7 @@ async function onHtmlClick(e: MouseEvent) {
         <div class="ng-extend introductionStepAnchor chipBuildIn"
             :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight, 'nge-quick-anim': !computedStep.modal }]"
             :style="{ left: computedStep.left, top: computedStep.top, visibility: computedStep.left ? undefined : 'hidden', transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
-            <div class="arrow"><svg viewBox="0 0 24 22" width="24" height="22" aria-hidden="true"><path class="nge-arrow-fill" d="M9 23 L9 12 L1 12 L12 1 L23 12 L15 12 L15 23 Z"/><path class="nge-arrow-edge" d="M9 22 L9 12 L1 12 L12 1 L23 12 L15 12 L15 22"/></svg></div>
+            <div class="arrow"><svg viewBox="0 0 20 30" width="20" height="30" aria-hidden="true"><path class="nge-chev nge-chev-1" d="M3 10 L10 3 L17 10"/><path class="nge-chev nge-chev-2" d="M3 18 L10 11 L17 18"/><path class="nge-chev nge-chev-3" d="M3 26 L10 19 L17 26"/></svg></div>
 
             <div v-if="!inExitConfirm" class="chip"
                 :class="{ modal: computedStep.modal, noborder: computedStep.noborder, 'nge-chip--dragging': dragging }" :style="chipBounds"
@@ -668,38 +668,42 @@ async function onHtmlClick(e: MouseEvent) {
 .introductionStepAnchor.right>* {
     transform: translate(0, -50%);
 }
-/* The pointer: an arrow, head on a short shaft, coming out of the box's own
-   edge and centred exactly on the target (Ames 2026-10-19: "more arrow-ey",
-   "make sure it points to the item"). Filled like the box, outer edges lit,
-   its base laid over the box's border so the two read as one piece. Drawn
-   pointing up and turned for each side. */
+/* The pointer: three chevrons that light up in turn, running from the box
+   to its target, centred exactly on it (Ames 2026-10-19: "make it a cooler
+   arrow"). Drawn pointing up and turned for each side. */
 .introductionStepAnchor .arrow {
     position: absolute;
-    width: 24px;
-    height: 22px;
+    width: 20px;
+    height: 30px;
     z-index: 3;
     border: none;
-    filter: drop-shadow(0 0 5px rgba(110, 200, 255, 0.55));
-    animation: nge-arrow-glow 2.4s ease-in-out infinite;
+    filter: drop-shadow(0 0 4px rgba(110, 210, 255, 0.9)) drop-shadow(0 0 10px rgba(60, 160, 255, 0.55));
 }
 .introductionStepAnchor .arrow svg { display: block; overflow: visible; }
-.introductionStepAnchor .arrow .nge-arrow-fill { fill: rgb(14, 21, 36); }
-.introductionStepAnchor .arrow .nge-arrow-edge { fill: none; stroke: rgba(126, 214, 255, 0.9); stroke-width: 1.5; stroke-linejoin: round; }
-@keyframes nge-arrow-glow {
-    0%, 100% { filter: drop-shadow(0 0 4px rgba(110, 200, 255, 0.45)); }
-    50%      { filter: drop-shadow(0 0 9px rgba(110, 200, 255, 0.85)); }
+.introductionStepAnchor .arrow .nge-chev {
+    fill: none; stroke: #8fe3ff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+    opacity: 0.25; animation: nge-chev-run 1.2s ease-in-out infinite;
 }
-@media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow { animation: none; } }
+/* The chevron nearest the box lights first, the tip last. */
+.introductionStepAnchor .arrow .nge-chev-3 { animation-delay: 0s; }
+.introductionStepAnchor .arrow .nge-chev-2 { animation-delay: 0.2s; }
+.introductionStepAnchor .arrow .nge-chev-1 { animation-delay: 0.4s; }
+@keyframes nge-chev-run {
+    0%, 100% { opacity: 0.25; }
+    35%      { opacity: 1; stroke: #ffffff; }
+    60%      { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow .nge-chev { animation: none; opacity: 0.9; } }
 /* A box in the middle of the screen points at nothing. */
 .introductionStepAnchor.center .arrow { display: none; }
-/* Box below its target: points up; the base sits on the box's top edge. */
-.introductionStepAnchor.bottom .arrow { left: -12px; top: -7px; transform: none !important; }
+/* Box below its target: points up, the last chevron just above the box. */
+.introductionStepAnchor.bottom .arrow { left: -10px; top: -15px; transform: none !important; }
 /* Box right of its target: points left. */
-.introductionStepAnchor.right .arrow { left: 2px; top: -11px; transform: rotate(-90deg) !important; }
+.introductionStepAnchor.right .arrow { left: 3px; top: -15px; transform: rotate(-90deg) !important; }
 /* Box left of its target: points right. */
-.introductionStepAnchor.left .arrow { left: -26px; top: -11px; transform: rotate(90deg) !important; }
+.introductionStepAnchor.left .arrow { left: -23px; top: -15px; transform: rotate(90deg) !important; }
 /* Box above its target: points down. */
-.introductionStepAnchor.top .arrow { left: -12px; top: -15px; transform: rotate(180deg) !important; }
+.introductionStepAnchor.top .arrow { left: -10px; top: -15px; transform: rotate(180deg) !important; }
 
 .introductionStepAnchor.right .chip { transform: translate(0, -36px); }
 

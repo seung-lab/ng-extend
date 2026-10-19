@@ -439,14 +439,28 @@ function watchMission() {
 }
 /** Glow the Render tab's controls worth trying first (Ames 2026-10-18). */
 function glowRenderControls() {
-  setTimeout(() => {
-    for (const name of ['Opacity (on)', 'Opacity (3d)', 'Silhouette (3d)']) {
-      const row = document.querySelector<HTMLElement>(`.neuroglancer-layer-side-panel-tab-view [data-nge-control="${name}"]`);
-      if (!row) continue;
-      row.classList.add('nge-tour-target');
-      setTimeout(() => row.classList.remove('nge-tour-target'), 25000);
+  // Kept on while the step shows: the Render tab may open after the box
+  // does, and its rows are rebuilt when it does (Ames 2026-10-19: "not
+  // highlighting").
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const lit = new Set<HTMLElement>();
+  const timer = setInterval(() => {
+    if (store.activeTutorial !== tutorial || store.getTutorialStep() !== step) {
+      clearInterval(timer);
+      lit.forEach(el => el.classList.remove('nge-tour-target'));
+      return;
     }
-  }, 600);
+    for (const name of ['Opacity (on)', 'Opacity (3d)', 'Silhouette (3d)']) {
+      // The tagged element can be a wrapper with no box of its own: light the
+      // row inside it (a glow on the wrapper drew a bar across the panel top).
+      const tagged = document.querySelector<HTMLElement>(`.neuroglancer-layer-side-panel-tab-view [data-nge-control="${name}"]`);
+      const row = tagged?.matches('.neuroglancer-layer-control-container') ? tagged : tagged?.querySelector<HTMLElement>('.neuroglancer-layer-control-container');
+      if (!row || row.classList.contains('nge-tour-target')) continue;
+      row.classList.add('nge-tour-target');
+      lit.add(row);
+    }
+  }, 500);
 }
 
 export const steps: Step[] = [
@@ -606,7 +620,7 @@ ${copyButton('648518346356982336')}
   {
     part: "Part 2 of 4 · Working with cells",
     text: `
-Good job! You added a second pyramidal neuron. Pyramidal neurons are the main excitatory neurons of the brain, and the cells Pyr is named after!
+Good job! You added a second cell.
 
 You can paste several IDs at once, separated by commas:
 
@@ -623,9 +637,11 @@ ${copyButton('648518346352672169, 648518346356973888')}
   {
     part: "Part 2 of 4 · Working with cells",
     text: `
+Great work! That's four pyramidal neurons now. Pyramidal neurons are the main excitatory neurons of the brain, and the cells Pyr is named after!
+
 The box also takes coordinates: it adds whichever cell is at that spot. Copy these:
 
-${copyButton('85640, 70444, 651')}
+${copyButton('85624, 70674, 651')}
 
 <strong>Paste them into the box too.</strong>`,
     position: {
@@ -633,7 +649,7 @@ ${copyButton('85640, 70444, 651')}
       side: "left",
       offset: { x: 0, y: 0 },
     },
-    onEnter: () => { nextWhenCellsAdded(1); pointAtSegBox(); },
+    onEnter: () => { showTwoPanels(); nextWhenCellsAdded(1); pointAtSegBox(); },
   },
   {
     part: "Part 2 of 4 · Working with cells",
