@@ -682,7 +682,9 @@ async function onHtmlClick(e: MouseEvent) {
 .introductionStepAnchor .arrow svg { display: block; overflow: visible; }
 .introductionStepAnchor .arrow .nge-chev {
     fill: none; stroke: #8fe3ff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
-    opacity: 0.25; animation: nge-chev-run 1.2s ease-in-out infinite;
+    /* Sweeps twice when the box arrives, then rests fully lit (Ames
+       2026-10-19: the endless run was annoying). */
+    opacity: 0.9; animation: nge-chev-run 1.2s ease-in-out 2 backwards;
 }
 /* The chevron nearest the box lights first, the tip last. */
 .introductionStepAnchor .arrow .nge-chev-3 { animation-delay: 0s; }
