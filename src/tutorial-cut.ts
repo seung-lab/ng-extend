@@ -85,6 +85,8 @@ In a moment you'll get the fused version of this very cell and make the cut your
   // 3: Activating cut
   {
     title: "How to Cut",
+    // A new player's Cut icon arrives here (util/toolbar_staging.ts).
+    reveals: ['split'],
     text: `
 Here's the same cell with the merger fused onto it. Your quest is to separate them.
 

@@ -1229,6 +1229,8 @@ This is an example. The yellow branch belongs to the purple cell, but the AI lef
   // 3: Activating merge, on the learner's own cell
   {
     title: "How to Merge",
+    // A new player's Merge icon arrives here (util/toolbar_staging.ts).
+    reveals: ['merge'],
     text: `
 Let's jump to an area that needs a merge. The purple ` + PART + ` behind this box is missing the yellow piece; the AI left it off. It is yours to practice on until the end of this tutorial.
 

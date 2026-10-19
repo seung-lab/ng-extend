@@ -1079,6 +1079,9 @@ export interface UserPreferences {
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
+  /** Top bar staging for new players (src/util/toolbar_staging.ts): whether
+   *  this account is staged, and which icons have arrived. Absent: not decided. */
+  toolbarStage?: { staged: boolean; revealed: string[]; visitDays: string[]; done: string[] };
 }
 
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
@@ -1110,13 +1113,15 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'toolbarStage'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
     return out;
   };
   let pulledFor = '';
+  /** True once the account's saved copy has been read (top bar staging waits for it). */
+  const accountLoaded = ref(false);
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
 
   function pushToAccount() {
@@ -1158,6 +1163,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
       const { data, error } = await supabase.from('user_settings').select('settings').maybeSingle();
       if (error) { console.warn('[prefs] could not read your saved settings:', error.message); return; }
       pulledFor = userId;
+      accountLoaded.value = true;
       const remote = (data as any)?.settings;
       if (remote && typeof remote === 'object') {
         // What was delivered on this computer before the account copy
@@ -1177,7 +1183,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
   setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
-  return { prefs, save, resetToDefaults };
+  return { prefs, save, resetToDefaults, accountLoaded };
 });
 
 // ─── Segment Annotation Store ─────────────────────────────────────────────────
@@ -3946,6 +3952,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
       if (!userId.value || !(entry.success ?? true)) return;
       const op = entry.operation;
+      // Top bar staging listens: a first edit on your own brings icons in.
+      document.dispatchEvent(new CustomEvent('nge:edit-logged', { detail: { operation: op } }));
 
       if (result?.counted) {
         // The server's numbers are the numbers.

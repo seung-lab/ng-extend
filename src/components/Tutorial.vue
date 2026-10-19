@@ -19,6 +19,9 @@ import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
+import { practiceShown } from '../practice';
+import { currentTest } from '../proofreading-test';
+import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialStepReveals } from '../util/toolbar_staging';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Mini Michelangelo art from Ames (2026-10-07).
@@ -69,6 +72,17 @@ const activeStep = computed(() => {
         return null;
     }
 });
+
+// Top bar staging: a step that points at an icon (or names it in `reveals`)
+// brings it in, whichever tutorial gets there first. The Site Tour points at
+// every icon, so it skips the ones not yet received instead (site-tour.ts).
+watch(activeStep, (now) => {
+    if (now && store.activeTutorial !== SITE_TOUR) reveal(tutorialStepReveals(now.step as any));
+}, { immediate: true });
+// Edits made in a tutorial, on a practice cell or in the test are not a
+// player's own first edit.
+setTutorialBusy(() => !!activeStep.value || practiceShown()
+    || ['claiming', 'working', 'scoring'].includes((currentTest() as any)?.phase));
 
 const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> = {
     1: { key: 'nge-badge-citizen-scientist', title: 'Citizen Scientist', image: badgeCitizenScientist },
@@ -228,6 +242,9 @@ const next = (_auto?: unknown) => {
         }
         if (tutorialNum === 1) {
             document.dispatchEvent(new CustomEvent('nge:prompt-username'));
+            // Then its top bar icons arrive and Merge starts by itself.
+            const doneStep = store.getTutorialStep();
+            getStartedFinished(() => store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
         }
     }
 };
@@ -266,6 +283,9 @@ const exitIntro = () => {
     const leaving = store.activeTutorial;
     if (PRACTICE_TUTORIALS.includes(leaving)) { stopWatching(); endPractice(); }
     if (leaving === TEST_TUTORIAL) abandonTest();
+    // Leaving Get Started early still brings its top bar icons, so a player
+    // who skips it is not left with an empty bar (Merge does not start).
+    if (leaving === 1) runMoment('getStarted');
     store.setTutorialStep(steps.value.length);
     // Exit is reported as not always closing the tutorial, and it closes in
     // every test: say what puts a box back, if anything does.

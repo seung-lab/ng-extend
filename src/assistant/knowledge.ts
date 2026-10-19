@@ -91,6 +91,7 @@ function buildStaticReference(): string {
     "",
     "## Toolbar buttons (the icon row)",
     toolbar,
+    "- A new player starts with few of these and receives the rest over time: finishing Get Started brings Cell Library, Leaderboard, Layers and Chat; the Merge and Cut tutorials bring Merge and Cut; Advanced Interface brings Undelete, Find Path, Tags, Highlight and Lantern; a first edit outside a tutorial, or a second day, brings Second Opinion; a third day brings Screenshot; production access brings Batch and the rest. If a player cannot see an icon, it is in Profile > Settings > Toolbar Icons and in the Ctrl+K command bar. Never say it does not exist.",
     "",
     "## Keyboard shortcuts",
     binds.length ? binds.join("\n") : "(none configured)",

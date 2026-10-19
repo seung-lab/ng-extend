@@ -729,6 +729,9 @@ To find the cell it belongs to, <strong>DOUBLE CLICK the EM just around the nucl
   },
   {
     part: "Part 2 of 4 · Working with cells",
+    // Taking a cell out of view is where Undelete earns its place
+    // (util/toolbar_staging.ts).
+    reveals: ['undelete'],
     text: `
 Each cell in view has a row here. Hover over one and its buttons appear:
 
@@ -838,6 +841,7 @@ Now let's put it together. <strong>Find Path</strong> draws the route through a 
 We've made the cell see through, so the path stands out.`,
     width: "500px",
     position: OVER_3D,
+    reveals: ['findPath'],
     onEnter: findPathStep,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",

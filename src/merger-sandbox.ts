@@ -284,6 +284,8 @@ Two neurons are fused into one segment here. Find where they touch and cut them 
     },
     position: OVER_3D,
     width: "440px",
+    // The tools a merger is found and cut with (util/toolbar_staging.ts).
+    reveals: ['split', 'findPath', 'highlight'],
     onEnter: async () => {
       closeSidePanel();
       stopWatching();

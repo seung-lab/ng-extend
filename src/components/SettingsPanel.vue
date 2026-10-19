@@ -27,6 +27,9 @@ function openUsernameDialog() {
 const draftFlag = ref('');
 const draftBio  = ref('');
 const draftToolbar = ref<string[]>([]);
+// What the grid showed on opening, and whether Reset was pressed (top bar staging).
+let toolbarShownAtOpen: string[] = [];
+let toolbarReset = false;
 /** A pill shows the name only. A label may go on to explain itself after a
  *  colon (the Lantern's ran out of the panel, Krzysztof Kruk 2026-10-11);
  *  the whole label is the pill's tooltip. */
@@ -130,7 +133,9 @@ onMounted(() => {
   pickStartViewDataset();
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
   // what's in the top bar — including icons auto-injected into older prefs.
-  draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
+  // A new player's icons that have not arrived yet show as off (util/toolbar_staging.ts).
+  draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected).filter(id => iconArrived(id));
+  toolbarShownAtOpen = [...draftToolbar.value];
 });
 
 // "Restore all settings to default" (Ames 2026-10-15), behind a warning.
@@ -170,8 +175,21 @@ async function handleSave() {
   // also stamps the injected marker: every auto-inject icon has now been
   // offered in the grid, so absence from a future save means the user removed
   // it, and resolveToolbarOrder must not re-add it (Celia's report).
+  // While a new player's icons are held back (util/toolbar_staging.ts): an
+  // icon switched on here has arrived, early, and only the switches change the
+  // saved order, so icons still on their way keep their places. Reset gives
+  // the default order, in which those icons stay hidden until they arrive.
+  let savedToolbar = draftToolbar.value;
+  if (isStaged()) {
+    const fullToolbar = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
+    const shownBefore = toolbarShownAtOpen;
+    reveal(draftToolbar.value.filter(id => !iconArrived(id)));
+    savedToolbar = toolbarReset
+      ? [...DEFAULT_ORDER.filter(id => !iconArrived(id) || draftToolbar.value.includes(id)), ...draftToolbar.value.filter(id => !DEFAULT_ORDER.includes(id))]
+      : togglesInFull(fullToolbar, shownBefore, draftToolbar.value);
+  }
   prefsStore.save({
-    flag, bio, toolbarIcons: draftToolbar.value,
+    flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
@@ -201,6 +219,7 @@ async function handleSave() {
 
 // ── Toolbar icon choices (shared with the actual top bar) ──────
 import { TOOLBAR_ICON_DEFS, RETIRED_TOOLBAR_ICON_IDS, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder, markInjected } from '../data/toolbar-icons';
+import { iconArrived, isStaged, reveal, togglesInFull } from '../util/toolbar_staging';
 
 // Only offer icons the top bar can actually show — exclude retired ones so this
 // grid matches the real toolbar rather than listing dead toggles.
@@ -223,7 +242,8 @@ function toggleToolbarIcon(id: string) {
 }
 
 function resetToolbar() {
-  draftToolbar.value = [...DEFAULT_ORDER];
+  draftToolbar.value = DEFAULT_ORDER.filter(id => iconArrived(id));
+  toolbarReset = true;
 }
 
 // ── Country dropdown state ──
