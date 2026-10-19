@@ -4728,6 +4728,11 @@ body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
 .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
   width: 100vw;
   height: 100vh;
+  /* ng-override sizes every overlay to its content (min-width: max-content):
+     here that is about 1340 px, so on a narrower window the profile spilled
+     off both sides with its close button out of sight (Celia, report 171,
+     2026-10-19). The frame is the window; the Overview scrolls inside it. */
+  min-width: 0 !important;
   /* ng-override caps every modal at 100vw - 24px, with !important */
   max-width: 100vw !important;
   max-height: 100vh !important;
@@ -4769,6 +4774,11 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
    wide screen") the rows no longer stretch, the body is capped and centred
    in the frame like the other tabs */
 .nge-profile-modal .nge-profile-body--overview { width: 100%; max-width: 1880px; align-self: center; }
+/* Narrower than its columns can go (a small laptop, or a zoomed in browser):
+   the Overview scrolls sideways inside the frame; the top bar, the tabs and
+   the close button stay put. */
+.nge-profile-modal .nge-profile-body--overview { min-width: 0; overflow-x: auto; }
+.nge-profile-modal .nge-profile-shell { min-width: 0; }
 .nge-profile-modal .nge-trophy-scroll { max-height: none; }
 
 /* ── Cells completed and Edits: the curve, then the three windows ──────────

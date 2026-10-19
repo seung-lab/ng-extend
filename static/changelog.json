@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T19:45:23Z",
+      "title": "Your profile fits a smaller screen",
+      "items": [
+        "On a laptop screen, or with the browser zoomed in, your profile now fits the window, with its close button in the corner where you can reach it."
+      ]
+    },
+    {
       "at": "2026-10-19T19:43:01Z",
       "title": "New full screen and split screen buttons",
       "digest": "minor",
