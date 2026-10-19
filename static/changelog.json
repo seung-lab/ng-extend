@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T15:54:03Z",
+      "title": "Pasted coordinates show their cell",
+      "digest": "minor",
+      "items": [
+        "Coordinates pasted into the Segments box stay there while the cell is found, and the new row shows where it came from.",
+        "Tutorial boxes point with a tab from their own edge and open in place.",
+        "Advanced Interface asks you to try a step before skipping it, and adds a second Highlight color."
+      ]
+    },
+    {
       "at": "2026-10-19T15:40:08Z",
       "title": "The Sandbox opens close in",
       "digest": "minor",
