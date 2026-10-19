@@ -8,7 +8,7 @@ import { reportFeedbackFailure } from '../util/error_reporting';
 import { functionUrl } from '../functions_base';
 /**
  * FeedbackModal.vue
- * "Submit an issue" — lets any user report a bug / idea / data problem from
+ * "Submit an issue" — lets any user report a bug / idea / anything else from
  * anywhere in the app. Posts to the `submitIssue` Cloud Function which relays
  * to Slack (#citsci_feedback) and keeps a Firestore record. No auth required.
  */
@@ -26,7 +26,9 @@ const ISSUE_URL =
   (window as any).__NGE_SUBMIT_ISSUE_URL ||
   functionUrl('submitIssue');
 
-const CATEGORIES = ['Bug', 'Idea', 'Data problem', 'Other'] as const;
+// No Data problem (Ames 2026-10-19: not needed). Old reports keep theirs, and
+// the server still accepts it.
+const CATEGORIES = ['Bug', 'Idea', 'Other'] as const;
 const category = ref<typeof CATEGORIES[number]>('Bug');
 const message = ref('');
 const sending = ref(false);
