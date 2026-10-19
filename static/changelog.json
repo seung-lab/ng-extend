@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T15:40:08Z",
+      "title": "The Sandbox opens close in",
+      "digest": "minor",
+      "items": [
+        "The Sandbox's 2D view now opens close enough in for its cells to load.",
+        "In Advanced Interface, the arrow settles after two sweeps, Checked highlights show pink, and the memo opens the Segments tab."
+      ]
+    },
+    {
       "at": "2026-10-19T13:46:12Z",
       "title": "A new Advanced Interface tutorial",
       "digest": "headline",
