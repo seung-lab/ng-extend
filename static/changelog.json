@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-19T00:54:09Z",
+      "title": "An easier to spot search box in Segments",
+      "digest": "minor",
+      "items": [
+        "The box at the top of the Segments panel, where you paste cell IDs or coordinates or search by name, now looks like a box to type in, with more room around it."
+      ]
+    },
+    {
       "at": "2026-10-18T23:07:26Z",
       "title": "A cleaner annotation layer panel",
       "digest": "minor",
