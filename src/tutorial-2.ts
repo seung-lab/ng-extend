@@ -114,7 +114,7 @@ function glowPanelButton() {
 /** The eye from the Segments panel, and a pretend row built from the
  *  panel's own parts (Ames 2026-10-18: "make a fake row with the icons"). */
 const EYE_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-const FAKE_ROW = `<div class="nge-tut-row" aria-hidden="true"><span class="nge-tut-row-eye">${EYE_ICON}</span><span class="nge-tut-row-id">648518346354852928</span><span class="nge-tut-row-gap"></span><span class="nge-tut-row-fly">↗</span><span class="nge-tut-row-tri">▲</span></div>`;
+const FAKE_ROW = `<div class="nge-tut-row" aria-hidden="true"><span class="nge-tut-row-eye">${EYE_ICON}</span><span class="nge-tut-row-id">648518346351105617</span><span class="nge-tut-row-gap"></span><span class="nge-tut-row-fly">↗</span><span class="nge-tut-row-tri">▲</span></div>`;
 
 /** Find Path in the tutorial: the cells go see through so the path shows,
  *  a big "Path found!" when it arrives, then on. The cells come back to
@@ -487,7 +487,7 @@ The glowing button at the right end of the top bar opens and closes the side pan
     text: `
 Let's add more cells. The box at the top of the Segments tab takes cell IDs. Copy this one:
 
-${copyButton('648518346354852928')}
+${copyButton('648518346351105617')}
 
 <strong>Click the box, then press CTRL+V</strong>. The cell appears in 3D and in the list.`,
     position: {
@@ -506,7 +506,7 @@ Good job! You added a second pyramidal neuron. Pyramidal neurons are the main ex
 
 You can paste several IDs at once, separated by commas:
 
-${copyButton('648518346353636160, 648518346354708544')}
+${copyButton('648518346356401731, 648518346352285148')}
 
 <strong>Paste them into the same box.</strong>`,
     position: {
@@ -521,7 +521,7 @@ ${copyButton('648518346353636160, 648518346354708544')}
     text: `
 The box also takes coordinates: it adds whichever cell is at that spot. Copy these:
 
-${copyButton('77499, 61988, 423')}
+${copyButton('85640, 70444, 651')}
 
 <strong>Paste them into the box too.</strong>`,
     position: {
