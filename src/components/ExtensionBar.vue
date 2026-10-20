@@ -31,6 +31,8 @@ import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
+import HuntPanel from "components/HuntPanel.vue";
+import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
@@ -390,6 +392,45 @@ const showFeed = ref(false);
 const showAccess = ref(false);
 function openAccessPanel() { showAccess.value = true; closeHamburger(); }
 document.addEventListener('nge:access-open', () => { showAccess.value = true; });
+
+// ── The Hunt (Ames 2026-10-20) ──────────────────────────────────────────
+// A pill in the top bar while a hunt is announced, running, or just over;
+// it opens the Hunt panel, as a Hunt notification does. One small call when
+// the player is signed in (hunt.ts asks again at each start and end).
+const showHunt = ref(false);
+const huntPanelId = ref<number | null>(null);
+const huntPill = computed(() => {
+  const h = featuredHunt();
+  if (!h) return null;
+  const p = phaseNow(h);
+  void huntState.now;   // the countdown ticks with the hunt clock
+  if (p === 'live') return { id: h.id, phase: p, text: `Hunt on · ${countdown(h.end_at)}` };
+  if (p === 'announced') return { id: h.id, phase: p, text: `Hunt in ${countdown(h.start_at)}` };
+  return { id: h.id, phase: p, text: 'Hunt results' };
+});
+function openHunt(id?: number | null) { huntPanelId.value = id ?? null; showHunt.value = true; void loadHunts(); }
+// From a notification: the hunt its title names, once the list is fresh.
+document.addEventListener('nge:hunt-open', (async (e: CustomEvent) => {
+  const title = String(e.detail?.title || '');
+  openHunt(e.detail?.id ?? null);
+  if (title) { await loadHunts(); const h = huntState.hunts.find(x => title.endsWith(`: ${x.title}`)); if (h) huntPanelId.value = h.id; }
+}) as EventListener);
+let huntsStarted = false;
+// Its own handle on the store: this runs before the bar's backendStore is defined below.
+const huntBackend = useProofreadingBackendStore();
+watch(() => huntBackend.userId, async id => {
+  if (!id || huntsStarted) return;
+  huntsStarted = true;
+  await loadHunts();
+  startGemWatch();
+  // A dataset switch made for a hunt reloads the page: carry on into it.
+  const after = takeHuntAfterSwitch();
+  const h = after ? huntState.hunts.find(x => x.id === after) : null;
+  if (h) {
+    openHunt(h.id);
+    setTimeout(() => { void goToHunt(h).catch(err => console.warn('[hunt] could not open after the switch:', err)); }, 1500);
+  }
+}, { immediate: true });
 // A reviewer opened an example from Admin Hub > Access requests: out of the
 // profile, into the view, with the review bar (AccessReviewBar).
 document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
@@ -951,6 +992,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
+  <hunt-panel v-if="showHunt" :hunt-id="huntPanelId" @hide="showHunt = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <!-- The Ask dock is now the single command surface: it searches the same
@@ -1082,6 +1124,15 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <RadioPlayer v-if="login.sessions.length > 0" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
+      <!-- The Hunt: only while one is announced, running or just over. -->
+      <button v-if="huntPill" class="nge-hunt-pill" :class="`nge-hunt-pill--${huntPill.phase}`"
+              :title="huntPill.phase === 'live' ? 'The Hunt is on: open it' : huntPill.phase === 'announced' ? 'A Hunt is coming' : 'The Hunt is over: see the winners'"
+              @click="openHunt(huntPill.id)">
+        <svg class="nge-hunt-pill-gem" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <path d="M7 3h10l4 6-9 12L3 9z" fill="currentColor" opacity="0.9"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" fill="none" stroke="rgba(8,13,26,0.55)" stroke-width="1.2"/>
+        </svg>
+        <span>{{ huntPill.text }}</span>
+      </button>
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
         <!-- A bug (Amy 2026-09-30), whose legs scurry on hover and click. -->
@@ -2263,4 +2314,18 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 /* The Site Tour's compass sits in the same circle as the numbers. */
 .nge-menu-num--icon { font-size: 10px; line-height: 1; }
+/* The Hunt pill (Ames 2026-10-20): only while a hunt is announced, running or just over. */
+.nge-hunt-pill {
+  display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; padding: 3px 10px 3px 8px;
+  border-radius: 999px; cursor: pointer; white-space: nowrap;
+  font: 600 12px 'Inter', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #e6f0ff;
+  background: rgba(90, 170, 255, 0.12); border: 1px solid rgba(90, 170, 255, 0.45);
+}
+.nge-hunt-pill:hover, .nge-hunt-pill:focus-visible { background: rgba(90, 170, 255, 0.22); }
+.nge-hunt-pill--live { color: #fff3c4; background: rgba(245, 209, 66, 0.14); border-color: rgba(245, 209, 66, 0.65); animation: nge-hunt-pill-glow 2.4s ease-in-out infinite; }
+.nge-hunt-pill--live:hover, .nge-hunt-pill--live:focus-visible { background: rgba(245, 209, 66, 0.26); }
+.nge-hunt-pill-gem { color: #f5d142; flex: none; }
+@keyframes nge-hunt-pill-glow { 0%, 100% { box-shadow: 0 0 0 rgba(245, 209, 66, 0); } 50% { box-shadow: 0 0 12px rgba(245, 209, 66, 0.35); } }
+@media (prefers-reduced-motion: reduce) { .nge-hunt-pill--live { animation: none; } }
+body.nge-calm .nge-hunt-pill--live { animation: none; box-shadow: none; }
 </style>

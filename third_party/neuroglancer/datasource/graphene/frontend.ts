@@ -1454,6 +1454,28 @@ function ngeGraphEdit(kind: 'merge'|'split', graph: string, jsonResp: any) {
     }));
   } catch { /* counting is never worth breaking an edit for */ }
 }
+/**
+ * nge: Pyr can refuse an edit before it is sent. The Hunt freezes its cells
+ * while it runs, so a merge or cut that touches one stops here, with the
+ * reason in the status bar. The app sets window.__ngeEditGuard(kind, roots),
+ * which answers a sentence to refuse or null to let the edit through.
+ */
+function ngeEditRefusal(kind: 'merge'|'split', roots: Uint64[]): string|null {
+  try {
+    const guard = (window as any)['__ngeEditGuard'];
+    if (typeof guard !== 'function') return null;
+    const why = guard(kind, roots.map(r => String(r)));
+    return typeof why === 'string' && why ? why : null;
+  } catch {
+    return null;  // a broken guard never blocks an edit
+  }
+}
+function ngeRefuseEdit(kind: 'merge'|'split', roots: Uint64[]) {
+  const why = ngeEditRefusal(kind, roots);
+  if (!why) return;
+  StatusMessage.showTemporaryMessage(why, 8000);
+  throw new Error(why);
+}
 class GrapheneGraphServerInterface {
   constructor(
       private url: string, private credentialsProvider: SpecialProtocolCredentialsProvider) {}
@@ -1481,6 +1503,7 @@ class GrapheneGraphServerInterface {
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     }
+    ngeRefuseEdit('merge', [first.rootId, second.rootId]);
 
     const promise = cancellableFetchSpecialOk(
         this.credentialsProvider, `${url}/merge?int64_as_str=1`, {
@@ -1519,6 +1542,7 @@ class GrapheneGraphServerInterface {
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     }
+    ngeRefuseEdit('split', [...first, ...second].map(x => x.rootId));
 
     const promise =
         cancellableFetchSpecialOk(

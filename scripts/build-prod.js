@@ -224,6 +224,18 @@ for (const file of fs.readdirSync(STATIC_DIR)) {
   }
 }
 
+// ── Copy the Hunt's medals (the art of its gold, silver and bronze
+// Achievements: functions/hunts.js points special_badges at <site>/hunt/). ──
+const HUNT_DIR = path.join(STATIC_DIR, 'hunt');
+if (fs.existsSync(HUNT_DIR)) {
+  const dest = path.join(DIST_MIN, 'hunt');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(HUNT_DIR)) {
+    if (file.endsWith('.svg') || file.endsWith('.png')) fs.copyFileSync(path.join(HUNT_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the Hunt's medals to ${dest}`);
+}
+
 // ── Copy the Halloween models (the ghost in Lantern mode: src/util/spooky.ts) ──
 // Fetched by the game only when it is needed, so they are files, not part of
 // the bundle.

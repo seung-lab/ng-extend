@@ -222,6 +222,12 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
+  // The Hunt (Ames 2026-10-20): its announcement, start and end open the Hunt panel.
+  if ((notif.title || '').startsWith('🔎 The Hunt')) {
+    document.dispatchEvent(new CustomEvent('nge:hunt-open', { detail: { title: String(notif.title) } }));
+    emit('hide');
+    return;
+  }
   // Retina access requests (Ames 2026-10-16): a reviewer's note opens Admin
   // Hub > Access requests; a player's notes or invite open their panel.
   const accessTitle = String(notif.title || '');

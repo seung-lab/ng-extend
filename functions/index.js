@@ -2292,6 +2292,68 @@ exports.ewAccessRequest = onRequest(
   }
 );
 
+// The Hunt (Ames 2026-10-20): timed merger hunts with gold, silver and bronze
+// special Achievements. A function of its own, like ewAccessRequest, so a
+// deploy of the shared gateway from a checkout without hunts.js can never take
+// it away. The answer key lives in hunt_keys, read only here. Every rule is in
+// hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
+const EW_HUNT_CODE_VERSION = "2026-10-20-hunt-1";
+exports.ewHunt = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    // An admin's view (the players' starting state) can be a large state.
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 200000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_HUNT_CODE_VERSION }); return; }
+      let tables = true;
+      try { await probe("hunts?select=id&limit=1"); await probe("hunt_keys?select=hunt_id&limit=1"); await probe("hunt_submissions?select=id&limit=1"); } catch (e) { tables = false; }
+      res.json({ ok: true, db: true, tables, code: EW_HUNT_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("hunt.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      const origin = String(req.headers.origin || "");
+      // The award art is served by the game itself (dist/min/hunt/); a test site serves its own copy.
+      const site = EW_ORIGINS.some((o) => o.test(origin)) && !/localhost/.test(origin) ? origin : EW_LIVE_SITE;
+      const hunts = require("./hunts");
+      const data = await hunts.huntAction(action, args, {
+        db: hunts.restDb(sb), me, isAdmin, now: new Date(), site,
+        notify: async (rows) => {
+          const out = rows.map((r) => ({ title: String(r.title).slice(0, 120), body: String(r.body).slice(0, 1500), target_type: "user",
+            target_id: r.user_id, send_at: new Date().toISOString(), ...(r.image ? { image_url: r.image, thumbnail_url: r.image } : {}),
+            created_by: (me && me.id) || null }));
+          if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
+        },
+        // The chat line an award gets anyway (chat.achievement), one per player.
+        chatAward: async (userId, badge) => {
+          const line = specialAwardRow(badge);
+          const who_ = (await sb(`users?id=eq.${encodeURIComponent(userId)}&select=id,username,display_name&limit=1`))[0];
+          if (!who_) return;
+          const dup = await sb(`chat_messages?user_id=eq.${who_.id}&dataset=eq.${encodeURIComponent(line.dataset)}&select=id&limit=1`);
+          if (dup.length) return;
+          await sb("chat_messages", { method: "POST", body: JSON.stringify({
+            user_id: who_.id, name: who_.username || who_.display_name || "Player", rank: "achievement", text: line.text, dataset: line.dataset }) });
+        },
+      });
+      res.json({ ok: true, data });
+    } catch (e) {
+      // Until supabase-hunts.sql is run the tables are missing: say so plainly.
+      if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "hunt.current") { res.json({ ok: true, data: { now: new Date().toISOString(), hunts: [], installed: false } }); return; }
+      console.warn("[ewHunt]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That did not go through. Please try again." });
+    }
+  }
+);
+
 exports.ewCommunityData = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
