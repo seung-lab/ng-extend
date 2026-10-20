@@ -28,9 +28,19 @@ import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
-import { pumpkinUi, togglePumpkin } from '../util/pumpkin';
-function pumpkinOff(): boolean { return useUserPreferencesStore().prefs.hidePumpkin === true; }
-function pumpkinTitle(): string { return pumpkinOff() ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell'; }
+import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch } from '../util/pumpkin';
+import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
+// The pumpkin button (Ames 2026-10-20): on a patch cell it turns the
+// pumpkin off and on; anywhere else it offers a trip to the pumpkin patch.
+const showPumpkinBtn = pumpkinSeason();
+const askPatch = ref(false);
+function pumpkinOff(): boolean { return pumpkinUi.here && useUserPreferencesStore().prefs.hidePumpkin === true; }
+function pumpkinTitle(): string {
+  if (!pumpkinUi.here) return 'Visit the pumpkin patch';
+  return useUserPreferencesStore().prefs.hidePumpkin === true ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell';
+}
+function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
+function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -1601,10 +1611,11 @@ function toggleCollapse() {
                 <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
               </span>
             </span>
-            <!-- The Sandbox pumpkin, on and off (Ames 2026-10-20). Only while
-                 its cell is on screen in season. -->
-            <button v-if="pumpkinUi.here" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
-                    @mousedown.prevent @click.stop="togglePumpkin()" :title="pumpkinTitle()" :aria-pressed="!pumpkinOff()">🎃</button>
+            <!-- The pumpkin button (Ames 2026-10-20), in season: off and on
+                 on a patch cell, a trip to the patch anywhere else. -->
+            <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
+                    @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
+            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" />
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
