@@ -68,7 +68,8 @@ async function refresh() {
     notInstalled.value = false;
   } catch (e: any) {
     const m = e?.message || String(e);
-    if (/did not go through/.test(m)) notInstalled.value = true;
+    // No tables yet (the server says so), or no ewHunt function at all (the request never lands).
+    if (/not set up yet|Failed to fetch|NetworkError|Load failed/i.test(m)) notInstalled.value = true;
     error.value = m;
   } finally { loading.value = false; }
 }
@@ -186,7 +187,7 @@ const notes = computed(() => {
     </header>
 
     <p v-if="notInstalled" class="nge-hunts-warn">The Hunt is not set up on the server yet: run <code>supabase-hunts.sql</code> in Supabase, then deploy the <code>ewHunt</code> function.</p>
-    <p v-if="error" class="nge-hunts-error" role="alert">{{ error }}</p>
+    <p v-if="error && !notInstalled" class="nge-hunts-error" role="alert">{{ error }}</p>
     <p v-if="message" class="nge-hunts-msg" role="status">{{ message }}</p>
 
     <!-- The list -->

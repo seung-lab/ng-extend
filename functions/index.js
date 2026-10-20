@@ -2348,6 +2348,7 @@ exports.ewHunt = onRequest(
     } catch (e) {
       // Until supabase-hunts.sql is run the tables are missing: say so plainly.
       if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "hunt.current") { res.json({ ok: true, data: { now: new Date().toISOString(), hunts: [], installed: false } }); return; }
+      if (!e.status && /supabase 404/.test(String(e && e.message))) { res.status(503).json({ error: "The Hunt is not set up yet: its tables are not in the database." }); return; }
       console.warn("[ewHunt]", action, who.email, e.message);
       res.status(e.status || 500).json({ error: e.status ? e.message : "That did not go through. Please try again." });
     }
