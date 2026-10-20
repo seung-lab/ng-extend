@@ -751,10 +751,11 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  * EyeWire II (wolfryder101 #181, Ames 2026-10-20: "can we make highlight
  * cooler? like a glow"): how the cell under the mouse is shown. The classic
  * fade washed the cell out; the others leave its colours as they are:
- *   halo     a soft glow around the cell in 3D (the default)
+ *   halo     a soft glow around the cell in 3D
  *   outline  a crisp line just outside the cell in 3D (Ames did not like it;
  *            not offered in Settings, kept for a saved choice)
  *   pulse    bands of light running out along the cell from the mouse in 3D
+ *            (the default: Ames 2026-10-20, "PULSE IS WHERE ITS AT")
  *   fade     the classic look, the cell turns pale
  * In 2D every style but fade keeps the cell's colour and makes it more solid.
  * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
@@ -765,8 +766,8 @@ export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'fade';
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try {
     const v = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').hoverStyle;
-    return v === 'pulse' || v === 'fade' ? v : 'halo';
-  } catch { return 'halo'; }
+    return v === 'halo' || v === 'fade' ? v : 'pulse';
+  } catch { return 'pulse'; }
 })()};
 
 /**
