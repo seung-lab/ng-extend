@@ -1459,7 +1459,8 @@ async function postIssueToSlack(token, issue) {
       `${emoji} *New site issue submitted* — _${issue.category}_`,
       issue.title ? `*${issue.title}*` : null,
       `*From:* ${issue.user || "anonymous"}${issue.dataset ? ` · dataset: ${issue.dataset}` : ""}`,
-      `*Report:* ${issue.message}`,
+      // A one line report is all title: say it once.
+      issue.message && issue.message !== issue.title ? `*Report:* ${issue.message}` : null,
       issue.url ? `*Page:* ${issue.url}` : null,
       mentions || null,
       "_For a suggested fix, reply here tagging @Amy's Claude._",

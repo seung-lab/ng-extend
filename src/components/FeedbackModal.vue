@@ -35,6 +35,10 @@ const message = ref('');
  *  would be nice to get a fast overview of what the user is asking for"). */
 const TITLE_MAX = 80;
 const title = ref('');
+/** One short box, details only if they want (Ames 2026-10-20: "We want them
+ *  to write LESS"). The box that holds what they wrote stays closed until
+ *  "Add details" opens it. */
+const detailsOpen = ref(false);
 const sending = ref(false);
 /** Attach a share link of the current view (on by default; Celia's ask). */
 const attachView = ref(true);
@@ -95,11 +99,12 @@ function currentDataset(): string {
 }
 
 async function submit() {
-  const text = message.value.trim();
   const heading = title.value.trim().slice(0, TITLE_MAX);
-  if (!heading || !text || sending.value) {
-    if (!heading) error.value = 'Please give it a title.';
-    else if (!text) error.value = 'Please describe the issue.';
+  const details = detailsOpen.value ? message.value.trim() : '';
+  // The report itself: their details, or just the short line when that is all.
+  const text = details || heading;
+  if (!heading || sending.value) {
+    if (!heading) error.value = 'Say in a few words what it is.';
     return;
   }
   sending.value = true;
@@ -198,7 +203,7 @@ async function submit() {
       if (insErr && 'title' in row &&
           (insErr.code === 'PGRST204' || /title/.test(insErr.message || ''))) {
         delete row.title;
-        row.message = `${heading}\n\n${row.message}`;
+        if (details) row.message = `${heading}\n\n${row.message}`;
         ({ error: insErr } = await supabase.from('site_issues').insert(row));
       }
       // Until supabase-site-issues-console.sql runs, drop the log rather than the report.
@@ -441,18 +446,21 @@ onBeforeUnmount(() => {
 
         <input
           v-model="title"
-          class="nge-fb-note nge-fb-title"
+          class="nge-fb-note nge-fb-headline"
           :maxlength="TITLE_MAX"
           placeholder="In a few words, what is it?"
-          aria-label="Title"
-          @keydown.stop @keyup.stop @keypress.stop
+          aria-label="In a few words, what is it?"
+          @keydown.stop @keyup.stop @keypress.stop @keydown.enter.prevent="submit"
           @input="error = ''"
         />
+        <button v-if="!detailsOpen" type="button" class="nge-fb-more" @click="detailsOpen = true">+ Add details (optional)</button>
         <textarea
+          v-else
           v-model="message"
           class="nge-fb-note"
-          rows="4"
-          placeholder="What happened? What did you expect? Steps to reproduce help a lot."
+          rows="3"
+          placeholder="Anything else that helps, like what you expected."
+          aria-label="Details"
           @keydown.stop @keyup.stop @keypress.stop
           @input="error = ''"
         ></textarea>
@@ -595,7 +603,12 @@ onBeforeUnmount(() => {
   border-color: rgba(150, 170, 255, 0.6);
   color: #fff;
 }
-.nge-fb-title { font-weight: 600; margin-bottom: 8px; box-sizing: border-box; }
+.nge-fb-note.nge-fb-headline { box-sizing: border-box; min-height: 0; resize: none; padding: 9px 10px; }
+.nge-fb-more {
+  display: block; background: none; border: none; padding: 2px 0; margin: 2px 0 8px;
+  color: #9db3ff; font: inherit; font-size: 0.82em; cursor: pointer;
+}
+.nge-fb-more:hover { color: #c5d3ff; text-decoration: underline; }
 .nge-fb-note {
   width: 100%;
   background: rgba(0, 0, 0, 0.25);

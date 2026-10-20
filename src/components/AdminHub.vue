@@ -386,7 +386,27 @@ function toggleTriageLight() {
 // "#42" finds report 42. Typing opens every section that has a match.
 const triageSearch = ref('');
 const triageWords = computed(() => triageSearch.value.toLowerCase().split(/\s+/).filter(Boolean));
+// Bug, Idea or Other (Ames 2026-10-20: "can we have a way to filter by bug /
+// idea / other?"). What the submitter picked; an old Data problem counts as a
+// Bug, and a report with no category goes by its suggestion (closedKind).
+type TriageKind = 'all' | 'bug' | 'feature' | 'other';
+const TRIAGE_KIND_KEY = 'nge_triage_kind_v1';
+const triageKind = ref<TriageKind>((() => {
+  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other') return v; } catch { /* private window */ }
+  return 'all';
+})());
+watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch { /* not remembered */ } });
+const kindOf = (r: TriageRow) => closedKind(r, reporterOf(r)?.category);
+const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
+  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' },
+];
+const triageKindCount = computed(() => {
+  const n = { all: 0, bug: 0, feature: 0, other: 0 } as Record<TriageKind, number>;
+  for (const r of triageRows.value) { n.all++; n[kindOf(r)]++; }
+  return n;
+});
 function triageMatches(r: TriageRow): boolean {
+  if (triageKind.value !== 'all' && kindOf(r) !== triageKind.value) return false;
   const words = triageWords.value;
   if (!words.length) return true;
   const n = triageNumbers.value[r.id];
@@ -2635,6 +2655,11 @@ function practiceWhen(iso: string | null) {
           <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
+          <span class="nge-triage-kinds" role="radiogroup" aria-label="Show">
+            <button v-for="k in TRIAGE_KINDS" :key="k.key" type="button" role="radio" class="nge-triage-kind"
+                    :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
+                    @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
+          </span>
           <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
                   :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
                   @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
@@ -2703,7 +2728,8 @@ function practiceWhen(iso: string | null) {
             <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
           <div v-if="reporterOf(row)?.title" class="nge-triage-title">{{ reporterOf(row)?.title }}</div>
-          <div v-if="fullTextOf(row)" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
+          <!-- A one line report is all title: say it once. -->
+          <div v-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
             <a v-if="reporterOf(row)?.url" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.url" target="_blank" rel="noopener noreferrer" @click.stop
                title="The view they were in when they sent the report">↗ Open their view</a>
@@ -4056,6 +4082,17 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-notes { display: flex; flex-direction: column; gap: 6px; }
 .nge-triage-admin-note { border-left: 2px solid rgba(160, 140, 255, 0.6); padding-left: 8px; }
 .nge-triage-note-btn { align-self: flex-start; }
+/* Bug, Idea, Other filter in the header. */
+.nge-triage-kinds { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.nge-triage-kind {
+  font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 999px; cursor: pointer;
+  background: transparent; border: 1px solid rgba(120, 170, 255, 0.3); color: #cfe0ff;
+}
+.nge-triage-kind:hover { border-color: rgba(120, 170, 255, 0.7); }
+.nge-triage-kind--on { background: #3f6fd8; border-color: #3f6fd8; color: #fff; }
+.nge-triage-kind-n { opacity: 0.7; font-size: 11px; }
+.nge-triage-light .nge-triage-kind { border-color: #b9c6da; color: #23324a; }
+.nge-triage-light .nge-triage-kind--on { background: #2f6fd6; border-color: #2f6fd6; color: #fff; }
 /* The report's title (Celia #178), above what they wrote. */
 .nge-triage-title { font-size: 15px; font-weight: 700; line-height: 1.35; color: #eef3ff; overflow-wrap: anywhere; }
 .nge-triage-light .nge-triage-title { color: #121a28; }
