@@ -4650,7 +4650,8 @@ const panelStyle = computed(() => ({
    `option` sets the row colours Chrome honours. `appearance: none` plus a
    drawn chevron replaces the default OS arrow on the closed control. */
 .nge-cl-help-issue-select,
-select.nge-cl-response-input {
+select.nge-cl-response-input,
+select.nge-cl-complete-type {
   color-scheme: dark;
   appearance: none;
   -webkit-appearance: none;
@@ -4661,12 +4662,14 @@ select.nge-cl-response-input {
   padding-right: 24px;
 }
 .nge-cl-help-issue-select option,
-select.nge-cl-response-input option {
+select.nge-cl-response-input option,
+select.nge-cl-complete-type option {
   background: #0c1020;
   color: #cfdcef;
 }
 .nge-cl-help-issue-select:hover,
-select.nge-cl-response-input:hover {
+select.nge-cl-response-input:hover,
+select.nge-cl-complete-type:hover {
   border-color: rgba(74, 158, 255, 0.35);
 }
 
