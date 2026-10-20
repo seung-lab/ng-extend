@@ -748,6 +748,17 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
 }
 
 /**
+ * EyeWire II (wolfryder101 #181, Ames 2026-10-20: "can we make highlight
+ * cooler? like a glow"): the cell under the mouse glows instead of fading to
+ * white. In 3D its edges light up (mesh/frontend.ts uNgeGlow); in 2D it keeps
+ * its own colour, brighter and more solid. Settings can bring back the classic
+ * fade. Read once at load; Settings updates it live.
+ */
+export const ngeHoverGlow = {value: (() => {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').hoverStyle !== 'fade'; } catch { return true; }
+})()};
+
+/**
  * Temporary values used by getObjectColor.
  */
 const tempColor = vec4.create();
@@ -790,7 +801,7 @@ export function getObjectColor(
   color[3] = alpha;
   getBaseObjectColor(displayState, objectId, color);
   let saturation = displayState.saturation.value;
-  if (displayState.hoverHighlight.value &&
+  if (!ngeHoverGlow.value && displayState.hoverHighlight.value &&
       displayState.segmentSelectionState.isSelected(objectId)) {
     if (saturation > 0.5) {
       saturation = saturation -= 0.5;

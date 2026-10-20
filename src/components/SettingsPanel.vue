@@ -7,6 +7,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
 import { startViewHash } from '../util/start_view';
 import { ngePointScale, ngePointGem } from 'neuroglancer/annotation/point';
+import { ngeHoverGlow } from 'neuroglancer/segmentation_display_state/frontend';
 
 const prefsStore = useUserPreferencesStore();
 
@@ -37,6 +38,8 @@ const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
+/** The cell under the mouse: glows (default) or fades to white, the classic look (wolfryder101 #181). */
+const draftHoverStyle = ref<'glow' | 'fade'>('glow');
 const draftImageDetail = ref<1 | 2 | 4>(1);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
@@ -111,6 +114,7 @@ onMounted(() => {
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
+  draftHoverStyle.value = prefsStore.prefs.hoverStyle === 'fade' ? 'fade' : 'glow';
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
@@ -176,7 +180,9 @@ async function handleSave() {
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
+    hoverStyle: draftHoverStyle.value,
   });
+  ngeHoverGlow.value = draftHoverStyle.value !== 'fade';
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
   savedAnnotationSize.value = draftAnnotationSize.value;
@@ -438,7 +444,7 @@ const props = defineProps<{ embedded?: boolean }>();
             </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />
-              <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout) when jumping to cells</span>
+              <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
             </label>
             <label class="nge-settings-toggle" title="Off: left click selects a layer, right click hides or shows it. On: the other way round, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
@@ -455,6 +461,13 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
+            </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="Glow: the cell under your mouse lights up around its edges in 3D and turns brighter in 2D. Fade: the classic look, the cell turns pale. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+              <span class="nge-settings-toggle-label">The cell under my mouse</span>
+              <select v-model="draftHoverStyle" class="nge-sv-select">
+                <option value="glow">Glows</option>
+                <option value="fade">Fades (classic)</option>
+              </select>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">
               <span class="nge-settings-toggle-label">When I complete a cell, show</span>

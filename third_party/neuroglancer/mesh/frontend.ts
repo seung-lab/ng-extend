@@ -25,7 +25,7 @@ import {PerspectivePanel} from 'neuroglancer/perspective_view/panel';
 import {PerspectiveViewReadyRenderContext, PerspectiveViewRenderContext, PerspectiveViewRenderLayer} from 'neuroglancer/perspective_view/render_layer';
 import {ThreeDimensionalRenderLayerAttachmentState, update3dRenderLayerAttachment} from 'neuroglancer/renderlayer';
 import {forEachVisibleSegment, getObjectKey} from 'neuroglancer/segmentation_display_state/base';
-import {forEachVisibleSegmentToDraw, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
+import {forEachVisibleSegmentToDraw, ngeHoverGlow, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {Borrowed, RefCounted} from 'neuroglancer/util/disposable';
 import {getFrustrumPlanes, mat3, mat3FromMat4, mat4, scaleMat3Output, vec3, vec4} from 'neuroglancer/util/geom';
@@ -196,6 +196,11 @@ export class MeshShaderManager {
     gl.uniform4fv(shader.uniform('uColor'), color);
   }
 
+  /** EyeWire II: 1 lights up the edges of the cell under the mouse (ngeHoverGlow). */
+  setGlow(gl: GL, shader: ShaderProgram, glow: number) {
+    gl.uniform1f(shader.uniform('uNgeGlow'), glow);
+  }
+
   setPickID(gl: GL, shader: ShaderProgram, pickID: number) {
     gl.uniform1ui(shader.uniform('uPickID'), pickID);
   }
@@ -317,6 +322,7 @@ export class MeshShaderManager {
         builder.addUniform('highp uint', 'uPickID');
         builder.addUniform('highp mat4', 'uNgeTintMatrix');
         builder.addUniform('highp float', 'uNgeTintOn');
+        builder.addUniform('highp float', 'uNgeGlow');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
         builder.addUniform('highp mat4', 'uNgeFineMatrix');
@@ -357,6 +363,15 @@ vec3 normal = normalize(uNormalMatrix * (normalMultiplier * origNormal));
 float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
+if (uNgeGlow > 0.5) {
+  // The cell under the mouse: a little brighter, and its edges (where the
+  // surface turns away from you) lit in a light tint of its own colour.
+  highp float lightLen = length(uLightDirection.xyz);
+  highp float facing = lightLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / lightLen)) : 1.0;
+  highp float rim = pow(1.0 - facing, 1.6);
+  highp vec3 glowColor = mix(uColor.rgb, vec3(uColor.a), 0.55);
+  vColor.rgb = min(vColor.rgb * 1.15 + glowColor * rim * 1.4, vec3(uColor.a));
+}
 if (uNgeTintOn > 0.5) {
   highp vec3 tintCoord = (uNgeTintMatrix * vec4(vertexPosition, 1.0)).xyz;
   if (all(greaterThanEqual(tintCoord, vec3(0.0))) && all(lessThanEqual(tintCoord, vec3(1.0)))) {
@@ -490,6 +505,8 @@ export class MeshLayer extends
           ++presentChunks;
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
+            meshShaderManager.setGlow(gl, shader, ngeHoverGlow.value && displayState.hoverHighlight.value &&
+                displayState.segmentSelectionState.isSelected(objectId) ? 1 : 0);
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);
@@ -727,6 +744,8 @@ export class MultiscaleMeshLayer extends
           }
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
+            meshShaderManager.setGlow(gl, shader, ngeHoverGlow.value && displayState.hoverHighlight.value &&
+                displayState.segmentSelectionState.isSelected(objectId) ? 1 : 0);
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);

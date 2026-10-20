@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-20T00:00:00Z",
+      "title": "A glow for the cell under your mouse",
+      "items": [
+        "The cell under your mouse now glows: in 3D its edges light up in its own colour, and in 2D it turns brighter and more solid, instead of fading to white. Settings has The cell under my mouse if you prefer the classic fade.",
+        "Keep my display settings now also keeps Highlight on hover the way you set it when you jump to another cell."
+      ]
+    },
+    {
       "at": "2026-10-20T15:18:05Z",
       "title": "Folders you can size, and a longer notifications window",
       "digest": "minor",
