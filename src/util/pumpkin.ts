@@ -14,9 +14,10 @@
  * from anywhere, and on a patch cell turns the pumpkins off and on (the
  * hidePumpkin preference, also in Settings and the palette).
  *
- * Cost: a check every two seconds of which cells are shown. The model
- * (static/halloween/pumpkin.glb, about 1 MB) is fetched the first time a
- * patch cell is seen in season. Nothing is redrawn on a timer: pumpkins
+ * Cost: a check every two seconds of which cells are shown. Each model
+ * (static/halloween/pumpkin.glb, creep-o-lantern.glb, fang-o-lantern.glb,
+ * up to about 1 MB each)
+ * is fetched the first time a cell wearing it is seen in season. Nothing is redrawn on a timer: pumpkins
  * stand still, so they are drawn with the rest of the view.
  */
 import {reactive} from 'vue';
@@ -41,22 +42,27 @@ interface PatchCell {
   /** Moved down (data +y) from the soma, so the cell body sits high inside
    *  and the branches leave through the eyes and mouth. */
   dropNm: number;
+  /** Which model (static/halloween/<model>.glb). */
+  model: Model;
+  /** The cell's colour while it wears the pumpkin: a different green for
+   *  each (Ames: "let's vary the green of the pumpkins"). */
+  green: number;
 }
+type Model = 'pumpkin' | 'creep-o-lantern' | 'fang-o-lantern';
 const PATCH: PatchCell[] = [
   // The cell the Sandbox opens on for Ames. 648518346355727683 (the config's
   // starter, soma given as 71847, 54909, 1158) is the same cell body.
-  { soma: [71942, 54909, 1162], ids: ['648518346353862024', '648518346355727683'], heightNm: 32000, dropNm: 3500 },
-  { soma: [70064, 54399, 1762], ids: ['648518346353200058'], heightNm: 32000, dropNm: 3500 },
+  { soma: [71942, 54909, 1162], ids: ['648518346353862024', '648518346355727683'], heightNm: 32000, dropNm: 3500, model: 'pumpkin', green: 0x52cb85 },
+  { soma: [70064, 54399, 1762], ids: ['648518346353200058'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x8fd14f },
 ];
 /** The Sandbox's segmentation layer. */
 const SANDBOX_LAYER = 'pinky_nf_v2';
 const ROOT_EVERY_MS = 120_000;
 const GROUP = 'pumpkin';
-/** A patch cell is painted vine green when its pumpkin first appears in a
+/** A patch cell is painted its green when its pumpkin first appears in a
  *  visit (Ames: "default the cell to #52cb85"); recolouring it after that
  *  is left alone. Packed as neuroglancer wants it, 0xBBGGRR. */
-const CELL_HEX = 0x52cb85;
-const CELL_PACKED = ((CELL_HEX >> 16) & 0xff) | (CELL_HEX & 0xff00) | ((CELL_HEX & 0xff) << 16);
+const packed = (hex: number) => ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 0xff) << 16);
 
 /** October, and 1 November, in the player's own time. */
 export function pumpkinSeason(now = new Date()): boolean {
@@ -71,9 +77,9 @@ const states: PatchState[] = PATCH.map(c => ({
 }));
 
 let viewer: any = null;
-let mesh: NgePropMesh | null = null;
-let loading = false;
-let failed = false;
+const meshes: Partial<Record<Model, NgePropMesh>> = {};
+const loading = new Set<Model>();
+const failed = new Set<Model>();
 let shownKey = '';
 
 /** The Sandbox's segmentation layers that are showing cells. */
@@ -117,7 +123,7 @@ function onScreen(c: PatchCell, st: PatchState, layers: any[]): boolean {
       if (!wanted.has(id)) continue;
       if (!st.painted.has(id)) {
         st.painted.add(id);
-        try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, s, CELL_PACKED); } catch { /* colour stays */ }
+        try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, s, packed(c.green)); } catch { /* colour stays */ }
       }
       return true;
     }
@@ -148,6 +154,7 @@ function show(which: number[]) {
   for (const i of which) {
     const st = states[i];
     if (!st.prop) {
+      const mesh = meshes[PATCH[i].model];
       const modelMat = placement(PATCH[i]);
       if (!mesh || !modelMat) continue;
       st.prop = { mesh, modelMat, alpha: 1, dissolve: 0, seed: 0.37 + i * 0.11, glow: [0.22, 0.1, 0.02], rim: [1, 0.55, 0.12], shade: 1 };
@@ -175,10 +182,11 @@ export function togglePumpkin() {
   check();
 }
 
-/** The chat button away from the patch: go to the Sandbox and land on the
- *  first patch cell, pumpkin on. */
+/** The chat button away from the patch: go to the Sandbox, the 3D view on
+ *  its own, every patch cell on, centred on the first one's soma (Ames:
+ *  "make 3D full screen and make sure to put the segments on"). */
 export async function visitPumpkinPatch(): Promise<boolean> {
-  const c = PATCH[0], st = states[0];
+  const c = PATCH[0];
   try { if (pumpkinHidden()) useUserPreferencesStore().save({ hidePumpkin: false }); } catch { /* fine */ }
   if (!viewer?.layerManager?.managedLayers?.some((ml: any) => !ml?.archived && String(ml?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/pinky_nf'))) {
     const ds = findDatasetBySegName(SANDBOX_LAYER);
@@ -192,9 +200,11 @@ export async function visitPumpkinPatch(): Promise<boolean> {
       try {
         ml.setVisible?.(true);
         const g = ml.layer.displayState.segmentationGroupState.value;
-        const id = st.liveRoot ?? c.ids[0];
-        const seg = Uint64.parseString(id);
-        if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
+        PATCH.forEach((cell, i) => {
+          const seg = Uint64.parseString(states[i].liveRoot ?? cell.ids[0]);
+          if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
+        });
+        viewer.layout.restoreState('3d');
         viewer.navigationState.position.value = Float32Array.from(c.soma);
         viewer.projectionScale.value = 40000;  // the cell and its pumpkin fill the 3D view
       } catch (e) { console.warn('[pumpkin] could not open the patch:', e); return false; }
@@ -212,17 +222,17 @@ function check() {
   const here = layers.length ? PATCH.map((c, i) => onScreen(c, states[i], layers) ? i : -1).filter(i => i >= 0) : [];
   pumpkinUi.here = here.length > 0;
   const want = pumpkinHidden() ? [] : here;
-  if (want.length && !mesh) {
-    if (!loading && !failed) {
-      loading = true;
-      loadGlbModel('halloween/pumpkin.glb').then(
-        m => { mesh = m; check(); },
-        e => { failed = true; console.warn('[pumpkin] the pumpkin could not be loaded:', e?.message); },
-      ).finally(() => { loading = false; });
-    }
-    return;
+  // Fetch each model the first time it is wanted; show the rest meanwhile.
+  for (const i of want) {
+    const model = PATCH[i].model;
+    if (meshes[model] || loading.has(model) || failed.has(model)) continue;
+    loading.add(model);
+    loadGlbModel(`halloween/${model}.glb`).then(
+      m => { meshes[model] = m; shownKey = ''; check(); },
+      e => { failed.add(model); console.warn(`[pumpkin] the ${model} could not be loaded:`, e?.message); },
+    ).finally(() => { loading.delete(model); });
   }
-  show(want);
+  show(want.filter(i => meshes[PATCH[i].model]));
 }
 
 /** Call once the viewer exists. */
