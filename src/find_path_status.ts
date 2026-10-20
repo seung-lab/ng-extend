@@ -206,7 +206,16 @@ function apply(li: HTMLElement, kind: Kind) {
   if (li.dataset.ngeHl === '1') { li.style.display = 'none'; return; }
   if (!kind) return;
   li.classList.add('nge-fp-status', `nge-fp-status--${kind}`);
-  if (kind === 'error') return;  // keep neuroglancer's error text as is, just styled
+  if (kind === 'error') {
+    // keep neuroglancer's error text as is, just styled, and let it go after
+    // a while (a player: failure lines piled up and stayed, 2026-10-20)
+    setTimeout(() => {
+      if (!li.isConnected || li.dataset.ngeFp !== 'error') return;
+      const dismiss = Array.from(li.querySelectorAll('button')).find(b => /dismiss/i.test(b.textContent || ''));
+      if (dismiss) dismiss.click(); else li.remove();
+    }, 12000);
+    return;
+  }
 
   const ui = document.createElement('span');
   ui.setAttribute(UI_ATTR, '');

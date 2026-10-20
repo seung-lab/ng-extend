@@ -609,7 +609,7 @@ async function onHtmlClick(e: MouseEvent) {
              still being looked up, an empty box sat in the top left corner
              (Ames, site tour box 4, 2026-10-02). -->
         <div class="ng-extend introductionStepAnchor chipBuildIn"
-            :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight, 'nge-quick-anim': !computedStep.modal }]"
+            :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight && tutorialStore.activeTutorial === 4, 'nge-quick-anim': !computedStep.modal }]"
             :style="{ left: computedStep.left, top: computedStep.top, visibility: computedStep.left ? undefined : 'hidden', transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
             <div class="arrow"><svg viewBox="0 0 44 16" width="44" height="16" aria-hidden="true"><path class="nge-tab-fill" d="M0 17 C 10 16, 16 3, 22 1 C 28 3, 34 16, 44 17 Z"/><path class="nge-tab-edge" d="M0 15.5 C 10 15, 16 3, 22 1 C 28 3, 34 15, 44 15.5"/><path class="nge-tab-chev" d="M16 11 L22 6 L28 11"/></svg></div>
 
@@ -1243,6 +1243,11 @@ async function onHtmlClick(e: MouseEvent) {
 .nge-chip-drag {
     top: 15px;
     left: 28px;
+    /* clear of the close button, whatever the font (a player's Firefox ran
+       the step count under the x, 2026-10-20) */
+    right: 44px;
+    overflow: hidden;
+    white-space: nowrap;
     padding: 0;
     display: flex;
     align-items: center;
