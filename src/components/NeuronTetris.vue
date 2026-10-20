@@ -248,211 +248,210 @@ function shade(hex: string, amt: number): string {
   return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
-/** A small steady random number for a cell, so its twigs do not flicker. */
-function rand(seed: number): () => number {
-  let t = (seed * 2654435761) >>> 0;
-  return () => {
-    t = (t + 0x6d2b79f5) >>> 0;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 type Placed = { x: number; y: number; cell: Cell };
 const DIRS: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
+/** One scratch canvas, reused for every piece: a piece is painted whole on
+ *  it, so the shading bands can be cut to the piece's own outline. */
+let scratch: HTMLCanvasElement | null = null;
+
 /**
- * Each piece is drawn as a little neuron (Ames: "make the tetris blocks look
- * like neurons"): a soma with a nucleus at the best connected cell, neurite
- * that thins as it leaves the soma, and dendrite twigs with spines growing
- * into the free sides of each cell. The axon piece is myelinated and ends in
- * a bouton. A piece cut by a merged row keeps its soma on one part only.
+ * Cel shaded neurons (Ames: "they are ugly though", "go cel shading").
+ * Each piece is one chunky tube through its squares with a round cell body
+ * at its hub and stubby spines on its open sides, painted like a cartoon
+ * cel: a bold ink outline, flat colour, one hard shadow band on the lower
+ * right, one hard highlight on the upper left and a white glint. The axon
+ * piece is thinner, with ink notches for its nodes and a bouton at its end.
+ * A piece cut by a merged row keeps its cell body on one part only.
  */
 function drawCells(ctx: CanvasRenderingContext2D, cells: Placed[], size: number, alpha = 1) {
-  ctx.save();
-  ctx.globalAlpha = alpha;
   const byPid = new Map<number, Placed[]>();
   for (const c of cells) {
     const list = byPid.get(c.cell.pid) ?? [];
     list.push(c);
     byPid.set(c.cell.pid, list);
   }
-  for (const group of byPid.values()) drawNeuron(ctx, group, size);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  for (const group of byPid.values()) {
+    const at = new Map(group.map(c => [`${c.x},${c.y}`, c]));
+    const nb = (c: Placed) => DIRS.map(([dx, dy]) => at.get(`${c.x + dx},${c.y + dy}`)).filter((o): o is Placed => !!o);
+    const seen = new Set<Placed>();
+    const parts: Placed[][] = [];
+    for (const start of group) {
+      if (seen.has(start)) continue;
+      const part: Placed[] = [];
+      const stack = [start];
+      seen.add(start);
+      while (stack.length) {
+        const c = stack.pop()!;
+        part.push(c);
+        for (const o of nb(c)) if (!seen.has(o)) { seen.add(o); stack.push(o); }
+      }
+      parts.push(part);
+    }
+    parts.sort((a, b) => b.length - a.length);
+    parts.forEach((part, i) => drawCel(ctx, part, nb, size, i === 0 && (part.length >= 2 || part[0].cell.kind === 'soma')));
+  }
   ctx.restore();
 }
 
-function drawNeuron(ctx: CanvasRenderingContext2D, group: Placed[], size: number) {
-  const at = new Map(group.map(c => [`${c.x},${c.y}`, c]));
-  const nb = (c: Placed) => DIRS.map(([dx, dy]) => at.get(`${c.x + dx},${c.y + dy}`)).filter((o): o is Placed => !!o);
-  const { color, kind, pid } = group[0].cell;
-  // Split into connected parts; the largest keeps the soma.
-  const seen = new Set<Placed>();
-  const parts: Placed[][] = [];
-  for (const start of group) {
-    if (seen.has(start)) continue;
-    const part: Placed[] = [];
-    const stack = [start];
-    seen.add(start);
-    while (stack.length) {
-      const c = stack.pop()!;
-      part.push(c);
-      for (const o of nb(c)) if (!seen.has(o)) { seen.add(o); stack.push(o); }
-    }
-    parts.push(part);
-  }
-  parts.sort((a, b) => b.length - a.length);
-  let somaDrawn = false;
+function drawCel(ctx: CanvasRenderingContext2D, part: Placed[], nb: (c: Placed) => Placed[], size: number, withSoma: boolean) {
+  const { color, kind, pid } = part[0].cell;
   const centre = (c: Placed): [number, number] => [(c.x + 0.5) * size, (c.y + 0.5) * size];
+  // The hub carries the cell body; an axon starts from one end.
+  const score = (c: Placed) => nb(c).length * 10 - (c.y * COLS + c.x) * 0.01;
+  let root = part.reduce((a, b) => (score(b) > score(a) ? b : a));
+  if (kind === 'axon') root = part.find(c => nb(c).length <= 1) ?? root;
+  const parent = new Map<Placed, Placed | null>([[root, null]]);
+  const order: Placed[] = [];
+  const queue = [root];
+  while (queue.length) {
+    const c = queue.shift()!;
+    order.push(c);
+    for (const o of nb(c)) if (!parent.has(o)) { parent.set(o, c); queue.push(o); }
+  }
 
-  for (const part of parts) {
-    const hasSoma = !somaDrawn && (part.length >= 2 || kind === 'soma');
-    // The root: the axon starts at an end, every other kind at its hub.
-    const score = (c: Placed) => nb(c).length * 10 - (c.y * COLS + c.x) * 0.01;
-    let root = part.reduce((a, b) => (score(b) > score(a) ? b : a));
-    if (kind === 'axon') root = part.find(c => nb(c).length <= 1) ?? root;
-    const parent = new Map<Placed, Placed | null>([[root, null]]);
-    const depth = new Map<Placed, number>([[root, 0]]);
-    const order = new Map<Placed, number>();
-    const queue = [root];
-    while (queue.length) {
-      const c = queue.shift()!;
-      order.set(c, order.size);
-      for (const o of nb(c)) {
-        if (parent.has(o)) continue;
-        parent.set(o, c);
-        depth.set(o, depth.get(c)! + 1);
-        queue.push(o);
+  const tube = size * (kind === 'axon' ? 0.36 : kind === 'soma' ? 0.5 : 0.48);
+  let somaX = centre(root)[0], somaY = centre(root)[1];
+  let somaR = size * (kind === 'axon' ? 0.34 : 0.46);
+  if (kind === 'soma') {
+    somaX = part.reduce((a, c) => a + centre(c)[0], 0) / part.length;
+    somaY = part.reduce((a, c) => a + centre(c)[1], 0) / part.length;
+    somaR = size * (part.length >= 4 ? 0.88 : 0.46);
+  }
+  // Spines: at most one per square, on an open side, chosen steadily so
+  // they do not jump about as the piece moves.
+  const spines: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+  const ends: Array<[number, number]> = [];
+  order.forEach((c, k) => {
+    const used = new Set(nb(c).map(o => `${o.x - c.x},${o.y - c.y}`));
+    const free = DIRS.filter(([dx, dy]) => !used.has(`${dx},${dy}`));
+    const [x, y] = centre(c);
+    if (kind === 'axon') {
+      if (c !== root && nb(c).length <= 1 && free.length) {
+        const [dx, dy] = free.find(([dx, dy]) => !used.has(`${-dx},${-dy}`)) ?? free[0];
+        ends.push([x + dx * size * 0.3, y + dy * size * 0.3]);
       }
+      return;
     }
-
-    // A faint tint under each square, so the shape stays easy to read.
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = color;
-    ctx.globalAlpha *= 0.1;
-    for (const c of part) ctx.fillRect(c.x * size + 1, c.y * size + 1, size - 2, size - 2);
-    ctx.globalAlpha /= 0.1;
-
-    ctx.shadowColor = color;
-    ctx.shadowBlur = size * 0.3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Twigs and spines first, so the neurite sits on top of them.
-    for (const c of part) {
-      const leaf = nb(c).length <= 1;
-      const isEnd = kind === 'axon' && c !== root && leaf;
-      if (kind === 'axon' && !isEnd) continue;  // an axon is bare until its end
-      const r = rand(pid * 977 + order.get(c)! * 31);  // steady as the piece moves
-      const [cx, cy] = centre(c);
-      const used = new Set(nb(c).map(o => `${o.x - c.x},${o.y - c.y}`));
-      const free = DIRS.filter(([dx, dy]) => !used.has(`${dx},${dy}`));
-      const count = isEnd ? free.length
-        : hasSoma && c === root ? free.length
-        : Math.min(free.length, leaf ? 2 : 1 + Math.floor(r() * 2));
-      const pick = free.slice().sort(() => r() - 0.5).slice(0, count);
-      for (const [dx, dy] of pick) {
-        const base = Math.atan2(dy, dx) + (r() - 0.5) * 0.9;
-        const len = size * (isEnd ? 0.34 : 0.38 + r() * 0.14);
-        const ex = cx + Math.cos(base) * len, ey = cy + Math.sin(base) * len;
-        const bend = (r() - 0.5) * size * 0.25;
-        const mx = (cx + ex) / 2 - Math.sin(base) * bend, my = (cy + ey) / 2 + Math.cos(base) * bend;
-        ctx.strokeStyle = shade(color, -0.1);
-        ctx.lineWidth = Math.max(1, size * 0.07);
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
-        if (isEnd) {
-          // Bouton: the small swelling where an axon meets its partner.
-          ctx.fillStyle = shade(color, 0.3);
-          ctx.beginPath(); ctx.arc(ex, ey, size * 0.09, 0, Math.PI * 2); ctx.fill();
-          continue;
-        }
-        // A fork near the tip, and a couple of spines.
-        const fa = base + (r() < 0.5 ? -1 : 1) * (0.6 + r() * 0.4);
-        const fx = mx + (ex - mx) * 0.3, fy = my + (ey - my) * 0.3;
-        ctx.lineWidth = Math.max(0.8, size * 0.045);
-        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(fa) * len * 0.45, fy + Math.sin(fa) * len * 0.45); ctx.stroke();
-        ctx.fillStyle = shade(color, 0.25);
-        for (let k = 0; k < 2; k++) {
-          const t = 0.45 + r() * 0.5;
-          const sx = cx + (ex - cx) * t + (r() - 0.5) * size * 0.08;
-          const sy = cy + (ey - cy) * t + (r() - 0.5) * size * 0.08;
-          ctx.beginPath(); ctx.arc(sx, sy, Math.max(0.9, size * 0.035), 0, Math.PI * 2); ctx.fill();
-        }
+    if (withSoma && c === root) return;
+    if (kind === 'soma') {
+      if (!withSoma) return;
+      // The soma piece: short dendrites leaving its outer corners.
+      if (k < 2) {
+        const [dx, dy] = free[(pid + k) % free.length] ?? [0, -1];
+        spines.push({ x1: x, y1: y, x2: x + dx * size * 0.62, y2: y + dy * size * 0.62 });
       }
+      return;
     }
+    if (!free.length || (pid * 7 + k * 3) % 4 === 0) return;
+    const [dx, dy] = free[(pid + k * 5) % free.length];
+    spines.push({ x1: x, y1: y, x2: x + dx * size * 0.4, y2: y + dy * size * 0.4 });
+  });
 
-    // Neurite from each cell to its parent, thinning away from the soma.
+  /** The piece's silhouette, as one fill/stroke pass in the current style. */
+  const silhouette = (g: CanvasRenderingContext2D, grow: number) => {
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    // The soma piece is its round cell body alone, not a tube.
+    const bodyOnly = kind === 'soma' && withSoma;
+    g.lineWidth = Math.max(0.5, tube + grow * 2);
+    g.beginPath();
+    if (!bodyOnly) for (const c of part) {
+      const p = parent.get(c);
+      if (!p) continue;
+      g.moveTo(...centre(p));
+      g.lineTo(...centre(c));
+    }
+    g.stroke();
+    g.beginPath();
+    if (!bodyOnly) for (const c of part) { const [x, y] = centre(c); const r = Math.max(0.5, tube / 2 + grow); g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2); }
+    if (withSoma) { const r = Math.max(0.5, somaR + grow); g.moveTo(somaX + r, somaY); g.arc(somaX, somaY, r, 0, Math.PI * 2); }
+    for (const [ex, ey] of ends) { const r = Math.max(0.5, size * 0.15 + grow); g.moveTo(ex + r, ey); g.arc(ex, ey, r, 0, Math.PI * 2); }
+    g.fill();
+    g.lineWidth = Math.max(0.5, size * 0.13 + grow * 2);
+    g.beginPath();
+    for (const s of spines) { g.moveTo(s.x1, s.y1); g.lineTo(s.x2, s.y2); }
+    g.stroke();
+    g.beginPath();
+    for (const s of spines) { const r = Math.max(0.5, size * 0.11 + grow); g.moveTo(s.x2 + r, s.y2); g.arc(s.x2, s.y2, r, 0, Math.PI * 2); }
+    g.fill();
+  };
+
+  // Paint the piece on the scratch canvas within its bounding box.
+  const xs = part.map(c => c.x), ys = part.map(c => c.y);
+  const pad = size;
+  const bx = Math.min(...xs) * size - pad, by = Math.min(...ys) * size - pad;
+  const bw = (Math.max(...xs) - Math.min(...xs) + 1) * size + pad * 2;
+  const bh = (Math.max(...ys) - Math.min(...ys) + 1) * size + pad * 2;
+  const m = ctx.getTransform();
+  const dpr = m.a || 1;
+  const sc = scratch ??= document.createElement('canvas');
+  const pw = Math.ceil(bw * dpr), ph = Math.ceil(bh * dpr);
+  if (sc.width < pw || sc.height < ph) { sc.width = Math.max(sc.width, pw); sc.height = Math.max(sc.height, ph); }
+  const g = sc.getContext('2d')!;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, pw, ph);
+  g.setTransform(dpr, 0, 0, dpr, -bx * dpr, -by * dpr);
+
+  const ink = shade(color, -0.78);
+  const outline = Math.max(1.5, size * 0.09);
+  // 1. Flat base colour.
+  g.fillStyle = g.strokeStyle = color;
+  silhouette(g, 0);
+  // 2. Hard shadow band: the base again, shifted up and left, leaves a
+  //    crescent of shadow on the lower right of every round part.
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = g.strokeStyle = shade(color, -0.32);
+  g.fillRect(bx, by, bw, bh);
+  g.save();
+  g.translate(-size * 0.1, -size * 0.11);
+  g.fillStyle = g.strokeStyle = color;
+  silhouette(g, 0);
+  g.restore();
+  // 3. Hard highlight: a thin copy shifted up and left again.
+  g.save();
+  g.translate(-size * 0.13, -size * 0.14);
+  g.fillStyle = g.strokeStyle = shade(color, 0.42);
+  silhouette(g, -tube * 0.3);
+  g.restore();
+  // 4. Bold ink outline: the silhouette grown a little, painted behind.
+  g.globalCompositeOperation = 'destination-over';
+  g.fillStyle = g.strokeStyle = ink;
+  silhouette(g, outline);
+  g.globalCompositeOperation = 'source-over';
+
+  // 5. Ink details: axon nodes, and a nucleus on the cell body.
+  g.strokeStyle = ink;
+  g.lineCap = 'round';
+  if (kind === 'axon') {
+    g.lineWidth = Math.max(1.2, size * 0.06);
     for (const c of part) {
       const p = parent.get(c);
       if (!p) continue;
       const [x1, y1] = centre(p), [x2, y2] = centre(c);
-      const d = depth.get(c)!;
-      if (kind === 'axon') {
-        ctx.strokeStyle = shade(color, -0.05);
-        ctx.lineWidth = size * 0.12;
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        // Myelin: pale sheaths, with the gaps between them as the nodes.
-        ctx.strokeStyle = shade(color, 0.45);
-        ctx.lineWidth = size * 0.24;
-        ctx.beginPath();
-        ctx.moveTo(x1 + (x2 - x1) * 0.2, y1 + (y2 - y1) * 0.2);
-        ctx.lineTo(x1 + (x2 - x1) * 0.8, y1 + (y2 - y1) * 0.8);
-        ctx.stroke();
-        continue;
-      }
-      const w0 = size * (kind === 'soma' ? 0.5 : 0.3) * Math.pow(0.72, d - 1);
-      const w1 = w0 * 0.72;
-      const ang = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
-      const g = ctx.createLinearGradient(x1, y1, x2, y2);
-      g.addColorStop(0, color);
-      g.addColorStop(1, shade(color, -0.2));
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.moveTo(x1 + Math.cos(ang) * w0 / 2, y1 + Math.sin(ang) * w0 / 2);
-      ctx.lineTo(x2 + Math.cos(ang) * w1 / 2, y2 + Math.sin(ang) * w1 / 2);
-      ctx.arc(x2, y2, w1 / 2, ang, ang + Math.PI);
-      ctx.lineTo(x1 - Math.cos(ang) * w0 / 2, y1 - Math.sin(ang) * w0 / 2);
-      ctx.closePath();
-      ctx.fill();
-      if (nb(c).length !== 2) { ctx.beginPath(); ctx.arc(x2, y2, w1 * 0.62, 0, Math.PI * 2); ctx.fill(); }
-    }
-
-    // The soma, with its nucleus.
-    if (hasSoma) {
-      somaDrawn = true;
-      let [cx, cy] = centre(root);
-      let rad = size * (kind === 'axon' ? 0.3 : 0.4);
-      if (kind === 'soma') {
-        // The soma piece is one big cell body over its squares.
-        cx = part.reduce((a, c) => a + centre(c)[0], 0) / part.length;
-        cy = part.reduce((a, c) => a + centre(c)[1], 0) / part.length;
-        rad = size * (part.length >= 4 ? 0.8 : 0.5);
-      }
-      const r = rand(pid * 13 + 5);
-      const g = ctx.createRadialGradient(cx - rad * 0.35, cy - rad * 0.4, rad * 0.1, cx, cy, rad);
-      g.addColorStop(0, shade(color, 0.6));
-      g.addColorStop(0.6, color);
-      g.addColorStop(1, shade(color, -0.3));
-      ctx.fillStyle = g;
-      // A slightly lumpy outline reads as a cell body, not a ball.
-      ctx.beginPath();
-      const lumps = 24;
-      const phase = r() * 6;
-      for (let k = 0; k <= lumps; k++) {
-        const a = (k / lumps) * Math.PI * 2;
-        const rr = rad * (0.92 + 0.08 * Math.sin(a * 3 + phase));
-        const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr;
-        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = shade(color, -0.45);
-      ctx.beginPath(); ctx.arc(cx + rad * 0.1, cy + rad * 0.05, rad * 0.36, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = shade(color, 0.5);
-      ctx.beginPath(); ctx.arc(cx + rad * 0.2, cy - rad * 0.05, rad * 0.1, 0, Math.PI * 2); ctx.fill();
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const nx = -(y2 - y1) / size, ny = (x2 - x1) / size;
+      g.beginPath();
+      g.moveTo(mx + nx * tube * 0.5, my + ny * tube * 0.5);
+      g.lineTo(mx - nx * tube * 0.5, my - ny * tube * 0.5);
+      g.stroke();
     }
   }
+  if (withSoma) {
+    const nr = somaR * 0.34;
+    g.fillStyle = shade(color, -0.5);
+    g.beginPath(); g.arc(somaX + somaR * 0.12, somaY + somaR * 0.1, nr, 0, Math.PI * 2); g.fill();
+    // 6. The glint: one small white spot, the cartoon shine.
+    g.fillStyle = 'rgba(255,255,255,0.92)';
+    g.beginPath(); g.ellipse(somaX - somaR * 0.42, somaY - somaR * 0.46, somaR * 0.17, somaR * 0.11, -0.7, 0, Math.PI * 2); g.fill();
+  }
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(sc, 0, 0, pw, ph, Math.round(bx * dpr + m.e), Math.round(by * dpr + m.f), pw, ph);
+  ctx.restore();
 }
 
 function activeCells(y: number) {
