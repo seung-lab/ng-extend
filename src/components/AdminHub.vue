@@ -324,6 +324,19 @@ onUnmounted(() => document.removeEventListener('keydown', onBoardKey));
 // and its note are untouched, so the robot never builds or rebuilds anything
 // because of a reply. "Reply read" (or writing back) lets it go home.
 const hasNewReply = (r: TriageRow) => (r.feedback_log || []).some(e => e.role === 'reporter_reply' && e.seen === false);
+/** You asked the submitter for a reply and it has not come yet (Ames
+ *  2026-10-20: "I asked for a reply on 181 yet there is no distinction on
+ *  that card"). When the newest such question was sent, or null. Same test
+ *  as the card's thread (reporterThreadFor). */
+function awaitingReplySince(r: TriageRow): string | null {
+  const log = r.feedback_log || [];
+  const asks = log.filter(e => e.role === 'reporter_update' && e.ask && e.sent !== false
+    && !log.some(x => x.role === 'reporter_reply' && x.notification_id === e.notification_id));
+  if (!asks.length) return null;
+  const last = asks[asks.length - 1];
+  return last.at || (/^\d{4}-/.test(last.ts) ? last.ts : '') || '';
+}
+const isAwaitingReply = (r: TriageRow) => !hasNewReply(r) && awaitingReplySince(r) !== null;
 function triageGroupOf(r: TriageRow): TriageGroupKey {
   if (hasNewReply(r)) return 'decide';
   if (r.status === 'dismissed') return 'dismissed';
@@ -2642,11 +2655,13 @@ function practiceWhen(iso: string | null) {
         </button>
         <template v-if="triageBoard ? !isFolded(g.key) : triageOpen[g.key]">
         <div v-for="row in g.rows" :key="row.id" class="nge-triage-card" :data-triage-id="row.id"
-             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id, 'nge-triage-card--reply': hasNewReply(row) }]"
+             :class="[`nge-triage-card--${row.recommendation}`, { 'nge-triage-card--closed': g.closed, 'nge-triage-card--selected': triageSelected === row.id, 'nge-triage-card--reply': hasNewReply(row), 'nge-triage-card--waiting': isAwaitingReply(row) }]"
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
+            <span v-if="isAwaitingReply(row)" class="nge-triage-rec nge-triage-rec--waiting"
+                  :title="'You asked the submitter for a reply' + (awaitingReplySince(row) ? ' ' + ago(awaitingReplySince(row) || '') + ' ago' : '') + ' and it has not come yet. It comes back under Needs your decision when it does.'">⏳ Waiting on their reply<template v-if="awaitingReplySince(row)"> · {{ ago(awaitingReplySince(row) || '') }}</template></span>
             <span class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
             <span class="nge-triage-src">{{ row.source.replace('_', ' ') }}</span>
             <span v-if="row.status !== 'proposed'" class="nge-triage-status">{{ row.status }}<template v-if="row.reviewed_by"> · {{ row.reviewed_by.startsWith('slack:') ? 'in Slack' : row.reviewed_by }}</template></span>
@@ -3773,6 +3788,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-note--reply { background: #e9f6fd; border-left-color: #58b6dc; }
 .nge-triage-light .nge-triage-note--unread { background: #cfecfa; border-left-color: #1487b8; }
 .nge-triage-light .nge-triage-rec--reply { background: #0f7fae; color: #ffffff; }
+.nge-triage-light .nge-triage-rec--waiting { background: #ece8ff; color: #4a36a8; }
+.nge-triage-light .nge-triage-card.nge-triage-card--waiting { outline-color: #8a77e0; }
 .nge-triage-light.nge-triage-board .nge-triage-card.nge-triage-card--reply,
 .nge-triage-light .nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px #1487b8, 0 0 12px rgba(20,135,184,0.22); }
 .nge-triage-light .nge-triage-release { background: #eef3fb; border-color: #c3d3ec; }
@@ -3987,6 +4004,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-note--unread { background: rgba(126,224,255,0.16); border-left-color: #7ee0ff; }
 .nge-triage-rec--reply { background: #7ee0ff; color: #06202c; font-weight: 700; }
 .nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px rgba(126,224,255,0.55), 0 0 14px rgba(126,224,255,0.18); }
+/* Asked the submitter for a reply, none yet: a dashed edge and a tag. */
+.nge-triage-rec--waiting { background: rgba(160, 140, 255, 0.16); color: #c4b8ff; text-transform: none; letter-spacing: 0; }
+.nge-triage-card.nge-triage-card--waiting { outline: 1px dashed rgba(160, 140, 255, 0.6); outline-offset: -1px; }
 .nge-triage-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
 .nge-triage-ask-label { font-weight: 600; }
 .nge-triage-ask-hint { color: rgba(255,255,255,0.5); flex: 1 1 240px; }
