@@ -7,7 +7,7 @@
  * pretend player too, so a tutorial can be played as a newcomer would.
  */
 import { computed, ref } from 'vue';
-import { STAGE_MOMENTS, NEVER_AUTO, simulating, simState, setSimulating, resetSim, runMoment } from '../util/toolbar_staging';
+import { STAGE_MOMENTS, NEVER_AUTO, simulating, simState, simHistory, setSimulating, resetSim, runMoment, simBack } from '../util/toolbar_staging';
 import { getToolbarIconDef, DEFAULT_TOOLBAR_ORDER } from '../data/toolbar-icons';
 
 const OPEN_KEY = 'nge-staging-panel-open';
@@ -33,6 +33,8 @@ const def = (id: string) => getToolbarIconDef(id);
 function step(key: string) { runMoment(key); }
 function stepNext() { if (nextMoment.value) runMoment(nextMoment.value.key); }
 function startOver() { resetSim(); }
+const lastStep = computed(() => simHistory.length ? simHistory[simHistory.length - 1].label : '');
+function back() { simBack(); }
 function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).checked); }
 </script>
 
@@ -56,9 +58,11 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
         <button class="nge-hud-btn nge-hud-btn--go" :disabled="!nextMoment" @click="stepNext">
           {{ nextMoment ? 'Next: ' + nextMoment.label : 'All moments done' }}
         </button>
+        <button class="nge-hud-btn nge-hud-btn--quiet" :disabled="!lastStep" :title="lastStep ? 'Undo: ' + lastStep : 'Nothing to undo'" @click="back">‹ Back</button>
         <button class="nge-hud-btn nge-hud-btn--quiet" @click="startOver">Start over</button>
       </div>
 
+      <p v-if="lastStep" class="nge-stt-note">Back undoes: {{ lastStep }}</p>
       <ol class="nge-stt-list">
         <li class="nge-stt-row nge-stt-row--done">
           <span class="nge-stt-mark">✓</span>

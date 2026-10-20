@@ -50,10 +50,13 @@ export const NEVER_AUTO = ['recap', 'datasetStats'];
 
 export const STAGE_MOMENTS: StageMoment[] = [
   { key: 'start', label: 'First visit', icons: ['notif'] },
-  { key: 'getStarted', label: 'Finish Get Started', icons: ['cells', 'leaderboard', 'layers', 'chat'],
-    nurro: 'You know your way around now. Four things just landed in your top bar: the Cell Library, the Leaderboard, the Layer panel and Chat. Come say hi!' },
+  { key: 'getStarted', label: 'Finish Get Started', icons: ['leaderboard', 'layers', 'chat'],
+    nurro: 'You know your way around now. Three things just landed in your top bar: the Leaderboard, the Layer panel and Chat. Come say hi!' },
   { key: 'merge', label: 'Merge tutorial: How to Merge', icons: ['merge'] },
   { key: 'cut', label: 'Cut tutorial: How to Cut', icons: ['split'] },
+  // Ames 2026-10-20: the Cell Library waits until a player can merge and cut.
+  { key: 'basics', label: 'Finish the Merge and Cut tutorials', icons: ['cells'],
+    nurro: 'You can merge and you can cut. The Cell Library is in your top bar now: pick a cell and start proofreading!' },
   { key: 'ai-undelete', label: 'Advanced Interface: the cell rows', icons: ['undelete'] },
   { key: 'ai-findPath', label: 'Advanced Interface: Find Path', icons: ['findPath'] },
   { key: 'ai-tags', label: 'Advanced Interface: Tag a merger', icons: ['tags'] },
@@ -61,12 +64,15 @@ export const STAGE_MOMENTS: StageMoment[] = [
   { key: 'ai-lantern', label: 'Advanced Interface: Lantern', icons: ['lantern'] },
   { key: 'ownEdit', label: 'First edit on your own', icons: ['help', 'tags'],
     nurro: 'Your first edit on your own! Not sure about a spot? Ask for a Second Opinion with the magnifier in your top bar.' },
-  { key: 'day2', label: 'Come back on day 2', icons: ['help', 'tags'],
-    nurro: 'Welcome back! Not sure about a spot? Ask for a Second Opinion with the magnifier in your top bar.' },
-  { key: 'day3', label: 'Come back on day 3', icons: ['screenshot'],
-    nurro: 'Found something beautiful? The camera in your top bar saves a picture of it.' },
+  // A player who skips the tutorials is not left with a bare bar: coming back
+  // brings whatever the earlier moments would have, tutorial or not.
+  { key: 'day2', label: 'Come back on day 2', icons: ['help', 'tags', 'leaderboard', 'layers', 'chat', 'merge', 'split', 'cells'],
+    nurro: 'Welcome back! Your top bar has a few more tools now. Not sure about a spot? Ask for a Second Opinion with the magnifier.' },
+  { key: 'day3', label: 'Come back on day 3', icons: ['screenshot', 'undelete', 'findPath', 'highlight', 'lantern'],
+    nurro: 'Day three! Your top bar has the rest of the everyday tools now. Found something beautiful? The camera saves a picture of it.' },
+  // Batch arrives too, quietly: no glow, not named (Ames 2026-10-20).
   { key: 'production', label: 'Get production access', icons: ['batch'],
-    nurro: 'You have production access! The Batch Processor is in your top bar, along with every tool you had not met yet.' },
+    nurro: 'You have production access! Every tool you had not met yet is in your top bar now.' },
 ];
 
 /** Every icon a staged player can be given automatically. */
@@ -92,6 +98,12 @@ export interface StageState {
   done: string[];
 }
 
+/** Icons that have just arrived and should glow for a while. */
+export const freshIcons = reactive(new Set<string>());
+
+/** The Nurro card on screen, if any. */
+export const announcement = ref<{ text: string; icons: string[]; at: number } | null>(null);
+
 const SIM_KEY = 'nge-staging-sim';
 const SIM_ON_KEY = 'nge-staging-sim-on';
 const freshState = (): StageState => ({ staged: true, revealed: ['notif'], visitDays: [], done: ['start'] });
@@ -110,8 +122,44 @@ try { simOnAtStart = STAGING_TEST_AVAILABLE && localStorage.getItem(SIM_ON_KEY) 
 export const simulating = ref(simOnAtStart);
 export const simState = reactive<StageState>(readSim());
 
+/** Every earlier state of the pretend player, newest last, so the test panel
+ *  can step back one moment at a time. Kept in this browser only. */
+const HIST_KEY = 'nge-staging-sim-history';
+function readHistory(): { label: string; state: string }[] {
+  try { const raw = localStorage.getItem(HIST_KEY); if (raw) return JSON.parse(raw); } catch { /* no storage */ }
+  return [];
+}
+export const simHistory = reactive<{ label: string; state: string }[]>(readHistory());
+let lastSimJson = JSON.stringify(simState);
+/** What the next save of the pretend player is called in the history. */
+let pendingLabel = '';
+
 function saveSim() {
-  try { localStorage.setItem(SIM_KEY, JSON.stringify(simState)); } catch { /* no storage */ }
+  const now = JSON.stringify(simState);
+  if (now !== lastSimJson) {
+    simHistory.push({ label: pendingLabel || 'a change', state: lastSimJson });
+    if (simHistory.length > 60) simHistory.splice(0, simHistory.length - 60);
+  }
+  lastSimJson = now;
+  pendingLabel = '';
+  try {
+    localStorage.setItem(SIM_KEY, now);
+    localStorage.setItem(HIST_KEY, JSON.stringify(simHistory));
+  } catch { /* no storage */ }
+}
+
+/** Undo the pretend player's last moment. */
+export function simBack() {
+  const h = simHistory.pop();
+  if (!h) return;
+  Object.assign(simState, freshState(), JSON.parse(h.state));
+  lastSimJson = h.state;
+  freshIcons.clear();
+  announcement.value = null;
+  try {
+    localStorage.setItem(SIM_KEY, h.state);
+    localStorage.setItem(HIST_KEY, JSON.stringify(simHistory));
+  } catch { /* no storage */ }
 }
 
 export function setSimulating(on: boolean) {
@@ -124,7 +172,14 @@ export function setSimulating(on: boolean) {
 /** Back to a brand new player's first visit. */
 export function resetSim() {
   Object.assign(simState, freshState());
-  saveSim();
+  simHistory.splice(0);
+  lastSimJson = JSON.stringify(simState);
+  freshIcons.clear();
+  announcement.value = null;
+  try {
+    localStorage.setItem(SIM_KEY, lastSimJson);
+    localStorage.setItem(HIST_KEY, '[]');
+  } catch { /* no storage */ }
 }
 
 function prefs() { return useUserPreferencesStore(); }
@@ -173,12 +228,6 @@ export function togglesInFull(full: string[], shownBefore: string[], shownNow: s
   return out;
 }
 
-/** Icons that have just arrived and should glow for a while. */
-export const freshIcons = reactive(new Set<string>());
-
-/** The Nurro card on screen, if any. */
-export const announcement = ref<{ text: string; icons: string[]; at: number } | null>(null);
-
 function save(s: StageState) {
   if (s === simState) { saveSim(); return; }
   prefs().save({ toolbarStage: { ...s, revealed: [...s.revealed], visitDays: [...s.visitDays], done: [...s.done] } } as any);
@@ -189,12 +238,13 @@ function save(s: StageState) {
  * Nurro introduces them; without it they fade in and glow (a tutorial box is
  * doing the introducing).
  */
-export function reveal(ids: string[], line?: string): string[] {
+export function reveal(ids: string[], line?: string, label?: string): string[] {
   const s = current();
   if (!s) return [];
   const added = ids.filter(id => !s.revealed.includes(id));
   if (!added.length) return [];
   s.revealed.push(...added);
+  pendingLabel = label || 'A tutorial step';
   save(s);
   for (const id of added) freshIcons.add(id);
   setTimeout(() => { for (const id of added) freshIcons.delete(id); }, 9000);
@@ -202,14 +252,46 @@ export function reveal(ids: string[], line?: string): string[] {
   return added;
 }
 
-/** Run one moment of STAGE_MOMENTS (from a real event or the test panel). */
+/** Run one moment of STAGE_MOMENTS now (the test panel, or once quiet). */
 export function runMoment(key: string): string[] {
   const s = current();
   const m = STAGE_MOMENTS.find(x => x.key === key);
   if (!s || !m) return [];
-  if (!s.done.includes(key)) { s.done.push(key); save(s); }
-  const icons = key === 'production' ? ALL_AUTO : m.icons;
-  return reveal(icons, m.nurro);
+  if (!s.done.includes(key)) s.done.push(key);
+  if (key === 'production' && !s.revealed.includes('batch')) s.revealed.push('batch');
+  const icons = key === 'production' ? ALL_AUTO.filter(id => id !== 'batch') : m.icons;
+  const added = reveal(icons, m.nurro, m.label);
+  if (!added.length) { pendingLabel = m.label; save(s); }
+  return added;
+}
+
+/**
+ * Wait until nothing else is talking to the player: no Achievement
+ * celebration, no username question, no profile (a celebration opens it), no
+ * tutorial box. Then a moment more, so the icons and Nurro are noticed. Gives
+ * up waiting after 90 seconds.
+ */
+export async function untilQuiet() {
+  const backend: any = useProofreadingBackendStore();
+  const busy = () => !!backend.pendingBadgeCelebration
+    || !!document.querySelector('.nge-hero-overlay, .nge-cell-overlay, .nge-batch-overlay, .nge-un-backdrop, .nge-profile-modal, .introductionStep, .nge-tut-resume');
+  const start = Date.now();
+  let quietSince = 0;
+  await new Promise(r => setTimeout(r, 1500));
+  while (Date.now() - start < 90000) {
+    if (busy()) quietSince = 0;
+    else if (!quietSince) quietSince = Date.now();
+    else if (Date.now() - quietSince > 2500) return;
+    await new Promise(r => setTimeout(r, 400));
+  }
+}
+
+/** A real moment (not the test panel): Nurro speaks once the screen is quiet. */
+async function momentWhenQuiet(key: string) {
+  const s = current();
+  if (!s || s.done.includes(key)) return;
+  await untilQuiet();
+  runMoment(key);
 }
 
 // ── Tutorials ───────────────────────────────────────────────────────────────
@@ -248,20 +330,39 @@ export function setTutorialBusy(fn: () => boolean) { tutorialBusy = fn; }
  * in line. Nothing starts if the player has opened another tutorial meanwhile.
  */
 export async function getStartedFinished(isStillOnGetStarted: () => boolean) {
+  await untilQuietExceptTutorial();
+  runMoment('getStarted');
+  if (isStillOnGetStarted()) document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: 3 } }));
+}
+
+/** As untilQuiet, without waiting for tutorial boxes: Get Started has just
+ *  closed its own, and Merge is about to open the next. */
+async function untilQuietExceptTutorial() {
   const backend: any = useProofreadingBackendStore();
   const busy = () => !!backend.pendingBadgeCelebration
-    || !!document.querySelector('.nge-hero-overlay, .nge-cell-overlay, .nge-batch-overlay, .nge-un-backdrop');
+    || !!document.querySelector('.nge-hero-overlay, .nge-cell-overlay, .nge-batch-overlay, .nge-un-backdrop, .nge-profile-modal');
   const start = Date.now();
   let quietSince = 0;
   await new Promise(r => setTimeout(r, 1500));
   while (Date.now() - start < 90000) {
     if (busy()) quietSince = 0;
     else if (!quietSince) quietSince = Date.now();
-    else if (Date.now() - quietSince > 2500) break;
+    else if (Date.now() - quietSince > 2500) return;
     await new Promise(r => setTimeout(r, 400));
   }
-  runMoment('getStarted');
-  if (isStillOnGetStarted()) document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: 3 } }));
+}
+
+/** A tutorial was finished. Finishing both Merge and Cut brings the Cell
+ *  Library (Ames 2026-10-20), once the Achievement has had its moment. */
+export function tutorialFinished(n: number) {
+  const s = current();
+  if (!s) return;
+  const mark = n === 3 ? 'mergeDone' : n === 5 ? 'cutDone' : '';
+  if (!mark || s.done.includes(mark)) return;
+  s.done.push(mark);
+  pendingLabel = n === 3 ? 'Finish the Merge tutorial' : 'Finish the Cut tutorial';
+  save(s);
+  if (s.done.includes('mergeDone') && s.done.includes('cutDone')) void momentWhenQuiet('basics');
 }
 
 // ── Edits, days, access ─────────────────────────────────────────────────────
@@ -271,7 +372,7 @@ document.addEventListener('nge:edit-logged', ((e: CustomEvent) => {
   if (op !== 'merge' && op !== 'split') return;
   if (tutorialBusy()) return;
   const s = current();
-  if (s && !s.done.includes('ownEdit')) runMoment('ownEdit');
+  if (s && !s.done.includes('ownEdit')) void momentWhenQuiet('ownEdit');
 }) as EventListener);
 
 const today = () => new Date().toLocaleDateString('en-CA');
@@ -282,10 +383,11 @@ export function noteVisit(date = today()) {
   if (!s) return;
   if (!s.visitDays.includes(date)) {
     s.visitDays = [...s.visitDays, date].slice(-3);
+    pendingLabel = 'A new day';
     save(s);
   }
-  if (s.visitDays.length >= 2 && !s.done.includes('day2')) runMoment('day2');
-  if (s.visitDays.length >= 3 && !s.done.includes('day3')) runMoment('day3');
+  if (s.visitDays.length >= 2 && !s.done.includes('day2')) void momentWhenQuiet('day2');
+  if (s.visitDays.length >= 3 && !s.done.includes('day3')) void momentWhenQuiet('day3');
 }
 
 function hasProductionAccess(): boolean | null {
@@ -320,6 +422,6 @@ setTimeout(() => {
   watch(() => hasProductionAccess(), ok => {
     if (!ok || simulating.value) return;
     const s = current();
-    if (s && !s.done.includes('production')) runMoment('production');
+    if (s && !s.done.includes('production')) void momentWhenQuiet('production');
   }, { immediate: true });
 }, 0);

@@ -90,7 +90,7 @@ In a moment you'll get the fused version of this very cell and make the cut your
     text: `
 Here's the same cell with the merger fused onto it. Your quest is to separate them.
 
-Press the **C** key to start the cut tool.
+Press the **C** key to start the cut tool, or click the red Cut icon in the top bar.
 
 Once it's on, the cut bar appears at the bottom of the viewer with the red group active.`,
     position: OVER_3D,

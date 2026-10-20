@@ -7,7 +7,8 @@
 import { computed, watch } from 'vue';
 import { announcement } from '../util/toolbar_staging';
 import { getToolbarIconDef } from '../data/toolbar-icons';
-import imgNurro from '../images/professor-nurro.png';
+// Nurro with a laser pointer: the library's picture for pointing at the interface.
+import imgNurro from '../../static/nurro/nurro-laser-teach.png';
 
 const icons = computed(() => (announcement.value?.icons || []).map(id => getToolbarIconDef(id)).filter((d): d is NonNullable<typeof d> => !!d));
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -30,7 +31,7 @@ function close() { announcement.value = null; }
             <span v-if="d.svg" v-html="d.svg"></span><template v-else>{{ d.emoji }}</template>
           </span>
         </div>
-        <button class="nge-hud-btn nge-hud-btn--go nge-stage-ok" @click="close">Got it</button>
+        <button class="nge-hud-btn nge-stage-ok" @click="close">Got it</button>
       </div>
     </div>
   </transition>
@@ -56,7 +57,7 @@ function close() { announcement.value = null; }
   font-size: 14px;
   line-height: 1.45;
 }
-.nge-stage-nurro { width: 64px; height: 64px; object-fit: contain; flex: none; }
+.nge-stage-nurro { width: 72px; height: 72px; object-fit: contain; flex: none; }
 .nge-stage-body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .nge-stage-who {
   font-family: 'Orbitron', 'Inter', sans-serif;

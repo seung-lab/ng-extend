@@ -21,7 +21,7 @@ import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
-import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialStepReveals } from '../util/toolbar_staging';
+import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialFinished, tutorialStepReveals } from '../util/toolbar_staging';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Mini Michelangelo art from Ames (2026-10-07).
@@ -72,17 +72,6 @@ const activeStep = computed(() => {
         return null;
     }
 });
-
-// Top bar staging: a step that points at an icon (or names it in `reveals`)
-// brings it in, whichever tutorial gets there first. The Site Tour points at
-// every icon, so it skips the ones not yet received instead (site-tour.ts).
-watch(activeStep, (now) => {
-    if (now && store.activeTutorial !== SITE_TOUR) reveal(tutorialStepReveals(now.step as any));
-}, { immediate: true });
-// Edits made in a tutorial, on a practice cell or in the test are not a
-// player's own first edit.
-setTutorialBusy(() => !!activeStep.value || practiceShown()
-    || ['claiming', 'working', 'scoring'].includes((currentTest() as any)?.phase));
 
 const BADGE_KEYS: Record<number, { key: string; title: string; image: string }> = {
     1: { key: 'nge-badge-citizen-scientist', title: 'Citizen Scientist', image: badgeCitizenScientist },
@@ -220,6 +209,8 @@ const next = (_auto?: unknown) => {
         // The sandbox records each merger as it is cut, not the box closing.
         // The sandbox and the test record themselves (the test on the server).
         if (tutorialNum !== 9 && tutorialNum !== TEST_TUTORIAL) recordTutorialDone(tutorialNum);
+        // Merge and Cut both finished brings the Cell Library (toolbar_staging.ts).
+        tutorialFinished(tutorialNum);
         // Say so if anything puts a box back in the next few seconds.
         const stop = watch(currentStep, (now) => {
             if (store.activeTutorial === tutorialNum && now < steps.value.length) {
@@ -268,6 +259,17 @@ const back = () => { (window as any).__ngeStepPending = false; store.setTutorial
 // Continue / Exit card and loads nothing until you choose. Starting a
 // tutorial from the menu (step 0) needs no prompt.
 const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox', 11: 'Proofreading Test' };
+// Top bar staging: a step that points at an icon (or names it in `reveals`)
+// brings it in, whichever tutorial gets there first. The Site Tour points at
+// every icon, so it skips the ones not yet received instead (site-tour.ts).
+watch(activeStep, (now) => {
+    if (now && store.activeTutorial !== SITE_TOUR) reveal(tutorialStepReveals(now.step as any), undefined, `${TUTORIAL_NAMES[store.activeTutorial] ?? 'Tutorial'}, step ${now.index + 1}`);
+}, { immediate: true });
+// Edits made in a tutorial, on a practice cell or in the test are not a
+// player's own first edit.
+setTutorialBusy(() => !!activeStep.value || practiceShown()
+    || ['claiming', 'working', 'scoring'].includes((currentTest() as any)?.phase));
+
 const resumeDecided = ref(false);
 watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu

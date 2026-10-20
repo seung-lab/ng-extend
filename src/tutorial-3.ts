@@ -1236,7 +1236,7 @@ Let's jump to an area that needs a merge. The purple ` + PART + ` behind this bo
 
 Press the **M** key to start the merge tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
-You can also start it from the toolbar at the top of the screen. Once it's on, the merge tool appears at the bottom of the viewer.`,
+You can also click the green Merge icon in the top bar. Once it's on, the merge tool appears at the bottom of the viewer.`,
     position: OVER_3D,
     width: "450px",
     onEnter: async () => {
