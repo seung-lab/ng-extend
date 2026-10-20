@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pumpkinSeason } from '../util/pumpkin';
 import {ref, onMounted, onUnmounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
@@ -40,6 +41,7 @@ const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
 const draftImageDetail = ref<1 | 2 | 4>(1);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
+const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
@@ -114,6 +116,7 @@ onMounted(() => {
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
+  draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
@@ -173,7 +176,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: draftToolbar.value,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
   });
@@ -447,6 +450,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
               <input type="checkbox" v-model="draftUndeleteCounter" />
               <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
+            </label>
+            <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
+              <input type="checkbox" v-model="draftPumpkin" />
+              <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
             </label>
             <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
               <input type="checkbox" v-model="draftSegShowId" />

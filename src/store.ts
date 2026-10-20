@@ -1035,6 +1035,9 @@ export interface UserPreferences {
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
+  /** Hide the Halloween pumpkin on the Sandbox cell (src/util/pumpkin.ts).
+   *  Defaults to false: the pumpkin shows in season. */
+  hidePumpkin?: boolean;
   /** The tab the Cell Library opens on (Nik 2026-10-09). Unset: My Cells. */
   cellLibraryStartTab?: 'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links';
   /** Jumping to a cell ADDS it to the view instead of replacing what is

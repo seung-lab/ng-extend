@@ -13,8 +13,10 @@ import {
   useUserStatsStore,
   useHelpRequestStore,
   useProofreadingQueueStore,
+  useUserPreferencesStore,
   CellHistoryEntry,
 } from '../store';
+import { pumpkinSeason } from '../util/pumpkin';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -198,6 +200,19 @@ function buildActions(): PaletteItem[] {
     aliases: ['photo', 'picture', 'spin', 'turntable', 'video', 'record', 'wallpaper'],
     action: () => document.dispatchEvent(new CustomEvent('nge:photo-mode')),
   });
+  if (pumpkinSeason()) {
+    const prefs = useUserPreferencesStore();
+    const hidden = prefs.prefs.hidePumpkin === true;
+    items.push({
+      id: 'pumpkin',
+      label: hidden ? 'Show the Pumpkin' : 'Hide the Pumpkin',
+      description: hidden ? "Put the jack o' lantern back on the Sandbox cell" : "Take the jack o' lantern off the Sandbox cell",
+      category: 'tool',
+      icon: '🎃',
+      aliases: ['pumpkin', 'jack', 'lantern', 'halloween', 'remove pumpkin'],
+      action: () => prefs.save({ hidePumpkin: !hidden }),
+    });
+  }
   if (ARCADE_ENABLED) items.push({
     id: 'pyr-arcade',
     label: 'Pyr Arcade',
