@@ -1030,7 +1030,7 @@ export interface UserPreferences {
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
   /** How the cell under the mouse is shown (wolfryder101 #181): 'fade' (default, the classic look), 'halo' or 'pulse', the classic look. */
-  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'fade';
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'fade';
   /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
   pulseColor?: string;
   /** Classic layer tabs: left click hides or shows a layer, right click

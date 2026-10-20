@@ -755,13 +755,15 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  *   outline  a crisp line just outside the cell in 3D (Ames did not like it;
  *            not offered in Settings, kept for a saved choice)
  *   pulse    bands of light running out along the cell from the mouse in 3D
+ *   wireframe  the cell's triangles drawn in lines of its own colour over a
+ *            dimmed body (Ames 2026-10-20)
  *   fade     the classic look, the cell turns pale (the default)
  * In 2D every style but fade keeps the cell's colour and makes it more solid.
  * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
  * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
  * Settings updates it live.
  */
-export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'fade';
+export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'fade';
 /** The style when the player has not chosen one. */
 export function ngeDefaultHoverStyle(_prefs: any): NgeHoverStyle {
   // Ames 2026-10-20: the pulse "maybe too much" as a default; everyone starts
@@ -770,7 +772,7 @@ export function ngeDefaultHoverStyle(_prefs: any): NgeHoverStyle {
 }
 export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
   const v = prefs?.hoverStyle;
-  return v === 'halo' || v === 'pulse' || v === 'fade' || v === 'outline' ? v : ngeDefaultHoverStyle(prefs);
+  return v === 'halo' || v === 'pulse' || v === 'wireframe' || v === 'fade' || v === 'outline' ? v : ngeDefaultHoverStyle(prefs);
 }
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }

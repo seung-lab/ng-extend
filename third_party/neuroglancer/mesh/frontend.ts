@@ -61,6 +61,7 @@ function freeGpuMeshData(chunk: FragmentChunk|MultiscaleFragmentChunk) {
   chunk.normalBuffer.dispose();
 }
 
+
 /**
  * Decodes normal vectors in 2xSnorm8 octahedron encoding into normalized 3x32f vector.
  *
@@ -199,15 +200,37 @@ function ngeGlowColor(color: Float32Array|number[]) {
   return ngeGlowRgb;
 }
 let ngePulseRunning = false;
+/** How much of the halo to draw at this zoom, 0.3 to 1 (Ames 2026-10-20:
+ *  "looks good up close but far away too thick"). Set per frame from how
+ *  many pixels a 1 um branch covers: full from about 12 px up. */
+let ngeHaloZoom = 1;
+function ngeUpdateHaloZoom(projectionParameters: any) {
+  const viewer: any = (window as any).viewer;
+  const info = projectionParameters.displayDimensionRenderInfo;
+  let minNm = Infinity;
+  for (let i = 0; i < 3; i++) minNm = Math.min(minNm, (info.displayDimensionScales[i] || 1e-9) * 1e9);
+  const viewNm = Math.max(1, (viewer?.projectionScale?.value ?? 1000) * minNm);
+  const branchPx = 1000 / (viewNm / Math.max(1, projectionParameters.height));
+  ngeHaloZoom = Math.max(0.3, Math.min(1, branchPx / 12));
+  // The wireframe's lines, about 9 px apart on screen at any zoom.
+  ngeGridStepNm = 9 * viewNm / Math.max(1, projectionParameters.height);
+  for (let i = 0; i < 3; i++) ngePulseScale[i] = (info.displayDimensionScales[i] || 1e-9) * 1e9;
+}
+let ngeGridStepNm = 100;
 /** The main pass's hover mode for the cell under the mouse: 1 the pulse,
  *  2 the halo's rim of light on the cell's own edges (colour in uNgeRim). */
 let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
   if (style === 'pulse') return 1;
+  if (style === 'wireframe' && ngeRimGl) {
+    const rgb = ngeGlowColor(color);
+    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], ngeGridStepNm);
+    return 3;
+  }
   if (style === 'halo' && ngeRimGl) {
     const rgb = ngeGlowColor(color);
-    ngeRimGl.gl.uniform3f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2]);
+    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], ngeHaloZoom);
     return 2;
   }
   return 0;
@@ -271,8 +294,10 @@ export class MeshShaderManager {
     gl.uniform1f(shader.uniform('uNgeGlow'), 0);
     ngeRimGl = {gl, shader};
     const {projectionParameters} = renderContext;
+    ngeUpdateHaloZoom(projectionParameters);
     gl.uniform2f(shader.uniform('uNgeViewport'), projectionParameters.width, projectionParameters.height);
     const pulse = ngeHoverStyle.value === 'pulse' && renderContext.emitColor ? ngePulseState(projectionParameters) : null;
+    if (!pulse) gl.uniform3fv(shader.uniform('uNgePulseScale'), ngePulseScale);
     if (pulse) {
       gl.uniform3fv(shader.uniform('uNgePulseCenter'), pulse.center);
       gl.uniform3fv(shader.uniform('uNgePulseScale'), pulse.scaleNm);
@@ -300,7 +325,8 @@ export class MeshShaderManager {
   /** EyeWire II hover outline and halo: one shell of the cell, `widthPx` out
    *  from its edge on screen, in `color`. Width 0 draws the cell itself. */
   setShell(gl: GL, shader: ShaderProgram, widthPx: number, color?: Float32Array|number[]) {
-    gl.uniform4f(shader.uniform('uNgeShell'), widthPx, NGE_SHELL_DEPTH_BIAS, NGE_SHELL_NORMAL_STEP, 0);
+    // Thinner when zoomed out (ngeHaloZoom).
+    gl.uniform4f(shader.uniform('uNgeShell'), widthPx * ngeHaloZoom, NGE_SHELL_DEPTH_BIAS, NGE_SHELL_NORMAL_STEP, 1);
     if (color) gl.uniform4fv(shader.uniform('uNgeShellColor'), color);
   }
 
@@ -375,8 +401,8 @@ export class MeshShaderManager {
     fragmentChunk.normalBuffer.bindToVertexAttrib(
         shader.attribute('aVertexNormal'),
         /*components=*/ 2, WebGL2RenderingContext.BYTE, /*normalized=*/ true);
-    fragmentChunk.indexBuffer.bind();
     const {indices} = meshData;
+    fragmentChunk.indexBuffer.bind();
     gl.drawElements(
         meshData.strips ? WebGL2RenderingContext.TRIANGLE_STRIP : WebGL2RenderingContext.TRIANGLES,
         indexEnd - indexBegin,
@@ -434,7 +460,8 @@ export class MeshShaderManager {
         builder.addUniform('highp vec3', 'uNgePulseCenter');
         builder.addUniform('highp vec3', 'uNgePulseScale');
         builder.addUniform('highp vec4', 'uNgePulseColor');
-        builder.addUniform('highp vec3', 'uNgeRim');
+        builder.addUniform('highp vec4', 'uNgeRim');
+        builder.addVarying('highp vec4', 'vNgeGrid');
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
@@ -476,14 +503,23 @@ vec3 normal = normalize(uNormalMatrix * (normalMultiplier * origNormal));
 float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
-if (uNgeGlow > 1.5) {
+vNgeGrid = vec4(0.0);
+if (uNgeGlow > 2.5) {
+  // EyeWire II hover wireframe (Ames 2026-10-20): evenly spaced lines of the
+  // cell's own colour over a dimmed body, drawn per pixel (fragment main).
+  // Positions in grid steps, so the lines keep their spacing on screen.
+  highp vec3 gridAt = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale;
+  vNgeGrid = vec4(gridAt / uNgeRim.w, 1.0);
+  vColor.rgb *= 0.28;
+} else if (uNgeGlow > 1.5) {
   // EyeWire II hover halo, on the cell itself: where its surface turns away
   // from you, it takes on the glow's colour, so the glow seems to come from
   // inside the edge as well as around it. The middle keeps its own shading.
   highp float rimLen = length(uLightDirection.xyz);
   highp float rimFacing = rimLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / rimLen)) : 1.0;
   highp float rimAmount = pow(1.0 - rimFacing, 4.0);
-  vColor.rgb = mix(vColor.rgb, uNgeRim * uColor.a, 0.35 * rimAmount);
+  // Fainter when zoomed out, where a thin branch is nearly all edge.
+  vColor.rgb = mix(vColor.rgb, uNgeRim.rgb * uColor.a, 0.35 * uNgeRim.w * uNgeRim.w * rimAmount);
 } else if (uNgeGlow > 0.5 && uNgePulse.w > 0.5) {
   // EyeWire II hover pulse: bands of light run out along the cell from the
   // mouse, like a signal firing. Distances in nm, so z counts as much as x.
@@ -542,7 +578,7 @@ vColor *= pow(1.0 - absCosAngle, uSilhouettePower);
         // out along its surface normals by a few pixels on screen and a little
         // behind itself, so only the rim outside the cell shows.
         vertexMain += `
-if (uNgeShell.x > 0.0) {
+if (uNgeShell.w > 0.5) {
   highp vec3 shellNormal = normalize(normalMultiplier * origNormal);
   highp vec4 shellAway = uModelViewProjection * vec4(vertexPosition + shellNormal * uNgeShell.z, 1.0);
   highp vec2 shellDir = (shellAway.xy / shellAway.w - gl_Position.xy / gl_Position.w) * uNgeViewport;
@@ -555,7 +591,14 @@ if (uNgeShell.x > 0.0) {
 }
 `;
         builder.setVertexMain(vertexMain);
-        builder.setFragmentMain(`emit(vColor, uPickID);`);
+        builder.setFragmentMain(`
+if (vNgeGrid.w > 0.5) {
+  highp vec3 cell = abs(fract(vNgeGrid.xyz - 0.5) - 0.5) / max(fwidth(vNgeGrid.xyz), vec3(1e-6));
+  highp float wire = 1.0 - clamp(min(min(cell.x, cell.y), cell.z) - 0.25, 0.0, 1.0);
+  emit(vec4(mix(vColor.rgb, uNgeRim.rgb * uColor.a, wire), vColor.a), uPickID);
+} else {
+  emit(vColor, uPickID);
+}`);
       },
     });
   }
