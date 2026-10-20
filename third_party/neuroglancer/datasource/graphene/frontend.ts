@@ -982,6 +982,8 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     const loadedSubsource = getGraphLoadedSubsource(layer)!;
     const redGroup = makeColoredAnnotationState(layer, loadedSubsource, 'sinks', RED_COLOR);
     const blueGroup = makeColoredAnnotationState(layer, loadedSubsource, 'sources', BLUE_COLOR);
+    // EyeWire II: cut points have their own size (Celia #177).
+    redGroup.displayState.ngeCutPoints = blueGroup.displayState.ngeCutPoints = true;
     synchronizeAnnotationSource(multicutState.sinks, redGroup);
     synchronizeAnnotationSource(multicutState.sources, blueGroup);
     annotationLayerStates.push(redGroup, blueGroup);

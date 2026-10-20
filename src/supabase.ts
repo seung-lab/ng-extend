@@ -8,7 +8,14 @@ import { communityFetch } from './community_fetch';
 export const SUPABASE_URL = 'https://javthknksdcrlhiaaptj.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_a5r5rfbOuWNoVw0Qb_LtRg_xA4H6Jxb';
 
-export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: communityFetch } });
+export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: communityFetch },
+  // Pyr never signs in to Supabase (players sign in with Google through CAVE).
+  // Left on, every tab ran Supabase's own session upkeep under one browser
+  // lock, and a second tab logged "Acquiring an exclusive Navigator
+  // LockManager lock ... immediately failed" (Nseraf #182).
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+});
 
 /** Quick connectivity check — logs result to console on startup. */
 supabase.from('users').select('id', { count: 'exact', head: true }).then(

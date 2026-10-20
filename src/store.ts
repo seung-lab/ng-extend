@@ -537,15 +537,15 @@ export const useLayersStore = defineStore('layers', () => {
   function isUserInActiveTutorial(): boolean {
     try {
       const active = parseInt(localStorage.getItem('nge-active-tutorial') ?? '1');
-      const stepKey = active === 2 ? 'nge-tutorial-2-step'
-                    : active === 3 ? 'nge-tutorial-3-step'
-                    : 'nge-tutorial-step';
-      // store-pyr defaults: T1 step starts at 0 (in-progress), T2/T3 at -1 (not started).
+      const stepKey = active === 1 ? 'nge-tutorial-step' : `nge-tutorial-${active}-step`;
+      // store-pyr defaults: T1 step starts at 0 (in-progress), the others at -1 (not started).
       const defaultStep = active === 1 ? '0' : '-1';
       const step = parseInt(localStorage.getItem(stepKey) ?? defaultStep);
-      // Tutorial step counts as of 2026-04: T1=18, T2=24, T3=TBD.
-      const tutorialLengths: Record<number, number> = { 1: 18, 2: 24, 3: 30 };
-      const length = tutorialLengths[active] ?? 30;
+      // The real step counts, from Tutorial.vue. The old fixed table (T2 = 24)
+      // went stale as tutorials grew, so a finished tutorial could read as
+      // under way and the Sandbox landed without its cells.
+      const live = (window as any).__ngeTutorialLengths as Record<string, number> | undefined;
+      const length = live?.[active] ?? ({ 1: 18, 2: 24, 3: 30 } as Record<number, number>)[active] ?? 30;
       return step >= 0 && step < length;
     } catch { return false; }
   }
@@ -1051,6 +1051,8 @@ export interface UserPreferences {
   offerViewRestore?: boolean;
   /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
   annotationSize?: number;
+  /** Cut mode's red and blue points, as a multiple of the regular dot (Celia #177). */
+  cutPointSize?: number;
   /** Point annotations drawn as Pyr gems in 3D. Defaults to true. */
   annotationGems?: boolean;
   /** Show Source and Rendering tabs on annotation layers. Defaults to false. */
@@ -1110,7 +1112,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1173,6 +1175,12 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   }
 
   load(); // hydrate from localStorage on store init
+  // Another Pyr tab changed a setting: take it here too, so this tab's next
+  // save does not put the old value back (Ames 2026-10-20, several tabs).
+  window.addEventListener('storage', e => {
+    if (e.key !== PREFS_KEY || !e.newValue) return;
+    try { prefs.value = JSON.parse(e.newValue); } catch { /* ignore parse errors */ }
+  });
   // Once signed in, the account's copy wins over this browser's.
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
@@ -6042,6 +6050,19 @@ export const useVolumesStore = defineStore('volumes', () => {
                 layerStore.selectLayers([imageLayer, segmentationLayer], {keepHash: userHash});
               }
             }
+          }
+        } else if (!BOOT_HASH || BOOT_HASH === '#' || BOOT_HASH === '#!') {
+          // A bare address opens the build's own default view, which already
+          // has its layers, so the switch above never ran and the landing had
+          // no cells (Ames 2026-10-20). Arrive at that dataset the way a
+          // switch to it does: the player's start view, the curated view or
+          // its starter cells, by the same Settings.
+          const v: any = (window as any).viewer;
+          const seg = v?.layerManager?.managedLayers?.find((l: any) => String(l?.layer?.constructor?.type || '').startsWith('segmentation'));
+          const visible = seg?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+          if (seg && visible && visible.size === 0 && getDatasetCaveConfig(seg.name).defaultSegments?.length) {
+            const layers = v.state.toJSON().layers;
+            if (Array.isArray(layers)) void layerStore.selectLayers(layers);
           }
         }
   }

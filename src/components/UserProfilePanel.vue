@@ -836,9 +836,10 @@ function nextForTrack(badges: BadgeDefinition[], current: number) {
   // The next one not held: a saved Achievement can sit above the count.
   const next = sorted.find(b => current < b.threshold && !isBadgeEarned(b));
   if (!next) return null;
-  const prev = sorted[sorted.indexOf(next) - 1]?.threshold ?? 0;
+  // The last step the count has passed, not a saved Achievement above it (annkri #180).
+  const prev = sorted.slice(0, sorted.indexOf(next)).filter(b => b.threshold <= current).pop()?.threshold ?? 0;
   const remaining = next.threshold - current;
-  const pct = Math.min(100, Math.round(((current - prev) / (next.threshold - prev)) * 100));
+  const pct = Math.max(0, Math.min(100, Math.round(((current - prev) / (next.threshold - prev)) * 100)));
   return { name: next.name, threshold: next.threshold, remaining, pct, track: next.track as BadgeTrack };
 }
 
@@ -852,10 +853,11 @@ const nextExplorationAchievement = computed(() =>
 const nextLoyaltyAchievement = computed(() => {
   const next = earnedLoyaltyBadges.value.next;
   if (!next) return null;
-  const prev = earnedLoyaltyBadges.value.earned[0]?.threshold ?? 0;
   const cur = Math.min(totalDays.value, next.threshold - 1);
+  // The last step passed, not a held Achievement above the count (annkri #180).
+  const prev = LOYALTY_BADGES.filter(b => b.threshold < next.threshold && b.threshold <= cur).reduce((m, b) => Math.max(m, b.threshold), 0);
   const remaining = next.threshold - cur;
-  return { name: next.name, threshold: next.threshold, remaining, pct: Math.round((cur - prev) / Math.max(1, next.threshold - prev) * 100) };
+  return { name: next.name, threshold: next.threshold, remaining, pct: Math.max(0, Math.round((cur - prev) / Math.max(1, next.threshold - prev) * 100)) };
 });
 
 // ── Overview scope: the dataset on screen ──────────────────────────────────

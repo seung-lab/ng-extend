@@ -12,6 +12,8 @@ import { startLockedLayers } from './util/locked_layers';
 import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
+import { startTabs } from './util/tabs';
+import { startContextLostNotice } from './util/context_lost';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
 import { startCutPreview } from './util/cut_preview';
@@ -173,6 +175,9 @@ window.addEventListener('DOMContentLoaded', () => {
   installErrorReporting(app);
   // Calm screen, before anything is drawn: some panels ask once whether to move.
   startCalm();
+  // Other Pyr tabs in this browser, and a notice if the views stop drawing.
+  startTabs();
+  startContextLostNotice();
   app.use(pinia);
   const {initializeWithViewer} = useLayersStore();
   const {loadVolumes} = useVolumesStore();

@@ -31,6 +31,9 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 const store = useTutorialStore();
 
 const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11 };
+// The real lengths, for the landing's "is a tutorial under way" test in
+// store.ts (isUserInActiveTutorial), which cannot import the step lists.
+(window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {

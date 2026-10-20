@@ -983,7 +983,8 @@ export class ButtonService {
                 const mine = backend.tasks.find(t => t.assigned_to === backend.userId
                   && (t.status === 'assigned' || t.status === 'in_progress')
                   && (t.segment_id === segmentIDString || link === (t as any).start_link));
-                if (mine) localStorage.setItem('nge_cl_working_task', String(mine.id));
+                // this tab's own copy, and the shared one (CellLibraryPanel WORKING_KEY)
+                if (mine) { sessionStorage.setItem('nge_cl_working_task', String(mine.id)); localStorage.setItem('nge_cl_working_task', String(mine.id)); }
               } catch { /* the view still opens */ }
               openStartLink(link);
             })();

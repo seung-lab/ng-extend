@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reportWriteFailure } from '../util/error_reporting';
+import { otherTabCount } from '../util/tabs';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam, whenSettled } from '../util/panel_collapse';
 import {
@@ -506,12 +507,26 @@ function getCachedUserName(userId: string): string {
 // Hits Edge, Notes), which live only in the viewer state. Moving to another
 // claim first saves the current view to the claim you were working on, then
 // loads the next claim's saved view (or its sheet Start link).
+// Each tab keeps its own (sessionStorage, which a reload keeps): with two tabs
+// open, a shared slot let one tab save its view into the other tab's claim
+// (Ames 2026-10-20). The shared copy only seeds a tab opened when no other
+// Pyr tab is open, so closing and reopening the browser still remembers it.
 const WORKING_KEY = 'nge_cl_working_task';
+const readWorking = (store: Storage) => {
+  try { const v = Number(store.getItem(WORKING_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; }
+};
 let workingTaskId: number | null = (() => {
-  try { const v = Number(localStorage.getItem(WORKING_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; }
+  try { if (sessionStorage.getItem(WORKING_KEY) !== null) return readWorking(sessionStorage); } catch {}
+  return null;
 })();
+let workingSet = false;
+try { workingSet = sessionStorage.getItem(WORKING_KEY) !== null; } catch {}
+// The other tabs answer within a moment of this one opening.
+if (!workingSet) setTimeout(() => { if (!workingSet && !otherTabCount()) workingTaskId = readWorking(localStorage); }, 1200);
 function setWorkingTask(id: number | null) {
   workingTaskId = id;
+  workingSet = true;
+  try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
   try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
 }
 /** Save the view to the claim being worked on. False = stay put. */
