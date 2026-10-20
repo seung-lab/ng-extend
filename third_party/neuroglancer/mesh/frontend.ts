@@ -182,12 +182,38 @@ const ngeShellColor = new Float32Array(4);
 /** The rim colour: a light tint of the cell's own colour. */
 function ngeShellColorFor(color: Float32Array|number[], alpha: number) {
   const a = color[3] || 1;
+  const rgb = ngeGlowColor(color);
+  // The halo breathes slowly, like a force field (Ames 2026-10-20: "better
+  // border glow"); the outline does not.
+  const breath = ngeHoverStyle.value === 'halo' ? 0.8 + 0.2 * Math.sin(performance.now() / 1000 * Math.PI * 2 / 1.8) : 1;
   // Times alpha: the halo keeps the brightest shell at each pixel (MAX blending).
-  for (let i = 0; i < 3; i++) ngeShellColor[i] = Math.min(1, (color[i] / a) * 0.45 + 0.55) * alpha;
+  for (let i = 0; i < 3; i++) ngeShellColor[i] = rgb[i] * alpha * breath * a;
   ngeShellColor[3] = alpha;
   return ngeShellColor;
 }
+const ngeGlowRgb = new Float32Array(3);
+/** The glow's colour: the cell's own hue at full brightness, a little toward
+ *  white, so a dark blue cell glows bright blue rather than a dim line. */
+function ngeGlowColor(color: Float32Array|number[]) {
+  const a = color[3] || 1;
+  const max = Math.max(color[0], color[1], color[2]) / a || 1;
+  for (let i = 0; i < 3; i++) ngeGlowRgb[i] = Math.min(1, (color[i] / a / max) * 0.8 + 0.2);
+  return ngeGlowRgb;
+}
 let ngePulseRunning = false;
+/** The main pass's hover mode for the cell under the mouse: 1 the pulse,
+ *  2 the halo's rim of light on the cell's own edges (colour in uNgeRim). */
+let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
+function ngeHoverGlowMode(color: Float32Array|number[]) {
+  const style = ngeHoverStyle.value;
+  if (style === 'pulse') return 1;
+  if (style === 'halo' && ngeRimGl) {
+    const rgb = ngeGlowColor(color);
+    ngeRimGl.gl.uniform3f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2]);
+    return 2;
+  }
+  return 0;
+}
 let ngePulseT0 = 0, ngePulseKey = '', ngePulseSeenAt = 0;
 /** A cell is pulsing: note when the mouse came onto it. */
 function ngePulseMark(key: string) {
@@ -245,6 +271,7 @@ export class MeshShaderManager {
     // EyeWire II hover effects: off unless a pass turns them on.
     gl.uniform4f(shader.uniform('uNgeShell'), 0, 0, 0, 0);
     gl.uniform1f(shader.uniform('uNgeGlow'), 0);
+    ngeRimGl = {gl, shader};
     const {projectionParameters} = renderContext;
     gl.uniform2f(shader.uniform('uNgeViewport'), projectionParameters.width, projectionParameters.height);
     const pulse = ngeHoverStyle.value === 'pulse' && renderContext.emitColor ? ngePulseState(projectionParameters) : null;
@@ -409,6 +436,7 @@ export class MeshShaderManager {
         builder.addUniform('highp vec3', 'uNgePulseCenter');
         builder.addUniform('highp vec3', 'uNgePulseScale');
         builder.addUniform('highp vec4', 'uNgePulseColor');
+        builder.addUniform('highp vec3', 'uNgeRim');
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
@@ -450,7 +478,15 @@ vec3 normal = normalize(uNormalMatrix * (normalMultiplier * origNormal));
 float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
-if (uNgeGlow > 0.5 && uNgePulse.w > 0.5) {
+if (uNgeGlow > 1.5) {
+  // EyeWire II hover halo, on the cell itself: where its surface turns away
+  // from you, it takes on the glow's colour, so the glow seems to come from
+  // inside the edge as well as around it. The middle keeps its own shading.
+  highp float rimLen = length(uLightDirection.xyz);
+  highp float rimFacing = rimLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / rimLen)) : 1.0;
+  highp float rimAmount = pow(1.0 - rimFacing, 4.0);
+  vColor.rgb = mix(vColor.rgb, uNgeRim * uColor.a, 0.55 * rimAmount);
+} else if (uNgeGlow > 0.5 && uNgePulse.w > 0.5) {
   // EyeWire II hover pulse: bands of light run out along the cell from the
   // mouse, like a signal firing. Distances in nm, so z counts as much as x.
   highp vec3 pulseAt = (uNgeModel * vec4(vertexPosition, 1.0)).xyz;
@@ -628,11 +664,12 @@ export class MeshLayer extends
               meshShaderManager.setShell(gl, shader, shell.widthPx, ngeShellColorFor(color!, shell.alpha));
               drawFragments();
             }
+            if (ngeHoverStyle.value === 'halo') ngePulseRunning = true;
             return;
           }
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
-            meshShaderManager.setGlow(gl, shader, ngeHoverStyle.value === 'pulse' && hovered ? 1 : 0);
+            meshShaderManager.setGlow(gl, shader, hovered ? ngeHoverGlowMode(color!) : 0);
             if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseMark(key);
           }
           if (renderContext.emitPickID) {
@@ -886,7 +923,7 @@ export class MultiscaleMeshLayer extends
           if (shells !== null && !hovered) return;
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
-            meshShaderManager.setGlow(gl, shader, ngeHoverStyle.value === 'pulse' && hovered ? 1 : 0);
+            meshShaderManager.setGlow(gl, shader, hovered ? ngeHoverGlowMode(color!) : 0);
             if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseMark(key);
           }
           if (renderContext.emitPickID) {
@@ -896,6 +933,7 @@ export class MultiscaleMeshLayer extends
           for (const shell of (shells ?? [null])) {
           if (shell !== null) {
             meshShaderManager.setShell(gl, shader, shell.widthPx, ngeShellColorFor(color!, shell.alpha));
+            if (ngeHoverStyle.value === 'halo') ngePulseRunning = true;
           }
           getMultiscaleChunksToDraw(
               manifest, modelViewProjection, clippingPlanes, detailCutoff,

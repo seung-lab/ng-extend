@@ -755,20 +755,18 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  *   outline  a crisp line just outside the cell in 3D (Ames did not like it;
  *            not offered in Settings, kept for a saved choice)
  *   pulse    bands of light running out along the cell from the mouse in 3D
- *            (the default: Ames 2026-10-20, "PULSE IS WHERE ITS AT")
- *   fade     the classic look, the cell turns pale
+ *   fade     the classic look, the cell turns pale (the default)
  * In 2D every style but fade keeps the cell's colour and makes it more solid.
  * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
  * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
  * Settings updates it live.
  */
 export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'fade';
-/** Unset: a new player (no settings in this browser yet) gets the pulse, and
- *  a player who was already here keeps the classic fade until they choose
- *  (Ames 2026-10-20: "make it default but keep the original for existing
- *  players"). The app settles it for good in the settings store (store.ts). */
-export function ngeDefaultHoverStyle(prefs: any): NgeHoverStyle {
-  return prefs && Object.keys(prefs).length ? 'fade' : 'pulse';
+/** The style when the player has not chosen one. */
+export function ngeDefaultHoverStyle(_prefs: any): NgeHoverStyle {
+  // Ames 2026-10-20: the pulse "maybe too much" as a default; everyone starts
+  // with the classic fade and picks the others in Settings.
+  return 'fade';
 }
 export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
   const v = prefs?.hoverStyle;
