@@ -50,10 +50,13 @@ interface PatchCell {
 }
 type Model = 'pumpkin' | 'creep-o-lantern' | 'fang-o-lantern';
 const PATCH: PatchCell[] = [
-  // The cell the Sandbox opens on for Ames. 648518346355727683 (the config's
-  // starter, soma given as 71847, 54909, 1158) is the same cell body.
+  // The cell the Sandbox opens on for Ames. 648518346355727683 (soma given
+  // as 71847, 54909, 1158) is the same cell body, so it shares this one.
   { soma: [71942, 54909, 1162], ids: ['648518346353862024', '648518346355727683'], heightNm: 32000, dropNm: 3500, model: 'pumpkin', green: 0x52cb85 },
   { soma: [70064, 54399, 1762], ids: ['648518346353200058'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x8fd14f },
+  // A soma picked from the EM, 42 um from the first (Ames: "You can choose
+  // another soma in the volume"). Its id is found from the supervoxel there.
+  { soma: [81640, 56504, 1162], ids: [], heightNm: 32000, dropNm: 3500, model: 'fang-o-lantern', green: 0x2fa66a },
 ];
 /** The Sandbox's segmentation layer. */
 const SANDBOX_LAYER = 'pinky_nf_v2';
@@ -201,7 +204,9 @@ export async function visitPumpkinPatch(): Promise<boolean> {
         ml.setVisible?.(true);
         const g = ml.layer.displayState.segmentationGroupState.value;
         PATCH.forEach((cell, i) => {
-          const seg = Uint64.parseString(states[i].liveRoot ?? cell.ids[0]);
+          const id = states[i].liveRoot ?? cell.ids[0];
+          if (!id) return;  // not known yet: found once its soma has been seen
+          const seg = Uint64.parseString(id);
           if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
         });
         viewer.layout.restoreState('3d');
