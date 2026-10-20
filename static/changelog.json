@@ -3,9 +3,9 @@
   "entries": [
     {
       "at": "2026-10-20T00:00:00Z",
-      "title": "A glow for the cell under your mouse",
+      "title": "A new look for the cell under your mouse",
       "items": [
-        "The cell under your mouse now glows: in 3D its edges light up in its own colour, and in 2D it turns brighter and more solid, instead of fading to white. Settings has The cell under my mouse if you prefer the classic fade.",
+        "The cell under your mouse now stands out without fading: in 3D it gets a crisp outline, and in 2D it turns more solid in its own colour. In Settings, The cell under my mouse also offers a soft Halo, a Pulse of light running along the cell, or the classic Fade.",
         "Keep my display settings now also keeps Highlight on hover the way you set it when you jump to another cell."
       ]
     },

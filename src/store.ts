@@ -1028,8 +1028,8 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
-  /** The cell under the mouse: 'glow' (default) or 'fade', the classic look (wolfryder101 #181). */
-  hoverStyle?: 'glow' | 'fade';
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'outline' (default), 'halo', 'pulse' or 'fade', the classic look. */
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'fade';
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). */

@@ -749,13 +749,23 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
 
 /**
  * EyeWire II (wolfryder101 #181, Ames 2026-10-20: "can we make highlight
- * cooler? like a glow"): the cell under the mouse glows instead of fading to
- * white. In 3D its edges light up (mesh/frontend.ts uNgeGlow); in 2D it keeps
- * its own colour, brighter and more solid. Settings can bring back the classic
- * fade. Read once at load; Settings updates it live.
+ * cooler? like a glow"): how the cell under the mouse is shown. The classic
+ * fade washed the cell out; the others leave its colours as they are:
+ *   outline  a crisp line just outside the cell in 3D
+ *   halo     a soft glow around the cell in 3D
+ *   pulse    bands of light running out along the cell from the mouse in 3D
+ *   fade     the classic look, the cell turns pale
+ * In 2D every style but fade keeps the cell's colour and makes it more solid.
+ * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
+ * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
+ * Settings updates it live.
  */
-export const ngeHoverGlow = {value: (() => {
-  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').hoverStyle !== 'fade'; } catch { return true; }
+export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'fade';
+export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
+  try {
+    const v = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').hoverStyle;
+    return v === 'halo' || v === 'pulse' || v === 'fade' ? v : 'outline';
+  } catch { return 'outline'; }
 })()};
 
 /**
@@ -801,7 +811,7 @@ export function getObjectColor(
   color[3] = alpha;
   getBaseObjectColor(displayState, objectId, color);
   let saturation = displayState.saturation.value;
-  if (!ngeHoverGlow.value && displayState.hoverHighlight.value &&
+  if (ngeHoverStyle.value === 'fade' && displayState.hoverHighlight.value &&
       displayState.segmentSelectionState.isSelected(objectId)) {
     if (saturation > 0.5) {
       saturation = saturation -= 0.5;

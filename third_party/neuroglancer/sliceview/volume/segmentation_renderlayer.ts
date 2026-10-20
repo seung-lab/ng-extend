@@ -18,7 +18,7 @@ import {HashMapUint64} from 'neuroglancer/gpu_hash/hash_table';
 import {GPUHashTable, HashMapShaderManager, HashSetShaderManager} from 'neuroglancer/gpu_hash/shader';
 import {SegmentColorShaderManager, SegmentStatedColorShaderManager} from 'neuroglancer/segment_color';
 import {getVisibleSegments} from 'neuroglancer/segmentation_display_state/base';
-import {ngeHoverGlow, registerRedrawWhenSegmentationDisplayStateChanged, SegmentationDisplayState} from 'neuroglancer/segmentation_display_state/frontend';
+import {ngeHoverStyle, registerRedrawWhenSegmentationDisplayStateChanged, SegmentationDisplayState} from 'neuroglancer/segmentation_display_state/frontend';
 import {SliceViewSourceOptions} from 'neuroglancer/sliceview/base';
 import {SliceView, SliceViewSingleResolutionSource} from 'neuroglancer/sliceview/frontend';
 import {MultiscaleVolumeChunkSource, VolumeChunkSource} from 'neuroglancer/sliceview/volume/frontend';
@@ -190,7 +190,7 @@ uint64_t getMappedObjectId(uint64_t value) {
   bool has = (uFlags & ${SHOW_ALL_SEGMENTS_FLAG}u) != 0u ? true : ${this.hashTableManager.hasFunctionName}(value);
   if ((uFlags & ${HAS_SELECTED_SEGMENT_FLAG}u) != 0u && uSelectedSegment == valueForHighlight.value) {
     if (uNgeGlow > 0.5) {
-      // EyeWire II (ngeHoverGlow): its own colour, brighter and more solid.
+      // EyeWire II (ngeHoverStyle): its own colour, more solid.
       ngeGlowHit = true;
     } else {
     float adjustment = has ? 0.5 : 0.75;
@@ -246,8 +246,8 @@ uint64_t getMappedObjectId(uint64_t value) {
   }
   vec3 ngeColor = mix(vec3(1.0,1.0,1.0), vec3(rgba), saturation);
   if (ngeGlowHit) {
-    ngeColor = min(ngeColor * 1.3 + 0.08, vec3(1.0));
-    alpha = min(1.0, max(alpha, 0.35) + 0.3);
+    ngeColor = min(ngeColor * 1.08, vec3(1.0));
+    alpha = min(1.0, max(alpha, 0.35) + 0.35);
   }
   emit(vec4(ngeColor, alpha));
 `;
@@ -274,7 +274,7 @@ uint64_t getMappedObjectId(uint64_t value) {
     }
     gl.uniform1f(shader.uniform('uSelectedAlpha'), displayState.selectedAlpha.value);
     gl.uniform1f(shader.uniform('uSaturation'), displayState.saturation.value);
-    gl.uniform1f(shader.uniform('uNgeGlow'), ngeHoverGlow.value ? 1 : 0);
+    gl.uniform1f(shader.uniform('uNgeGlow'), ngeHoverStyle.value !== 'fade' ? 1 : 0);
     gl.uniform1f(shader.uniform('uNotSelectedAlpha'), displayState.notSelectedAlpha.value);
     gl.uniform2ui(shader.uniform('uSelectedSegment'), selectedSegmentLow, selectedSegmentHigh);
     if (visibleSegments.hashTable.size === 0 && ignoreNullSegmentSet) {

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import {NgeShell} from 'neuroglancer/mesh/nge_hover';
 import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine} from 'neuroglancer/mesh/nge_tint';
 import {getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
@@ -25,7 +26,7 @@ import {PerspectivePanel} from 'neuroglancer/perspective_view/panel';
 import {PerspectiveViewReadyRenderContext, PerspectiveViewRenderContext, PerspectiveViewRenderLayer} from 'neuroglancer/perspective_view/render_layer';
 import {ThreeDimensionalRenderLayerAttachmentState, update3dRenderLayerAttachment} from 'neuroglancer/renderlayer';
 import {forEachVisibleSegment, getObjectKey} from 'neuroglancer/segmentation_display_state/base';
-import {forEachVisibleSegmentToDraw, ngeHoverGlow, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
+import {forEachVisibleSegmentToDraw, ngeHoverStyle, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {Borrowed, RefCounted} from 'neuroglancer/util/disposable';
 import {getFrustrumPlanes, mat3, mat3FromMat4, mat4, scaleMat3Output, vec3, vec4} from 'neuroglancer/util/geom';
@@ -169,6 +170,48 @@ const ngeFineMat = mat4.create();
 // EyeWire II Lantern mode: the cell is lit around where you are, and left in
 // shadow elsewhere (mesh/nge_lantern.ts).
 const ngeLanternMat = mat4.create();
+
+// ── EyeWire II hover effects (ngeHoverStyle, wolfryder101 #181) ─────────────
+/** How far behind the cell its outline and halo shells sit, in clip space
+ *  (times w), so the cell's own surface always wins inside it. */
+const NGE_SHELL_DEPTH_BIAS = 0.004;
+/** The step along the surface normal, in model units, used to find which way
+ *  "outward" points on screen. Only its direction matters. */
+const NGE_SHELL_NORMAL_STEP = 20;
+const ngeShellColor = new Float32Array(4);
+/** The rim colour: a light tint of the cell's own colour. */
+function ngeShellColorFor(color: Float32Array|number[], alpha: number) {
+  const a = color[3] || 1;
+  // Times alpha: the halo keeps the brightest shell at each pixel (MAX blending).
+  for (let i = 0; i < 3; i++) ngeShellColor[i] = Math.min(1, (color[i] / a) * 0.45 + 0.55) * alpha;
+  ngeShellColor[3] = alpha;
+  return ngeShellColor;
+}
+let ngePulseRunning = false;
+const ngePulseCenter = new Float32Array(3);
+const ngePulseScale = new Float32Array(3);
+/** Where the pulse starts (the mouse, last place it was over a cell), and how
+ *  far its bands have run, scaled to how far out the 3D view is zoomed. */
+function ngePulseState(projectionParameters: any) {
+  const viewer: any = (window as any).viewer;
+  const info = projectionParameters.displayDimensionRenderInfo;
+  const mouse = viewer?.mouseState;
+  if (mouse?.active && mouse.position) {
+    for (let i = 0; i < 3; i++) {
+      const d = info.displayDimensionIndices[i];
+      if (d >= 0) ngePulseCenter[i] = mouse.position[d];
+    }
+  }
+  let minNm = Infinity;
+  for (let i = 0; i < 3; i++) {
+    ngePulseScale[i] = (info.displayDimensionScales[i] || 1e-9) * 1e9;
+    minNm = Math.min(minNm, ngePulseScale[i]);
+  }
+  const viewNm = Math.max(1, (viewer?.projectionScale?.value ?? 1000) * minNm);
+  const periodNm = viewNm * 0.5;
+  const travelledNm = ((performance.now() / 1000) * viewNm * 0.3) % periodNm;
+  return {center: ngePulseCenter, scaleNm: ngePulseScale, travelledNm, widthNm: viewNm * 0.025, periodNm};
+}
 const ngeLanternPos = new Float32Array(3);
 
 export class MeshShaderManager {
@@ -186,6 +229,19 @@ export class MeshShaderManager {
     vec3.scale(lightVec, lightDirection, directionalLighting);
     lightVec[3] = ambientLighting;
     gl.uniform4fv(shader.uniform('uLightDirection'), lightVec);
+    // EyeWire II hover effects: off unless a pass turns them on.
+    gl.uniform4f(shader.uniform('uNgeShell'), 0, 0, 0, 0);
+    gl.uniform1f(shader.uniform('uNgeGlow'), 0);
+    const {projectionParameters} = renderContext;
+    gl.uniform2f(shader.uniform('uNgeViewport'), projectionParameters.width, projectionParameters.height);
+    const pulse = ngeHoverStyle.value === 'pulse' && renderContext.emitColor ? ngePulseState(projectionParameters) : null;
+    if (pulse) {
+      gl.uniform3fv(shader.uniform('uNgePulseCenter'), pulse.center);
+      gl.uniform3fv(shader.uniform('uNgePulseScale'), pulse.scaleNm);
+      gl.uniform4f(shader.uniform('uNgePulse'), pulse.travelledNm, pulse.widthNm, pulse.periodNm, 1);
+    } else {
+      gl.uniform4f(shader.uniform('uNgePulse'), 0, 1, 1, 0);
+    }
     const silhouetteRendering = displayState.silhouetteRendering.value;
     if (silhouetteRendering > 0) {
       gl.uniform1f(shader.uniform('uSilhouettePower'), silhouetteRendering);
@@ -196,9 +252,16 @@ export class MeshShaderManager {
     gl.uniform4fv(shader.uniform('uColor'), color);
   }
 
-  /** EyeWire II: 1 lights up the edges of the cell under the mouse (ngeHoverGlow). */
+  /** EyeWire II hover pulse (ngeHoverStyle 'pulse'): on for the cell under the mouse. */
   setGlow(gl: GL, shader: ShaderProgram, glow: number) {
     gl.uniform1f(shader.uniform('uNgeGlow'), glow);
+  }
+
+  /** EyeWire II hover outline and halo: one shell of the cell, `widthPx` out
+   *  from its edge on screen, in `color`. Width 0 draws the cell itself. */
+  setShell(gl: GL, shader: ShaderProgram, widthPx: number, color?: Float32Array|number[]) {
+    gl.uniform4f(shader.uniform('uNgeShell'), widthPx, NGE_SHELL_DEPTH_BIAS, NGE_SHELL_NORMAL_STEP, 0);
+    if (color) gl.uniform4fv(shader.uniform('uNgeShellColor'), color);
   }
 
   setPickID(gl: GL, shader: ShaderProgram, pickID: number) {
@@ -217,6 +280,7 @@ export class MeshShaderManager {
     mat3.invert(tempMat3, tempMat3);
     mat3.transpose(tempMat3, tempMat3);
     gl.uniformMatrix3fv(shader.uniform('uNormalMatrix'), false, tempMat3);
+    gl.uniformMatrix4fv(shader.uniform('uNgeModel'), false, modelMat);
     // Highlight tint: only when colour is drawn, and only if there are marks.
     const tint = renderContext.emitColor ? getNgeMeshTint() : null;
     const unit = shader.textureUnit(ngeTintSamplerSymbol);
@@ -323,6 +387,13 @@ export class MeshShaderManager {
         builder.addUniform('highp mat4', 'uNgeTintMatrix');
         builder.addUniform('highp float', 'uNgeTintOn');
         builder.addUniform('highp float', 'uNgeGlow');
+        builder.addUniform('highp vec4', 'uNgeShell');
+        builder.addUniform('highp vec4', 'uNgeShellColor');
+        builder.addUniform('highp vec2', 'uNgeViewport');
+        builder.addUniform('highp vec4', 'uNgePulse');
+        builder.addUniform('highp vec3', 'uNgePulseCenter');
+        builder.addUniform('highp vec3', 'uNgePulseScale');
+        builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
         builder.addUniform('highp mat4', 'uNgeFineMatrix');
@@ -363,14 +434,16 @@ vec3 normal = normalize(uNormalMatrix * (normalMultiplier * origNormal));
 float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
-if (uNgeGlow > 0.5) {
-  // The cell under the mouse: a little brighter, and its edges (where the
-  // surface turns away from you) lit in a light tint of its own colour.
-  highp float lightLen = length(uLightDirection.xyz);
-  highp float facing = lightLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / lightLen)) : 1.0;
-  highp float rim = pow(1.0 - facing, 1.6);
-  highp vec3 glowColor = mix(uColor.rgb, vec3(uColor.a), 0.55);
-  vColor.rgb = min(vColor.rgb * 1.15 + glowColor * rim * 1.4, vec3(uColor.a));
+if (uNgeGlow > 0.5 && uNgePulse.w > 0.5) {
+  // EyeWire II hover pulse: bands of light run out along the cell from the
+  // mouse, like a signal firing. Distances in nm, so z counts as much as x.
+  highp vec3 pulseAt = (uNgeModel * vec4(vertexPosition, 1.0)).xyz;
+  highp float pulseDist = length((pulseAt - uNgePulseCenter) * uNgePulseScale);
+  highp float pulsePhase = mod(pulseDist - uNgePulse.x, uNgePulse.z);
+  highp float pulseOff = min(pulsePhase, uNgePulse.z - pulsePhase) / uNgePulse.y;
+  highp float pulseBand = exp(-pulseOff * pulseOff);
+  highp vec3 pulseColor = mix(uColor.rgb, vec3(uColor.a), 0.65);
+  vColor.rgb = mix(vColor.rgb, pulseColor, 0.9 * pulseBand);
 }
 if (uNgeTintOn > 0.5) {
   highp vec3 tintCoord = (uNgeTintMatrix * vec4(vertexPosition, 1.0)).xyz;
@@ -415,6 +488,22 @@ if (uNgeLanternLight.x > 0.5) {
 vColor *= pow(1.0 - absCosAngle, uSilhouettePower);
 `;
         }
+        // EyeWire II hover outline and halo: this pass draws the cell pushed
+        // out along its surface normals by a few pixels on screen and a little
+        // behind itself, so only the rim outside the cell shows.
+        vertexMain += `
+if (uNgeShell.x > 0.0) {
+  highp vec3 shellNormal = normalize(normalMultiplier * origNormal);
+  highp vec4 shellAway = uModelViewProjection * vec4(vertexPosition + shellNormal * uNgeShell.z, 1.0);
+  highp vec2 shellDir = (shellAway.xy / shellAway.w - gl_Position.xy / gl_Position.w) * uNgeViewport;
+  highp float shellLen = length(shellDir);
+  if (shellLen > 1e-6) {
+    gl_Position.xy += (shellDir / shellLen) * uNgeShell.x * 2.0 / uNgeViewport * gl_Position.w;
+  }
+  gl_Position.z += uNgeShell.y * gl_Position.w;
+  vColor = uNgeShellColor;
+}
+`;
         builder.setVertexMain(vertexMain);
         builder.setFragmentMain(`emit(vColor, uPickID);`);
       },
@@ -493,6 +582,7 @@ export class MeshLayer extends
     let totalChunks = 0, presentChunks = 0;
     const {renderScaleHistogram} = this.displayState;
     const fragmentChunks = this.source.fragmentSource.chunks;
+    const shells = this.ngeShellPass;
 
     forEachVisibleSegmentToDraw(
         displayState, this, renderContext.emitColor,
@@ -503,27 +593,40 @@ export class MeshLayer extends
           ++totalChunks;
           if (manifestChunk === undefined) return;
           ++presentChunks;
+          const hovered = displayState.hoverHighlight.value &&
+              displayState.segmentSelectionState.isSelected(objectId);
+          const drawFragments = () => {
+            for (const fragmentId of manifestChunk.fragmentIds) {
+              const {key: fragmentKey} = this.source.getFragmentKey(key, fragmentId);
+              const fragment = fragmentChunks.get(fragmentKey);
+              if (fragment !== undefined && fragment.state === ChunkState.GPU_MEMORY) {
+                meshShaderManager.drawFragment(gl, shader, fragment);
+                ++presentChunks;
+              }
+            }
+          };
+          // EyeWire II: the outline and halo pass draws only the hovered cell's shells.
+          if (shells !== null) {
+            if (!hovered) return;
+            for (const shell of shells) {
+              meshShaderManager.setShell(gl, shader, shell.widthPx, ngeShellColorFor(color!, shell.alpha));
+              drawFragments();
+            }
+            return;
+          }
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
-            meshShaderManager.setGlow(gl, shader, ngeHoverGlow.value && displayState.hoverHighlight.value &&
-                displayState.segmentSelectionState.isSelected(objectId) ? 1 : 0);
+            meshShaderManager.setGlow(gl, shader, ngeHoverStyle.value === 'pulse' && hovered ? 1 : 0);
+            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseRunning = true;
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);
           }
           totalChunks += manifestChunk.fragmentIds.length;
-
-          for (const fragmentId of manifestChunk.fragmentIds) {
-            const {key: fragmentKey} = this.source.getFragmentKey(key, fragmentId);
-            const fragment = fragmentChunks.get(fragmentKey);
-            if (fragment !== undefined && fragment.state === ChunkState.GPU_MEMORY) {
-              meshShaderManager.drawFragment(gl, shader, fragment);
-              ++presentChunks;
-            }
-          }
+          drawFragments();
         });
 
-    if (renderContext.emitColor) {
+    if (renderContext.emitColor && shells === null) {
       renderScaleHistogram.begin(
           this.chunkManager.chunkQueueManager.frameNumberCounter.frameNumber);
       renderScaleHistogram.add(
@@ -531,6 +634,25 @@ export class MeshLayer extends
           totalChunks - presentChunks);
     }
     meshShaderManager.endLayer(gl, shader);
+    // EyeWire II: the pulse moves, so keep drawing while a cell is pulsing.
+    if (ngePulseRunning) {
+      ngePulseRunning = false;
+      this.redrawNeeded.dispatch();
+    }
+  }
+
+  /** EyeWire II: one outline or halo pass (perspective_view/panel.ts). */
+  ngeShellPass: NgeShell[]|null = null;
+  ngeDrawShells(
+      renderContext: PerspectiveViewRenderContext,
+      attachment: VisibleLayerInfo<PerspectivePanel, ThreeDimensionalRenderLayerAttachmentState>,
+      shells: NgeShell[]) {
+    this.ngeShellPass = shells;
+    try {
+      this.draw(renderContext, attachment);
+    } finally {
+      this.ngeShellPass = null;
+    }
   }
 
   isReady() {
@@ -695,7 +817,8 @@ export class MultiscaleMeshLayer extends
     meshShaderManager.beginLayer(gl, shader, renderContext, this.displayState);
 
     const {renderScaleHistogram} = this.displayState;
-    if (renderContext.emitColor) {
+    const shells = this.ngeShellPass;
+    if (renderContext.emitColor && shells === null) {
       renderScaleHistogram.begin(
           this.chunkManager.chunkQueueManager.frameNumberCounter.frameNumber);
     }
@@ -742,20 +865,28 @@ export class MultiscaleMeshLayer extends
               console.log(`invalid octree for object=${objectId}: ${e.message}`)
             }
           }
-          if (renderContext.emitColor) {
+          const hovered = displayState.hoverHighlight.value &&
+              displayState.segmentSelectionState.isSelected(objectId);
+          if (shells !== null && !hovered) return;
+          if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
-            meshShaderManager.setGlow(gl, shader, ngeHoverGlow.value && displayState.hoverHighlight.value &&
-                displayState.segmentSelectionState.isSelected(objectId) ? 1 : 0);
+            meshShaderManager.setGlow(gl, shader, ngeHoverStyle.value === 'pulse' && hovered ? 1 : 0);
+            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseRunning = true;
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);
+          }
+          // EyeWire II: the outline and halo pass draws the hovered cell once per shell.
+          for (const shell of (shells ?? [null])) {
+          if (shell !== null) {
+            meshShaderManager.setShell(gl, shader, shell.widthPx, ngeShellColorFor(color!, shell.alpha));
           }
           getMultiscaleChunksToDraw(
               manifest, modelViewProjection, clippingPlanes, detailCutoff,
               projectionParameters.width, projectionParameters.height,
               (lod, chunkIndex, renderScale) => {
                 const has = hasFragmentChunk(fragmentChunks, key, lod, chunkIndex);
-                if (renderContext.emitColor) {
+                if (renderContext.emitColor && shells === null) {
                   renderScaleHistogram.add(
                       manifest.lodScales[lod] * scaleMultiplier, renderScale, has ? 1 : 0,
                       has ? 0 : 1);
@@ -805,11 +936,31 @@ export class MultiscaleMeshLayer extends
                     subChunkEnd,
                 );
               });
+          }
         });
-    renderScaleHistogram.add(
+    if (shells === null) renderScaleHistogram.add(
         Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, presentManifestChunks,
         totalManifestChunks - presentManifestChunks);
     meshShaderManager.endLayer(gl, shader);
+    // EyeWire II: the pulse moves, so keep drawing while a cell is pulsing.
+    if (ngePulseRunning) {
+      ngePulseRunning = false;
+      this.redrawNeeded.dispatch();
+    }
+  }
+
+  /** EyeWire II: one outline or halo pass (perspective_view/panel.ts). */
+  ngeShellPass: NgeShell[]|null = null;
+  ngeDrawShells(
+      renderContext: PerspectiveViewRenderContext,
+      attachment: VisibleLayerInfo<PerspectivePanel, ThreeDimensionalRenderLayerAttachmentState>,
+      shells: NgeShell[]) {
+    this.ngeShellPass = shells;
+    try {
+      this.draw(renderContext, attachment);
+    } finally {
+      this.ngeShellPass = null;
+    }
   }
 
   isReady(

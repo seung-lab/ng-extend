@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import {ngeHoverStyle} from 'neuroglancer/segmentation_display_state/frontend';
+import {NGE_HALO_SHELLS, NGE_OUTLINE_SHELLS} from 'neuroglancer/mesh/nge_hover';
 import 'neuroglancer/noselect.css';
 import './panel.css';
 
@@ -566,6 +568,33 @@ export class PerspectivePanel extends RenderedDataPanel {
       }
     }
     this.drawSliceViews(renderContext);
+
+    // EyeWire II hover outline or halo (ngeHoverStyle, wolfryder101 #181): the
+    // cell under the mouse is drawn again as shells just outside its edge.
+    // Colour only: no picking, no depth or stencil writes, so nothing else
+    // changes. The halo keeps the brightest shell at each pixel.
+    const ngeStyle = ngeHoverStyle.value;
+    if (ngeStyle === 'outline' || ngeStyle === 'halo') {
+      disablePicking();
+      gl.depthMask(false);
+      gl.stencilMask(0);
+      if (ngeStyle === 'halo') {
+        gl.enable(WebGL2RenderingContext.BLEND);
+        gl.blendEquation(WebGL2RenderingContext.MAX);
+      }
+      const shells = ngeStyle === 'halo' ? NGE_HALO_SHELLS : NGE_OUTLINE_SHELLS;
+      for (const [renderLayer, attachment] of visibleLayers) {
+        const drawShells = (renderLayer as any).ngeDrawShells;
+        if (typeof drawShells === 'function' && !renderLayer.isTransparent) {
+          drawShells.call(renderLayer, renderContext, attachment, shells);
+        }
+      }
+      gl.blendEquation(WebGL2RenderingContext.FUNC_ADD);
+      gl.disable(WebGL2RenderingContext.BLEND);
+      gl.stencilMask(0xffffffff);
+      gl.depthMask(true);
+      renderContext.bindFramebuffer();
+    }
 
     if (hasAnnotation) {
       // Render annotations with blending enabled.
