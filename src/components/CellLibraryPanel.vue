@@ -3509,7 +3509,7 @@ const panelStyle = computed(() => ({
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
                 <div class="nge-cl-row-meta">
-                  <span v-if="cell.segId === jumpedSegId" class="nge-cl-viewing">● viewing</span>
+                  <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
@@ -4082,7 +4082,16 @@ const panelStyle = computed(() => ({
   align-items: center;
   gap: 6px;
   margin-top: 2px;
+  /* A chip never breaks inside itself ("AI:" over "RBC", Ames 2026-10-20): a
+     chip with no room moves whole to the next line, and the notes take what
+     is left and end in "..." */
+  flex-wrap: wrap;
+  row-gap: 3px;
+  min-width: 0;
 }
+.nge-cl-row-meta > .nge-cl-badge,
+.nge-cl-row-meta > .nge-cl-claimer { flex: none; white-space: nowrap; }
+.nge-cl-row-meta > .nge-cl-notes { flex: 1 1 60px; min-width: 0; }
 .nge-cl-badge {
   font-size: 11px;
   padding: 2px 7px;
