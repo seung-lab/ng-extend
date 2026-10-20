@@ -17,9 +17,15 @@
 import {setNgeProps, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {loadGlbModel} from './glb';
+import {getRootFromSupervoxel} from '../widgets/pcg_service';
 
-/** The Sandbox's starter cell (config.ts, pinky_sandbox defaultSegments). */
-const CELL = '648518346355727683';
+/** The cell is known by its ids, and by what is at its cell body now:
+ *  Sandbox cells are edited all the time, which gives them new ids. The
+ *  supervoxel at the soma never changes, so once read it finds the cell's
+ *  current id from the server. */
+const KNOWN_CELLS = ['648518346355727683', '648518346353862024'];
+const SV_KEY = 'nge.pumpkin.sv';
+const ROOT_EVERY_MS = 120_000;
 /** Its cell body, in the viewer's coordinates (Ames's position readout). */
 const SOMA = [84568, 61611, 1283];
 /** Pumpkin height: a little larger than the cell body, so it covers it. */
@@ -38,12 +44,48 @@ let failed = false;
 let shown = false;
 let prop: NgeProp | null = null;
 
+let supervoxel: string | null = (() => { try { return localStorage.getItem(SV_KEY); } catch { return null; } })();
+let liveRoot: string | null = null;
+let rootAskedAt = 0;
+
+/** The Sandbox's segmentation layers that are showing cells. */
+function sandboxLayers(): any[] {
+  return (viewer?.layerManager?.managedLayers ?? []).filter((ml: any) => {
+    const url: string = ml?.layer?.dataSources?.[0]?.spec?.url ?? '';
+    return ml?.visible && url.includes('/table/pinky_nf') && ml.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+  });
+}
+
+/** Read the supervoxel at the soma, once the data there has been loaded. */
+function readSupervoxel(layers: any[]) {
+  if (supervoxel) return;
+  const p = Float32Array.from(SOMA);
+  for (const ml of layers) for (const rl of ml.layer.renderLayers ?? []) {
+    try {
+      const got = rl.getValueAt?.(p);
+      const sv = got == null ? '' : String(Array.isArray(got) ? got[0] : got);
+      if (sv && sv !== '0' && Math.floor(Number(sv) / 2 ** 56) === 1) {
+        supervoxel = sv;
+        try { localStorage.setItem(SV_KEY, sv); } catch { /* private window */ }
+        return;
+      }
+    } catch { /* not loaded yet */ }
+  }
+}
+
 function cellOnScreen(): boolean {
-  for (const ml of viewer?.layerManager?.managedLayers ?? []) {
-    if (!ml?.visible) continue;
-    const g = ml.layer?.displayState?.segmentationGroupState?.value;
-    if (!g?.visibleSegments) continue;
-    for (const s of g.visibleSegments) if (s.toString() === CELL) return true;
+  const layers = sandboxLayers();
+  if (!layers.length) return false;
+  readSupervoxel(layers);
+  const now = Date.now();
+  if (supervoxel && now - rootAskedAt > ROOT_EVERY_MS) {
+    rootAskedAt = now;
+    getRootFromSupervoxel(supervoxel).then(r => { if (r) liveRoot = r; }).catch(() => { /* keep the last one */ });
+  }
+  const wanted = new Set(KNOWN_CELLS);
+  if (liveRoot) wanted.add(liveRoot);
+  for (const ml of layers) {
+    for (const s of ml.layer.displayState.segmentationGroupState.value.visibleSegments) if (wanted.has(s.toString())) return true;
   }
   return false;
 }
@@ -76,7 +118,7 @@ function show(on: boolean) {
     prop = null;
   }
   shown = on;
-  (window as any).__ngePumpkin = shown ? { soma: SOMA, heightNm: HEIGHT_NM } : null;
+  (window as any).__ngePumpkin = shown ? { soma: SOMA, heightNm: HEIGHT_NM, supervoxel, liveRoot } : null;
   try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
 
