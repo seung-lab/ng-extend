@@ -44,8 +44,8 @@ interface PatchCell {
   dropNm: number;
   /** Which model (static/halloween/<model>.glb). */
   model: Model;
-  /** The cell's colour while it wears the pumpkin: a different green for
-   *  each (Ames: "let's vary the green of the pumpkins"). */
+  /** The cell's colour while it wears the pumpkin: a different one for
+   *  each (Ames: "let's vary the green of the pumpkins", then her picks). */
   green: number;
 }
 type Model = 'pumpkin' | 'creep-o-lantern' | 'fang-o-lantern';
@@ -55,14 +55,13 @@ const PATCH: PatchCell[] = [
   { soma: [71942, 54909, 1162], ids: ['648518346353862024', '648518346355727683'], heightNm: 32000, dropNm: 3500, model: 'pumpkin', green: 0x52cb85 },
   // Far enough from the others that no two pumpkins touch (Ames: "The other
   // two are too close", then "how about this as the 3rd one").
-  { soma: [92944, 56926, 1164], ids: ['648518346352449202'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x8fd14f },
+  { soma: [92944, 56926, 1164], ids: ['648518346352449202'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x2ac6a7 },
   // A soma picked from the EM (Ames: "You can choose another soma in the
-  // volume"). Its id is found from the supervoxel there until it is written
-  // here.
+  // volume"); 648518346355866943 is its cell. Purple, Ames's choice.
   // The fang-o-lantern is wide for its height (about 1.35 to 1), so it is
   // shorter to come out the same width (Ames: "that pumpkin is too big").
   // Raised over its cell body (Ames: "fang needs to be higher up").
-  { soma: [81640, 56504, 1162], ids: [], heightNm: 22000, dropNm: -3000, model: 'fang-o-lantern', green: 0x2fa66a },
+  { soma: [81640, 56504, 1162], ids: ['648518346355866943'], heightNm: 22000, dropNm: -3000, model: 'fang-o-lantern', green: 0x6736b0 },
 ];
 /** The Sandbox's segmentation layer. */
 const SANDBOX_LAYER = 'pinky_nf_v2';
