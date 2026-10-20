@@ -14,6 +14,7 @@
  * cell is seen in season. Nothing is redrawn on a timer: the pumpkin stands
  * still, so it is drawn with the rest of the view.
  */
+import {reactive} from 'vue';
 import {setNgeProps, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
 import {mat4} from 'neuroglancer/util/geom';
 import {loadGlbModel} from './glb';
@@ -144,14 +145,29 @@ function show(on: boolean) {
   try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
 
-/** Settings, or the palette's Hide the Pumpkin. */
+/** For the chat bar's pumpkin button (ChatPanel.vue): `here` is true while
+ *  the pumpkin's cell is on screen in season, hidden or not. */
+export const pumpkinUi = reactive({ here: false });
+
+/** The chat button and the palette: hide the pumpkin, or bring it back. */
+export function togglePumpkin() {
+  try {
+    const prefs = useUserPreferencesStore();
+    prefs.save({ hidePumpkin: prefs.prefs.hidePumpkin !== true });
+  } catch { return; }
+  check();
+}
+
+/** Settings, the chat button or the palette's Hide the Pumpkin. */
 function hiddenByPlayer(): boolean {
   try { return useUserPreferencesStore().prefs.hidePumpkin === true; } catch { return false; }
 }
 
 function check() {
   if (document.hidden) return;
-  const want = pumpkinSeason() && !hiddenByPlayer() && cellOnScreen();
+  const here = pumpkinSeason() && cellOnScreen();
+  pumpkinUi.here = here;
+  const want = here && !hiddenByPlayer();
   if (want && !mesh) {
     if (!loading && !failed) {
       loading = true;
