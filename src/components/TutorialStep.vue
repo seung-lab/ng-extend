@@ -611,7 +611,7 @@ async function onHtmlClick(e: MouseEvent) {
         <div class="ng-extend introductionStepAnchor chipBuildIn"
             :class="[computedStep.cssClass, { 'nge-no-arrow': !!step.highlight && tutorialStore.activeTutorial === 4, 'nge-quick-anim': !computedStep.modal }]"
             :style="{ left: computedStep.left, top: computedStep.top, visibility: computedStep.left ? undefined : 'hidden', transform: dragOffset.x || dragOffset.y ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined }">
-            <div class="arrow"><svg viewBox="0 0 44 16" width="44" height="16" aria-hidden="true"><path class="nge-tab-fill" d="M0 17 C 10 16, 16 3, 22 1 C 28 3, 34 16, 44 17 Z"/><path class="nge-tab-edge" d="M0 15.5 C 10 15, 16 3, 22 1 C 28 3, 34 15, 44 15.5"/><path class="nge-tab-chev" d="M16 11 L22 6 L28 11"/></svg></div>
+            <div class="arrow"><svg viewBox="0 0 12 14" width="12" height="14" aria-hidden="true"><line class="nge-lead-line" x1="6" y1="5" x2="6" y2="15"/><circle class="nge-lead-dot" cx="6" cy="3" r="2.6"/></svg></div>
 
             <div v-if="!inExitConfirm" class="chip"
                 :class="{ modal: computedStep.modal, noborder: computedStep.noborder, 'nge-chip--dragging': dragging }" :style="chipBounds"
@@ -706,42 +706,35 @@ async function onHtmlClick(e: MouseEvent) {
 .introductionStepAnchor.right>* {
     transform: translate(0, -50%);
 }
-/* The pointer: a tab that grows out of the box's own edge, its point on the
-   target's edge so it never covers it, with a small chevron inside that
-   pulses twice then rests (Ames 2026-10-19: "a better arrow that feels like
-   it's an extension of the box", "covering up the layer too much"). Drawn
-   pointing up and turned for each side; its base overlaps the box's border
-   so the two read as one piece. */
+/* The pointer: a leader line, as on an instrument readout, from the box's
+   edge to a lit dot on the target's edge (Ames 2026-10-20: the tab was
+   "hideous"; earlier ones covered the target or sat off it). Drawn pointing
+   up and turned for each side. */
 .introductionStepAnchor .arrow {
     position: absolute;
-    width: 44px;
-    height: 16px;
+    width: 12px;
+    height: 14px;
     z-index: 3;
     border: none;
-    filter: drop-shadow(0 -2px 6px rgba(74, 150, 224, 0.35));
 }
 .introductionStepAnchor .arrow svg { display: block; overflow: visible; }
-.introductionStepAnchor .arrow .nge-tab-fill { fill: rgb(14, 21, 36); }
-.introductionStepAnchor .arrow .nge-tab-edge { fill: none; stroke: rgba(110, 190, 255, 0.75); stroke-width: 1.2; }
-.introductionStepAnchor .arrow .nge-tab-chev {
-    fill: none; stroke: #8fe3ff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-    animation: nge-tab-pulse 1.1s ease-in-out 2;
+.introductionStepAnchor .arrow .nge-lead-line { stroke: rgba(126, 214, 255, 0.85); stroke-width: 1.5; }
+.introductionStepAnchor .arrow .nge-lead-dot {
+    fill: #c8f1ff; filter: drop-shadow(0 0 4px rgba(110, 210, 255, 0.95));
+    animation: nge-lead-pulse 1.1s ease-in-out 2;
 }
-@keyframes nge-tab-pulse {
-    0%, 100% { stroke: #8fe3ff; transform: translateY(0); }
-    50%      { stroke: #ffffff; transform: translateY(-2px); }
-}
-@media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow .nge-tab-chev { animation: none; } }
+@keyframes nge-lead-pulse { 50% { fill: #ffffff; filter: drop-shadow(0 0 9px rgba(110, 210, 255, 1)); } }
+@media (prefers-reduced-motion: reduce) { .introductionStepAnchor .arrow .nge-lead-dot { animation: none; } }
 /* A box in the middle of the screen points at nothing. */
 .introductionStepAnchor.center .arrow { display: none; }
-/* Box below its target: the tab points up from the box's top edge. */
-.introductionStepAnchor.bottom .arrow { left: -22px; top: 0px; transform: none !important; }
-/* Box right of its target: points left. */
-.introductionStepAnchor.right .arrow { left: -14px; top: -8px; transform: rotate(-90deg) !important; }
-/* Box left of its target: points right. */
-.introductionStepAnchor.left .arrow { left: -30px; top: -8px; transform: rotate(90deg) !important; }
-/* Box above its target: points down. */
-.introductionStepAnchor.top .arrow { left: -22px; top: -16px; transform: rotate(180deg) !important; }
+/* Box below its target: the line runs up from the box's top edge. */
+.introductionStepAnchor.bottom .arrow { left: -6px; top: 0px; transform: none !important; }
+/* Box right of its target: runs left. */
+.introductionStepAnchor.right .arrow { left: 1px; top: -7px; transform: rotate(-90deg) !important; }
+/* Box left of its target: runs right. */
+.introductionStepAnchor.left .arrow { left: -13px; top: -7px; transform: rotate(90deg) !important; }
+/* Box above its target: runs down. */
+.introductionStepAnchor.top .arrow { left: -6px; top: -14px; transform: rotate(180deg) !important; }
 
 .introductionStepAnchor.right .chip { transform: translate(0, -36px); }
 

@@ -18,6 +18,7 @@ import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9, sandboxContinue, sandboxRestart } from '../merger-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue } from '../proofreading-test';
+import { gemHuntSteps as steps12 } from '../tutorial-2';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
@@ -30,7 +31,7 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 12: steps12 };
 // The real lengths, for the landing's "is a tutorial under way" test in
 // store.ts (isUserInActiveTutorial), which cannot import the step lists.
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
@@ -47,6 +48,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 9) return store.tutorialStep9;
     if (store.activeTutorial === 10) return store.tutorialStep10;
     if (store.activeTutorial === 11) return store.tutorialStep11;
+    if (store.activeTutorial === 12) return store.tutorialStep12;
     return store.tutorialStep4;
 });
 
@@ -254,7 +256,7 @@ const back = () => { (window as any).__ngeStepPending = false; store.setTutorial
 // opened Retina. A tutorial found partway at load now waits behind a small
 // Continue / Exit card and loads nothing until you choose. Starting a
 // tutorial from the menu (step 0) needs no prompt.
-const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox', 11: 'Proofreading Test' };
+const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox', 11: 'Proofreading Test', 12: 'Gem Hunt' };
 const resumeDecided = ref(false);
 watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu

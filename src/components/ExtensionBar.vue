@@ -1173,12 +1173,19 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
             <span class="nge-menu-num">4</span><span>Advanced Interface</span>
           </div>
         </li>
+        <!-- The Gem Hunt (Ames 2026-10-20): three gems, three ways to get
+             around. Maybe a merger hunt one day. -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startTutorial(12); closeHamburger()">
+            <span class="nge-menu-num">5</span><span>Gem Hunt</span>
+          </div>
+        </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
              mistakes, scored by the server; a pass opens production. Shown
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
             <span>Proofreading Test (WIP){{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>

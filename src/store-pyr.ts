@@ -232,6 +232,11 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // lives on the server, so a reload starts from the menu and resumes there.
   const tutorialStep11: Ref<number> = ref(-1);
 
+  // Tutorial 12, the Gem Hunt (tutorial-2.ts gemHuntSteps). Local only.
+  const tutorialStep12: Ref<number> = ref(
+    parseInt(localStorage.getItem(`nge-tutorial-12-step`) ?? "-1")
+  );
+
   // Track whether we've already hydrated for the current user so we don't
   // clobber locally-advanced progress on every re-render.
   const hydratedForUserId: Ref<string | null> = ref(null);
@@ -248,6 +253,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 9) return tutorialStep9.value;
     if (activeTutorial.value === 10) return tutorialStep10.value;
     if (activeTutorial.value === 11) return tutorialStep11.value;
+    if (activeTutorial.value === 12) return tutorialStep12.value;
     return tutorialStep4.value;
   }
 
@@ -262,6 +268,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 9) tutorialStep9.value = val;
     else if (activeTutorial.value === 10) tutorialStep10.value = val;
     else if (activeTutorial.value === 11) tutorialStep11.value = val;
+    else if (activeTutorial.value === 12) tutorialStep12.value = val;
     else tutorialStep4.value = val;
   }
 
@@ -362,6 +369,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   watch(tutorialStep10, () => {
     localStorage.setItem(`nge-tutorial-10-step`, `${tutorialStep10.value}`);
   });
+  watch(tutorialStep12, () => {
+    localStorage.setItem(`nge-tutorial-12-step`, `${tutorialStep12.value}`);
+  });
   watch(activeTutorial, () => {
     localStorage.setItem(`nge-active-tutorial`, `${activeTutorial.value}`);
     scheduleSync();
@@ -399,6 +409,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep9,
     tutorialStep10,
     tutorialStep11,
+    tutorialStep12,
     hydrateFromSupabase,
   };
 });

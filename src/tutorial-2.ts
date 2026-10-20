@@ -379,7 +379,8 @@ function showGems() {
     viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, GEM_LAYER, {
       type: 'annotation', source: 'local://annotations',
       annotations: left.map(({ g, i }) => ({ type: 'point', id: `gem-${i}`, point: g.at })),
-      annotationColor: '#f5d142', pointMarker: 'pyr', pointSize: 3, onTop: true, pick: false,
+      // Tiny: a hunt, not a signpost (Ames 2026-10-20: "they should be tiny").
+      annotationColor: '#f5d142', pointMarker: 'pyr', pointSize: 0.8, onTop: true, pick: false,
     }));
   } catch (e) { console.warn('[tutorial] gem layer', e); }
 }
@@ -872,70 +873,6 @@ These lines converge at the point we are centered on and represent the volume's 
   {
     part: "Part 3 of 4 · Find your way",
     get text() { return `
-<strong>Gem hunt!</strong> Three golden Pyr gems are hidden on this cell. Each one is found a different way.
-
-<strong>Gem 1</strong> is far down a branch. Copy its spot, then press <strong>CTRL+V</strong> anywhere in the viewer to jump straight to it:
-
-${copyButton(gemSpot(0))}
-
-${gemCount()}`; },
-    width: "460px",
-    position: OVER_3D,
-    onEnter: () => huntGem(0),
-    state:
-      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    get text() { return `
-Found it! We've brought you back to the soma.
-
-<strong>Gem 2</strong> is glowing on a branch near you. Find it in the 3D view and <strong>RIGHT-CLICK</strong> on it to move there.&nbsp;${hint('Turn the view by dragging, zoom with the mouse wheel. A right click moves the view to the spot you clicked')}
-
-${gemCount()}`; },
-    width: "460px",
-    position: OVER_3D,
-    onEnter: () => huntGem(1, () => {
-      try { const v = (window as any).viewer; v.navigationState.position.value = Float32Array.from(SOMA.split(',').map(Number)); } catch { /* no viewer */ }
-    }),
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    get text() { return `
-Two down! <strong>Gem 3</strong> is hiding <strong>20 slices deeper</strong>, right by Gem 2.
-
-In the 2D view, <strong>scroll the mouse wheel</strong> (or press the <span class="nge-tut-key-big">.</span> key) to move through the slices until you land on it. Watch the <strong>z</strong> number in the coordinates box change.
-
-${gemCount()}`; },
-    width: "460px",
-    position: OVER_3D,
-    onEnter: () => huntGem(2, () => {
-      try {
-        const v = (window as any).viewer;
-        const l = v.layout.toJSON(); const name = typeof l === 'string' ? l : l?.type;
-        if (name === '3d') v.layout.restoreState('xy-3d');
-        if (v.navigationState.zoomFactor.value > 4) v.navigationState.zoomFactor.value = 2.5;
-        // Start exactly on Gem 2, so "20 slices deeper" lands on Gem 3 (a
-        // right click can land a few slices off it).
-        v.navigationState.position.value = Float32Array.from(GEMS[1].at);
-      } catch { /* no viewer */ }
-    }),
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    get text() { return `
-<strong>All three gems!</strong>
-
-${gemCount()}
-
-You can now get around three ways: jump to coordinates, right click in 3D, and step through slices in 2D.`; },
-    width: "420px",
-    position: MIDDLE,
-    onEnter: () => { hideGems(); document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); },
-  },
-  {
-    part: "Part 3 of 4 · Find your way",
-    get text() { return `
 A collaborator found a branch with a merger and wants us to look. First, <strong>hide our cell</strong>: click the eye next to its ID in the Segments panel.
 
 Then copy this spot and <strong>paste it into the box at the top of the Segments panel</strong>. Pyr adds the cell there and jumps to it:
@@ -1053,9 +990,6 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
       setTimeout(() => { try { (window as any).viewer.showAxisLines.value = true; } catch { /* no viewer */ } }, 1500);
     },
   },
-  // The "add a description and tag" step and its video are out until the
-  // video is redone (Ames 2026-10-19: the video is out of date). Video:
-  // https://www.youtube.com/watch?v=vnAqH91EgNQ (playlist index 6).
   {
     part: "Part 4 of 4 · Put it together",
     text: `
@@ -1080,11 +1014,78 @@ That's a high level view of the interface! Next: put it to work in the <strong>M
 
 <button class="nge-hud-btn nge-hud-btn--go" onclick="document.dispatchEvent(new CustomEvent('nge:sandbox-next'))">Start the Merger Sandbox</button>
 
+Fancy a treasure hunt first? <button class="nge-hud-btn" onclick="document.dispatchEvent(new CustomEvent('nge:tutorial-start',{detail:{id:12}}))">Try the Gem Hunt</button>
+
 When you are ready to edit real cells, choose <strong>Ask for Edit Access</strong> in the <span class="nge-tut-burger">${RESOURCES_MENU_SVG}</span> hamburger menu (chomp it up!). <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
 
 Thanks for being a part of the neuroscience community! For Science!`,
     position: MIDDLE,
     image:
       imgTutorialFinal,
+  },
+];
+
+/** The Gem Hunt, its own tutorial (12) since 2026-10-20 (Ames: "make the Gem
+ *  hunt a separate tutorial? We can eventually replace it with a merger hunt"). */
+export const gemHuntSteps: Step[] = [
+  {
+    get text() { return `
+<strong>Gem hunt!</strong> Three golden Pyr gems are hidden on this cell. Each one is found a different way of getting around.
+
+<strong>Gem 1</strong> is far down a branch. Copy its spot, then press <strong>CTRL+V</strong> anywhere in the viewer to jump straight to it:
+
+${copyButton(gemSpot(0))}
+
+${gemCount()}`; },
+    width: "460px",
+    position: OVER_3D,
+    onEnter: () => huntGem(0),
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    get text() { return `
+Found it! We've brought you back to the soma.
+
+<strong>Gem 2</strong> is a tiny gem on a branch near you. Look closely! Find it in the 3D view and <strong>RIGHT-CLICK</strong> on it to move there.&nbsp;${hint('Turn the view by dragging, zoom with the mouse wheel. A right click moves the view to the spot you clicked')}
+
+${gemCount()}`; },
+    width: "460px",
+    position: OVER_3D,
+    onEnter: () => huntGem(1, () => {
+      try { const v = (window as any).viewer; v.navigationState.position.value = Float32Array.from(SOMA.split(',').map(Number)); } catch { /* no viewer */ }
+    }),
+  },
+  {
+    get text() { return `
+Two down! <strong>Gem 3</strong> is hiding <strong>20 slices deeper</strong>, right by Gem 2.
+
+In the 2D view, <strong>scroll the mouse wheel</strong> (or press the <span class="nge-tut-key-big">.</span> key) to move through the slices until you land on it. Watch the <strong>z</strong> number in the coordinates box change.
+
+${gemCount()}`; },
+    width: "460px",
+    position: OVER_3D,
+    onEnter: () => huntGem(2, () => {
+      try {
+        const v = (window as any).viewer;
+        const l = v.layout.toJSON(); const name = typeof l === 'string' ? l : l?.type;
+        if (name === '3d') v.layout.restoreState('xy-3d');
+        if (v.navigationState.zoomFactor.value > 4) v.navigationState.zoomFactor.value = 2.5;
+        // Start exactly on Gem 2, so "20 slices deeper" lands on Gem 3 (a
+        // right click can land a few slices off it).
+        v.navigationState.position.value = Float32Array.from(GEMS[1].at);
+      } catch { /* no viewer */ }
+    }),
+  },
+  {
+    get text() { return `
+<strong>All three gems!</strong>
+
+${gemCount()}
+
+You can now get around three ways: jump to coordinates, right click in 3D, and step through slices in 2D. Nicely done, gem hunter!`; },
+    width: "420px",
+    position: MIDDLE,
+    onEnter: () => { hideGems(); document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); },
   },
 ];
