@@ -53,12 +53,16 @@ const PATCH: PatchCell[] = [
   // The cell the Sandbox opens on for Ames. 648518346355727683 (soma given
   // as 71847, 54909, 1158) is the same cell body, so it shares this one.
   { soma: [71942, 54909, 1162], ids: ['648518346353862024', '648518346355727683'], heightNm: 32000, dropNm: 3500, model: 'pumpkin', green: 0x52cb85 },
-  { soma: [70064, 54399, 1762], ids: ['648518346353200058'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x8fd14f },
-  // A soma picked from the EM, 42 um from the first (Ames: "You can choose
-  // another soma in the volume"). Its id is found from the supervoxel there.
+  // Far enough from the others that no two pumpkins touch (Ames: "The other
+  // two are too close", then "how about this as the 3rd one").
+  { soma: [92944, 56926, 1164], ids: ['648518346352449202'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x8fd14f },
+  // A soma picked from the EM (Ames: "You can choose another soma in the
+  // volume"). Its id is found from the supervoxel there until it is written
+  // here.
   // The fang-o-lantern is wide for its height (about 1.35 to 1), so it is
   // shorter to come out the same width (Ames: "that pumpkin is too big").
-  { soma: [81640, 56504, 1162], ids: [], heightNm: 22000, dropNm: 2400, model: 'fang-o-lantern', green: 0x2fa66a },
+  // Raised over its cell body (Ames: "fang needs to be higher up").
+  { soma: [81640, 56504, 1162], ids: [], heightNm: 22000, dropNm: -3000, model: 'fang-o-lantern', green: 0x2fa66a },
 ];
 /** The Sandbox's segmentation layer. */
 const SANDBOX_LAYER = 'pinky_nf_v2';
@@ -211,6 +215,8 @@ export async function visitPumpkinPatch(): Promise<boolean> {
       try {
         ml.setVisible?.(true);
         const g = ml.layer.displayState.segmentationGroupState.value;
+        // Only the pumpkin cells (Ames: "remove the blue mesh").
+        g.visibleSegments.clear();
         PATCH.forEach((cell, i) => {
           const id = states[i].liveRoot ?? cell.ids[0];
           if (!id) return;  // not known yet: found once its soma has been seen
@@ -218,6 +224,8 @@ export async function visitPumpkinPatch(): Promise<boolean> {
           if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
         });
         viewer.layout.restoreState('3d');
+        // Looking at the faces: the models face the data's -z.
+        viewer.projectionOrientation.restoreState([0, 0, 0, 1]);
         viewer.navigationState.position.value = Float32Array.from(centre);
         viewer.projectionScale.value = PATCH.length > 1 ? 70000 : 40000;  // every pumpkin in view
       } catch (e) { console.warn('[pumpkin] could not open the patch:', e); return false; }
