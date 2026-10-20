@@ -3,11 +3,10 @@
  * panel's animation (TagModePanel), for panels that keep ONE element and
  * change its size (Cell Library slim view, Ames 2026-10-01).
  *
- * Collapse: a snapshot of the big panel shrinks into the slim panel's exact
- * rect while its contents scale down and fade, then particles write the slim
- * panel's parts. Expand: a beam draws the frame and unrolls the panel under it.
+ * Collapse: a snapshot of the big panel zips up under a light bar into the
+ * slim panel's rect. Expand: the full panel opens from the top under the same
+ * light bar, its rounded corners kept all the way (Ames 2026-10-20).
  */
-import { runPanelDraw, runParticleWrite } from './holo_trace';
 
 export interface PanelGhost { ghost: HTMLElement; snap: HTMLElement; from: DOMRect; }
 
@@ -54,33 +53,55 @@ export function snapshotPanel(box: HTMLElement, trim = '', keep = 30): PanelGhos
   return { ghost, snap, from };
 }
 
-/** Shrink the snapshot into `target` (the panel, already in its slim form),
- *  then write `parts` with particles as the real panel fades in. */
+/** A glowing bar the width of a box, inset from its rounded corners: the one
+ *  light both the collapse and the expand ride on (Ames 2026-10-20: "Just
+ *  make it a light bar zip up"). */
+function makeLightBar(): HTMLElement {
+  const bar = document.createElement('div');
+  bar.setAttribute('aria-hidden', 'true');
+  Object.assign(bar.style, {
+    position: 'absolute', height: '2px', pointerEvents: 'none', borderRadius: '2px',
+    background: 'linear-gradient(90deg, rgba(53,181,255,0) 0%, rgba(120,200,255,0.85) 18%, '
+      + 'rgba(232,246,255,1) 50%, rgba(120,200,255,0.85) 82%, rgba(53,181,255,0) 100%)',
+    boxShadow: '0 0 10px 1px rgba(53,181,255,0.65), 0 0 22px 2px rgba(53,181,255,0.25)',
+  } as Partial<CSSStyleDeclaration>);
+  return bar;
+}
+
+function radiusOf(el: HTMLElement): number {
+  return parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+}
+
+/** Zip the snapshot up into `target` (the panel, already in its slim form):
+ *  the big panel closes from the bottom under a light bar until it is the
+ *  slim panel's size, then the slim panel shows. `parts` is kept for
+ *  callers; nothing is written with particles any more (Ames 2026-10-20: "I
+ *  also don't love the particles"). */
 export function morphIntoSlim(g: PanelGhost, target: HTMLElement, parts: Element[]): void {
+  void parts;
   const { ghost, snap, from } = g;
   const to = target.getBoundingClientRect();
   if (!to.width) { ghost.remove(); return; }
+  // the picture of the big panel stretches with the box (the slim bar can be
+  // wider), so no edge of it shows inside the zipping box
+  snap.style.width = '100%';
   target.style.opacity = '0';
-  const D = 480;
-  ghost.animate([
-    { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`,
-      borderColor: 'rgba(74, 150, 224, 0.35)' },
-    { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`,
-      borderColor: 'rgba(53, 181, 255, 0.6)' },
+  const R = radiusOf(target) || parseFloat(ghost.style.borderRadius) || 12;
+  const bar = makeLightBar();
+  Object.assign(bar.style, { left: `${R}px`, right: `${R}px`, bottom: '0' } as Partial<CSSStyleDeclaration>);
+  ghost.appendChild(bar);
+  const D = 420;
+  const zip = ghost.animate([
+    { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` },
+    { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px` },
   ], { duration: D, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', fill: 'forwards' });
-  snap.animate([
-    { transform: 'scale(1, 1)', opacity: 1, filter: 'blur(0)' },
-    { transform: `scale(${to.width / from.width}, ${to.height / from.height})`, opacity: 0, filter: 'blur(3px)' },
-  ], { duration: D * 0.8, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', fill: 'forwards' });
-  setTimeout(() => {
-    const rects = parts.filter(el => (el as HTMLElement).offsetWidth > 0).map(el => el.getBoundingClientRect());
-    runParticleWrite(rects, to, [to]);
-    target.style.transition = 'opacity 0.42s ease 0.12s';
+  zip.onfinish = () => {
+    target.style.transition = 'opacity 0.18s ease';
     target.style.opacity = '1';
-    const fade = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' });
+    const fade = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: 'forwards' });
     fade.onfinish = () => ghost.remove();
-    setTimeout(() => { target.style.transition = ''; target.style.opacity = ''; }, 700);
-  }, D * 0.78);
+    setTimeout(() => { target.style.transition = ''; target.style.opacity = ''; }, 400);
+  };
 }
 
 /** Call `then` once `el` has kept the same size and place for a few frames
@@ -100,48 +121,45 @@ export function whenSettled(el: HTMLElement, then: () => void): void {
   requestAnimationFrame(tick);
 }
 
-/** Beam-draw `box` from the top down, once it has settled at its full size.
- *  The beam runs on a frame laid exactly over the panel's border (the panel
- *  itself is clipped, so it cannot host the light) and follows the panel. */
+/** Open `box` from the top down under a light bar, once it has settled at
+ *  its full size. The mask keeps the panel's rounded corners all the way
+ *  (Ames 2026-10-20: the light "makes a sharp edge around the corner of the
+ *  box, but the corner should be curved"). */
 export function revealWithBeam(box: HTMLElement): void {
   // The caller may have clipped the box already (to hide it while it re-renders).
   if (reduced()) { box.style.clipPath = ''; return; }
-  box.style.clipPath = 'inset(0 0 100% 0)';
-  whenSettled(box, () => drawReveal(box));
+  const R = radiusOf(box);
+  box.style.clipPath = `inset(0 0 100% 0 round ${R}px)`;
+  whenSettled(box, () => zipOpen(box));
 }
 
-function drawReveal(box: HTMLElement): void {
-  const r = box.getBoundingClientRect();
-  if (!r.width || !r.height) { box.style.clipPath = ''; return; }
-  const frame = document.createElement('div');
-  Object.assign(frame.style, {
-    position: 'fixed', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
-    borderRadius: getComputedStyle(box).borderRadius, pointerEvents: 'none', zIndex: '10020',
-  } as Partial<CSSStyleDeclaration>);
-  // Border box, so the light sits on the panel's own border.
-  frame.style.boxSizing = 'border-box';
-  frame.style.border = `${getComputedStyle(box).borderTopWidth} solid transparent`;
-  document.body.appendChild(frame);
-  let finished = false, gone = false;
-  // Stay on the panel if it moves (a drag, a clamp) while the light draws.
-  const follow = () => {
-    if (gone || !box.isConnected) return;
-    const b = box.getBoundingClientRect();
-    frame.style.left = `${b.left}px`;
-    frame.style.top = `${b.top}px`;
-    requestAnimationFrame(follow);
+function zipOpen(box: HTMLElement): void {
+  const r0 = box.getBoundingClientRect();
+  if (!r0.width || !r0.height) { box.style.clipPath = ''; return; }
+  const R = radiusOf(box);
+  const bar = makeLightBar();
+  Object.assign(bar.style, { position: 'fixed', zIndex: '10020' } as Partial<CSSStyleDeclaration>);
+  document.body.appendChild(bar);
+  const D = 460;
+  const t0 = performance.now();
+  const ease = (k: number) => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+  const step = (now: number) => {
+    if (!box.isConnected) { bar.remove(); return; }
+    const k = Math.min(1, (now - t0) / D);
+    const f = ease(k);
+    // Follow the panel if it moves (a drag, a clamp) while it opens.
+    const r = box.getBoundingClientRect();
+    box.style.clipPath = k >= 1 ? '' : `inset(0 0 ${((1 - f) * 100).toFixed(2)}% 0 round ${R}px)`;
+    // The bar rides the opening edge, inside the rounded corners.
+    const y = r.top + f * r.height;
+    Object.assign(bar.style, {
+      left: `${r.left + R}px`, width: `${Math.max(0, r.width - 2 * R)}px`, top: `${y - 1}px`,
+    } as Partial<CSSStyleDeclaration>);
+    if (k < 1) { requestAnimationFrame(step); return; }
+    const fade = bar.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: 'forwards' });
+    fade.onfinish = () => bar.remove();
   };
-  requestAnimationFrame(follow);
-  const done = () => {
-    if (finished) return;
-    finished = true;
-    box.style.clipPath = '';
-    setTimeout(() => { gone = true; frame.remove(); }, 500);
-  };
-  const total = runPanelDraw(frame, 'down', frac => {
-    if (frac >= 1) done();
-    else box.style.clipPath = `inset(0 0 ${((1 - frac) * 100).toFixed(2)}% 0)`;
-  });
-  if (!total) done();
-  else setTimeout(done, total + 200);
+  requestAnimationFrame(step);
+  // A tab in the background runs no frames: never leave the panel hidden.
+  setTimeout(() => { if (box.style.clipPath) { box.style.clipPath = ''; bar.remove(); } }, D + 1500);
 }
