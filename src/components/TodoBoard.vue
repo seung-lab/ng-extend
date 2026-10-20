@@ -213,6 +213,7 @@ const editNotes = ref('');
 const newItem = ref('');
 const comment = ref('');
 function openUp(c: Card) {
+  connectOpen.value = false;
   openId.value = c.id;
   editTitle.value = c.title;
   editNotes.value = c.notes;
@@ -304,8 +305,53 @@ function onTitleKey(e: KeyboardEvent) {
   if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLElement).blur(); }
 }
 
+
+// ── Connect your AI (Ames 2026-10-20) ──
+// Each admin's own connector address for Claude or ChatGPT (functions/
+// todo-connector.js). The address is shown once, when it is made; making a
+// new one switches the old one off.
+const connectOpen = ref(false);
+const connect = ref<{ connected: boolean; created_at: string | null; last_used_at: string | null } | null>(null);
+const connectUrl = ref('');
+const connectBusy = ref(false);
+const connectCopied = ref(false);
+async function openConnect() {
+  openId.value = null;
+  connectOpen.value = true;
+  connectUrl.value = '';
+  try {
+    const data = await secureWrite<any>('todo.keyStatus');
+    connect.value = data?.installed === false ? null : data;
+    if (data?.installed === false) error.value = 'The connector needs its table: run supabase-admin-todo-keys.sql in the Supabase SQL editor.';
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  }
+}
+async function makeConnectUrl(off = false) {
+  if (connectBusy.value) return;
+  if (connect.value?.connected && !window.confirm(off
+    ? 'Switch your connector off? Your AI loses the To do board until you make a new address.'
+    : 'Make a new address? The old one stops working, so update it in your AI.')) return;
+  connectBusy.value = true;
+  try {
+    const data = await secureWrite<any>('todo.key', off ? { off: true } : {});
+    connectUrl.value = data?.url || '';
+    connect.value = { connected: !!data?.connected, created_at: data?.connected ? new Date().toISOString() : null, last_used_at: null };
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  } finally {
+    connectBusy.value = false;
+  }
+}
+async function copyConnectUrl() {
+  try { await navigator.clipboard.writeText(connectUrl.value); connectCopied.value = true; setTimeout(() => { connectCopied.value = false; }, 2000); }
+  catch { /* the address is on screen to copy by hand */ }
+}
+
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && openId.value && !(e.target as HTMLElement)?.closest?.('textarea, input')) openId.value = null;
+  if (e.key !== 'Escape' || (e.target as HTMLElement)?.closest?.('textarea, input')) return;
+  if (openId.value) openId.value = null;
+  else connectOpen.value = false;
 }
 onMounted(() => document.addEventListener('keydown', onKey));
 onUnmounted(() => document.removeEventListener('keydown', onKey));
@@ -317,6 +363,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">← Triage</button>
       <span class="nge-todo-heading">📋 To do board</span>
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack.</span>
+      <button class="nge-todo-btn" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
     </div>
     <div v-if="error" class="nge-todo-error" role="alert">⚠ {{ error }} <button class="nge-todo-x" @click="error = ''" aria-label="Close">×</button></div>
@@ -374,6 +421,45 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </button>
         </section>
       </div>
+
+      <!-- Connect your AI: the same narrow side panel as an open card. -->
+      <aside v-if="connectOpen && !openCard" class="nge-todo-panel" aria-label="Connect your AI">
+        <div class="nge-todo-panel-top">
+          <span class="nge-todo-heading">🔌 Connect your AI</span>
+          <button class="nge-todo-x" @click="connectOpen = false" aria-label="Close" title="Close (Esc)">×</button>
+        </div>
+        <div class="nge-todo-notes">Let your own Claude or ChatGPT read and work this board: list cards, add them, move them, tick checklists, comment and tag. Everything it writes is signed with your name and "(via AI)". It cannot delete cards.</div>
+
+        <template v-if="connectUrl">
+          <div class="nge-todo-label">Your private address</div>
+          <div class="nge-todo-key">{{ connectUrl }}</div>
+          <div class="nge-todo-row">
+            <button class="nge-todo-btn nge-todo-btn--primary" @click="copyConnectUrl">{{ connectCopied ? 'Copied' : 'Copy' }}</button>
+          </div>
+          <div class="nge-todo-warn">Shown only now. Keep it to yourself: anyone with it can work the board as you. If it leaks, make a new one here.</div>
+        </template>
+        <template v-else-if="connect?.connected">
+          <div class="nge-todo-notes">You are connected since {{ ago(connect.created_at || '') }}<template v-if="connect.last_used_at">, last used {{ ago(connect.last_used_at) }}</template>.</div>
+        </template>
+
+        <div class="nge-todo-row">
+          <button class="nge-todo-btn" :class="{ 'nge-todo-btn--primary': !connect?.connected && !connectUrl }" :disabled="connectBusy" @click="makeConnectUrl()">
+            {{ connectBusy ? 'Working…' : connect?.connected ? 'Make a new address' : 'Make my address' }}
+          </button>
+          <button v-if="connect?.connected" class="nge-todo-btn nge-todo-delete" :disabled="connectBusy" @click="makeConnectUrl(true)">Switch off</button>
+        </div>
+
+        <div class="nge-todo-label">In Claude</div>
+        <ol class="nge-todo-steps">
+          <li>Settings, then Connectors, then Add custom connector.</li>
+          <li>Name it "Pyr To do board" and paste your address. Leave the advanced settings empty.</li>
+          <li>In a chat, turn it on from the tools menu, then ask, for example, "What's on my plate on the Pyr To do board?"</li>
+        </ol>
+        <div class="nge-todo-label">In ChatGPT</div>
+        <ol class="nge-todo-steps">
+          <li>Not every plan can add custom connectors. Where yours can, add one in ChatGPT's settings with your address and no sign in.</li>
+        </ol>
+      </aside>
 
       <!-- The open card: a narrow panel at the side, the lists stay in view. -->
       <aside v-if="openCard" class="nge-todo-panel" :key="openCard.id" aria-label="Card">
@@ -471,6 +557,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .nge-todo-heading { font-size: 16px; font-weight: 700; }
 .nge-todo-sub { font-size: 12.5px; color: var(--dim); flex: 1 1 260px; }
+.nge-todo-key {
+  font: 12px/1.45 'Consolas', 'SF Mono', monospace; word-break: break-all; user-select: all;
+  padding: 8px 10px; border-radius: 6px; border: 1px solid var(--accent); background: var(--card-hi);
+}
+.nge-todo-warn { font-size: 12px; color: var(--dim); }
+.nge-todo-steps { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.5; display: flex; flex-direction: column; gap: 4px; }
 .nge-todo-btn {
   background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--text);
   font: inherit; font-size: 12.5px; padding: 5px 10px; cursor: pointer;

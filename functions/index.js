@@ -1717,6 +1717,39 @@ const ewIsStreakMilestone = (d) => {
   return d % 25 === 0 || d % 365 === 0;
 };
 
+// The live game, where links in tags and connector answers point.
+const EW_LIVE_SITE = "https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com";
+
+// The To do board connector (Ames 2026-10-20): an MCP server an admin adds to
+// their own AI as a custom connector, at ewTodoConnector/<key>. Every rule is
+// in todo-connector.js and todos.js; writes are signed "<name> (via AI)".
+exports.ewTodoConnector = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken], cors: false, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    const { handleConnector } = require("./todo-connector");
+    const { restDb, makeTagger } = require("./todos");
+    const sb = ewSb(ewServiceKey.value().trim());
+    const key = String(req.path || "").split("/").filter(Boolean).pop() || String(req.query.key || "");
+    try {
+      if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+      const db = restDb(sb);
+      const out = await handleConnector(req.method, key, req.body, {
+        db,
+        makeCtx: person => {
+          const byName = `${person.name} (via AI)`;
+          return { db, me: person, byName, site: EW_LIVE_SITE,
+            tag: makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site: EW_LIVE_SITE, byName, meId: person.id }) };
+        },
+      });
+      if (out.body === null) return res.status(out.status).end();
+      res.status(out.status).json(out.body);
+    } catch (e) {
+      console.warn("[ewTodoConnector]", e.message);
+      res.status(500).json({ error: "The To do board could not answer just now." });
+    }
+  }
+);
+
 exports.ewSecureWrite = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
@@ -1989,25 +2022,12 @@ exports.ewSecureWrite = onRequest(
           // twice: the bell in Pyr, and a Slack message that pings them.
           if (typeof action === "string" && action.startsWith("todo.")) {
             needAdmin();
-            const { todoAction, restDb, slackIdOf } = require("./todos");
-            const byName = me?.display_name || me?.username || who.email;
+            const { todoAction, restDb, makeTagger } = require("./todos");
+            if (!me) throw ewErr(403, "no EyeWire II profile");
+            const byName = me.display_name || me.username || who.email;
             const site = EW_ORIGINS.some(o => o.test(String(req.headers.origin || ""))) && !/localhost/.test(String(req.headers.origin))
-              ? String(req.headers.origin) : "https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com";
-            const tag = async (people, card, what, said) => {
-              const link = `${site}/?triage=board&todo=${card.id}`;
-              const quote = String(said || "").replace(/\s+/g, " ").slice(0, 200);
-              const rows = people.map(p => ({ title: `📋 ${byName} ${what} a To do`.slice(0, 120),
-                body: `${card.title}${quote ? `\n\n"${quote}"` : ""}\n\n${link}`.slice(0, 500),
-                target_type: "user", target_id: p.id, send_at: new Date().toISOString(), created_by: me?.id || null }));
-              try { await sb("notifications", { method: "POST", body: JSON.stringify(rows) }); }
-              catch (e) { console.warn("[todo] bell failed:", e.message); }
-              const pings = people.map(p => { const id = slackIdOf(p); return id ? `<@${id}>` : `@${p.name}`; }).join(" ");
-              try {
-                const r = await slackPost(slackBotToken.value().trim(), "chat.postMessage", { channel: REVIEW_CHANNEL_ID, unfurl_links: false,
-                  text: `📋 ${pings} ${byName} ${what} a To do: *${card.title}*${quote ? `\n> ${quote}` : ""}\n<${link}|Open it on the To do board>` });
-                if (!r.ok) console.warn("[todo] slack failed:", r.error);
-              } catch (e) { console.warn("[todo] slack failed:", e.message); }
-            };
+              ? String(req.headers.origin) : EW_LIVE_SITE;
+            const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
             try {
               out = await todoAction(action, args, { db: restDb(sb), me, byName, tag });
             } catch (e) {
