@@ -17,6 +17,11 @@ watch(announcement, a => {
   if (a) timer = setTimeout(() => { if (announcement.value === a) announcement.value = null; }, 16000);
 });
 function close() { announcement.value = null; }
+/** Profile > Settings, where the player picks which top bar icons show. */
+function openSettings() {
+  announcement.value = null;
+  document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'settings' } }));
+}
 </script>
 
 <template>
@@ -31,7 +36,10 @@ function close() { announcement.value = null; }
             <span v-if="d.svg" v-html="d.svg"></span><template v-else>{{ d.emoji }}</template>
           </span>
         </div>
-        <button class="nge-hud-btn nge-stage-ok" @click="close">Got it</button>
+        <div class="nge-stage-actions">
+          <button class="nge-hud-btn nge-stage-ok" @click="close">Got it</button>
+          <button v-if="announcement.settingsButton" class="nge-hud-btn nge-hud-btn--quiet nge-stage-settings" @click="openSettings">Profile Settings</button>
+        </div>
       </div>
     </div>
   </transition>
@@ -74,7 +82,7 @@ function close() { announcement.value = null; }
   background: rgba(126, 224, 255, 0.08);
   box-shadow: 0 0 0 1px rgba(126, 224, 255, 0.45);
 }
-.nge-stage-ok { align-self: flex-start; margin-top: 2px; }
+.nge-stage-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
 .nge-stage-card-enter-active { transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
 .nge-stage-card-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
 .nge-stage-card-enter-from, .nge-stage-card-leave-to { opacity: 0; transform: translateY(-10px); }

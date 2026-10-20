@@ -43,21 +43,25 @@ export interface StageMoment {
   icons: string[];
   /** Nurro's line when this moment brings icons no tutorial box introduces. */
   nurro?: string;
+  /** A button on Nurro's card that opens Profile > Settings. */
+  settingsButton?: boolean;
 }
 
 /** Never brought in on their own: the weekly notification leads there. */
-export const NEVER_AUTO = ['recap', 'datasetStats'];
+export const NEVER_AUTO = ['datasetStats'];
 
 export const STAGE_MOMENTS: StageMoment[] = [
   { key: 'start', label: 'First visit', icons: ['notif'] },
-  { key: 'getStarted', label: 'Finish Get Started', icons: ['leaderboard', 'layers', 'chat'],
-    nurro: 'You know your way around now. Three things just landed in your top bar: the Leaderboard, the Layer panel and Chat. Come say hi!' },
+  // Undelete comes early too (Ames 2026-10-20): it rescues a cell taken out of view by mistake.
+  { key: 'getStarted', label: 'Finish Get Started', icons: ['leaderboard', 'layers', 'undelete', 'chat'],
+    nurro: 'You know your way around now. Four things just landed in your top bar: the Leaderboard, the Layer panel, Undelete (it brings back a cell you took out of view) and Chat. Come say hi!' },
   { key: 'merge', label: 'Merge tutorial: How to Merge', icons: ['merge'] },
   { key: 'cut', label: 'Cut tutorial: How to Cut', icons: ['split'] },
   // Ames 2026-10-20: the Cell Library waits until a player can merge and cut.
   { key: 'basics', label: 'Finish the Merge and Cut tutorials', icons: ['cells'],
-    nurro: 'You can merge and you can cut. The Cell Library is in your top bar now: pick a cell and start proofreading!' },
-  { key: 'ai-undelete', label: 'Advanced Interface: the cell rows', icons: ['undelete'] },
+    // Ames 2026-10-20: they cannot edit real cells until they pass the
+    // Proofreading Test; say where help is.
+    nurro: 'You can merge and you can cut! The Cell Library is in your top bar now, where you can explore real cells. Editing them opens up once you pass the Proofreading Test. Need help? Ask in Chat, or send a help request from the Cell Library.' },
   { key: 'ai-findPath', label: 'Advanced Interface: Find Path', icons: ['findPath'] },
   { key: 'ai-tags', label: 'Advanced Interface: Tag a merger', icons: ['tags'] },
   { key: 'ai-highlight', label: 'Advanced Interface: Highlight', icons: ['highlight'] },
@@ -66,10 +70,14 @@ export const STAGE_MOMENTS: StageMoment[] = [
     nurro: 'Your first edit on your own! Not sure about a spot? Ask for a Second Opinion with the magnifier in your top bar.' },
   // A player who skips the tutorials is not left with a bare bar: coming back
   // brings whatever the earlier moments would have, tutorial or not.
-  { key: 'day2', label: 'Come back on day 2', icons: ['help', 'tags', 'leaderboard', 'layers', 'chat', 'merge', 'split', 'cells'],
+  { key: 'day2', label: 'Come back on day 2', icons: ['help', 'tags', 'leaderboard', 'layers', 'undelete', 'chat', 'merge', 'split', 'cells'],
     nurro: 'Welcome back! Your top bar has a few more tools now. Not sure about a spot? Ask for a Second Opinion with the magnifier.' },
-  { key: 'day3', label: 'Come back on day 3', icons: ['screenshot', 'undelete', 'findPath', 'highlight', 'lantern'],
+  { key: 'day3', label: 'Come back on day 3', icons: ['screenshot', 'findPath', 'highlight', 'lantern'],
     nurro: 'Day three! Your top bar has the rest of the everyday tools now. Found something beautiful? The camera saves a picture of it.' },
+  // Ames 2026-10-20: Your Week in Science after a week, and a way to the
+  // Settings where the top bar is chosen.
+  { key: 'week1', label: 'One week after signing up', icons: ['recap'], settingsButton: true,
+    nurro: 'One week of science! Your Week in Science is in your top bar now. You can choose which icons your top bar shows in Profile Settings.' },
   // Batch arrives too, quietly: no glow, not named (Ames 2026-10-20).
   { key: 'production', label: 'Get production access', icons: ['batch'],
     nurro: 'You have production access! Every tool you had not met yet is in your top bar now.' },
@@ -92,6 +100,8 @@ export interface StageState {
   staged: boolean;
   /** Icons that have arrived. */
   revealed: string[];
+  /** The local date (YYYY-MM-DD) this player was first staged. */
+  firstSeen?: string;
   /** Local dates (YYYY-MM-DD) the player has been here, newest last, up to 3. */
   visitDays: string[];
   /** Moments already handled (keys of STAGE_MOMENTS). */
@@ -102,11 +112,11 @@ export interface StageState {
 export const freshIcons = reactive(new Set<string>());
 
 /** The Nurro card on screen, if any. */
-export const announcement = ref<{ text: string; icons: string[]; at: number } | null>(null);
+export const announcement = ref<{ text: string; icons: string[]; at: number; settingsButton?: boolean } | null>(null);
 
 const SIM_KEY = 'nge-staging-sim';
 const SIM_ON_KEY = 'nge-staging-sim-on';
-const freshState = (): StageState => ({ staged: true, revealed: ['notif'], visitDays: [], done: ['start'] });
+const freshState = (): StageState => ({ staged: true, revealed: ['notif'], firstSeen: new Date().toLocaleDateString('en-CA'), visitDays: [], done: ['start'] });
 
 function readSim(): StageState {
   try {
@@ -238,7 +248,7 @@ function save(s: StageState) {
  * Nurro introduces them; without it they fade in and glow (a tutorial box is
  * doing the introducing).
  */
-export function reveal(ids: string[], line?: string, label?: string): string[] {
+export function reveal(ids: string[], line?: string, label?: string, settingsButton?: boolean): string[] {
   const s = current();
   if (!s) return [];
   const added = ids.filter(id => !s.revealed.includes(id));
@@ -248,7 +258,7 @@ export function reveal(ids: string[], line?: string, label?: string): string[] {
   save(s);
   for (const id of added) freshIcons.add(id);
   setTimeout(() => { for (const id of added) freshIcons.delete(id); }, 9000);
-  if (line) announcement.value = { text: line, icons: added, at: Date.now() };
+  if (line) announcement.value = { text: line, icons: added, at: Date.now(), settingsButton };
   return added;
 }
 
@@ -260,7 +270,7 @@ export function runMoment(key: string): string[] {
   if (!s.done.includes(key)) s.done.push(key);
   if (key === 'production' && !s.revealed.includes('batch')) s.revealed.push('batch');
   const icons = key === 'production' ? ALL_AUTO.filter(id => id !== 'batch') : m.icons;
-  const added = reveal(icons, m.nurro, m.label);
+  const added = reveal(icons, m.nurro, m.label, m.settingsButton);
   if (!added.length) { pendingLabel = m.label; save(s); }
   return added;
 }
@@ -388,6 +398,10 @@ export function noteVisit(date = today()) {
   }
   if (s.visitDays.length >= 2 && !s.done.includes('day2')) void momentWhenQuiet('day2');
   if (s.visitDays.length >= 3 && !s.done.includes('day3')) void momentWhenQuiet('day3');
+  // A week after signing up (counted from the day staging began for them).
+  if (!s.firstSeen) { s.firstSeen = date; save(s); }
+  const days = (new Date(date).getTime() - new Date(s.firstSeen).getTime()) / 86400000;
+  if (days >= 7 && !s.done.includes('week1')) void momentWhenQuiet('week1');
 }
 
 function hasProductionAccess(): boolean | null {
