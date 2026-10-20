@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-20T15:18:05Z",
+      "title": "Folders you can size, and a longer notifications window",
+      "digest": "minor",
+      "items": [
+        "Drag the grip under a folder in the Segments panel to make it taller or shorter. Double click the grip to give it its usual size.",
+        "+ Folder beside Move down puts your pasted cells straight into a new folder.",
+        "The Segments panel's green is now sky blue.",
+        "Drag the bottom edge of the notifications window to make it longer, and press Show more to see older notifications."
+      ]
+    },
+    {
       "at": "2026-10-20T15:12:20Z",
       "title": "What the AI predicts for each cell",
       "items": [
