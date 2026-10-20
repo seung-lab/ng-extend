@@ -5045,6 +5045,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let notifGroupIds: string[] = [];
   let notifMaxId = 0;
   let notifCheckedAt = '';
+  // The feed loads the newest NOTIF_PAGE and asks for more on "Show more"
+  // (Ames 2026-10-20: "maybe it should load some # and then make me click
+  // 'more' in order to load more? might save on querying"); it was 50 every
+  // time.
+  const NOTIF_PAGE = 20;
+  const notifLimit = ref(NOTIF_PAGE);
+  /** True when the last full load filled its page: there may be older ones. */
+  const notificationsHaveMore = ref(false);
+  async function loadMoreNotifications() {
+    notifLimit.value += NOTIF_PAGE;
+    await loadNotifications();
+  }
   async function loadNotifications(opts: { newOnly?: boolean } = {}) {
     if (!userId.value) return;
     const now = new Date().toISOString();
@@ -5065,11 +5077,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .select('*')
       .lte('send_at', now)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(newOnly ? 50 : notifLimit.value);
     if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
     const { data: allNotifs } = await query;
     if (!allNotifs) return;
+    if (!newOnly) notificationsHaveMore.value = allNotifs.length >= notifLimit.value;
     for (const n of allNotifs as any[]) if (Number(n.id) > notifMaxId) notifMaxId = Number(n.id);
     notifCheckedAt = now;
     if (newOnly && !allNotifs.length) return;
@@ -5119,7 +5132,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Delivered ones that have since stopped: the server leaves those out of
     // the list above, so ask for them by id.
     const have = new Set(current.map(n => n.id));
-    const kept = [...delivered].filter(id => !have.has(id) && !notificationDismissals.value.has(id)).sort((a, b) => b - a).slice(0, 100);
+    // Only those as new as the page reaches: older ones come with "Show more".
+    const oldestShown = notificationsHaveMore.value && current.length ? Math.min(...current.map(n => n.id)) : 0;
+    const kept = [...delivered].filter(id => id > oldestShown && !have.has(id) && !notificationDismissals.value.has(id)).sort((a, b) => b - a).slice(0, 100);
     if (kept.length && !newOnly) {
       const { data: older } = await supabase.from('notifications').select('*').in('id', kept).lte('send_at', now);
       for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
@@ -5953,6 +5968,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     isAdmin, checkAdmin, isBlogAuthor,
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
+    notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,
     createNotification, createSelfNotification, announceAchievement, postDueChatAnnouncements, deleteNotification, dismissNotification,

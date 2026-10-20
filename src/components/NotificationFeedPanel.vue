@@ -16,6 +16,56 @@ const emit = defineEmits({ hide: null, 'open-help': null });
 const backend = useProofreadingBackendStore();
 const panelRef = ref<HTMLElement | null>(null);
 
+// ── Height you drag to, kept in this browser (Ames 2026-10-20: "I also want
+// to be able to drag to make my notifications window longer") ──
+const HEIGHT_KEY = 'nge_notif_panel_height_v1';
+const panelHeight = ref<number | null>((() => {
+  try { const v = Number(localStorage.getItem(HEIGHT_KEY)); return Number.isFinite(v) && v >= 160 ? v : null; } catch { return null; }
+})());
+function applyHeight() {
+  const el = panelRef.value;
+  if (!el) return;
+  const h = panelHeight.value;
+  if (h) el.style.setProperty('--nge-notif-h', `${h}px`); else el.style.removeProperty('--nge-notif-h');
+  el.classList.toggle('nge-notif-panel--sized', !!h);
+}
+watch(panelHeight, applyHeight, { flush: 'post' });
+onMounted(applyHeight);
+function startResize(e: PointerEvent) {
+  const el = panelRef.value;
+  if (!el || e.button !== 0) return;
+  e.preventDefault();
+  const grip = e.currentTarget as HTMLElement;
+  grip.setPointerCapture(e.pointerId);
+  const startY = e.clientY;
+  const startH = el.getBoundingClientRect().height;
+  const top = el.getBoundingClientRect().top;
+  const move = (ev: PointerEvent) => {
+    panelHeight.value = Math.round(Math.max(160, Math.min(window.innerHeight - top - 8, startH + ev.clientY - startY)));
+  };
+  const up = () => {
+    grip.removeEventListener('pointermove', move);
+    grip.removeEventListener('pointerup', up);
+    grip.removeEventListener('pointercancel', up);
+    try { if (panelHeight.value) localStorage.setItem(HEIGHT_KEY, String(panelHeight.value)); } catch { /* private window */ }
+  };
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', up);
+  grip.addEventListener('pointercancel', up);
+}
+function resetHeight() {
+  panelHeight.value = null;
+  try { localStorage.removeItem(HEIGHT_KEY); } catch { /* private window */ }
+}
+
+// ── Older notifications on request (the feed loads the newest 20) ──
+const loadingMore = ref(false);
+async function showMore() {
+  if (loadingMore.value) return;
+  loadingMore.value = true;
+  try { await backend.loadMoreNotifications(); } finally { loadingMore.value = false; }
+}
+
 function onDocClick(e: MouseEvent) {
   if (!props.visible) return;
   const target = e.target as HTMLElement;
@@ -600,12 +650,22 @@ function padRank(rank: number): string {
           </div>
         </div>
       </div>
+      <button v-if="backend.notificationsHaveMore" class="nge-notif-more" :disabled="loadingMore" @click.stop="showMore">
+        {{ loadingMore ? 'Loading\u2026' : 'Show more' }}
+      </button>
     </div>
 
     <div class="nge-notif-empty" v-else>
       No notifications yet.
+      <button v-if="backend.notificationsHaveMore" class="nge-notif-more" :disabled="loadingMore" @click.stop="showMore">
+        {{ loadingMore ? 'Loading\u2026' : 'Show more' }}
+      </button>
     </div>
 
+    <!-- Drag to make the window taller or shorter (Ames 2026-10-20); a
+         double click gives back its usual height. -->
+    <div class="nge-notif-grip" title="Drag to make this window taller or shorter. Double click for its usual size."
+      @pointerdown="startResize" @dblclick.stop="resetHeight"></div>
   </div>
   </Teleport>
 
@@ -831,6 +891,25 @@ function padRank(rank: number): string {
 </template>
 
 <style scoped>
+/* Dragged taller or shorter by the grip at the bottom (Ames 2026-10-20). */
+.nge-notif-panel.nge-notif-panel--sized { height: var(--nge-notif-h); max-height: calc(100vh - 50px); }
+.nge-notif-panel--sized .nge-notif-list { max-height: none; flex: 1 1 auto; min-height: 0; }
+.nge-notif-grip {
+  flex: 0 0 auto; height: 10px; cursor: row-resize; position: relative; touch-action: none;
+  border-radius: 0 0 10px 10px;
+}
+.nge-notif-grip::after {
+  content: ''; position: absolute; left: 50%; top: 3px; width: 30px; height: 3px; transform: translateX(-50%);
+  border-top: 1px solid rgba(160, 190, 230, 0.35); border-bottom: 1px solid rgba(160, 190, 230, 0.35);
+}
+.nge-notif-grip:hover { background: rgba(74, 158, 255, 0.1); }
+.nge-notif-grip:hover::after { border-color: rgba(140, 200, 255, 0.95); }
+.nge-notif-more {
+  display: block; margin: 6px auto 4px; padding: 4px 14px; border-radius: 6px; cursor: pointer;
+  background: none; border: 1px solid rgba(140, 180, 235, 0.35); color: rgba(170, 200, 240, 0.95); font: inherit;
+}
+.nge-notif-more:hover:not(:disabled) { background: rgba(74, 158, 255, 0.15); color: #fff; }
+.nge-notif-more:disabled { opacity: 0.6; cursor: default; }
 .nge-notif-panel {
   position: fixed;
   top: 42px;

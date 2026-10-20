@@ -49,7 +49,7 @@ import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, listFilterOf, loadCellAtPlace, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
 import {ngeChoose, ngeConfirm} from 'neuroglancer/ui/nge_confirm';
-import {openColorPalette, pickedSegments, SegmentFolders, touchPick} from 'neuroglancer/ui/nge_segment_folders';
+import {FOLDER_MIN_HEIGHT, openColorPalette, pickedSegments, SegmentFolders, touchPick} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
 
@@ -885,6 +885,52 @@ function renderTagSummary(
   return tagList;
 }
 
+/**
+ * nge: a grip under a folder's box: drag it to make the box taller or
+ * shorter, as the line above the Selection panel does for the whole list
+ * (Nseraf, report 179: "allow for each folder(s) resize compared to IN
+ * VIEW"). The height is saved with the folder; a double click puts the box
+ * back to its usual size.
+ */
+function makeFolderGrip(list: HTMLElement, folders: SegmentFolders, folderId: string) {
+  const grip = document.createElement('div');
+  grip.className = 'nge-seg-folder-grip';
+  grip.title = 'Drag to make this folder taller or shorter. Double click for its usual size.';
+  grip.addEventListener('pointerdown', (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startH = list.getBoundingClientRect().height;
+    let h = startH;
+    grip.setPointerCapture(e.pointerId);
+    grip.classList.add('nge-seg-folder-grip--active');
+    // while dragging the box follows the pointer; the height is saved on release
+    list.dataset.ngeSized = '';
+    const move = (ev: PointerEvent) => {
+      h = Math.max(FOLDER_MIN_HEIGHT, startH + ev.clientY - startY);
+      list.style.setProperty('--nge-folder-h', `${h}px`);
+    };
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+      grip.classList.remove('nge-seg-folder-grip--active');
+      if (Math.abs(h - startH) >= 2) folders.setHeight(folderId, h);
+      else if (!folders.value.find(f => f.id === folderId)?.height) delete list.dataset.ngeSized;
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    delete list.dataset.ngeSized;
+    folders.setHeight(folderId, undefined);
+  });
+  return grip;
+}
+
 abstract class SegmentListGroupBase extends RefCounted {
   element = document.createElement('div');
 
@@ -1132,6 +1178,29 @@ class SegmentListGroupSelected extends SegmentListGroupBase {
     // Remove all sits on the right, with the heading's other actions.
     if (kind !== 'folder') heading.appendChild(this.starAllButton);
     if (folders === undefined) return;
+    if (mode === 'pasted') {
+      // nge: the pasted cells straight into a new folder (Ames 2026-10-20:
+      // "a way for user to make a folder of pasted seg IDs? maybe +folder
+      // option next to Move Down"), named at once like any new folder.
+      const toFolder = document.createElement('button');
+      toFolder.className = 'nge-seg-list-keep nge-seg-folder-new nge-seg-pasted-folder';
+      toFolder.textContent = '+ Folder';
+      toFolder.title = 'Put these cells in a new folder (they stay shown)';
+      toFolder.addEventListener('click', () => {
+        const p = getPastedSegments(group);
+        const ids = p.ids.filter(s => {
+          const id = new Uint64();
+          return id.tryParseString(s) && group.selectedSegments.has(id);
+        });
+        if (!ids.length) return;
+        const f = folders.create('New folder');
+        folders.move(ids, f.id);
+        p.ids = p.ids.filter(s => !ids.includes(s));
+        p.changed.dispatch();
+        actions?.onNewFolder(f.id);
+      });
+      heading.insertBefore(toFolder, heading.querySelector('.nge-seg-list-keep'));
+    }
     const targetFolder = typeof mode === 'object' ? mode.folder : '';
 
     // Cells dropped on a heading go into that folder; on In view, out of
@@ -1788,6 +1857,8 @@ export class SegmentDisplayTab extends Tab {
                     source: StarredSegmentsListSource;
                     vlist: VirtualList;
                     grp: SegmentListGroupSelected;
+                    /** A folder's grip, to drag its box taller or shorter. */
+                    grip?: HTMLElement;
                   }
                   let renameNext: string|undefined;
                   const sectionActions: SectionActions = {
@@ -1837,7 +1908,12 @@ export class SegmentDisplayTab extends Tab {
                     removeChildren(vlist.header);
                     grp.arrangeHeading();
                     owner.registerDisposer(grp.statusChanged.add(() => updateListDisplayState()));
-                    return {source, vlist, grp};
+                    let grip: HTMLElement|undefined;
+                    if (typeof mode === 'object' && folders !== undefined) {
+                      grip = makeFolderGrip(vlist.element, folders, mode.folder);
+                      grp.element.appendChild(grip);
+                    }
+                    return {source, vlist, grp, grip};
                   };
                   const pasted = makeSection(context, 'pasted');
                   parent.appendChild(pasted.grp.element);
@@ -2022,6 +2098,13 @@ export class SegmentDisplayTab extends Tab {
                       const f = folders?.value.find(
                           x => typeof sec.source.mode === 'object' && x.id === sec.source.mode.folder);
                       sec.vlist.element.style.display = f?.collapsed ? 'none' : '';
+                      if (sec.grip) sec.grip.style.display = f?.collapsed ? 'none' : '';
+                      if (f?.height) {
+                        sec.vlist.element.dataset.ngeSized = '';
+                        sec.vlist.element.style.setProperty('--nge-folder-h', `${f.height}px`);
+                      } else {
+                        delete sec.vlist.element.dataset.ngeSized;
+                      }
                       sec.vlist.element.dataset.ngeEmpty = String(sec.source.length === 0 && !filtering);
                       shownInFolders += sec.source.length;
                     }

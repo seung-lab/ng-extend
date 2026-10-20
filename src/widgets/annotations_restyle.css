@@ -584,7 +584,7 @@ textarea.neuroglancer-annotation-details-description:focus {
 .nge-polyline-hint-badge {
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
-  color: #7CFFB2; text-shadow: 0 0 10px rgb(124 255 178 / .45);
+  color: #87ceeb; text-shadow: 0 0 10px rgb(124 255 178 / .45);
 }
 .nge-polyline-hint-count {
   min-width: 62px; padding: 2px 9px; border-radius: 999px; text-align: center;
@@ -643,10 +643,10 @@ textarea.neuroglancer-annotation-details-description:focus {
 .neuroglancer-annotation-list-entry.nge-drop-flash { animation: nge-drop-flash 2.5s ease-out; }
 /* picked with Ctrl or Shift click: the Segments panel's green */
 .neuroglancer-annotation-list-entry.nge-ann-picked {
-  background: rgba(124, 255, 178, 0.1) !important;
-  box-shadow: inset 2px 0 0 #7cffb2, 0 0 0 1px rgba(124, 255, 178, 0.35) !important;
+  background: rgba(135, 206, 235, 0.1) !important;
+  box-shadow: inset 2px 0 0 #87ceeb, 0 0 0 1px rgba(135, 206, 235, 0.35) !important;
 }
-.neuroglancer-annotation-list-entry.nge-ann-picked > .nge-ann-num { color: #7cffb2; }
+.neuroglancer-annotation-list-entry.nge-ann-picked > .nge-ann-num { color: #87ceeb; }
 /* in a folder: stepped in, with the folder's color as a rail */
 .neuroglancer-annotation-list-entry.nge-ann-in-folder {
   margin-left: calc(var(--nge-ann-depth, 1) * 12px);
