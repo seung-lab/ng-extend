@@ -381,17 +381,7 @@ function ngeHoverGlowMode(color: Float32Array|number[]) {
   }
   return 0;
 }
-let ngePulseT0 = 0, ngePulseKey = '', ngePulseSeenAt = 0;
-/** A cell is pulsing: note when the mouse came onto it. */
-function ngePulseMark(key: string) {
-  const now = performance.now();
-  if (key !== ngePulseKey || now - ngePulseSeenAt > 400) {
-    ngePulseKey = key;
-    ngePulseT0 = now;
-  }
-  ngePulseSeenAt = now;
-  ngePulseRunning = true;
-}
+let ngePulseKey = '', ngePulseSeenAt = 0;
 const ngePulseCenter = new Float32Array(3);
 const ngePulseScale = new Float32Array(3);
 let ngePulseViewNm = 1000;
@@ -432,35 +422,50 @@ export function ngeFirePulse() {
   ngeBurst.t0 = performance.now();
   ngeBurst.center.set(ngePulseCenter);
 }
-function ngeSetPulse(gl: GL, shader: ShaderProgram, center: Float32Array, travelledNm: number, periodNm: number) {
+function ngeSetPulse(gl: GL, shader: ShaderProgram, center: Float32Array, travelledNm: number, periodNm: number, strength: number) {
   gl.uniform3fv(shader.uniform('uNgePulseCenter'), center);
-  gl.uniform4f(shader.uniform('uNgePulse'), travelledNm, ngePulseViewNm * 0.025, periodNm, 1);
+  // .w is on and how strong (fading out as the ring spreads).
+  gl.uniform4f(shader.uniform('uNgePulse'), travelledNm, ngePulseViewNm * 0.025, periodNm, 1 + strength);
   const pc = ngePulseColor.value;
   gl.uniform4f(shader.uniform('uNgePulseColor'), pc?.[0] ?? 0, pc?.[1] ?? 0, pc?.[2] ?? 0, pc ? 1 : 0);
 }
-/** For one cell: is it pulsing (the P key's ring, or the Pulse hover look)?
- *  Sets the pulse for it and returns 1, else 0. */
+/** For one cell: is it pulsing? Sets the pulse for it and returns 1, else 0.
+ *  The Pulse look sends one ring when the mouse comes onto a cell, the same
+ *  ring as the P key (Ames 2026-10-20: "it still won't stop pulsing": it
+ *  used to repeat for as long as the mouse stayed). */
 function ngePulseFor(gl: GL, shader: ShaderProgram, key: string, hovered: boolean): number {
   const now = performance.now();
+  if (ngeHoverStyle.value === 'pulse' && hovered && ngeMouseActive) {
+    // A new cell under the mouse (or the same one after the mouse was away).
+    if (key !== ngePulseKey || now - ngePulseSeenAt > 400) {
+      ngeBurst.pending = false;
+      ngeBurst.key = key;
+      ngeBurst.t0 = now;
+      ngeBurst.center.set(ngePulseCenter);
+    }
+    ngePulseKey = key;
+    ngePulseSeenAt = now;
+  }
   // P pressed with no cell under the mouse: nothing, not the next cell later.
   if (ngeBurst.pending && now - ngeBurst.t0 > 300) ngeBurst.pending = false;
   if (ngeBurst.pending && hovered) {
     ngeBurst.pending = false;
     ngeBurst.key = key;
   }
-  if (ngeBurst.key === key && now - ngeBurst.t0 < NGE_BURST_MS) {
-    // One ring, spreading out: the period is longer than anything on screen.
-    ngeSetPulse(gl, shader, ngeBurst.center, ((now - ngeBurst.t0) / 1000) * ngePulseViewNm * 0.6, ngePulseViewNm * 20);
+  if (ngeBurst.key !== key) return 0;
+  const age = now - ngeBurst.t0;
+  if (age < NGE_BURST_MS) {
+    // One ring, spreading out and fading: the period is longer than anything
+    // on screen.
+    ngeSetPulse(gl, shader, ngeBurst.center, (age / 1000) * ngePulseViewNm * 0.6, ngePulseViewNm * 20,
+                1 - age / NGE_BURST_MS);
     ngePulseRunning = true;
     return 1;
   }
-  if (ngeHoverStyle.value === 'pulse' && hovered && ngeMouseActive) {
-    ngePulseMark(key);
-    const periodNm = ngePulseViewNm * 0.5;
-    // From when the mouse came onto this cell, so the first band leaves the
-    // mouse at once (andrearwen: "is there a time delay?").
-    ngeSetPulse(gl, shader, ngePulseCenter, (((now - ngePulseT0) / 1000) * ngePulseViewNm * 0.3) % periodNm, periodNm);
-    return 1;
+  // Just finished: one more frame, drawn without it.
+  if (ngeBurst.key !== '') {
+    ngeBurst.key = '';
+    ngePulseRunning = true;
   }
   return 0;
 }
@@ -730,7 +735,7 @@ if (uNgeGlow > 2.5) {
   highp float pulseOff = min(pulsePhase, uNgePulse.z - pulsePhase) / uNgePulse.y;
   highp float pulseBand = exp(-pulseOff * pulseOff);
   highp vec3 pulseColor = uNgePulseColor.w > 0.5 ? uNgePulseColor.rgb * uColor.a : mix(uColor.rgb, vec3(uColor.a), 0.65);
-  vColor.rgb = mix(vColor.rgb, pulseColor, 0.9 * pulseBand);
+  vColor.rgb = mix(vColor.rgb, pulseColor, 0.9 * pulseBand * clamp(uNgePulse.w - 1.0, 0.0, 1.0));
 }
 if (uNgeTintOn > 0.5) {
   highp vec3 tintCoord = (uNgeTintMatrix * vec4(vertexPosition, 1.0)).xyz;

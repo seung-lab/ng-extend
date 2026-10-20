@@ -43,7 +43,7 @@ const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'wireframe' | 'satura
 /** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
 const draftPulseColor = ref('');
 const PULSE_COLORS = [
-  { value: '', label: "The cell's own colour" }, { value: '#59d8ff', label: 'Electric blue' },
+  { value: '', label: "Each cell's own colour: a blue cell pulses light blue" }, { value: '#59d8ff', label: 'Electric blue' },
   { value: '#ffffff', label: 'White' }, { value: '#ffd34d', label: 'Gold' }, { value: '#ff6fd8', label: 'Pink' },
   { value: '#6dff8a', label: 'Green' }, { value: '#b48cff', label: 'Purple' }, { value: '#ff5a4f', label: 'Red' },
 ];
@@ -474,7 +474,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and a little brighter. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: bands of light run out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and a little brighter. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
                 <option value="halo">Halo</option>
@@ -1497,10 +1497,11 @@ const props = defineProps<{ embedded?: boolean }>();
 
 /* Pulse colour: swatches and a picker (Ames 2026-10-20: "make this an actual color picker") */
 .nge-pulse-color { align-items: center; }
-.nge-pulse-swatches { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 230px; }
-.nge-pulse-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.18); padding: 0; cursor: pointer; position: relative; flex: none; }
+.nge-pulse-swatches { display: flex; flex-wrap: nowrap; gap: 5px; justify-content: flex-end; align-items: center; }
+.nge-pulse-swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.18); padding: 0; cursor: pointer; position: relative; flex: none; }
 .nge-pulse-swatch--on { border-color: #fff; box-shadow: 0 0 0 2px rgba(120, 180, 255, 0.6); }
-.nge-pulse-swatch--own { background: conic-gradient(#59d8ff, #6dff8a, #ffd34d, #ff6fd8, #b48cff, #59d8ff); }
+/* Each cell's own colour: a dark middle in a ring of colours. */
+.nge-pulse-swatch--own { background: radial-gradient(circle, #141a26 0 42%, transparent 44%), conic-gradient(#59d8ff, #6dff8a, #ffd34d, #ff6fd8, #b48cff, #59d8ff); }
 .nge-pulse-swatch--pick { background: #1c2333; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
 .nge-pulse-swatch--pick::after { content: '+'; color: #cfe0ff; font-size: 15px; line-height: 1; pointer-events: none; }
 .nge-pulse-swatch--pick.nge-pulse-swatch--on::after { content: ''; }
