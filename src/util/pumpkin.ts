@@ -24,12 +24,15 @@ import {getRootFromSupervoxel} from '../widgets/pcg_service';
  *  supervoxel at the soma never changes, so once read it finds the cell's
  *  current id from the server. */
 const KNOWN_CELLS = ['648518346355727683', '648518346353862024'];
-const SV_KEY = 'nge.pumpkin.sv';
+
 const ROOT_EVERY_MS = 120_000;
 /** Its cell body, in the viewer's coordinates (Ames's position readout). */
-const SOMA = [84568, 61611, 1283];
+const SOMA = [71942, 54909, 1162];
+/** The supervoxel read at the soma is kept per point, so moving the point
+ *  reads it again. */
+const SV_KEY = `nge.pumpkin.sv.${SOMA.join(',')}`;
 /** Pumpkin height: a little larger than the cell body, so it covers it. */
-const HEIGHT_NM = 22000;
+const HEIGHT_NM = 18000;
 const GROUP = 'pumpkin';
 
 /** October, and 1 November, in the player's own time. */
