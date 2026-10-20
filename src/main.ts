@@ -4,6 +4,7 @@ import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
+import {startPumpkin} from './util/pumpkin';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
@@ -404,6 +405,7 @@ function setupViewer() {
   startImageLoadingHint(viewer);
   startLantern(viewer);
   startSpooky(viewer);
+  startPumpkin(viewer);
   startInvalidSegmentWatch(viewer);
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
