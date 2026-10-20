@@ -1457,6 +1457,7 @@ async function postIssueToSlack(token, issue) {
     const emoji = ISSUE_EMOJI[issue.category] || ISSUE_EMOJI.Other;
     const lines = [
       `${emoji} *New site issue submitted* — _${issue.category}_`,
+      issue.title ? `*${issue.title}*` : null,
       `*From:* ${issue.user || "anonymous"}${issue.dataset ? ` · dataset: ${issue.dataset}` : ""}`,
       `*Report:* ${issue.message}`,
       issue.url ? `*Page:* ${issue.url}` : null,
@@ -1502,6 +1503,8 @@ exports.submitIssue = onRequest(
     const message = typeof b.message === "string" ? b.message.trim().slice(0, 4000) : "";
     if (!message) { res.status(400).json({ error: "message required" }); return; }
     const category = ISSUE_CATEGORIES.includes(b.category) ? b.category : "Other";
+    // A short title (Celia #178); older clients send none.
+    const title = typeof b.title === "string" ? b.title.replace(/\s+/g, " ").trim().slice(0, 120) : "";
     const user = pilot.me.username || pilot.me.display_name || "Player";
     const dataset = typeof b.dataset === "string" ? b.dataset.slice(0, 120) : "";
     const pageUrl = typeof b.url === "string" ? b.url.slice(0, 500) : "";
@@ -1511,13 +1514,13 @@ exports.submitIssue = onRequest(
 
     try {
       await db.collection("site_issues").add({
-        message, category,
+        message, category, title: title || null,
         user: user || null, dataset: dataset || null, url: pageUrl || null,
         origin, at: admin.firestore.FieldValue.serverTimestamp(),
       });
       res.json({ ok: true });
       // Fire-and-forget Slack post (response already sent).
-      postIssueToSlack(slackBotToken.value(), { message, category, user, dataset, url: pageUrl });
+      postIssueToSlack(slackBotToken.value(), { title, message, category, user, dataset, url: pageUrl });
     } catch (err) {
       console.error("submitIssue error:", err);
       if (!res.headersSent) res.status(500).json({ error: "could not record issue" });
