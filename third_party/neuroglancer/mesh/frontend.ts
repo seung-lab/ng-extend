@@ -373,7 +373,6 @@ export function ngeWireframeFrameUnfinished() {
 let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
-  if (style === 'pulse') return 1;
   if (style === 'wireframe') return 3;
   if (style === 'halo' && ngeRimGl) {
     const rgb = ngeGlowColor(color);
@@ -395,12 +394,18 @@ function ngePulseMark(key: string) {
 }
 const ngePulseCenter = new Float32Array(3);
 const ngePulseScale = new Float32Array(3);
-/** Where the pulse starts (the mouse, last place it was over a cell), and how
- *  far its bands have run, scaled to how far out the 3D view is zoomed. */
-function ngePulseState(projectionParameters: any) {
+let ngePulseViewNm = 1000;
+let ngeMouseActive = false;
+/** Per frame: where the mouse is over the 3D view, and how far out it is
+ *  zoomed, which sets the pulse's speed and band width. */
+function ngePulsePrepare(projectionParameters: any) {
   const viewer: any = (window as any).viewer;
   const info = projectionParameters.displayDimensionRenderInfo;
   const mouse = viewer?.mouseState;
+  // Over the 3D view or not: a pulse stops when the mouse leaves it (Ames:
+  // "keeps pulsing ... even after I move hover"), though neuroglancer keeps
+  // the last cell as the hovered one.
+  ngeMouseActive = !!mouse?.active;
   if (mouse?.active && mouse.position) {
     for (let i = 0; i < 3; i++) {
       const d = info.displayDimensionIndices[i];
@@ -412,12 +417,52 @@ function ngePulseState(projectionParameters: any) {
     ngePulseScale[i] = (info.displayDimensionScales[i] || 1e-9) * 1e9;
     minNm = Math.min(minNm, ngePulseScale[i]);
   }
-  const viewNm = Math.max(1, (viewer?.projectionScale?.value ?? 1000) * minNm);
-  const periodNm = viewNm * 0.5;
-  // From when the mouse came onto this cell, so the first band leaves the
-  // mouse at once (andrearwen: "is there a time delay?").
-  const travelledNm = (((performance.now() - ngePulseT0) / 1000) * viewNm * 0.3) % periodNm;
-  return {center: ngePulseCenter, scaleNm: ngePulseScale, travelledNm, widthNm: viewNm * 0.025, periodNm};
+  ngePulseViewNm = Math.max(1, (viewer?.projectionScale?.value ?? 1000) * minNm);
+}
+
+// ── The P key: one ring of light from the mouse along the cell under it ─────
+// (Ames 2026-10-20: "maybe we need a hot key to make the cell pulse"). It
+// works with any 3D Hover look; the cell is the one under the mouse when the
+// next frame is drawn.
+const NGE_BURST_MS = 2200;
+const ngeBurst = {pending: false, key: '', t0: -1e9, center: new Float32Array(3)};
+export function ngeFirePulse() {
+  ngeBurst.pending = true;
+  ngeBurst.key = '';
+  ngeBurst.t0 = performance.now();
+  ngeBurst.center.set(ngePulseCenter);
+}
+function ngeSetPulse(gl: GL, shader: ShaderProgram, center: Float32Array, travelledNm: number, periodNm: number) {
+  gl.uniform3fv(shader.uniform('uNgePulseCenter'), center);
+  gl.uniform4f(shader.uniform('uNgePulse'), travelledNm, ngePulseViewNm * 0.025, periodNm, 1);
+  const pc = ngePulseColor.value;
+  gl.uniform4f(shader.uniform('uNgePulseColor'), pc?.[0] ?? 0, pc?.[1] ?? 0, pc?.[2] ?? 0, pc ? 1 : 0);
+}
+/** For one cell: is it pulsing (the P key's ring, or the Pulse hover look)?
+ *  Sets the pulse for it and returns 1, else 0. */
+function ngePulseFor(gl: GL, shader: ShaderProgram, key: string, hovered: boolean): number {
+  const now = performance.now();
+  // P pressed with no cell under the mouse: nothing, not the next cell later.
+  if (ngeBurst.pending && now - ngeBurst.t0 > 300) ngeBurst.pending = false;
+  if (ngeBurst.pending && hovered) {
+    ngeBurst.pending = false;
+    ngeBurst.key = key;
+  }
+  if (ngeBurst.key === key && now - ngeBurst.t0 < NGE_BURST_MS) {
+    // One ring, spreading out: the period is longer than anything on screen.
+    ngeSetPulse(gl, shader, ngeBurst.center, ((now - ngeBurst.t0) / 1000) * ngePulseViewNm * 0.6, ngePulseViewNm * 20);
+    ngePulseRunning = true;
+    return 1;
+  }
+  if (ngeHoverStyle.value === 'pulse' && hovered && ngeMouseActive) {
+    ngePulseMark(key);
+    const periodNm = ngePulseViewNm * 0.5;
+    // From when the mouse came onto this cell, so the first band leaves the
+    // mouse at once (andrearwen: "is there a time delay?").
+    ngeSetPulse(gl, shader, ngePulseCenter, (((now - ngePulseT0) / 1000) * ngePulseViewNm * 0.3) % periodNm, periodNm);
+    return 1;
+  }
+  return 0;
 }
 const ngeLanternPos = new Float32Array(3);
 
@@ -443,16 +488,9 @@ export class MeshShaderManager {
     const {projectionParameters} = renderContext;
     ngeUpdateHaloZoom(projectionParameters);
     gl.uniform2f(shader.uniform('uNgeViewport'), projectionParameters.width, projectionParameters.height);
-    const pulse = ngeHoverStyle.value === 'pulse' && renderContext.emitColor ? ngePulseState(projectionParameters) : null;
-    if (pulse) {
-      gl.uniform3fv(shader.uniform('uNgePulseCenter'), pulse.center);
-      gl.uniform3fv(shader.uniform('uNgePulseScale'), pulse.scaleNm);
-      gl.uniform4f(shader.uniform('uNgePulse'), pulse.travelledNm, pulse.widthNm, pulse.periodNm, 1);
-      const pc = ngePulseColor.value;
-      gl.uniform4f(shader.uniform('uNgePulseColor'), pc?.[0] ?? 0, pc?.[1] ?? 0, pc?.[2] ?? 0, pc ? 1 : 0);
-    } else {
-      gl.uniform4f(shader.uniform('uNgePulse'), 0, 1, 1, 0);
-    }
+    ngePulsePrepare(projectionParameters);
+    gl.uniform3fv(shader.uniform('uNgePulseScale'), ngePulseScale);
+    gl.uniform4f(shader.uniform('uNgePulse'), 0, 1, 1, 0);
     const silhouetteRendering = displayState.silhouetteRendering.value;
     if (silhouetteRendering > 0) {
       gl.uniform1f(shader.uniform('uSilhouettePower'), silhouetteRendering);
@@ -865,8 +903,10 @@ export class MeshLayer extends
           }
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
-            meshShaderManager.setGlow(gl, shader, hovered ? ngeHoverGlowMode(color!) : 0);
-            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseMark(key);
+            const pulsing = ngePulseFor(gl, shader, key, hovered);
+            meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
+            // Back to no pulse for the next cell.
+            if (!pulsing) gl.uniform4f(shader.uniform('uNgePulse'), 0, 1, 1, 0);
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);
@@ -1119,8 +1159,10 @@ export class MultiscaleMeshLayer extends
           if (shells !== null && !hovered) return;
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
-            meshShaderManager.setGlow(gl, shader, hovered ? ngeHoverGlowMode(color!) : 0);
-            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseMark(key);
+            const pulsing = ngePulseFor(gl, shader, key, hovered);
+            meshShaderManager.setGlow(gl, shader, pulsing || (hovered ? ngeHoverGlowMode(color!) : 0));
+            // Back to no pulse for the next cell.
+            if (!pulsing) gl.uniform4f(shader.uniform('uNgePulse'), 0, 1, 1, 0);
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);

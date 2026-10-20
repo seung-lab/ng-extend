@@ -47,6 +47,11 @@ const PULSE_COLORS = [
   { value: '#ffffff', label: 'White' }, { value: '#ffd34d', label: 'Gold' }, { value: '#ff6fd8', label: 'Pink' },
   { value: '#6dff8a', label: 'Green' }, { value: '#b48cff', label: 'Purple' }, { value: '#ff5a4f', label: 'Red' },
 ];
+/** A colour from the picker, not one of the swatches. */
+const isCustomPulseColor = computed(() => !!draftPulseColor.value && !PULSE_COLORS.some(c => c.value === draftPulseColor.value));
+function onPulseColorPick(e: Event) {
+  draftPulseColor.value = (e.target as HTMLInputElement).value;
+}
 const draftImageDetail = ref<1 | 2 | 4>(1);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
@@ -469,22 +474,30 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and a little brighter. Fade: the classic look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: bands of light run out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and a little brighter. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: bands of light run out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
                 <option value="halo">Halo</option>
                 <option value="saturate">Saturate</option>
-                <option value="fade">Fade (classic)</option>
+                <option value="fade">Fade (original)</option>
                 <option value="pulse">Pulse</option>
                 <option value="wireframe">Wireframe</option>
               </select>
             </label>
-            <label v-if="draftHoverStyle === 'pulse'" class="nge-settings-toggle nge-settings-pick" title="The colour of the light that runs along the cell.">
+            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="The colour of the light that runs along the cell, with the Pulse look and with the P key.">
               <span class="nge-settings-toggle-label">Pulse colour</span>
-              <select v-model="draftPulseColor" class="nge-sv-select">
-                <option v-for="c in PULSE_COLORS" :key="c.value" :value="c.value">{{ c.label }}</option>
-              </select>
-            </label>
+              <div class="nge-pulse-swatches">
+                <button v-for="c in PULSE_COLORS" :key="c.value" type="button" class="nge-pulse-swatch"
+                        :class="{ 'nge-pulse-swatch--own': !c.value, 'nge-pulse-swatch--on': draftPulseColor === c.value }"
+                        :style="c.value ? { background: c.value } : undefined" :title="c.label" :aria-label="c.label"
+                        @click="draftPulseColor = c.value"></button>
+                <label class="nge-pulse-swatch nge-pulse-swatch--pick" :class="{ 'nge-pulse-swatch--on': isCustomPulseColor }"
+                       :style="isCustomPulseColor ? { background: draftPulseColor } : undefined" title="Any colour">
+                  <input type="color" :value="draftPulseColor || '#59d8ff'" @input="onPulseColorPick" />
+                </label>
+              </div>
+            </div>
+            <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
             <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">
               <span class="nge-settings-toggle-label">When I complete a cell, show</span>
               <select v-model="draftCellMessage" class="nge-sv-select">
@@ -1481,4 +1494,16 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-settings-reset-text ul { margin: 0 0 8px; padding-left: 18px; }
 .nge-settings-reset-error { margin: 4px 0 8px; font-size: 12.5px; color: #ff9d9d; }
 .nge-settings-reset-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+/* Pulse colour: swatches and a picker (Ames 2026-10-20: "make this an actual color picker") */
+.nge-pulse-color { align-items: center; }
+.nge-pulse-swatches { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 230px; }
+.nge-pulse-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.18); padding: 0; cursor: pointer; position: relative; flex: none; }
+.nge-pulse-swatch--on { border-color: #fff; box-shadow: 0 0 0 2px rgba(120, 180, 255, 0.6); }
+.nge-pulse-swatch--own { background: conic-gradient(#59d8ff, #6dff8a, #ffd34d, #ff6fd8, #b48cff, #59d8ff); }
+.nge-pulse-swatch--pick { background: #1c2333; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+.nge-pulse-swatch--pick::after { content: '+'; color: #cfe0ff; font-size: 15px; line-height: 1; pointer-events: none; }
+.nge-pulse-swatch--pick.nge-pulse-swatch--on::after { content: ''; }
+.nge-pulse-swatch--pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
+.nge-pulse-hint { margin: 2px 0 8px; }
 </style>
