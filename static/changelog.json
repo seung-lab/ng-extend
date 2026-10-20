@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-20T00:00:00Z",
+      "at": "2026-10-20T14:58:16Z",
       "title": "Several Pyr tabs at once",
       "items": [
         "With Pyr open in more than one tab, each tab now keeps track of its own claimed cell, so moving to another cell in one tab no longer saves that tab's view into the cell you are working on in the other.",
@@ -11,21 +11,21 @@
       ]
     },
     {
-      "at": "2026-10-20T00:00:00Z",
+      "at": "2026-10-20T14:58:16Z",
       "title": "Smaller cut points",
       "items": [
         "Cut mode has a Points choice beside Keep open: Small, Medium, Regular or Large. It sizes only the red and blue cut points, so your annotation layers keep their own size."
       ]
     },
     {
-      "at": "2026-10-20T00:00:00Z",
+      "at": "2026-10-20T14:58:16Z",
       "title": "The Sandbox opens with its cells",
       "items": [
         "Opening Pyr at its plain address shows the Sandbox's starting cells again, as switching to the Sandbox does."
       ]
     },
     {
-      "at": "2026-10-20T00:00:00Z",
+      "at": "2026-10-20T14:58:16Z",
       "title": "Progress toward your next badge",
       "items": [
         "The progress bars toward your next edits and cells badges now start from the last badge your count has passed, so they no longer show a negative percentage."
