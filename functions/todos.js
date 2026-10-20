@@ -26,6 +26,14 @@ const CHECK_MAX = 60;
 const COMMENT_MAX = 2000;
 const COMMENTS_MAX = 200;
 
+const crypto = require('crypto');
+const CONNECTOR_BASE = 'https://us-central1-eyewire-ii-e4d52.cloudfunctions.net/ewTodoConnector';
+const hashKey = key => crypto.createHash('sha256').update(String(key)).digest('hex');
+function newKey() {
+  const key = crypto.randomBytes(24).toString('base64url');
+  return { key, hash: hashKey(key) };
+}
+
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 const uuid = (v, what) => { const s = String(v || ''); if (!UUID.test(s)) fail(400, `Bad ${what}.`); return s.toLowerCase(); };
 const text = (v, max, what) => {
@@ -63,7 +71,7 @@ function tagged(people, ids) {
   return people.filter(p => want.has(p.id));
 }
 
-async function todoAction(action, args, {db, me, byName, tag}) {
+async function todoAction(action, args, {db, me, byName, tag, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
   if (action === 'todo.list') {
     const [cards, people] = await Promise.all([db.cards(), db.people()]);
@@ -91,7 +99,11 @@ async function todoAction(action, args, {db, me, byName, tag}) {
       const id = uuid(args.id, 'card');
       const before = await db.card(id);
       if (!before) fail(404, 'That card is gone. Refresh the board.');
-      if ('list' in fields && fields.list !== before.list) fields.done_at = fields.list === 'done' ? now : null;
+      if ('list' in fields && fields.list !== before.list) {
+        fields.done_at = fields.list === 'done' ? now : null;
+        // Moved without a place: the bottom of its new list.
+        if (!('rank' in fields)) fields.rank = (await db.maxRank(fields.list)) + 1;
+      }
       card = await db.patch(id, { ...fields, updated_at: now });
       if (fields.list === 'done' && args.closeReport && before.triage_id) await db.closeReport(before.triage_id, byName);
       // Given the card: they hear about it, unless they gave it to themselves.
@@ -121,6 +133,20 @@ async function todoAction(action, args, {db, me, byName, tag}) {
     return { card };
   }
 
+  // The connector address (supabase-admin-todo-keys.sql): one per admin. A
+  // new one switches the old one off; the key is shown once, kept hashed.
+  if (action === 'todo.keyStatus') {
+    const k = await db.activeKey(me.id);
+    return { connected: !!k, created_at: k ? k.created_at : null, last_used_at: k ? k.last_used_at : null };
+  }
+  if (action === 'todo.key') {
+    await db.revokeKeys(me.id);
+    if (args.off) return { connected: false };
+    const { key, hash } = newKey();
+    await db.addKey(me.id, hash);
+    return { connected: true, url: `${connectorBase}/${key}` };
+  }
+
   if (action === 'todo.delete') {
     const id = uuid(args.id, 'card');
     await db.remove(id);
@@ -142,6 +168,26 @@ function slackIdOf(person) {
   return null;
 }
 
+/** Tells the people tagged on (or given) a card: the bell in Pyr, and a
+ *  Slack ping in #citsci_feedback with a link to the card. */
+function makeTagger({ sb, slackPost, slackToken, channel, site, byName, meId }) {
+  return async (people, card, what, said) => {
+    const link = `${site}/?triage=board&todo=${card.id}`;
+    const quote = String(said || '').replace(/\s+/g, ' ').slice(0, 200);
+    const rows = people.map(p => ({ title: `📋 ${byName} ${what} a To do`.slice(0, 120),
+      body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
+      target_type: 'user', target_id: p.id, send_at: new Date().toISOString(), created_by: meId || null }));
+    try { await sb('notifications', { method: 'POST', body: JSON.stringify(rows) }); }
+    catch (e) { console.warn('[todo] bell failed:', e.message); }
+    const pings = people.map(p => { const id = slackIdOf(p); return id ? `<@${id}>` : `@${p.name}`; }).join(' ');
+    try {
+      const r = await slackPost(slackToken, 'chat.postMessage', { channel, unfurl_links: false,
+        text: `📋 ${pings} ${byName} ${what} a To do: *${card.title}*${quote ? `\n> ${quote}` : ''}\n<${link}|Open it on the To do board>` });
+      if (!r.ok) console.warn('[todo] slack failed:', r.error);
+    } catch (e) { console.warn('[todo] slack failed:', e.message); }
+  };
+}
+
 /** The database, over the service key. `sb` is index.js's ewSb(key). */
 function restDb(sb) {
   const enc = encodeURIComponent;
@@ -156,6 +202,12 @@ function restDb(sb) {
     insert: async row => (await sb('admin_todos', { method: 'POST', body: JSON.stringify(row) }))[0],
     patch: async (id, row) => (await sb(`admin_todos?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }))[0],
     remove: id => sb(`admin_todos?id=eq.${id}`, { method: 'DELETE' }),
+    activeKey: async userId => (await sb(`admin_todo_keys?user_id=eq.${userId}&revoked_at=is.null&select=created_at,last_used_at&order=created_at.desc&limit=1`))[0] || null,
+    revokeKeys: userId => sb(`admin_todo_keys?user_id=eq.${userId}&revoked_at=is.null`, { method: 'PATCH', body: JSON.stringify({ revoked_at: new Date().toISOString() }) }),
+    addKey: (userId, hash) => sb('admin_todo_keys', { method: 'POST', body: JSON.stringify({ user_id: userId, key_hash: hash }) }),
+    /** Whose key this is, if it is still on. */
+    keyOwner: async hash => (await sb(`admin_todo_keys?key_hash=eq.${hash}&revoked_at=is.null&select=id,user_id,last_used_at&limit=1`))[0] || null,
+    keyUsed: id => sb(`admin_todo_keys?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ last_used_at: new Date().toISOString() }) }),
     /** Every admin with a Pyr profile: id, name, email. */
     people: async () => {
       const emails = (await sb('admins?select=email')).map(a => String(a.email || '').toLowerCase()).filter(Boolean);
@@ -175,4 +227,4 @@ function restDb(sb) {
   };
 }
 
-module.exports = { todoAction, restDb, slackIdOf, cleanFields };
+module.exports = { todoAction, restDb, slackIdOf, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE };
