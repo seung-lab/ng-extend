@@ -28,6 +28,7 @@ import VersionNotice from "components/VersionNotice.vue";
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import PhotoMode from "components/PhotoMode.vue";
+import PyrArcade from "components/PyrArcade.vue";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
@@ -211,6 +212,7 @@ onMounted(() => {
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
   document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
+  document.addEventListener('nge:open-arcade', () => { showArcade.value = true; });
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
   }) as EventListener);
@@ -433,6 +435,8 @@ function sprayHighlightIcon() {
 const showFlightMode = ref(false);
 // Photo mode (Ames 2026-10-20): from the Share toast and the palette.
 const showPhotoMode = ref(false);
+// The Pyr Arcade (Ames 2026-10-20): from the menu and the palette.
+const showArcade = ref(false);
 const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
@@ -951,6 +955,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <version-notice />
   <flight-mode v-if="showFlightMode" @hide="showFlightMode = false" />
   <photo-mode v-if="showPhotoMode" @hide="showPhotoMode = false" />
+  <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
@@ -1208,6 +1213,17 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
             <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
+          </div>
+        </li>
+        <li class="nge-menu-heading" @click.stop>Just for fun</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="showArcade = true; closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">🕹️</span><span>Pyr Arcade</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="showPhotoMode = true; closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">📷</span><span>Photo Mode</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>

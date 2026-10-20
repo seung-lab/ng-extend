@@ -198,6 +198,15 @@ function buildActions(): PaletteItem[] {
     action: () => document.dispatchEvent(new CustomEvent('nge:photo-mode')),
   });
   items.push({
+    id: 'pyr-arcade',
+    label: 'Pyr Arcade',
+    description: 'Play Neuron Tetris',
+    category: 'tool',
+    icon: '🕹️',
+    aliases: ['arcade', 'game', 'games', 'tetris', 'play', 'fun'],
+    action: () => document.dispatchEvent(new CustomEvent('nge:open-arcade')),
+  });
+  items.push({
     id: 'open-dataset-selector',
     label: 'Switch Dataset',
     description: 'Switch between stroeh retina, pinky, minnie65',
