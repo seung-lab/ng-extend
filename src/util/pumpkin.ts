@@ -43,8 +43,10 @@ interface PatchCell {
   dropNm: number;
 }
 const PATCH: PatchCell[] = [
-  // The cell the Sandbox opens on for Ames.
+  // The cell the Sandbox opens on for Ames. 648518346355727683 (the config's
+  // starter, soma given as 71847, 54909, 1158) is the same cell body.
   { soma: [71942, 54909, 1162], ids: ['648518346353862024', '648518346355727683'], heightNm: 32000, dropNm: 3500 },
+  { soma: [70064, 54399, 1762], ids: ['648518346353200058'], heightNm: 32000, dropNm: 3500 },
 ];
 /** The Sandbox's segmentation layer. */
 const SANDBOX_LAYER = 'pinky_nf_v2';
