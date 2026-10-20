@@ -3971,6 +3971,21 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-close:hover { color: #eef; }
 
+/* The gear and the close cross at a size you can see and hit (Ames
+   2026-10-20: "borderline microscopic"): 28px targets, the size of the
+   shrink arrow beside the title. */
+.nge-cl-topbar .nge-cl-gear,
+.nge-cl-topbar .nge-cl-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border-radius: 7px;
+  color: #a9bbd8;
+  transition: color 0.12s, background 0.12s, transform 0.3s;
+}
+.nge-cl-topbar .nge-cl-gear { font-size: 19px; }
+.nge-cl-topbar .nge-cl-close { font-size: 26px; margin-left: 2px; }
+.nge-cl-topbar .nge-cl-gear:hover,
+.nge-cl-topbar .nge-cl-close:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
+
 /* Filters */
 .nge-cl-filters {
   display: flex;
