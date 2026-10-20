@@ -25,6 +25,13 @@ Checks, all paired with the anchor on the soma:
 Weights: a piece weighs its supervoxel count, so a dendrite counts for far
 more than a crumb. The ends together weigh `ends_share` of the whole score.
 
+Marks (optional, "marks" in the reference): the places the test scores.
+Celia's version of the reference (2026-10-19) marks 21 places with a point
+on a fixed piece. Then only the marked pieces are scored, with any other
+piece fixed within `mark_place_nm` of a marked one (one mistake can take
+several pieces), and an end on a missing piece that is not scored drops out:
+a player is not asked to merge that piece, so cannot reach its tip.
+
 Every check is verified in its start state on the live cell before any SQL
 is printed (the live cell must be at its start), and in its end state in the
 reference.
@@ -142,32 +149,73 @@ def main():
         checks.append({"kind": "cut", "label": "Wrong piece" + (f" near {p[0]}, {p[1]}, {p[2]}" if p else ""),
                        "a": anchor, "b": sv, "pb": p, "weight": len(members)})
 
-    # Her ends: a keep check where the end is on the start cell, and the end itself.
-    radius = int(cfg.get("endpoint_radius_nm", 1500))
-    ends = ref["ends"]
-    for j, pt in enumerate(ends):
+    def nearest_sv(pt, wanted, radii=(2, 4, 8, 16, 32)):
+        """The supervoxel of `wanted` nearest a viewer point, or None."""
         v = (np.array(pt) * VIEW // res).astype(int)
-        best = None
-        for rr in (2, 4, 8, 16, 32):
-            block = cv[v[0] - rr:v[0] + rr + 1, v[1] - rr:v[1] + rr + 1, max(0, v[2] - 2):v[2] + 3][:, :, :, 0]
-            labels = np.asarray(block)
-            ok = np.isin(labels, np.array([s for s in np.unique(labels) if int(s) in refset], dtype=labels.dtype))
+        for rr in radii:
+            labels = np.asarray(cv[v[0] - rr:v[0] + rr + 1, v[1] - rr:v[1] + rr + 1, max(0, v[2] - 2):v[2] + 3][:, :, :, 0])
+            ok = np.isin(labels, np.array([x for x in np.unique(labels) if int(x) in wanted], dtype=labels.dtype))
             if ok.any():
-                # the reference cell's supervoxel nearest the point, in nm
                 pos = np.argwhere(ok)
                 centre = np.array([rr, rr, v[2] - max(0, v[2] - 2)])
                 k = int(np.argmin((((pos - centre) * res) ** 2).sum(axis=1)))
-                best = int(labels[tuple(pos[k])])
-                break
-        if best is not None and best in start:
-            checks.append({"kind": "keep", "label": f"Branch {j + 1}", "a": best, "b": anchor, "pa": pt, "weight": 0})
-        elif best is None:
+                return int(labels[tuple(pos[k])])
+        return None
+
+    # Marks: the places the test scores (see the top of this file).
+    marks = ref.get("marks") or []
+    unscored_pieces = set()                 # baseline roots of missing pieces left out
+    if marks:
+        merges = [c for c in checks if c["kind"] == "merge"]
+        cuts = [c for c in checks if c["kind"] == "cut"]
+        identity = {}
+        for c, r in zip(merges, cv.get_roots([c["a"] for c in merges], timestamp=T0)):
+            identity[("m", int(r))] = c
+        for c, r in zip(cuts, cv.get_roots([c["b"] for c in cuts], timestamp=TR)):
+            identity[("c", int(r))] = c
+        marked = []
+        for m in marks:
+            sv = nearest_sv(m, set(missing) | set(extra), radii=(6, 12, 24, 48))
+            if sv is None:
+                log(f"  mark {m}: on no fixed piece within 384 nm")
+                continue
+            hit = ("m", int(cv.get_roots([sv], timestamp=T0)[0])) if sv in set(missing) else ("c", int(cv.get_roots([sv], timestamp=TR)[0]))
+            if hit in identity:
+                marked.append(identity[hit])
+        place = float(cfg.get("mark_place_nm", 3000))
+        nm = lambda p: np.array(p) * VIEW
+        loc = lambda c: c.get("pa") or c.get("pb")
+        def scored(c):
+            if any(c is m for m in marked):
+                return True
+            return loc(c) is not None and any(loc(m) is not None and np.linalg.norm(nm(loc(c)) - nm(loc(m))) <= place for m in marked)
+        kept = [c for c in checks if scored(c)]
+        left = [c for c in checks if not scored(c)]
+        for c, r in zip([c for c in left if c["kind"] == "merge"], cv.get_roots([c["a"] for c in left if c["kind"] == "merge"], timestamp=T0) if any(c["kind"] == "merge" for c in left) else []):
+            unscored_pieces.add(int(r))
+        log(f"marks: {len(marks)}, on {len({id(c) for c in marked})} pieces; scored with the pieces fixed at the same places: {len(kept)} of {len(checks)}")
+        log("not scored, largest first: " + "; ".join(f"{c['label']} ({c['weight']})" for c in sorted(left, key=lambda c: -c["weight"])))
+        checks = kept
+
+    # Her ends: a keep check where the end is on the start cell, and the end
+    # itself, unless it sits on a missing piece the test does not score.
+    radius = int(cfg.get("endpoint_radius_nm", 1500))
+    ends = []
+    for j, pt in enumerate(ref["ends"]):
+        best = nearest_sv(pt, refset)
+        if best is None:
             log(f"  end {j + 1} at {pt}: no supervoxel of the reference cell within 256 nm")
+        elif best in start:
+            checks.append({"kind": "keep", "label": f"Branch {j + 1}", "a": best, "b": anchor, "pa": pt, "weight": 0})
+        elif unscored_pieces and int(cv.get_roots([best], timestamp=T0)[0]) in unscored_pieces:
+            log(f"  end {j + 1} at {pt}: on a missing piece the test does not score, left out")
+            continue
+        ends.append((j, pt))
 
     error_weight = sum(c["weight"] for c in checks if c["kind"] in ("merge", "cut"))
     share = float(cfg.get("ends_share", 0.2))
     per_end = max(1, round(error_weight * share / (1 - share) / max(1, len(ends))))
-    for j, pt in enumerate(ends):
+    for j, pt in ends:
         checks.append({"kind": "endpoint", "label": f"Branch end {j + 1}", "pa": pt, "weight": per_end, "radius": radius})
 
     # Verify: start state on the live cell now, end state in the reference.
@@ -206,6 +254,8 @@ def main():
             sql_str(json.dumps(pa)) if pa else "NULL", sql_str(json.dumps(pb)) if pb else "NULL",
             str(c["radius"]) if c.get("radius") else "NULL", str(int(c["weight"]))]) + ")")
     print(f"-- The proofreading test's answer key from the tracer's finished cell ({ref['by']}, root {ref['root']}),")
+    if marks:
+        print(f"-- scoring only the {len(marks)} places marked in {ref.get('marks_from', 'the reference')},")
     print(f"-- generated {datetime.datetime.now(datetime.timezone.utc).isoformat()}: {n['merge']} missing pieces and {n['cut']} wrong pieces")
     print(f"-- weighted by size, {n['keep']} keep checks at real branch tips, {n['endpoint']} branch ends ({int(share * 100)} percent of the score).")
     print(f"-- Pass mark {cfg['pass_mark']}. Replaces every check of the test. Run in the Supabase SQL editor after the schema file.")
