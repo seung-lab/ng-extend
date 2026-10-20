@@ -85,6 +85,9 @@ export interface DatasetCaveConfig {
    *  "instructions" is clicked (Retina, from Ames's tester doc 2026-09-29).
    *  Trusted HTML written here in code: <b>, and <a> links open a new tab. */
   howToSteps?: string[];
+  /** Where an admin's in-game edit of howToSteps is kept (src/site_texts.ts).
+   *  Datasets that share their steps share the key. */
+  howToKey?: string;
   /** A view with one example of each cell type, opened from the Cell
    *  Library header (MEC). A full neuroglancer state. */
   cellTypesState?: Record<string, any>;
@@ -118,6 +121,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5488298986307584',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
+    howToKey:         'howto.retina',
     labSheetRpc:      'ew_retina_lab_sheet_match',
     labSheetTable:    'ew_retina_lab_sheet',
   },
@@ -140,6 +144,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5488298986307584',
     cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
     howToSteps:       RETINA_HOWTO,
+    howToKey:         'howto.retina',
     labSheetRpc:      'ew_retina_lab_sheet_match',
     labSheetTable:    'ew_retina_lab_sheet',
   },

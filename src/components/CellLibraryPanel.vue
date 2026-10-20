@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reportWriteFailure } from '../util/error_reporting';
+import EditableText from './EditableText.vue';
 import { otherTabCount } from '../util/tabs';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam, whenSettled } from '../util/panel_collapse';
@@ -195,6 +196,8 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** Where an admin's edit of the steps is kept (config howToKey, else by dataset). */
+const datasetHowToKey = computed(() => getDatasetCaveConfig(activeDataset.value).howToKey || ('howto.' + (activeDataset.value || 'dataset').toLowerCase().replace(/[^a-z0-9_.-]/g, '_')).slice(0, 64));
 /** A view with one example of each cell type (MEC), loaded in place. */
 const datasetCellTypesState = computed(() => {
   const cfg = getDatasetCaveConfig(activeDataset.value);
@@ -2625,9 +2628,8 @@ const panelStyle = computed(() => ({
             <span>How to map a cell</span>
             <button class="nge-cl-howto-close" @click="showHowTo = false" title="Close">×</button>
           </div>
-          <ol class="nge-cl-howto-steps">
-            <li v-for="(step, si) in datasetHowTo" :key="si" v-html="step"></li>
-          </ol>
+          <!-- Admins can change these in the game (Celia 2026-10-20). -->
+          <EditableText :text-key="datasetHowToKey" :original="datasetHowTo" list-class="nge-cl-howto-steps" />
         </div>
 
         <!-- Filter tabs -->
@@ -4860,15 +4862,15 @@ select.nge-cl-complete-type:hover {
   background: none; border: none; color: #8aa; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px;
 }
 .nge-cl-howto-close:hover { color: #fff; }
-.nge-cl-howto-steps {
+:deep(.nge-cl-howto-steps) {
   margin: 0; padding-left: 20px;
   font-size: 12.5px; line-height: 1.5; color: #cfdcef;
 }
-.nge-cl-howto-steps li { margin: 3px 0; padding-left: 2px; }
-.nge-cl-howto-steps li::marker { color: #42d5ec; font-weight: 700; }
-.nge-cl-howto-steps :deep(b) { color: #fff; font-weight: 600; }
-.nge-cl-howto-steps :deep(a) { color: #7ecaff; }
-.nge-cl-howto-steps :deep(a:hover) { color: #fff; }
+:deep(.nge-cl-howto-steps li) { margin: 3px 0; padding-left: 2px; }
+:deep(.nge-cl-howto-steps li::marker) { color: #42d5ec; font-weight: 700; }
+:deep(.nge-cl-howto-steps b) { color: #fff; font-weight: 600; }
+:deep(.nge-cl-howto-steps a) { color: #7ecaff; }
+:deep(.nge-cl-howto-steps a:hover) { color: #fff; }
 .nge-cl-tabgroup--cells { --grp: #42d5ec; }
 .nge-cl-tabgroup--community { --grp: #e6c760; }
 .nge-cl-tabgroup--mine { --grp: #c98bff; }

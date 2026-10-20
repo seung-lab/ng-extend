@@ -224,3 +224,18 @@ test('a new profile can not arrive with totals',()=>{
  const p=plan('users','POST','',{display_name:'New',total_edits:1000000000,cells_completed:5,current_streak:9,total_annotations:3});
  assert.deepEqual(p.body,{display_name:'New',middleauth_email:'player@example.invalid',cave_user_id:123});
 });
+test('site texts: anyone reads, only admins save or delete, by key, stamped with who',()=>{
+ const admin={...user,isAdmin:true};
+ assert.equal(plan('site_texts','GET','key=eq.howto.retina',undefined,anon).query.get('and'),null);
+ const body={key:'quest.retina_cilia.steps',body:'1. Claim a cell',updated_by:b,updated_at:'1999-01-01'};
+ assert.throws(()=>plan('site_texts','POST','on_conflict=key',body),/Admins only/);
+ assert.throws(()=>plan('site_texts','POST','on_conflict=key',body,anon),/Sign in/);
+ const p=plan('site_texts','POST','on_conflict=key',body,admin);
+ assert.equal(p.body.updated_by,a); assert.equal(p.body.updated_at,user.now); assert.equal(p.body.updated_by_name,'Player');
+ assert.throws(()=>plan('site_texts','POST','on_conflict=key',{...body,key:'Bad Key!'},admin),/Invalid text key/);
+ assert.throws(()=>plan('site_texts','POST','on_conflict=key',{...body,body:'x'.repeat(20001)},admin),/under 20000/);
+ assert.throws(()=>plan('site_texts','PATCH','key=eq.howto.retina',{body:'x'},admin),/whole text/);
+ assert.throws(()=>plan('site_texts','DELETE','',undefined,admin),/key is required/);
+ assert.equal(plan('site_texts','DELETE','key=eq.howto.retina',undefined,admin).method,'DELETE');
+ assert.throws(()=>plan('site_texts','POST','on_conflict=updated_by',body,admin),/conflict target/);
+});

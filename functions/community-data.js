@@ -49,6 +49,9 @@ const columns = {
   blog_posts: 'id,slug,title,summary,body,cover_url,status,author_id,author_name,published_at,created_at,updated_at',
   // Who may write for the blog. You can see your own row; admins see all.
   blog_authors: 'user_id,added_at',
+  // Instructions the lab edits in the game (supabase-site-texts.sql). Anyone
+  // reads; admins write. A key with no row shows the text in the code.
+  site_texts: 'key,body,updated_by,updated_by_name,updated_at',
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,total_annotations,favorite_badges,favorite_badges_bronze,trophy_order',
@@ -65,6 +68,7 @@ const writable = {
   user_settings: 'settings,updated_at',
   user_views: 'dataset,state,updated_at',
   blog_posts: 'slug,title,summary,body,cover_url,status,published_at',
+  site_texts: 'key,body',
 };
 function authorizeData(input, ctx) {
   const {table} = input;
@@ -139,6 +143,12 @@ function authorizeData(input, ctx) {
   if (['user_groups','user_group_members'].includes(table)) admin();
   else if (!(table === 'users' && method === 'POST' && ctx.who?.email)) own();
   if (table === 'site_issues' && method !== 'POST') admin();
+  // Site texts: admins save (an upsert by key) or delete (back to the code's text).
+  if (table === 'site_texts') {
+    admin();
+    if (method === 'PATCH') fail(405, 'Save the whole text.');
+    if (method === 'DELETE' && !/^eq\.[a-z0-9_.-]{1,64}$/.test(query.get('key') || '')) fail(400, 'A text key is required.');
+  }
   if (table === 'blog_posts') {
     if (!ctx.isBlogAuthor) fail(403, 'Only blog authors can write posts.');
     if (method !== 'POST' && !/^eq\.\d+$/.test(query.get('id') || '')) fail(400, 'A post id is required.');
@@ -173,6 +183,7 @@ function authorizeData(input, ctx) {
     (table === 'user_settings' && query.get('on_conflict') === 'user_id') ||
     (table === 'user_views' && query.get('on_conflict') === 'user_id,dataset') ||
     (table === 'chat_presence' && query.get('on_conflict') === 'user_id') ||
+    (table === 'site_texts' && query.get('on_conflict') === 'key') ||
     (table === 'user_group_members' && ctx.isAdmin && query.get('on_conflict') === 'group_id,user_id');
   if (query.has('on_conflict') && !validConflict) fail(400, 'Unsupported conflict target');
   if (method === 'DELETE') return {table,method,query};
@@ -248,6 +259,11 @@ function authorizeData(input, ctx) {
       if (!s || typeof s !== 'object' || Array.isArray(s)) fail(400, 'Settings must be an object.');
       if (JSON.stringify(s).length > 32 * 1024) fail(413, 'Settings are too large.');
       row.updated_at = ctx.now;
+    }
+    if (table === 'site_texts') {
+      if (typeof row.key !== 'string' || !/^[a-z0-9_.-]{1,64}$/.test(row.key)) fail(400, 'Invalid text key.');
+      if (typeof row.body !== 'string' || row.body.length > 20000) fail(400, 'A text must be under 20000 characters.');
+      row.updated_by = own(); row.updated_by_name = me.display_name || me.username || 'Admin'; row.updated_at = ctx.now;
     }
     if (table === 'site_issues') {
       row.user_id=own(); row.user_name=me.display_name || 'Player';
