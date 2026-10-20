@@ -59,6 +59,7 @@ let lastTick = 0;
 let dropAcc = 0;
 let clearing: { rows: number[]; until: number } | null = null;
 let cheerTimer: ReturnType<typeof setTimeout> | null = null;
+let ghostCanvas: HTMLCanvasElement | null = null;
 
 function readBest(): number {
   try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; }
@@ -247,41 +248,211 @@ function shade(hex: string, amt: number): string {
   return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
-/** One piece's cells as beads joined by neurite. */
-function drawCells(ctx: CanvasRenderingContext2D, cells: Array<{ x: number; y: number; cell: Cell }>, size: number, alpha = 1) {
+/** A small steady random number for a cell, so its twigs do not flicker. */
+function rand(seed: number): () => number {
+  let t = (seed * 2654435761) >>> 0;
+  return () => {
+    t = (t + 0x6d2b79f5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+type Placed = { x: number; y: number; cell: Cell };
+const DIRS: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/**
+ * Each piece is drawn as a little neuron (Ames: "make the tetris blocks look
+ * like neurons"): a soma with a nucleus at the best connected cell, neurite
+ * that thins as it leaves the soma, and dendrite twigs with spines growing
+ * into the free sides of each cell. The axon piece is myelinated and ends in
+ * a bouton. A piece cut by a merged row keeps its soma on one part only.
+ */
+function drawCells(ctx: CanvasRenderingContext2D, cells: Placed[], size: number, alpha = 1) {
   ctx.save();
   ctx.globalAlpha = alpha;
-  const at = new Map(cells.map(c => [`${c.x},${c.y}`, c]));
-  // Neurite first, so the beads sit on top.
+  const byPid = new Map<number, Placed[]>();
   for (const c of cells) {
-    for (const [dx, dy] of [[1, 0], [0, 1]]) {
-      const o = at.get(`${c.x + dx},${c.y + dy}`);
-      if (!o || o.cell.pid !== c.cell.pid) continue;
-      const thick = c.cell.kind === 'soma' ? 0.9 : c.cell.kind === 'axon' ? 0.28 : 0.4;
-      ctx.strokeStyle = shade(c.cell.color, -0.15);
-      ctx.lineWidth = size * thick;
-      ctx.lineCap = 'round';
+    const list = byPid.get(c.cell.pid) ?? [];
+    list.push(c);
+    byPid.set(c.cell.pid, list);
+  }
+  for (const group of byPid.values()) drawNeuron(ctx, group, size);
+  ctx.restore();
+}
+
+function drawNeuron(ctx: CanvasRenderingContext2D, group: Placed[], size: number) {
+  const at = new Map(group.map(c => [`${c.x},${c.y}`, c]));
+  const nb = (c: Placed) => DIRS.map(([dx, dy]) => at.get(`${c.x + dx},${c.y + dy}`)).filter((o): o is Placed => !!o);
+  const { color, kind, pid } = group[0].cell;
+  // Split into connected parts; the largest keeps the soma.
+  const seen = new Set<Placed>();
+  const parts: Placed[][] = [];
+  for (const start of group) {
+    if (seen.has(start)) continue;
+    const part: Placed[] = [];
+    const stack = [start];
+    seen.add(start);
+    while (stack.length) {
+      const c = stack.pop()!;
+      part.push(c);
+      for (const o of nb(c)) if (!seen.has(o)) { seen.add(o); stack.push(o); }
+    }
+    parts.push(part);
+  }
+  parts.sort((a, b) => b.length - a.length);
+  let somaDrawn = false;
+  const centre = (c: Placed): [number, number] => [(c.x + 0.5) * size, (c.y + 0.5) * size];
+
+  for (const part of parts) {
+    const hasSoma = !somaDrawn && (part.length >= 2 || kind === 'soma');
+    // The root: the axon starts at an end, every other kind at its hub.
+    const score = (c: Placed) => nb(c).length * 10 - (c.y * COLS + c.x) * 0.01;
+    let root = part.reduce((a, b) => (score(b) > score(a) ? b : a));
+    if (kind === 'axon') root = part.find(c => nb(c).length <= 1) ?? root;
+    const parent = new Map<Placed, Placed | null>([[root, null]]);
+    const depth = new Map<Placed, number>([[root, 0]]);
+    const order = new Map<Placed, number>();
+    const queue = [root];
+    while (queue.length) {
+      const c = queue.shift()!;
+      order.set(c, order.size);
+      for (const o of nb(c)) {
+        if (parent.has(o)) continue;
+        parent.set(o, c);
+        depth.set(o, depth.get(c)! + 1);
+        queue.push(o);
+      }
+    }
+
+    // A faint tint under each square, so the shape stays easy to read.
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = color;
+    ctx.globalAlpha *= 0.1;
+    for (const c of part) ctx.fillRect(c.x * size + 1, c.y * size + 1, size - 2, size - 2);
+    ctx.globalAlpha /= 0.1;
+
+    ctx.shadowColor = color;
+    ctx.shadowBlur = size * 0.3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Twigs and spines first, so the neurite sits on top of them.
+    for (const c of part) {
+      const leaf = nb(c).length <= 1;
+      const isEnd = kind === 'axon' && c !== root && leaf;
+      if (kind === 'axon' && !isEnd) continue;  // an axon is bare until its end
+      const r = rand(pid * 977 + order.get(c)! * 31);  // steady as the piece moves
+      const [cx, cy] = centre(c);
+      const used = new Set(nb(c).map(o => `${o.x - c.x},${o.y - c.y}`));
+      const free = DIRS.filter(([dx, dy]) => !used.has(`${dx},${dy}`));
+      const count = isEnd ? free.length
+        : hasSoma && c === root ? free.length
+        : Math.min(free.length, leaf ? 2 : 1 + Math.floor(r() * 2));
+      const pick = free.slice().sort(() => r() - 0.5).slice(0, count);
+      for (const [dx, dy] of pick) {
+        const base = Math.atan2(dy, dx) + (r() - 0.5) * 0.9;
+        const len = size * (isEnd ? 0.34 : 0.38 + r() * 0.14);
+        const ex = cx + Math.cos(base) * len, ey = cy + Math.sin(base) * len;
+        const bend = (r() - 0.5) * size * 0.25;
+        const mx = (cx + ex) / 2 - Math.sin(base) * bend, my = (cy + ey) / 2 + Math.cos(base) * bend;
+        ctx.strokeStyle = shade(color, -0.1);
+        ctx.lineWidth = Math.max(1, size * 0.07);
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
+        if (isEnd) {
+          // Bouton: the small swelling where an axon meets its partner.
+          ctx.fillStyle = shade(color, 0.3);
+          ctx.beginPath(); ctx.arc(ex, ey, size * 0.09, 0, Math.PI * 2); ctx.fill();
+          continue;
+        }
+        // A fork near the tip, and a couple of spines.
+        const fa = base + (r() < 0.5 ? -1 : 1) * (0.6 + r() * 0.4);
+        const fx = mx + (ex - mx) * 0.3, fy = my + (ey - my) * 0.3;
+        ctx.lineWidth = Math.max(0.8, size * 0.045);
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(fa) * len * 0.45, fy + Math.sin(fa) * len * 0.45); ctx.stroke();
+        ctx.fillStyle = shade(color, 0.25);
+        for (let k = 0; k < 2; k++) {
+          const t = 0.45 + r() * 0.5;
+          const sx = cx + (ex - cx) * t + (r() - 0.5) * size * 0.08;
+          const sy = cy + (ey - cy) * t + (r() - 0.5) * size * 0.08;
+          ctx.beginPath(); ctx.arc(sx, sy, Math.max(0.9, size * 0.035), 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+
+    // Neurite from each cell to its parent, thinning away from the soma.
+    for (const c of part) {
+      const p = parent.get(c);
+      if (!p) continue;
+      const [x1, y1] = centre(p), [x2, y2] = centre(c);
+      const d = depth.get(c)!;
+      if (kind === 'axon') {
+        ctx.strokeStyle = shade(color, -0.05);
+        ctx.lineWidth = size * 0.12;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        // Myelin: pale sheaths, with the gaps between them as the nodes.
+        ctx.strokeStyle = shade(color, 0.45);
+        ctx.lineWidth = size * 0.24;
+        ctx.beginPath();
+        ctx.moveTo(x1 + (x2 - x1) * 0.2, y1 + (y2 - y1) * 0.2);
+        ctx.lineTo(x1 + (x2 - x1) * 0.8, y1 + (y2 - y1) * 0.8);
+        ctx.stroke();
+        continue;
+      }
+      const w0 = size * (kind === 'soma' ? 0.5 : 0.3) * Math.pow(0.72, d - 1);
+      const w1 = w0 * 0.72;
+      const ang = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
+      const g = ctx.createLinearGradient(x1, y1, x2, y2);
+      g.addColorStop(0, color);
+      g.addColorStop(1, shade(color, -0.2));
+      ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.moveTo((c.x + 0.5) * size, (c.y + 0.5) * size);
-      ctx.lineTo((o.x + 0.5) * size, (o.y + 0.5) * size);
-      ctx.stroke();
+      ctx.moveTo(x1 + Math.cos(ang) * w0 / 2, y1 + Math.sin(ang) * w0 / 2);
+      ctx.lineTo(x2 + Math.cos(ang) * w1 / 2, y2 + Math.sin(ang) * w1 / 2);
+      ctx.arc(x2, y2, w1 / 2, ang, ang + Math.PI);
+      ctx.lineTo(x1 - Math.cos(ang) * w0 / 2, y1 - Math.sin(ang) * w0 / 2);
+      ctx.closePath();
+      ctx.fill();
+      if (nb(c).length !== 2) { ctx.beginPath(); ctx.arc(x2, y2, w1 * 0.62, 0, Math.PI * 2); ctx.fill(); }
+    }
+
+    // The soma, with its nucleus.
+    if (hasSoma) {
+      somaDrawn = true;
+      let [cx, cy] = centre(root);
+      let rad = size * (kind === 'axon' ? 0.3 : 0.4);
+      if (kind === 'soma') {
+        // The soma piece is one big cell body over its squares.
+        cx = part.reduce((a, c) => a + centre(c)[0], 0) / part.length;
+        cy = part.reduce((a, c) => a + centre(c)[1], 0) / part.length;
+        rad = size * (part.length >= 4 ? 0.8 : 0.5);
+      }
+      const r = rand(pid * 13 + 5);
+      const g = ctx.createRadialGradient(cx - rad * 0.35, cy - rad * 0.4, rad * 0.1, cx, cy, rad);
+      g.addColorStop(0, shade(color, 0.6));
+      g.addColorStop(0.6, color);
+      g.addColorStop(1, shade(color, -0.3));
+      ctx.fillStyle = g;
+      // A slightly lumpy outline reads as a cell body, not a ball.
+      ctx.beginPath();
+      const lumps = 24;
+      const phase = r() * 6;
+      for (let k = 0; k <= lumps; k++) {
+        const a = (k / lumps) * Math.PI * 2;
+        const rr = rad * (0.92 + 0.08 * Math.sin(a * 3 + phase));
+        const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = shade(color, -0.45);
+      ctx.beginPath(); ctx.arc(cx + rad * 0.1, cy + rad * 0.05, rad * 0.36, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = shade(color, 0.5);
+      ctx.beginPath(); ctx.arc(cx + rad * 0.2, cy - rad * 0.05, rad * 0.1, 0, Math.PI * 2); ctx.fill();
     }
   }
-  for (const c of cells) {
-    const cx = (c.x + 0.5) * size, cy = (c.y + 0.5) * size;
-    const r = size * (c.cell.kind === 'soma' ? 0.52 : c.cell.kind === 'axon' ? 0.3 : 0.36);
-    const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.1, cx, cy, r);
-    g.addColorStop(0, shade(c.cell.color, 0.55));
-    g.addColorStop(0.55, c.cell.color);
-    g.addColorStop(1, shade(c.cell.color, -0.35));
-    ctx.fillStyle = g;
-    ctx.shadowColor = c.cell.color;
-    ctx.shadowBlur = size * 0.35;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
 }
 
 function activeCells(y: number) {
@@ -326,7 +497,19 @@ function draw(now = performance.now()) {
   }
 
   if (active && state.value !== 'over') {
-    drawCells(ctx, activeCells(ghostY()), CELL, 0.18);
+    // The ghost is drawn whole and then faded, so its overlaps do not show.
+    const gc = ghostCanvas ??= document.createElement('canvas');
+    if (gc.width !== cv.width || gc.height !== cv.height) { gc.width = cv.width; gc.height = cv.height; }
+    const gx = gc.getContext('2d')!;
+    gx.setTransform(1, 0, 0, 1, 0, 0);
+    gx.clearRect(0, 0, gc.width, gc.height);
+    gx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawCells(gx, activeCells(ghostY()), CELL);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 0.2;
+    ctx.drawImage(gc, 0, 0);
+    ctx.restore();
     drawCells(ctx, activeCells(active.y), CELL);
   }
 }

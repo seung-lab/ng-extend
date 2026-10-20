@@ -5,7 +5,7 @@
       "at": "2026-10-20T15:29:01Z",
       "title": "The Pyr Arcade",
       "items": [
-        "The menu has a new Just for fun section with the Pyr Arcade. Its first game is Neuron Tetris: stack falling somas, axons, dendrites and spines, and fill a row to merge it while Nurro cheers.",
+        "The menu has a new Just for fun section with the Pyr Arcade. Its first game is Neuron Tetris: stack falling little neurons, each with its cell body, dendrites and spines, or a myelinated axon, and fill a row to merge it while Nurro cheers.",
         "Arrow keys move and turn the pieces, Space drops one, P pauses, and your best score is kept on this computer."
       ]
     },
@@ -14,7 +14,8 @@
       "title": "Photo mode",
       "items": [
         "Photo mode hides everything but the 3D view, fills the window with it and turns your cells slowly, like a turntable. Open it from the camera row that appears after Share, or from the command palette.",
-        "Its small bar picks the spin speed and a black, night, grey or white background, saves a clean picture, and records one full turn as a short video you can share. Esc leaves and puts your view back as it was."
+        "Its small bar picks the spin speed and a black, night, grey or white background, saves a clean picture, and records one full turn as a short video you can share. Esc leaves and puts your view back as it was.",
+        "Pick centre chooses what the spin turns around: click a spot on a cell, or type a point as x, y, z."
       ]
     },
     {

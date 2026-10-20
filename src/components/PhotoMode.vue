@@ -39,6 +39,11 @@ const recording = ref(false);
 const recordProgress = ref(0);
 const flash = ref(false);
 const note = ref('');
+/** Picking the point the spin turns around (Ames: "let them select a point
+ *  and it rotates around that"). The 3D view always turns around the view's
+ *  centre, so picking a point moves the centre there. */
+const picking = ref(false);
+const coordText = ref('');
 
 const recordPercent = computed(() => Math.round(recordProgress.value * 100));
 
@@ -59,6 +64,8 @@ function enter() {
     controls: v.uiConfiguration?.showUIControls?.value,
     borders: v.uiConfiguration?.showPanelBorders?.value,
     bg: Array.from(v.perspectiveViewBackgroundColor?.value ?? [0, 0, 0]),
+    position: Array.from(v.navigationState?.position?.value ?? []),
+    orientation: Array.from(v.perspectiveNavigationState?.pose?.orientation?.orientation ?? []),
   };
   document.body.classList.add('nge-photo-mode');
   try {
@@ -79,7 +86,7 @@ function enter() {
 }
 
 function leave() {
-  document.body.classList.remove('nge-photo-mode');
+  document.body.classList.remove('nge-photo-mode', 'nge-photo-picking');
   const v = viewer();
   if (!v || !saved) return;
   const s = saved;
@@ -93,6 +100,13 @@ function leave() {
     () => { v.uiConfiguration.showUIControls.value = s.controls; },
     () => { v.uiConfiguration.showPanelBorders.value = s.borders; },
     () => { v.perspectiveViewBackgroundColor.value = Float32Array.from(s.bg); },
+    () => { if (s.position.length) v.navigationState.position.value = Float32Array.from(s.position); },
+    () => {
+      if (s.orientation.length !== 4) return;
+      const o = v.perspectiveNavigationState.pose.orientation;
+      o.orientation.set(s.orientation);
+      o.changed.dispatch();
+    },
   ];
   for (const t of tries) { try { t(); } catch { /* put back what we can */ } }
 }
@@ -105,6 +119,48 @@ function setBackground(id: string) {
 
 function swatchStyle(rgb: readonly number[]) {
   return { background: `rgb(${rgb.map(c => Math.round(c * 255)).join(',')})` };
+}
+
+/* ── the point it turns around ── */
+function setCentre(pos: ArrayLike<number>): boolean {
+  try {
+    const p = viewer().navigationState.position;
+    const rank = p.value?.length ?? 0;
+    if (!rank || pos.length < rank || Array.from(pos).some(n => !Number.isFinite(n))) return false;
+    p.value = Float32Array.from(Array.from(pos).slice(0, rank));
+    return true;
+  } catch { return false; }
+}
+function startPicking() {
+  picking.value = !picking.value;
+  document.body.classList.toggle('nge-photo-picking', picking.value);
+  if (picking.value) {
+    try { coordText.value = Array.from<number>(viewer().navigationState.position.value).map(n => Math.round(n)).join(', '); } catch { /* no viewer */ }
+  }
+}
+function stopPicking() {
+  picking.value = false;
+  document.body.classList.remove('nge-photo-picking');
+}
+function useTypedCoords() {
+  const nums = coordText.value.split(/[\s,;]+/).filter(Boolean).map(Number);
+  if (setCentre(nums)) { stopPicking(); say('Now turning around that point.'); }
+  else say('Type three numbers, like 1200, 3400, 560.');
+}
+/** In picking, a click on a cell makes that spot the centre. */
+function onPickClick(e: PointerEvent) {
+  if (!picking.value || e.button !== 0) return;
+  const t = e.target as HTMLElement | null;
+  if (!t || !t.closest('#neuroglancer-container')) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const m = viewer()?.mouseState;
+  if (m?.active && m.position?.length && setCentre(m.position)) {
+    stopPicking();
+    say('Now turning around that point.');
+  } else {
+    say('Click on a cell, not on the background.');
+  }
 }
 
 /* ── the turntable ── */
@@ -287,6 +343,7 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault();
     e.stopImmediatePropagation();
     if (recording.value) { stopRecording(); return; }
+    if (picking.value) { stopPicking(); return; }
     emit('hide');
   } else if (e.key === ' ' && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
@@ -295,7 +352,10 @@ function onKeyDown(e: KeyboardEvent) {
     wake();
   }
 }
-function onPointerDown() { pointerDown = true; }
+function onPointerDown(e: PointerEvent) {
+  if (picking.value) { onPickClick(e); return; }
+  pointerDown = true;
+}
 function onPointerUp() { pointerDown = false; }
 
 onMounted(() => {
@@ -324,7 +384,7 @@ onBeforeUnmount(() => {
 <template>
   <teleport to="body">
     <div class="nge-photo-flash" :class="{ on: flash }" data-nge-capture-skip></div>
-    <div class="nge-photo-bar" :class="{ idle: idle && !recording }" data-nge-capture-skip
+    <div class="nge-photo-bar" :class="{ idle: idle && !recording && !picking }" data-nge-capture-skip
          @mouseenter="wake" @pointerdown.stop>
       <span class="nge-photo-title">Photo mode</span>
 
@@ -348,6 +408,14 @@ onBeforeUnmount(() => {
                 @click="setBackground(b.id)"></button>
       </div>
 
+      <button class="nge-photo-btn" :class="{ on: picking }" :disabled="recording"
+              title="Choose the point the spin turns around" @click="startPicking">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+        </svg>
+        Pick centre
+      </button>
+
       <label class="nge-photo-check" title="A small Pyr mark in the corner of pictures and recordings">
         <input type="checkbox" v-model="watermark" /> Pyr mark
       </label>
@@ -368,6 +436,13 @@ onBeforeUnmount(() => {
       </button>
 
       <button class="nge-photo-btn" title="Leave photo mode (Esc)" @click="emit('hide')">Exit</button>
+    </div>
+    <div v-if="picking" class="nge-photo-pick" data-nge-capture-skip @pointerdown.stop @keydown.stop>
+      <span>Click a spot on a cell to turn around it, or type a point:</span>
+      <input v-model="coordText" class="nge-photo-coords" placeholder="x, y, z" spellcheck="false"
+             @keydown.enter.prevent="useTypedCoords" />
+      <button class="nge-photo-btn primary" @click="useTypedCoords">Use point</button>
+      <button class="nge-photo-btn" @click="stopPicking">Cancel</button>
     </div>
     <div v-if="note" class="nge-photo-note" data-nge-capture-skip>{{ note }}</div>
     <div class="nge-photo-hint" :class="{ idle }" data-nge-capture-skip>Drag to turn the cell yourself. Esc to leave.</div>
@@ -453,7 +528,7 @@ body.nge-photo-mode { cursor: default; }
 .nge-photo-swatch.on { border-color: #5be3ff; box-shadow: 0 0 0 2px rgba(91, 227, 255, 0.3); }
 .nge-photo-check { display: inline-flex; align-items: center; gap: 5px; color: #b8c4d6; cursor: pointer; font-size: 12px; }
 .nge-photo-note {
-  position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: 136px; transform: translateX(-50%);
   z-index: 2147483000; padding: 7px 14px; border-radius: 10px;
   background: rgba(12, 18, 30, 0.85); color: #e8eef8; font: 13px Roboto, system-ui, sans-serif;
 }
@@ -464,6 +539,18 @@ body.nge-photo-mode { cursor: default; }
   transition: opacity 0.6s ease; pointer-events: none;
 }
 .nge-photo-hint.idle { opacity: 0; }
+body.nge-photo-picking #neuroglancer-container,
+body.nge-photo-picking #neuroglancer-container * { cursor: crosshair !important; }
+.nge-photo-pick {
+  position: fixed; left: 0; right: 0; bottom: 84px; margin: 0 auto; width: max-content; max-width: calc(100vw - 32px);
+  z-index: 2147483000; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+  padding: 8px 12px; border-radius: 12px; background: rgba(12, 18, 30, 0.88);
+  border: 1px solid rgba(91, 227, 255, 0.35); color: #e8eef8; font: 13px Roboto, system-ui, sans-serif;
+}
+.nge-photo-coords {
+  width: 170px; padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35); color: #fff; font: 13px/1.2 ui-monospace, Consolas, monospace;
+}
 .nge-photo-flash {
   position: fixed; inset: 0; z-index: 2147483100; pointer-events: none;
   background: #fff; opacity: 0; transition: opacity 0.3s ease;
