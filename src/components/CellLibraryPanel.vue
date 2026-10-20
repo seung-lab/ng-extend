@@ -5569,7 +5569,7 @@ select.nge-cl-complete-type:hover {
   flex: 0 1 auto; overflow-y: auto; position: relative;
   /* The expand arrow on the left, where the full panel keeps its shrink
      arrow; the next cell arrow on the right (Ames 2026-10-20). */
-  padding: 4px 14px 4px 70px;
+  padding: 4px 14px 4px 76px;
 }
 /* The one row needs no "this is the one" marking: no green wash or rail
    pressed against the caret, no "viewing" tag. */
@@ -5578,7 +5578,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-panel--slim .nge-cl-viewing { display: none; }
 /* Complete, in the slim view: part of the panel, not a box inside a box. */
 .nge-cl-panel--slim .nge-cl-list > .nge-cl-complete {
-  margin: 4px -14px -4px -70px; padding: 12px 16px 16px;
+  margin: 4px -14px -4px -76px; padding: 12px 16px 16px;
   border: none; border-top: 1px solid rgba(74, 150, 224, 0.25); border-radius: 0;
   background: rgba(10, 24, 44, 0.55);
 }
@@ -5594,10 +5594,12 @@ select.nge-cl-complete-type:hover {
 .nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-left: -70px; margin-right: -14px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-left: -76px; margin-right: -14px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
-.nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 21px; width: 18px; height: 18px; pointer-events: none; }
+/* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
+.nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-pip { display: none; }
 /* Next claimed cell: green, beside the Full view arrow at the right, and
    the row makes room for both (Ames 2026-10-04). */
 .nge-cl-slim-next {
