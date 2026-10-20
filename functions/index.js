@@ -1872,6 +1872,35 @@ exports.ewSecureWrite = onRequest(
           await wakeWorkflow("slack-triage-bridge.yml", "admin hub release");
           break;
         }
+        // A note on a card, with no decision (Celia #178): every rule is in
+        // triage-notes.js. The bridge is not woken: nothing for it to do.
+        case "triage.note": {
+          needAdmin();
+          if (!me) throw ewErr(403, "no EyeWire II profile");
+          const { addNote } = require("./triage-notes");
+          const { restDb: todoDb } = require("./todos");
+          const token = slackBotToken.value().trim();
+          try {
+            out = await addNote(args, {
+              db: {
+                row: async id => (await sb(`feedback_triage?id=eq.${id}&select=id,source_excerpt,slack_ts,slack_channel,admin_notes&limit=1`))[0] || null,
+                saveNotes: (id, notes) => sb(`feedback_triage?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ admin_notes: notes }) }),
+                people: () => todoDb(sb).people(),
+              },
+              me, byName: me.display_name || me.username || who.email, channel: REVIEW_CHANNEL_ID, site: EW_LIVE_SITE,
+              bell: rows => sb("notifications", { method: "POST", body: JSON.stringify(rows) }).catch(e => console.warn("[note] bell failed:", e.message)),
+              slack: async (channel, thread, text) => {
+                const r = await slackPost(token, "chat.postMessage", { channel, text, unfurl_links: false, ...(thread ? { thread_ts: thread } : {}) }).catch(e => ({ ok: false, error: e.message }));
+                if (!r.ok) console.warn("[note] slack failed:", r.error);
+              },
+            });
+          } catch (e) {
+            // Until supabase-triage-notes.sql is run the column is missing.
+            if (!e.status && /supabase 400/.test(String(e && e.message))) throw ewErr(409, "Notes need their column: run supabase-triage-notes.sql in the Supabase SQL editor.");
+            throw e;
+          }
+          break;
+        }
         case "triage.update": {
           needAdmin();
           if (!/^[0-9a-f-]{36}$/i.test(String(args.id))) throw ewErr(400, "bad id");
