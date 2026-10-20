@@ -78,18 +78,43 @@ export function pumpkinSeason(now = new Date()): boolean {
   return now.getMonth() === 9 || (now.getMonth() === 10 && now.getDate() === 1);
 }
 
-interface PatchState { supervoxel: string | null; liveRoot: string | null; askedAt: number; painted: Set<string>; prop: NgeProp | null }
+interface PatchState { supervoxel: string | null; liveRoot: string | null; askedAt: number; painted: Set<string>; prop: NgeProp | null; meshSeen: boolean }
 const svKey = (c: PatchCell) => `nge.pumpkin.sv.${c.soma.join(',')}`;
 const states: PatchState[] = PATCH.map(c => ({
   supervoxel: (() => { try { return localStorage.getItem(svKey(c)); } catch { return null; } })(),
-  liveRoot: null, askedAt: 0, painted: new Set(), prop: null,
+  liveRoot: null, askedAt: 0, painted: new Set(), prop: null, meshSeen: false,
 }));
+/** Share of a cell's mesh pieces that must be drawn before its pumpkin
+ *  shows (Ames: "the pumpkins load before the neurons"). */
+const MESH_SHARE = 0.6;
+const GPU_MEMORY = 0;  // neuroglancer's ChunkState.GPU_MEMORY
+
+/** Has enough of this cell's mesh arrived to be seen? Read from the mesh
+ *  layer's own chunks, the same test as its isReady. A layer without that
+ *  kind of mesh does not hold the pumpkin back. */
+function meshDrawn(ml: any, seg: any): boolean {
+  let sawMeshLayer = false;
+  for (const rl of ml.layer.renderLayers ?? []) {
+    const src = rl?.source;
+    if (!src?.chunks?.get || !src.fragmentSource?.chunks?.get || typeof src.getFragmentKey !== 'function') continue;
+    sawMeshLayer = true;
+    const key = `${seg.low},${seg.high}`;
+    const manifest = src.chunks.get(key);
+    const ids: string[] = manifest?.fragmentIds ?? [];
+    if (!ids.length) continue;
+    let drawn = 0;
+    for (const id of ids) if (src.fragmentSource.chunks.get(src.getFragmentKey(key, id).key)?.state === GPU_MEMORY) drawn++;
+    if (drawn / ids.length >= MESH_SHARE) return true;
+  }
+  return !sawMeshLayer;
+}
 
 let viewer: any = null;
 const meshes: Partial<Record<Model, NgePropMesh>> = {};
 const loading = new Set<Model>();
 const failed = new Set<Model>();
 let shownKey = '';
+let quickCheck: ReturnType<typeof setTimeout> | null = null;
 
 /** The Sandbox's segmentation layers that are showing cells. */
 function sandboxLayers(): any[] {
@@ -116,7 +141,8 @@ function readSupervoxel(c: PatchCell, st: PatchState, layers: any[]) {
   }
 }
 
-/** Is this patch cell on screen? Paints it green the first time. */
+/** Is this patch cell on screen? Paints it green the first time, and notes
+ *  once its mesh has been drawn. */
 function onScreen(c: PatchCell, st: PatchState, layers: any[]): boolean {
   readSupervoxel(c, st, layers);
   const now = Date.now();
@@ -134,6 +160,7 @@ function onScreen(c: PatchCell, st: PatchState, layers: any[]): boolean {
         st.painted.add(id);
         try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, s, packed(c.green)); } catch { /* colour stays */ }
       }
+      if (!st.meshSeen) { try { st.meshSeen = meshDrawn(ml, s); } catch { st.meshSeen = true; } }
       return true;
     }
   }
@@ -242,7 +269,10 @@ function check() {
   const layers = pumpkinSeason() ? sandboxLayers() : [];
   const here = layers.length ? PATCH.map((c, i) => onScreen(c, states[i], layers) ? i : -1).filter(i => i >= 0) : [];
   pumpkinUi.here = here.length > 0;
-  const want = pumpkinHidden() ? [] : here;
+  // A pumpkin waits for its cell's mesh; look again soon while one waits.
+  const waiting = here.some(i => !states[i].meshSeen);
+  if (waiting && !quickCheck) quickCheck = setTimeout(() => { quickCheck = null; check(); }, 400);
+  const want = pumpkinHidden() ? [] : here.filter(i => states[i].meshSeen);
   // Fetch each model the first time it is wanted; show the rest meanwhile.
   for (const i of want) {
     const model = PATCH[i].model;
