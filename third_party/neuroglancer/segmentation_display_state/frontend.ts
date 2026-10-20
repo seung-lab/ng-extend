@@ -751,24 +751,26 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  * EyeWire II (wolfryder101 #181, Ames 2026-10-20: "can we make highlight
  * cooler? like a glow"): how the cell under the mouse is shown. The classic
  * fade washed the cell out; the others leave its colours as they are:
- *   halo     a soft glow around the cell in 3D
+ *   halo     a slim glowing line around the cell in 3D (new players' default)
  *   outline  a crisp line just outside the cell in 3D (Ames did not like it;
  *            not offered in Settings, kept for a saved choice)
  *   pulse    bands of light running out along the cell from the mouse in 3D
  *   wireframe  the cell's triangles drawn in lines of its own colour over a
  *            dimmed body (Ames 2026-10-20)
- *   fade     the classic look, the cell turns pale (the default)
+ *   fade     the classic look, the cell turns pale (existing players' default)
  * In 2D every style but fade keeps the cell's colour and makes it more solid.
  * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
  * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
  * Settings updates it live.
  */
 export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'fade';
-/** The style when the player has not chosen one. */
-export function ngeDefaultHoverStyle(_prefs: any): NgeHoverStyle {
-  // Ames 2026-10-20: the pulse "maybe too much" as a default; everyone starts
-  // with the classic fade and picks the others in Settings.
-  return 'fade';
+/** The style when the player has not chosen one (Ames 2026-10-20: "make
+ *  Halo the default highlight mode for new users. We can retain
+ *  legacy/original one for existing users"): a browser with settings in it
+ *  already is an existing player's, and keeps the classic fade. The settings
+ *  store (store.ts) settles it, and corrects it from the account copy. */
+export function ngeDefaultHoverStyle(prefs: any): NgeHoverStyle {
+  return prefs && Object.keys(prefs).length ? 'fade' : 'halo';
 }
 export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
   const v = prefs?.hoverStyle;

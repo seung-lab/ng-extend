@@ -15,7 +15,7 @@
  */
 
 import {ngeHoverStyle} from 'neuroglancer/segmentation_display_state/frontend';
-import {NGE_HALO_SHELLS, NGE_OUTLINE_SHELLS} from 'neuroglancer/mesh/nge_hover';
+import {NGE_HALO_SHELLS, NGE_OUTLINE_SHELLS, NGE_WIREFRAME_SHELLS, ngeWireframePass} from 'neuroglancer/mesh/nge_hover';
 import 'neuroglancer/noselect.css';
 import './panel.css';
 
@@ -574,21 +574,31 @@ export class PerspectivePanel extends RenderedDataPanel {
     // Colour only: no picking, no depth or stencil writes, so nothing else
     // changes. The halo keeps the brightest shell at each pixel.
     const ngeStyle = ngeHoverStyle.value;
-    if (ngeStyle === 'outline' || ngeStyle === 'halo') {
+    if (ngeStyle === 'outline' || ngeStyle === 'halo' || ngeStyle === 'wireframe') {
       disablePicking();
       gl.depthMask(false);
       gl.stencilMask(0);
       if (ngeStyle === 'halo') {
         gl.enable(WebGL2RenderingContext.BLEND);
         gl.blendEquation(WebGL2RenderingContext.MAX);
+      } else if (ngeStyle === 'wireframe') {
+        // Each pixel keeps its brightest line, so where the mesh is denser
+        // than the screen it glows in the cell's colour instead of going white.
+        gl.enable(WebGL2RenderingContext.BLEND);
+        gl.blendEquation(WebGL2RenderingContext.MAX);
+        gl.depthFunc(WebGL2RenderingContext.LEQUAL);
+        ngeWireframePass.on = true;
       }
-      const shells = ngeStyle === 'halo' ? NGE_HALO_SHELLS : NGE_OUTLINE_SHELLS;
+      const shells = ngeStyle === 'halo' ? NGE_HALO_SHELLS :
+          ngeStyle === 'wireframe' ? NGE_WIREFRAME_SHELLS : NGE_OUTLINE_SHELLS;
       for (const [renderLayer, attachment] of visibleLayers) {
         const drawShells = (renderLayer as any).ngeDrawShells;
         if (typeof drawShells === 'function' && !renderLayer.isTransparent) {
           drawShells.call(renderLayer, renderContext, attachment, shells);
         }
       }
+      ngeWireframePass.on = false;
+      gl.depthFunc(WebGL2RenderingContext.LESS);
       gl.blendEquation(WebGL2RenderingContext.FUNC_ADD);
       gl.disable(WebGL2RenderingContext.BLEND);
       gl.stencilMask(0xffffffff);

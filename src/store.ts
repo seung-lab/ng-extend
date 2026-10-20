@@ -1029,8 +1029,11 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
-  /** How the cell under the mouse is shown (wolfryder101 #181): 'fade' (default, the classic look), 'halo' or 'pulse', the classic look. */
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse' or 'wireframe', the classic look. */
   hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'fade';
+  /** Set when hoverStyle was given (a new player's halo), not chosen; the
+   *  account copy can still say they were here before. Local only. */
+  hoverStyleAuto?: boolean;
   /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
   pulseColor?: string;
   /** Classic layer tabs: left click hides or shows a layer, right click
@@ -1103,10 +1106,16 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
       const raw = localStorage.getItem(PREFS_KEY);
       const stored = raw ? JSON.parse(raw) : {};
       Object.assign(prefs.value, stored);
-      // The cell under the mouse (wolfryder101 #181): unchosen, the default
-      // (the classic fade), and a player whose account copy chose another
-      // style gets it once the account copy is read.
-      if (!prefs.value.hoverStyle) prefs.value.hoverStyle = ngeDefaultHoverStyle(stored);
+      // 3D Hover (wolfryder101 #181): settle the style once. A browser with
+      // settings in it already keeps the classic fade; a new one gets the
+      // halo, marked as given, so the account copy can still say the player
+      // was here before (pullFromAccount). Written now, so saving any other
+      // setting later does not make a new player look like an old one.
+      if (!prefs.value.hoverStyle) {
+        prefs.value.hoverStyle = ngeDefaultHoverStyle(stored);
+        if (prefs.value.hoverStyle === 'halo') prefs.value.hoverStyleAuto = true;
+        localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+      }
     } catch { /* ignore parse errors */ }
   }
 
@@ -1175,10 +1184,15 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
         // What was delivered on this computer before the account copy
         // arrived is kept too: delivery is never taken back.
         const hadHere = prefs.value.notifDelivered || [];
+        // A player who was here before, on a browser new to them: the halo
+        // given to "a new player" here gives way to their classic fade.
+        if (prefs.value.hoverStyleAuto && !remote.hoverStyle) remote.hoverStyle = 'fade';
+        prefs.value.hoverStyleAuto = false;
         Object.assign(prefs.value, syncedPart(remote));
         if (hadHere.length) prefs.value.notifDelivered = [...new Set([...(prefs.value.notifDelivered || []), ...hadHere])].sort((a, b) => b - a).slice(0, 300);
         localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
       } else {
+        prefs.value.hoverStyleAuto = false;
         pushToAccount(); // first sign in since this shipped: keep this browser's choices
       }
     } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }

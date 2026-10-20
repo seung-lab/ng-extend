@@ -188,7 +188,7 @@ async function handleSave() {
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
-    hoverStyle: draftHoverStyle.value, pulseColor: draftPulseColor.value,
+    hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
@@ -469,11 +469,11 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Fade: the classic look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: bands of light run out along it from your mouse, like a signal firing. Wireframe: the cell drawn as a glowing grid in its own colour. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
-              <span class="nge-settings-toggle-label">The cell under my mouse</span>
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Fade: the classic look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: bands of light run out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+              <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
-                <option value="fade">Fades (classic)</option>
                 <option value="halo">Halo</option>
+                <option value="fade">Fade (classic)</option>
                 <option value="pulse">Pulse</option>
                 <option value="wireframe">Wireframe</option>
               </select>
