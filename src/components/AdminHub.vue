@@ -138,6 +138,8 @@ interface TriageRow {
   tested_by?: string | null;
   slack_ts?: string | null;
   slack_channel?: string | null;
+  /** Notes with no decision (Celia #178, supabase-triage-notes.sql). */
+  admin_notes?: { by: string; text: string; at: string }[];
 }
 type ImplState = 'queued' | 'implementing' | 'needs_info' | 'testing' | 'changes_requested'
   | 'answer_queued' | 'answering' | 'deploy_queued' | 'deploying' | 'deployed'
@@ -389,6 +391,7 @@ function triageMatches(r: TriageRow): boolean {
   const who = reporterOf(r);
   const hay = [n ? `#${n}` : '', who?.name, who?.category, who?.message, r.source_excerpt, r.rationale, r.spec, r.proposed_message,
     r.approver_note, r.impl_summary, r.result_note, r.reviewed_by, r.status, r.impl_state, TRIAGE_LABELS[r.recommendation],
+    ...(r.admin_notes || []).map(n => n.text),
     ...(r.feedback_log || []).map(f => f.text)].filter(Boolean).join(' | ').toLowerCase();
   return words.every(w => hay.includes(w));
 }
@@ -647,6 +650,29 @@ const todoBoardUrl = `${boardUrl}&todo`;
 function openTodoBoard() {
   if (props.standalone || triageBoard.value) todoView.value = true;
   else window.open(todoBoardUrl, '_blank', 'noopener');
+}
+
+// ── Notes, with no decision (Celia #178: "a way to leave notes on entries in
+// the triage panel without submitting any other actions") ──
+// functions/triage-notes.js: nothing else on the card changes. "@Celia" tags
+// her: the bell in Pyr and a ping in the report's Slack thread.
+const noteDrafts = ref<Record<string, string>>({});
+const noteOpen = ref<Record<string, boolean>>({});
+const noteSaving = ref<string | null>(null);
+async function saveNote(row: TriageRow) {
+  const text = (noteDrafts.value[row.id] || '').trim();
+  if (!text || noteSaving.value) return;
+  noteSaving.value = row.id;
+  try {
+    const r = await secureWrite<any>('triage.note', { id: row.id, text });
+    row.admin_notes = r?.admin_notes || [...(row.admin_notes || []), { by: backend.userName || 'you', text, at: new Date().toISOString() }];
+    noteDrafts.value[row.id] = '';
+    noteOpen.value[row.id] = false;
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    noteSaving.value = null;
+  }
 }
 
 async function loadTriage() {
@@ -2660,6 +2686,7 @@ function practiceWhen(iso: string | null) {
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
+            <span v-if="row.admin_notes?.length" class="nge-triage-impl nge-triage-notes-chip" :title="`${row.admin_notes.length} note${row.admin_notes.length === 1 ? '' : 's'} from admins`">📝 {{ row.admin_notes.length }}</span>
             <span v-if="isAwaitingReply(row)" class="nge-triage-rec nge-triage-rec--waiting"
                   :title="'You asked the submitter for a reply' + (awaitingReplySince(row) ? ' ' + ago(awaitingReplySince(row) || '') + ' ago' : '') + ' and it has not come yet. It comes back under Needs your decision when it does.'">⏳ Waiting on their reply<template v-if="awaitingReplySince(row)"> · {{ ago(awaitingReplySince(row) || '') }}</template></span>
             <span class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
@@ -2710,6 +2737,24 @@ function practiceWhen(iso: string | null) {
             <div v-if="row.impl_state === 'testing' || row.impl_state === 'live_testing' || row.impl_state === 'needs_info'"><span class="nge-triage-spec-label">Waiting on</span> the tester in the Slack thread{{ row.impl_state === 'needs_info' ? ', to answer Claude' : '' }}. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
             <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> <template v-for="(pt, pi) in linkParts(f.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
             <div v-if="row.impl_run_url"><a :href="row.impl_run_url" target="_blank" rel="noopener">Claude's run log</a><template v-if="row.impl_attempts"> · attempt {{ row.impl_attempts }}</template></div>
+          </div>
+          <!-- Notes from admins, with no decision (Celia #178). -->
+          <div class="nge-triage-notes" @click.stop>
+            <div v-for="(n, i) in row.admin_notes || []" :key="i" class="nge-triage-note nge-triage-admin-note">
+              <span class="nge-triage-spec-label">Note</span>
+              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
+            </div>
+            <template v-if="noteOpen[row.id]">
+              <textarea v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
+                        placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her."
+                        @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <div class="nge-triage-actions">
+                <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id || !noteDrafts[row.id]?.trim()" @click="saveNote(row)">{{ noteSaving === row.id ? 'Saving…' : 'Save note' }}</button>
+                <button class="nge-admin-action-btn" :disabled="noteSaving === row.id" @click="noteOpen[row.id] = false">Cancel</button>
+              </div>
+            </template>
+            <button v-else class="nge-admin-action-btn nge-triage-note-btn" title="Leave a note for the admins. Nothing else on the card changes, nothing is sent to the submitter, and the robot ignores it."
+                    @click="noteOpen[row.id] = true">📝 Add a note</button>
           </div>
           <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
                never sent to the reporter (the message box above is). -->
@@ -3788,6 +3833,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-note--reply { background: #e9f6fd; border-left-color: #58b6dc; }
 .nge-triage-light .nge-triage-note--unread { background: #cfecfa; border-left-color: #1487b8; }
 .nge-triage-light .nge-triage-rec--reply { background: #0f7fae; color: #ffffff; }
+.nge-triage-light .nge-triage-admin-note { border-left-color: #8a77e0; }
 .nge-triage-light .nge-triage-rec--waiting { background: #ece8ff; color: #4a36a8; }
 .nge-triage-light .nge-triage-card.nge-triage-card--waiting { outline-color: #8a77e0; }
 .nge-triage-light.nge-triage-board .nge-triage-card.nge-triage-card--reply,
@@ -4004,6 +4050,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-note--unread { background: rgba(126,224,255,0.16); border-left-color: #7ee0ff; }
 .nge-triage-rec--reply { background: #7ee0ff; color: #06202c; font-weight: 700; }
 .nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px rgba(126,224,255,0.55), 0 0 14px rgba(126,224,255,0.18); }
+.nge-triage-notes { display: flex; flex-direction: column; gap: 6px; }
+.nge-triage-admin-note { border-left: 2px solid rgba(160, 140, 255, 0.6); padding-left: 8px; }
+.nge-triage-note-btn { align-self: flex-start; }
 /* Asked the submitter for a reply, none yet: a dashed edge and a tag. */
 .nge-triage-rec--waiting { background: rgba(160, 140, 255, 0.16); color: #c4b8ff; text-transform: none; letter-spacing: 0; }
 .nge-triage-card.nge-triage-card--waiting { outline: 1px dashed rgba(160, 140, 255, 0.6); outline-offset: -1px; }
