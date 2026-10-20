@@ -1977,3 +1977,18 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .nge-h.nge-seg-list-heading--pasted .nge-h-label { flex: none !important; overflow: visible !important; }
 .nge-h.nge-seg-list-heading--pasted .nge-h-region { gap: 6px !important; }
 .nge-h.nge-seg-list-heading--pasted .nge-h-label { margin-right: auto !important; padding-right: 8px; }
+/* Pasted with + Folder and Move down: the buttons a little tighter so the
+   remove X stays inside the panel on hover (Ames 2026-10-20: "it's also
+   blocking the X"). */
+.nge-h.nge-seg-list-heading--pasted .nge-seg-list-keep { padding: 1px 5px !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-region { gap: 2px !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-label { padding-right: 2px !important; }
+/* Rows in a folder are narrower: the jump arrow wrapped under a full ID
+   (Ames 2026-10-20). The copy and remove buttons take no room until the row
+   is pointed at (the ID shortens with "..." then, as before), and the ID part
+   always leaves room for the arrow, so it never drops to a second line. */
+.neuroglancer-segment-list-entry > .neuroglancer-segment-list-entry-sticky { max-width: calc(100% - 26px) !important; }
+@media (hover: hover) and (pointer: fine) {
+  .neuroglancer-segment-list:not(.neuroglancer-preview-list) .neuroglancer-segment-list-entry:not(:hover) .neuroglancer-segment-list-entry-copy-container,
+  .neuroglancer-segment-list:not(.neuroglancer-preview-list) .neuroglancer-segment-list-entry:not(:hover) .nge-seg-list-toggle { display: none !important; }
+}
