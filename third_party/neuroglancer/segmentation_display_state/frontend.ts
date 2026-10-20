@@ -763,11 +763,30 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  * Settings updates it live.
  */
 export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'fade';
+/** Unset: a new player (no settings in this browser yet) gets the pulse, and
+ *  a player who was already here keeps the classic fade until they choose
+ *  (Ames 2026-10-20: "make it default but keep the original for existing
+ *  players"). The app settles it for good in the settings store (store.ts). */
+export function ngeDefaultHoverStyle(prefs: any): NgeHoverStyle {
+  return prefs && Object.keys(prefs).length ? 'fade' : 'pulse';
+}
+export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
+  const v = prefs?.hoverStyle;
+  return v === 'halo' || v === 'pulse' || v === 'fade' || v === 'outline' ? v : ngeDefaultHoverStyle(prefs);
+}
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
-  try {
-    const v = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').hoverStyle;
-    return v === 'halo' || v === 'fade' ? v : 'pulse';
-  } catch { return 'pulse'; }
+  try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
+})()};
+/** The pulse's colour (Nseraf: "if we can also change the colour of the
+ *  'electricity'"): '#rrggbb', or '' for a light tint of the cell's own. */
+export function ngeParsePulseColor(hex: unknown): [number, number, number]|null {
+  const m = typeof hex === 'string' ? /^#([0-9a-f]{6})$/i.exec(hex) : null;
+  if (!m) return null;
+  const v = parseInt(m[1], 16);
+  return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+}
+export const ngePulseColor = {value: ((): [number, number, number]|null => {
+  try { return ngeParsePulseColor(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').pulseColor); } catch { return null; }
 })()};
 
 /**

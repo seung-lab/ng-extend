@@ -40,6 +40,13 @@ const draftKeepDisplay = ref(true);
 const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
 /** How the cell under the mouse is shown (wolfryder101 #181): pulse (default), halo, or the classic fade. */
 const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'fade'>('pulse');
+/** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
+const draftPulseColor = ref('');
+const PULSE_COLORS = [
+  { value: '', label: "The cell's own colour" }, { value: '#59d8ff', label: 'Electric blue' },
+  { value: '#ffffff', label: 'White' }, { value: '#ffd34d', label: 'Gold' }, { value: '#ff6fd8', label: 'Pink' },
+  { value: '#6dff8a', label: 'Green' }, { value: '#b48cff', label: 'Purple' }, { value: '#ff5a4f', label: 'Red' },
+];
 const draftImageDetail = ref<1 | 2 | 4>(1);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
@@ -115,6 +122,7 @@ onMounted(() => {
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
   draftHoverStyle.value = ngeHoverStyle.value;
+  draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
@@ -180,9 +188,8 @@ async function handleSave() {
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
-    hoverStyle: draftHoverStyle.value,
+    hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
   });
-  ngeHoverStyle.value = draftHoverStyle.value;
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
   savedAnnotationSize.value = draftAnnotationSize.value;
@@ -468,6 +475,12 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="pulse">Pulse</option>
                 <option value="halo">Halo</option>
                 <option value="fade">Fades (classic)</option>
+              </select>
+            </label>
+            <label v-if="draftHoverStyle === 'pulse'" class="nge-settings-toggle nge-settings-pick" title="The colour of the light that runs along the cell.">
+              <span class="nge-settings-toggle-label">Pulse colour</span>
+              <select v-model="draftPulseColor" class="nge-sv-select">
+                <option v-for="c in PULSE_COLORS" :key="c.value" :value="c.value">{{ c.label }}</option>
               </select>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">

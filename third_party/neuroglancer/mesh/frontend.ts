@@ -26,7 +26,7 @@ import {PerspectivePanel} from 'neuroglancer/perspective_view/panel';
 import {PerspectiveViewReadyRenderContext, PerspectiveViewRenderContext, PerspectiveViewRenderLayer} from 'neuroglancer/perspective_view/render_layer';
 import {ThreeDimensionalRenderLayerAttachmentState, update3dRenderLayerAttachment} from 'neuroglancer/renderlayer';
 import {forEachVisibleSegment, getObjectKey} from 'neuroglancer/segmentation_display_state/base';
-import {forEachVisibleSegmentToDraw, ngeHoverStyle, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
+import {forEachVisibleSegmentToDraw, ngeHoverStyle, ngePulseColor, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {Borrowed, RefCounted} from 'neuroglancer/util/disposable';
 import {getFrustrumPlanes, mat3, mat3FromMat4, mat4, scaleMat3Output, vec3, vec4} from 'neuroglancer/util/geom';
@@ -188,6 +188,17 @@ function ngeShellColorFor(color: Float32Array|number[], alpha: number) {
   return ngeShellColor;
 }
 let ngePulseRunning = false;
+let ngePulseT0 = 0, ngePulseKey = '', ngePulseSeenAt = 0;
+/** A cell is pulsing: note when the mouse came onto it. */
+function ngePulseMark(key: string) {
+  const now = performance.now();
+  if (key !== ngePulseKey || now - ngePulseSeenAt > 400) {
+    ngePulseKey = key;
+    ngePulseT0 = now;
+  }
+  ngePulseSeenAt = now;
+  ngePulseRunning = true;
+}
 const ngePulseCenter = new Float32Array(3);
 const ngePulseScale = new Float32Array(3);
 /** Where the pulse starts (the mouse, last place it was over a cell), and how
@@ -209,7 +220,9 @@ function ngePulseState(projectionParameters: any) {
   }
   const viewNm = Math.max(1, (viewer?.projectionScale?.value ?? 1000) * minNm);
   const periodNm = viewNm * 0.5;
-  const travelledNm = ((performance.now() / 1000) * viewNm * 0.3) % periodNm;
+  // From when the mouse came onto this cell, so the first band leaves the
+  // mouse at once (andrearwen: "is there a time delay?").
+  const travelledNm = (((performance.now() - ngePulseT0) / 1000) * viewNm * 0.3) % periodNm;
   return {center: ngePulseCenter, scaleNm: ngePulseScale, travelledNm, widthNm: viewNm * 0.025, periodNm};
 }
 const ngeLanternPos = new Float32Array(3);
@@ -239,6 +252,8 @@ export class MeshShaderManager {
       gl.uniform3fv(shader.uniform('uNgePulseCenter'), pulse.center);
       gl.uniform3fv(shader.uniform('uNgePulseScale'), pulse.scaleNm);
       gl.uniform4f(shader.uniform('uNgePulse'), pulse.travelledNm, pulse.widthNm, pulse.periodNm, 1);
+      const pc = ngePulseColor.value;
+      gl.uniform4f(shader.uniform('uNgePulseColor'), pc?.[0] ?? 0, pc?.[1] ?? 0, pc?.[2] ?? 0, pc ? 1 : 0);
     } else {
       gl.uniform4f(shader.uniform('uNgePulse'), 0, 1, 1, 0);
     }
@@ -393,6 +408,7 @@ export class MeshShaderManager {
         builder.addUniform('highp vec4', 'uNgePulse');
         builder.addUniform('highp vec3', 'uNgePulseCenter');
         builder.addUniform('highp vec3', 'uNgePulseScale');
+        builder.addUniform('highp vec4', 'uNgePulseColor');
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
@@ -442,7 +458,7 @@ if (uNgeGlow > 0.5 && uNgePulse.w > 0.5) {
   highp float pulsePhase = mod(pulseDist - uNgePulse.x, uNgePulse.z);
   highp float pulseOff = min(pulsePhase, uNgePulse.z - pulsePhase) / uNgePulse.y;
   highp float pulseBand = exp(-pulseOff * pulseOff);
-  highp vec3 pulseColor = mix(uColor.rgb, vec3(uColor.a), 0.65);
+  highp vec3 pulseColor = uNgePulseColor.w > 0.5 ? uNgePulseColor.rgb * uColor.a : mix(uColor.rgb, vec3(uColor.a), 0.65);
   vColor.rgb = mix(vColor.rgb, pulseColor, 0.9 * pulseBand);
 }
 if (uNgeTintOn > 0.5) {
@@ -617,7 +633,7 @@ export class MeshLayer extends
           if (renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
             meshShaderManager.setGlow(gl, shader, ngeHoverStyle.value === 'pulse' && hovered ? 1 : 0);
-            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseRunning = true;
+            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseMark(key);
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);
@@ -871,7 +887,7 @@ export class MultiscaleMeshLayer extends
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
             meshShaderManager.setGlow(gl, shader, ngeHoverStyle.value === 'pulse' && hovered ? 1 : 0);
-            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseRunning = true;
+            if (ngeHoverStyle.value === 'pulse' && hovered) ngePulseMark(key);
           }
           if (renderContext.emitPickID) {
             meshShaderManager.setPickID(gl, shader, pickIndex!);
