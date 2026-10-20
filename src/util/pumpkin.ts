@@ -18,6 +18,7 @@ import {setNgeProps, type NgeProp, type NgePropMesh} from 'neuroglancer/perspect
 import {mat4} from 'neuroglancer/util/geom';
 import {loadGlbModel} from './glb';
 import {getRootFromSupervoxel} from '../widgets/pcg_service';
+import {setStatedColor} from '../widgets/widget_utils';
 
 /** The cell is known by its ids, and by what is at its cell body now:
  *  Sandbox cells are edited all the time, which gives them new ids. The
@@ -32,8 +33,14 @@ const SOMA = [71942, 54909, 1162];
  *  reads it again. */
 const SV_KEY = `nge.pumpkin.sv.${SOMA.join(',')}`;
 /** Pumpkin height: a little larger than the cell body, so it covers it. */
-const HEIGHT_NM = 18000;
+const HEIGHT_NM = 26000;
 const GROUP = 'pumpkin';
+/** The pumpkin's cell is painted vine green when the pumpkin first appears
+ *  in a visit (Ames: "default the cell to #52cb85"); recolouring it after
+ *  that is left alone. Packed as neuroglancer wants it, 0xBBGGRR. */
+const CELL_HEX = 0x52cb85;
+const CELL_PACKED = ((CELL_HEX >> 16) & 0xff) | (CELL_HEX & 0xff00) | ((CELL_HEX & 0xff) << 16);
+const painted = new Set<string>();
 
 /** October, and 1 November, in the player's own time. */
 export function pumpkinSeason(now = new Date()): boolean {
@@ -88,7 +95,15 @@ function cellOnScreen(): boolean {
   const wanted = new Set(KNOWN_CELLS);
   if (liveRoot) wanted.add(liveRoot);
   for (const ml of layers) {
-    for (const s of ml.layer.displayState.segmentationGroupState.value.visibleSegments) if (wanted.has(s.toString())) return true;
+    for (const s of ml.layer.displayState.segmentationGroupState.value.visibleSegments) {
+      const id = s.toString();
+      if (!wanted.has(id)) continue;
+      if (!painted.has(id)) {
+        painted.add(id);
+        try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, s, CELL_PACKED); } catch { /* colour stays */ }
+      }
+      return true;
+    }
   }
   return false;
 }
