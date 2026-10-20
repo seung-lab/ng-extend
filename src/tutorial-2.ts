@@ -904,9 +904,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-Oh great, I finally found that very important memo from our collaborators! It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
-
-Can you help out with this final task? Each line ticks itself off as you do it:
+<strong>Your mission:</strong> a collaborator found a merger. Mark where it starts. Each line ticks itself off as you do it:
 
 <ol class="nge-tut-checklist">
 <li data-check="spot">Go to this location: ${copyButton('82190, 58009, 381')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>
