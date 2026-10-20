@@ -19,7 +19,7 @@ function playerAnnotationLayers(): any[] {
     try {
         const layers = (window as any).viewer?.state?.toJSON()?.layers;
         const list = Array.isArray(layers) ? layers : Object.entries(layers ?? {}).map(([name, l]: [string, any]) => ({ ...l, name }));
-        return list.filter((l: any) => l?.type === 'annotation' && Array.isArray(l.annotations) && l.annotations.length > 0);
+        return list.filter((l: any) => l?.type === 'annotation' && l.name !== 'Gem Hunt' && Array.isArray(l.annotations) && l.annotations.length > 0);
     } catch { return []; }
 }
 /** A saved view with these layers added, unless it has one of that name. */
@@ -1715,4 +1715,9 @@ async function onHtmlClick(e: MouseEvent) {
 @keyframes nge-spark-glow { 50% { filter: drop-shadow(0 0 10px #fff6a8) drop-shadow(0 0 16px #ffd84d); } }
 @keyframes nge-spark-twinkle { 0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); } 50% { opacity: 1; transform: scale(1.2) rotate(90deg); } }
 @media (prefers-reduced-motion: reduce) { .nge-tut-sparkle, .nge-tut-sparkle::before, .nge-tut-sparkle::after { animation: none; } }
+/* The gem hunt's count (tutorial-2.ts gemCount). */
+.nge-gem-count { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.nge-gem-count span { font-size: 20px; color: rgba(245, 209, 66, 0.22); transition: color 0.3s, text-shadow 0.3s, transform 0.3s; }
+.nge-gem-count span.is-found { color: #f5d142; text-shadow: 0 0 10px rgba(245, 209, 66, 0.9); transform: scale(1.15); }
+.nge-gem-count b { margin-left: 6px; font-size: 0.9em; color: #f5d142; }
 </style>

@@ -4,6 +4,7 @@ import { lantern } from "./util/lantern";
 import { highlightStyles } from "./util/highlight";
 import { setStatedColor } from "./widgets/widget_utils";
 import { Uint64 } from "neuroglancer/util/uint64";
+import { makeLayer } from "neuroglancer/layer";
 import { useUserPreferencesStore } from "./store";
 
 /** How a layer chip is selected and hidden. Since 2026-10-11 a plain click
@@ -348,6 +349,74 @@ function sparkleEye() {
     }
     eyes.forEach(e => e.classList.add('nge-tut-sparkle'));
   }, 400);
+}
+
+/** The gem hunt. Spots on the tutorial cell's own branches, read from its
+ *  mesh (pinky_training6 root 648518346350533705): one far down a branch,
+ *  one near the soma, and one 20 slices from the second. */
+const GEMS: { at: [number, number, number]; xy: number; z: number }[] = [
+  { at: [74975, 63861, 84], xy: 400, z: 3 },      // pasted: lands right on it
+  { at: [75615, 52636, 1002], xy: 750, z: 60 },   // right click: lands on the mesh near it
+  { at: [75353, 52416, 1022], xy: 1000, z: 2 },   // slices: the right slice, near it
+];
+const GEM_LAYER = 'Gem Hunt';
+const gemsFound = new Set<number>();
+const gemSpot = (i: number) => GEMS[i].at.join(', ');
+/** The three gems as a row, found ones lit. */
+function gemCount(): string {
+  return `<div class="nge-gem-count">${GEMS.map((_, i) => `<span class="${gemsFound.has(i) ? 'is-found' : ''}">◆</span>`).join('')}<b>${gemsFound.size} of ${GEMS.length} gems</b></div>`;
+}
+/** The gem layer, holding the gems not found yet. */
+function showGems() {
+  const viewer = (window as any).viewer;
+  if (!viewer?.layerSpecification) return;
+  for (const ml of [...(viewer.layerManager?.managedLayers ?? [])]) {
+    if (ml.name === GEM_LAYER) viewer.layerManager.removeManagedLayer(ml);
+  }
+  const left = GEMS.map((g, i) => ({ g, i })).filter(({ i }) => !gemsFound.has(i));
+  if (!left.length) return;
+  try {
+    viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, GEM_LAYER, {
+      type: 'annotation', source: 'local://annotations',
+      annotations: left.map(({ g, i }) => ({ type: 'point', id: `gem-${i}`, point: g.at })),
+      annotationColor: '#f5d142', pointMarker: 'pyr', pointSize: 3, onTop: true, pick: false,
+    }));
+  } catch (e) { console.warn('[tutorial] gem layer', e); }
+}
+function hideGems() {
+  const viewer = (window as any).viewer;
+  for (const ml of [...(viewer?.layerManager?.managedLayers ?? [])]) {
+    if (ml.name === GEM_LAYER) viewer.layerManager.removeManagedLayer(ml);
+  }
+}
+/** Watch for the view reaching gem `i`; then it is found, with confetti. */
+function huntGem(i: number, setup?: () => void) {
+  waitForAction();
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  if (i === 0) gemsFound.clear();
+  setTimeout(() => { showGems(); setup?.(); }, 900);
+  const g = GEMS[i];
+  const near = () => {
+    try {
+      const p = (window as any).viewer.navigationState.position.value;
+      return Math.abs(p[0] - g.at[0]) <= g.xy && Math.abs(p[1] - g.at[1]) <= g.xy && Math.abs(p[2] - g.at[2]) <= g.z;
+    } catch { return false; }
+  };
+  setTimeout(() => {
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      if (!near()) return;
+      clearInterval(timer);
+      gemsFound.add(i);
+      showGems();
+      const count = document.querySelector('.introductionStepAnchor .nge-gem-count');
+      if (count) count.outerHTML = gemCount();
+      document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate'));
+      setTimeout(() => { if (here()) advance(); }, 1800);
+    }, 300);
+  }, 1500);
 }
 
 /** The visible segment IDs of the segmentation layer. */
@@ -799,6 +868,70 @@ These lines converge at the point we are centered on and represent the volume's 
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    get text() { return `
+<strong>Gem hunt!</strong> Three golden Pyr gems are hidden on this cell. Each one is found a different way.
+
+<strong>Gem 1</strong> is far down a branch. Copy its spot, then press <strong>CTRL+V</strong> anywhere in the viewer to jump straight to it:
+
+${copyButton(gemSpot(0))}
+
+${gemCount()}`; },
+    width: "460px",
+    position: OVER_3D,
+    onEnter: () => huntGem(0),
+    state:
+      "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    get text() { return `
+Found it! We've brought you back to the soma.
+
+<strong>Gem 2</strong> is glowing on a branch near you. Find it in the 3D view and <strong>RIGHT-CLICK</strong> on it to move there.&nbsp;${hint('Turn the view by dragging, zoom with the mouse wheel. A right click moves the view to the spot you clicked')}
+
+${gemCount()}`; },
+    width: "460px",
+    position: OVER_3D,
+    onEnter: () => huntGem(1, () => {
+      try { const v = (window as any).viewer; v.navigationState.position.value = Float32Array.from(SOMA.split(',').map(Number)); } catch { /* no viewer */ }
+    }),
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    get text() { return `
+Two down! <strong>Gem 3</strong> is hiding <strong>20 slices deeper</strong>, right by Gem 2.
+
+In the 2D view, <strong>scroll the mouse wheel</strong> (or press the <span class="nge-tut-key-big">.</span> key) to move through the slices until you land on it. Watch the <strong>z</strong> number in the coordinates box change.
+
+${gemCount()}`; },
+    width: "460px",
+    position: OVER_3D,
+    onEnter: () => huntGem(2, () => {
+      try {
+        const v = (window as any).viewer;
+        const l = v.layout.toJSON(); const name = typeof l === 'string' ? l : l?.type;
+        if (name === '3d') v.layout.restoreState('xy-3d');
+        if (v.navigationState.zoomFactor.value > 4) v.navigationState.zoomFactor.value = 2.5;
+        // Start exactly on Gem 2, so "20 slices deeper" lands on Gem 3 (a
+        // right click can land a few slices off it).
+        v.navigationState.position.value = Float32Array.from(GEMS[1].at);
+      } catch { /* no viewer */ }
+    }),
+  },
+  {
+    part: "Part 3 of 4 · Find your way",
+    get text() { return `
+<strong>All three gems!</strong>
+
+${gemCount()}
+
+You can now get around three ways: jump to coordinates, right click in 3D, and step through slices in 2D.`; },
+    width: "420px",
+    position: MIDDLE,
+    onEnter: () => { hideGems(); document.dispatchEvent(new CustomEvent('nge:tutorial-celebrate')); },
   },
   {
     part: "Part 3 of 4 · Find your way",
