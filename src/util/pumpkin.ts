@@ -56,7 +56,9 @@ const PATCH: PatchCell[] = [
   { soma: [70064, 54399, 1762], ids: ['648518346353200058'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x8fd14f },
   // A soma picked from the EM, 42 um from the first (Ames: "You can choose
   // another soma in the volume"). Its id is found from the supervoxel there.
-  { soma: [81640, 56504, 1162], ids: [], heightNm: 32000, dropNm: 3500, model: 'fang-o-lantern', green: 0x2fa66a },
+  // The fang-o-lantern is wide for its height (about 1.35 to 1), so it is
+  // shorter to come out the same width (Ames: "that pumpkin is too big").
+  { soma: [81640, 56504, 1162], ids: [], heightNm: 22000, dropNm: 2400, model: 'fang-o-lantern', green: 0x2fa66a },
 ];
 /** The Sandbox's segmentation layer. */
 const SANDBOX_LAYER = 'pinky_nf_v2';
