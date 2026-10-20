@@ -188,10 +188,16 @@ export function togglePumpkin() {
 }
 
 /** The chat button away from the patch: go to the Sandbox, the 3D view on
- *  its own, every patch cell on, centred on the first one's soma (Ames:
- *  "make 3D full screen and make sure to put the segments on"). */
+ *  its own, every patch cell on, framed so all the pumpkins show (Ames:
+ *  "make 3D full screen and make sure to put the segments on", "I want to
+ *  see all 3 pumpkins"). */
 export async function visitPumpkinPatch(): Promise<boolean> {
-  const c = PATCH[0];
+  // A cell known only by its soma: ask the server which cell that is now.
+  await Promise.all(states.map(async (st, i) => {
+    if (PATCH[i].ids.length || st.liveRoot || !st.supervoxel) return;
+    try { st.liveRoot = await getRootFromSupervoxel(st.supervoxel); } catch { /* left off */ }
+  }));
+  const centre = [0, 1, 2].map(k => PATCH.reduce((a, c) => a + c.soma[k], 0) / PATCH.length);
   try { if (pumpkinHidden()) useUserPreferencesStore().save({ hidePumpkin: false }); } catch { /* fine */ }
   if (!viewer?.layerManager?.managedLayers?.some((ml: any) => !ml?.archived && String(ml?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/pinky_nf'))) {
     const ds = findDatasetBySegName(SANDBOX_LAYER);
@@ -212,8 +218,8 @@ export async function visitPumpkinPatch(): Promise<boolean> {
           if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
         });
         viewer.layout.restoreState('3d');
-        viewer.navigationState.position.value = Float32Array.from(c.soma);
-        viewer.projectionScale.value = 40000;  // the cell and its pumpkin fill the 3D view
+        viewer.navigationState.position.value = Float32Array.from(centre);
+        viewer.projectionScale.value = PATCH.length > 1 ? 70000 : 40000;  // every pumpkin in view
       } catch (e) { console.warn('[pumpkin] could not open the patch:', e); return false; }
       setTimeout(check, 300);
       return true;
