@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-20T15:11:20Z",
+      "title": "Pasted coordinates find their cell",
+      "digest": "minor",
+      "items": [
+        "Coordinates pasted into the Segments box now find the cell there right away, without opening the 2D view.",
+        "Find Path failure messages go away by themselves.",
+        "Advanced Interface: clearer steps for hiding a layer, rows, Lantern and Find Path, and a shorter final mission."
+      ]
+    },
+    {
       "at": "2026-10-20T14:58:16Z",
       "title": "Several Pyr tabs at once",
       "items": [
