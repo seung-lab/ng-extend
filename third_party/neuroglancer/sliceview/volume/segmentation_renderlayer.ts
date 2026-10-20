@@ -247,6 +247,11 @@ uint64_t getMappedObjectId(uint64_t value) {
   vec3 ngeColor = mix(vec3(1.0,1.0,1.0), vec3(rgba), saturation);
   if (ngeGlowHit) {
     ngeColor = min(ngeColor * 1.08, vec3(1.0));
+    if (uNgeGlow > 1.5) {
+      // EyeWire II 'saturate': richer colour (ngeSaturate in 3D).
+      float ngeGrey = dot(ngeColor, vec3(0.299, 0.587, 0.114));
+      ngeColor = clamp((vec3(ngeGrey) + (ngeColor - vec3(ngeGrey)) * 1.7) * 1.04, 0.0, 1.0);
+    }
     alpha = min(1.0, max(alpha, 0.35) + 0.35);
   }
   emit(vec4(ngeColor, alpha));
@@ -274,7 +279,7 @@ uint64_t getMappedObjectId(uint64_t value) {
     }
     gl.uniform1f(shader.uniform('uSelectedAlpha'), displayState.selectedAlpha.value);
     gl.uniform1f(shader.uniform('uSaturation'), displayState.saturation.value);
-    gl.uniform1f(shader.uniform('uNgeGlow'), ngeHoverStyle.value !== 'fade' ? 1 : 0);
+    gl.uniform1f(shader.uniform('uNgeGlow'), ngeHoverStyle.value === 'saturate' ? 2 : ngeHoverStyle.value !== 'fade' ? 1 : 0);
     gl.uniform1f(shader.uniform('uNotSelectedAlpha'), displayState.notSelectedAlpha.value);
     gl.uniform2ui(shader.uniform('uSelectedSegment'), selectedSegmentLow, selectedSegmentHigh);
     if (visibleSegments.hashTable.size === 0 && ignoreNullSegmentSet) {

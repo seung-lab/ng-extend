@@ -16,6 +16,7 @@
 
 import {ngeHoverStyle} from 'neuroglancer/segmentation_display_state/frontend';
 import {NGE_HALO_SHELLS, NGE_OUTLINE_SHELLS, NGE_WIREFRAME_SHELLS, ngeWireframePass} from 'neuroglancer/mesh/nge_hover';
+import {ngeWireframeFrameStart, ngeWireframeFrameUnfinished} from 'neuroglancer/mesh/frontend';
 import 'neuroglancer/noselect.css';
 import './panel.css';
 
@@ -588,6 +589,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         gl.blendEquation(WebGL2RenderingContext.MAX);
         gl.depthFunc(WebGL2RenderingContext.LEQUAL);
         ngeWireframePass.on = true;
+        ngeWireframeFrameStart();
       }
       const shells = ngeStyle === 'halo' ? NGE_HALO_SHELLS :
           ngeStyle === 'wireframe' ? NGE_WIREFRAME_SHELLS : NGE_OUTLINE_SHELLS;
@@ -597,6 +599,7 @@ export class PerspectivePanel extends RenderedDataPanel {
           drawShells.call(renderLayer, renderContext, attachment, shells);
         }
       }
+      if (ngeWireframePass.on && ngeWireframeFrameUnfinished()) this.scheduleRedraw();
       ngeWireframePass.on = false;
       gl.depthFunc(WebGL2RenderingContext.LESS);
       gl.blendEquation(WebGL2RenderingContext.FUNC_ADD);

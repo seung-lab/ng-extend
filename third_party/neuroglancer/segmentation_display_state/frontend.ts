@@ -757,13 +757,15 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  *   pulse    bands of light running out along the cell from the mouse in 3D
  *   wireframe  the cell's triangles drawn in lines of its own colour over a
  *            dimmed body (Ames 2026-10-20)
+ *   saturate the opposite of the fade: the cell's colour turns richer and a
+ *            little brighter, in 2D and 3D (Ames 2026-10-20)
  *   fade     the classic look, the cell turns pale (existing players' default)
  * In 2D every style but fade keeps the cell's colour and makes it more solid.
  * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
  * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
  * Settings updates it live.
  */
-export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'fade';
+export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'saturate'|'fade';
 /** The style when the player has not chosen one (Ames 2026-10-20: "make
  *  Halo the default highlight mode for new users. We can retain
  *  legacy/original one for existing users"): a browser with settings in it
@@ -774,11 +776,20 @@ export function ngeDefaultHoverStyle(prefs: any): NgeHoverStyle {
 }
 export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
   const v = prefs?.hoverStyle;
-  return v === 'halo' || v === 'pulse' || v === 'wireframe' || v === 'fade' || v === 'outline' ? v : ngeDefaultHoverStyle(prefs);
+  return v === 'halo' || v === 'pulse' || v === 'wireframe' || v === 'saturate' || v === 'fade' || v === 'outline' ? v : ngeDefaultHoverStyle(prefs);
 }
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
 })()};
+/** EyeWire II 'saturate': richer colour, a little brighter (2D does the same
+ *  in sliceview/volume/segmentation_renderlayer.ts). */
+export function ngeSaturate(color: Float32Array|number[]) {
+  const grey = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2];
+  for (let i = 0; i < 3; ++i) {
+    color[i] = Math.max(0, Math.min(1, (grey + (color[i] - grey) * 1.7) * 1.12));
+  }
+}
+
 /** The pulse's colour (Nseraf: "if we can also change the colour of the
  *  'electricity'"): '#rrggbb', or '' for a light tint of the cell's own. */
 export function ngeParsePulseColor(hex: unknown): [number, number, number]|null {
@@ -844,6 +855,10 @@ export function getObjectColor(
   }
   for (let i = 0; i < 3; ++i) {
     color[i] = color[i] * saturation + (1 - saturation);
+  }
+  if (ngeHoverStyle.value === 'saturate' && displayState.hoverHighlight.value &&
+      displayState.segmentSelectionState.isSelected(objectId)) {
+    ngeSaturate(color);
   }
 
   color[0] *= alpha;

@@ -1030,7 +1030,7 @@ export interface UserPreferences {
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
   /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse' or 'wireframe', the classic look. */
-  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'fade';
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade';
   /** Set when hoverStyle was given (a new player's halo), not chosen; the
    *  account copy can still say they were here before. Local only. */
   hoverStyleAuto?: boolean;

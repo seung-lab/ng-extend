@@ -64,6 +64,125 @@ function freeGpuMeshData(chunk: FragmentChunk|MultiscaleFragmentChunk) {
     lines.dispose();
     (chunk as any).ngeLineBuffer = undefined;
   }
+  const coarse = (chunk as any).ngeCoarse as Map<number, NgeCoarseWire>|undefined;
+  if (coarse !== undefined) {
+    for (const w of coarse.values()) {
+      w.positions.dispose();
+      w.normals.dispose();
+      w.lines.dispose();
+    }
+    (chunk as any).ngeCoarse = undefined;
+  }
+}
+
+// -- EyeWire II hover wireframe at lower detail when zoomed out --------------
+// (Ames 2026-10-20: "can you make it lower resolution mesh based on zoom?
+// Looks cool up close".) The meshes come at one detail only, so far out their
+// triangles are smaller than a pixel and the lines fill in. A coarser copy is
+// made by snapping the mesh's points to a grid and keeping the edges between
+// grid cells: one copy per grid size (powers of two), made the first time it
+// is needed, only for the cell under the mouse, and only a few per frame.
+interface NgeCoarseWire {
+  positions: Buffer;
+  normals: Buffer;
+  lines: Buffer;
+  count: number;
+}
+/** Wanted on screen between the wireframe's points. */
+const NGE_WIRE_TARGET_PX = 7;
+/** The smallest grid, in model units (nm). */
+const NGE_WIRE_BASE_NM = 16;
+/** How long making copies may take per frame. */
+const NGE_WIRE_BUDGET_MS = 6;
+let ngeNmPerPx = 10;
+let ngeWireBudgetUntil = 0;
+let ngeWireMissed = false;
+/** The grid size for this zoom, as power of two steps above the base, or -1
+ *  for the mesh's own triangles. */
+function ngeWireLevel(chunk: FragmentChunk|MultiscaleFragmentChunk): number {
+  let edgeNm = (chunk as any).ngeEdgeNm as number|undefined;
+  if (edgeNm === undefined) {
+    // The mesh's typical edge length, from a sample of its triangles.
+    const p = chunk.meshData.vertexPositions as Float32Array, t = chunk.meshData.indices;
+    let sum = 0, n = 0;
+    const step = Math.max(3, Math.floor(t.length / 300 / 3) * 3);
+    for (let i = 0; i + 2 < t.length; i += step) {
+      const a = t[i] * 3, b = t[i + 1] * 3;
+      sum += Math.hypot(p[a] - p[b], p[a + 1] - p[b + 1], p[a + 2] - p[b + 2]);
+      n++;
+    }
+    edgeNm = n ? sum / n : 1;
+    (chunk as any).ngeEdgeNm = edgeNm;
+  }
+  const wantNm = NGE_WIRE_TARGET_PX * ngeNmPerPx;
+  if (wantNm < edgeNm * 1.5) return -1;
+  return Math.max(0, Math.round(Math.log2(wantNm / NGE_WIRE_BASE_NM)));
+}
+function ngeCoarseWireFor(
+    gl: GL, chunk: FragmentChunk|MultiscaleFragmentChunk, level: number): NgeCoarseWire|undefined {
+  let cache = (chunk as any).ngeCoarse as Map<number, NgeCoarseWire>|undefined;
+  if (cache === undefined) (chunk as any).ngeCoarse = cache = new Map();
+  const have = cache.get(level);
+  if (have !== undefined) return have;
+  // Out of time this frame: the full lines now, the copy on a later frame.
+  if (performance.now() > ngeWireBudgetUntil) {
+    ngeWireMissed = true;
+    return undefined;
+  }
+  const g = NGE_WIRE_BASE_NM * Math.pow(2, level);
+  const p = chunk.meshData.vertexPositions as Float32Array, t = chunk.meshData.indices;
+  const nv = p.length / 3;
+  const clusterOf = new Uint32Array(nv);
+  const ids = new Map<number, number>();
+  const sums: number[] = [];
+  for (let v = 0; v < nv; v++) {
+    const ix = Math.floor(p[3 * v] / g) + 32768, iy = Math.floor(p[3 * v + 1] / g) + 32768,
+          iz = Math.floor(p[3 * v + 2] / g) + 32768;
+    const key = ix + iy * 65536 + iz * 4294967296;
+    let id = ids.get(key);
+    if (id === undefined) {
+      id = sums.length / 4;
+      ids.set(key, id);
+      sums.push(0, 0, 0, 0);
+    }
+    clusterOf[v] = id;
+    sums[4 * id] += p[3 * v];
+    sums[4 * id + 1] += p[3 * v + 1];
+    sums[4 * id + 2] += p[3 * v + 2];
+    sums[4 * id + 3]++;
+  }
+  const nc = sums.length / 4;
+  const positions = new Float32Array(nc * 3);
+  for (let c = 0; c < nc; c++) {
+    const k = sums[4 * c + 3];
+    positions[3 * c] = sums[4 * c] / k;
+    positions[3 * c + 1] = sums[4 * c + 1] / k;
+    positions[3 * c + 2] = sums[4 * c + 2] / k;
+  }
+  const seen = new Set<number>();
+  const lines: number[] = [];
+  const addEdge = (a: number, b: number) => {
+    if (a === b) return;
+    const key = a < b ? a * nc + b : b * nc + a;
+    if (seen.has(key)) return;
+    seen.add(key);
+    lines.push(a, b);
+  };
+  for (let i = 0; i + 2 < t.length; i += 3) {
+    const a = clusterOf[t[i]], b = clusterOf[t[i + 1]], c = clusterOf[t[i + 2]];
+    addEdge(a, b);
+    addEdge(b, c);
+    addEdge(c, a);
+  }
+  const wire: NgeCoarseWire = {
+    positions: Buffer.fromData(gl, positions, gl.ARRAY_BUFFER, gl.STATIC_DRAW),
+    // The wire pass colours lines flat, so the normals are not used.
+    normals: Buffer.fromData(gl, new Int8Array(nc * 2), gl.ARRAY_BUFFER, gl.STATIC_DRAW),
+    lines: Buffer.fromData(gl, new Uint32Array(lines), gl.ELEMENT_ARRAY_BUFFER, gl.STATIC_DRAW),
+    count: lines.length,
+  };
+  cache.set(level, wire);
+  return wire;
 }
 
 /** EyeWire II hover wireframe (Ames 2026-10-20: "can you not show the actual
@@ -238,6 +357,16 @@ function ngeUpdateHaloZoom(projectionParameters: any) {
   const viewNm = Math.max(1, (viewer?.projectionScale?.value ?? 1000) * minNm);
   const branchPx = 1000 / (viewNm / Math.max(1, projectionParameters.height));
   ngeHaloZoom = Math.max(0.3, Math.min(1, branchPx / 12));
+  ngeNmPerPx = viewNm / Math.max(1, projectionParameters.height);
+}
+/** Start of a wireframe pass: this frame's time for making coarser copies. */
+export function ngeWireframeFrameStart() {
+  ngeWireBudgetUntil = performance.now() + NGE_WIRE_BUDGET_MS;
+  ngeWireMissed = false;
+}
+/** End of a wireframe pass: true when copies are still to be made (draw again). */
+export function ngeWireframeFrameUnfinished() {
+  return ngeWireMissed;
 }
 /** The main pass's hover mode for the cell under the mouse: 1 the pulse,
  *  2 the halo's rim of light on the cell's own edges (colour in uNgeRim). */
@@ -422,6 +551,20 @@ export class MeshShaderManager {
         /*components=*/ 2, WebGL2RenderingContext.BYTE, /*normalized=*/ true);
     const {indices} = meshData;
     if (ngeWireframePass.on && !meshData.strips) {
+      // Far out, a coarser copy of the mesh (plain float positions only).
+      if (this.vertexPositionFormat === VertexPositionFormat.float32 && !this.fragmentRelativeVertices) {
+        const level = ngeWireLevel(fragmentChunk);
+        const wire = level >= 0 ? ngeCoarseWireFor(gl, fragmentChunk, level) : undefined;
+        if (wire !== undefined) {
+          wire.positions.bindToVertexAttrib(
+              shader.attribute('aVertexPosition'), 3, WebGL2RenderingContext.FLOAT, false);
+          wire.normals.bindToVertexAttrib(
+              shader.attribute('aVertexNormal'), 2, WebGL2RenderingContext.BYTE, true);
+          wire.lines.bind();
+          gl.drawElements(WebGL2RenderingContext.LINES, wire.count, WebGL2RenderingContext.UNSIGNED_INT, 0);
+          return;
+        }
+      }
       ngeLineBufferFor(gl, fragmentChunk).bind();
       const begin = indexBegin - (indexBegin % 3), end = indexEnd - (indexEnd % 3);
       gl.drawElements(WebGL2RenderingContext.LINES, (end - begin) * 2, WebGL2RenderingContext.UNSIGNED_INT, begin * 2 * 4);
