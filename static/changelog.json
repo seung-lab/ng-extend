@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-20T17:41:48Z",
+      "title": "A shorter Submit an issue",
+      "items": [
+        "Submit an issue now asks for just one line: in a few words, what is it.",
+        "Want to say more? Click Add details."
+      ],
+      "digest": "minor"
+    },
+    {
       "at": "2026-10-20T17:34:57Z",
       "title": "Cut points as small as merge points",
       "items": [
