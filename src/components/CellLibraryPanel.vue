@@ -3491,6 +3491,8 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0 && !backend.loading" class="nge-cl-no-results">No matching cells</div>
 
+          <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
+          <img v-if="slim" :src="neuronIcon" class="nge-cl-icon nge-cl-slim-icon" alt="" aria-hidden="true" />
           <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -5565,7 +5567,7 @@ select.nge-cl-complete-type:hover {
   flex: 0 1 auto; overflow-y: auto; position: relative;
   /* The expand arrow on the left, where the full panel keeps its shrink
      arrow; the next cell arrow on the right (Ames 2026-10-20). */
-  padding: 4px 14px 4px 44px;
+  padding: 4px 14px 4px 70px;
 }
 /* The one row needs no "this is the one" marking: no green wash or rail
    pressed against the caret, no "viewing" tag. */
@@ -5574,7 +5576,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-panel--slim .nge-cl-viewing { display: none; }
 /* Complete, in the slim view: part of the panel, not a box inside a box. */
 .nge-cl-panel--slim .nge-cl-list > .nge-cl-complete {
-  margin: 4px -14px -4px -44px; padding: 12px 16px 16px;
+  margin: 4px -14px -4px -70px; padding: 12px 16px 16px;
   border: none; border-top: 1px solid rgba(74, 150, 224, 0.25); border-radius: 0;
   background: rgba(10, 24, 44, 0.55);
 }
@@ -5590,9 +5592,10 @@ select.nge-cl-complete-type:hover {
 .nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -44px; margin-right: -14px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-left: -70px; margin-right: -14px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
+.nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 21px; width: 18px; height: 18px; pointer-events: none; }
 /* Next claimed cell: green, beside the Full view arrow at the right, and
    the row makes room for both (Ames 2026-10-04). */
 .nge-cl-slim-next {
@@ -5605,6 +5608,6 @@ select.nge-cl-complete-type:hover {
 }
 .nge-cl-slim-next:disabled { opacity: 0.45; cursor: default; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 46px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-right: -46px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-right: -46px; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -46px; }
 </style>
