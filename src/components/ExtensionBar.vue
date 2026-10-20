@@ -29,6 +29,7 @@ import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import PhotoMode from "components/PhotoMode.vue";
 import PyrArcade from "components/PyrArcade.vue";
+import { ARCADE_ENABLED } from "../util/arcade";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
@@ -212,7 +213,7 @@ onMounted(() => {
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
   document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
-  document.addEventListener('nge:open-arcade', () => { showArcade.value = true; });
+  document.addEventListener('nge:open-arcade', () => { if (ARCADE_ENABLED) showArcade.value = true; });
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
   }) as EventListener);
@@ -435,7 +436,9 @@ function sprayHighlightIcon() {
 const showFlightMode = ref(false);
 // Photo mode (Ames 2026-10-20): from the Share toast and the palette.
 const showPhotoMode = ref(false);
-// The Pyr Arcade (Ames 2026-10-20): from the menu and the palette.
+// The Pyr Arcade (Ames 2026-10-20): from the menu and the palette. Held back
+// for now (Ames: "remind me to add it at a later time for like new years"):
+// set ARCADE_ENABLED to true, with a changelog entry, to open it to players.
 const showArcade = ref(false);
 const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
@@ -1216,7 +1219,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
-        <li>
+        <li v-if="ARCADE_ENABLED">
           <div class="logoutButton button nge-menu-item" @click="showArcade = true; closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">🕹️</span><span>Pyr Arcade</span>
           </div>

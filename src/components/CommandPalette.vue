@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ARCADE_ENABLED } from '../util/arcade';
 /**
  * CommandPalette.vue
  * Power-user command palette (Ctrl+K / Cmd+K).
@@ -197,7 +198,7 @@ function buildActions(): PaletteItem[] {
     aliases: ['photo', 'picture', 'spin', 'turntable', 'video', 'record', 'wallpaper'],
     action: () => document.dispatchEvent(new CustomEvent('nge:photo-mode')),
   });
-  items.push({
+  if (ARCADE_ENABLED) items.push({
     id: 'pyr-arcade',
     label: 'Pyr Arcade',
     description: 'Play Neuron Tetris',
