@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-20T15:23:53Z",
+      "title": "Photo mode",
+      "items": [
+        "Photo mode hides everything but the 3D view, fills the window with it and turns your cells slowly, like a turntable. Open it from the camera row that appears after Share, or from the command palette.",
+        "Its small bar picks the spin speed and a black, night, grey or white background, saves a clean picture, and records one full turn as a short video you can share. Esc leaves and puts your view back as it was."
+      ]
+    },
+    {
       "at": "2026-10-20T14:58:16Z",
       "title": "Several Pyr tabs at once",
       "items": [

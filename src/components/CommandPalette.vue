@@ -189,6 +189,15 @@ function buildActions(): PaletteItem[] {
     action: () => document.dispatchEvent(new CustomEvent('nge:toggle-tag-mode')),
   });
   items.push({
+    id: 'photo-mode',
+    label: 'Photo Mode',
+    description: 'Hide everything, spin the 3D view, save a picture or a spin',
+    category: 'tool',
+    icon: '📷',
+    aliases: ['photo', 'picture', 'spin', 'turntable', 'video', 'record', 'wallpaper'],
+    action: () => document.dispatchEvent(new CustomEvent('nge:photo-mode')),
+  });
+  items.push({
     id: 'open-dataset-selector',
     label: 'Switch Dataset',
     description: 'Switch between stroeh retina, pinky, minnie65',
