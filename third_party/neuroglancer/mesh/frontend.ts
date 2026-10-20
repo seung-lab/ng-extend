@@ -183,11 +183,9 @@ const ngeShellColor = new Float32Array(4);
 function ngeShellColorFor(color: Float32Array|number[], alpha: number) {
   const a = color[3] || 1;
   const rgb = ngeGlowColor(color);
-  // The halo breathes slowly, like a force field (Ames 2026-10-20: "better
-  // border glow"); the outline does not.
-  const breath = ngeHoverStyle.value === 'halo' ? 0.8 + 0.2 * Math.sin(performance.now() / 1000 * Math.PI * 2 / 1.8) : 1;
   // Times alpha: the halo keeps the brightest shell at each pixel (MAX blending).
-  for (let i = 0; i < 3; i++) ngeShellColor[i] = rgb[i] * alpha * breath * a;
+  // It does not breathe (Ames 2026-10-20: "I don't like the breathing").
+  for (let i = 0; i < 3; i++) ngeShellColor[i] = rgb[i] * alpha * a;
   ngeShellColor[3] = alpha;
   return ngeShellColor;
 }
@@ -485,7 +483,7 @@ if (uNgeGlow > 1.5) {
   highp float rimLen = length(uLightDirection.xyz);
   highp float rimFacing = rimLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / rimLen)) : 1.0;
   highp float rimAmount = pow(1.0 - rimFacing, 4.0);
-  vColor.rgb = mix(vColor.rgb, uNgeRim * uColor.a, 0.55 * rimAmount);
+  vColor.rgb = mix(vColor.rgb, uNgeRim * uColor.a, 0.35 * rimAmount);
 } else if (uNgeGlow > 0.5 && uNgePulse.w > 0.5) {
   // EyeWire II hover pulse: bands of light run out along the cell from the
   // mouse, like a signal firing. Distances in nm, so z counts as much as x.
@@ -664,7 +662,6 @@ export class MeshLayer extends
               meshShaderManager.setShell(gl, shader, shell.widthPx, ngeShellColorFor(color!, shell.alpha));
               drawFragments();
             }
-            if (ngeHoverStyle.value === 'halo') ngePulseRunning = true;
             return;
           }
           if (renderContext.emitColor) {
@@ -933,7 +930,6 @@ export class MultiscaleMeshLayer extends
           for (const shell of (shells ?? [null])) {
           if (shell !== null) {
             meshShaderManager.setShell(gl, shader, shell.widthPx, ngeShellColorFor(color!, shell.alpha));
-            if (ngeHoverStyle.value === 'halo') ngePulseRunning = true;
           }
           getMultiscaleChunksToDraw(
               manifest, modelViewProjection, clippingPlanes, detailCutoff,

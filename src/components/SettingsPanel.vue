@@ -469,7 +469,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Fade: the classic look, the cell turns pale. Halo: a glow around its edges that breathes slowly, like a force field. Pulse: bands of light run out along it from your mouse, like a signal firing. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Fade: the classic look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: bands of light run out along it from your mouse, like a signal firing. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">The cell under my mouse</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
                 <option value="fade">Fades (classic)</option>
