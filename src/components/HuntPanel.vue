@@ -112,7 +112,9 @@ const pips = computed(() => {
 /** The last gem's answer, fresh for a few seconds after it lands. */
 const news = computed(() => {
   const n = huntState.news; const h = hunt.value;
-  if (!n || !h || huntState.now - n.at > 15000) return null;
+  // The browser's own clock: n.at is too (huntState.now is the server's, which can differ).
+  void huntState.now;   // ticks every second, so the card goes after its time
+  if (!n || !h || Date.now() - n.at > 15000) return null;
   return n;
 });
 const newsLine = computed(() => {

@@ -122,6 +122,7 @@ export function loadHunts(): Promise<void> {
       huntState.error = '';
       huntState.loaded = true;
       installEditGuard();
+      resumeOnScreen();
       scheduleRefresh();
       startTicker();
     } catch (e: any) {
@@ -467,6 +468,7 @@ let dropTimer: ReturnType<typeof setInterval> | null = null;
 export function startDropWatch() {
   if (dropTimer) return;
   dropTimer = setInterval(() => {
+    if (!active) resumeOnScreen();   // layers that came back with the link load after the list
     const h = active;
     if (!h) return;
     for (const kind of gemKinds(h)) {
@@ -485,6 +487,34 @@ export function startDropWatch() {
 }
 /** Kept for the top bar, which starts it at sign in. */
 export const startGemWatch = startDropWatch;
+
+/**
+ * A running hunt whose layers are already on screen (a reload keeps them in the
+ * link, or the player came back to the tab) is judged again without pressing
+ * anything: its judged gems are known from the server's run and put in their
+ * folders; any gem not judged yet is judged now.
+ */
+function resumeOnScreen() {
+  if (active && !active.test) {
+    const fresh = huntState.hunts.find(x => x.id === active!.id);
+    if (fresh && fresh.phase === 'live') { active = fresh; return; }
+    if (fresh && fresh.phase !== 'live') { active = null; return; }
+  }
+  if (active) return;
+  for (const h of huntState.hunts) {
+    if (h.phase !== 'live') continue;
+    const kinds = gemKinds(h).filter(k => managed(huntLayerName(h, k)));
+    if (!kinds.length) continue;
+    judged.clear();
+    for (const d of h.you?.drops ?? []) {
+      judged.add(d.id);
+      if (kinds.includes(dropKind(d))) fileGem(h, dropKind(d), d.id, d.hit);
+    }
+    active = h;
+    startDropWatch();
+    return;
+  }
+}
 
 // ── For the Admin Hub: read an answer key, the cells and the view from the screen ──
 
