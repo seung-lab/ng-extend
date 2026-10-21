@@ -225,10 +225,9 @@ let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
   if (style === 'hologram' && ngeRimGl) {
-    // The rim's hot colour: the pulse colour if one is chosen, else gold
-    // (Ames's scifi-ui hologram, style goldOnBlue: core #FFD27A).
-    const pc = ngePulseColor.value;
-    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), pc ? pc[0] : 1, pc ? pc[1] : 0.824, pc ? pc[2] : 0.478, 1);
+    // The glow: a light tint of the cell's own colour.
+    const rgb = ngeGlowColor(color);
+    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], 1);
     return 5;
   }
   if (style === 'saturate' && ngeRimGl) {
@@ -560,14 +559,13 @@ float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
 vNgeHolo = vec4(0.0);
 if (uNgeGlow > 4.5) {
-  // EyeWire II hover hologram, after Ames's scifi-ui hologram (style
-  // goldOnBlue, fresnelPower 3.9, glowIntensity 3.55, bodyAlpha 0.75): a body
-  // darker where it faces you and a thin, hot rim at its edges, worked out
-  // per pixel (fragment main). No scanlines and nothing moves (Ames
-  // 2026-10-21); shader only, so it costs no more than drawing the cell.
+  // EyeWire II hover hologram (Ames 2026-10-21: the real wireframe was too
+  // slow; "a hologram effect ... or an inner glow?"): a dark body glowing from
+  // its edges in a light tint of its own colour, worked out per pixel
+  // (fragment main). Nothing moves; shader only, as quick as the cell itself.
   highp float holoLen = length(uLightDirection.xyz);
   highp float holoFacing = holoLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / holoLen)) : 1.0;
-  vNgeHolo = vec4(1.0 - holoFacing, 0.6 + 0.4 * holoFacing, 0.0, 1.0);
+  vNgeHolo = vec4(1.0 - holoFacing, lightingFactor, 0.0, 1.0);
 } else if (uNgeGlow > 3.5) {
   // EyeWire II hover 'saturate', lit from within (Ames 2026-10-20: a colour
   // already at full strength cannot get richer): the shading flattens toward
@@ -658,14 +656,12 @@ if (uNgeShell.w > 0.5) {
         builder.setVertexMain(vertexMain);
         builder.setFragmentMain(`
 if (vNgeHolo.w > 0.5) {
-  highp float holoF = clamp(vNgeHolo.x, 0.0, 1.0);
-  highp vec3 holoC = uColor.rgb / max(uColor.a, 1e-3);
-  highp float holoRim = pow(holoF, 3.9) * 3.55;
-  highp vec3 holoBody = holoC * (0.75 * vNgeHolo.y * (0.4 + 0.6 * holoF));
-  highp vec3 holoRimCol = mix(holoC, uNgeRim.rgb, clamp(holoRim * 0.45, 0.0, 1.0));
-  // Toward the rim colour, not added on: added onto the bright body a gold rim
-  // burned to white (the scifi-ui page tone maps; this renderer does not).
-  emit(vec4(min(mix(holoBody, holoRimCol * 1.1, min(holoRim, 1.0)), vec3(1.0)) * uColor.a, uColor.a), uPickID);
+  // A dark body glowing from its edges in a light tint of its own colour
+  // (Ames 2026-10-21: the first hologram "was" one, gold on a yellow cell
+  // read as metal). No scanlines, nothing moves.
+  highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 1.6);
+  highp vec3 holoBody = uColor.rgb * (0.18 + 0.18 * vNgeHolo.y);
+  emit(vec4(min(holoBody + uNgeRim.rgb * uColor.a * (0.12 + 1.3 * holoRim), vec3(1.0)), uColor.a), uPickID);
 } else {
   emit(vColor, uPickID);
 }`);
