@@ -803,7 +803,8 @@ export const ngeHaloFar = {value: 0};
 export function ngeSaturate(color: Float32Array|number[]) {
   const grey = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2];
   for (let i = 0; i < 3; ++i) {
-    color[i] = Math.max(0, Math.min(1, (grey + (color[i] - grey) * 1.7) * 1.12));
+    // Ames 2026-10-20: 1.7 and 1.12 were "a bit much".
+    color[i] = Math.max(0, Math.min(1, (grey + (color[i] - grey) * 1.35) * 1.05));
   }
 }
 
