@@ -5,7 +5,7 @@
       "at": "2026-10-21T00:00:00Z",
       "title": "Tidier corners",
       "items": [
-        "The music button stays beside the 3D view's Sections box when a message bar shows along the bottom, instead of floating above it.",
+        "The music button sits in the bottom right corner of the 3D view, with the Sections box beside it, and no longer floats up when a message bar shows along the bottom.",
         "Hovering the x, y and z letters in a view's corner opens a tidy card for the view's scale, with tips on what Default and Zoom-relative do."
       ]
     },

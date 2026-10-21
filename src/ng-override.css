@@ -111,6 +111,9 @@
    along the bottom of the screen covered it (Ames 2026-10-12). It rises with
    the bar like the coordinates do. */
 label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
+/* The music button has the corner (RadioPlayer.vue); Sections sits left of
+   it, on the same line, centred on the button's height. */
+body.nge-radio-on label.perspective-panel-show-slice-views { right: 46px; bottom: calc(10px + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 .neuroglancer-mouse-position-widget:empty {

@@ -249,12 +249,13 @@ const label = computed(() => on.value
 const dock = ref(0);
 let dockTimer = 0;
 const DOCKED = ['.neuroglancer-side-panel-column', '.neuroglancer-side-panel', '#nge-lb-modal .nge-overlay', '.nge-lb-modal .nge-overlay'];
-// Things that can sit in the bottom right corner, under the button. The 3D
-// view's small "Sections" tick box is stepped round to the left, on the same
-// line; a bar along the bottom is risen above (Ames 2026-10-14: the button
-// sat a whole row above the tick box, "too high").
+// Things that can sit in the bottom right corner, under the button. A bar
+// along the bottom is risen above. The button keeps the corner itself, and
+// the 3D view's "Sections" tick box moves left of it instead (Ames
+// 2026-10-21: "it should be nestled to the bottom right"; body.nge-radio-on
+// in ng-override.css).
 const UNDER = ['#statusContainer > li'];
-const BESIDE = ['label.perspective-panel-show-slice-views'];
+const BESIDE: string[] = [];
 const lift = ref(0);
 const base = ref(6);
 const shift = ref(0);
@@ -323,6 +324,7 @@ function onDocDown(e: Event) { if (expanded.value && !rootEl.value?.contains(e.t
 
 onMounted(() => {
   const wasOn = loadPrefs();
+  document.body.classList.add('nge-radio-on');
   measureDock();
   dockTimer = window.setInterval(measureDock, 350);
   window.addEventListener('resize', measureDock);
@@ -341,6 +343,7 @@ function onWheel(e: WheelEvent) {
 function onPageHide() { saveSpot(true); }
 onUnmounted(() => {
   window.removeEventListener('pagehide', onPageHide);
+  document.body.classList.remove('nge-radio-on');
   clearInterval(dockTimer);
   window.removeEventListener('resize', measureDock);
   document.removeEventListener('pointerdown', onDocDown, true);
