@@ -13,6 +13,7 @@ import { makeLayer } from 'neuroglancer/layer';
 import { secureWrite } from './secure_write';
 import { mintShortStateLink } from './util/state_link';
 import { currentSegLayer, currentDatasetTag } from './datasets';
+import { setStateRewriter, useLayersStore } from './store';
 
 export type AccessKind = 'cut' | 'merge';
 export const ACCESS_SLOTS: Record<AccessKind, number> = { cut: 7, merge: 3 };
@@ -209,6 +210,36 @@ export async function resetAccess(requestId?: number): Promise<void> {
 /** The request a reviewer is looking at in the view, and which example. */
 export const reviewing = ref<{ request: AccessRequest; index: number } | null>(null);
 
+/** Which request and example are open, kept for this tab so a refresh
+ *  comes back to review mode (Celia #195). */
+const REVIEW_KEY = 'nge-access-reviewing';
+function rememberReview() {
+  try {
+    if (reviewing.value) sessionStorage.setItem(REVIEW_KEY, JSON.stringify({ id: reviewing.value.request.id, index: reviewing.value.index }));
+    else sessionStorage.removeItem(REVIEW_KEY);
+  } catch { /* storage blocked */ }
+}
+
+/** After a refresh: back into review mode on the same example, if this tab
+ *  was reviewing one. The view itself came back with the address. Tried a
+ *  few times, since the reviewer's sign in arrives after the page. */
+export async function resumeReview(tries = 6): Promise<void> {
+  let saved: { id: number; index: number } | null = null;
+  try { saved = JSON.parse(sessionStorage.getItem(REVIEW_KEY) || 'null'); } catch { saved = null; }
+  if (!saved || reviewing.value) return;
+  try {
+    const list = await listAccessRequests('all');
+    const request = list.find(r => r.id === saved!.id);
+    if (!request) { sessionStorage.removeItem(REVIEW_KEY); return; }
+    reviewing.value = { request, index: saved.index };
+    document.dispatchEvent(new CustomEvent('nge:access-review'));
+    const it = request.items?.[saved.index];
+    if (it) showReviewPoints(it);
+  } catch {
+    if (tries > 1) setTimeout(() => { void resumeReview(tries - 1); }, 3000);
+  }
+}
+
 /** Leave the Admin Hub and open one example in the view, with the review bar. */
 export function reviewInView(request: AccessRequest, index: number) {
   reviewing.value = { request, index };
@@ -220,14 +251,32 @@ export function reviewInView(request: AccessRequest, index: number) {
 /** Load an example's view in place, then draw its points (see
  *  showReviewPoints); a link we cannot load opens in a new tab. */
 export function openExample(it: AccessItem) {
+  rememberReview();
   try {
     const hash = new URL(it.link).hash;
     if (hash.startsWith('#!')) {
-      if (window.location.hash !== hash) window.location.hash = hash;
+      // Loaded through the store, with the review points and the see
+      // through cells written into the view itself, so they arrive together.
+      // Changing the address alone left the new example's points missing
+      // and the old view up (Celia #195: "points not loading when you jump
+      // to next request"; a point "jumps you out to black EM").
+      const body = hash.slice(2);
+      let target: string | Record<string, any> | null = null;
+      if (/^[a-z][a-z\d+.-]*:\/\//i.test(body)) target = body;
+      else { try { target = JSON.parse(decodeURIComponent(body.startsWith('+') ? body.slice(1) : body)); } catch { target = null; } }
+      if (target) {
+        setStateRewriter(async (state: any) => withReviewLayers(state, it));
+        // The app's own store, passed in: called from outside a component the
+        // store lookup can find no active app.
+        const pinia = (document.querySelector('#app') as any)?.__vue_app__?.config?.globalProperties?.$pinia;
+        void useLayersStore(pinia).loadState(target).finally(() => setStateRewriter(null));
+      } else if (window.location.hash !== hash) {
+        window.location.hash = hash;
+      }
       showReviewPoints(it);
       return;
     }
-  } catch { /* fall through */ }
+  } catch (e) { console.warn('[access] could not open the example in place:', e); }
   window.open(it.link, '_blank', 'noopener');
 }
 
@@ -253,17 +302,42 @@ function segLayers(): any[] {
   return (v?.layerManager?.managedLayers ?? []).filter((ml: any) => ml?.layer?.displayState?.objectAlpha);
 }
 
+function reviewLayerSpec(it: AccessItem, color: AccessColor) {
+  const pts = it.points[color] ?? [];
+  return { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: REVIEW_POINT_SIZE,
+    annotations: pts.map((p, i) => ({ type: 'point', id: `${color}-${i}`, point: p.position, description: pointName(color, i) })) };
+}
+
+/** A saved view with this example's review points added and its cells see
+ *  through, before it loads. */
+function withReviewLayers(state: any, it: AccessItem): any {
+  if (!state || typeof state !== 'object') return state;
+  const names = new Set(Object.values(REVIEW_LAYERS).map(r => r.name));
+  const add: any[] = [];
+  for (const color of ['red', 'blue', 'merge'] as const) {
+    if ((it.points[color] ?? []).length) add.push({ ...reviewLayerSpec(it, color), name: REVIEW_LAYERS[color].name });
+  }
+  const seeThrough = (l: any) => { if (l?.type === 'segmentation') l.objectAlpha = REVIEW_ALPHA; };
+  if (Array.isArray(state.layers)) {
+    state.layers = state.layers.filter((l: any) => !names.has(l?.name));
+    state.layers.forEach(seeThrough);
+    state.layers.push(...add);
+  } else if (state.layers && typeof state.layers === 'object') {
+    for (const n of names) delete state.layers[n];
+    Object.values(state.layers).forEach(seeThrough);
+    for (const l of add) { const { name, ...rest } = l; state.layers[name] = rest; }
+  }
+  return state;
+}
+
 function placeReviewPoints(it: AccessItem): boolean {
   const v = (window as any).viewer;
   if (!v?.layerSpecification) return false;
   const managed = v.layerManager?.managedLayers ?? [];
   for (const ml of [...managed]) if (Object.values(REVIEW_LAYERS).some(r => r.name === ml.name)) v.layerManager.removeManagedLayer(ml);
   for (const color of ['red', 'blue', 'merge'] as const) {
-    const pts = it.points[color] ?? [];
-    if (!pts.length) continue;
-    const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: REVIEW_POINT_SIZE,
-      annotations: pts.map((p, i) => ({ type: 'point', id: `${color}-${i}`, point: p.position, description: pointName(color, i) })) };
-    v.layerSpecification.add(makeLayer(v.layerSpecification, REVIEW_LAYERS[color].name, spec));
+    if (!(it.points[color] ?? []).length) continue;
+    v.layerSpecification.add(makeLayer(v.layerSpecification, REVIEW_LAYERS[color].name, reviewLayerSpec(it, color)));
   }
   for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = REVIEW_ALPHA;
   return true;
@@ -297,6 +371,7 @@ export function showReviewPoints(it: AccessItem) {
 /** Review mode ends: the drawn points go, the cells are solid again. */
 export function endReview() {
   window.clearInterval(reviewTimer);
+  try { sessionStorage.removeItem(REVIEW_KEY); } catch { /* storage blocked */ }
   try {
     const v = (window as any).viewer;
     for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {
@@ -312,3 +387,4 @@ export function backToRequests() {
   endReview();
   document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
 }
+
