@@ -42,13 +42,19 @@ export { STAGE_MOMENTS, NEVER_AUTO, ALL_AUTO, TUTORIAL_REVEALS, checkTutorialWir
 export type { StageMoment } from '../data/toolbar-stages';
 
 
-/** Live site accounts created at or after this are staged. Far in the future
- *  until Ames says deploy: set it to the deploy time then. */
-export const STAGING_SINCE = '2099-01-01T00:00:00Z';
+/** Live site accounts created at or after this are staged: the deploy time
+ *  (Ames said deploy, 2026-10-21). Everyone older keeps their top bar. */
+export const STAGING_SINCE = '2026-10-21T18:49:56Z';
 
 export const IS_LIVE_SITE = typeof location !== 'undefined' && location.hostname.startsWith('eyewire-ii-community-dot-');
-/** The test panel exists everywhere except the live site. */
+/** The test panel exists on every test site, and for admins on the live site
+ *  (Ames 2026-10-21: an admin's own account is never staged, so this is how
+ *  they see a new player's top bar there). */
 export const STAGING_TEST_AVAILABLE = !IS_LIVE_SITE;
+export function stagingTestAllowed(): boolean {
+  if (STAGING_TEST_AVAILABLE) return true;
+  try { return !!(useProofreadingBackendStore() as any).isAdmin; } catch { return false; }
+}
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -82,7 +88,7 @@ function readSim(): StageState {
   return freshState();
 }
 let simOnAtStart = false;
-try { simOnAtStart = STAGING_TEST_AVAILABLE && localStorage.getItem(SIM_ON_KEY) === '1'; } catch { /* no storage */ }
+try { simOnAtStart = localStorage.getItem(SIM_ON_KEY) === '1'; } catch { /* no storage */ }
 
 /** The pretend new player of the test panel (test sites only). */
 export const simulating = ref(simOnAtStart);
@@ -145,7 +151,7 @@ export function simBack() {
 }
 
 export function setSimulating(on: boolean) {
-  if (!STAGING_TEST_AVAILABLE) return;
+  if (!stagingTestAllowed()) return;
   simulating.value = on;
   try { localStorage.setItem(SIM_ON_KEY, on ? '1' : '0'); } catch { /* no storage */ }
   if (on) noteVisit();
@@ -168,7 +174,8 @@ function prefs() { return useUserPreferencesStore(); }
 
 /** The state that decides the top bar now, or null when nothing is staged. */
 function current(): StageState | null {
-  if (simulating.value) return simState;
+  // The pretend player: test sites, or an admin on the live site.
+  if (simulating.value && stagingTestAllowed()) return simState;
   if (!IS_LIVE_SITE) return null;
   const s = (prefs().prefs as any).toolbarStage as StageState | undefined;
   return s && s.staged ? s : null;

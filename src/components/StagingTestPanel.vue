@@ -11,6 +11,8 @@ import { STAGE_MOMENTS, NEVER_AUTO, ALL_AUTO, simulating, simState, simHistory, 
   simSnapshot, simRestore, announcement, checkTutorialWiring } from '../util/toolbar_staging';
 import { getToolbarIconDef, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder } from '../data/toolbar-icons';
 import { useUserPreferencesStore } from '../store';
+import { useTutorialStore } from '../store-pyr';
+import { IS_LIVE_SITE } from '../util/toolbar_staging';
 import { steps as advancedSteps } from '../tutorial-2';
 import { steps as mergeSteps } from '../tutorial-3';
 import { steps as cutSteps } from '../tutorial-cut';
@@ -118,6 +120,31 @@ function startOver() { resetSim(); }
 const lastStep = computed(() => simHistory.length ? simHistory[simHistory.length - 1].label : '');
 function back() { simBack(); }
 function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).checked); }
+
+// ── Reset my tutorials (Ames 2026-10-21): the one thing here that changes the
+// account. Every tutorial back to unstarted, Get Started opens at its first
+// box, and each tutorial Achievement celebrates again when earned (an
+// Achievement already held stays held). This browser's copy and the account's
+// are both set: the app keeps whichever is further along, so one alone would
+// come back. Also starts the pretend new player from the first visit.
+const resetAsk = ref(false);
+const resetDone = ref(false);
+function resetTutorials() {
+  if (!resetAsk.value) { resetAsk.value = true; setTimeout(() => { resetAsk.value = false; }, 6000); return; }
+  resetAsk.value = false;
+  const t: any = useTutorialStore();
+  for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) if (`tutorialStep${n}` in t) t[`tutorialStep${n}`] = -1;
+  try {
+    for (const k of ['nge-badge-citizen-scientist', 'nge-badge-advanced-operator', 'nge-badge-mini-michelangelo', 'nge-badge-safety-scissors']) localStorage.removeItem(k);
+  } catch { /* no storage */ }
+  resetSim();
+  setSimulating(true);
+  t.activeTutorial = 1;
+  t.tutorialStep1 = -1;
+  setTimeout(() => { t.setTutorialStep(0); }, 60);
+  resetDone.value = true;
+  setTimeout(() => { resetDone.value = false; }, 8000);
+}
 </script>
 
 <template>
@@ -129,11 +156,14 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
       <span class="nge-stt-title">Staging test</span>
       <button class="nge-stt-x" @click="setOpen(false)" title="Fold away" aria-label="Fold away">×</button>
     </header>
-    <p class="nge-stt-note">Test site only. Pretend to be a brand new player and step through their first days. Nothing here is saved to your account.</p>
+    <p class="nge-stt-note">{{ IS_LIVE_SITE ? 'Admins only.' : 'Test site only.' }} Pretend to be a brand new player and step through their first days. Nothing here is saved to your account, except Reset my tutorials.</p>
     <label class="nge-stt-switch">
       <input id="nge-stt-sim" type="checkbox" :checked="simulating" @change="toggleSim" />
       <span>Pretend I am a new player</span>
     </label>
+
+    <button id="nge-stt-reset-tut" class="nge-hud-btn nge-hud-btn--quiet nge-stt-reset" @click="resetTutorials">{{ resetAsk ? 'Click again to reset every tutorial' : 'Reset my tutorials' }}</button>
+    <p v-if="resetDone" class="nge-stt-note nge-stt-reset-done">Tutorials reset. Get Started is open, and you are a brand new player again.</p>
 
     <template v-if="simulating">
       <div class="nge-stt-actions">
@@ -230,6 +260,8 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
 .nge-stt-waiting .nge-stt-ic { width: 22px; height: 22px; }
 .nge-stt-none { font-size: 12px; color: #9fb4d0; }
 .nge-stt-fill { display: block; font-size: 11px; color: #9fb4d0; }
+.nge-stt-reset { align-self: flex-start; }
+.nge-stt-reset-done { color: #7cffb2; }
 .nge-stt-results { border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .nge-stt-results--ok { border: 1px solid rgba(124, 255, 178, 0.5); background: rgba(124, 255, 178, 0.06); }
 .nge-stt-results--bad { border: 1px solid rgba(255, 120, 120, 0.6); background: rgba(255, 120, 120, 0.08); }

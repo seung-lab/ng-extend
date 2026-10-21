@@ -953,7 +953,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <!-- <annotation-panel /> --> <!-- Hidden: users pick cells from Cell Library instead -->
   <achievement-toast />
   <staging-announcement />
-  <staging-test-panel v-if="STAGING_TEST_AVAILABLE" />
+  <!-- Test sites, and admins on the live site (util/toolbar_staging.ts). -->
+  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.isAdmin" />
   <command-palette
     ref="cmdPalette"
     @open-profile="showProfile = true"
