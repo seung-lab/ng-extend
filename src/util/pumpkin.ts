@@ -42,6 +42,9 @@ interface PatchCell {
   /** Moved down (data +y) from the soma, so the cell body sits high inside
    *  and the branches leave through the eyes and mouth. */
   dropNm: number;
+  /** The supervoxel at the soma, when known. It never changes, so it finds
+   *  the cell's current id after any edit, in every browser. */
+  sv?: string;
   /** Which model (static/halloween/<model>.glb). */
   model: Model;
   /** The cell's colour while it wears the pumpkin: a different one for
@@ -80,7 +83,7 @@ export function pumpkinSeason(now = new Date()): boolean {
 interface PatchState { supervoxel: string | null; current: string[]; askedAt: number; painted: Set<string>; prop: NgeProp | null; meshSeen: boolean }
 const svKey = (c: PatchCell) => `nge.pumpkin.sv.${c.soma.join(',')}`;
 const states: PatchState[] = PATCH.map(c => ({
-  supervoxel: (() => { try { return localStorage.getItem(svKey(c)); } catch { return null; } })(),
+  supervoxel: c.sv ?? (() => { try { return localStorage.getItem(svKey(c)); } catch { return null; } })(),
   current: [], askedAt: 0, painted: new Set(), prop: null, meshSeen: false,
 }));
 /** Share of a cell's mesh pieces that must be drawn before its pumpkin
