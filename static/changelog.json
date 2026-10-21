@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T00:58:03Z",
+      "title": "3D Hover: None, and a gentler Saturate",
+      "items": [
+        "Settings, 3D Hover now has None, for no highlight on the cell under your mouse. Pressing P still makes a cell pulse.",
+        "Saturate is gentler, so the cell keeps its shading."
+      ]
+    },
+    {
       "at": "2026-10-21T00:26:00Z",
       "title": "A pumpkin patch in the Sandbox",
       "items": [

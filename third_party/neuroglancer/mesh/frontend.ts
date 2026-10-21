@@ -382,7 +382,7 @@ function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
   if (style === 'wireframe') return 3;
   if (style === 'saturate' && ngeRimGl) {
-    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), 0, 0, 0, 0.45);
+    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), 0, 0, 0, 0.25);
     return 4;
   }
   if (style === 'halo' && ngeRimGl) {
