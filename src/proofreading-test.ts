@@ -281,7 +281,7 @@ function ensureEndLayer() {
 }
 /** The End layer as a view holds it: Pyr gems (Ames, 2026-10-13), pink so
  *  they show on a cell of any colour. */
-function endLayerSpec(): Record<string, any> {
+export function endLayerSpec(): Record<string, any> {
   return { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: '#ff4fd8', pointMarker: 'pyr', pointSize: 1.5, annotations: [] };
 }
 
@@ -292,7 +292,7 @@ function endLayerSpec(): Record<string, any> {
  * (even hidden) shows as a second copy of the cell and the cut tool will
  * not work on it (Ames, 2026-10-13), so the list is emptied first.
  */
-function showExactly(dataset: string, root: string) {
+export function showExactly(dataset: string, root: string) {
   try {
     for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
       const url: string = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
@@ -559,7 +559,7 @@ const CLAIM_STEP = 2, RESULT_STEP = 3;
 export const steps: Step[] = [
   // 1: What the test is
   {
-    title: 'Proofreading Test (WIP)',
+    title: 'Proofreading Test (DO NOT TAKE, WIP)',
     get text() {
       const st = testStatus.value;
       const t = st?.test;

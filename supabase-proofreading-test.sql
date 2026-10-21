@@ -113,6 +113,11 @@ CREATE TABLE IF NOT EXISTS public.proofreading_test_attempts (
   timed_out boolean NOT NULL DEFAULT false  -- scored because the time limit ran out
 );
 ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS timed_out boolean NOT NULL DEFAULT false;
+-- What the admins see of a try (2026-10-21, supabase-proofreading-test-tries.sql):
+-- the player's cell as they left it, and the ends they marked of how many.
+ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS end_root text CHECK (end_root IS NULL OR end_root ~ '^[0-9]{1,20}$');
+ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS ends_found integer;
+ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS ends_total integer;
 CREATE INDEX IF NOT EXISTS proofreading_test_attempts_user_idx ON public.proofreading_test_attempts (user_id, test_id, started_at DESC);
 
 ALTER TABLE public.proofreading_tests ENABLE ROW LEVEL SECURITY;
