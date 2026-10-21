@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T15:38:20Z",
+      "title": "Proofreading Test: not open yet",
+      "digest": "minor",
+      "items": [
+        "The Proofreading Test in the menu now says DO NOT TAKE. It is still being built and tried by the team; we will say when it is ready for you."
+      ]
+    },
+    {
       "at": "2026-10-21T13:56:02Z",
       "title": "Funnier Achievements, and the Ultramicrotome",
       "items": [
