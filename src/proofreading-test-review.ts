@@ -15,6 +15,7 @@ import { secureWrite } from './secure_write';
 import { setStateRewriter, useLayersStore } from './store';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
 import { showExactly, endLayerSpec } from './proofreading-test';
+import { Uint64 } from 'neuroglancer/util/uint64';
 import imgInspectorNurro from './images/inspector-nurro.png';
 
 export interface TestTry {
@@ -82,6 +83,21 @@ export function tryParts(t: TestTryDetail) {
 
 /** The try an admin is looking at in the view (TestReviewBar). */
 export const reviewingTry = ref<TestTryDetail | null>(null);
+/** Said in the bar when the cell did not reach the screen. */
+export const reviewProblem = ref('');
+
+/** Whether the test's segmentation layer is showing this root. */
+function cellShowing(dataset: string, root: string): boolean {
+  try {
+    const want = Uint64.parseString(root);
+    for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+      const url: string = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
+      if (!(ml.name === dataset || url.includes(`/table/${dataset}`))) continue;
+      if (ml.layer?.displayState?.segmentationGroupState?.value?.visibleSegments?.has(want)) return true;
+    }
+  } catch { /* not showing */ }
+  return false;
+}
 
 /** The layers the review adds; they go when it ends. Their own points are
  *  the pink Pyr gems they placed in the test's End layer. */
@@ -120,6 +136,7 @@ function reviewLayers(t: TestTryDetail): Record<string, any>[] {
 export async function reviewTryInView(t: TestTryDetail) {
   if (!t.end_root) return;
   reviewingTry.value = t;
+  reviewProblem.value = '';
   document.dispatchEvent(new CustomEvent('nge:test-review'));
   startDatasetTransition({
     id: 'proofreading-test-review', label: `${playerName(t)}'s cell`, eyebrow: 'Proofreading Test · Review', thumbnail: imgInspectorNurro, contain: true, hold: true,
@@ -141,12 +158,14 @@ export async function reviewTryInView(t: TestTryDetail) {
   finally { setStateRewriter(null); }
   await new Promise(r => setTimeout(r, 800));
   showExactly(dataset, root);
+  if (!cellShowing(dataset, root)) reviewProblem.value = `The test view did not load, so their cell is not on screen. Its segment ID is ${root}: paste it into the Sandbox to see it.`;
   releaseDatasetTransition();
 }
 
 /** The review ends: its layers go; the cell stays on screen. */
 export function endTryReview() {
   reviewingTry.value = null;
+  reviewProblem.value = '';
   try {
     const v = (window as any).viewer;
     for (const ml of [...(v?.layerManager?.managedLayers ?? [])]) {

@@ -49,8 +49,10 @@ async function toggle(t: TestTry) {
 }
 
 const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+/** How long a scored try took. An unfinished try's end is only when the
+ *  server next noticed, so it gets none. */
 function took(t: TestTry): string {
-  if (!t.submitted_at || !t.started_at) return '';
+  if (!t.submitted_at || !t.started_at || (t.outcome !== 'pass' && t.outcome !== 'fail')) return '';
   const m = Math.round((Date.parse(t.submitted_at) - Date.parse(t.started_at)) / 60000);
   return m < 1 ? 'under a minute' : `${m} min`;
 }
@@ -126,7 +128,7 @@ const PARTS = [
               <p v-if="part.why" class="nge-ttr-why">{{ part.why }}</p>
               <ul>
                 <li v-for="(c, i) in (showAll[`${t.id}${part.key}`] ? partsOf[t.id][part.key] : partsOf[t.id][part.key].slice(0, FIRST))" :key="i">
-                  {{ c.label }}<template v-if="part.key !== 'damage'"> <span class="nge-ttr-worth">{{ n(c.weight) }}</span></template>
+                  <span>{{ c.label }}</span><span v-if="part.key !== 'damage'" class="nge-ttr-worth">{{ n(c.weight) }}</span>
                 </li>
               </ul>
               <button v-if="partsOf[t.id][part.key].length > FIRST" class="nge-ttr-more" @click="showAll[`${t.id}${part.key}`] = !showAll[`${t.id}${part.key}`]">
@@ -181,8 +183,8 @@ const PARTS = [
 .nge-ttr-part--fixed h3 { color: #7CFFB2; }
 .nge-ttr-why { color: #9fb0c4; font-size: 0.85rem; margin: 2px 0 0; }
 .nge-ttr-part ul { margin: 4px 0 0; padding-left: 18px; columns: 2 320px; column-gap: 24px; }
-.nge-ttr-part li { break-inside: avoid; color: #dce6f5; }
-.nge-ttr-worth { color: #9fb0c4; font-variant-numeric: tabular-nums; }
+.nge-ttr-part li { break-inside: avoid; color: #dce6f5; display: flex; gap: 12px; }
+.nge-ttr-worth { margin-left: auto; color: #9fb0c4; font-variant-numeric: tabular-nums; }
 .nge-ttr-more { font: inherit; font-size: 0.85rem; color: #9fd3ff; background: none; border: none; padding: 0; margin-top: 4px; cursor: pointer; }
 .nge-ttr-ends { border-top: 1px solid #22344a; padding-top: 8px; margin: 8px 0 0; color: #dce6f5; }
 .nge-ttr-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
