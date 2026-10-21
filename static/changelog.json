@@ -3,10 +3,10 @@
   "entries": [
     {
       "at": "2026-10-21T00:00:00Z",
-      "title": "3D Hover: Spotlight and Hologram",
+      "title": "3D Hover: Spotlight, Hologram and Metallic",
       "items": [
         "Settings, 3D Hover has a new look, Spotlight: the cell under your mouse turns a little richer and the other cells in 3D dim, so it stands out gently.",
-        "Wireframe is now Hologram: the cell turns dark and glows from its edges in its own colour, like a hologram. It is as quick as the other looks."
+        "Wireframe is now Hologram: the cell turns dark and glows from its edges in its own colour, with faint lines across it. It is as quick as the other looks. There is also Metallic, a dark, shiny cell with bright edges."
       ]
     },
     {

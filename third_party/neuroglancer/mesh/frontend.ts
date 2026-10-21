@@ -224,11 +224,11 @@ function ngeUpdateHaloZoom(projectionParameters: any) {
 let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
-  if (style === 'hologram' && ngeRimGl) {
+  if ((style === 'hologram' || style === 'metallic') && ngeRimGl) {
     // The glow: a light tint of the cell's own colour.
     const rgb = ngeGlowColor(color);
     ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], 1);
-    return 5;
+    return style === 'metallic' ? 6 : 5;
   }
   if (style === 'saturate' && ngeRimGl) {
     ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), 0, 0, 0, 0.25);
@@ -565,7 +565,8 @@ if (uNgeGlow > 4.5) {
   // (fragment main). Nothing moves; shader only, as quick as the cell itself.
   highp float holoLen = length(uLightDirection.xyz);
   highp float holoFacing = holoLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / holoLen)) : 1.0;
-  vNgeHolo = vec4(1.0 - holoFacing, lightingFactor, 0.0, 1.0);
+  // .z: 1 Metallic (uNgeGlow 6), 0 Hologram (5).
+  vNgeHolo = vec4(1.0 - holoFacing, lightingFactor, uNgeGlow > 5.5 ? 1.0 : 0.0, 1.0);
 } else if (uNgeGlow > 3.5) {
   // EyeWire II hover 'saturate', lit from within (Ames 2026-10-20: a colour
   // already at full strength cannot get richer): the shading flattens toward
@@ -656,12 +657,22 @@ if (uNgeShell.w > 0.5) {
         builder.setVertexMain(vertexMain);
         builder.setFragmentMain(`
 if (vNgeHolo.w > 0.5) {
-  // A dark body glowing from its edges in a light tint of its own colour
-  // (Ames 2026-10-21: the first hologram "was" one, gold on a yellow cell
-  // read as metal). No scanlines, nothing moves.
-  highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 1.6);
-  highp vec3 holoBody = uColor.rgb * (0.18 + 0.18 * vNgeHolo.y);
-  emit(vec4(min(holoBody + uNgeRim.rgb * uColor.a * (0.12 + 1.3 * holoRim), vec3(1.0)), uColor.a), uPickID);
+  if (vNgeHolo.z > 0.5) {
+    // Metallic (Ames 2026-10-21: "this does not look like a hologram, but it
+    // is cool ... maybe we need a metallic option"): a dark body with bright
+    // edges in a light tint of its own colour.
+    highp float metalRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 1.6);
+    highp vec3 metalBody = uColor.rgb * (0.18 + 0.18 * vNgeHolo.y);
+    emit(vec4(min(metalBody + uNgeRim.rgb * uColor.a * (0.12 + 1.3 * metalRim), vec3(1.0)), uColor.a), uPickID);
+  } else {
+    // Hologram: the first one (2026-10-20), which read as a hologram, with its
+    // scanlines standing still and half as many (Ames 2026-10-21: "you had it
+    // better before the one with the bars ... maybe with fewer scan lines").
+    highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 2.0);
+    highp float holoScan = smoothstep(0.7, 1.0, 0.5 + 0.5 * sin(gl_FragCoord.y * 0.45));
+    highp vec3 holoBody = uColor.rgb * (0.2 + 0.2 * vNgeHolo.y);
+    emit(vec4(min(holoBody + uNgeRim.rgb * uColor.a * (0.95 * holoRim + 0.22 * holoScan), vec3(1.0)), uColor.a), uPickID);
+  }
 } else {
   emit(vColor, uPickID);
 }`);

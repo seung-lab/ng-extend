@@ -755,9 +755,9 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  *   outline  a crisp line just outside the cell in 3D (Ames did not like it;
  *            not offered in Settings, kept for a saved choice)
  *   pulse    bands of light running out along the cell from the mouse in 3D
- *   hologram  a dark body glowing from its edges, with drifting scanlines
+ *   hologram  a dark body glowing from its edges, with faint still scanlines
  *            (it replaced a real wireframe, which was too slow)
- *            dimmed body (Ames 2026-10-20)
+ *   metallic  a dark body with bright edges in a tint of its own colour
  *   saturate the opposite of the fade: the cell's colour turns richer and a
  *            little brighter, in 2D and 3D (Ames 2026-10-20)
  *   spotlight  a gentle Saturate on the cell, and the other cells in 3D dim a
@@ -772,7 +772,7 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
  * Settings updates it live.
  */
-export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'hologram'|'saturate'|'spotlight'|'fade'|'none';
+export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'hologram'|'metallic'|'saturate'|'spotlight'|'fade'|'none';
 /** The style when the player has not chosen one (Ames 2026-10-20: "make
  *  Halo the default highlight mode for new users. We can retain
  *  legacy/original one for existing users"): a browser with settings in it
@@ -797,7 +797,7 @@ function ngeBrowserUsedBefore(): boolean {
 export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
   // 'wireframe' (2026-10-20, too slow) became the hologram.
   const v = prefs?.hoverStyle === 'wireframe' ? 'hologram' : prefs?.hoverStyle;
-  return v === 'halo' || v === 'pulse' || v === 'hologram' || v === 'saturate' || v === 'spotlight' || v === 'fade' || v === 'outline' || v === 'none' ? v : ngeDefaultHoverStyle(prefs);
+  return v === 'halo' || v === 'pulse' || v === 'hologram' || v === 'metallic' || v === 'saturate' || v === 'spotlight' || v === 'fade' || v === 'outline' || v === 'none' ? v : ngeDefaultHoverStyle(prefs);
 }
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
