@@ -261,7 +261,8 @@ export class DisplayDimensionsWidget extends RefCounted {
     defaultCheckbox.type = 'checkbox';
     defaultCheckboxLabel.appendChild(defaultCheckbox);
     defaultCheckboxLabel.appendChild(document.createTextNode('Default'));
-    defaultCheckboxLabel.title = 'Display first 3 dimensions';
+    // EyeWire II: say what it does (Ames 2026-10-21).
+    defaultCheckboxLabel.title = "The data's own x, y and z, each at its own scale. Untick to pick other axes or stretch one.";
     defaultCheckboxLabel.classList.add('neuroglancer-display-dimensions-widget-default');
     defaultCheckbox.addEventListener('change', () => {
       this.updateDefault();
@@ -304,7 +305,7 @@ export class DisplayDimensionsWidget extends RefCounted {
       }
       this.depthRange.value = value;
     });
-    relativeCheckboxLabel.title = 'Depth range is multiplied by scale';
+    relativeCheckboxLabel.title = 'How deep a slab is drawn. Ticked, it grows and shrinks as you zoom; unticked, it stays the number shown.';
     element.appendChild(relativeCheckboxLabel);
     registerActionListener<WheelEvent>(depthGridContainer, 'adjust-via-wheel', actionEvent => {
       const event = actionEvent.detail;

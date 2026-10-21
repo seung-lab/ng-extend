@@ -4,6 +4,7 @@ import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
+import {startPumpkin} from './util/pumpkin';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
@@ -14,6 +15,7 @@ import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startTabs } from './util/tabs';
 import { startContextLostNotice } from './util/context_lost';
+import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
 import { startCutPreview } from './util/cut_preview';
@@ -178,6 +180,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Other Pyr tabs in this browser, and a notice if the views stop drawing.
   startTabs();
   startContextLostNotice();
+  // P over a cell in 3D: it sends a ring of light along itself.
+  startPulseKey();
   app.use(pinia);
   const {initializeWithViewer} = useLayersStore();
   const {loadVolumes} = useVolumesStore();
@@ -404,6 +408,7 @@ function setupViewer() {
   startImageLoadingHint(viewer);
   startLantern(viewer);
   startSpooky(viewer);
+  startPumpkin(viewer);
   startInvalidSegmentWatch(viewer);
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);

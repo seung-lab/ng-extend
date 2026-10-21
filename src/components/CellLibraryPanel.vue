@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reportWriteFailure } from '../util/error_reporting';
+import EditableText from './EditableText.vue';
 import { otherTabCount } from '../util/tabs';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam, whenSettled } from '../util/panel_collapse';
@@ -195,6 +196,8 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** Where an admin's edit of the steps is kept (config howToKey, else by dataset). */
+const datasetHowToKey = computed(() => getDatasetCaveConfig(activeDataset.value).howToKey || ('howto.' + (activeDataset.value || 'dataset').toLowerCase().replace(/[^a-z0-9_.-]/g, '_')).slice(0, 64));
 /** A view with one example of each cell type (MEC), loaded in place. */
 const datasetCellTypesState = computed(() => {
   const cfg = getDatasetCaveConfig(activeDataset.value);
@@ -1017,6 +1020,8 @@ async function submitComplete(cell: CellRow) {
       link: c.link.trim(),
       notes: c.notes.trim(),
       status: c.status || undefined,
+      // The player's type, to the sheet's "CitSci Suggested Type" (Celia).
+      cellType: type || undefined,
     });
     if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
@@ -1030,7 +1035,7 @@ async function submitComplete(cell: CellRow) {
   }
 }
 
-async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string }) {
+async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string; cellType?: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
@@ -1039,7 +1044,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status).catch(showSheetError);
+  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;
   if (!loggedViaCave) {
     // Log as mark_complete for stats (CAVE write didn't record it)
@@ -2571,10 +2576,15 @@ function onSlimMouseDown(e: MouseEvent) {
   startDrag(e);
 }
 
+// The slim bar is wider than the full panel can be (Ames 2026-10-20: "this
+// should be wider"), so the cell's ID shows whole beside its buttons.
+const SLIM_MIN_WIDTH = 640;
 const panelStyle = computed(() => ({
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
-  width: panelWidth.value + 'px',
+  width: (slim.value
+    ? Math.min(Math.max(panelWidth.value, SLIM_MIN_WIDTH), window.innerWidth - panelPos.value.x - 8)
+    : panelWidth.value) + 'px',
   ...(resizedHeight.value != null && !slim.value
     ? { height: resizedHeight.value + 'px', maxHeight: 'none' }
     : {}),
@@ -2588,15 +2598,18 @@ const panelStyle = computed(() => ({
 
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
-          <div class="nge-cl-title">
-            <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
-          </div>
-          <span v-if="slimHint" class="nge-cl-slim-hint">{{ slimHint }}</span>
+          <!-- Shrink on the left, where the slim bar keeps its expand arrow
+               (Ames 2026-10-20: "the shrink/expand arrow should be
+               consistently left") -->
           <button class="nge-cl-caret" :class="{ 'nge-cl-caret--on': slimMode }"
                   :title="slimMode ? 'Slim view is on: jumping to a cell shrinks the library to that cell. Click to shrink now.' : 'Slim view: shrink the library to the cell you are working on'"
                   aria-label="Slim view" :aria-pressed="slimMode ? 'true' : 'false'" @mousedown.stop @click="collapseToCurrent">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <div class="nge-cl-title">
+            <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
+          </div>
+          <span v-if="slimHint" class="nge-cl-slim-hint">{{ slimHint }}</span>
           <button v-if="!viewOnlyDataset" class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
           <button class="nge-cl-close" title="Close (Shift+L)" aria-label="Close the Cell Library" @mousedown.stop @click="emit('hide')">×</button>
         </div>
@@ -2625,9 +2638,8 @@ const panelStyle = computed(() => ({
             <span>How to map a cell</span>
             <button class="nge-cl-howto-close" @click="showHowTo = false" title="Close">×</button>
           </div>
-          <ol class="nge-cl-howto-steps">
-            <li v-for="(step, si) in datasetHowTo" :key="si" v-html="step"></li>
-          </ol>
+          <!-- Admins can change these in the game (Celia 2026-10-20). -->
+          <EditableText :text-key="datasetHowToKey" :original="datasetHowTo" list-class="nge-cl-howto-steps" />
         </div>
 
         <!-- Filter tabs -->
@@ -3483,6 +3495,8 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0 && !backend.loading" class="nge-cl-no-results">No matching cells</div>
 
+          <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
+          <img v-if="slim" :src="neuronIcon" class="nge-cl-icon nge-cl-slim-icon" alt="" aria-hidden="true" />
           <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -3960,6 +3974,21 @@ const panelStyle = computed(() => ({
   line-height: 1;
 }
 .nge-cl-close:hover { color: #eef; }
+
+/* The gear and the close cross at a size you can see and hit (Ames
+   2026-10-20: "borderline microscopic"): 28px targets, the size of the
+   shrink arrow beside the title. */
+.nge-cl-topbar .nge-cl-gear,
+.nge-cl-topbar .nge-cl-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border-radius: 7px;
+  color: #a9bbd8;
+  transition: color 0.12s, background 0.12s, transform 0.3s;
+}
+.nge-cl-topbar .nge-cl-gear { font-size: 19px; }
+.nge-cl-topbar .nge-cl-close { font-size: 26px; margin-left: 2px; }
+.nge-cl-topbar .nge-cl-gear:hover,
+.nge-cl-topbar .nge-cl-close:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
 
 /* Filters */
 .nge-cl-filters {
@@ -4860,15 +4889,15 @@ select.nge-cl-complete-type:hover {
   background: none; border: none; color: #8aa; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px;
 }
 .nge-cl-howto-close:hover { color: #fff; }
-.nge-cl-howto-steps {
+:deep(.nge-cl-howto-steps) {
   margin: 0; padding-left: 20px;
   font-size: 12.5px; line-height: 1.5; color: #cfdcef;
 }
-.nge-cl-howto-steps li { margin: 3px 0; padding-left: 2px; }
-.nge-cl-howto-steps li::marker { color: #42d5ec; font-weight: 700; }
-.nge-cl-howto-steps :deep(b) { color: #fff; font-weight: 600; }
-.nge-cl-howto-steps :deep(a) { color: #7ecaff; }
-.nge-cl-howto-steps :deep(a:hover) { color: #fff; }
+:deep(.nge-cl-howto-steps li) { margin: 3px 0; padding-left: 2px; }
+:deep(.nge-cl-howto-steps li::marker) { color: #42d5ec; font-weight: 700; }
+:deep(.nge-cl-howto-steps b) { color: #fff; font-weight: 600; }
+:deep(.nge-cl-howto-steps a) { color: #7ecaff; }
+:deep(.nge-cl-howto-steps a:hover) { color: #fff; }
 .nge-cl-tabgroup--cells { --grp: #42d5ec; }
 .nge-cl-tabgroup--community { --grp: #e6c760; }
 .nge-cl-tabgroup--mine { --grp: #c98bff; }
@@ -5534,14 +5563,15 @@ select.nge-cl-complete-type:hover {
 }
 .nge-cl-topbar .nge-cl-title { margin-right: auto; }
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
-.nge-cl-caret { margin-right: 8px; }
+.nge-cl-caret { margin-right: 10px; }
 .nge-cl-slim-hint { margin-right: 8px; font-size: 11px; color: #ffd27a; }
 .nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
-  /* The caret keeps its place, top right, as in the full panel (Ames 2026-10-01). */
-  padding: 4px 46px 4px 10px;
+  /* The expand arrow on the left, where the full panel keeps its shrink
+     arrow; the next cell arrow on the right (Ames 2026-10-20). */
+  padding: 4px 14px 4px 76px;
 }
 /* The one row needs no "this is the one" marking: no green wash or rail
    pressed against the caret, no "viewing" tag. */
@@ -5550,7 +5580,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-panel--slim .nge-cl-viewing { display: none; }
 /* Complete, in the slim view: part of the panel, not a box inside a box. */
 .nge-cl-panel--slim .nge-cl-list > .nge-cl-complete {
-  margin: 4px -46px -4px -10px; padding: 12px 16px 16px;
+  margin: 4px -14px -4px -76px; padding: 12px 16px 16px;
   border: none; border-top: 1px solid rgba(74, 150, 224, 0.25); border-radius: 0;
   background: rgba(10, 24, 44, 0.55);
 }
@@ -5566,13 +5596,16 @@ select.nge-cl-complete-type:hover {
 .nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -10px; margin-right: -46px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-left: -76px; margin-right: -14px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
-.nge-cl-slim-expand { position: absolute; right: 12px; top: 18px; }
+.nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
+/* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
+.nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-pip { display: none; }
 /* Next claimed cell: green, beside the Full view arrow at the right, and
    the row makes room for both (Ames 2026-10-04). */
 .nge-cl-slim-next {
-  position: absolute; right: 42px; top: 18px;
+  position: absolute; right: 12px; top: 18px;
   color: #7ee2a8; background: rgba(61, 220, 132, 0.14); border-color: rgba(61, 220, 132, 0.5);
 }
 .nge-cl-slim-next:hover {
@@ -5580,7 +5613,7 @@ select.nge-cl-complete-type:hover {
   box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
 }
 .nge-cl-slim-next:disabled { opacity: 0.45; cursor: default; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 76px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-right: -76px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 46px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-right: -46px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -46px; }
 </style>

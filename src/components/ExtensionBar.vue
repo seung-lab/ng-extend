@@ -27,6 +27,9 @@ import TeamPanel from "components/TeamPanel.vue";
 import VersionNotice from "components/VersionNotice.vue";
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
+import PhotoMode from "components/PhotoMode.vue";
+import PyrArcade from "components/PyrArcade.vue";
+import { ARCADE_ENABLED } from "../util/arcade";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
@@ -170,6 +173,10 @@ function shareActionScreenshot() {
   dismissShareToast();
   showScreenshotDialog.value = true;
 }
+function shareActionPhoto() {
+  dismissShareToast();
+  showPhotoMode.value = true;
+}
 function shareActionEmail() {
   dismissShareToast();
   const subject = 'Check out this neuron in EyeWire II';
@@ -207,6 +214,8 @@ onMounted(() => {
   }) as EventListener);
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
+  document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
+  document.addEventListener('nge:open-arcade', () => { if (ARCADE_ENABLED) showArcade.value = true; });
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
   }) as EventListener);
@@ -483,6 +492,12 @@ function sprayHighlightIcon() {
   });
 }
 const showFlightMode = ref(false);
+// Photo mode (Ames 2026-10-20): from the Share toast and the palette.
+const showPhotoMode = ref(false);
+// The Pyr Arcade (Ames 2026-10-20): from the menu and the palette. Held back
+// for now (Ames: "remind me to add it at a later time for like new years"):
+// set ARCADE_ENABLED to true, with a changelog entry, to open it to players.
+const showArcade = ref(false);
 const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
@@ -1000,6 +1015,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <!-- "A newer version is out": only when the game was updated since this page loaded. -->
   <version-notice />
   <flight-mode v-if="showFlightMode" @hide="showFlightMode = false" />
+  <photo-mode v-if="showPhotoMode" @hide="showPhotoMode = false" />
+  <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
@@ -1109,6 +1126,14 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 8h3l2-2.5h8L18 8h3v11H3z"/>
               <circle cx="12" cy="13.5" r="3.8"/>
+            </svg>
+          </button>
+          <button class="nge-share-action" title="Photo mode: full screen 3D, spin, save a picture or a spin"
+                  @click="shareActionPhoto">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"/>
+              <path d="M8.5 12a3.5 3.5 0 1 0 1-2.45"/><path d="M8.5 8.2v1.6h1.6"/>
             </svg>
           </button>
           <button class="nge-share-action" title="Email link"
@@ -1259,6 +1284,17 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
             <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
+          </div>
+        </li>
+        <li class="nge-menu-heading" @click.stop>Just for fun</li>
+        <li v-if="ARCADE_ENABLED">
+          <div class="logoutButton button nge-menu-item" @click="showArcade = true; closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">🕹️</span><span>Pyr Arcade</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="showPhotoMode = true; closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">📷</span><span>Photo Mode</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>

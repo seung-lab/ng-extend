@@ -6,7 +6,8 @@
  * opacity, layout and so on; we snapshot yours first and put them back once
  * the new view has loaded. Shared links (chat, My Links) are not touched.
  *
- * Only look-and-feel is kept: segment and image opacity, saturation, blend,
+ * Only look-and-feel is kept: segment and image opacity, saturation, highlight
+ * on hover, blend,
  * image shader and its controls, layout, background colours, scale bar, axis
  * lines, 3D slices. Position, segments and annotation layers come from the
  * cell's view as before.
@@ -27,6 +28,9 @@ const LAYER_KEYS: Record<string, [string, Getter][]> = {
     ['notSelectedAlpha', l => l.displayState?.notSelectedAlpha],
     ['objectAlpha', l => l.displayState?.objectAlpha],
     ['saturation', l => l.displayState?.saturation],
+    // Render tab, "Highlight on hover" (wolfryder101 #181: turned off on
+    // every new cell because it flashes as the mouse crosses the screen).
+    ['hoverHighlight', l => l.displayState?.hoverHighlight],
   ],
   image: [
     ['opacity', l => l.opacity],

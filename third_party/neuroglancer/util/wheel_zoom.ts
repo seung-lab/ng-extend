@@ -32,5 +32,9 @@ export function getWheelZoomAmount(event: WheelEvent) {
       multiplier = 2;
       break;
   }
-  return Math.exp(event.deltaY * multiplier);
+  // EyeWire II: one wheel event zooms at most about 2.7 times. Firefox can
+  // report a notch as a page, or as a very large pixel count, and the 3D view
+  // went from a cell to 145 trillion times too far out in a few notches
+  // (Nseraf #182, 2026-10-21).
+  return Math.exp(Math.max(-1, Math.min(1, event.deltaY * multiplier)));
 }

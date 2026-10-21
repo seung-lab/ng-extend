@@ -28,6 +28,19 @@ import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
+import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch } from '../util/pumpkin';
+import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
+// The pumpkin button (Ames 2026-10-20): on a patch cell it turns the
+// pumpkin off and on; anywhere else it offers a trip to the pumpkin patch.
+const showPumpkinBtn = pumpkinSeason();
+const askPatch = ref(false);
+function pumpkinOff(): boolean { return pumpkinUi.here && useUserPreferencesStore().prefs.hidePumpkin === true; }
+function pumpkinTitle(): string {
+  if (!pumpkinUi.here) return 'A rare cell type has been spotted';
+  return useUserPreferencesStore().prefs.hidePumpkin === true ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell';
+}
+function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
+function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -1598,6 +1611,11 @@ function toggleCollapse() {
                 <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
               </span>
             </span>
+            <!-- The pumpkin button (Ames 2026-10-20), in season: off and on
+                 on a patch cell, a trip to the patch anywhere else. -->
+            <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
+                    @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
+            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" />
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
@@ -2448,6 +2466,8 @@ function toggleCollapse() {
 .nge-chat-share-btn:hover:not(:disabled) { border-color: rgba(74, 158, 255, 0.5); }
 .nge-chat-share > .nge-chat-share-btn { display: flex; align-items: center; justify-content: center; padding: 0; }
 .nge-chat-share-btn:disabled { opacity: 0.4; cursor: default; }.nge-chat-emoji { position: relative; flex: 0 0 auto; margin-left: 4px; }
+.nge-chat-pumpkin-btn { flex: 0 0 auto; margin-left: 4px; display: flex; align-items: center; justify-content: center; padding: 0; }
+.nge-chat-pumpkin-btn.off { filter: grayscale(1); opacity: 0.55; }
 .nge-chat-emoji-grid {
   position: absolute;
   right: 0;

@@ -2,6 +2,69 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T13:23:47Z",
+      "title": "Tidier corners",
+      "items": [
+        "The music button sits in the bottom right corner of the 3D view, with the Sections box beside it, and no longer floats up when a message bar shows along the bottom.",
+        "Hovering the x, y and z letters in a view's corner opens a tidy card for the view's scale, with tips on what Default and Zoom-relative do."
+      ]
+    },
+    {
+      "at": "2026-10-21T12:22:28Z",
+      "title": "The 3D view no longer zooms out of sight",
+      "items": [
+        "Scrolling in the 3D view can no longer zoom out so far that your cells disappear. Some mice in Firefox sent such big scroll steps that a few notches left the 3D view empty.",
+        "A view saved zoomed out that far now opens at the dataset's normal 3D distance."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:58:03Z",
+      "title": "3D Hover: None, and a gentler Saturate",
+      "items": [
+        "Settings, 3D Hover now has None, for no highlight on the cell under your mouse. Pressing P still makes a cell pulse.",
+        "Saturate is gentler, so the cell keeps its shading."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:26:00Z",
+      "title": "A pumpkin patch in the Sandbox",
+      "items": [
+        "For Halloween, three cells in the Sandbox wear jack o' lanterns over their cell bodies in the 3D view, and their branches grow out through the faces. They stay until 1 November.",
+        "The pumpkin button beside the emoji button in chat has news of a rare cell type, and takes you to see it. On a pumpkin cell, the same button takes the pumpkins off and puts them back. You can also turn them off in Settings."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:26:00Z",
+      "title": "Photo mode",
+      "items": [
+        "Photo mode hides everything but the 3D view, fills the window with it and turns your cells slowly, like a turntable. Open it from Just for fun in the menu, from the row of buttons that appears after Share, or from the command palette.",
+        "Its small bar picks the spin speed and a black, night, grey or white background, saves a clean picture, and records one full turn as a short video you can share. Esc leaves and puts your view back as it was.",
+        "Pick centre chooses what the spin turns around: click a spot on a cell, or type a point as x, y, z."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:07:17Z",
+      "title": "3D Hover: Halo, Pulse, Wireframe and Saturate",
+      "items": [
+        "New 3D Hover looks for the cell under your mouse, in Settings under 3D Hover: Halo, a slim glowing line around the cell; Pulse, a ring of light running out along the cell from your mouse when you point at it, in a colour you choose; Wireframe, the cell's 3D mesh drawn in glowing lines, finer as you zoom in; and Saturate, the cell's colour turning richer and lit from within instead of paler.",
+        "Press P with your mouse over a cell in 3D to send a ring of light along it, whichever look you use. The pulse colour can be any colour you like.",
+        "New players start with Halo. If you were already playing, the original look stays until you pick another.",
+        "With the new looks, the cell under your mouse in 2D keeps its own colour and turns more solid instead of fading to white.",
+        "Keep my display settings now also keeps Highlight on hover the way you set it when you jump to another cell."
+      ]
+    },
+    {
+      "at": "2026-10-20T23:09:58Z",
+      "title": "A roomier slim Cell Library",
+      "digest": "minor",
+      "items": [
+        "The slim Cell Library bar is wider, so your cell's whole ID shows, and it keeps the Cell Library's neuron.",
+        "The arrow that shrinks and opens the Cell Library is on the left in both views, and the next cell arrow is on the right.",
+        "Shrinking and opening the Cell Library and the Highlight box is one light bar that zips up and down, with rounded corners.",
+        "The Cell Library's settings and close buttons are bigger."
+      ]
+    },
+    {
       "at": "2026-10-20T17:41:48Z",
       "title": "A shorter Submit an issue",
       "items": [

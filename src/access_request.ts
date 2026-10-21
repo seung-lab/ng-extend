@@ -243,6 +243,9 @@ const REVIEW_LAYERS: Record<AccessColor, { name: string; color: string }> = {
   merge: { name: 'Review merge', color: '#ff4fd8' },
 };
 const REVIEW_ALPHA = 0.5;
+/** A little bigger than a cut point. 8 drew discs a hundred pixels wide once
+ *  a reviewer's own annotation size multiplied it (Celia #186). */
+const REVIEW_POINT_SIZE = 2;
 let reviewTimer: number | undefined;
 
 function segLayers(): any[] {
@@ -258,7 +261,7 @@ function placeReviewPoints(it: AccessItem): boolean {
   for (const color of ['red', 'blue', 'merge'] as const) {
     const pts = it.points[color] ?? [];
     if (!pts.length) continue;
-    const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: 8,
+    const spec = { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: REVIEW_LAYERS[color].color, pointSize: REVIEW_POINT_SIZE,
       annotations: pts.map((p, i) => ({ type: 'point', id: `${color}-${i}`, point: p.position, description: pointName(color, i) })) };
     v.layerSpecification.add(makeLayer(v.layerSpecification, REVIEW_LAYERS[color].name, spec));
   }

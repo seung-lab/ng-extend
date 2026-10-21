@@ -111,6 +111,9 @@
    along the bottom of the screen covered it (Ames 2026-10-12). It rises with
    the bar like the coordinates do. */
 label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
+/* The music button has the corner (RadioPlayer.vue); Sections sits left of
+   it, on the same line, centred on the button's height. */
+body.nge-radio-on label.perspective-panel-show-slice-views { right: 46px; bottom: calc(10px + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 .neuroglancer-mouse-position-widget:empty {
@@ -1992,3 +1995,35 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   .neuroglancer-segment-list:not(.neuroglancer-preview-list) .neuroglancer-segment-list-entry:not(:hover) .neuroglancer-segment-list-entry-copy-container,
   .neuroglancer-segment-list:not(.neuroglancer-preview-list) .neuroglancer-segment-list-entry:not(:hover) .nge-seg-list-toggle { display: none !important; }
 }
+
+/* ── View scale card (hover the x y z letters in a view's corner) ──
+   Neuroglancer's own panel: how much each axis is stretched, "Default" to
+   go back to the data's own scale, and in 3D the depth that is drawn. It
+   opened as bare white monospace on the image (Ames 2026-10-21: "they
+   aren't styled"). Open, it is a card like Pyr's other small panels; closed,
+   the x y z letters stay as they are. */
+.neuroglancer-display-dimensions-widget:hover,
+.neuroglancer-display-dimensions-widget[data-active="true"] {
+  background: rgba(8, 14, 28, 0.94);
+  border: 1px solid rgba(120, 170, 255, 0.28);
+  border-radius: 8px;
+  padding: 6px 10px 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+}
+.neuroglancer-display-dimensions-widget {
+  font: 500 11.5px/1.6 ui-monospace, 'Cascadia Code', Consolas, monospace;
+  color: #d6e2f5;
+  transition: background 0.12s ease;
+}
+.neuroglancer-display-dimensions-widget input { color: #e6edf7; font: inherit; }
+.neuroglancer-display-dimensions-widget-dimension:hover { outline: 1px solid rgba(120, 170, 255, 0.35); border-radius: 3px; }
+.neuroglancer-display-dimensions-widget-scale { color: #8fa3bd; }
+/* "Default" and "Zoom-relative": words, not code. */
+.neuroglancer-display-dimensions-widget-default,
+.neuroglancer-depth-range-relative-checkbox-label {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+  font: 500 11.5px/1.4 system-ui, sans-serif; color: #b3c0d3; cursor: pointer;
+}
+.neuroglancer-display-dimensions-widget input[type="checkbox"] { accent-color: #42d5ec; margin: 0; cursor: pointer; }
+.neuroglancer-depth-range-widget-grid { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(120, 170, 255, 0.16); }
