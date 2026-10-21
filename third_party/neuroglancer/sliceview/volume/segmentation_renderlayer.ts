@@ -270,7 +270,8 @@ uint64_t getMappedObjectId(uint64_t value) {
     const ignoreNullSegmentSet = this.displayState.ignoreNullVisibleSet.value;
     let selectedSegmentLow = 0, selectedSegmentHigh = 0;
     let flags = 0;
-    if (segmentSelectionState.hasSelectedSegment && displayState.hoverHighlight.value) {
+    // EyeWire II 3D Hover 'none': nothing marks the cell under the mouse.
+    if (segmentSelectionState.hasSelectedSegment && displayState.hoverHighlight.value && ngeHoverStyle.value !== 'none') {
       const seg = displayState.baseSegmentHighlighting.value ? segmentSelectionState.baseSelectedSegment :
                                                                segmentSelectionState.selectedSegment;
       selectedSegmentLow = seg.low;

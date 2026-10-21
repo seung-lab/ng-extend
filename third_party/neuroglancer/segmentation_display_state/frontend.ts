@@ -760,12 +760,14 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  *   saturate the opposite of the fade: the cell's colour turns richer and a
  *            little brighter, in 2D and 3D (Ames 2026-10-20)
  *   fade     the classic look, the cell turns pale (existing players' default)
+ *   none     nothing marks the cell under the mouse, in 2D or 3D (Ames
+ *            2026-10-20); the P key's pulse still works
  * In 2D every style but fade keeps the cell's colour and makes it more solid.
  * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
  * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
  * Settings updates it live.
  */
-export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'saturate'|'fade';
+export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'saturate'|'fade'|'none';
 /** The style when the player has not chosen one (Ames 2026-10-20: "make
  *  Halo the default highlight mode for new users. We can retain
  *  legacy/original one for existing users"): a browser with settings in it
@@ -789,7 +791,7 @@ function ngeBrowserUsedBefore(): boolean {
 }
 export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
   const v = prefs?.hoverStyle;
-  return v === 'halo' || v === 'pulse' || v === 'wireframe' || v === 'saturate' || v === 'fade' || v === 'outline' ? v : ngeDefaultHoverStyle(prefs);
+  return v === 'halo' || v === 'pulse' || v === 'wireframe' || v === 'saturate' || v === 'fade' || v === 'outline' || v === 'none' ? v : ngeDefaultHoverStyle(prefs);
 }
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
