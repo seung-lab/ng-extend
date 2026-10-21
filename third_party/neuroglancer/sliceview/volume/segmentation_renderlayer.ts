@@ -280,7 +280,7 @@ uint64_t getMappedObjectId(uint64_t value) {
     }
     gl.uniform1f(shader.uniform('uSelectedAlpha'), displayState.selectedAlpha.value);
     gl.uniform1f(shader.uniform('uSaturation'), displayState.saturation.value);
-    gl.uniform1f(shader.uniform('uNgeGlow'), ngeHoverStyle.value === 'saturate' ? 2 : ngeHoverStyle.value !== 'fade' ? 1 : 0);
+    gl.uniform1f(shader.uniform('uNgeGlow'), ngeHoverStyle.value === 'saturate' || ngeHoverStyle.value === 'spotlight' ? 2 : ngeHoverStyle.value !== 'fade' ? 1 : 0);
     gl.uniform1f(shader.uniform('uNotSelectedAlpha'), displayState.notSelectedAlpha.value);
     gl.uniform2ui(shader.uniform('uSelectedSegment'), selectedSegmentLow, selectedSegmentHigh);
     if (visibleSegments.hashTable.size === 0 && ignoreNullSegmentSet) {

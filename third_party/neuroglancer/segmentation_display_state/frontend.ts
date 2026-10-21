@@ -755,10 +755,15 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  *   outline  a crisp line just outside the cell in 3D (Ames did not like it;
  *            not offered in Settings, kept for a saved choice)
  *   pulse    bands of light running out along the cell from the mouse in 3D
- *   wireframe  the cell's triangles drawn in lines of its own colour over a
- *            dimmed body (Ames 2026-10-20)
+ *   hologram  a dark body glowing from its edges, with faint still scanlines
+ *            (it replaced a real wireframe, which was too slow)
+ *   metallic  a dark body with bright edges in a tint of its own colour
  *   saturate the opposite of the fade: the cell's colour turns richer and a
  *            little brighter, in 2D and 3D (Ames 2026-10-20)
+ *   spotlight  a gentle Saturate on the cell, and the other cells in 3D dim a
+ *            little, so a subtle change stands out (Ames 2026-10-21: "the
+ *            hover state is ... still too intense. What if we slightly
+ *            dimmed the other cells?")
  *   fade     the classic look, the cell turns pale (existing players' default)
  *   none     nothing marks the cell under the mouse, in 2D or 3D (Ames
  *            2026-10-20); the P key's pulse still works
@@ -767,7 +772,7 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
  * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
  * Settings updates it live.
  */
-export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'saturate'|'fade'|'none';
+export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'hologram'|'metallic'|'saturate'|'spotlight'|'fade'|'none';
 /** The style when the player has not chosen one (Ames 2026-10-20: "make
  *  Halo the default highlight mode for new users. We can retain
  *  legacy/original one for existing users"): a browser with settings in it
@@ -790,8 +795,9 @@ function ngeBrowserUsedBefore(): boolean {
   return false;
 }
 export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
-  const v = prefs?.hoverStyle;
-  return v === 'halo' || v === 'pulse' || v === 'wireframe' || v === 'saturate' || v === 'fade' || v === 'outline' || v === 'none' ? v : ngeDefaultHoverStyle(prefs);
+  // 'wireframe' (2026-10-20, too slow) became the hologram.
+  const v = prefs?.hoverStyle === 'wireframe' ? 'hologram' : prefs?.hoverStyle;
+  return v === 'halo' || v === 'pulse' || v === 'hologram' || v === 'metallic' || v === 'saturate' || v === 'spotlight' || v === 'fade' || v === 'outline' || v === 'none' ? v : ngeDefaultHoverStyle(prefs);
 }
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
@@ -802,13 +808,15 @@ export const ngeHaloFar = {value: 0};
 
 /** EyeWire II 'saturate': richer colour, a little brighter (2D does the same
  *  in sliceview/volume/segmentation_renderlayer.ts). */
-export function ngeSaturate(color: Float32Array|number[]) {
+export function ngeSaturate(color: Float32Array|number[], amount = 1.35, light = 1.05) {
   const grey = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2];
   for (let i = 0; i < 3; ++i) {
     // Ames 2026-10-20: 1.7 and 1.12 were "a bit much".
-    color[i] = Math.max(0, Math.min(1, (grey + (color[i] - grey) * 1.35) * 1.05));
+    color[i] = Math.max(0, Math.min(1, (grey + (color[i] - grey) * amount) * light));
   }
 }
+/** Spotlight: how bright the other cells stay while one is pointed at. */
+export const NGE_SPOTLIGHT_DIM = 0.7;
 
 /** The pulse's colour (Nseraf: "if we can also change the colour of the
  *  'electricity'"): '#rrggbb', or '' for a light tint of the cell's own. */
@@ -879,6 +887,14 @@ export function getObjectColor(
   if (ngeHoverStyle.value === 'saturate' && displayState.hoverHighlight.value &&
       displayState.segmentSelectionState.isSelected(objectId)) {
     ngeSaturate(color);
+  } else if (ngeHoverStyle.value === 'spotlight' && displayState.hoverHighlight.value &&
+      displayState.segmentSelectionState.hasSelectedSegment) {
+    if (displayState.segmentSelectionState.isSelected(objectId)) {
+      ngeSaturate(color, 1.15, 1.02);
+    } else {
+      // The other cells step back.
+      for (let i = 0; i < 3; ++i) color[i] *= NGE_SPOTLIGHT_DIM;
+    }
   } else if (ngeHoverStyle.value === 'halo' && ngeHaloFar.value > 0 && displayState.hoverHighlight.value &&
       displayState.segmentSelectionState.isSelected(objectId)) {
     // Far out the halo fades away, and the cell takes Saturate's colour in
