@@ -17,7 +17,8 @@
 import {ngePointSizeFor, ngeDefaultPointSize} from 'neuroglancer/annotation/nge_point_size';
 import './user_layer.css';
 
-import {AnnotationPropertySpec, annotationPropertySpecsToJson, AnnotationType, LocalAnnotationSource, parseAnnotationPropertySpecs} from 'neuroglancer/annotation';
+import {AnnotationPropertySpec, annotationPropertySpecsToJson, AnnotationType, LocalAnnotationSource, parseAnnotationPropertySpecs, withNgeColorProperty} from 'neuroglancer/annotation';
+import {ANN_FOLDERS_JSON_KEY, followFolderPaint, makeAnnotationFolders} from 'neuroglancer/ui/nge_annotation_folders';
 import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
 import {MultiscaleAnnotationSource} from 'neuroglancer/annotation/frontend_source';
 import {CoordinateTransformSpecification, makeCoordinateSpace} from 'neuroglancer/coordinate_transform';
@@ -324,6 +325,8 @@ function ngeShowAnnotationSetupTabs(): boolean {
 
 export class AnnotationUserLayer extends Base {
   localAnnotations: LocalAnnotationSource|undefined;
+  /** nge: folders of this layer's own annotations (ui/nge_annotation_folders.ts). */
+  ngeAnnFolders = makeAnnotationFolders();
   private localAnnotationProperties: AnnotationPropertySpec[]|undefined;
   private localAnnotationRelationships: string[];
   private localAnnotationsJson: any = undefined;
@@ -342,6 +345,7 @@ export class AnnotationUserLayer extends Base {
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
     this.linkedSegmentationLayers.changed.add(this.specificationChanged.dispatch);
+    this.ngeAnnFolders.changed.add(this.specificationChanged.dispatch);
     this.annotationDisplayState.ignoreNullSegmentFilter.changed.add(
         this.specificationChanged.dispatch);
     this.annotationCrossSectionRenderScaleTarget.changed.add(this.specificationChanged.dispatch);
@@ -370,6 +374,7 @@ export class AnnotationUserLayer extends Base {
     super.restoreState(specification);
     this.linkedSegmentationLayers.restoreState(specification);
     this.localAnnotationsJson = specification[ANNOTATIONS_JSON_KEY];
+    this.ngeAnnFolders.restoreState(specification[ANN_FOLDERS_JSON_KEY]);
     this.localAnnotationProperties = verifyOptionalObjectProperty(
         specification, ANNOTATION_PROPERTIES_JSON_KEY, parseAnnotationPropertySpecs);
     this.localAnnotationRelationships = verifyOptionalObjectProperty(
@@ -452,10 +457,12 @@ export class AnnotationUserLayer extends Base {
           continue;
         }
         hasLocalAnnotations = true;
-        if (!setProperties(this.localAnnotationProperties ?? [])) continue;
+        // nge: the hidden folder color goes last (annotation/index.ts).
+        const localProperties = withNgeColorProperty(this.localAnnotationProperties ?? []);
+        if (!setProperties(localProperties)) continue;
         loadedSubsource.activate(refCounted => {
           const localAnnotations = this.localAnnotations = new LocalAnnotationSource(
-              loadedSubsource.loadedDataSource.transform, this.localAnnotationProperties ?? [],
+              loadedSubsource.loadedDataSource.transform, localProperties,
             this.localAnnotationRelationships);
           try {
             localAnnotations.restoreState(this.localAnnotationsJson);
@@ -473,6 +480,7 @@ export class AnnotationUserLayer extends Base {
           }
           this.pointAnnotationsJson = undefined;
           this.localAnnotationsJson = undefined;
+          refCounted.registerDisposer(followFolderPaint(localAnnotations, this.ngeAnnFolders));
           const state = new AnnotationLayerState({
             localPosition: this.localPosition,
             transform: refCounted.registerDisposer(getWatchableRenderLayerTransform(
@@ -569,8 +577,12 @@ export class AnnotationUserLayer extends Base {
     x[PROJECTION_RENDER_SCALE_JSON_KEY] = this.annotationProjectionRenderScaleTarget.toJSON();
     if (this.localAnnotations !== undefined) {
       x[ANNOTATIONS_JSON_KEY] = this.localAnnotations.toJSON();
+      // only the annotations still in the layer
+      const local = this.localAnnotations;
+      x[ANN_FOLDERS_JSON_KEY] = this.ngeAnnFolders.toJSON(id => local.get(id) !== undefined);
     } else if (this.localAnnotationsJson !== undefined) {
       x[ANNOTATIONS_JSON_KEY] = this.localAnnotationsJson;
+      x[ANN_FOLDERS_JSON_KEY] = this.ngeAnnFolders.toJSON();
     }
     x[ANNOTATION_PROPERTIES_JSON_KEY] =
         annotationPropertySpecsToJson(this.localAnnotationProperties);

@@ -842,6 +842,39 @@ export const annotationTypeHandlers: Record<AnnotationType, AnnotationTypeHandle
   },
 };
 
+/**
+ * nge: a folder's color, one per annotation (Ames 2026-10-19: "we want to be
+ * able to recolor with a folder, as an option"). Every local annotation layer
+ * carries it as a hidden last property; 0 (clear) means the layer's color.
+ * It is worked out from the layer's folders whenever they change, so it is
+ * never written to the layer's JSON (ui/nge_annotation_folders.ts).
+ */
+export const NGE_COLOR_PROPERTY = 'ngecolor';
+
+export function isNgeColorProperty(spec: Readonly<AnnotationPropertySpec>|undefined) {
+  return spec !== undefined && spec.identifier === NGE_COLOR_PROPERTY && spec.type === 'rgba';
+}
+
+/** The specs with the folder color added last, when not already there. */
+export function withNgeColorProperty(specs: AnnotationPropertySpec[]): AnnotationPropertySpec[] {
+  if (specs.some(isNgeColorProperty)) return specs;
+  return [
+    ...specs,
+    {type: 'rgba', identifier: NGE_COLOR_PROPERTY, description: 'Folder color', default: 0},
+  ];
+}
+
+/** An annotation made with fewer properties than the layer has (code that
+ *  adds with `properties: []`) gets the defaults for the rest. */
+function padProperties(annotation: Annotation, specs: readonly Readonly<AnnotationPropertySpec>[]) {
+  const props = annotation.properties;
+  if (props === undefined) {
+    annotation.properties = specs.map(x => x.default);
+    return;
+  }
+  for (let i = props.length; i < specs.length; ++i) props.push(specs[i].default);
+}
+
 export interface AnnotationSchema {
   rank: number;
   relationships: readonly string[];
@@ -859,8 +892,14 @@ export function annotationToJson(annotation: Annotation, schema: AnnotationSchem
   }
   if (schema.properties.length !== 0) {
     const propertySpecs = schema.properties;
-    result.props = annotation.properties.map(
-        (prop, i) => annotationPropertyTypeHandlers[propertySpecs[i].type].serializeJson(prop));
+    // nge: the folder color is left out; it comes back from the folders.
+    const props: any[] = [];
+    annotation.properties.forEach((prop, i) => {
+      const spec = propertySpecs[i];
+      if (spec === undefined || isNgeColorProperty(spec)) return;
+      props.push(annotationPropertyTypeHandlers[spec.type].serializeJson(prop));
+    });
+    if (props.length) result.props = props;
   }
   return result;
 }
@@ -889,9 +928,15 @@ function restoreAnnotation(obj: any, schema: AnnotationSchema, allowMissingId = 
   const properties = verifyObjectProperty(obj, 'props', propsObj => {
     const propSpecs = schema.properties;
     if (propsObj === undefined) return propSpecs.map(x => x.default);
+    // nge: saved without the folder color (annotationToJson leaves it out).
+    const n = propSpecs.length;
+    const saved = Array.isArray(propsObj) && propsObj.length === n - 1 &&
+        isNgeColorProperty(propSpecs[n - 1]) ? [...propsObj, undefined] : propsObj;
     return parseArray(
-        expectArray(propsObj, schema.properties.length),
-        (x, i) => annotationPropertyTypeHandlers[propSpecs[i].type].deserializeJson(x));
+        expectArray(saved, schema.properties.length),
+        (x, i) => x === undefined && isNgeColorProperty(propSpecs[i]) ?
+            propSpecs[i].default :
+            annotationPropertyTypeHandlers[propSpecs[i].type].deserializeJson(x));
   });
   const result: Annotation = {
     id,
@@ -950,6 +995,7 @@ export class AnnotationSource extends RefCounted implements AnnotationSourceSign
     } else if (this.annotationMap.has(annotation.id)) {
       throw new Error(`Annotation id already exists: ${JSON.stringify(annotation.id)}.`);
     }
+    padProperties(annotation, this.properties);
     this.annotationMap.set(annotation.id, annotation);
     if (!commit) {
       this.pending.add(annotation.id);
@@ -975,6 +1021,7 @@ export class AnnotationSource extends RefCounted implements AnnotationSourceSign
     if (reference.value === null) {
       throw new Error(`Annotation already deleted.`);
     }
+    padProperties(annotation, this.properties);
     reference.value = annotation;
     this.annotationMap.set(annotation.id, annotation);
     reference.changed.dispatch();
@@ -1002,6 +1049,47 @@ export class AnnotationSource extends RefCounted implements AnnotationSourceSign
     reference.changed.dispatch();
     this.changed.dispatch();
     this.childDeleted.dispatch(reference.id);
+  }
+
+  /** nge: put the annotations in this order (the list's order, and the order
+   *  they are saved in). Ids not given keep their place after those given. */
+  ngeReorder(ids: AnnotationId[]) {
+    this.ensureUpdated();
+    const {annotationMap} = this;
+    const order = ids.filter(id => annotationMap.has(id));
+    const given = new Set(order);
+    for (const id of annotationMap.keys()) if (!given.has(id)) order.push(id);
+    const entries = order.map(id => [id, annotationMap.get(id)!] as const);
+    annotationMap.clear();
+    for (const [id, a] of entries) annotationMap.set(id, a);
+    this.changed.dispatch();
+  }
+
+  /** nge: set the folder color of several annotations at once, with one
+   *  change signal (a packed rgba color; 0 for the layer's own color). */
+  ngeSetColors(colors: Map<AnnotationId, number>) {
+    this.ensureUpdated();
+    const at = this.properties.findIndex(isNgeColorProperty);
+    if (at < 0) return;
+    let changed = false;
+    for (const [id, packed] of colors) {
+      const a = this.annotationMap.get(id);
+      if (a === undefined) continue;
+      padProperties(a, this.properties);
+      if (a.properties[at] === packed) continue;
+      // a new object, so the render chunk sees an update
+      const next = {...a, properties: [...a.properties]} as Annotation;
+      next.properties[at] = packed;
+      this.annotationMap.set(id, next);
+      const ref = this.references.get(id);
+      if (ref !== undefined) {
+        ref.value = next;
+        ref.changed.dispatch();
+      }
+      this.childUpdated.dispatch(next);
+      changed = true;
+    }
+    if (changed) this.changed.dispatch();
   }
 
   getReference(id: AnnotationId): AnnotationReference {

@@ -25,7 +25,8 @@ import thumbMcns from '../static/images/datasets/mcns.jpg';
 import thumbMaol from '../static/images/datasets/maol.jpg';
 import { useLayersStore, useUserPreferencesStore } from './store';
 import { datasetAccess } from './util/dataset_access';
-import { getDatasetCaveConfig, cellTypesForDataset } from './config';
+import { getDatasetCaveConfig, cellTypesForDataset, cellTypeLabel } from './config';
+export { cellTypeLabel };
 import { openSegPanel } from './widgets/widget_utils';
 
 export interface DatasetEntry {

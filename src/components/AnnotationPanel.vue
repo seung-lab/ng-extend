@@ -9,7 +9,7 @@ import { storeToRefs } from 'pinia';
 import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useHelpRequestStore } from '../store';
 import { getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
-import { currentSegLayerName, currentCellTypes } from '../datasets';
+import { currentSegLayerName, currentCellTypes, cellTypeLabel as typeLabel } from '../datasets';
 import { planMenuCompletion, finishMenuCompletion, needsCompletionDetails } from '../util/menu_complete';
 import { askCompletionDetails, type CompletionDetails } from '../util/completion_details';
 
@@ -362,7 +362,7 @@ function submitHelpRequest() {
             class="nge-ann-type-item"
             :class="{ 'nge-ann-type-item--active': cellTypeLabel === t }"
             @click="pickCellType(t)"
-          >{{ t }}</button>
+          >{{ typeLabel(t) }}</button>
           <div class="nge-ann-type-divider" />
           <div class="nge-ann-type-custom">
             <input

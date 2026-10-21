@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { reportWriteFailure } from '../util/error_reporting';
+import EditableText from './EditableText.vue';
+import { otherTabCount } from '../util/tabs';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { snapshotPanel, morphIntoSlim, revealWithBeam, whenSettled } from '../util/panel_collapse';
 import {
@@ -23,7 +25,8 @@ import {
   isLiveHelp,
 } from '../store';
 import { getDatasetCaveConfig } from '../config';
-import { setCellComplete, activeCaveServer } from '../widgets/lightbulb_service';
+import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem } from '../widgets/lightbulb_service';
+import { explainCellType } from '../data/cell_type_glossary';
 import { syncCellToSheet, completeStatusesFor } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
@@ -35,7 +38,7 @@ import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -193,6 +196,8 @@ const datasetInstructionsUrl = computed(() => getDatasetCaveConfig(activeDataset
  *  here instead of an external page. */
 const datasetHowTo = computed(() => getDatasetCaveConfig(activeDataset.value).howToSteps || null);
 const showHowTo = ref(false);
+/** Where an admin's edit of the steps is kept (config howToKey, else by dataset). */
+const datasetHowToKey = computed(() => getDatasetCaveConfig(activeDataset.value).howToKey || ('howto.' + (activeDataset.value || 'dataset').toLowerCase().replace(/[^a-z0-9_.-]/g, '_')).slice(0, 64));
 /** A view with one example of each cell type (MEC), loaded in place. */
 const datasetCellTypesState = computed(() => {
   const cfg = getDatasetCaveConfig(activeDataset.value);
@@ -337,6 +342,8 @@ const cells = computed(() => {
         nucleusId: task?.final_nucleus_id ?? null,
         // The cell's ID after your edits, when it differs from the listed one.
         liveSegId: (task && backend.liveRoots[task.id] && backend.liveRoots[task.id] !== item.segId) ? backend.liveRoots[task.id] : null as string | null,
+        // What the lab's AI predicts this cell is (the sheet's AI column).
+        aiType: item.aiType || '',
       };
     });
 
@@ -352,6 +359,7 @@ const cells = computed(() => {
         dataset: (t as any).dataset || '',
         sheetAssignee: '',
         sheetHold: '',
+        aiType: '',
         taskId: t.id,
         status: t.status,
         assignedTo: t.assigned_to,
@@ -377,6 +385,7 @@ const cells = computed(() => {
     dataset: (t as any).dataset || '',
     sheetAssignee: '',
     sheetHold: '',
+    aiType: '',
     taskId: t.id,
     status: t.status,
     assignedTo: t.assigned_to,
@@ -505,12 +514,26 @@ function getCachedUserName(userId: string): string {
 // Hits Edge, Notes), which live only in the viewer state. Moving to another
 // claim first saves the current view to the claim you were working on, then
 // loads the next claim's saved view (or its sheet Start link).
+// Each tab keeps its own (sessionStorage, which a reload keeps): with two tabs
+// open, a shared slot let one tab save its view into the other tab's claim
+// (Ames 2026-10-20). The shared copy only seeds a tab opened when no other
+// Pyr tab is open, so closing and reopening the browser still remembers it.
 const WORKING_KEY = 'nge_cl_working_task';
+const readWorking = (store: Storage) => {
+  try { const v = Number(store.getItem(WORKING_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; }
+};
 let workingTaskId: number | null = (() => {
-  try { const v = Number(localStorage.getItem(WORKING_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; }
+  try { if (sessionStorage.getItem(WORKING_KEY) !== null) return readWorking(sessionStorage); } catch {}
+  return null;
 })();
+let workingSet = false;
+try { workingSet = sessionStorage.getItem(WORKING_KEY) !== null; } catch {}
+// The other tabs answer within a moment of this one opening.
+if (!workingSet) setTimeout(() => { if (!workingSet && !otherTabCount()) workingTaskId = readWorking(localStorage); }, 1200);
 function setWorkingTask(id: number | null) {
   workingTaskId = id;
+  workingSet = true;
+  try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
   try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
 }
 /** Save the view to the claim being worked on. False = stay put. */
@@ -816,6 +839,13 @@ const completing = ref<{
   key: string; link: string; notes: string; status: string; minting: boolean;
   checking: boolean; ok: boolean; message: string; submitting: boolean;
   check: CrosshairCell | null;
+  /** The cell's type, saved with the completion (Nseraf 2026-10-19): a pick
+   *  from the list, or typed. Optional. `typeKnown` is the type the cell
+   *  already had, so an unchanged type is not written again. */
+  cellType: string; cellTypeCustom: string; typeKnown: string; typeAnnotationId?: number; typeNote: string;
+  /** The lab's AI has a type for this cell: it stands, and nothing is saved,
+   *  unless the player says it is wrong (Ames 2026-10-19). */
+  correcting: boolean;
 } | null>(null);
 
 function cellKey(cell: CellRow): string { return String(cell.taskId ?? cell.segId); }
@@ -853,10 +883,39 @@ function rememberStatus(cell: CellRow, status: string) {
 /** True when this cell's dataset asks for an ending and none is picked yet. */
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
+/** The type list, when the cell is on the dataset on screen and that
+ *  dataset's types may be written here (as in the Cell Profile). */
+function cellTypesFor(cell: CellRow): string[] {
+  if (canonicalDataset(cell.dataset || '') !== currentDatasetTag()) return [];
+  if (getDatasetCaveConfig(currentSegLayerName()).cellTypeReadOnly) return [];
+  return currentCellTypes();
+}
+const typeTitle = (t: string) => explainCellType(t).join(String.fromCharCode(10)) || undefined;
+/** The AI tag's hover text: what it is, and the code spelled out. */
+const aiTypeTitle = (t: string) => ["The type the lab's AI predicts for this cell, from the cell sheet.", ...explainCellType(t)].join(String.fromCharCode(10));
+
+/** Fill the type in with what the cell already has, once its ID is known. */
+async function prefillCellType(root: string) {
+  const c = completing.value;
+  const server = activeCaveServer();
+  if (!c || !root || !server) return;
+  const st = await getCellStatus(server, root).catch(() => null);
+  if (completing.value !== c || !st) return;
+  c.typeAnnotationId = st.cellTypeAnnotationId;
+  c.typeKnown = st.cellType || '';
+  if (!c.cellType && !c.cellTypeCustom && c.typeKnown) {
+    if (currentCellTypes().includes(c.typeKnown)) c.cellType = c.typeKnown; else c.cellTypeCustom = c.typeKnown;
+  }
+}
+
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
-  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null };
-  void runCrosshairCheck(cell);
+  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
+    cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '', correcting: false };
+  void runCrosshairCheck(cell).then(() => {
+    const root = completing.value?.check?.root;
+    if (root && cellTypesFor(cell).length) void prefillCellType(root);
+  });
   void useCurrentViewLink();  // prefilled with the current view; editable (Amy 2026-09-28)
 }
 
@@ -937,6 +996,23 @@ async function submitComplete(cell: CellRow) {
       const fresh = await mintShortStateLink().catch(() => null);
       if (fresh) { c.link = fresh; autoCompleteLink = fresh; }
     }
+    // The type first: if it cannot be saved the form stays open and says why,
+    // and nothing is completed yet.
+    c.typeNote = '';
+    // With an AI type, only a correction is saved: the AI's own guess is not
+    // written as the player's.
+    const type = cell.aiType && !c.correcting ? '' : (c.cellTypeCustom.trim() || c.cellType).trim().slice(0, 120);
+    const server = activeCaveServer();
+    if (type && type !== c.typeKnown && cellTypesFor(cell).length) {
+      if (!server) { c.typeNote = 'The cell type could not be saved: no CAVE server for this dataset.'; return; }
+      const saved = await saveCellType(server, c.check.root, type, c.typeAnnotationId, true, c.check.position as [number, number, number]);
+      if (!saved) {
+        c.typeNote = `The cell type was not saved${getLastCellTypeProblem() ? ': ' + getLastCellTypeProblem() : ''}. Press Mark complete to try again, or clear the type.`;
+        return;
+      }
+      c.typeKnown = type;
+      document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segId: c.check.root } }));
+    }
     const claimsBefore = myOpenClaims.value;
     await completeCell(cell, {
       finalSegId: c.check.root,
@@ -944,6 +1020,8 @@ async function submitComplete(cell: CellRow) {
       link: c.link.trim(),
       notes: c.notes.trim(),
       status: c.status || undefined,
+      // The player's type, to the sheet's "CitSci Suggested Type" (Celia).
+      cellType: type || undefined,
     });
     if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
@@ -957,7 +1035,7 @@ async function submitComplete(cell: CellRow) {
   }
 }
 
-async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string }) {
+async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string; cellType?: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
@@ -966,7 +1044,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status).catch(showSheetError);
+  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;
   if (!loggedViaCave) {
     // Log as mark_complete for stats (CAVE write didn't record it)
@@ -2498,10 +2576,15 @@ function onSlimMouseDown(e: MouseEvent) {
   startDrag(e);
 }
 
+// The slim bar is wider than the full panel can be (Ames 2026-10-20: "this
+// should be wider"), so the cell's ID shows whole beside its buttons.
+const SLIM_MIN_WIDTH = 640;
 const panelStyle = computed(() => ({
   left: panelPos.value.x + 'px',
   top: panelPos.value.y + 'px',
-  width: panelWidth.value + 'px',
+  width: (slim.value
+    ? Math.min(Math.max(panelWidth.value, SLIM_MIN_WIDTH), window.innerWidth - panelPos.value.x - 8)
+    : panelWidth.value) + 'px',
   ...(resizedHeight.value != null && !slim.value
     ? { height: resizedHeight.value + 'px', maxHeight: 'none' }
     : {}),
@@ -2515,15 +2598,18 @@ const panelStyle = computed(() => ({
 
         <!-- Top bar -->
         <div class="nge-cl-topbar" @mousedown="startDrag" :class="{ 'nge-cl-dragging': isDragging }">
-          <div class="nge-cl-title">
-            <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
-          </div>
-          <span v-if="slimHint" class="nge-cl-slim-hint">{{ slimHint }}</span>
+          <!-- Shrink on the left, where the slim bar keeps its expand arrow
+               (Ames 2026-10-20: "the shrink/expand arrow should be
+               consistently left") -->
           <button class="nge-cl-caret" :class="{ 'nge-cl-caret--on': slimMode }"
                   :title="slimMode ? 'Slim view is on: jumping to a cell shrinks the library to that cell. Click to shrink now.' : 'Slim view: shrink the library to the cell you are working on'"
                   aria-label="Slim view" :aria-pressed="slimMode ? 'true' : 'false'" @mousedown.stop @click="collapseToCurrent">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <div class="nge-cl-title">
+            <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
+          </div>
+          <span v-if="slimHint" class="nge-cl-slim-hint">{{ slimHint }}</span>
           <button v-if="!viewOnlyDataset" class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
           <button class="nge-cl-close" title="Close (Shift+L)" aria-label="Close the Cell Library" @mousedown.stop @click="emit('hide')">×</button>
         </div>
@@ -2552,9 +2638,8 @@ const panelStyle = computed(() => ({
             <span>How to map a cell</span>
             <button class="nge-cl-howto-close" @click="showHowTo = false" title="Close">×</button>
           </div>
-          <ol class="nge-cl-howto-steps">
-            <li v-for="(step, si) in datasetHowTo" :key="si" v-html="step"></li>
-          </ol>
+          <!-- Admins can change these in the game (Celia 2026-10-20). -->
+          <EditableText :text-key="datasetHowToKey" :original="datasetHowTo" list-class="nge-cl-howto-steps" />
         </div>
 
         <!-- Filter tabs -->
@@ -3410,6 +3495,8 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0 && !backend.loading" class="nge-cl-no-results">No matching cells</div>
 
+          <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
+          <img v-if="slim" :src="neuronIcon" class="nge-cl-icon nge-cl-slim-icon" alt="" aria-hidden="true" />
           <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -3436,10 +3523,11 @@ const panelStyle = computed(() => ({
                   <span v-if="copiedId === cell.segId" class="nge-cl-copied">copied</span>
                 </div>
                 <div class="nge-cl-row-meta">
-                  <span v-if="cell.segId === jumpedSegId" class="nge-cl-viewing">● viewing</span>
+                  <!-- No "viewing" word: the green bar on the row says it (Ames 2026-10-20) -->
                   <span class="nge-cl-badge" :class="statusClass(cell.status)">{{ statusLabel(cell.status) }}</span>
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
+                  <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
               </div>
@@ -3509,6 +3597,37 @@ const panelStyle = computed(() => ({
                   @click="completing.status = o.value"
                 >{{ o.value }}</button>
               </div>
+            </template>
+            <!-- The cell's type, saved with the completion (Nseraf 2026-10-19):
+                 the same list as the Cell Profile, or typed. Optional. -->
+            <template v-if="cellTypesFor(cell).length">
+              <label class="nge-cl-complete-label">Cell type (optional)</label>
+              <!-- The lab's AI type stands; a player only says when it is wrong
+                   (Ames 2026-10-19), and only that correction is saved. -->
+              <div v-if="cell.aiType && !completing.correcting" class="nge-cl-complete-ai">
+                <span :title="aiTypeTitle(cell.aiType)"><b>{{ cellTypeLabel(cell.aiType) }}</b>, the lab's AI prediction</span>
+                <button type="button" class="nge-cl-btn" @click="completing.correcting = true"
+                        title="Only if you are sure the AI is wrong. What you choose is saved as your correction.">Wrong? Correct it</button>
+              </div>
+              <template v-else>
+                <div v-if="cell.aiType" class="nge-cl-complete-ai">
+                  <span>The AI said <b :title="aiTypeTitle(cell.aiType)">{{ cellTypeLabel(cell.aiType) }}</b>. Your choice is saved as a correction.</span>
+                  <button type="button" class="nge-cl-btn" @click="completing.correcting = false; completing.cellType = ''; completing.cellTypeCustom = ''">Keep the AI's type</button>
+                </div>
+                <div class="nge-cl-complete-typerow">
+                  <select v-model="completing.cellType" class="nge-cl-search-input nge-cl-complete-type"
+                          aria-label="Cell type" @change="completing.cellTypeCustom = ''"
+                          @keydown.stop @keyup.stop @keypress.stop>
+                    <option value="">Choose a type</option>
+                    <option v-for="t in cellTypesFor(cell)" :key="t" :value="t" :title="typeTitle(t)">{{ cellTypeLabel(t) }}</option>
+                  </select>
+                  <input v-model="completing.cellTypeCustom" class="nge-cl-search-input nge-cl-complete-type"
+                         placeholder="Or type your own" maxlength="120" aria-label="Or type your own cell type"
+                         @input="completing.cellTypeCustom.trim() && (completing.cellType = '')"
+                         @keydown.stop @keyup.stop @keypress.stop />
+                </div>
+              </template>
+              <div v-if="completing.typeNote" class="nge-cl-complete-msg nge-cl-complete-msg--bad">{{ completing.typeNote }}</div>
             </template>
             <label class="nge-cl-complete-label">Link to your finished cell</label>
             <div class="nge-cl-complete-linkrow">
@@ -3856,6 +3975,21 @@ const panelStyle = computed(() => ({
 }
 .nge-cl-close:hover { color: #eef; }
 
+/* The gear and the close cross at a size you can see and hit (Ames
+   2026-10-20: "borderline microscopic"): 28px targets, the size of the
+   shrink arrow beside the title. */
+.nge-cl-topbar .nge-cl-gear,
+.nge-cl-topbar .nge-cl-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border-radius: 7px;
+  color: #a9bbd8;
+  transition: color 0.12s, background 0.12s, transform 0.3s;
+}
+.nge-cl-topbar .nge-cl-gear { font-size: 19px; }
+.nge-cl-topbar .nge-cl-close { font-size: 26px; margin-left: 2px; }
+.nge-cl-topbar .nge-cl-gear:hover,
+.nge-cl-topbar .nge-cl-close:hover { color: #eef; background: rgba(100, 200, 255, 0.12); }
+
 /* Filters */
 .nge-cl-filters {
   display: flex;
@@ -3977,7 +4111,16 @@ const panelStyle = computed(() => ({
   align-items: center;
   gap: 6px;
   margin-top: 2px;
+  /* A chip never breaks inside itself ("AI:" over "RBC", Ames 2026-10-20): a
+     chip with no room moves whole to the next line, and the notes take what
+     is left and end in "..." */
+  flex-wrap: wrap;
+  row-gap: 3px;
+  min-width: 0;
 }
+.nge-cl-row-meta > .nge-cl-badge,
+.nge-cl-row-meta > .nge-cl-claimer { flex: none; white-space: nowrap; }
+.nge-cl-row-meta > .nge-cl-notes { flex: 1 1 60px; min-width: 0; }
 .nge-cl-badge {
   font-size: 11px;
   padding: 2px 7px;
@@ -4082,6 +4225,11 @@ const panelStyle = computed(() => ({
   box-shadow: 0 0 10px rgba(68, 170, 255, 0.3);
 }
 .nge-cl-complete-linkrow { display: flex; gap: 6px; align-items: center; }
+.nge-cl-complete-typerow { display: flex; gap: 6px; }
+.nge-cl-ai-type { background: rgba(178, 140, 255, 0.14); color: #c9b2ff; text-transform: none; }
+.nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
+.nge-cl-complete-ai b { color: #c9b2ff; }
+.nge-cl-complete-type { flex: 1 1 0; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-search-input { flex: 1; min-width: 0; }
 .nge-cl-complete-linkrow .nge-cl-btn { white-space: nowrap; }
 .nge-cl-complete-msg { font-size: 0.8em; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -4540,7 +4688,8 @@ const panelStyle = computed(() => ({
    `option` sets the row colours Chrome honours. `appearance: none` plus a
    drawn chevron replaces the default OS arrow on the closed control. */
 .nge-cl-help-issue-select,
-select.nge-cl-response-input {
+select.nge-cl-response-input,
+select.nge-cl-complete-type {
   color-scheme: dark;
   appearance: none;
   -webkit-appearance: none;
@@ -4551,12 +4700,14 @@ select.nge-cl-response-input {
   padding-right: 24px;
 }
 .nge-cl-help-issue-select option,
-select.nge-cl-response-input option {
+select.nge-cl-response-input option,
+select.nge-cl-complete-type option {
   background: #0c1020;
   color: #cfdcef;
 }
 .nge-cl-help-issue-select:hover,
-select.nge-cl-response-input:hover {
+select.nge-cl-response-input:hover,
+select.nge-cl-complete-type:hover {
   border-color: rgba(74, 158, 255, 0.35);
 }
 
@@ -4738,15 +4889,15 @@ select.nge-cl-response-input:hover {
   background: none; border: none; color: #8aa; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px;
 }
 .nge-cl-howto-close:hover { color: #fff; }
-.nge-cl-howto-steps {
+:deep(.nge-cl-howto-steps) {
   margin: 0; padding-left: 20px;
   font-size: 12.5px; line-height: 1.5; color: #cfdcef;
 }
-.nge-cl-howto-steps li { margin: 3px 0; padding-left: 2px; }
-.nge-cl-howto-steps li::marker { color: #42d5ec; font-weight: 700; }
-.nge-cl-howto-steps :deep(b) { color: #fff; font-weight: 600; }
-.nge-cl-howto-steps :deep(a) { color: #7ecaff; }
-.nge-cl-howto-steps :deep(a:hover) { color: #fff; }
+:deep(.nge-cl-howto-steps li) { margin: 3px 0; padding-left: 2px; }
+:deep(.nge-cl-howto-steps li::marker) { color: #42d5ec; font-weight: 700; }
+:deep(.nge-cl-howto-steps b) { color: #fff; font-weight: 600; }
+:deep(.nge-cl-howto-steps a) { color: #7ecaff; }
+:deep(.nge-cl-howto-steps a:hover) { color: #fff; }
 .nge-cl-tabgroup--cells { --grp: #42d5ec; }
 .nge-cl-tabgroup--community { --grp: #e6c760; }
 .nge-cl-tabgroup--mine { --grp: #c98bff; }
@@ -5412,14 +5563,15 @@ select.nge-cl-response-input:hover {
 }
 .nge-cl-topbar .nge-cl-title { margin-right: auto; }
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
-.nge-cl-caret { margin-right: 8px; }
+.nge-cl-caret { margin-right: 10px; }
 .nge-cl-slim-hint { margin-right: 8px; font-size: 11px; color: #ffd27a; }
 .nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
-  /* The caret keeps its place, top right, as in the full panel (Ames 2026-10-01). */
-  padding: 4px 46px 4px 10px;
+  /* The expand arrow on the left, where the full panel keeps its shrink
+     arrow; the next cell arrow on the right (Ames 2026-10-20). */
+  padding: 4px 14px 4px 76px;
 }
 /* The one row needs no "this is the one" marking: no green wash or rail
    pressed against the caret, no "viewing" tag. */
@@ -5428,7 +5580,7 @@ select.nge-cl-response-input:hover {
 .nge-cl-panel--slim .nge-cl-viewing { display: none; }
 /* Complete, in the slim view: part of the panel, not a box inside a box. */
 .nge-cl-panel--slim .nge-cl-list > .nge-cl-complete {
-  margin: 4px -46px -4px -10px; padding: 12px 16px 16px;
+  margin: 4px -14px -4px -76px; padding: 12px 16px 16px;
   border: none; border-top: 1px solid rgba(74, 150, 224, 0.25); border-radius: 0;
   background: rgba(10, 24, 44, 0.55);
 }
@@ -5444,13 +5596,16 @@ select.nge-cl-response-input:hover {
 .nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-left: -10px; margin-right: -46px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-left: -76px; margin-right: -14px; cursor: default; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
-.nge-cl-slim-expand { position: absolute; right: 12px; top: 18px; }
+.nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
+/* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
+.nge-cl-panel--slim .nge-cl-slim-icon { position: absolute; left: 44px; top: 17px; width: 26px; height: 26px; pointer-events: none; }
+.nge-cl-panel--slim .nge-cl-row .nge-cl-pip { display: none; }
 /* Next claimed cell: green, beside the Full view arrow at the right, and
    the row makes room for both (Ames 2026-10-04). */
 .nge-cl-slim-next {
-  position: absolute; right: 42px; top: 18px;
+  position: absolute; right: 12px; top: 18px;
   color: #7ee2a8; background: rgba(61, 220, 132, 0.14); border-color: rgba(61, 220, 132, 0.5);
 }
 .nge-cl-slim-next:hover {
@@ -5458,7 +5613,7 @@ select.nge-cl-response-input:hover {
   box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
 }
 .nge-cl-slim-next:disabled { opacity: 0.45; cursor: default; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 76px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next) { margin-right: -76px; }
-.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -76px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 46px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-right: -46px; }
+.nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -46px; }
 </style>

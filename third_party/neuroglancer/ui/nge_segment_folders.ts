@@ -21,6 +21,9 @@ export interface SegmentFolder {
   /** True once a colour was picked for the folder's cells: cells that join
    *  the folder later take it too. */
   paint?: boolean;
+  /** The tallest its box may be, in px, once dragged by the grip under it
+   *  (Nseraf, report 179); none = the panel's own cap. */
+  height?: number;
 }
 
 /** nge: cells picked with Ctrl+click or Shift+click, to move, show, hide,
@@ -69,19 +72,27 @@ export class SegmentFolders {
   value: SegmentFolder[] = [];
   changed = new NullarySignal();
 
+  /** The Seg panel's folders hold cell IDs; annotation folders
+   *  (nge_annotation_folders.ts) hold annotation IDs and keep their own
+   *  "color what joins later" default. */
+  constructor(private options: {validId?: (id: string) => boolean, paintKey?: string} = {}) {}
+
   restoreState(json: unknown) {
     const out: SegmentFolder[] = [];
     if (Array.isArray(json)) {
       for (const f of json) {
         if (!f || typeof f !== 'object') continue;
         const name = typeof f.name === 'string' && f.name.trim() ? f.name.trim().slice(0, 60) : 'Folder';
-        const ids = Array.isArray(f.ids) ? f.ids.filter((s: unknown) => typeof s === 'string' && /^\d+$/.test(s)) : [];
+        const validId = this.options.validId ?? ((s: string) => /^\d+$/.test(s));
+        const ids = Array.isArray(f.ids) ? f.ids.filter((s: unknown) => typeof s === 'string' && validId(s)) : [];
         out.push({
           id: typeof f.id === 'string' && f.id ? f.id : newFolderId(), name, ids,
           collapsed: f.collapsed === true,
           parent: typeof f.parent === 'string' && f.parent ? f.parent : undefined,
           color: typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : undefined,
           paint: f.paint === true,
+          height: typeof f.height === 'number' && Number.isFinite(f.height) ?
+              Math.round(Math.max(FOLDER_MIN_HEIGHT, Math.min(FOLDER_MAX_HEIGHT, f.height))) : undefined,
         });
       }
     }
@@ -105,6 +116,7 @@ export class SegmentFolders {
       ...(f.parent ? {parent: f.parent} : {}),
       ...(f.color ? {color: f.color} : {}),
       ...(f.paint ? {paint: true} : {}),
+      ...(f.height ? {height: f.height} : {}),
     }));
   }
 
@@ -175,6 +187,14 @@ export class SegmentFolders {
     this.changed.dispatch();
   }
 
+  /** The box's height from the grip; undefined goes back to the panel's cap. */
+  setHeight(id: string, height: number|undefined) {
+    const h = height === undefined ? undefined :
+        Math.round(Math.max(FOLDER_MIN_HEIGHT, Math.min(FOLDER_MAX_HEIGHT, height)));
+    this.value = this.value.map(f => f.id === id ? {...f, height: h} : f);
+    this.changed.dispatch();
+  }
+
   setColor(id: string, color: string) {
     this.value = this.value.map(f => f.id === id ? {...f, color} : f);
     this.changed.dispatch();
@@ -184,7 +204,7 @@ export class SegmentFolders {
    *  turned on in the folder's colour palette; Ames 2026-10-14). */
   setPaint(id: string, paint: boolean) {
     // the choice is kept: new folders start with it (Ames 2026-10-14)
-    try { localStorage.setItem(PAINT_DEFAULT_KEY, paint ? '1' : '0'); } catch { /* private window */ }
+    try { localStorage.setItem(this.options.paintKey ?? PAINT_DEFAULT_KEY, paint ? '1' : '0'); } catch { /* private window */ }
     this.value = this.value.map(f => f.id === id ? {...f, paint} : f);
     this.changed.dispatch();
   }
@@ -206,7 +226,7 @@ export class SegmentFolders {
     const used = new Set(this.value.map(f => f.color));
     const color = FOLDER_COLORS.find(c => !used.has(c)) ??
         FOLDER_COLORS[this.value.length % FOLDER_COLORS.length];
-    const f: SegmentFolder = {id: newFolderId(), name, ids: [], parent, color, paint: paintDefault()};
+    const f: SegmentFolder = {id: newFolderId(), name, ids: [], parent, color, paint: paintDefault(this.options.paintKey)};
     this.value = [...this.value, f];
     this.changed.dispatch();
     return f;
@@ -244,8 +264,10 @@ export class SegmentFolders {
 }
 
 const PAINT_DEFAULT_KEY = 'nge-folder-paint-default';
-function paintDefault(): boolean {
-  try { return localStorage.getItem(PAINT_DEFAULT_KEY) === '1'; } catch { return false; }
+export const FOLDER_MIN_HEIGHT = 48;
+export const FOLDER_MAX_HEIGHT = 2000;
+function paintDefault(key = PAINT_DEFAULT_KEY): boolean {
+  try { return localStorage.getItem(key) === '1'; } catch { return false; }
 }
 
 export const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb923c', '#2dd4bf', '#f472b6', '#ff2d2d'];

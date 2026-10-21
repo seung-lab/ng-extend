@@ -199,8 +199,10 @@ const nextBadgeFor = computed(() => {
     const idx = sorted.findIndex(b => current < b.threshold && !backendW.holdsSaved(backendW.userId, track, b.id));
     if (idx === -1) return null;
     const target = sorted[idx];
-    const prev = idx > 0 ? sorted[idx - 1].threshold : 0;
-    const pct = Math.min(100, Math.round(((current - prev) / (target.threshold - prev)) * 100));
+    // the last step the count has passed: a saved Achievement held above the
+    // count is not a start line (annkri #180: 47 cells drew 75 to 100 at -112%)
+    const prev = sorted.slice(0, idx).filter(b => b.threshold <= current).pop()?.threshold ?? 0;
+    const pct = Math.max(0, Math.min(100, Math.round(((current - prev) / (target.threshold - prev)) * 100)));
     return { name: target.name, threshold: target.threshold, remaining: target.threshold - current, progressPct: pct, prevThreshold: prev, track };
   }
   return {
@@ -216,10 +218,12 @@ const nextBadge = computed<NextBadgeInfo | null>(() => {
     const idx = sorted.findIndex(b => current < b.threshold && !backendW.holdsSaved(backendW.userId, track, b.id));
     if (idx === -1) return null;
     const target = sorted[idx];
-    const prev = idx > 0 ? sorted[idx - 1].threshold : 0;
+    // the last step the count has passed: a saved Achievement held above the
+    // count is not a start line (annkri #180: 47 cells drew 75 to 100 at -112%)
+    const prev = sorted.slice(0, idx).filter(b => b.threshold <= current).pop()?.threshold ?? 0;
     const range = target.threshold - prev;
     const progress = current - prev;
-    const pct = Math.min(100, Math.round((progress / range) * 100));
+    const pct = Math.max(0, Math.min(100, Math.round((progress / range) * 100)));
     return { name: target.name, threshold: target.threshold, remaining: target.threshold - current, progressPct: pct, prevThreshold: prev, track };
   }
   const b = nextFor(BUILDING_BADGES, stats.value.editsAllTime ?? 0, 'building');

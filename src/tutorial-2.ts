@@ -267,17 +267,20 @@ function nextWhenSegSelected() {
   }, 800);
 }
 /** Move on once 3D segmentation has been hidden and shown again. */
-function nextWhenSegHiddenAndShown() {
+function nextWhenSegHiddenAndShown(times = 1) {
   waitForAction();
   const store = useTutorialStore();
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
-  let hidden = false;
+  // Each hide then show counts once; it moves on after `times` of them (a
+  // player: two right clicks moved on before they could try the key too).
+  let hidden = false, rounds = 0;
   const timer = setInterval(() => {
     if (!here()) { clearInterval(timer); return; }
     const seg = segLayer();
     if (!seg) return;
     if (!seg.visible) hidden = true;
+    else if (hidden && ++rounds < times) hidden = false;
     else if (hidden) {
       clearInterval(timer);
       setTimeout(() => { if (here()) advance(); }, 1200);
@@ -641,10 +644,13 @@ If it worked, the light moves to its border!`; },
   {
     part: "Part 2 of 4 · Working with cells",
     get text() { return `
-<strong>${HIDE_CLICK()}</strong> on <strong>3D segmentation</strong> to HIDE it, then again to SHOW it.
+Try both ways to HIDE and SHOW <strong>3D segmentation</strong>:
 
-<strong>Pressing the LAYER NUMBER</strong> on your keyboard also works. In this case the number is "2."`; },
-    onEnter: () => { markSegChip(); nextWhenSegHiddenAndShown(); },
+<ol class="nge-tut-steps">
+<li><strong>${HIDE_CLICK()}</strong> on it to hide it, then again to show it.</li>
+<li>Press its <strong>LAYER NUMBER</strong>, <strong>2</strong>, on your keyboard, twice.</li>
+</ol>`; },
+    onEnter: () => { markSegChip(); nextWhenSegHiddenAndShown(2); },
     position: {
       element: ".nge-tut-seg-chip",
       side: "bottom",
@@ -730,7 +736,7 @@ To find the cell it belongs to, <strong>DOUBLE CLICK the EM just around the nucl
   {
     part: "Part 2 of 4 · Working with cells",
     text: `
-Each cell in view has a row here. Hover over one and its buttons appear:
+Each cell in view has a row in the panel. Its buttons appear when you <strong>hover over the row</strong>, like this:
 
 ${FAKE_ROW}
 
@@ -748,6 +754,7 @@ You can also make folders with <strong>+ Folder</strong> and drag and drop cell 
       side: "left",
       offset: { x: 0, y: 0 },
     },
+    highlight: true,
   },
   {
     part: "Part 2 of 4 · Working with cells",
@@ -833,7 +840,7 @@ Now let's go back to our cell:
     text: `
 Now let's put it together. <strong>Find Path</strong> draws the route through a cell between two points.
 
-<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> to trace the path (or click <strong>Submit</strong> in the Find Path bar at the bottom).
+<strong>Press F</strong>, then <strong>CTRL+CLICK on the soma</strong> and then <strong>anywhere down a branch</strong>, then press <span class="nge-tut-key-big">ENTER</span> to trace the path. (Points from before still there? Click <strong>Clear</strong> in the Find Path bar first.) (or click <strong>Submit</strong> in the Find Path bar at the bottom).
 
 We've made the cell see through, so the path stands out.`,
     width: "500px",
@@ -878,7 +885,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
 
 <strong>Press SHIFT+N</strong> (or the glowing lantern on the top bar) to light it.`,
     width: "500px",
-    position: { element: '#extensionBar [data-icon-id="lantern"]', side: "bottom", offset: { x: 0, y: 14 } },
+    position: { element: '#extensionBar [data-icon-id="lantern"]', side: "bottom", offset: { x: 0, y: 70 } },
     highlight: true,
     onEnter: () => nextWhenLanternOn(),
   },
@@ -889,15 +896,15 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
 
 <strong>Close Lantern</strong> when you want the whole cell back: the ✕ in its box, or SHIFT+N again.`,
     width: "500px",
-    position: OVER_3D,
+    // Below the Lantern bar, which sits along the top (a player found it
+    // covering this box, 2026-10-20).
+    position: { ...OVER_3D, y: 0.3 },
     onEnter: () => { if (!lantern.on) lantern.on = true; nextWhenLanternOn(false); },
   },
   {
     part: "Part 4 of 4 · Put it together",
     text: `
-Oh great, I finally found that very important memo from our collaborators! It was buried in a different pile of papers along with some suspicious looking cat hair and a file called "KITTY WORLD DOMINATION TOP SECRET." I wonder what that could mean 🤔.
-
-Can you help out with this final task? Each line ticks itself off as you do it:
+<strong>Your mission:</strong> a collaborator found a merger. Mark where it starts. Each line ticks itself off as you do it:
 
 <ol class="nge-tut-checklist">
 <li data-check="spot">Go to this location: ${copyButton('82190, 58009, 381')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>

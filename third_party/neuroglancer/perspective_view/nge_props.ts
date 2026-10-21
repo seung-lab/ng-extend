@@ -51,9 +51,13 @@ export interface NgeProp {
   shade: number;
 }
 
+/** Each part of the app keeps its own list, so one clearing its props (the
+ *  ghost leaving) does not take away another's (the Sandbox pumpkin). */
+const groups = new Map<string, NgeProp[]>();
 let props: NgeProp[] = [];
-export function setNgeProps(list: NgeProp[]) {
-  props = list;
+export function setNgeProps(list: NgeProp[], group = 'spooky') {
+  if (list.length) groups.set(group, list); else groups.delete(group);
+  props = ([] as NgeProp[]).concat(...groups.values());
 }
 export function ngeHasProps() {
   return props.length > 0;

@@ -2,6 +2,240 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T13:23:47Z",
+      "title": "Tidier corners",
+      "items": [
+        "The music button sits in the bottom right corner of the 3D view, with the Sections box beside it, and no longer floats up when a message bar shows along the bottom.",
+        "Hovering the x, y and z letters in a view's corner opens a tidy card for the view's scale, with tips on what Default and Zoom-relative do."
+      ]
+    },
+    {
+      "at": "2026-10-21T12:22:28Z",
+      "title": "The 3D view no longer zooms out of sight",
+      "items": [
+        "Scrolling in the 3D view can no longer zoom out so far that your cells disappear. Some mice in Firefox sent such big scroll steps that a few notches left the 3D view empty.",
+        "A view saved zoomed out that far now opens at the dataset's normal 3D distance."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:58:03Z",
+      "title": "3D Hover: None, and a gentler Saturate",
+      "items": [
+        "Settings, 3D Hover now has None, for no highlight on the cell under your mouse. Pressing P still makes a cell pulse.",
+        "Saturate is gentler, so the cell keeps its shading."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:26:00Z",
+      "title": "A pumpkin patch in the Sandbox",
+      "items": [
+        "For Halloween, three cells in the Sandbox wear jack o' lanterns over their cell bodies in the 3D view, and their branches grow out through the faces. They stay until 1 November.",
+        "The pumpkin button beside the emoji button in chat has news of a rare cell type, and takes you to see it. On a pumpkin cell, the same button takes the pumpkins off and puts them back. You can also turn them off in Settings."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:26:00Z",
+      "title": "Photo mode",
+      "items": [
+        "Photo mode hides everything but the 3D view, fills the window with it and turns your cells slowly, like a turntable. Open it from Just for fun in the menu, from the row of buttons that appears after Share, or from the command palette.",
+        "Its small bar picks the spin speed and a black, night, grey or white background, saves a clean picture, and records one full turn as a short video you can share. Esc leaves and puts your view back as it was.",
+        "Pick centre chooses what the spin turns around: click a spot on a cell, or type a point as x, y, z."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:07:17Z",
+      "title": "3D Hover: Halo, Pulse, Wireframe and Saturate",
+      "items": [
+        "New 3D Hover looks for the cell under your mouse, in Settings under 3D Hover: Halo, a slim glowing line around the cell; Pulse, a ring of light running out along the cell from your mouse when you point at it, in a colour you choose; Wireframe, the cell's 3D mesh drawn in glowing lines, finer as you zoom in; and Saturate, the cell's colour turning richer and lit from within instead of paler.",
+        "Press P with your mouse over a cell in 3D to send a ring of light along it, whichever look you use. The pulse colour can be any colour you like.",
+        "New players start with Halo. If you were already playing, the original look stays until you pick another.",
+        "With the new looks, the cell under your mouse in 2D keeps its own colour and turns more solid instead of fading to white.",
+        "Keep my display settings now also keeps Highlight on hover the way you set it when you jump to another cell."
+      ]
+    },
+    {
+      "at": "2026-10-20T23:09:58Z",
+      "title": "A roomier slim Cell Library",
+      "digest": "minor",
+      "items": [
+        "The slim Cell Library bar is wider, so your cell's whole ID shows, and it keeps the Cell Library's neuron.",
+        "The arrow that shrinks and opens the Cell Library is on the left in both views, and the next cell arrow is on the right.",
+        "Shrinking and opening the Cell Library and the Highlight box is one light bar that zips up and down, with rounded corners.",
+        "The Cell Library's settings and close buttons are bigger."
+      ]
+    },
+    {
+      "at": "2026-10-20T17:41:48Z",
+      "title": "A shorter Submit an issue",
+      "items": [
+        "Submit an issue now asks for just one line: in a few words, what is it.",
+        "Want to say more? Click Add details."
+      ],
+      "digest": "minor"
+    },
+    {
+      "at": "2026-10-20T17:34:57Z",
+      "title": "Cut points as small as merge points",
+      "items": [
+        "Cut mode's Points sizes are now Small, Medium and Large, and Small is the same size as a merge point, for the tiniest pieces. The cut points no longer grow with your annotation size."
+      ]
+    },
+    {
+      "at": "2026-10-20T17:15:35Z",
+      "title": "Tidier Segments panel and Cell Library rows",
+      "digest": "minor",
+      "items": [
+        "Cells in a folder keep their jump arrow beside the ID instead of dropping to a second line.",
+        "The remove button on Pasted is no longer pushed off the edge of the panel.",
+        "The cell type list in the Complete form opens dark, like the rest of the panel.",
+        "Cell Library rows: the AI's type stays on one line, and the green bar alone marks the cell you are viewing."
+      ]
+    },
+    {
+      "at": "2026-10-20T15:58:09Z",
+      "title": "A cleaner tutorial pointer",
+      "digest": "minor",
+      "items": [
+        "Tutorial boxes now point with a thin line and a lit dot on what they mean."
+      ]
+    },
+    {
+      "at": "2026-10-20T15:18:55Z",
+      "title": "A title on every report",
+      "items": [
+        "Submit an issue now asks for a short title, so the team sees at a glance what your report is about.",
+        "The Data problem choice is gone. Pick Bug, Idea or Other."
+      ],
+      "digest": "minor"
+    },
+    {
+      "at": "2026-10-20T15:18:05Z",
+      "title": "Folders you can size, and a longer notifications window",
+      "digest": "minor",
+      "items": [
+        "Drag the grip under a folder in the Segments panel to make it taller or shorter. Double click the grip to give it its usual size.",
+        "+ Folder beside Move down puts your pasted cells straight into a new folder.",
+        "The Segments panel's green is now sky blue.",
+        "Drag the bottom edge of the notifications window to make it longer, and press Show more to see older notifications."
+      ]
+    },
+    {
+      "at": "2026-10-20T15:12:20Z",
+      "title": "What the AI predicts for each cell",
+      "items": [
+        "On the Retina, each cell in the Cell Library shows the bipolar type the lab's AI predicts for it, for example 6 bipolar (t6), and so does the Cell Profile.",
+        "When you complete a cell the AI's type stands. If you are sure it is wrong, press Wrong? Correct it and choose the right one."
+      ]
+    },
+    {
+      "at": "2026-10-20T15:11:20Z",
+      "title": "Pasted coordinates find their cell",
+      "digest": "minor",
+      "items": [
+        "Coordinates pasted into the Segments box now find the cell there right away, without opening the 2D view.",
+        "Find Path failure messages go away by themselves.",
+        "Advanced Interface: clearer steps for hiding a layer, rows, Lantern and Find Path, and a shorter final mission."
+      ]
+    },
+    {
+      "at": "2026-10-20T14:58:16Z",
+      "title": "Several Pyr tabs at once",
+      "items": [
+        "With Pyr open in more than one tab, each tab now keeps track of its own claimed cell, so moving to another cell in one tab no longer saves that tab's view into the cell you are working on in the other.",
+        "A setting you change in one tab now reaches your other open tabs too, instead of being put back by them.",
+        "If your graphics card runs short and the views stop drawing, which can happen with several tabs open, a notice offers to reload that tab."
+      ]
+    },
+    {
+      "at": "2026-10-20T14:58:16Z",
+      "title": "Smaller cut points",
+      "items": [
+        "Cut mode has a Points choice beside Keep open: Small, Medium, Regular or Large. It sizes only the red and blue cut points, so your annotation layers keep their own size."
+      ]
+    },
+    {
+      "at": "2026-10-20T14:58:16Z",
+      "title": "The Sandbox opens with its cells",
+      "items": [
+        "Opening Pyr at its plain address shows the Sandbox's starting cells again, as switching to the Sandbox does."
+      ]
+    },
+    {
+      "at": "2026-10-20T14:58:16Z",
+      "title": "Progress toward your next badge",
+      "items": [
+        "The progress bars toward your next edits and cells badges now start from the last badge your count has passed, so they no longer show a negative percentage."
+      ]
+    },
+    {
+      "at": "2026-10-19T20:40:45Z",
+      "title": "Type a cell as you complete it",
+      "items": [
+        "The Cell Library's Complete form now has an optional Cell type: pick from the list or type your own, and it is saved together with the completion, so there is no separate step in the Cell Profile."
+      ]
+    },
+    {
+      "at": "2026-10-19T20:40:45Z",
+      "title": "Boxes, circles, arrows and text on screenshots",
+      "items": [
+        "When you mark up a screenshot you can now draw a box, a circle or an arrow, and add text you can drag into place, as well as using the pen.",
+        "Hold Shift to draw a perfect square or circle."
+      ]
+    },
+    {
+      "at": "2026-10-19T20:21:33Z",
+      "title": "The 2D view no longer freezes",
+      "items": [
+        "After switching between 2D only and 2D + 3D, or after moving on to your next cell, the 2D view sometimes stopped loading new slices until you pressed Space twice or reloaded. It now keeps loading."
+      ]
+    },
+    {
+      "at": "2026-10-19T19:57:46Z",
+      "title": "Your profile fits a smaller screen",
+      "items": [
+        "On a laptop screen, or with the browser zoomed in, your profile now fits the window, with its close button in the corner where you can reach it."
+      ]
+    },
+    {
+      "at": "2026-10-19T19:57:46Z",
+      "title": "New full screen and split screen buttons",
+      "digest": "minor",
+      "items": [
+        "With a mouse, the corner buttons of the 2D and 3D views are now icons in the style of the rest of Pyr, and each spells out what it does when you point at it: 3D only, 2D only, or 2D + 3D to come back to split screen."
+      ]
+    },
+    {
+      "at": "2026-10-19T16:40:00Z",
+      "title": "Your profile opens without a jump",
+      "digest": "minor",
+      "items": [
+        "Your profile builds from the top down: each row appears whole, with its line, numbers and curve, once its numbers are in, instead of pieces landing as they arrive. Nothing shifts.",
+        "The light that ran around the edge of the profile is gone, now that the profile fills the window.",
+        "The browser tab now says Pyr, not neuroglancer.",
+        "In the Trophy Case the tiles show each Achievement's name and threshold; its description shows when you pick it."
+      ]
+    },
+    {
+      "at": "2026-10-19T16:35:55Z",
+      "title": "Numbered annotations, in folders",
+      "digest": "headline",
+      "items": [
+        "Every annotation in a layer's list now has a number, in the list's order.",
+        "+ Folder makes a folder for your annotations. Name it, fold it, put one folder inside another, or delete it.",
+        "Drag an annotation's row to move it up or down the list, or onto a folder to put it in.",
+        "Ctrl+click or Shift+click picks several annotations to move to a folder or delete together.",
+        "Pick a color on a folder's dot to draw its annotations in that color. Untick Color its annotations to give them the layer's color again.",
+        "Your order and folders are saved with the layer, so saved views and shared links keep them."
+      ]
+    },
+    {
+      "at": "2026-10-19T16:24:30Z",
+      "title": "A way back from 3D only",
+      "items": [
+        "After you switch to 3D only, a 2D + 3D button in the corner of the 3D view brings the 2D image back. Space still does the same."
+      ]
+    },
+    {
       "at": "2026-10-19T16:20:00Z",
       "title": "Proofreading Test results, biggest misses first",
       "items": [

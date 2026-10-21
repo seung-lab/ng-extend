@@ -21,7 +21,7 @@ export function completeStatusesFor(dataset?: string | null) {
 /** Only the server holds Sheets credentials and chooses the destination/range. */
 /** `link` and `notes` (complete only) fill the sheet's "Final Link" and
  *  "Notes" columns; the server never overwrites a filled cell. */
-export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinates' | 'release' | 'reopen', segmentId: string, coordinates?: string, sourceDataset?: string, link?: string, notes?: string, status?: string) {
+export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinates' | 'release' | 'reopen', segmentId: string, coordinates?: string, sourceDataset?: string, link?: string, notes?: string, status?: string, cellType?: string) {
   const dataset = canonicalDataset(sourceDataset || currentDatasetTag());
   if (!['pinky_nf_v2', 'stroeh_mouse_retina', 'pni_mec'].includes(dataset)) return;
   let token: string | null = null;
@@ -29,7 +29,7 @@ export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinate
   if (!token) throw new Error('Sign in before syncing a cell.');
   const response = await fetch(functionUrl('ewSheetSync'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
-    body: JSON.stringify({ action, segmentId, coordinates, dataset, token, ...(link ? { link } : {}), ...(notes ? { notes } : {}), ...(status ? { status } : {}) }),
+    body: JSON.stringify({ action, segmentId, coordinates, dataset, token, ...(link ? { link } : {}), ...(notes ? { notes } : {}), ...(status ? { status } : {}), ...(cellType ? { cellType } : {}) }),
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Sheet syncing failed. Your cell is saved.');

@@ -8,7 +8,7 @@ import { reportFeedbackFailure } from '../util/error_reporting';
 import { functionUrl } from '../functions_base';
 /**
  * FeedbackModal.vue
- * "Submit an issue" — lets any user report a bug / idea / data problem from
+ * "Submit an issue" — lets any user report a bug / idea / anything else from
  * anywhere in the app. Posts to the `submitIssue` Cloud Function which relays
  * to Slack (#citsci_feedback) and keeps a Firestore record. No auth required.
  */
@@ -26,9 +26,19 @@ const ISSUE_URL =
   (window as any).__NGE_SUBMIT_ISSUE_URL ||
   functionUrl('submitIssue');
 
-const CATEGORIES = ['Bug', 'Idea', 'Data problem', 'Other'] as const;
+// No Data problem (Ames 2026-10-19: not needed). Old reports keep theirs, and
+// the server still accepts it.
+const CATEGORIES = ['Bug', 'Idea', 'Other'] as const;
 const category = ref<typeof CATEGORIES[number]>('Bug');
 const message = ref('');
+/** A short title (Celia #178: "a title section for bug or idea submission
+ *  would be nice to get a fast overview of what the user is asking for"). */
+const TITLE_MAX = 80;
+const title = ref('');
+/** One short box, details only if they want (Ames 2026-10-20: "We want them
+ *  to write LESS"). The box that holds what they wrote stays closed until
+ *  "Add details" opens it. */
+const detailsOpen = ref(false);
 const sending = ref(false);
 /** Attach a share link of the current view (on by default; Celia's ask). */
 const attachView = ref(true);
@@ -89,9 +99,12 @@ function currentDataset(): string {
 }
 
 async function submit() {
-  const text = message.value.trim();
-  if (!text || sending.value) {
-    if (!text) error.value = 'Please describe the issue.';
+  const heading = title.value.trim().slice(0, TITLE_MAX);
+  const details = detailsOpen.value ? message.value.trim() : '';
+  // The report itself: their details, or just the short line when that is all.
+  const text = details || heading;
+  if (!heading || sending.value) {
+    if (!heading) error.value = 'Say in a few words what it is.';
     return;
   }
   sending.value = true;
@@ -136,6 +149,7 @@ async function submit() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: caveToken(),
+          title: heading,
           message: slackText,
           category: category.value,
           url: pageUrl,
@@ -164,6 +178,7 @@ async function submit() {
       const { supabase } = await import('../supabase');
       const row: Record<string, any> = {
         category: category.value,
+        title: heading,
         message: text,
         url: pageUrl,
         dataset: currentDataset() || null,
@@ -181,6 +196,14 @@ async function submit() {
           (insErr.code === 'PGRST204' || /screenshot_url/.test(insErr.message || ''))) {
         delete row.screenshot_url;
         row.message = slackText;
+        ({ error: insErr } = await supabase.from('site_issues').insert(row));
+      }
+      // Until supabase-site-issues-title.sql runs, the title rides at the top
+      // of the message instead.
+      if (insErr && 'title' in row &&
+          (insErr.code === 'PGRST204' || /title/.test(insErr.message || ''))) {
+        delete row.title;
+        if (details) row.message = `${heading}\n\n${row.message}`;
         ({ error: insErr } = await supabase.from('site_issues').insert(row));
       }
       // Until supabase-site-issues-console.sql runs, drop the log rather than the report.
@@ -421,11 +444,23 @@ onBeforeUnmount(() => {
           >{{ c }}</button>
         </div>
 
+        <input
+          v-model="title"
+          class="nge-fb-note nge-fb-headline"
+          :maxlength="TITLE_MAX"
+          placeholder="In a few words, what is it?"
+          aria-label="In a few words, what is it?"
+          @keydown.stop @keyup.stop @keypress.stop @keydown.enter.prevent="submit"
+          @input="error = ''"
+        />
+        <button v-if="!detailsOpen" type="button" class="nge-fb-more" @click="detailsOpen = true">+ Add details (optional)</button>
         <textarea
+          v-else
           v-model="message"
           class="nge-fb-note"
-          rows="4"
-          placeholder="What happened? What did you expect? Steps to reproduce help a lot."
+          rows="3"
+          placeholder="Anything else that helps, like what you expected."
+          aria-label="Details"
           @keydown.stop @keyup.stop @keypress.stop
           @input="error = ''"
         ></textarea>
@@ -568,6 +603,12 @@ onBeforeUnmount(() => {
   border-color: rgba(150, 170, 255, 0.6);
   color: #fff;
 }
+.nge-fb-note.nge-fb-headline { box-sizing: border-box; min-height: 0; resize: none; padding: 9px 10px; }
+.nge-fb-more {
+  display: block; background: none; border: none; padding: 2px 0; margin: 2px 0 8px;
+  color: #9db3ff; font: inherit; font-size: 0.82em; cursor: pointer;
+}
+.nge-fb-more:hover { color: #c5d3ff; text-decoration: underline; }
 .nge-fb-note {
   width: 100%;
   background: rgba(0, 0, 0, 0.25);

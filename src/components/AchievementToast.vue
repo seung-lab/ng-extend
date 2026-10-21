@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { QUIET_TEST_HOST } from '../util/test_host';
 /**
  * AchievementToast.vue
  * Celebrates milestones with animated toast notifications.
@@ -125,8 +126,9 @@ onMounted(() => {
   // Wait for stats to settle — stats may load from server after mount
   setTimeout(() => { initialized = true; }, 8000);
 
-  // Welcome sparkle — calcium-imaging shimmer on extension open
-  setTimeout(() => { confettiRef.value?.sparkle(2); }, 800);
+  // Welcome sparkle — calcium-imaging shimmer on extension open (not on a
+  // branch test site, util/test_host.ts)
+  if (!QUIET_TEST_HOST) setTimeout(() => { confettiRef.value?.sparkle(2); }, 800);
 
   // DEV: test hero badge from console → window.__testHeroBadge()
   (window as any).__testHeroBadge = () => {
@@ -256,6 +258,12 @@ function settleLoyalty(days: number) {
   }
   const due = LOYALTY_BADGES.filter(b => days >= b.threshold && (LOYALTY_TEST_ONLY || !backend.myBadgeAwards.has(`loyalty:${b.id}`)));
   if (!due.length) return;
+  // A branch test site saves nothing and starts with empty storage, so the
+  // card came up on every one (util/test_host.ts): count them as shown.
+  if (QUIET_TEST_HOST) {
+    for (const b of due) claimBadgeOnce(`l:${b.id}`);
+    return;
+  }
   // Announced once per browser as well: if saving ever fails, the card must
   // not come back on every visit.
   const fresh = due.filter(b => claimBadgeOnce(`l:${b.id}`));
@@ -367,7 +375,10 @@ watch(() => queueStore.proofread.size, () => {
 
 // ── Special badge award celebration (from admin-awarded badges) ──────────────
 const backend = useProofreadingBackendStore();
-let prevNotifCount = -1;
+// The newest notification id seen: only ones newer than it can celebrate.
+// (It was the list's length, so "Show more" bringing older notifications
+// in would have replayed an old award, Ames 2026-10-20.)
+let seenNotifMax = -1;
 
 /** Parse badge name and description from notification body like:
  *  'You earned the "Alpha Tester" award! — Only the elite are invited...' */
@@ -394,11 +405,13 @@ function claimCelebration(key: string): boolean {
   return true;
 }
 
-watch(() => backend.notifications.length, (newLen) => {
-  if (prevNotifCount < 0) { prevNotifCount = newLen; return; }
-  if (newLen <= prevNotifCount) { prevNotifCount = newLen; return; }
-  // Check the newest notifications for achievement awards
-  const newNotifs = backend.notifications.slice(0, newLen - prevNotifCount);
+watch(() => backend.notifications.length, () => {
+  const ids = backend.notifications.map(n => Number(n.id)).filter(Number.isFinite);
+  const top = ids.length ? Math.max(...ids) : 0;
+  if (seenNotifMax < 0) { seenNotifMax = top; return; }
+  // Check the notifications newer than any seen for achievement awards
+  const newNotifs = backend.notifications.filter(n => Number(n.id) > seenNotifMax);
+  seenNotifMax = Math.max(seenNotifMax, top);
   for (const notif of newNotifs) {
     if (notif.title?.includes('New Achievement')) {
       if (!claimCelebration(notif.title)) continue;
@@ -413,7 +426,6 @@ watch(() => backend.notifications.length, (newLen) => {
       fireConfetti('gold', 1.5);
     }
   }
-  prevNotifCount = newLen;
 });
 
 // Loyalty catch up: once the total and the saved list are both known.

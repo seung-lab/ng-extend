@@ -7,6 +7,7 @@ import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
 import {Ref, ref, reactive, computed, watch} from 'vue';
+import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
 
 import {Viewer} from 'neuroglancer/viewer';
@@ -537,15 +538,15 @@ export const useLayersStore = defineStore('layers', () => {
   function isUserInActiveTutorial(): boolean {
     try {
       const active = parseInt(localStorage.getItem('nge-active-tutorial') ?? '1');
-      const stepKey = active === 2 ? 'nge-tutorial-2-step'
-                    : active === 3 ? 'nge-tutorial-3-step'
-                    : 'nge-tutorial-step';
-      // store-pyr defaults: T1 step starts at 0 (in-progress), T2/T3 at -1 (not started).
+      const stepKey = active === 1 ? 'nge-tutorial-step' : `nge-tutorial-${active}-step`;
+      // store-pyr defaults: T1 step starts at 0 (in-progress), the others at -1 (not started).
       const defaultStep = active === 1 ? '0' : '-1';
       const step = parseInt(localStorage.getItem(stepKey) ?? defaultStep);
-      // Tutorial step counts as of 2026-04: T1=18, T2=24, T3=TBD.
-      const tutorialLengths: Record<number, number> = { 1: 18, 2: 24, 3: 30 };
-      const length = tutorialLengths[active] ?? 30;
+      // The real step counts, from Tutorial.vue. The old fixed table (T2 = 24)
+      // went stale as tutorials grew, so a finished tutorial could read as
+      // under way and the Sandbox landed without its cells.
+      const live = (window as any).__ngeTutorialLengths as Record<string, number> | undefined;
+      const length = live?.[active] ?? ({ 1: 18, 2: 24, 3: 30 } as Record<number, number>)[active] ?? 30;
       return step >= 0 && step < length;
     } catch { return false; }
   }
@@ -1028,6 +1029,13 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse' or 'wireframe', the classic look. */
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade' | 'none';
+  /** Set when hoverStyle was given (a new player's halo), not chosen; the
+   *  account copy can still say they were here before. Local only. */
+  hoverStyleAuto?: boolean;
+  /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
+  pulseColor?: string;
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). */
@@ -1035,6 +1043,9 @@ export interface UserPreferences {
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
+  /** Hide the Halloween pumpkin on the Sandbox cell (src/util/pumpkin.ts).
+   *  Defaults to false: the pumpkin shows in season. */
+  hidePumpkin?: boolean;
   /** The tab the Cell Library opens on (Nik 2026-10-09). Unset: My Cells. */
   cellLibraryStartTab?: 'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links';
   /** Jumping to a cell ADDS it to the view instead of replacing what is
@@ -1051,6 +1062,8 @@ export interface UserPreferences {
   offerViewRestore?: boolean;
   /** Point annotation size multiplier, 1 to 4 (Amy 2026-09-30). Local only. */
   annotationSize?: number;
+  /** Cut mode's red and blue points, as a multiple of the regular dot (Celia #177). */
+  cutPointSize?: number;
   /** Point annotations drawn as Pyr gems in 3D. Defaults to true. */
   annotationGems?: boolean;
   /** Show Source and Rendering tabs on annotation layers. Defaults to false. */
@@ -1094,7 +1107,18 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   function load() {
     try {
       const raw = localStorage.getItem(PREFS_KEY);
-      if (raw) Object.assign(prefs.value, JSON.parse(raw));
+      const stored = raw ? JSON.parse(raw) : {};
+      Object.assign(prefs.value, stored);
+      // 3D Hover (wolfryder101 #181): settle the style once. A browser with
+      // settings in it already keeps the classic fade; a new one gets the
+      // halo, marked as given, so the account copy can still say the player
+      // was here before (pullFromAccount). Written now, so saving any other
+      // setting later does not make a new player look like an old one.
+      if (!prefs.value.hoverStyle) {
+        prefs.value.hoverStyle = ngeDefaultHoverStyle(stored);
+        if (prefs.value.hoverStyle === 'halo') prefs.value.hoverStyleAuto = true;
+        localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+      }
     } catch { /* ignore parse errors */ }
   }
 
@@ -1110,7 +1134,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'hoverStyle', 'pulseColor'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1163,16 +1187,33 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
         // What was delivered on this computer before the account copy
         // arrived is kept too: delivery is never taken back.
         const hadHere = prefs.value.notifDelivered || [];
+        // A player who was here before, on a browser new to them: the halo
+        // given to "a new player" here gives way to their classic fade.
+        if (prefs.value.hoverStyleAuto && !remote.hoverStyle) remote.hoverStyle = 'fade';
+        prefs.value.hoverStyleAuto = false;
         Object.assign(prefs.value, syncedPart(remote));
         if (hadHere.length) prefs.value.notifDelivered = [...new Set([...(prefs.value.notifDelivered || []), ...hadHere])].sort((a, b) => b - a).slice(0, 300);
         localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
       } else {
+        prefs.value.hoverStyleAuto = false;
         pushToAccount(); // first sign in since this shipped: keep this browser's choices
       }
     } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }
   }
 
   load(); // hydrate from localStorage on store init
+  // The renderer reads the hover style and pulse colour from these.
+  watch(() => [prefs.value.hoverStyle, prefs.value.pulseColor], () => {
+    ngeHoverStyle.value = ngeParseHoverStyle(prefs.value);
+    ngePulseColor.value = ngeParsePulseColor(prefs.value.pulseColor);
+    try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
+  }, { immediate: true });
+  // Another Pyr tab changed a setting: take it here too, so this tab's next
+  // save does not put the old value back (Ames 2026-10-20, several tabs).
+  window.addEventListener('storage', e => {
+    if (e.key !== PREFS_KEY || !e.newValue) return;
+    try { prefs.value = JSON.parse(e.newValue); } catch { /* ignore parse errors */ }
+  });
   // Once signed in, the account's copy wins over this browser's.
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
@@ -2891,6 +2932,7 @@ export interface QueueItem {
   sheetStatus?: string;       // status text from the sheet (Stroeh: 'Status' column); '' if none
   assignee?: string;          // who's on it, from the sheet (Stroeh: 'Proofreader'); '' if none
   startLink?: string;         // curated starting view (Stroeh: 'Start link', column E); opened on Claim
+  aiType?: string;            // the type the lab's AI predicts (Stroeh: 'AI-predicted BC type'); '' if none
 }
 
 export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => {
@@ -3051,6 +3093,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
       const iStatus   = col('status');
       const iAssignee = firstCol('proofreader', 'claimedby', 'assignee');
       const iStartLink = col('startlink');
+      const iAiType    = firstCol('aipredicted', 'predictedtype');
 
       if (iSeg < 0) { error.value = 'Could not find a Segment ID column'; loading.value = false; return; }
 
@@ -3074,6 +3117,7 @@ export const useProofreadingQueueStore = defineStore('proofreadingQueue', () => 
           sheetStatus: (iStatus >= 0 ? (row[iStatus] || '').trim() : '') || '',
           assignee:    (iAssignee >= 0 ? (row[iAssignee] || '').trim() : '') || '',
           startLink:   (iStartLink >= 0 ? (row[iStartLink] || '').trim() : '') || '',
+          aiType:      (iAiType >= 0 ? (row[iAiType] || '').trim().slice(0, 40) : '') || '',
         });
       }
 
@@ -5045,6 +5089,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let notifGroupIds: string[] = [];
   let notifMaxId = 0;
   let notifCheckedAt = '';
+  // The feed loads the newest NOTIF_PAGE and asks for more on "Show more"
+  // (Ames 2026-10-20: "maybe it should load some # and then make me click
+  // 'more' in order to load more? might save on querying"); it was 50 every
+  // time.
+  const NOTIF_PAGE = 20;
+  const notifLimit = ref(NOTIF_PAGE);
+  /** True when the last full load filled its page: there may be older ones. */
+  const notificationsHaveMore = ref(false);
+  async function loadMoreNotifications() {
+    notifLimit.value += NOTIF_PAGE;
+    await loadNotifications();
+  }
   async function loadNotifications(opts: { newOnly?: boolean } = {}) {
     if (!userId.value) return;
     const now = new Date().toISOString();
@@ -5065,11 +5121,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .select('*')
       .lte('send_at', now)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(newOnly ? 50 : notifLimit.value);
     if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
     const { data: allNotifs } = await query;
     if (!allNotifs) return;
+    if (!newOnly) notificationsHaveMore.value = allNotifs.length >= notifLimit.value;
     for (const n of allNotifs as any[]) if (Number(n.id) > notifMaxId) notifMaxId = Number(n.id);
     notifCheckedAt = now;
     if (newOnly && !allNotifs.length) return;
@@ -5119,7 +5176,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Delivered ones that have since stopped: the server leaves those out of
     // the list above, so ask for them by id.
     const have = new Set(current.map(n => n.id));
-    const kept = [...delivered].filter(id => !have.has(id) && !notificationDismissals.value.has(id)).sort((a, b) => b - a).slice(0, 100);
+    // Only those as new as the page reaches: older ones come with "Show more".
+    const oldestShown = notificationsHaveMore.value && current.length ? Math.min(...current.map(n => n.id)) : 0;
+    const kept = [...delivered].filter(id => id > oldestShown && !have.has(id) && !notificationDismissals.value.has(id)).sort((a, b) => b - a).slice(0, 100);
     if (kept.length && !newOnly) {
       const { data: older } = await supabase.from('notifications').select('*').in('id', kept).lte('send_at', now);
       for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
@@ -5953,6 +6012,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     isAdmin, checkAdmin, isBlogAuthor,
     // Notifications
     notifications, notificationReads, unreadNotificationCount, loadNotifications,
+    notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,
     createNotification, createSelfNotification, announceAchievement, postDueChatAnnouncements, deleteNotification, dismissNotification,
@@ -6042,6 +6102,19 @@ export const useVolumesStore = defineStore('volumes', () => {
                 layerStore.selectLayers([imageLayer, segmentationLayer], {keepHash: userHash});
               }
             }
+          }
+        } else if (!BOOT_HASH || BOOT_HASH === '#' || BOOT_HASH === '#!') {
+          // A bare address opens the build's own default view, which already
+          // has its layers, so the switch above never ran and the landing had
+          // no cells (Ames 2026-10-20). Arrive at that dataset the way a
+          // switch to it does: the player's start view, the curated view or
+          // its starter cells, by the same Settings.
+          const v: any = (window as any).viewer;
+          const seg = v?.layerManager?.managedLayers?.find((l: any) => String(l?.layer?.constructor?.type || '').startsWith('segmentation'));
+          const visible = seg?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+          if (seg && visible && visible.size === 0 && getDatasetCaveConfig(seg.name).defaultSegments?.length) {
+            const layers = v.state.toJSON().layers;
+            if (Array.isArray(layers)) void layerStore.selectLayers(layers);
           }
         }
   }
