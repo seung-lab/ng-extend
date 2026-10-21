@@ -2495,6 +2495,9 @@ async function claimNewCell() {
     await nextTick();
     // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
     if (myOpenClaims.value.some(c => c.segId === cell.segId)) {
+      // A cell with a start view opened it; one without still takes you there.
+      if (!cell.startLink) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+      jumpedSegId.value = cell.segId;
       slimEmpty.value = false;
       slimSeg.value = cell.segId;
       await nextTick();
@@ -3539,7 +3542,7 @@ const panelStyle = computed(() => ({
           </button>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
-            <button class="nge-cl-slim-claim" :disabled="!nextAvailableCell || claimingNew || !isLoggedIn"
+            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!nextAvailableCell || claimingNew || !isLoggedIn"
                     :title="!isLoggedIn ? 'Sign in to claim cells'
                       : nextAvailableCell ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
                       : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
@@ -5641,17 +5644,16 @@ select.nge-cl-complete-type:hover {
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
 .nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon):not(.nge-cl-slim-claim-row) { margin-left: -76px; margin-right: -14px; cursor: default; }
-/* "Claim a new cell" on the empty slim bar: a filled blue pill, unlike the
-   outlined arrows, so it reads as the next thing to do. */
+/* "Claim a new cell" on the empty slim bar: the library's own Claim button,
+   a little stronger, so it reads as the next thing to do (Ames 2026-10-21). */
 .nge-cl-slim-claim-row { display: flex; align-items: center; min-height: 52px; padding-left: 4px; }
-.nge-cl-slim-claim {
-  padding: 7px 16px; border-radius: 999px; cursor: pointer;
-  font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  color: #fff; background: linear-gradient(180deg, #3d8bff, #2a63d6);
-  border: 1px solid #8cb8ff; box-shadow: 0 0 12px rgba(61, 139, 255, 0.45);
+.nge-cl-btn.nge-cl-slim-claim {
+  padding: 6px 14px; color: #6fcf8f;
+  border-color: rgba(68, 170, 102, 0.6); background: rgba(68, 170, 102, 0.1);
+  box-shadow: 0 0 8px rgba(68, 170, 102, 0.25);
 }
-.nge-cl-slim-claim:hover:not(:disabled) { background: linear-gradient(180deg, #5a9dff, #3572e6); box-shadow: 0 0 16px rgba(90, 157, 255, 0.65); }
-.nge-cl-slim-claim:disabled { cursor: default; opacity: 0.55; box-shadow: none; }
+.nge-cl-btn.nge-cl-slim-claim:hover:not(:disabled) { color: #9be8b4; background: rgba(68, 170, 102, 0.2); box-shadow: 0 0 12px rgba(68, 170, 102, 0.45); }
+.nge-cl-btn.nge-cl-slim-claim:disabled { box-shadow: none; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
 /* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
