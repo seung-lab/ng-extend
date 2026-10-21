@@ -264,7 +264,12 @@ function measureLift() {
   if (!me || !me.width) return;
   // The coordinates box's own distance from the bottom, so the two share a line.
   const coords = document.querySelector<HTMLElement>('.neuroglancer-position-widget')?.getBoundingClientRect();
-  const b = coords && coords.height > 0 && H - coords.bottom < 60 ? Math.max(4, Math.round(H - coords.bottom)) : 6;
+  // The box already rises with a bar along the bottom (--nge-bottom-bar), and
+  // so does the button: count the bar once, or the button floated a bar's
+  // height above the line (Ames 2026-10-21: "why is the volume button way
+  // over here").
+  const bar = parseFloat(getComputedStyle(document.body).getPropertyValue('--nge-bottom-bar')) || 0;
+  const b = coords && coords.height > 0 && H - coords.bottom - bar < 60 ? Math.max(4, Math.round(H - coords.bottom - bar)) : 6;
   if (b !== base.value) base.value = b;
   // Where the button would be with no step to the left, so the step is
   // worked out from a fixed place and never chases itself.
@@ -286,7 +291,8 @@ function measureLift() {
       if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue;
       // Under the button: overlapping it side to side, near the bottom.
       if (r.right <= me.left || r.left >= me.right || H - r.bottom > 70) continue;
-      need = Math.max(need, Math.round(H - r.top + 6 - b));
+      // The status bar is the bottom bar itself, already risen above.
+      need = Math.max(need, Math.round(H - r.top + 6 - b - bar));
     }
   }
   if (need !== lift.value) lift.value = need;
