@@ -3,7 +3,7 @@
   "description": "EyeWire II server functions: Slack bot, Guide, reports, verified community data, uploads and admin writes",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "scripts": {
