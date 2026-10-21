@@ -8,7 +8,7 @@
  * the gold, silver and bronze Achievements are given by themselves.
  * Rules on the server: functions/hunts.js.
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { useProofreadingBackendStore } from '../store';
 import { renderSafeMarkdown } from '../util/safe_markdown';
@@ -144,6 +144,7 @@ function startNew() {
   form.value = { ...blank(), announce: etDay(1, '15:00'), start: etDay(2, '15:00'), end: etDay(5, '15:00') };
   read.value = null; board.value = []; message.value = ''; error.value = '';
   cellRows.value = [];
+  autoRead.value = true;
   scan();
 }
 
@@ -161,12 +162,25 @@ async function open(h: AdminHunt) {
       images: { announce: full.notif_images?.announce ?? null, start: full.notif_images?.start ?? null, end: full.notif_images?.end ?? null } };
     read.value = null;
     cellRows.value = []; setCells(full.cells || []);
+    autoRead.value = false;   // a saved key stays until a link is opened
     scan();
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
 
-function close() { editing.value = null; read.value = null; board.value = []; message.value = ''; void refresh(); }
+function close() { editing.value = null; read.value = null; board.value = []; message.value = ''; autoRead.value = false; void refresh(); }
+
+// The key reads itself (Ames 2026-10-21: "it's kind of confusing that I have to click
+// read from screen, shouldn't it be auto?"): for a new Hunt, or once a link is opened,
+// the ticked layers are read whenever a tick, a kind or a point count changes. A saved
+// Hunt keeps its key until a link is opened, so looking at it never replaces it.
+const autoRead = ref(false);
+let scanTimer: ReturnType<typeof setInterval> | null = null;
+watch(() => !!editing.value && autoRead.value, (on) => {
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  if (on) scanTimer = setInterval(scan, 2000);
+}, { immediate: true });
+onUnmounted(() => { if (scanTimer) clearInterval(scanTimer); });
 
 function scan() {
   candidates.value = keyCandidates();
@@ -176,12 +190,14 @@ function scan() {
   keyPick.value = next;
 }
 const picked = computed(() => candidates.value.filter(c => keyPick.value[c.name]?.on).map(c => ({ name: c.name, kind: keyPick.value[c.name].kind, points: c.points })));
+watch(() => (autoRead.value && editing.value ? JSON.stringify(picked.value) : ''), (now) => { if (now && picked.value.length) useScreen(); });
 const placesWord = (n: number, kind: KeyKind) => kind === 'merge' ? (n === 1 ? '1 extension' : `${n} extensions`) : (n === 1 ? '1 merger' : `${n} mergers`);
 
 function openLink() {
   error.value = ''; message.value = '';
   if (!openStartLink(form.value.link.trim())) { error.value = 'That is not a view link (it needs a #! part). Copy the share link of the view.'; return; }
-  message.value = 'Opening the link. When the cell and the marked mergers are on screen, read the key below.';
+  message.value = 'Opening the link. The ticked layers are read as soon as they are on screen.';
+  autoRead.value = true;
   setTimeout(scan, 2500); setTimeout(scan, 6000);
 }
 
@@ -399,7 +415,7 @@ function tryIt() {
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
-        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it, tick the layers, say which is which, and read them from the screen. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find.</p>
+        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find.</p>
         <div class="nge-hunts-row">
           <input v-model="form.link" class="nge-hunts-input" placeholder="https://… #!…" aria-label="View link" />
           <button class="nge-hunts-btn" :disabled="!form.link.trim()" @click="openLink">Open the link</button>
@@ -415,8 +431,7 @@ function tryIt() {
           </li>
         </ul>
         <div class="nge-hunts-row">
-          <button class="nge-hunts-btn" :disabled="!picked.length" @click="useScreen">Read from the screen</button>
-          <button class="nge-hunts-btn nge-hunts-btn--quiet" title="Look again for annotation layers" @click="scan">↻</button>
+          <button class="nge-hunts-btn nge-hunts-btn--quiet" :disabled="!picked.length" title="Read the ticked layers from the screen again" @click="autoRead = true; scan(); useScreen()">↻ Read again</button>
         </div>
         <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'place' : 'places' }} on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
         <div v-if="cellRows.length" class="nge-hunts-cells">
