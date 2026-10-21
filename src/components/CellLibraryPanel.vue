@@ -1020,6 +1020,8 @@ async function submitComplete(cell: CellRow) {
       link: c.link.trim(),
       notes: c.notes.trim(),
       status: c.status || undefined,
+      // The player's type, to the sheet's "CitSci Suggested Type" (Celia).
+      cellType: type || undefined,
     });
     if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
@@ -1033,7 +1035,7 @@ async function submitComplete(cell: CellRow) {
   }
 }
 
-async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string }) {
+async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string; cellType?: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
@@ -1042,7 +1044,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status).catch(showSheetError);
+  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;
   if (!loggedViaCave) {
     // Log as mark_complete for stats (CAVE write didn't record it)

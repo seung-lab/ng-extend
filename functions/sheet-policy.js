@@ -161,6 +161,15 @@ function sheetValues(input, me, task, now) {
       if (link.length > 2000 || !/^https:\/\/[^\s"'<>]+$/i.test(link)) fail(400,'The link must be a single https link.');
       fields.push([['finallink','finalnglink'],link,again]);
     }
+    // The type the player gave on the Complete form, where they corrected the
+    // AI's type (or chose one with no AI type): the retina sheet's "CitSci
+    // Suggested Type" column, beside "AI-predicted BC type" (Celia
+    // 2026-10-21). Plain words, written RAW. A sheet without it skips it.
+    const cellType = String(input.cellType ?? '').replace(/\s+/g,' ').trim();
+    if (cellType) {
+      if (cellType.length > 120) fail(400,'Keep the cell type under 120 characters.');
+      fields.push([['citscisuggestedtype','suggestedtype'],cellType,again]);
+    }
     // Optional note from the Complete form, for the sheet's Notes column.
     const notes = String(input.notes ?? '').replace(/\s+/g,' ').trim();
     if (notes) {
