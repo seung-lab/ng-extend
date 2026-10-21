@@ -229,3 +229,15 @@ test('a reply with attachments that could not be put on the card is handed back 
   await as(sam)('reply.send', {notificationId: note.id, text: 'x again', screenshotUrl: SHOT});
   assert.equal(state.notifications[0].reply_screenshot_url, SHOT);
 });
+
+test('the admin who asked gets a bell when the player answers, and only them', async () => {
+  const {state, as} = world();
+  const note = await as(amy, true)('reply.ask', {triageId: T(1), text: 'Which cell?'});
+  await as(sam)('reply.send', {notificationId: note.id, text: 'The big one'});
+  const bells = state.notifications.filter(n => n.id !== note.id);
+  assert.equal(bells.length, 1);
+  assert.equal(bells[0].target_type, 'user'); assert.equal(bells[0].target_id, amy.id);
+  assert.ok(bells[0].title.startsWith('💬 Reply to your question from'));
+  assert.match(bells[0].title, /Sam/); assert.equal(bells[0].body, 'The big one');
+  assert.equal(bells[0].reply_triage_id, undefined, 'the bell itself asks for nothing');
+});
