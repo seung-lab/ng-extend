@@ -289,3 +289,17 @@ test('a sheet not set up for it is never written a status on claim',()=>{
  const plan=planSheetUpdate([['Segment ID','Proofreader','Status'],['123','','']],'cells','123',sheetValues({dataset:'pinky_nf_v2',segmentId:'123',action:'claim'},who,t,'now'));
  assert.ok(![...plan.data,...(plan.userEnteredData||[])].some(d=>d.range.endsWith('C2')));
 });
+test('a type the player gave goes to "CitSci Suggested Type", never "AI-predicted BC type"; a sheet without the column skips it',()=>{
+ const header=['Start SegID','Proofreader','Status','Date Complete','Final SegID','Final Link','Notes','AI-predicted BC type','CitSci Suggested Type'];
+ const row=['123','','','','','','','t3a',''];
+ const t={...task,dataset:'stroeh_mouse_retina'};
+ const plan=planSheetUpdate([header,row],'Focused BCs','123',sheetValues({...input,dataset:'stroeh_mouse_retina',cellType:'  t3b \n'},me,t,'9/28/2026'));
+ const cells=[...plan.data,...plan.userEnteredData].map(x=>[header[x.range.split('!')[1].replace(/\d+$/,'').charCodeAt(0)-65],x.values[0][0]]);
+ assert.deepEqual(cells.filter(([h])=>/type/i.test(h)),[['CitSci Suggested Type','t3b']]);
+ // No type given: the column is left alone.
+ const none=planSheetUpdate([header,row],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina'},me,t,'now'));
+ assert.ok(![...none.data,...none.userEnteredData].some(x=>x.range.includes('!I')));
+ // A sheet without the column: the rest is still written.
+ assert.doesNotThrow(()=>planSheetUpdate([header.slice(0,8),row.slice(0,8)],'s','123',sheetValues({...input,dataset:'stroeh_mouse_retina',cellType:'t3b'},me,t,'now')));
+ assert.throws(()=>sheetValues({...input,dataset:'stroeh_mouse_retina',cellType:'x'.repeat(121)},me,t,'now'),/120/);
+});
