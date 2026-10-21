@@ -4,6 +4,9 @@
  * not fill up (Ames 2026-10-07: "delete screenshots... so that we don't run
  * out of storage"; 14 days, once screenshots were also stored compressed).
  *
+ * Images admins sent in replies (admin-uploads/reply-images/) go after 7
+ * days, see cleanReplyImages below.
+ *
  * Only the folder admin-uploads/help-screenshots/ is ever touched. Achievement
  * art, notification images and blog images live in other folders.
  *
@@ -138,4 +141,59 @@ async function main() {
   }
 }
 
-main().catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });
+
+// ── Images in replies to submitters (Ames 2026-10-20: "delete them after 7
+// days") ──
+// admin-uploads/reply-images/ only. Every image there older than
+// REPLY_IMAGE_DAYS is deleted, whatever points at it. Then a reply card in a
+// player's bell that showed it gets a Nurro neuron picture again, and the
+// triage card's thread says the image was removed.
+const REPLY_FOLDER = 'reply-images';
+const REPLY_IMAGE_DAYS = Number(process.env.REPLY_IMAGE_DAYS || 7);
+const NEURON_ART = n => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/nurro-neurons/neuron-${1 + (n % 24)}.jpg`;
+
+async function cleanReplyImages() {
+  const files = [];
+  for (const owner of await listFolder(REPLY_FOLDER)) {
+    if (owner.id) continue;   // nothing is written straight into the folder
+    for (const f of await listFolder(`${REPLY_FOLDER}/${owner.name}`)) {
+      if (f.id) files.push({ path: `${REPLY_FOLDER}/${owner.name}/${f.name}`, created: f.created_at, size: f.metadata?.size || 0 });
+    }
+  }
+  const doomed = files.filter(f => (now - new Date(f.created).getTime()) / DAY > REPLY_IMAGE_DAYS);
+  console.log(`[cleanup] ${files.length} reply images stored; ${DELETE ? 'deleting' : 'would delete'} ${doomed.length} older than ${REPLY_IMAGE_DAYS} days, ${mb(doomed.reduce((a, f) => a + f.size, 0))}`);
+  if (!DELETE || !doomed.length) return;
+
+  const gone = [];
+  for (let i = 0; i < doomed.length; i += 100) {
+    const batch = doomed.slice(i, i + 100).map(f => f.path);
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, { method: 'DELETE', headers: HEADERS, body: JSON.stringify({ prefixes: batch }) });
+    if (!res.ok) throw new Error(`reply image delete failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    gone.push(...batch);
+  }
+  console.log(`[cleanup] deleted ${gone.length} reply images`);
+  const urls = new Set(gone.map(p => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${p}`));
+
+  // The player's reply card: a neuron picture again, not a broken image.
+  let cards = 0;
+  for (const n of await allRows('notifications', 'select=id,image_url&image_url=like.*%2Freply-images%2F*')) {
+    if (!urls.has(n.image_url)) continue;
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/notifications?id=eq.${n.id}`, { method: 'PATCH', headers: HEADERS, body: JSON.stringify({ image_url: NEURON_ART(Number(n.id) || 0) }) });
+    if (res.ok) cards++; else console.warn(`[cleanup] could not reset notification ${n.id}: ${res.status}`);
+  }
+  console.log(`[cleanup] reset ${cards} reply cards to a neuron picture`);
+
+  // The triage card's thread: "Image removed after 7 days".
+  let threads = 0;
+  for (const c of await allRows('feedback_triage', 'select=id,feedback_log', { optional: true })) {
+    const log = Array.isArray(c.feedback_log) ? c.feedback_log : [];
+    if (!log.some(e => e && urls.has(e.image_url))) continue;
+    const next = log.map(e => (e && urls.has(e.image_url) ? { ...e, image_url: null, image_removed: true } : e));
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/feedback_triage?id=eq.${c.id}`, { method: 'PATCH', headers: HEADERS, body: JSON.stringify({ feedback_log: next }) });
+    if (res.ok) threads++; else console.warn(`[cleanup] could not mark triage card ${c.id}: ${res.status}`);
+  }
+  console.log(`[cleanup] marked ${threads} triage threads`);
+}
+
+// Player screenshots first, then reply images; one failing stops the run.
+main().then(cleanReplyImages).catch(e => { console.error('[cleanup] stopped, nothing more done:', e.message); process.exit(1); });
