@@ -11,18 +11,23 @@
 import { computed, onMounted, ref } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { useProofreadingBackendStore } from '../store';
-import { huntCall, keyCandidates, readHuntFromScreen, type KeyCandidate } from '../hunt';
+import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
 import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
+import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
 
 type Tier = 'gold' | 'silver' | 'bronze';
 type NoteKind = 'announce' | 'start' | 'end';
 interface Picture { image_url: string; thumbnail_url: string }
 interface NoteInfo { id: number; send_at: string; sent: boolean; title: string; body: string; image_url: string | null; thumbnail_url: string | null }
+/** A medal's Achievement: made for this Hunt (its own picture, or the game's medal), or one of the special Achievements already made. */
+type PrizeArt = string | { badge_id?: number; image_url?: string; thumbnail_url?: string };
+interface Prize { mode: 'own' | 'badge'; badge_id: number | ''; image: Picture | null }
 interface AdminHunt {
-  id: number; title: string; description: string; dataset: string; cells: { root: string; label: string }[];
+  id: number; title: string; description: string; dataset: string; cells: { root: string; label: string; soma?: number[] }[];
+  start_gap_um?: number | null; start_on_answer?: boolean;
   target_count: number; tolerance_nm: number; max_points: number; max_submissions: number;
-  tiers: Record<Tier, number>; art: Partial<Record<Tier, string>>; status: string; phase: string;
+  tiers: Record<Tier, number>; art: Partial<Record<Tier, PrizeArt>>; status: string; phase: string; admins_only?: boolean;
   announce_at: string | null; start_at: string | null; end_at: string | null; awarded_at: string | null;
   has_view: boolean; thresholds: Record<Tier, number>; players: number;
   notes?: Partial<Record<NoteKind, NoteInfo>>;
@@ -48,25 +53,53 @@ const asking = ref<'' | 'cancel' | 'delete' | 'start' | 'end' | 'announce'>('');
 const notInstalled = ref(false);
 
 // The form
-const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: 0, max_submissions: 10,
-  tiers: { gold: 0, silver: 0, bronze: 0 } as Record<Tier, number>, art: { gold: '', silver: '', bronze: '' } as Record<Tier, string>,
-  announce: '', start: '', end: '',
+// Empty number fields mean "automatic" and show what that is (0 read as a real zero, Ames 2026-10-21).
+const blankPrize = (): Prize => ({ mode: 'own', badge_id: '', image: null });
+const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: '' as number | '', max_submissions: 10,
+  tiers: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
+  prize: { gold: blankPrize(), silver: blankPrize(), bronze: blankPrize() } as Record<Tier, Prize>,
+  announce: '', start: '', end: '', admins_only: false,
   images: { announce: null, start: null, end: null } as Record<NoteKind, Picture | null> });
 const form = ref(blank());
 const candidates = ref<KeyCandidate[]>([]);
-const keyLayer = ref('');
-const read = ref<null | { key: any; view: any; cells: { root: string; label: string }[]; dataset: string; count: number; layer: string }>(null);
+/** The layers ticked for the key, each with its kind (Ames 2026-10-21: one layer for merges, one for cuts). */
+const keyPick = ref<Record<string, { on: boolean; kind: KeyKind }>>({});
+/** The hunt's cells with their somas (x, y, z as the coordinate bar shows them): players start at the first. */
+interface CellRow { root: string; label: string; soma: (number | '')[] }
+const cellRows = ref<CellRow[]>([]);
+function setCells(cells: { root: string; label: string; soma?: number[] }[]) {
+  const was = new Map(cellRows.value.map(c => [c.root, c]));
+  cellRows.value = cells.map(c => ({ root: c.root, label: c.label || '', soma: c.soma && c.soma.length === 3 ? [...c.soma] : (was.get(c.root)?.soma ?? ['', '', '']) }));
+}
+function useCrosshair(i: number) {
+  const p = crosshairXyz();
+  if (!p) { error.value = 'The viewer is not ready yet.'; return; }
+  cellRows.value[i].soma = p;
+}
+const cellFields = () => cellRows.value.map(c => ({ root: c.root, label: c.label,
+  ...(c.soma.every(v => v !== '' && Number.isFinite(Number(v))) ? { soma: c.soma.map(Number) } : {}) }));
+function setAdminsOnly(e: Event) { form.value.admins_only = (e.target as HTMLInputElement).checked; }
+const somaMissing = computed(() => cellRows.value.length > 0 && !cellRows.value[0].soma.every(v => v !== '' && Number.isFinite(Number(v))));
+const read = ref<null | { key: any; view: any; cells: { root: string; label: string }[]; dataset: string; count: number; kinds: { cut: number; merge: number } }>(null);
 
 /** 'YYYY-MM-DDTHH:mm' in this computer's time zone. */
-function toLocalInput(iso: string | null | undefined): string {
-  const t = Date.parse(iso || ''); if (!Number.isFinite(t)) return '';
-  const d = new Date(t), p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-function fromLocalInput(v: string): string | null { if (!v) return null; const t = new Date(v).getTime(); return Number.isFinite(t) ? new Date(t).toISOString() : null; }
+// Times are Eastern, as in the Notifications tab (Ames 2026-10-21: "double check date, ET"),
+// whatever zone the admin's computer is in. Players see them in their own zone.
+function toLocalInput(iso: string | null | undefined): string { return iso ? utcIsoToEtNaive(iso) : ''; }
+function fromLocalInput(v: string): string | null { return (v && etNaiveToUtcIso(v)) || null; }
 function local(iso: string | null | undefined): string {
   const t = Date.parse(iso || ''); if (!Number.isFinite(t)) return '';
-  return new Date(t).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return new Intl.DateTimeFormat('en-US', { timeZone: ET_ZONE, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(t)) + ' ET';
+}
+/** A day from now at a time, as an Eastern datetime-local value. */
+function etDay(days: number, hhmm: string): string { return utcIsoToEtNaive(new Date(Date.now() + days * 86400000).toISOString()).slice(0, 11) + hhmm; }
+/** Under each time: "Wed, Oct 21, 11:56 PM ET, in 11 h 58 m", so a slip between AM and PM shows at once. */
+function whenLine(v: string): string {
+  const iso = fromLocalInput(v); if (!iso) return '';
+  const ms = Date.parse(iso) - Date.now();
+  if (ms < 0) return `${local(iso)}, already past`;
+  const m = Math.round(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+  return `${local(iso)}, in ${d ? `${d} d ${h} h` : h ? `${h} h ${mm} m` : `${mm} m`}`;
 }
 function datasetName(canon: string) { const ds = findDatasetByCanonical(canon); return ds ? datasetAbbrev(segLayerName(ds)) : canon; }
 
@@ -85,12 +118,10 @@ async function refresh() {
 onMounted(refresh);
 
 function startNew() {
-  const start = new Date(); start.setDate(start.getDate() + 2); start.setHours(15, 0, 0, 0);
-  const end = new Date(start); end.setDate(end.getDate() + 3);
-  const announce = new Date(start); announce.setDate(announce.getDate() - 1);
   editing.value = { id: 0 } as AdminHunt;
-  form.value = { ...blank(), announce: toLocalInput(announce.toISOString()), start: toLocalInput(start.toISOString()), end: toLocalInput(end.toISOString()) };
+  form.value = { ...blank(), announce: etDay(1, '15:00'), start: etDay(2, '15:00'), end: etDay(5, '15:00') };
   read.value = null; board.value = []; message.value = ''; error.value = '';
+  cellRows.value = [];
   scan();
 }
 
@@ -100,12 +131,13 @@ async function open(h: AdminHunt) {
     const full = await huntCall<AdminHunt & { board: BoardRow[] }>('hunt.read', { id: h.id });
     editing.value = full; board.value = full.board || [];
     form.value = { title: full.title, description: full.description || '', link: '', tolerance_um: Math.round(full.tolerance_nm / 100) / 10,
-      max_points: full.max_points || 0, max_submissions: full.max_submissions || 10,
-      tiers: { gold: full.tiers?.gold || 0, silver: full.tiers?.silver || 0, bronze: full.tiers?.bronze || 0 },
-      art: { gold: full.art?.gold || '', silver: full.art?.silver || '', bronze: full.art?.bronze || '' },
-      announce: toLocalInput(full.announce_at), start: toLocalInput(full.start_at), end: toLocalInput(full.end_at),
+      max_points: full.max_points || '', max_submissions: full.max_submissions || 10,
+      tiers: { gold: full.tiers?.gold || '', silver: full.tiers?.silver || '', bronze: full.tiers?.bronze || '' },
+      prize: { gold: prizeFrom(full.art?.gold), silver: prizeFrom(full.art?.silver), bronze: prizeFrom(full.art?.bronze) },
+      announce: toLocalInput(full.announce_at), start: toLocalInput(full.start_at), end: toLocalInput(full.end_at), admins_only: !!full.admins_only,
       images: { announce: full.notif_images?.announce ?? null, start: full.notif_images?.start ?? null, end: full.notif_images?.end ?? null } };
     read.value = null;
+    cellRows.value = []; setCells(full.cells || []);
     scan();
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
@@ -115,8 +147,12 @@ function close() { editing.value = null; read.value = null; board.value = []; me
 
 function scan() {
   candidates.value = keyCandidates();
-  if (!candidates.value.some(c => c.name === keyLayer.value)) keyLayer.value = candidates.value[0]?.name || '';
+  const next: Record<string, { on: boolean; kind: KeyKind }> = {};
+  for (const c of candidates.value) next[c.name] = keyPick.value[c.name] ?? { on: candidates.value.length === 1, kind: guessKind(c.name) };
+  keyPick.value = next;
 }
+const picked = computed(() => candidates.value.filter(c => keyPick.value[c.name]?.on).map(c => ({ name: c.name, kind: keyPick.value[c.name].kind, points: c.points })));
+const placesWord = (n: number, kind: KeyKind) => kind === 'merge' ? (n === 1 ? '1 extension' : `${n} extensions`) : (n === 1 ? '1 merger' : `${n} mergers`);
 
 function openLink() {
   error.value = ''; message.value = '';
@@ -128,12 +164,16 @@ function openLink() {
 function useScreen() {
   error.value = ''; message.value = '';
   try {
-    if (!keyLayer.value) throw new Error('Pick the layer with the mergers marked.');
-    const r = readHuntFromScreen(keyLayer.value);
-    const count = candidates.value.find(c => c.name === keyLayer.value)?.points ?? 0;
-    if (!r.cells.length) throw new Error('No cell is shown. Show the cell (or cells) the mergers are on, then read again.');
-    read.value = { ...r, count, layer: keyLayer.value };
-    message.value = `Read ${count === 1 ? '1 merger' : `${count} mergers`} from "${keyLayer.value}", ${r.cells.length === 1 ? '1 cell' : `${r.cells.length} cells`}, on ${datasetName(r.dataset)}. Save to keep them.`;
+    const layers = picked.value;
+    if (!layers.length) throw new Error('Tick the layer (or layers) with the places marked.');
+    const r = readHuntFromScreen(layers.map(l => ({ name: l.name, kind: l.kind })));
+    if (!r.cells.length) throw new Error('No cell is shown. Show the cell (or cells) the places are on, then read again.');
+    const kinds = { cut: 0, merge: 0 };
+    for (const l of layers) kinds[l.kind] += l.points;
+    read.value = { ...r, count: kinds.cut + kinds.merge, kinds };
+    setCells(r.cells);
+    const parts = layers.map(l => `${placesWord(l.points, l.kind)} from "${l.name}"`).join(' and ');
+    message.value = `Read ${parts}, ${r.cells.length === 1 ? '1 cell' : `${r.cells.length} cells`}, on ${datasetName(r.dataset)}. Save to keep them.`;
   } catch (e: any) { error.value = e?.message || String(e); }
 }
 
@@ -143,7 +183,7 @@ const scheduled = computed(() => phase.value === 'announced' || phase.value === 
 const keyNeeded = computed(() => isNew.value && !read.value);
 const defaultsFor = computed(() => {
   const n = read.value?.count ?? editing.value?.target_count ?? 0;
-  return n ? { gold: n, silver: Math.ceil((2 * n) / 3), bronze: Math.ceil(n / 3), points: Math.max(10, 3 * n) } : null;
+  return n ? { gold: n, silver: Math.ceil((2 * n) / 3), bronze: Math.ceil(n / 3), points: n } : null;
 });
 
 async function save(status?: 'draft' | 'scheduled') {
@@ -154,16 +194,18 @@ async function save(status?: 'draft' | 'scheduled') {
     const fields: Record<string, any> = {
       title: f.title, description: f.description, tolerance_nm: Math.round(Number(f.tolerance_um) * 1000),
       max_points: Number(f.max_points) || 0, max_submissions: Number(f.max_submissions) || 10,
-      tiers: f.tiers, art: f.art,
+      tiers: { gold: Number(f.tiers.gold) || 0, silver: Number(f.tiers.silver) || 0, bronze: Number(f.tiers.bronze) || 0 },
+      art: artFields(),
       announce_at: fromLocalInput(f.announce), start_at: fromLocalInput(f.start), end_at: fromLocalInput(f.end),
-      notif_images: pictureFields(),
+      notif_images: pictureFields(), admins_only: !!f.admins_only,
     };
     const args: Record<string, any> = { fields };
     if (editing.value?.id) args.id = editing.value.id;
-    if (read.value) { args.key = read.value.key; args.view = read.value.view; fields.cells = read.value.cells; fields.dataset = read.value.dataset; }
+    if (read.value) { args.key = read.value.key; args.view = read.value.view; fields.dataset = read.value.dataset; }
+    if (cellRows.value.length) fields.cells = cellFields();
     if (status) args.status = status;
     const h = await huntCall<AdminHunt>('hunt.save', args);
-    editing.value = { ...h }; read.value = null;
+    editing.value = { ...h }; read.value = null; setCells(h.cells || []);
     message.value = status === 'scheduled' ? 'Scheduled. The notes go out at their times.' : 'Saved.';
     void refresh();
   } catch (e: any) { error.value = e?.message || String(e); }
@@ -230,13 +272,61 @@ async function previewNote(kind: NoteKind) {
     const fields: Record<string, any> = { title: f.title || editing.value?.title || '', announce_at: fromLocalInput(f.announce), start_at: fromLocalInput(f.start),
       end_at: fromLocalInput(f.end), notif_images: pictureFields(), ...(read.value ? { cells: read.value.cells } : {}) };
     const rows = await huntCall<{ kind: NoteKind; title: string; body: string; image_url: string | null; thumbnail_url: string | null; send_at: string }[]>('hunt.notes', {
-      id: editing.value?.id || undefined, fields, target_count: read.value?.count ?? editing.value?.target_count ?? 0 });
+      id: editing.value?.id || undefined, fields, target_count: read.value?.count ?? editing.value?.target_count ?? 0, ...(read.value ? { kinds: read.value.kinds } : {}) });
     const row = rows.find(r => r.kind === kind);
     if (!row) throw new Error(kind === 'announce' ? 'Set an announce time to send an announcement.' : 'This note is not sent.');
     document.dispatchEvent(new CustomEvent('nge:preview-notification', { detail: { title: row.title, body: row.body,
       image_url: row.image_url || '', thumbnail_url: row.thumbnail_url || '', send_at: row.send_at, target_type: 'all' } }));
   } catch (err: any) { error.value = err?.message || String(err); }
 }
+
+// ── The Achievements (Ames 2026-10-21: "this should pull actual special badges? we can make custom") ──
+// Each medal gives either an Achievement made for this Hunt ("<title>: Gold", the game's
+// medal or a picture added here) or one of the special Achievements already made in
+// Admin Hub > Special Badges.
+function prizeFrom(a?: PrizeArt): Prize {
+  if (typeof a === 'string' && a) return { mode: 'own', badge_id: '', image: { image_url: a, thumbnail_url: a } };
+  if (a && typeof a === 'object' && a.badge_id) return { mode: 'badge', badge_id: Number(a.badge_id), image: null };
+  if (a && typeof a === 'object' && a.image_url) return { mode: 'own', badge_id: '', image: { image_url: a.image_url, thumbnail_url: a.thumbnail_url || a.image_url } };
+  return blankPrize();
+}
+function artFields(): Partial<Record<Tier, PrizeArt>> {
+  const out: Partial<Record<Tier, PrizeArt>> = {};
+  for (const t of TIERS) {
+    const p = form.value.prize[t];
+    if (p.mode === 'badge' && p.badge_id) out[t] = { badge_id: Number(p.badge_id) };
+    else if (p.mode === 'own' && p.image?.image_url) out[t] = { image_url: p.image.image_url, thumbnail_url: p.image.thumbnail_url };
+  }
+  return out;
+}
+/** The special Achievements an admin made (not the ones Hunts make for themselves). */
+const specials = computed(() => (backend.specialBadges as any[]).filter(b => b && !String(b.slug || '').startsWith('hunt-')));
+const specialById = (id: number | '') => specials.value.find(b => b.id === Number(id)) || null;
+const prizeUploads = ref<Picture[]>([]);
+const prizeUploading = ref<Tier | ''>('');
+const prizeLibrary = computed<Picture[]>(() => {
+  const seen = new Set<string>(); const out: Picture[] = [];
+  const add = (p?: Picture | null) => { if (p?.image_url && !seen.has(p.image_url)) { seen.add(p.image_url); out.push(p); } };
+  for (const t of TIERS) add(form.value.prize[t].image);
+  prizeUploads.value.forEach(add);
+  for (const h of list.value) for (const t of TIERS) { const pr = prizeFrom(h.art?.[t]); if (pr.mode === 'own') add(pr.image); }
+  return out.slice(0, 24);
+});
+const medalSrc = (t: Tier) => `hunt/${t}.svg`;
+async function addPrizePicture(t: Tier, e: Event) {
+  const input = e.target as HTMLInputElement; const file = input.files?.[0]; input.value = '';
+  if (!file || prizeUploading.value) return;
+  prizeUploading.value = t; error.value = ''; message.value = '';
+  try {
+    const urls = await backend.uploadAdminImage(file, 'badges');
+    const pic = { image_url: urls.fullUrl, thumbnail_url: urls.thumbUrl || urls.fullUrl };
+    prizeUploads.value = [pic, ...prizeUploads.value];
+    form.value.prize[t].image = pic;
+    message.value = `Picture added for ${TIER_WORD[t]}. Save to keep it.`;
+  } catch (err: any) { error.value = err?.message || String(err); }
+  finally { prizeUploading.value = ''; }
+}
+onMounted(() => { if (!(backend.specialBadges as any[]).length) void backend.loadSpecialBadges(); });
 
 // ── Try it yourself (Ames 2026-10-21): admins play the hunt to test it ──
 const canTry = computed(() => !!editing.value?.id && !!editing.value?.has_view && !!editing.value?.target_count);
@@ -266,6 +356,7 @@ function tryIt() {
         <li v-for="h in list" :key="h.id" @click="open(h)" @keydown.enter="open(h)" tabindex="0">
           <span class="nge-hunts-chip" :class="`nge-hunts-chip--${h.phase}`">{{ PHASE_WORD[h.phase] || h.phase }}</span>
           <span class="nge-hunts-name">{{ h.title }}</span>
+          <span v-if="h.admins_only" class="nge-hunts-chip nge-hunts-chip--admins">Admins only</span>
           <span class="nge-hunts-meta">{{ h.target_count }} mergers · {{ h.players }} {{ h.players === 1 ? 'player' : 'players' }}<template v-if="h.start_at"> · {{ local(h.start_at) }}</template></span>
         </li>
       </ul>
@@ -281,20 +372,36 @@ function tryIt() {
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
-        <p class="nge-hunts-help">Paste a share link of the cell with every merger marked by a point in an annotation layer, open it, then read it from the screen. The players start from the same view, with every annotation layer taken out.</p>
+        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it, tick the layers, say which is which, and read them from the screen. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find.</p>
         <div class="nge-hunts-row">
           <input v-model="form.link" class="nge-hunts-input" placeholder="https://… #!…" aria-label="View link" />
           <button class="nge-hunts-btn" :disabled="!form.link.trim()" @click="openLink">Open the link</button>
         </div>
+        <ul class="nge-hunts-keylayers" aria-label="Layers with the places marked">
+          <li v-if="!candidates.length" class="nge-hunts-muted">No annotation layer with points on screen yet.</li>
+          <li v-for="c in candidates" :key="c.name" :class="{ 'nge-hunts-keylayer--on': keyPick[c.name]?.on }">
+            <label class="nge-hunts-keylayer-name"><input v-model="keyPick[c.name].on" type="checkbox" /> {{ c.name }} <span class="nge-hunts-muted">({{ c.points }} {{ c.points === 1 ? 'point' : 'points' }})</span></label>
+            <select v-model="keyPick[c.name].kind" class="nge-hunts-input nge-hunts-keylayer-kind" :aria-label="`What the points in ${c.name} mark`" :disabled="!keyPick[c.name]?.on">
+              <option value="cut">mergers (to cut)</option>
+              <option value="merge">extensions (to merge)</option>
+            </select>
+          </li>
+        </ul>
         <div class="nge-hunts-row">
-          <select v-model="keyLayer" class="nge-hunts-input" aria-label="Layer with the mergers" @focus="scan">
-            <option v-if="!candidates.length" value="">No annotation layer with points on screen</option>
-            <option v-for="c in candidates" :key="c.name" :value="c.name">{{ c.name }} ({{ c.points }} {{ c.points === 1 ? 'point' : 'points' }})</option>
-          </select>
-          <button class="nge-hunts-btn" :disabled="!keyLayer" @click="useScreen">Read from the screen</button>
+          <button class="nge-hunts-btn" :disabled="!picked.length" @click="useScreen">Read from the screen</button>
           <button class="nge-hunts-btn nge-hunts-btn--quiet" title="Look again for annotation layers" @click="scan">↻</button>
         </div>
-        <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'merger' : 'mergers' }} on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
+        <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'place' : 'places' }} on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
+        <div v-if="cellRows.length" class="nge-hunts-cells">
+          <p class="nge-hunts-help"><b>Where players start.</b> A link is often centered on a merger, which would give it away. Give each cell's soma: x, y and z as the coordinate bar shows them. Players start at the first; with several cells they get a button for each.</p>
+          <div v-for="(c, i) in cellRows" :key="c.root" class="nge-hunts-cellrow">
+            <span class="nge-hunts-cellid" :title="c.root">Cell {{ i + 1 }} <span class="nge-hunts-muted">{{ c.root }}</span></span>
+            <input v-for="(axis, k) in ['x', 'y', 'z']" :key="axis" v-model.number="c.soma[k]" type="number" class="nge-hunts-input nge-hunts-xyz" :placeholder="axis" :aria-label="`Cell ${i + 1} soma ${axis}`" />
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="useCrosshair(i)">Use the crosshair</button>
+          </div>
+        </div>
+        <p v-if="somaMissing" class="nge-hunts-warnline">No soma yet: players would start where the link is centered.</p>
+        <p v-else-if="!read && editing.start_on_answer" class="nge-hunts-warnline">The saved start is {{ editing.start_gap_um }} µm from a merger or extension, close enough to give it away. Set the soma and save.</p>
       </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
@@ -305,11 +412,13 @@ function tryIt() {
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>3. When</legend>
-        <p class="nge-hunts-help">In your own time zone. Players see it in theirs.</p>
+        <p class="nge-hunts-help">Eastern time (ET). Players see each time in their own time zone.</p>
+        <label class="nge-hunts-check"><input :checked="form.admins_only || ON_TEST_SITE" :disabled="ON_TEST_SITE" type="checkbox" @change="setAdminsOnly" /> <span><b>Only admins</b>, to test the whole Hunt: players never see it, the notes go only to you, and nothing is posted in chat.<template v-if="ON_TEST_SITE"> On this test site every Hunt is admins only.</template></span></label>
+        <p v-if="!form.admins_only && !ON_TEST_SITE" class="nge-hunts-warnline">Scheduled, the notes go to every player's bell and post in chat.</p>
         <div class="nge-hunts-grid">
-          <label>Announce <input v-model="form.announce" type="datetime-local" class="nge-hunts-input" /></label>
-          <label>Start <input v-model="form.start" type="datetime-local" class="nge-hunts-input" /></label>
-          <label>End <input v-model="form.end" type="datetime-local" class="nge-hunts-input" /></label>
+          <label>Announce (ET) <input v-model="form.announce" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.announce) || 'no announcement' }}</span></label>
+          <label>Start (ET) <input v-model="form.start" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.start) }}</span></label>
+          <label>End (ET) <input v-model="form.end" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.end) }}</span></label>
         </div>
       </fieldset>
 
@@ -317,22 +426,54 @@ function tryIt() {
         <legend>4. Scoring and prizes</legend>
         <div class="nge-hunts-grid">
           <label>Tolerance (µm) <input v-model.number="form.tolerance_um" type="number" min="0.1" max="100" step="0.5" class="nge-hunts-input" /></label>
-          <label>Gems per answer <input v-model.number="form.max_points" type="number" min="0" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor.points}` : 'auto'" /></label>
+          <label>Most gems per answer <input v-model.number="form.max_points" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor.points}` : 'auto'" /></label>
           <label>Answers per player <input v-model.number="form.max_submissions" type="number" min="1" class="nge-hunts-input" /></label>
         </div>
-        <p class="nge-hunts-help">A gem counts when it is within the tolerance of a merger. Mergers each player must find for each medal (0 means the default: all, two thirds, one third).</p>
+        <p class="nge-hunts-help">A gem finds a merger when it is within the tolerance. <b>Most gems per answer</b> stops a player covering the cell in gems to catch every merger; left empty it is three per merger, at least 10.</p>
+        <p class="nge-hunts-help">Mergers a player must find for each medal. Left empty: all of them for Gold, two thirds for Silver, one third for Bronze.</p>
         <div class="nge-hunts-grid">
-          <label v-for="t in TIERS" :key="t">{{ TIER_WORD[t] }} <input v-model.number="form.tiers[t]" type="number" min="0" class="nge-hunts-input" :placeholder="defaultsFor ? `default ${defaultsFor[t]}` : '0'" /></label>
+          <label v-for="t in TIERS" :key="t">{{ TIER_WORD[t] }} <input v-model.number="form.tiers[t]" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor[t]}` : 'auto'" /></label>
         </div>
-        <details class="nge-hunts-art">
-          <summary>Achievement art (optional)</summary>
-          <p class="nge-hunts-help">An https image for each medal. Left empty, the game's own gold, silver and bronze medals are used.</p>
-          <label v-for="t in TIERS" :key="t">{{ TIER_WORD[t] }} <input v-model="form.art[t]" class="nge-hunts-input" placeholder="https://…" /></label>
-        </details>
       </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
-        <legend>5. Notifications and their pictures</legend>
+        <legend>5. The Achievements</legend>
+        <p class="nge-hunts-help">What each medal gives. Either an Achievement made for this Hunt, named for it, with the game's medal or a picture you add; or one of the special Achievements you made in the Special Badges tab.</p>
+        <div v-for="t in TIERS" :key="t" class="nge-hunts-prize">
+          <div class="nge-hunts-prize-head">
+            <span class="nge-hunts-medal" :class="`nge-hunts-medal--${t}`">{{ TIER_WORD[t] }}</span>
+            <select v-model="form.prize[t].mode" class="nge-hunts-input nge-hunts-prize-mode" :aria-label="`${TIER_WORD[t]} Achievement`">
+              <option value="own">Made for this Hunt: {{ (form.title || 'This Hunt') + ': ' + TIER_WORD[t] }}</option>
+              <option value="badge">A special Achievement you made</option>
+            </select>
+          </div>
+          <div v-if="form.prize[t].mode === 'own'" class="nge-hunts-pics" role="radiogroup" :aria-label="`Picture for ${TIER_WORD[t]}`">
+            <button class="nge-hunts-pic" role="radio" :aria-checked="!form.prize[t].image" :class="{ 'nge-hunts-pic--on': !form.prize[t].image }" title="The game's medal" @click="form.prize[t].image = null">
+              <img :src="medalSrc(t)" :alt="`The game's ${TIER_WORD[t]} medal`" />
+            </button>
+            <button v-for="(p, i) in prizeLibrary" :key="p.image_url" class="nge-hunts-pic" role="radio" :aria-checked="form.prize[t].image?.image_url === p.image_url"
+                    :class="{ 'nge-hunts-pic--on': form.prize[t].image?.image_url === p.image_url }" :title="`Picture ${i + 1}`" @click="form.prize[t].image = p">
+              <img :src="p.thumbnail_url" :alt="`Picture ${i + 1}`" loading="lazy" />
+            </button>
+            <label class="nge-hunts-pic nge-hunts-pic--add" :class="{ 'nge-hunts-pic--busy': prizeUploading === t }">
+              {{ prizeUploading === t ? 'Adding…' : '+ Add' }}
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="nge-hunts-file" :disabled="!!prizeUploading" @change="addPrizePicture(t, $event)" />
+            </label>
+          </div>
+          <div v-else class="nge-hunts-row">
+            <img v-if="specialById(form.prize[t].badge_id)" class="nge-hunts-special-img" :src="specialById(form.prize[t].badge_id).thumbnail_url || specialById(form.prize[t].badge_id).image_url" alt="" />
+            <select v-model="form.prize[t].badge_id" class="nge-hunts-input" :aria-label="`Special Achievement for ${TIER_WORD[t]}`">
+              <option value="">{{ specials.length ? 'Pick one…' : 'None made yet: make one in the Special Badges tab' }}</option>
+              <option v-for="b in specials" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+          </div>
+          <p v-if="form.prize[t].mode === 'badge' && specialById(form.prize[t].badge_id)?.description" class="nge-hunts-muted nge-hunts-special-desc">{{ specialById(form.prize[t].badge_id).description }}</p>
+          <p v-if="form.prize[t].mode === 'badge' && !form.prize[t].badge_id" class="nge-hunts-muted">With none picked, {{ TIER_WORD[t] }} gives the Achievement made for this Hunt.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="nge-hunts-group" :disabled="!!busy">
+        <legend>6. Notifications and their pictures</legend>
         <p class="nge-hunts-help">Three notes go to every player at their times. Give each a picture, or share one: any picture added here, or used in another Hunt, can be picked again for any note.</p>
         <div v-for="k in NOTE_KINDS" :key="k" class="nge-hunts-note">
           <div class="nge-hunts-note-head">
@@ -448,8 +589,29 @@ function tryIt() {
 .nge-hunts-btn--quiet { background: none; }
 .nge-hunts-btn--danger { border-color: rgba(255, 120, 120, 0.5); color: #ffc4c4; background: rgba(255, 120, 120, 0.08); }
 .nge-hunts-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.nge-hunts-art summary { cursor: pointer; color: #9fd0ff; font-size: 13px; }
-.nge-hunts-art label { margin-top: 6px; }
+.nge-hunts-keylayers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nge-hunts-keylayers li { display: flex; gap: 10px; align-items: center; padding: 4px 6px; border-radius: 6px; }
+.nge-hunts-keylayer--on { background: rgba(245, 209, 66, 0.07); }
+.nge-hunts-keylayer-name { flex: 1; min-width: 0; display: flex !important; flex-direction: row !important; gap: 6px; align-items: center; color: #e6f0ff !important; font-size: 13px !important; }
+.nge-hunts-keylayer-kind { width: 210px; flex: none; }
+.nge-hunts-check { display: flex !important; flex-direction: row !important; gap: 8px; align-items: flex-start; color: #cfdcef !important; font-size: 13px !important; line-height: 1.4; }
+.nge-hunts-check input { margin-top: 3px; }
+.nge-hunts-cells { display: flex; flex-direction: column; gap: 6px; }
+.nge-hunts-cellrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nge-hunts-cellid { min-width: 210px; color: #e6f0ff; font-size: 13px; }
+.nge-hunts-xyz { width: 92px !important; flex: none; }
+.nge-hunts-when { color: #9fd0ff; font-size: 12px; }
+.nge-hunts-warnline { margin: 0; color: #f8e08a; font-size: 12.5px; }
+.nge-hunts-chip--admins { background: rgba(90, 170, 255, 0.18); color: #9fd0ff; }
+.nge-hunts-prize { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid rgba(90, 170, 255, 0.12); }
+.nge-hunts-prize-head { display: flex; gap: 10px; align-items: center; }
+.nge-hunts-prize-mode { flex: 1; }
+.nge-hunts-medal { flex: none; width: 64px; text-align: center; padding: 2px 0; border-radius: 999px; font: 700 11px 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+.nge-hunts-medal--gold { background: rgba(245, 209, 66, 0.2); color: #f8e08a; border: 1px solid rgba(245, 209, 66, 0.6); }
+.nge-hunts-medal--silver { background: rgba(201, 214, 229, 0.16); color: #e3ebf5; border: 1px solid rgba(201, 214, 229, 0.55); }
+.nge-hunts-medal--bronze { background: rgba(179, 144, 115, 0.2); color: #e2c9b1; border: 1px solid rgba(179, 144, 115, 0.6); }
+.nge-hunts-special-img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; border: 1px solid rgba(90, 170, 255, 0.3); }
+.nge-hunts-special-desc { font-size: 12.5px; }
 .nge-hunts-note { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid rgba(90, 170, 255, 0.12); }
 .nge-hunts-note-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .nge-hunts-note-word { min-width: 150px; color: #fff; font-weight: 600; }

@@ -73,8 +73,8 @@ test('tiers default to all, two thirds and one third, and can be set', () => {
   assert.deepEqual(H.thresholds({ target_count: 4, tiers: { gold: 9, silver: 9, bronze: 0 } }), { gold: 4, silver: 4, bronze: 2 });
   const th = H.thresholds({ target_count: 5 });
   assert.deepEqual([5, 4, 3, 2, 1, 0].map((f) => H.tierFor(f, th)), ['gold', 'silver', 'bronze', 'bronze', null, null]);
-  assert.equal(H.maxPoints({ target_count: 2 }), 10);
-  assert.equal(H.maxPoints({ target_count: 7 }), 21);
+  assert.equal(H.maxPoints({ target_count: 2 }), 2);   // one gem per place
+  assert.equal(H.maxPoints({ target_count: 0 }), 1);
   assert.equal(H.maxPoints({ target_count: 7, max_points: 12 }), 12);
 });
 
@@ -118,7 +118,7 @@ test('fields are cleaned; bad ones are refused', () => {
   assert.throws(() => H.cleanFields({ dataset: 'x; drop' }), /dataset/);
   const f = H.cleanFields({ title: 'T', cells: [{ root: '648518346350533705', label: 'a' }, { root: 'nope' }, { root: '648518346350533705' }], art: { gold: 'https://x.org/g.png', silver: 'javascript:alert(1)' } });
   assert.deepEqual(f.cells, [{ root: '648518346350533705', label: 'a' }]);
-  assert.deepEqual(f.art, { gold: 'https://x.org/g.png' });
+  assert.deepEqual(f.art, { gold: { image_url: 'https://x.org/g.png', thumbnail_url: 'https://x.org/g.png' } });
 });
 
 // ── A whole hunt, with an in-memory database ──────────────────────────────
@@ -149,6 +149,7 @@ function fakeDb() {
     insertNotification: async (row) => { const n = { id: s.seq++, ...clone(row) }; s.notes.push(n); return clone(n); },
     patchNotification: async (id, row) => { const n = s.notes.find((x) => x.id === Number(id)); Object.assign(n, clone(row)); return clone(n); },
     deleteNotification: async (id) => { s.notes = s.notes.filter((n) => n.id !== Number(id)); },
+    badgeById: async (id) => clone(s.badges.find((b) => b.id === Number(id)) || null),
     upsertBadge: async (row) => { let b = s.badges.find((x) => x.slug === row.slug); if (b) Object.assign(b, clone(row)); else { b = { id: s.seq++, ...clone(row) }; s.badges.push(b); } return clone(b); },
     held: async (ids) => new Set(s.awards.filter((a) => ids.includes(a.badge_id)).map((a) => `${a.badge_id}:${a.user_id}`)),
     award: async (rows) => { for (const r of rows) if (!s.awards.some((a) => a.badge_id === r.badge_id && a.user_id === r.user_id)) s.awards.push(clone(r)); },
@@ -234,8 +235,8 @@ test('answers are scored, capped and counted; the best answer counts', async () 
   assert.equal(r3.found, 0); assert.equal(r3.best, 3); assert.equal(r3.left, 0);
   await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, p1), /all 3/);
   // Too many points, or none, is refused before it counts.
-  const many = layer(Array.from({ length: 11 }, (_, i) => pt(i * 100, 0, 0)));
-  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: many, dims: DIMS }, h.ctx(P2, at(61))), /at most 10 gems/);
+  const many = layer(Array.from({ length: 4 }, (_, i) => pt(i * 100, 0, 0)));
+  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: many, dims: DIMS }, h.ctx(P2, at(61))), /at most 3 gems/);
   await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([]), dims: DIMS }, h.ctx(P2, at(61))), /Drop a gem/);
   assert.equal(h.db._s.subs.filter((s) => s.user_id === P2.id).length, 0);
   const cur = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(62)))).hunts[0];
@@ -395,4 +396,99 @@ test('the Admin Hub can preview the notes with the form as it is, before anythin
   assert.deepEqual(rows.map((r) => r.image_url), [null, 'https://img.example/s.png', null]);
   assert.equal(h.db._s.hunts.length + h.db._s.notes.length, 0);
   await assert.rejects(H.huntAction('hunt.notes', { fields }, h.ctx(P1, at(1))), /Admins only/);
+});
+
+test('an answer key can come from two layers, one of places to cut and one of places to merge; any gem finds either', async () => {
+  const h = harness();
+  const admin = h.ctx(ADMIN, at(0), true);
+  const cuts = layer([pt(1000, 1000, 100), pt(5000, 5000, 100)]);
+  const merges = layer([pt(9000, 1000, 200)]);
+  const d = await H.huntAction('hunt.save', { fields: { title: 'Two Kinds', dataset: 'pinky_nf_v2', cells: [{ root: '648518346350533705' }],
+    announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)) },
+    key: { layers: [{ layer: cuts, kind: 'cut' }, { layer: merges, kind: 'merge' }], dims: DIMS }, view: VIEW, status: 'scheduled' }, admin);
+  assert.equal(d.target_count, 3);
+  assert.deepEqual(H.kindCounts(h.db._s.keys[d.id]), { cut: 2, merge: 1 });
+  assert.ok(/2 mergers and 1 extension are hidden on one cell/.test(h.db._s.notes[1].body), h.db._s.notes[1].body);
+  const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0];
+  assert.deepEqual(live.spots, { cut: 2, merge: 1 });
+  assert.ok(!JSON.stringify(live).includes('36000'));   // still no key coordinates
+  // One gem per place by default: three gems, and the merge place is found like the cuts.
+  const r = await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)]), dims: DIMS }, h.ctx(P1, at(61)));
+  assert.equal(r.found, 3);
+  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1, 1, 1), pt(2, 2, 2), pt(3, 3, 3), pt(4, 4, 4)]), dims: DIMS }, h.ctx(P2, at(61))), /at most 3 gems/);
+  // The test run says each place's kind.
+  const t = await H.huntAction('hunt.test_submit', { id: d.id, layer: layer([pt(9000, 1000, 200)]), dims: DIMS }, h.ctx(ADMIN, at(61), true));
+  assert.deepEqual(t.mergers.map((m) => [m.kind, m.found]), [['cut', false], ['cut', false], ['merge', true]]);
+  assert.equal(H.spotWords({ cut: 0, merge: 2 }), '2 extensions are');
+  assert.equal(H.spotWords({ cut: 1, merge: 0 }), '1 merger is');
+});
+
+test('a medal can give a special Achievement an admin made, instead of the one the hunt makes', async () => {
+  const h = harness();
+  h.db._s.badges.push({ id: 900, slug: 'pumpkin-king', name: 'Pumpkin King', description: 'Carved it.', image_url: 'https://img.example/pk.png', thumbnail_url: 'https://img.example/pk-t.png' });
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { art: { gold: { badge_id: 900 }, silver: { image_url: 'https://img.example/s.png' } } } }, h.ctx(ADMIN, at(1), true));
+  const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0];
+  assert.deepEqual(live.prizes.gold, { name: 'Pumpkin King', image: 'https://img.example/pk-t.png' });
+  assert.deepEqual(live.prizes.silver, { name: 'Pinky Hunt: Silver', image: 'https://img.example/s.png' });
+  assert.deepEqual(live.prizes.bronze, { name: 'Pinky Hunt: Bronze', image: 'https://pyr.example/hunt/bronze.svg' });
+  await H.huntAction('hunt.submit', { id: d.id, layer: KEY, dims: DIMS }, h.ctx(P1, at(61)));          // all 3: gold
+  await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100)]), dims: DIMS }, h.ctx(P2, at(62)));   // 2: silver
+  await H.huntAction('hunt.current', {}, h.ctx(P3, at(121)));
+  const gold = h.db._s.awards.find((a) => a.user_id === P1.id);
+  assert.equal(gold.badge_id, 900);
+  assert.ok(!h.db._s.badges.some((b) => b.slug === `hunt-${d.id}-gold`));
+  const silver = h.db._s.badges.find((b) => b.slug === `hunt-${d.id}-silver`);
+  assert.equal(silver.image_url, 'https://img.example/s.png');
+  assert.ok(h.bell.some((n) => n.user_id === P1.id && /Pumpkin King/.test(n.title)));
+});
+
+test('an admins only hunt is a test: players never see it, its notes go to the admin alone, and nothing reaches chat', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { admins_only: true } }, h.ctx(ADMIN, at(1), true));
+  assert.ok(h.db._s.notes.length === 3 && h.db._s.notes.every((n) => n.target_type === 'user' && n.target_id === ADMIN.id && n.post_to_chat === false));
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts.length, 0);
+  const seen = (await H.huntAction('hunt.current', {}, h.ctx(ADMIN, at(60), true))).hunts[0];
+  assert.equal(seen.admins_only, true);
+  await H.huntAction('hunt.submit', { id: d.id, layer: KEY, dims: DIMS }, h.ctx(ADMIN, at(61), true));
+  await H.huntAction('hunt.current', {}, h.ctx(ADMIN, at(121), true));
+  assert.equal(h.db._s.awards.length, 1);
+  assert.equal(h.chat.length, 0);
+  // Turned off again before the notes go out, they go to everyone.
+  await H.huntAction('hunt.save', { id: d.id, fields: { admins_only: false, start_at: iso(at(130)), end_at: iso(at(140)) } }, h.ctx(ADMIN, at(122), true));
+});
+
+test('players start at the soma when one is set, never on the answer; the Admin Hub is warned when the start is near a place', async () => {
+  const h = harness();
+  const d = await makeHunt(h);   // VIEW is centered on the first merger
+  const read1 = await H.huntAction('hunt.read', { id: d.id }, h.ctx(ADMIN, at(1), true));
+  assert.equal(read1.start_on_answer, true);
+  assert.equal(read1.start_gap_um, 0);
+  // The soma, in the view's voxels: [3000, 3000, 150] is 8 µm and more from every merger.
+  const saved = await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { cells: [{ root: '648518346350533705', label: 'the pyramidal', soma: [3000, 3000, '150'] }] } }, h.ctx(ADMIN, at(1), true));
+  assert.equal(saved.start_on_answer, false);
+  assert.ok(saved.start_gap_um > 6, String(saved.start_gap_um));
+  const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0];
+  assert.deepEqual(live.view.position, [3000, 3000, 150]);
+  assert.deepEqual(live.cells[0].soma, [3000, 3000, 150]);
+  const t = await H.huntAction('hunt.test', { id: d.id }, h.ctx(ADMIN, at(60), true));
+  assert.deepEqual(t.view.position, [3000, 3000, 150]);
+  // A soma with a blank is not kept.
+  assert.deepEqual(H.cleanCells([{ root: '648518346350533705', soma: [1, '', 3] }]), [{ root: '648518346350533705', label: '' }]);
+});
+
+test('from a test site every Hunt is admins only, and an everyone Hunt cannot be started from there', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));   // from the live game
+  assert.ok(h.db._s.notes.every((n) => n.target_type === 'all'));
+  const fromTest = { ...h.ctx(ADMIN, at(2), true), testSite: true };
+  await assert.rejects(H.huntAction('hunt.now', { id: d.id, kind: 'start' }, fromTest), /goes to every player/);
+  // Saved on the test site, even with the box off, it becomes admins only and its notes go to the admin alone.
+  const saved = await H.huntAction('hunt.save', { id: d.id, fields: { admins_only: false } }, fromTest);
+  assert.equal(saved.admins_only, true);
+  assert.ok(h.db._s.notes.every((n) => n.target_type === 'user' && n.target_id === ADMIN.id && n.post_to_chat === false));
+  await H.huntAction('hunt.now', { id: d.id, kind: 'start' }, fromTest);
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(3)))).hunts.length, 0);
 });

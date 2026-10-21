@@ -9,13 +9,18 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, submitGems,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, submitGems, goToSoma,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntResult, type HuntTier,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
+import { useDragBox } from '../util/drag_box';
 
 const props = defineProps<{ huntId?: number | null; test?: boolean }>();
 const emit = defineEmits({ hide: null });
+
+// Ames 2026-10-21: "this box needs to be draggable". By its header; it remembers where it was put.
+const boxEl = ref<HTMLElement | null>(null);
+const { posStyle, dragging, startDrag } = useDragBox('nge-hunt-panel-pos', boxEl);
 
 const busy = ref('');
 const error = ref('');
@@ -34,18 +39,35 @@ const where = computed(() => {
   const n = hunt.value?.cell_count ?? hunt.value?.cells.length ?? 0;
   return n > 1 ? `${n} cells` : 'one cell';
 });
+// What is hidden (Ames 2026-10-21): mergers (two cells joined, a cut fixes it) and
+// extensions (a piece left off, a merge fixes it).
+const spots = computed(() => hunt.value?.spots ?? { cut: hunt.value?.target_count ?? 0, merge: 0 });
 const mergers = computed(() => {
-  const n = hunt.value?.target_count ?? 0;
-  return n === 1 ? '1 merger' : `${n} mergers`;
+  const { cut, merge } = spots.value;
+  const c = cut === 1 ? '1 merger' : `${cut} mergers`;
+  const m = merge === 1 ? '1 extension' : `${merge} extensions`;
+  return !merge ? c : !cut ? m : `${c} and ${m}`;
 });
+/** With several cells, a button takes the player to each one's soma. */
+const somaCells = computed(() => (hunt.value?.cells ?? []).filter(c => Array.isArray(c.soma) && c.soma.length === 3));
+const isAre = computed(() => ((hunt.value?.target_count ?? 0) === 1 ? 'is' : 'are'));
+/** What the results count: "mergers", "extensions", or both. */
+const placeNoun = computed(() => (spots.value.merge && spots.value.cut ? 'mergers and extensions' : spots.value.merge ? 'extensions' : 'mergers'));
+const placeOne = computed(() => (spots.value.merge && spots.value.cut ? 'merger or extension' : spots.value.merge ? 'extension' : 'merger'));
 const TIER_WORD: Record<HuntTier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
 const TIERS: HuntTier[] = ['gold', 'silver', 'bronze'];
 
 function need(t: HuntTier): string {
   const h = hunt.value; if (!h) return '';
   const k = h.tiers[t];
-  return k >= h.target_count ? `all ${h.target_count}` : `${k} or more`;
+  if (k >= h.target_count) return h.target_count === 1 ? 'find it' : `find all ${h.target_count}`;
+  return `find ${k} or more`;
 }
+/** The awards that can be won: a medal that needs no fewer finds than the one above it is never given. */
+const awards = computed<HuntTier[]>(() => {
+  const h = hunt.value; if (!h) return [];
+  return TIERS.filter((t, i) => i === 0 || h.tiers[t] < h.tiers[TIERS[i - 1]]);
+});
 
 let gemTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
@@ -86,14 +108,15 @@ async function submit(e?: Event) {
 
 const resultLine = computed(() => {
   const r = result.value; if (!r) return '';
-  const found = r.found === 0 ? 'None of your gems found a merger' : r.found === r.of ? `Every merger found: all ${r.of}` : `Your gems found ${r.found} of ${r.of} mergers`;
+  const one = placeOne.value;
+  const found = r.found === 0 ? `None of your gems found a ${one}` : r.found === r.of ? `You found them all: ${r.of} of ${r.of}` : `Your gems found ${r.found} of the ${r.of} ${placeNoun.value}`;
   const close = r.close === 1 ? ' One more gem is close.' : r.close > 1 ? ` ${r.close} more gems are close.` : '';
   return `${found}.${close}`;
 });
 // A test run says which mergers were found and how near the nearest gem was, to set the tolerance by.
 const testLines = computed(() => {
   const r = result.value; if (!r?.test || !r.mergers) return [];
-  return r.mergers.map((m, i) => ({ n: i + 1, found: m.found,
+  return r.mergers.map((m, i) => ({ n: i + 1, found: m.found, word: m.kind === 'merge' ? 'Extension' : 'Merger',
     text: m.nearest_um == null ? 'no gem' : `nearest gem ${m.nearest_um} µm` }));
 });
 
@@ -123,8 +146,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 </script>
 
 <template>
-  <aside class="nge-hunt" role="dialog" aria-label="The Hunt">
-    <header class="nge-hunt-head">
+  <aside ref="boxEl" class="nge-hunt" :class="{ 'nge-hunt--dragging': dragging }" :style="posStyle" role="dialog" aria-label="The Hunt">
+    <header class="nge-hunt-head" title="Drag to move" @pointerdown="startDrag">
       <div class="nge-hunt-eyebrow">The Hunt<span v-if="test" class="nge-hunt-testchip">Test run</span></div>
       <button class="nge-hunt-x" title="Close" aria-label="Close" @click="emit('hide')">×</button>
     </header>
@@ -139,13 +162,14 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 
     <div v-else class="nge-hunt-body">
       <h2 class="nge-hunt-title">{{ hunt.title }}</h2>
+      <p v-if="hunt.admins_only" class="nge-hunt-adminsonly">Only admins see this Hunt: a test. Its notes go to the admin who made it.</p>
 
       <!-- Before the start -->
       <template v-if="phase === 'announced'">
         <div class="nge-hunt-clock"><span class="nge-hunt-clock-label">Starts in</span><span class="nge-hunt-clock-time">{{ countdown(hunt.start_at) }}</span></div>
         <p class="nge-hunt-when">{{ localTime(hunt.start_at) }} until {{ localTime(hunt.end_at) }}</p>
         <p v-if="hunt.description" class="nge-hunt-desc">{{ hunt.description }}</p>
-        <p class="nge-hunt-text">{{ mergers }} {{ hunt.target_count === 1 ? 'is' : 'are' }} hidden on {{ where }} in {{ datasetName }}. When it starts, find each one, drop a gold gem on it, and submit.</p>
+        <p class="nge-hunt-text">{{ mergers }} {{ isAre }} hidden on {{ where }} in {{ datasetName }}. When it starts, drop a gold gem on each one you find, and submit.</p>
       </template>
 
       <!-- While it runs -->
@@ -154,15 +178,18 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <div v-else class="nge-hunt-clock nge-hunt-clock--live"><span class="nge-hunt-clock-label">Ends in</span><span class="nge-hunt-clock-time">{{ countdown(hunt.end_at) }}</span></div>
         <p v-if="hunt.description" class="nge-hunt-desc">{{ hunt.description }}</p>
         <ol class="nge-hunt-steps">
-          <li>Open the Hunt: {{ mergers }} {{ hunt.target_count === 1 ? 'is' : 'are' }} hidden on {{ where }}.</li>
-          <li>Drop a gold gem on each merger: <b>Ctrl</b> + click (<b>⌘</b> + click on a Mac) where two cells join.</li>
-          <li v-if="hunt.test">Submit. Players hear how many gems found a merger, never which; your test run also shows which.</li>
-          <li v-else>Submit. You hear how many gems found a merger, never which.</li>
+          <li>Open the Hunt: {{ mergers }} {{ isAre }} hidden on {{ where }}.</li>
+          <li>Drop one gold gem on each {{ placeOne }} you find, and only there: <b>Ctrl</b> + click (<b>⌘</b> + click on a Mac)<template v-if="spots.cut"> where two cells are wrongly joined</template><template v-if="spots.cut && spots.merge">, or</template><template v-if="spots.merge"> where a piece of the cell was left off</template>.</li>
+          <li v-if="hunt.test">Submit. Players hear how many gems found one, never which; your test run also shows which.</li>
+          <li v-else>Submit. You hear how many of your gems found one, never which.</li>
         </ol>
         <p v-if="!hunt.test" class="nge-hunt-muted nge-hunt-frozen">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
         <button class="nge-hunt-btn" :disabled="!!busy" @click="go">
           {{ busy === 'go' ? 'Opening…' : onDataset ? (gems >= 0 ? 'Back to the start view' : 'Open the Hunt') : `Switch to ${datasetName} and open the Hunt` }}
         </button>
+        <div v-if="onDataset && gems >= 0 && somaCells.length > 1" class="nge-hunt-cells">
+          <button v-for="(c, i) in somaCells" :key="c.root" class="nge-hunt-cellbtn" :title="c.label || `Cell ${i + 1}`" @click="goToSoma(c.soma || [])">Cell {{ i + 1 }}</button>
+        </div>
         <div class="nge-hunt-answer">
           <span class="nge-hunt-gems">{{ gems >= 0 ? (gems === 1 ? '1 gem down' : `${gems} gems down`) : 'No gems down yet' }}</span>
           <button class="nge-hunt-btn nge-hunt-btn--gold" :disabled="!!busy || gems <= 0 || hunt.you.left <= 0" @click="submit($event)">
@@ -174,7 +201,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <div v-if="resultLine" class="nge-hunt-result" role="status">{{ resultLine }}</div>
         <ul v-if="testLines.length" class="nge-hunt-testlines" aria-label="Each merger">
           <li v-for="m in testLines" :key="m.n" :class="m.found ? 'nge-hunt-test-found' : 'nge-hunt-test-missed'">
-            Merger {{ m.n }}: {{ m.found ? 'found' : 'missed' }}, {{ m.text }}
+            {{ m.word }} {{ m.n }}: {{ m.found ? 'found' : 'missed' }}, {{ m.text }}
           </li>
         </ul>
         <p v-if="hunt.you.best && !hunt.test" class="nge-hunt-best">Your best: {{ hunt.you.best }} of {{ hunt.target_count }}<template v-if="hunt.you.tier">, {{ TIER_WORD[hunt.you.tier] }} so far</template>.</p>
@@ -196,10 +223,15 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 
       <p v-if="error" class="nge-hunt-error" role="alert">{{ error }}</p>
 
-      <section class="nge-hunt-tiers" aria-label="Prizes">
-        <div v-for="t in TIERS" :key="t" class="nge-hunt-tier" :class="{ 'nge-hunt-tier--yours': hunt.you.tier === t || (hunt.test && result?.tier === t) }">
+      <section class="nge-hunt-tiers" aria-label="Awards">
+        <div class="nge-hunt-board-title">Awards</div>
+        <div v-for="t in awards" :key="t" class="nge-hunt-tier" :class="{ 'nge-hunt-tier--yours': hunt.you.tier === t || (hunt.test && result?.tier === t) }">
           <span class="nge-hunt-medal" :class="`nge-hunt-medal--${t}`">{{ TIER_WORD[t] }}</span>
-          <span>find {{ need(t) }}</span>
+          <span>{{ need(t) }}</span>
+          <span v-if="hunt.prizes?.[t]" class="nge-hunt-prize" :title="hunt.prizes[t].name">
+            <img :src="hunt.prizes[t].image" alt="" class="nge-hunt-prize-img" />
+            <span class="nge-hunt-prize-name">{{ hunt.prizes[t].name }}</span>
+          </span>
         </div>
       </section>
 
@@ -227,9 +259,14 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 24px rgba(245, 209, 66, 0.08);
   color: #dbe7f7; font-family: 'Inter', system-ui, sans-serif; font-size: 14px; line-height: 1.45;
 }
-.nge-hunt-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 0; }
+.nge-hunt-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 0; cursor: grab; touch-action: none; user-select: none; }
+.nge-hunt--dragging .nge-hunt-head { cursor: grabbing; }
 .nge-hunt-eyebrow { font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #f5d142; display: flex; align-items: center; gap: 8px; }
 .nge-hunt-testchip { padding: 1px 7px; border-radius: 999px; background: rgba(90, 170, 255, 0.18); border: 1px solid rgba(90, 170, 255, 0.5); color: #9fd0ff; font: 600 10px 'Inter', sans-serif; letter-spacing: 0.08em; }
+.nge-hunt-cells { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nge-hunt-cellbtn { padding: 3px 10px; border-radius: 999px; cursor: pointer; background: rgba(90, 170, 255, 0.1); border: 1px solid rgba(90, 170, 255, 0.4); color: #cfe4ff; font: 600 12px 'Inter', sans-serif; }
+.nge-hunt-cellbtn:hover, .nge-hunt-cellbtn:focus-visible { background: rgba(90, 170, 255, 0.22); }
+.nge-hunt-adminsonly { margin: 2px 0 6px; font-size: 12px; color: #9fd0ff; }
 .nge-hunt-testnote { margin: 8px 0 4px; padding: 8px 10px; border-radius: 8px; background: rgba(90, 170, 255, 0.08); border: 1px solid rgba(90, 170, 255, 0.35); color: #cfe4ff; font-size: 13px; }
 .nge-hunt-testlines { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
 .nge-hunt-test-found { color: #b8f5cf; }
@@ -273,6 +310,9 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-tiers { margin-top: 14px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: #cfe0f5; }
 .nge-hunt-tier { display: flex; gap: 10px; align-items: center; }
 .nge-hunt-tier--yours { color: #fff; font-weight: 600; }
+.nge-hunt-prize { margin-left: auto; display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 46%; color: #a9bbd3; font-size: 12px; font-weight: 400; }
+.nge-hunt-prize-img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; flex: none; }
+.nge-hunt-prize-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nge-hunt-board { margin-top: 14px; }
 .nge-hunt-board-title { font-size: 12px; color: #a9bbd3; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
 .nge-hunt-board ol { list-style: none; margin: 0; padding: 0; }

@@ -47,6 +47,8 @@ create table if not exists hunts (
   notif_ids       jsonb       not null default '{}'::jsonb,
   -- a picture per note: { "announce": { "image_url": "https://...", "thumbnail_url": "https://..." }, ... }
   notif_images    jsonb       not null default '{}'::jsonb,
+  -- a test: only admins see it, its notes go to the admin who made it, nothing reaches chat
+  admins_only     boolean     not null default false,
   awarded_at      timestamptz,
   created_by      uuid        references users (id) on delete set null,
   created_at      timestamptz not null default now(),
@@ -56,6 +58,8 @@ create table if not exists hunts (
 create index if not exists hunts_status_end_idx on hunts (status, end_at);
 -- 2026-10-21: pictures for the notes (for a table made by the first version of this file)
 alter table hunts add column if not exists notif_images jsonb not null default '{}'::jsonb;
+-- 2026-10-21: admins only hunts, for testing
+alter table hunts add column if not exists admins_only boolean not null default false;
 
 create table if not exists hunt_keys (
   hunt_id     bigint      primary key references hunts (id) on delete cascade,

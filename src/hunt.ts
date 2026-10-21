@@ -22,8 +22,8 @@ export type HuntTier = 'gold' | 'silver' | 'bronze';
 
 export interface HuntInfo {
   id: number; title: string; description: string; dataset: string;
-  /** Empty until the hunt starts (nobody hunts early); cell_count says how many. */
-  cells: { root: string; label: string }[]; cell_count: number;
+  /** Empty until the hunt starts (nobody hunts early); cell_count says how many. soma: where a cell starts, in the view's voxels. */
+  cells: { root: string; label: string; soma?: number[] }[]; cell_count: number;
   announce_at: string | null; start_at: string; end_at: string; phase: HuntPhase;
   target_count: number; tolerance_um: number; max_points: number; max_submissions: number;
   tiers: { gold: number; silver: number; bronze: number }; awarded: boolean;
@@ -31,6 +31,12 @@ export interface HuntInfo {
   you: { best: number; submissions: number; left: number; tier: HuntTier | null; rank: number };
   /** An admin's test run (hunt.test): open as if running, for that admin only; answers are never kept. */
   test?: boolean;
+  /** How many places of each kind are hidden: mergers to cut, places to merge. */
+  spots?: { cut: number; merge: number };
+  /** A test hunt only admins see (its notes go to the admin who made it). */
+  admins_only?: boolean;
+  /** What each medal gives: the Achievement's name and picture. */
+  prizes?: Partial<Record<HuntTier, { name: string; image: string }>>;
   board: { rank: number; name: string; found: number; at: string; tier: HuntTier | null; you: boolean }[];
   players: number;
   winners: { gold: number; silver: number; bronze: number };
@@ -39,7 +45,7 @@ export interface HuntInfo {
 export interface HuntResult {
   found: number; of: number; close: number; best: number; points: number; left: number; tier: HuntTier | null;
   /** A test run only: each merger, found or not, and the nearest gem in µm (for setting the tolerance). */
-  test?: boolean; tolerance_um?: number; mergers?: { found: boolean; nearest_um: number | null }[];
+  test?: boolean; tolerance_um?: number; mergers?: { kind?: 'cut' | 'merge'; found: boolean; nearest_um: number | null }[];
 }
 
 /** What the server last said, plus a clock for the countdowns (server time). */
@@ -54,6 +60,33 @@ export const huntState = reactive({
   offset: 0,
   now: Date.now(),
 });
+
+/**
+ * A branch test site or a local build (not the live game or the Princeton site). The server
+ * makes every Hunt saved from one admins only (Ames 2026-10-21: "we want to be testing on the
+ * test site"), and the Admin Hub says so.
+ */
+export const ON_TEST_SITE = (() => {
+  try {
+    const h = location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') return true;
+    if (!h.endsWith('-dot-brain-wire-dot-seung-lab.ue.r.appspot.com')) return false;
+    return !h.startsWith('eyewire-ii-community-dot-') && !h.startsWith('princeton-tracers-dot-');
+  } catch { return false; }
+})();
+
+/** The view's crosshair as x, y, z (voxels), for filling in a soma. */
+export function crosshairXyz(): number[] | null {
+  try {
+    const p = Array.from<number>(viewer().navigationState.position.value);
+    return p.length >= 3 ? p.slice(0, 3).map(v => Math.round(v)) : null;
+  } catch { return null; }
+}
+
+/** Move to a hunt cell's soma (a hunt with several cells has a button for each). */
+export function goToSoma(soma: number[]) {
+  try { viewer().navigationState.position.value = Float32Array.from(soma.slice(0, 3)); } catch { /* no viewer */ }
+}
 
 export const GEM_COLOR = '#f5d142';   // the color key's gold
 
@@ -328,13 +361,26 @@ export function cellsOnScreen(): { root: string; label: string }[] {
 }
 
 /** What the Admin Hub sends to make a hunt from the screen: the key layer, the view, the cells, the dataset. */
-export function readHuntFromScreen(keyLayer: string) {
+/** A layer's places are cuts (mergers) or merges (pieces left off); a guess from its name, which the admin can change. */
+export type KeyKind = 'cut' | 'merge';
+export function guessKind(name: string): KeyKind {
+  if (/merger|cut|split\b/i.test(name)) return 'cut';
+  if (/merge|extension|extend|join|missing|attach/i.test(name)) return 'merge';
+  return 'cut';
+}
+
+/** Ames 2026-10-21: the key can come from two layers (or more), one for merges and one for cuts. */
+export function readHuntFromScreen(keyLayers: { name: string; kind: KeyKind }[]) {
   const state = viewer()?.state?.toJSON?.();
   if (!state) throw new Error('The viewer is not ready yet.');
-  const layer = (state.layers ?? []).find((l: any) => l && l.name === keyLayer && l.type === 'annotation');
-  if (!layer) throw new Error(`No annotation layer called "${keyLayer}" on screen.`);
+  if (!keyLayers.length) throw new Error('Tick the layer (or layers) with the places marked.');
+  const layers = keyLayers.map(k => {
+    const layer = (state.layers ?? []).find((l: any) => l && l.name === k.name && l.type === 'annotation');
+    if (!layer) throw new Error(`No annotation layer called "${k.name}" on screen.`);
+    return { layer: { source: layer.source, annotations: layer.annotations }, kind: k.kind };
+  });
   return {
-    key: { layer: { source: layer.source, annotations: layer.annotations }, dims: state.dimensions },
+    key: { layers, dims: state.dimensions },
     view: state,
     cells: cellsOnScreen(),
     dataset: canonicalDataset(currentDatasetTag()),

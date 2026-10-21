@@ -82,6 +82,33 @@ function layerPointsNm(layer, dims) {
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
+/*
+ * Two kinds of place in an answer key (Ames 2026-10-21: "2 layers, for merge
+ * and cut"): a merger, where two cells are joined and a cut is needed, and a
+ * place to merge, where a piece of the cell was left off. A key point is
+ * [x, y, z, kind]; a point with no kind (keys saved before) is a merger.
+ * Scoring looks at x, y and z only: any gem finds either kind.
+ */
+const kindOf = (t) => (t && t[3] === 'merge' ? 'merge' : 'cut');
+function kindCounts(targets) {
+  const c = { cut: 0, merge: 0 };
+  for (const t of Array.isArray(targets) ? targets : []) c[kindOf(t)]++;
+  return c;
+}
+
+/** The answer key from one or more annotation layers, each marked as cuts or merges. */
+function keyTargets(key) {
+  if (!key || typeof key !== 'object') fail(400, 'No answer key was sent.');
+  const parts = Array.isArray(key.layers) ? key.layers : [{ layer: key.layer, kind: key.kind }];
+  if (!parts.length) fail(400, 'Pick at least one layer with the places marked.');
+  const out = [];
+  for (const part of parts) {
+    const kind = part && part.kind === 'merge' ? 'merge' : 'cut';
+    for (const pt of layerPointsNm(part && part.layer, key.dims)) out.push([pt[0], pt[1], pt[2], kind]);
+  }
+  return out;
+}
+
 /**
  * How many mergers a set of points found: each merger can be found once, by
  * one point within the tolerance, and each point can find one merger. The
@@ -133,7 +160,7 @@ function testDetail(targets, points, toleranceNm) {
   const m = match(T, P, toleranceNm);
   return T.map((t, ti) => {
     const near = P.length ? Math.min(...P.map((p) => dist(t, p))) : null;
-    return { found: m.hit[ti], nearest_um: near == null ? null : Math.round(near / 100) / 10 };
+    return { kind: kindOf(t), found: m.hit[ti], nearest_um: near == null ? null : Math.round(near / 100) / 10 };
   });
 }
 
@@ -162,7 +189,9 @@ function tierFor(found, th) {
 
 /** The most points one answer may carry: set per hunt, else three per merger (at least ten). */
 function maxPoints(h) {
-  return posInt(h && h.max_points) || Math.max(MIN_POINTS, 3 * posInt(h && h.target_count));
+  // Players put one gem on each place (Ames 2026-10-21), so an answer holds as many gems as
+  // there are places unless the admin allows spares. The cap stops a player covering the cell.
+  return posInt(h && h.max_points) || Math.max(1, posInt(h && h.target_count));
 }
 
 // ── Time ──────────────────────────────────────────────────────────────────
@@ -201,24 +230,35 @@ function inWords(span) {
 
 // ── What players see ──────────────────────────────────────────────────────
 
-function mergerWords(n) { return n === 1 ? '1 merger is' : `${n} mergers are`; }
+/** "3 mergers are", "2 extensions are", "3 mergers and 2 extensions are" (Ames's words: a merger is cut, an extension merged). */
+function spotWords(c) {
+  const cut = (c && c.cut) || 0, merge = (c && c.merge) || 0;
+  const cw = cut === 1 ? '1 merger' : `${cut} mergers`;
+  const mw = merge === 1 ? '1 extension' : `${merge} extensions`;
+  if (!merge) return `${cw} ${cut === 1 ? 'is' : 'are'}`;
+  if (!cut) return `${mw} ${merge === 1 ? 'is' : 'are'}`;
+  return `${cw} and ${mw} are`;
+}
+/** The kinds of place a hunt hides: counted from its key when the caller has it, else all mergers. */
+const kindsOf = (h) => (h && h._kinds) || { cut: posInt(h && h.target_count), merge: 0 };
 function whereWords(h) { const c = Array.isArray(h.cells) ? h.cells.length : 0; return c > 1 ? `${c} cells` : 'one cell'; }
 
 /** A hunt as a player may see it: never the key; the view only once it has started. */
 function publicHunt(h, now) {
   const p = phase(h, now);
+  const kinds = kindsOf(h);
   const open = p === 'live' || p === 'ended';
-  const cells = (Array.isArray(h.cells) ? h.cells : []).map((c) => ({ root: String(c.root), label: String(c.label || '') }));
+  const cells = (Array.isArray(h.cells) ? h.cells : []).map((c) => ({ root: String(c.root), label: String(c.label || ''), ...(Array.isArray(c.soma) ? { soma: c.soma } : {}) }));
   return {
-    id: h.id, title: h.title, description: h.description || '', dataset: h.dataset,
+    id: h.id, title: h.title, description: h.description || '', dataset: h.dataset, admins_only: !!h.admins_only,
     // The cells, like the view, only once the hunt starts: nobody hunts early.
     cells: open ? cells : [], cell_count: cells.length,
     announce_at: h.announce_at, start_at: h.start_at, end_at: h.end_at, phase: p,
-    target_count: posInt(h.target_count),
+    target_count: posInt(h.target_count), spots: { cut: kinds.cut, merge: kinds.merge },
     tolerance_um: Math.round((Number(h.tolerance_nm) || DEFAULT_TOLERANCE_NM) / 100) / 10,
     max_points: maxPoints(h), max_submissions: posInt(h.max_submissions) || DEFAULT_MAX_SUBMISSIONS,
     tiers: thresholds(h), awarded: !!h.awarded_at,
-    view: open ? (h.view || null) : null,
+    view: open ? startView(h) : null,
   };
 }
 
@@ -247,17 +287,17 @@ function noteImage(h, kind) {
 /** The three notes a scheduled hunt sends, each at its own time. */
 function notificationRows(h) {
   const start = ms(h.start_at), end = ms(h.end_at);
-  const n = posInt(h.target_count);
+  const kinds = kindsOf(h);
   const runs = inWords(end - start);
   const rows = [];
   if (h.announce_at) {
     rows.push({ kind: 'announce', send_at: h.announce_at,
       title: `${TITLE_PREFIX} is coming: ${h.title}`,
-      body: `${h.title} starts in ${inWords(start - ms(h.announce_at))} and runs for ${runs}. ${mergerWords(n)} hidden on ${whereWords(h)}: find each one, drop a gold gem on it, and submit. Gold, silver and bronze Achievements go to the best hunters.` });
+      body: `${h.title} starts in ${inWords(start - ms(h.announce_at))} and runs for ${runs}. ${spotWords(kinds)} hidden on ${whereWords(h)}: drop a gold gem on each one you find, and submit. Gold, silver and bronze Achievements go to the best hunters.` });
   }
   rows.push({ kind: 'start', send_at: h.start_at,
     title: `${TITLE_PREFIX} is on: ${h.title}`,
-    body: `${mergerWords(n)} hidden on ${whereWords(h)}. Open the Hunt, find each one, drop a gold gem on it, and submit. You have ${runs}.` });
+    body: `${spotWords(kinds)} hidden on ${whereWords(h)}. Open the Hunt, drop a gold gem on each one you find, and submit. You have ${runs}.` });
   rows.push({ kind: 'end', send_at: h.end_at,
     title: `${TITLE_PREFIX} is over: ${h.title}`,
     body: 'Time is up. Open the Hunt for the awards ceremony: the gold, silver and bronze hunters get their Achievements now.' });
@@ -277,13 +317,32 @@ function badgeRow(h, tier, th, site) {
   const n = posInt(h.target_count);
   const k = th[tier];
   const count = k >= n ? `every one of the ${n} mergers found` : `${k} or more of the ${n} mergers found`;
-  const art = (h.art && typeof h.art[tier] === 'string' && /^https:\/\//.test(h.art[tier])) ? h.art[tier] : `${site}/hunt/${tier}.svg`;
+  const a = h.art && h.art[tier];
+  const own = typeof a === 'string' ? a : a && a.image_url;
+  const art = typeof own === 'string' && /^https:\/\//.test(own) ? own : `${site}/hunt/${tier}.svg`;
+  const thumb = a && typeof a === 'object' && typeof a.thumbnail_url === 'string' && /^https:\/\//.test(a.thumbnail_url) && own === art ? a.thumbnail_url : art;
   return {
     slug: `hunt-${h.id}-${tier}`,
     name: `${h.title}: ${TIER_NAME[tier]}`.slice(0, 80),
     description: `${TIER_NAME[tier]} in ${h.title}, ${count}. ${LINES[tier]}`.slice(0, 300),
-    image_url: art, thumbnail_url: art, created_by: h.created_by || null,
+    image_url: art, thumbnail_url: thumb, created_by: h.created_by || null,
   };
+}
+
+/** The special Achievement an admin chose for a tier (Admin Hub > Special Badges), if any. */
+const chosenBadge = (h, tier) => posInt(h && h.art && h.art[tier] && typeof h.art[tier] === 'object' && h.art[tier].badge_id);
+
+/** What each medal gives, for the panel: the Achievement's name and picture. */
+async function prizesFor(h, db, site) {
+  const th = thresholds(h);
+  const out = {};
+  for (const t of TIERS) {
+    const id = chosenBadge(h, t);
+    const b = id && db.badgeById ? await db.badgeById(id) : null;
+    if (b) out[t] = { name: b.name, image: b.thumbnail_url || b.image_url || `${site}/hunt/${t}.svg` };
+    else { const r = badgeRow(h, t, th, site); out[t] = { name: r.name, image: r.thumbnail_url }; }
+  }
+  return out;
 }
 
 // ── Input from the Admin Hub ──────────────────────────────────────────────
@@ -292,8 +351,45 @@ const ROOT = /^\d{5,24}$/;
 function cleanCells(cells) {
   if (!Array.isArray(cells)) return [];
   const seen = new Set();
-  return cells.map((c) => ({ root: String(c && c.root || ''), label: String(c && c.label || '').slice(0, 60) }))
-    .filter((c) => ROOT.test(c.root) && !seen.has(c.root) && seen.add(c.root)).slice(0, MAX_CELLS);
+  return cells.map((c) => {
+    const out = { root: String(c && c.root || ''), label: String(c && c.label || '').slice(0, 60) };
+    // The cell's soma, in the view's voxel coordinates (as the coordinate bar shows them): players start there.
+    const soma = Array.isArray(c && c.soma) && c.soma.length === 3 && c.soma.every((v) => v !== '' && v != null) ? c.soma.map(Number) : null;
+    if (soma && soma.every(Number.isFinite)) out.soma = soma.map((v) => Math.round(v * 10) / 10);
+    return out;
+  }).filter((c) => ROOT.test(c.root) && !seen.has(c.root) && seen.add(c.root)).slice(0, MAX_CELLS);
+}
+
+/** Which entries of a view's position are x, y and z (by the names of its dimensions). */
+function xyzIndex(view) {
+  const names = Object.keys((view && view.dimensions) || {});
+  const ix = ['x', 'y', 'z'].map((n) => names.indexOf(n));
+  return ix.some((i) => i < 0) ? [0, 1, 2] : ix;
+}
+
+/**
+ * The view players start from (Ames 2026-10-21: "when I click start it took me to
+ * the coords of the answer"): the admin's link is often centered on a merger, so
+ * the view moves to the first cell's soma when one is set.
+ */
+function startView(h) {
+  if (!h || !h.view) return null;
+  const first = (Array.isArray(h.cells) ? h.cells : []).find((c) => Array.isArray(c.soma) && c.soma.length === 3);
+  if (!first) return h.view;
+  const pos = Array.isArray(h.view.position) ? h.view.position.slice() : [0, 0, 0];
+  xyzIndex(h.view).forEach((k, i) => { pos[k] = first.soma[i]; });
+  return { ...h.view, position: pos };
+}
+
+/** How far the players' start is from the nearest place in the key (µm), so the Admin Hub can warn. */
+function startGapUm(h, targets) {
+  const v = startView(h);
+  if (!v || !Array.isArray(v.position) || !targets.length) return null;
+  let axes; try { axes = axisScales(v.dimensions); } catch (e) { return null; }
+  const ix = xyzIndex(v);
+  const p = ix.map((k) => Number(v.position[k]) * ((axes[k] && axes[k].nmPer) || 1));
+  if (!p.every(Number.isFinite)) return null;
+  return Math.round(Math.min(...targets.map((t) => dist(t, p))) / 100) / 10;
 }
 
 /** The view players start from: the admin's view without a single annotation layer. */
@@ -328,8 +424,17 @@ function cleanFields(f) {
   if ('max_submissions' in f) out.max_submissions = Math.min(posInt(f.max_submissions) || DEFAULT_MAX_SUBMISSIONS, 1000);
   if ('tiers' in f) out.tiers = { gold: posInt(f.tiers && f.tiers.gold), silver: posInt(f.tiers && f.tiers.silver), bronze: posInt(f.tiers && f.tiers.bronze) };
   if ('art' in f) {
+    // Per tier: { badge_id } (a special Achievement already made), { image_url, thumbnail_url } (the hunt's own,
+    // with that picture), or nothing (the hunt's own, with the game's medal). A bare https string is a picture.
     const a = f.art || {};
-    out.art = Object.fromEntries(TIERS.filter((t) => typeof a[t] === 'string' && /^https:\/\/\S{4,500}$/.test(a[t])).map((t) => [t, a[t]]));
+    const https = (v) => typeof v === 'string' && /^https:\/\/\S{4,800}$/.test(v);
+    out.art = {};
+    for (const t of TIERS) {
+      const v = a[t];
+      if (https(v)) out.art[t] = { image_url: v, thumbnail_url: v };
+      else if (v && typeof v === 'object' && posInt(v.badge_id)) out.art[t] = { badge_id: posInt(v.badge_id) };
+      else if (v && typeof v === 'object' && https(v.image_url)) out.art[t] = { image_url: v.image_url, thumbnail_url: https(v.thumbnail_url) ? v.thumbnail_url : v.image_url };
+    }
   }
   if ('notif_images' in f) {
     // { announce: { image_url, thumbnail_url }, start: ..., end: ... }; a note left out has no picture.
@@ -341,6 +446,7 @@ function cleanFields(f) {
       if (v && https(v.image_url)) out.notif_images[k] = { image_url: v.image_url, thumbnail_url: https(v.thumbnail_url) ? v.thumbnail_url : v.image_url };
     }
   }
+  if ('admins_only' in f) out.admins_only = !!f.admins_only;
   for (const k of DATE_FIELDS) if (k in f) out[k] = cleanDate(f[k]);
   return out;
 }
@@ -391,13 +497,15 @@ async function getHunt(db, id) {
 async function current(ctx) {
   const { db, me, now = new Date() } = ctx;
   const since = new Date(now.getTime() - SHOW_ENDED_DAYS * DAY).toISOString();
-  const rows = (await db.visibleHunts(since)).filter((h) => visible(h, now));
+  // An admins only hunt (for testing) is never shown to players.
+  const rows = (await db.visibleHunts(since)).filter((h) => visible(h, now) && (!h.admins_only || ctx.isAdmin));
   const hunts = [];
   for (const h of rows) {
     if (phase(h, now) === 'ended' && !h.awarded_at) {
       try { const r = await finalize(h, ctx); if (r) h.awarded_at = now.toISOString(); }
       catch (e) { console.warn('[hunt] awards for', h.id, 'failed:', e && e.message); }
     }
+    h._kinds = kindCounts(await db.key(h.id));
     const subs = await db.submissions(h.id);
     const board = leaderboard(subs);
     const th = thresholds(h);
@@ -407,7 +515,7 @@ async function current(ctx) {
     const mine = subs.filter((s) => s.user_id === me.id).length;
     const cap = posInt(h.max_submissions) || DEFAULT_MAX_SUBMISSIONS;
     hunts.push({
-      ...publicHunt(h, now),
+      ...publicHunt(h, now), prizes: await prizesFor(h, db, ctx.site),
       you: { best: mineBest ? mineBest.found : 0, submissions: mine, left: Math.max(0, cap - mine), tier: mineBest ? tierFor(mineBest.found, th) : null,
         rank: mineBest ? board.indexOf(mineBest) + 1 : 0 },
       board: top.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, at: b.at, tier: tierFor(b.found, th), you: b.user_id === me.id })),
@@ -444,6 +552,8 @@ async function notesPreview(args, ctx) {
   const base = args.id ? await getHunt(ctx.db, args.id) : {};
   const h = { ...base, ...cleanFields(args.fields || {}) };
   if (!base.id) h.target_count = Math.min(posInt(args.target_count), MAX_TARGETS);
+  if (args.kinds && typeof args.kinds === 'object') h._kinds = { cut: Math.min(posInt(args.kinds.cut), MAX_TARGETS), merge: Math.min(posInt(args.kinds.merge), MAX_TARGETS) };
+  else if (base.id) h._kinds = kindCounts(await ctx.db.key(base.id));
   if (!h.title) h.title = 'Untitled Hunt';
   if (!h.start_at || !h.end_at) fail(400, 'Set when the Hunt starts and ends first.');
   return notificationRows(h).map(({ kind, title, body, send_at, image_url, thumbnail_url }) => ({ kind, title, body, send_at, image_url, thumbnail_url }));
@@ -461,9 +571,11 @@ const TEST_ANSWERS = 99;
 async function testOpen(args, ctx) {
   const { db, now = new Date() } = ctx;
   const h = await getHunt(db, args.id);
-  if (!h.view || !(await db.key(h.id)).length) fail(409, 'Read the answer key and save the Hunt before trying it.');
+  const key = await db.key(h.id);
+  if (!h.view || !key.length) fail(409, 'Read the answer key and save the Hunt before trying it.');
+  h._kinds = kindCounts(key);
   const cells = cleanCells(h.cells);
-  return { ...publicHunt(h, now), phase: 'live', test: true, cells, cell_count: cells.length, view: h.view,
+  return { ...publicHunt(h, now), prizes: await prizesFor(h, db, ctx.site), phase: 'live', test: true, cells, cell_count: cells.length, view: startView(h),
     you: { best: 0, submissions: 0, left: TEST_ANSWERS, tier: null, rank: 0 }, board: [], players: 0, winners: { gold: 0, silver: 0, bronze: 0 } };
 }
 
@@ -496,7 +608,13 @@ async function finalize(h, ctx, { force = false } = {}) {
   const counts = { gold: 0, silver: 0, bronze: 0 };
   if (!winners.length) return { awarded: 0, ...counts };
   const badges = {};
-  for (const tier of TIERS) if (winners.some((w) => w.tier === tier)) badges[tier] = await db.upsertBadge(badgeRow(row, tier, th, site));
+  for (const tier of TIERS) {
+    if (!winners.some((w) => w.tier === tier)) continue;
+    // A special Achievement the admin chose, else (or if it was deleted) the hunt's own.
+    const id = chosenBadge(row, tier);
+    const chosen = id ? await db.badgeById(id) : null;
+    badges[tier] = chosen || await db.upsertBadge(badgeRow(row, tier, th, site));
+  }
   const held = await db.held(Object.values(badges).map((b) => b.id));
   const fresh = winners.filter((w) => !held.has(`${badges[w.tier].id}:${w.user_id}`));
   await db.award(winners.map((w) => ({ badge_id: badges[w.tier].id, user_id: w.user_id, awarded_by: row.created_by || null,
@@ -506,7 +624,8 @@ async function finalize(h, ctx, { force = false } = {}) {
     await notify(fresh.map((w) => ({ user_id: w.user_id, title: `🏅 New Achievement: ${badges[w.tier].name}`,
       body: `${badges[w.tier].description} You found ${w.found} of ${row.target_count}.`, image: badges[w.tier].image_url })));
   }
-  if (chatAward) for (const w of fresh) { try { await chatAward(w.user_id, badges[w.tier]); } catch (e) { /* a chat line is a courtesy */ } }
+  // An admins only hunt is a test: no chat line, which every player would see.
+  if (chatAward && !row.admins_only) for (const w of fresh) { try { await chatAward(w.user_id, badges[w.tier]); } catch (e) { /* a chat line is a courtesy */ } }
   return { awarded: winners.length, fresh: fresh.length, ...counts };
 }
 
@@ -528,6 +647,7 @@ async function syncNotifications(h, ctx) {
   const { db, me, now = new Date() } = ctx;
   const t = now.getTime();
   const ids = { ...(h.notif_ids || {}) };
+  if (h.status === 'scheduled' && h.id && !h._kinds) h = { ...h, _kinds: kindCounts(await db.key(h.id)) };
   const wanted = h.status === 'scheduled' ? notificationRows(h) : [];
   const wantedKinds = new Set(wanted.map((r) => r.kind));
   for (const kind of Object.keys(ids)) {
@@ -546,7 +666,9 @@ async function syncNotifications(h, ctx) {
       continue;
     }
     const sendAt = ms(row.send_at) <= t ? now.toISOString() : new Date(ms(row.send_at)).toISOString();
-    const fields = { title: row.title, body: row.body, send_at: sendAt, post_to_chat: true, target_type: 'all', ...picture };
+    // Admins only (a test): the notes go to the admin who made the hunt, and never to chat.
+    const audience = h.admins_only ? { target_type: 'user', target_id: h.created_by || me.id, post_to_chat: false } : { target_type: 'all', target_id: null, post_to_chat: true };
+    const fields = { title: row.title, body: row.body, send_at: sendAt, ...audience, ...picture };
     if (existing) await db.patchNotification(existing.id, fields);
     else ids[row.kind] = (await db.insertNotification({ ...fields, created_by: me.id })).id;
   }
@@ -556,11 +678,13 @@ async function syncNotifications(h, ctx) {
 async function save(args, ctx) {
   const { db, me, now = new Date() } = ctx;
   const fields = cleanFields(args.fields);
+  // Saved from a test site: admins only, whatever the box says (the notes stay off the players' bells and chat).
+  if (ctx.testSite) fields.admins_only = true;
   const status = args.status === 'scheduled' ? 'scheduled' : args.status === 'draft' ? 'draft' : null;
   let targets = null;
   if (args.key) {
-    targets = layerPointsNm(args.key.layer, args.key.dims);
-    if (!targets.length) fail(400, 'That layer has no points. Mark each merger with a point.');
+    targets = keyTargets(args.key);
+    if (!targets.length) fail(400, 'Those layers have no points. Mark each place with a point.');
     if (targets.length > MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} mergers per Hunt.`);
     fields.target_count = targets.length;
   }
@@ -597,6 +721,7 @@ async function nowAction(args, ctx) {
   const { db, now = new Date() } = ctx;
   let h = await getHunt(db, args.id);
   if (h.status !== 'scheduled') fail(409, 'Schedule the Hunt first.');
+  if (ctx.testSite && !h.admins_only) fail(409, 'This Hunt goes to every player. Save it here first, which makes it admins only, or run it from the live game.');
   const p = phase(h, now);
   const iso = now.toISOString();
   const kind = String(args.kind || '');
@@ -661,8 +786,11 @@ async function adminView(h, ctx) {
       title: n.title || '', body: n.body || '', image_url: n.image_url || null, thumbnail_url: n.thumbnail_url || null };
   }
   const { view, ...rest } = h;
+  // A start this close to a place gives it away: the Admin Hub warns (twice the tolerance).
+  const gap = startGapUm(h, await db.key(h.id));
+  const tolUm = (Number(h.tolerance_nm) || DEFAULT_TOLERANCE_NM) / 1000;
   return { ...rest, has_view: !!view, phase: phase(h, now), thresholds: thresholds(h), max_points_used: maxPoints(h),
-    players: board.length, notes };
+    players: board.length, notes, start_gap_um: gap, start_on_answer: gap != null && gap <= 2 * tolUm };
 }
 
 async function adminList(ctx) {
@@ -729,6 +857,7 @@ function restDb(sb) {
     patchNotification: (id, row) => one(sb(`notifications?id=eq.${posInt(id)}`, { method: 'PATCH', body: JSON.stringify(row) })),
     deleteNotification: (id) => sb(`notifications?id=eq.${posInt(id)}`, { method: 'DELETE' }),
     upsertBadge: (row) => one(sb('special_badges?on_conflict=slug', { method: 'POST', headers: merge, body: JSON.stringify(row) })),
+    badgeById: (id) => one(sb(`special_badges?id=eq.${posInt(id)}&select=id,name,description,slug,image_url,thumbnail_url&limit=1`)),
     held: async (badgeIds) => {
       if (!badgeIds.length) return new Set();
       const rows = await sb(`special_badge_awards?badge_id=in.(${badgeIds.join(',')})&select=badge_id,user_id&limit=10000`);
@@ -739,7 +868,7 @@ function restDb(sb) {
 }
 
 module.exports = {
-  huntAction, restDb, layerPointsNm, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
+  huntAction, restDb, layerPointsNm, keyTargets, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM,
 };

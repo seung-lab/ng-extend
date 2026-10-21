@@ -2324,9 +2324,12 @@ exports.ewHunt = onRequest(
       const origin = String(req.headers.origin || "");
       // The award art is served by the game itself (dist/min/hunt/); a test site serves its own copy.
       const site = EW_ORIGINS.some((o) => o.test(origin)) && !/localhost/.test(origin) ? origin : EW_LIVE_SITE;
+      // A branch test site (or a local build) is for testing: its Hunts are admins only, so a test
+      // never reaches the players' bells or chat (Ames 2026-10-21: "we want to be testing on the test site").
+      const liveSite = origin === EW_LIVE_SITE || /^https:\/\/princeton-tracers-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/.test(origin);
       const hunts = require("./hunts");
       const data = await hunts.huntAction(action, args, {
-        db: hunts.restDb(sb), me, isAdmin, now: new Date(), site,
+        db: hunts.restDb(sb), me, isAdmin, now: new Date(), site, testSite: !liveSite,
         notify: async (rows) => {
           const out = rows.map((r) => ({ title: String(r.title).slice(0, 120), body: String(r.body).slice(0, 1500), target_type: "user",
             target_id: r.user_id, send_at: new Date().toISOString(), ...(r.image ? { image_url: r.image, thumbnail_url: r.image } : {}),
