@@ -6,9 +6,16 @@
  * nothing is saved to the account. Real tutorial steps reveal icons for the
  * pretend player too, so a tutorial can be played as a newcomer would.
  */
-import { computed, ref } from 'vue';
-import { STAGE_MOMENTS, NEVER_AUTO, simulating, simState, simHistory, setSimulating, resetSim, runMoment, simBack } from '../util/toolbar_staging';
-import { getToolbarIconDef, DEFAULT_TOOLBAR_ORDER } from '../data/toolbar-icons';
+import { computed, nextTick, ref } from 'vue';
+import { STAGE_MOMENTS, NEVER_AUTO, ALL_AUTO, simulating, simState, simHistory, setSimulating, resetSim, runMoment, simBack,
+  simSnapshot, simRestore, announcement, checkTutorialWiring } from '../util/toolbar_staging';
+import { getToolbarIconDef, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder } from '../data/toolbar-icons';
+import { useUserPreferencesStore } from '../store';
+import { steps as advancedSteps } from '../tutorial-2';
+import { steps as mergeSteps } from '../tutorial-3';
+import { steps as cutSteps } from '../tutorial-cut';
+import { steps as sandboxSteps } from '../merger-sandbox';
+import { steps as testSteps } from '../proofreading-test';
 
 const OPEN_KEY = 'nge-staging-panel-open';
 let wasOpen = true;
@@ -29,6 +36,81 @@ const nextMoment = computed(() => moments.find(m => !isDone(m.key)) || null);
 const ALL = [...DEFAULT_TOOLBAR_ORDER.slice(0, DEFAULT_TOOLBAR_ORDER.indexOf('batch') + 1), 'screenshot', ...DEFAULT_TOOLBAR_ORDER.slice(DEFAULT_TOOLBAR_ORDER.indexOf('batch') + 1)];
 const waiting = computed(() => ALL.filter(id => !simState.revealed.includes(id) && !NEVER_AUTO.includes(id)));
 const def = (id: string) => getToolbarIconDef(id);
+const nameOf = (id: string) => (def(id)?.label || id).split(' (')[0].split(':')[0];
+
+// Each row shows only the icons it is the first to bring; the return days
+// fill in whatever was skipped, so they mostly repeat rows above.
+const newIcons: Record<string, string[]> = {};
+{
+  const seen = new Set(['notif']);
+  for (const m of moments) {
+    const icons = m.icons;
+    newIcons[m.key] = icons.filter(id => !seen.has(id));
+    icons.forEach(id => seen.add(id));
+  }
+}
+const FILLS_IN = ['day2', 'day3', 'production'];
+
+// ── The check: is staging still wired, and does the top bar follow it? ──
+const STEPS: Record<number, any[]> = { 2: advancedSteps, 3: mergeSteps, 5: cutSteps, 9: sandboxSteps, 11: testSteps };
+const checking = ref(false);
+const results = ref<{ ok: boolean; text: string }[]>([]);
+const problems = computed(() => results.value.filter(r => !r.ok).length);
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+async function runCheck() {
+  if (checking.value) return;
+  checking.value = true;
+  const out: { ok: boolean; text: string }[] = [];
+  const snap = simSnapshot();
+  try {
+    // 1. Every tutorial step that should bring an icon still does.
+    for (const r of checkTutorialWiring(n => STEPS[n])) {
+      out.push(r.step
+        ? { ok: true, text: `${r.name}, step ${r.step} brings ${nameOf(r.icon)}` }
+        : { ok: false, text: `${r.name}: no step brings ${nameOf(r.icon)} any more` });
+    }
+    // 2. Walk every moment and read the real top bar after each.
+    const bar = () => new Set([...document.querySelectorAll<HTMLElement>('#extensionBar .nge-toolbar-icons [data-icon-id]')].map(b => b.dataset.iconId!));
+    if (!document.querySelector('#extensionBar .nge-toolbar-icons')) {
+      out.push({ ok: false, text: 'The top bar is not showing (sign in first), so it could not be read' });
+    } else {
+      const p = useUserPreferencesStore().prefs;
+      const kept = resolveToolbarOrder(p.toolbarIcons, p.toolbarIconsInjected); // icons you have not turned off
+      const expected = new Set(['notif']);
+      const look = async (label: string, card?: string) => {
+        await nextTick(); await wait(120);
+        const shown = bar();
+        const missing = [...expected].filter(id => kept.includes(id) && !shown.has(id));
+        const early = [...shown].filter(id => !expected.has(id));
+        const bad: string[] = [];
+        if (missing.length) bad.push('missing ' + missing.map(nameOf).join(', '));
+        if (early.length) bad.push('too early ' + early.map(nameOf).join(', '));
+        if (card !== undefined && announcement.value?.text !== card) bad.push("Nurro's card did not show");
+        out.push(bad.length ? { ok: false, text: `${label}: ${bad.join('; ')}` } : { ok: true, text: `${label}: top bar right` + (card ? ', Nurro spoke' : '') });
+        announcement.value = null;
+      };
+      resetSim();
+      await look('First visit');
+      for (const m of moments) {
+        const icons = m.key === 'production' ? ALL_AUTO : m.icons;
+        const fresh = icons.filter(id => !expected.has(id));
+        runMoment(m.key);
+        icons.forEach(id => expected.add(id));
+        await look(m.label, m.nurro && fresh.length ? m.nurro : undefined);
+      }
+      // 3. Back undoes the last moment.
+      simBack();
+      await look('Back after production access');
+    }
+  } catch (e: any) {
+    out.push({ ok: false, text: 'The check stopped: ' + (e?.message || e) });
+  } finally {
+    simRestore(snap);
+    results.value = out;
+    checking.value = false;
+  }
+}
 
 function step(key: string) { runMoment(key); }
 function stepNext() { if (nextMoment.value) runMoment(nextMoment.value.key); }
@@ -60,6 +142,14 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
         </button>
         <button class="nge-hud-btn nge-hud-btn--quiet" :disabled="!lastStep" :title="lastStep ? 'Undo: ' + lastStep : 'Nothing to undo'" @click="back">‹ Back</button>
         <button class="nge-hud-btn nge-hud-btn--quiet" @click="startOver">Start over</button>
+        <button id="nge-stt-check" class="nge-hud-btn nge-hud-btn--quiet" :disabled="checking" @click="runCheck">{{ checking ? 'Checking...' : 'Run the check' }}</button>
+      </div>
+      <div v-if="results.length" class="nge-stt-results" :class="problems ? 'nge-stt-results--bad' : 'nge-stt-results--ok'">
+        <div class="nge-stt-verdict">{{ problems ? `${problems} problem${problems === 1 ? '' : 's'} found` : `All ${results.length} checks passed` }}</div>
+        <ul>
+          <li v-for="(r, i) in results" :key="i" :class="{ 'nge-stt-fail': !r.ok }"><span class="nge-stt-mark">{{ r.ok ? '✓' : '✗' }}</span>{{ r.text }}</li>
+        </ul>
+        <button class="nge-stt-step" @click="results = []">Hide</button>
       </div>
 
       <p v-if="lastStep" class="nge-stt-note">Back undoes: {{ lastStep }}</p>
@@ -71,9 +161,9 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
         </li>
         <li v-for="m in moments" :key="m.key" class="nge-stt-row" :class="{ 'nge-stt-row--done': isDone(m.key) }">
           <span class="nge-stt-mark">{{ isDone(m.key) ? '✓' : '' }}</span>
-          <span class="nge-stt-label">{{ m.label }}</span>
+          <span class="nge-stt-label">{{ m.label }}<span v-if="FILLS_IN.includes(m.key)" class="nge-stt-fill">and anything skipped so far</span></span>
           <span class="nge-stt-icons">
-            <span v-for="id in (m.key === 'production' ? ['batch'] : m.icons)" :key="id" class="nge-stt-ic" :title="def(id)?.label" v-html="def(id)?.svg"></span>
+            <span v-for="id in newIcons[m.key]" :key="id" class="nge-stt-ic" :title="def(id)?.label" v-html="def(id)?.svg"></span>
           </span>
           <button v-if="!isDone(m.key)" class="nge-stt-step" @click="step(m.key)">Step</button>
         </li>
@@ -84,7 +174,7 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
         <span v-for="id in waiting" :key="id" class="nge-stt-ic" :title="def(id)?.label" v-html="def(id)?.svg"></span>
         <span v-if="!waiting.length" class="nge-stt-none">Nothing. The top bar is complete.</span>
       </div>
-      <p class="nge-stt-note">Your Week and Dataset Stats never arrive by themselves; Settings turns them on. Playing a real tutorial step also brings its icon in. Finishing Get Started for real starts the Merge tutorial; the Step button only brings the icons.</p>
+      <p class="nge-stt-note">Dataset Stats and Batch never arrive by themselves; Settings turns them on. Playing a real tutorial step also brings its icon in. Run the check walks every moment on its own and puts your place back after. Finishing Get Started for real starts the Merge tutorial; the Step button only brings the icons.</p>
     </template>
   </aside>
 </template>
@@ -139,4 +229,14 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
 .nge-stt-waiting { gap: 6px; font-size: 17px; }
 .nge-stt-waiting .nge-stt-ic { width: 22px; height: 22px; }
 .nge-stt-none { font-size: 12px; color: #9fb4d0; }
+.nge-stt-fill { display: block; font-size: 11px; color: #9fb4d0; }
+.nge-stt-results { border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.nge-stt-results--ok { border: 1px solid rgba(124, 255, 178, 0.5); background: rgba(124, 255, 178, 0.06); }
+.nge-stt-results--bad { border: 1px solid rgba(255, 120, 120, 0.6); background: rgba(255, 120, 120, 0.08); }
+.nge-stt-verdict { font-weight: 700; }
+.nge-stt-results ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; max-height: 260px; overflow-y: auto; }
+.nge-stt-results li { display: grid; grid-template-columns: 16px 1fr; gap: 6px; }
+.nge-stt-fail { color: #ffb4b4; }
+.nge-stt-fail .nge-stt-mark { color: #ff7878; }
+.nge-stt-results .nge-stt-step { align-self: flex-start; }
 </style>

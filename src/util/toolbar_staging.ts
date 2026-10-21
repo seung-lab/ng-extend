@@ -6,14 +6,16 @@
  * bar. Each other icon arrives at the moment that teaches it:
  *
  *   first visit                        notif
- *   Get Started finished               cells, leaderboard, layers, chat (Nurro says so)
+ *   Get Started finished (or left)     leaderboard, layers, undelete, chat (Nurro says so), then Merge starts
  *   Merge tutorial, "How to Merge"     merge
  *   Cut tutorial, "How to Cut"         split
- *   Advanced Interface, its own steps  undelete, findPath, tags, highlight, lantern
- *   first edit on your own, or day 2   help (and tags, if not yet)
- *   day 3                              screenshot
- *   production access                  batch, and everything still waiting
- *   never on its own                   recap, datasetStats (Settings turns them on)
+ *   Merge and Cut both finished        cells (Nurro)
+ *   Advanced Interface, its own steps  findPath, tags, highlight, lantern
+ *   first edit on your own             help, tags (Nurro)
+ *   day 2 / day 3                      anything still missing, then screenshot (Nurro)
+ *   a week after first staged          recap, with a Profile Settings button (Nurro)
+ *   production access                  everything still waiting
+ *   never on its own                   datasetStats, batch (Settings turns them on)
  *
  * Any tutorial step that points at an icon brings it in (tutorialStepReveals),
  * whichever tutorial gets there first. Once an icon has arrived it stays.
@@ -33,58 +35,11 @@ import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import { DATASETS } from '../datasets';
 import { editsAny } from './dataset_access';
 import { resolveToolbarOrder } from '../data/toolbar-icons';
+import { reportStagingProblem } from './error_reporting';
+import { STAGE_MOMENTS, NEVER_AUTO, ALL_AUTO, tutorialStepReveals } from '../data/toolbar-stages';
+export { STAGE_MOMENTS, NEVER_AUTO, ALL_AUTO, TUTORIAL_REVEALS, checkTutorialWiring, tutorialStepReveals, dragInFull, togglesInFull } from '../data/toolbar-stages';
+export type { StageMoment } from '../data/toolbar-stages';
 
-// ── What arrives when ───────────────────────────────────────────────────────
-
-export interface StageMoment {
-  key: string;
-  /** Shown in the test panel. */
-  label: string;
-  icons: string[];
-  /** Nurro's line when this moment brings icons no tutorial box introduces. */
-  nurro?: string;
-  /** A button on Nurro's card that opens Profile > Settings. */
-  settingsButton?: boolean;
-}
-
-/** Never brought in on their own: the weekly notification leads there. */
-export const NEVER_AUTO = ['datasetStats'];
-
-export const STAGE_MOMENTS: StageMoment[] = [
-  { key: 'start', label: 'First visit', icons: ['notif'] },
-  // Undelete comes early too (Ames 2026-10-20): it rescues a cell taken out of view by mistake.
-  { key: 'getStarted', label: 'Finish Get Started', icons: ['leaderboard', 'layers', 'undelete', 'chat'],
-    nurro: 'You know your way around now. Four things just landed in your top bar: the Leaderboard, the Layer panel, Undelete (it brings back a cell you took out of view) and Chat. Come say hi!' },
-  { key: 'merge', label: 'Merge tutorial: How to Merge', icons: ['merge'] },
-  { key: 'cut', label: 'Cut tutorial: How to Cut', icons: ['split'] },
-  // Ames 2026-10-20: the Cell Library waits until a player can merge and cut.
-  { key: 'basics', label: 'Finish the Merge and Cut tutorials', icons: ['cells'],
-    // Ames 2026-10-20: they cannot edit real cells until they pass the
-    // Proofreading Test; say where help is.
-    nurro: 'You can merge and you can cut! The Cell Library is in your top bar now, where you can explore real cells. Editing them opens up once you pass the Proofreading Test. Need help? Ask in Chat, or send a help request from the Cell Library.' },
-  { key: 'ai-findPath', label: 'Advanced Interface: Find Path', icons: ['findPath'] },
-  { key: 'ai-tags', label: 'Advanced Interface: Tag a merger', icons: ['tags'] },
-  { key: 'ai-highlight', label: 'Advanced Interface: Highlight', icons: ['highlight'] },
-  { key: 'ai-lantern', label: 'Advanced Interface: Lantern', icons: ['lantern'] },
-  { key: 'ownEdit', label: 'First edit on your own', icons: ['help', 'tags'],
-    nurro: 'Your first edit on your own! Not sure about a spot? Ask for a Second Opinion with the magnifier in your top bar.' },
-  // A player who skips the tutorials is not left with a bare bar: coming back
-  // brings whatever the earlier moments would have, tutorial or not.
-  { key: 'day2', label: 'Come back on day 2', icons: ['help', 'tags', 'leaderboard', 'layers', 'undelete', 'chat', 'merge', 'split', 'cells'],
-    nurro: 'Welcome back! Your top bar has a few more tools now. Not sure about a spot? Ask for a Second Opinion with the magnifier.' },
-  { key: 'day3', label: 'Come back on day 3', icons: ['screenshot', 'findPath', 'highlight', 'lantern'],
-    nurro: 'Day three! Your top bar has the rest of the everyday tools now. Found something beautiful? The camera saves a picture of it.' },
-  // Ames 2026-10-20: Your Week in Science after a week, and a way to the
-  // Settings where the top bar is chosen.
-  { key: 'week1', label: 'One week after signing up', icons: ['recap'], settingsButton: true,
-    nurro: 'One week of science! Your Week in Science is in your top bar now. You can choose which icons your top bar shows in Profile Settings.' },
-  // Batch arrives too, quietly: no glow, not named (Ames 2026-10-20).
-  { key: 'production', label: 'Get production access', icons: ['batch'],
-    nurro: 'You have production access! Every tool you had not met yet is in your top bar now.' },
-];
-
-/** Every icon a staged player can be given automatically. */
-const ALL_AUTO = [...new Set(STAGE_MOMENTS.flatMap(m => m.icons))];
 
 /** Live site accounts created at or after this are staged. Far in the future
  *  until Ames says deploy: set it to the deploy time then. */
@@ -158,6 +113,22 @@ function saveSim() {
   } catch { /* no storage */ }
 }
 
+/** The pretend player as it stands, to put back after the panel's check. */
+export function simSnapshot(): { state: string; history: string } {
+  return { state: JSON.stringify(simState), history: JSON.stringify(simHistory) };
+}
+export function simRestore(snap: { state: string; history: string }) {
+  Object.assign(simState, freshState(), JSON.parse(snap.state));
+  simHistory.splice(0, simHistory.length, ...JSON.parse(snap.history));
+  lastSimJson = snap.state;
+  freshIcons.clear();
+  announcement.value = null;
+  try {
+    localStorage.setItem(SIM_KEY, snap.state);
+    localStorage.setItem(HIST_KEY, snap.history);
+  } catch { /* no storage */ }
+}
+
 /** Undo the pretend player's last moment. */
 export function simBack() {
   const h = simHistory.pop();
@@ -214,29 +185,6 @@ export function isStaged(): boolean {
   return !!current();
 }
 
-/*
- * Saving the top bar while icons are held back. The saved order keeps every
- * icon, shown or not, and only the change the player made is applied to it,
- * so nothing still on its way is dropped or moved (and a test on a real
- * account leaves that account's own top bar order exactly as it was).
- */
-
-/** A drag of `src` onto `target`, applied to the full saved order. */
-export function dragInFull(full: string[], src: string, target: string, movedRight: boolean): string[] {
-  const out = full.filter(id => id !== src);
-  const at = out.indexOf(target);
-  if (at < 0) return [...out, src];
-  out.splice(movedRight ? at + 1 : at, 0, src);
-  return out;
-}
-
-/** The Settings grid's on and off switches, applied to the full saved order:
- *  icons switched off leave it, icons switched on join the end. */
-export function togglesInFull(full: string[], shownBefore: string[], shownNow: string[]): string[] {
-  const out = full.filter(id => !(shownBefore.includes(id) && !shownNow.includes(id)));
-  for (const id of shownNow) if (!out.includes(id)) out.push(id);
-  return out;
-}
 
 function save(s: StageState) {
   if (s === simState) { saveSim(); return; }
@@ -268,8 +216,7 @@ export function runMoment(key: string): string[] {
   const m = STAGE_MOMENTS.find(x => x.key === key);
   if (!s || !m) return [];
   if (!s.done.includes(key)) s.done.push(key);
-  if (key === 'production' && !s.revealed.includes('batch')) s.revealed.push('batch');
-  const icons = key === 'production' ? ALL_AUTO.filter(id => id !== 'batch') : m.icons;
+  const icons = key === 'production' ? ALL_AUTO : m.icons;
   const added = reveal(icons, m.nurro, m.label, m.settingsButton);
   if (!added.length) { pendingLabel = m.label; save(s); }
   return added;
@@ -309,15 +256,23 @@ async function momentWhenQuiet(key: string) {
 /** The Site Tour points at every icon: it skips, never reveals. */
 export const SITE_TOUR = 4;
 
-/** The icons a tutorial step brings in: its own `reveals`, plus the icon its
- *  box points at (`[data-icon-id="..."]`). */
-export function tutorialStepReveals(step: { reveals?: string[]; position?: any } | undefined): string[] {
-  if (!step) return [];
-  const out = [...(step.reveals || [])];
-  const el = typeof step.position?.element === 'string' ? step.position.element : '';
-  const m = el.match(/data-icon-id="([a-zA-Z]+)"/);
-  if (m) out.push(m[1]);
-  return out;
+
+/**
+ * On the live site, a moment after a tutorial box that brings icons opens:
+ * each icon must be in the top bar (unless the player took it off in
+ * Settings). If one is not, staging is broken for this player, and the
+ * errors table hears about it (reportStagingProblem), so a breakage shows up
+ * without anyone having to notice a missing button.
+ */
+export function verifyStepIcons(ids: string[], where: string) {
+  if (!IS_LIVE_SITE || !ids.length) return;
+  setTimeout(() => {
+    if (!document.querySelector('#extensionBar .nge-toolbar-icons')) return; // signed out: no bar to check
+    const p = prefs().prefs;
+    const kept = resolveToolbarOrder(p.toolbarIcons, p.toolbarIconsInjected);
+    const missing = ids.filter(id => kept.includes(id) && !document.querySelector(`#extensionBar .nge-toolbar-icons [data-icon-id="${id}"]`));
+    if (missing.length) reportStagingProblem(`${where}: ${missing.join(', ')} not in the top bar`, JSON.stringify({ staged: isStaged(), revealed: current()?.revealed }));
+  }, 2500);
 }
 
 /** For the Site Tour: show a toolbar step only when its icon is in the bar. */

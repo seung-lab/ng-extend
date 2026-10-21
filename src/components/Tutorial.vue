@@ -21,7 +21,7 @@ import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
-import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialFinished, tutorialStepReveals } from '../util/toolbar_staging';
+import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialFinished, tutorialStepReveals, verifyStepIcons } from '../util/toolbar_staging';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Mini Michelangelo art from Ames (2026-10-07).
@@ -263,7 +263,12 @@ const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced 
 // brings it in, whichever tutorial gets there first. The Site Tour points at
 // every icon, so it skips the ones not yet received instead (site-tour.ts).
 watch(activeStep, (now) => {
-    if (now && store.activeTutorial !== SITE_TOUR) reveal(tutorialStepReveals(now.step as any), undefined, `${TUTORIAL_NAMES[store.activeTutorial] ?? 'Tutorial'}, step ${now.index + 1}`);
+    if (!now || store.activeTutorial === SITE_TOUR) return;
+    const ids = tutorialStepReveals(now.step as any);
+    const where = `${TUTORIAL_NAMES[store.activeTutorial] ?? 'Tutorial ' + store.activeTutorial}, step ${now.index + 1}`;
+    reveal(ids, undefined, where);
+    // Live site: say so if one of them did not reach the top bar.
+    verifyStepIcons(ids, where);
 }, { immediate: true });
 // Edits made in a tutorial, on a practice cell or in the test are not a
 // player's own first edit.

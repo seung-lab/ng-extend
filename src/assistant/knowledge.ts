@@ -91,7 +91,7 @@ function buildStaticReference(): string {
     "",
     "## Toolbar buttons (the icon row)",
     toolbar,
-    "- A new player starts with few of these and receives the rest over time: finishing Get Started brings Leaderboard, Layers, Undelete and Chat; the Merge and Cut tutorials bring Merge and Cut, and finishing both brings the Cell Library; Advanced Interface brings Find Path, Tags, Highlight and Lantern; a first edit outside a tutorial brings Second Opinion; coming back on a second and third day brings anything still missing and Screenshot; a week brings Your Week in Science; production access brings Batch and the rest. Real cells can be edited only after passing the Proofreading Test. If a player cannot see an icon, it is in Profile > Settings > Toolbar Icons and in the Ctrl+K command bar. Never say it does not exist.",
+    "- A new player starts with few of these and receives the rest over time: finishing Get Started brings Leaderboard, Layers, Undelete and Chat; the Merge and Cut tutorials bring Merge and Cut, and finishing both brings the Cell Library; Advanced Interface brings Find Path, Tags, Highlight and Lantern; a first edit outside a tutorial brings Second Opinion; coming back on a second and third day brings anything still missing and Screenshot; a week brings Your Week in Science; production access brings the rest. Dataset Stats and Batch Processor start off for new players; Settings turns them on. Real cells can be edited only after passing the Proofreading Test. If a player cannot see an icon, it is in Profile > Settings > Toolbar Icons and in the Ctrl+K command bar. Never say it does not exist.",
     "",
     "## Keyboard shortcuts",
     binds.length ? binds.join("\n") : "(none configured)",
