@@ -1025,8 +1025,9 @@ async function submitComplete(cell: CellRow) {
     });
     if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
-    // Straight on to your next claim; with none left, the slim view opens up.
-    if (!(await nextClaimAfter(cell, claimsBefore)) && slim.value) expandFull();
+    // Straight on to your next claim; with none left, the slim bar offers a
+    // new one (Ames 2026-10-21; it used to open the full library).
+    if (!(await nextClaimAfter(cell, claimsBefore)) && slim.value) { slimSeg.value = null; slimEmpty.value = true; }
   } catch (e: any) {
     c.message = e?.message || 'Could not complete this cell.';
     c.ok = false;
@@ -2450,9 +2451,13 @@ const slimCell = computed<CellRow | null>(() => {
   const all = datasetScopedCells.value.filter(c => c.segId === seg);
   return all.find(c => c.status !== 'completed') ?? all[0] ?? null;
 });
-const slim = computed(() => slimCell.value !== null);
-/** The rows the cell list draws: one in the slim view. */
-const listCells = computed(() => (slimCell.value ? [slimCell.value] : shownCells.value));
+/** The slim bar with no cell on it: nothing claimed or jumped to yet, or the
+ *  last claim just completed. It offers "Claim a new cell" (Ames 2026-10-21,
+ *  report 191: "slim view on" with nothing to shrink to left the panel full). */
+const slimEmpty = ref(false);
+const slim = computed(() => slimCell.value !== null || slimEmpty.value);
+/** The rows the cell list draws: one in the slim view, none on the empty bar. */
+const listCells = computed(() => (slimCell.value ? [slimCell.value] : slimEmpty.value ? [] : shownCells.value));
 const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed'];
 /** The cell the caret shrinks to: the one on screen, else the claim being
  *  worked on, else your first claim. */
@@ -2473,19 +2478,29 @@ function setSlimMode(on: boolean) {
   slimMode.value = on;
   try { localStorage.setItem(SLIM_MODE_KEY, on ? '1' : '0'); } catch { /* private mode */ }
 }
-const slimHint = ref('');
-let slimHintTimer: ReturnType<typeof setTimeout> | undefined;
-function flashSlimHint(msg: string) {
-  slimHint.value = msg;
-  if (slimHintTimer) clearTimeout(slimHintTimer);
-  slimHintTimer = setTimeout(() => { slimHint.value = ''; }, 2600);
-}
 function collapseToCurrent() {
-  const cell = currentCell();
-  if (cell) { setSlimMode(true); void collapseTo(cell); return; }
-  // Nothing to shrink to yet: the caret just switches the mode.
-  setSlimMode(!slimMode.value);
-  flashSlimHint(slimMode.value ? 'Slim view on: jump to a cell' : 'Slim view off');
+  setSlimMode(true);
+  // Nothing to shrink to yet: the bar alone, with "Claim a new cell".
+  void collapseTo(currentCell());
+}
+/** The next cell "Claim a new cell" takes: the top of the Available tab. */
+const nextAvailableCell = computed(() => datasetScopedCells.value.find(c => c.status === 'pending') ?? null);
+const claimingNew = ref(false);
+async function claimNewCell() {
+  const cell = nextAvailableCell.value;
+  if (!cell || claimingNew.value) return;
+  claimingNew.value = true;
+  try {
+    await claimCell(cell);
+    await nextTick();
+    // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
+    if (myOpenClaims.value.some(c => c.segId === cell.segId)) {
+      slimEmpty.value = false;
+      slimSeg.value = cell.segId;
+      await nextTick();
+      clampPanelPos();
+    }
+  } finally { claimingNew.value = false; }
 }
 /** Your open claims in this dataset, in list order: what "next" steps through. */
 const myOpenClaims = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c) && c.status !== 'completed'));
@@ -2526,15 +2541,16 @@ function expandAndStay() {
   setSlimMode(false);
   expandFull();
 }
-async function collapseTo(cell: CellRow) {
-  if (slimSeg.value === cell.segId) return;
+async function collapseTo(cell: CellRow | null) {
+  if (cell ? slimSeg.value === cell.segId : slimEmpty.value) return;
   const el = panelEl.value;
   // Already slim (jumping from the slim row itself): nothing to shrink.
   const ghost = el && !slim.value ? snapshotPanel(el, '.nge-cl-list') : null;
   if (!CELL_TABS.includes(filter.value)) filter.value = 'mine';
   showTabSettings.value = false;
   showHowTo.value = false;
-  slimSeg.value = cell.segId;
+  slimSeg.value = cell ? cell.segId : null;
+  slimEmpty.value = !cell;
   await nextTick();
   clampPanelPos();
   if (!ghost || !el) return;
@@ -2543,17 +2559,18 @@ async function collapseTo(cell: CellRow) {
   const parts = row ? [
     ...Array.from(row.querySelectorAll('.nge-cl-row-left, .nge-cl-row-actions > *')),
     ...Array.from(el.querySelectorAll('.nge-cl-slim-expand')),
-  ] : [];
+  ] : Array.from(el.querySelectorAll('.nge-cl-slim-expand, .nge-cl-slim-claim'));
   morphIntoSlim(ghost, el, parts);
 }
 function expandFull() {
-  if (!slimSeg.value) return;
+  if (!slimSeg.value && !slimEmpty.value) return;
   // Hide the slim row before the full list renders (a long list takes a
   // moment), so the panel never flashes open ahead of the beam.
   if (panelEl.value && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
     panelEl.value.style.clipPath = 'inset(0 0 100% 0)';
   }
   slimSeg.value = null;
+  slimEmpty.value = false;
   void nextTick(() => {
     clampPanelPos();
     // revealWithBeam waits for the panel to settle (the clamp above moves it
@@ -2618,7 +2635,6 @@ const panelStyle = computed(() => ({
           <div class="nge-cl-title">
             <img :src="neuronIcon" class="nge-cl-icon" /> CELL LIBRARY
           </div>
-          <span v-if="slimHint" class="nge-cl-slim-hint">{{ slimHint }}</span>
           <button v-if="!viewOnlyDataset" class="nge-cl-gear" title="Choose which tabs show" @mousedown.stop @click="showTabSettings = !showTabSettings">⚙</button>
           <button class="nge-cl-close" title="Close (Shift+L)" aria-label="Close the Cell Library" @mousedown.stop @click="emit('hide')">×</button>
         </div>
@@ -3500,16 +3516,16 @@ const panelStyle = computed(() => ({
             <span class="nge-cl-error-dismiss">×</span>
           </div>
           <div v-if="backend.loading && filter !== 'mine'" class="nge-cl-more"><span><span class="nge-cl-spin" /> Loading the rest of the cells...</span></div>
-          <div v-if="filteredCells.length === 0 && filter === 'mine'" class="nge-cl-no-results">
+          <div v-if="filteredCells.length === 0 && filter === 'mine' && !slim" class="nge-cl-no-results">
             No claimed cells yet. Claim cells from the All or Available tabs!
           </div>
-          <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim() && !backend.loading" class="nge-cl-no-results">
+          <div v-else-if="filteredCells.length === 0 && filter === 'available' && !search.trim() && !backend.loading && !slim" class="nge-cl-no-results">
             No available cells in <strong>{{ currentDatasetLabel }}</strong>.
             <template v-if="suggestedClaimDataset">
               <br />Switch to <strong>{{ suggestedClaimDataset }}</strong> to claim a cell.
             </template>
           </div>
-          <div v-else-if="filteredCells.length === 0 && !backend.loading" class="nge-cl-no-results">No matching cells</div>
+          <div v-else-if="filteredCells.length === 0 && !backend.loading && !slim" class="nge-cl-no-results">No matching cells</div>
 
           <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
           <img v-if="slim" :src="neuronIcon" class="nge-cl-icon nge-cl-slim-icon" alt="" aria-hidden="true" />
@@ -3521,6 +3537,14 @@ const panelStyle = computed(() => ({
                   aria-label="Next claimed cell" @click="nextClaim">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
+          <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
+            <button class="nge-cl-slim-claim" :disabled="!nextAvailableCell || claimingNew || !isLoggedIn"
+                    :title="!isLoggedIn ? 'Sign in to claim cells'
+                      : nextAvailableCell ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
+                      : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
+                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : nextAvailableCell ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
+          </div>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
             class="nge-cl-row"
@@ -5585,7 +5609,6 @@ select.nge-cl-complete-type:hover {
 .nge-cl-topbar .nge-cl-title { margin-right: auto; }
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
 .nge-cl-caret { margin-right: 10px; }
-.nge-cl-slim-hint { margin-right: 8px; font-size: 11px; color: #ffd27a; }
 .nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
@@ -5617,7 +5640,18 @@ select.nge-cl-complete-type:hover {
 .nge-cl-list > .nge-cl-quest { margin-left: 10px; margin-right: 10px; }
 /* Banners (errors, the claim limit) and the Complete form still show: the
    slim panel grows to fit them. */
-.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-left: -76px; margin-right: -14px; cursor: default; }
+.nge-cl-panel--slim .nge-cl-list > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon):not(.nge-cl-slim-claim-row) { margin-left: -76px; margin-right: -14px; cursor: default; }
+/* "Claim a new cell" on the empty slim bar: a filled blue pill, unlike the
+   outlined arrows, so it reads as the next thing to do. */
+.nge-cl-slim-claim-row { display: flex; align-items: center; min-height: 52px; padding-left: 4px; }
+.nge-cl-slim-claim {
+  padding: 7px 16px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  color: #fff; background: linear-gradient(180deg, #3d8bff, #2a63d6);
+  border: 1px solid #8cb8ff; box-shadow: 0 0 12px rgba(61, 139, 255, 0.45);
+}
+.nge-cl-slim-claim:hover:not(:disabled) { background: linear-gradient(180deg, #5a9dff, #3572e6); box-shadow: 0 0 16px rgba(90, 157, 255, 0.65); }
+.nge-cl-slim-claim:disabled { cursor: default; opacity: 0.55; box-shadow: none; }
 .nge-cl-panel--slim .nge-cl-row { border-bottom: none; }
 .nge-cl-slim-expand { position: absolute; left: 12px; top: 18px; }
 /* Bigger, and no status dot beside it: the slim bar is always your cell (Ames 2026-10-20) */
