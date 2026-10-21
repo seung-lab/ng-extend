@@ -22,6 +22,8 @@
 // unread reply under "Needs your decision" from the log alone.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ASK_TITLE = '💬 An update on your report';
+/** The admin's bell when the player answers; the bell's Admin tab finds it by this start. */
+const REPLIED_TITLE = '💬 Reply to your question from';
 // The picture of a note that asks for a reply (Ames 2026-10-13): science
 // Nurro at the microscope, notebook in paw. It is set here, never taken from
 // the browser. Catalog: static/nurro/README.md.
@@ -57,6 +59,13 @@ async function submitterOf(sb, triageId) {
   return (issue && issue.user_id) || null;
 }
 
+/** An admin's reply image: our own reply-images folder only, or nothing. */
+function replyImage(url) {
+  if (url == null || url === '') return null;
+  if (typeof url === 'string' && url.startsWith(OWN_STORAGE + 'admin-uploads/reply-images/') && url.length <= 500 && /^[^\s"'<>]+$/.test(url)) return url;
+  fail(400, 'The image must be one added in the reply box.');
+}
+
 /** The optional parts of a reply, each checked; anything else is dropped. */
 function replyParts(args) {
   const out = {};
@@ -81,7 +90,10 @@ async function ask(args, {sb, me, isAdmin}) {
   const userId = await submitterOf(sb, triageId);
   // Only ever targeted: an anonymous report gets nothing, never a broadcast.
   if (!userId) fail(409, 'This report has no signed-in submitter, so there is nobody to notify. Nothing was sent.');
-  const row = { title: ASK_TITLE, body, thumbnail_url: ASK_IMAGE, image_url: ASK_IMAGE,
+  // An image the admin added (Ames 2026-10-20): only one of ours, from the
+  // reply-images folder that the cleanup empties after 7 days.
+  const image = replyImage(args.imageUrl);
+  const row = { title: ASK_TITLE, body, thumbnail_url: ASK_IMAGE, image_url: image || ASK_IMAGE,
     target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: (me && me.id) || null,
     reply_triage_id: triageId };
   try { return (await sb('notifications', {method: 'POST', body: JSON.stringify(row)}))[0]; }
@@ -95,7 +107,7 @@ async function send(args, {sb, me, wake}) {
   const text = cleanText(args.text, REPLY_MAX, 'Your reply');
   const {parts, consoleLog} = replyParts(args);
   let note;
-  try { note = (await sb(`notifications?id=eq.${id}&select=id,target_type,target_id,reply_triage_id,replied_at&limit=1`))[0]; }
+  try { note = (await sb(`notifications?id=eq.${id}&select=id,target_type,target_id,reply_triage_id,replied_at,created_by&limit=1`))[0]; }
   catch (e) { if (missingColumn(e)) fail(409, 'Replies are not switched on yet.'); throw e; }
   // The same answer whether it is missing or someone else's.
   if (!note || note.target_type !== 'user' || String(note.target_id) !== me.id) fail(403, 'This is not your notification.');
@@ -149,6 +161,16 @@ async function send(args, {sb, me, wake}) {
     await sb(`notifications?id=eq.${id}`, {method: 'PATCH', body: JSON.stringify(undo)}).catch(() => {});
     throw e;
   }
+  // The admin who asked gets a bell (Ames 2026-10-21: in the bell's Admin
+  // tab, "if there is a reply that I requested"). Best effort: the reply is
+  // already on the card and in Slack either way.
+  if (note.created_by && UUID.test(String(note.created_by))) {
+    const who = String(me.display_name || me.username || 'A player').slice(0, 60);
+    const bell = {title: `${REPLIED_TITLE} ${who}`.slice(0, 120), body: text.slice(0, 500),
+      thumbnail_url: ASK_IMAGE, image_url: ASK_IMAGE, target_type: 'user', target_id: String(note.created_by),
+      send_at: at, created_by: me.id};
+    await sb('notifications', {method: 'POST', body: JSON.stringify(bell)}).catch(() => {});
+  }
   // The bridge posts it into the report's Slack thread now, not on its timer.
   if (wake) await Promise.resolve(wake()).catch(() => {});
   return {id, replied_at: at, reply_text: text, ...kept, console_lines: consoleLines,
@@ -174,4 +196,4 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanText, replyParts, ASK_TITLE, ASK_IMAGE, REPLY_MAX, OWN_STORAGE};
+module.exports = { handle, cleanText, replyImage, replyParts, ASK_TITLE, REPLIED_TITLE, ASK_IMAGE, REPLY_MAX, OWN_STORAGE};

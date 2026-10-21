@@ -761,6 +761,8 @@ export const steps: Step[] = [
   // annotations and to keep track with Highlight, in a box of its own)
   {
     title: 'How to work the cell',
+    // It names the highlighter in the top bar (util/toolbar_staging.ts).
+    reveals: ['highlight'],
     text: `
 **Follow every branch to its end.** Use **Highlight** to paint each stretch you have checked, so you can see where you have been: press the highlighter in the top bar, or hold **H** and click two points on a branch.
 

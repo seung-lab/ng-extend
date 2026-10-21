@@ -722,6 +722,8 @@ interface ToolbarIcon {
   label: string;
   action: () => void;
   badge?: () => number;
+  /** A second, red count beside the badge (the bell's Admin tab). */
+  adminBadge?: () => number;
 }
 
 // ── Toolbar definitions ────────────────────────────────────────────
@@ -730,6 +732,9 @@ interface ToolbarIcon {
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
 import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG, LEADERBOARD_SVG } from '../data/toolbar-icons';
+import { iconArrived, isStaged, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
+import StagingAnnouncement from 'components/StagingAnnouncement.vue';
+import StagingTestPanel from 'components/StagingTestPanel.vue';
 
 // ── Layers: the neuroglancer layer-list panel, driven from our toolbar ──
 // The native top-row toggle is hidden in ng-override.css; this icon replaces it
@@ -788,7 +793,9 @@ const toolbarActions: Record<string, ToolbarAction> = {
   highlight:   { action: () => { if (highlightOff.value) return; showHighlight.value = !showHighlight.value; sprayHighlightIcon(); } },
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
+  // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount,
+                 adminBadge: () => backendStore.unreadAdminNotificationCount },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
@@ -806,6 +813,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => {
         label: def.label,
         action: a.action,
         badge: a.badge,
+        adminBadge: (a as any).adminBadge,
       } as ToolbarIcon;
     })
     .filter((x): x is ToolbarIcon => x !== null);
@@ -839,8 +847,14 @@ const visibleToolbar = computed(() => {
   // the prefs were saved, and dropping retired ids — shared with SettingsPanel
   // so the grid and the real toolbar can't disagree.
   const order = resolveToolbarOrder(prefs.toolbarIcons, prefs.toolbarIconsInjected);
-  return order.map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
+  // A new player's icons arrive one moment at a time (util/toolbar_staging.ts).
+  return order.filter(id => iconArrived(id)).map(id => toolbarDefs.value.find(d => d.id === id)).filter(Boolean) as ToolbarIcon[];
 });
+// The command bar runs a top bar icon's own action (Find Path, Chat, ...), so
+// an icon a new player has not received yet is still within reach.
+document.addEventListener('nge:toolbar-action', ((e: CustomEvent) => {
+  toolbarActions[e.detail?.id]?.action();
+}) as EventListener);
 
 // ── Drag-to-reorder toolbar ─────────────────────────────────────────
 // Persists order to `prefs.toolbarIcons` via the user-preferences store.
@@ -884,7 +898,11 @@ function onIconDrop(e: DragEvent, id: string) {
   // Persist via save() so the injected marker rides along: from this point
   // every auto-inject icon has been offered, and future absence means the
   // user removed it (Celia's "icons don't get removed" bug).
-  prefsStore.save({ toolbarIcons: next, toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected) });
+  // While a new player's icons are held back, only this one icon moves in the
+  // saved order; the ones still on their way keep their places.
+  const full = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
+  const saved = isStaged() ? dragInFull(full, src, id, fromIdx < toIdx) : next;
+  prefsStore.save({ toolbarIcons: saved, toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected) });
 }
 
 function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
@@ -934,6 +952,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <LanternBar />
   <!-- <annotation-panel /> --> <!-- Hidden: users pick cells from Cell Library instead -->
   <achievement-toast />
+  <staging-announcement />
+  <!-- Test sites, and admins on the live site (util/toolbar_staging.ts). -->
+  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.isAdmin" />
   <command-palette
     ref="cmdPalette"
     @open-profile="showProfile = true"
@@ -1136,9 +1157,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         :data-icon-id="icon.id"
         class="nge-icon-btn"
         :class="{
-          'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
+          'nge-icon-btn--badge': (icon.badge && icon.badge() > 0) || (icon.adminBadge && icon.adminBadge() > 0),
           'nge-icon-btn--mention': icon.id === 'chat' && chatMentionPending,
           'nge-icon-btn--active': isIconActive(icon.id),
+          'nge-icon-btn--fresh': freshIcons.has(icon.id),
           'nge-icon-btn--off': icon.id === 'highlight' && !!highlightOff,
           'nge-icon-btn--idle': icon.id === 'undelete' && undeleteCount === 0,
           'nge-spraying': icon.id === 'highlight' && spraying,
@@ -1154,7 +1176,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         @dragleave="onIconDragLeave(icon.id)"
         @drop="onIconDrop($event, icon.id)"
         @click="icon.action()"
-      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat' }">{{ icon.badge() }}</span></button>
+      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ icon.badge() }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
     </div>
 
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
@@ -1732,6 +1754,24 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   background: rgba(74, 158, 255, 0.12);
   box-shadow: 0 1px 0 0 #4a9eff;
 }
+/* A top bar icon a new player has just received (util/toolbar_staging.ts):
+   it fades in, then a ring breathes around it for a few seconds. */
+.nge-icon-btn--fresh {
+  animation: nge-icon-arrive 0.9s cubic-bezier(0.16, 1, 0.3, 1) both, nge-icon-fresh-ring 1.8s ease-in-out 0.9s 4;
+}
+@keyframes nge-icon-arrive {
+  0% { opacity: 0; transform: translateY(-8px) scale(0.6); filter: brightness(2.2) blur(2px); }
+  70% { opacity: 1; transform: translateY(0) scale(1.12); filter: brightness(1.4); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+@keyframes nge-icon-fresh-ring {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(126, 224, 255, 0.35), 0 0 6px rgba(126, 224, 255, 0.2); }
+  50% { box-shadow: 0 0 0 2px rgba(126, 224, 255, 0.95), 0 0 16px rgba(126, 224, 255, 0.55); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba(126, 224, 255, 0.8); }
+}
+body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba(126, 224, 255, 0.8); }
 /* Drag-to-reorder visuals */
 .nge-icon-btn {
   position: relative;
@@ -1799,6 +1839,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 
 /* Chat unread pip is green to read as "live conversation" rather than
    the purple admin/notification accent. */
+.nge-toolbar-badge--admin {
+  background: #e5484d;
+  box-shadow: 0 0 8px rgba(229, 72, 77, 0.55);
+}
+/* With both counts on the bell, the purple one steps left of the red. */
+.nge-toolbar-badge--beside { right: 14px; }
 .nge-toolbar-badge--chat {
   background: #4ad07a;
   color: #06170d;

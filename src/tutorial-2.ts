@@ -65,18 +65,30 @@ function nextWhenAt(spot: string) {
 /** Step 4 needs an annotation layer: the player's own if they made one,
  *  otherwise the + makes it now (so it gets the Pyr gem tool). */
 function ensureAnnotationLayer() {
-  setTimeout(() => {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const open = (addIfNone: boolean) => {
+    // Only while the player is still on the step that asked for it.
+    if (store.activeTutorial !== tutorial || store.getTutorialStep() !== step) return;
     const viewer = (window as any).viewer;
     const layers = viewer?.layerManager?.managedLayers ?? [];
     const ann = layers.filter((ml: any) => !ml.archived && ml.layer?.type === 'annotation');
     if (ann.length === 0) {
-      (document.querySelector('.neuroglancer-layer-add-button') as HTMLElement | null)?.click();
+      if (addIfNone) (document.querySelector('.neuroglancer-layer-add-button') as HTMLElement | null)?.click();
       return;
     }
-    // Open its panel if another layer's is showing.
+    // Open its panel: when another layer's is showing, and also when this
+    // layer is the selected one but its panel is closed (Ames 2026-10-21:
+    // "this box didn't open layer side panel").
     const mine = ann[ann.length - 1];
-    if (viewer.selectedLayer.layer !== mine) { viewer.selectedLayer.layer = mine; viewer.selectedLayer.visible = true; }
-  }, 600);
+    if (viewer.selectedLayer.layer !== mine || !viewer.selectedLayer.visible) {
+      viewer.selectedLayer.layer = mine;
+      viewer.selectedLayer.visible = true;
+    }
+  };
+  setTimeout(() => open(true), 600);
+  // Once more after the layer has settled: a panel can close as it loads.
+  setTimeout(() => open(false), 2000);
 }
 
 const SEG_BOX = '.neuroglancer-layer-side-panel-tab-view input.neuroglancer-segment-list-query';
@@ -845,6 +857,7 @@ Now let's put it together. <strong>Find Path</strong> draws the route through a 
 We've made the cell see through, so the path stands out.`,
     width: "500px",
     position: OVER_3D,
+    reveals: ['findPath'],
     onEnter: findPathStep,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",

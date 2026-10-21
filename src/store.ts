@@ -1,3 +1,4 @@
+import { notifKind } from './util/notif_kinds';
 import { startViewHash } from './util/start_view';
 import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
@@ -1029,8 +1030,8 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
-  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse' or 'wireframe', the classic look. */
-  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade' | 'none';
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse', 'hologram' ('wireframe' before), 'saturate', 'spotlight' or 'none'. */
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'wireframe' | 'saturate' | 'spotlight' | 'fade' | 'none';
   /** Set when hoverStyle was given (a new player's halo), not chosen; the
    *  account copy can still say they were here before. Local only. */
   hoverStyleAuto?: boolean;
@@ -1092,6 +1093,9 @@ export interface UserPreferences {
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
+  /** Top bar staging for new players (src/util/toolbar_staging.ts): whether
+   *  this account is staged, and which icons have arrived. Absent: not decided. */
+  toolbarStage?: { staged: boolean; revealed: string[]; visitDays: string[]; done: string[] };
 }
 
 export interface ViewerPerf { prefetch?: boolean; concurrentDownloads?: number; gpuMemoryLimit?: number; systemMemoryLimit?: number }
@@ -1134,13 +1138,15 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'hoverStyle', 'pulseColor'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'hoverStyle', 'pulseColor', 'toolbarStage'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
     return out;
   };
   let pulledFor = '';
+  /** True once the account's saved copy has been read (top bar staging waits for it). */
+  const accountLoaded = ref(false);
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
 
   function pushToAccount() {
@@ -1182,6 +1188,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
       const { data, error } = await supabase.from('user_settings').select('settings').maybeSingle();
       if (error) { console.warn('[prefs] could not read your saved settings:', error.message); return; }
       pulledFor = userId;
+      accountLoaded.value = true;
       const remote = (data as any)?.settings;
       if (remote && typeof remote === 'object') {
         // What was delivered on this computer before the account copy
@@ -1218,7 +1225,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
   setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
-  return { prefs, save, resetToDefaults };
+  return { prefs, save, resetToDefaults, accountLoaded };
 });
 
 // ─── Segment Annotation Store ─────────────────────────────────────────────────
@@ -1681,6 +1688,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         resolved_by_name: responderName,
       }).eq('id', id);
       if (updErr) console.warn('[helpRequests] resolve-on-response error:', updErr.message);
+      else dropSolvedReminder(id);
     }
 
     // Optimistic local update
@@ -1696,7 +1704,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       const note = payload.note || (payload.screenshotUrl ? 'attached a screenshot' : '');
       const notePreview = note.slice(0, 120) + (note.length > 120 ? '...' : '');
       // The server builds the wording and checks the target asked for help.
-      await secureWrite('notification.helpReply', { targetUserId: r.userId, segId: r.segId, note: notePreview })
+      // With the request, the server also schedules tomorrow's "was it answered?".
+      await secureWrite('notification.helpReply', { targetUserId: r.userId, segId: r.segId, note: notePreview, requestId: id })
         .catch((e: any) => console.warn('[helpRequests] notification error:', e?.message));
     }
   }
@@ -1815,7 +1824,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
 
   /** Mark a help request as resolved in Supabase. Replies (with notes, links,
    *  screenshots) go through addResponse(); this only flips the thread flag. */
-  async function resolve(id: string) {
+  /** Mark a request solved. True when the server took it. */
+  async function resolve(id: string): Promise<boolean> {
     const backend = useProofreadingBackendStore();
     const resolverName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
 
@@ -1831,7 +1841,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
 
     if (error) {
       console.warn('[helpRequests] resolve error:', error.message);
-    }
+    } else dropSolvedReminder(id);
     // Optimistic update
     const r = requests.value.find(x => x.id === id);
     if (r) {
@@ -1839,6 +1849,13 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       r.resolvedByName = resolverName;
     }
     refreshPending();
+    return !error;
+  }
+
+  /** A solved request's "was it answered?" reminder, if it has not arrived
+   *  yet, is deleted (functions/help-reminder.js). */
+  function dropSolvedReminder(id: string) {
+    secureWrite('help.dropReminder', { requestId: id }).catch(() => { /* the reminder's link says it is solved */ });
   }
 
   /** Remove a help request (delete from Supabase). */
@@ -3990,6 +4007,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
       if (!userId.value || !(entry.success ?? true)) return;
       const op = entry.operation;
+      // Top bar staging listens: a first edit on your own brings icons in.
+      document.dispatchEvent(new CustomEvent('nge:edit-logged', { detail: { operation: op } }));
 
       if (result?.counted) {
         // The server's numbers are the numbers.
@@ -5074,6 +5093,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const unreadNotificationCount = computed(() =>
     notifications.value.filter(n => !notificationReads.value.has(n.id)).length
   );
+  /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
+   *  on the bell (Ames 2026-10-21). Always 0 for players. */
+  const unreadAdminNotificationCount = computed(() =>
+    notifications.value.filter(n => !notificationReads.value.has(n.id) && notifKind(n.title, isAdmin.value) === 'admin').length
+  );
 
   // The bell used to ask for the 50 newest notifications in full, twice a
   // minute, in every open tab, with every read mark the player has: after
@@ -6011,7 +6035,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor,
     // Notifications
-    notifications, notificationReads, unreadNotificationCount, loadNotifications,
+    notifications, notificationReads, unreadNotificationCount, unreadAdminNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,

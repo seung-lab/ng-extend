@@ -4770,7 +4770,8 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 /* sized to its list, not to the whole frame, so More datasets follows it
    instead of sitting at the foot of the screen */
 .nge-profile-modal .nge-profile-body--datasets { flex: 0 1 auto; }
-.nge-profile-modal .nge-profile-body--settings { width: 100%; max-width: 1120px; align-self: center; }
+/* Settings use the full width of the profile (Ames 2026-10-21). */
+.nge-profile-modal .nge-profile-body--settings { width: 100%; max-width: none; align-self: stretch; }
 .nge-profile-modal .nge-profile-body--admin { width: 100%; max-width: 720px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--week { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--dstats { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
