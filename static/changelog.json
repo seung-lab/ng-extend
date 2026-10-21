@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T13:56:02Z",
+      "title": "Funnier Achievements, and the Ultramicrotome",
+      "items": [
+        "Every Cell Completion and Editor Achievement now has its own line in your Trophy Case, most of them jokes, written by Celia and the Pyr team.",
+        "The Cell Completion Achievement for 2,000 cells is now the Ultramicrotome, the machine that slices brain tissue thin enough to image every cell. If you already have it, you keep it, with its new picture."
+      ]
+    },
+    {
       "at": "2026-10-21T13:23:47Z",
       "title": "Tidier corners",
       "items": [
