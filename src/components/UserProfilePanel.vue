@@ -742,7 +742,7 @@ function favDragEnd() { draggingFav.value = null; dropFav.value = ''; }
 // ── Trophy Case sections in the player's own order ─────────────────────────
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
-const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'special'] as const;
+const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'competitions', 'special'] as const;
 type TrophySection = typeof TROPHY_SECTIONS[number];
 const otherTrophyOrder = ref<string[]>([]);
 const trophyOrder = computed<TrophySection[]>(() => {
@@ -807,13 +807,58 @@ const displayedExplorationBadges = computed(() => {
 const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
 const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
 
+// ── Competitions (Ames 2026-10-21): "a separate section in profile for Competitions ... the
+// gold / silver / bronze are special badges that count up, so user can win gold multiple times
+// and it shows the # times, not repeating the same badge". Each Hunt gives its own Achievements
+// (slug hunt-<id>-<medal>); here they are one tile per medal, with how many times it was won.
+const HUNT_MEDAL = /^hunt-(\d+)-(gold|silver|bronze|fastest)$/;
+type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest';
+const MEDAL_ORDER: HuntMedal[] = ['gold', 'silver', 'bronze', 'fastest'];
+const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed' };
+const MEDAL_PLACE: Record<HuntMedal, string> = { gold: '1st place', silver: '2nd place', bronze: '3rd place', fastest: 'the fastest' };
+function huntMedalOf(a: any): HuntMedal | null {
+  const m = HUNT_MEDAL.exec(String(a?.badge?.slug || ''));
+  return m ? (m[2] as HuntMedal) : null;
+}
+/** The Special Awards that are not Hunt medals (those are under Competitions). */
+const plainSpecialBadges = computed(() => profileSpecialBadges.value.filter((a: any) => !huntMedalOf(a)));
+interface MedalTile { tier: HuntMedal; count: number; awards: any[]; latest: any }
+const competitionMedals = computed<MedalTile[]>(() => MEDAL_ORDER.map((tier) => {
+  const awards = profileSpecialBadges.value.filter((a: any) => huntMedalOf(a) === tier)
+    .sort((x: any, y: any) => (Date.parse(y.awarded_at) || 0) - (Date.parse(x.awarded_at) || 0));
+  return { tier, count: awards.length, awards, latest: awards[0] ?? null };
+}).filter((m) => m.count > 0));
+/** The Hunt a medal was won in: its Achievement is named "<Hunt title>: Gold". */
+function huntTitleOf(a: any): string {
+  return String(a?.badge?.name || '').replace(/:\s*(Gold|Silver|Bronze|Fastest)\s*$/i, '').trim() || 'a Hunt';
+}
+function medalTooltip(m: MedalTile): string {
+  const head = `${MEDAL_WORD[m.tier]}, ${MEDAL_PLACE[m.tier]}: won ${m.count === 1 ? 'once' : `${m.count} times`}`;
+  const lines = m.awards.slice(0, 12).map((a: any) => `${huntTitleOf(a)}, ${formatDate(a.awarded_at)}`);
+  const more = m.awards.length > 12 ? [`and ${m.awards.length - 12} more`] : [];
+  return [head, ...lines, ...more].join('\n');
+}
+/** Ames's medal art, the same for every Hunt. */
+const medalArt = (m: MedalTile) => `hunt/${m.tier}-128.png`;
+const medalSelected = (m: MedalTile) => !!selectedSpecialBadge.value && m.awards.some((a: any) => a.id === selectedSpecialBadge.value.id);
+function onMedalClick(m: MedalTile) { if (m.latest) onSpecialBadgeClick(m.latest); }
+/** For a medal won more than once, the Hunts it was won in, under its picture. */
+function medalWins(a: any): string {
+  const tier = huntMedalOf(a); if (!tier) return '';
+  const m = competitionMedals.value.find((x) => x.tier === tier);
+  if (!m || m.count < 2) return '';
+  const names = m.awards.slice(0, 5).map(huntTitleOf);
+  const more = m.count > 5 ? `, and ${m.count - 5} more` : '';
+  return `${MEDAL_WORD[tier]} ${m.count} times: ${names.join(', ')}${more}.`;
+}
+
 // ── Special Awards "View all" preview ───────────────────────────────────────
 const displayedSpecialBadges = computed(() => {
-  const all = profileSpecialBadges.value;
+  const all = plainSpecialBadges.value;
   if (all.length > SPECIAL_PREVIEW_LIMIT) return all.slice(0, SPECIAL_PREVIEW_LIMIT - 1); // leave one slot for tile
   return all.slice(0, SPECIAL_PREVIEW_LIMIT);
 });
-const showSpecialViewAll = computed(() => profileSpecialBadges.value.length > SPECIAL_PREVIEW_LIMIT);
+const showSpecialViewAll = computed(() => plainSpecialBadges.value.length > SPECIAL_PREVIEW_LIMIT);
 
 // ── Tooltip helpers for badges ───────────────────────────────────────────────
 function badgeTooltip(badge: BadgeDefinition): string {
@@ -1509,7 +1554,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                  building Pyr to the top row"). -->
             <div class="nge-profile-header-side">
           <!-- Special Awards (admin-awarded badges) -->
-          <template v-if="profileSpecialBadges.length > 0">
+          <template v-if="plainSpecialBadges.length > 0">
             <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
               <div class="nge-profile-section-label">★ Special Awards</div>
               <div class="nge-profile-badges-grid">
@@ -1541,6 +1586,26 @@ onUnmounted(() => clearTimeout(stageTimer));
               </div>
             </div>
           </template>
+          <!-- Competitions: one tile per Hunt medal, with how many times it was won (Ames 2026-10-21). -->
+          <div v-if="competitionMedals.length" class="nge-profile-section nge-profile-section--badges nge-profile-section--special nge-profile-section--competitions">
+            <div class="nge-profile-section-label">◆ Competitions</div>
+            <div class="nge-profile-badges-grid">
+              <div
+                v-for="m in competitionMedals"
+                :key="m.tier"
+                class="nge-profile-badge nge-profile-badge--medal"
+                :class="{ 'nge-profile-badge--selected': medalSelected(m) }"
+                :title="medalTooltip(m)"
+                @click="onMedalClick(m)"
+              >
+                <div class="nge-profile-badge-img">
+                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
+                  <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
+                </div>
+                <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
+              </div>
+            </div>
+          </div>
           <!-- Cells identified: cells whose type this player set, each once.
                Beside the name until the Identification track has a row of
                its own (Ames 2026-10-12: "put cells identified where Building
@@ -2006,6 +2071,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               />
               <div class="nge-profile-viz-badge-name">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-profile-viz-badge-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div v-if="medalWins(selectedSpecialBadge)" class="nge-profile-viz-badge-desc nge-medal-wins">{{ medalWins(selectedSpecialBadge) }}</div>
               <div class="nge-profile-viz-badge-threshold">
                 Awarded {{ relativeTime(selectedSpecialBadge.awarded_at) }}
               </div>
@@ -2228,6 +2294,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div v-if="medalWins(selectedSpecialBadge)" class="nge-trophy-featured-desc nge-medal-wins">{{ medalWins(selectedSpecialBadge) }}</div>
               <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">Won for being awesome</div>
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
@@ -2440,8 +2507,37 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
           </div>
 
+          <!-- Competitions -->
+          <div v-if="competitionMedals.length" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'competitions', 'is-drop': dropSection === 'competitions' }" :style="sectionOrder('competitions')" @dragover="sectionDragOver('competitions', $event)" @drop.prevent="sectionDrop('competitions')">
+            <div class="nge-trophy-track-label">◆ Competitions
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('competitions', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('competitions', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('competitions', 1)">▼</button>
+              </span>
+            </div>
+            <div class="nge-trophy-grid">
+              <div
+                v-for="m in competitionMedals"
+                :key="m.tier"
+                class="nge-trophy-badge nge-trophy-badge--medal"
+                :class="{ 'nge-trophy-badge--selected': medalSelected(m) }"
+                :title="medalTooltip(m)"
+                @click="onMedalClick(m)"
+              >
+                <span class="nge-trophy-medal-img">
+                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
+                  <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
+                </span>
+                <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
+                <div class="nge-trophy-medal-place">{{ MEDAL_PLACE[m.tier] }}</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Special Awards -->
-          <div v-if="profileSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
+          <div v-if="plainSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
             <div class="nge-trophy-track-label">★ Special Awards
               <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
                 <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
@@ -2452,7 +2548,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             <div class="nge-trophy-grid">
               <div
-                v-for="award in profileSpecialBadges"
+                v-for="award in plainSpecialBadges"
                 :key="award.id"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)), 'nge-trophy-badge--bronze': bronzeSlugs.includes(specialSlug(award)) }"
@@ -2580,7 +2676,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           </div>
           <div class="nge-special-modal-grid">
             <div
-              v-for="award in profileSpecialBadges"
+              v-for="award in plainSpecialBadges"
               :key="award.id"
               class="nge-special-modal-tile"
               :title="specialBadgeTooltip(award)"
@@ -3590,6 +3686,17 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-section--special {
   border-top: none;
 }
+/* Competitions: the medal with how many times it was won (Ames 2026-10-21) */
+.nge-profile-badge--medal .nge-profile-badge-img, .nge-trophy-medal-img { position: relative; display: inline-flex; }
+.nge-medal-count {
+  position: absolute; right: -6px; bottom: -2px; min-width: 20px; padding: 0 5px; border-radius: 999px;
+  background: #0b1424; border: 1px solid rgba(245, 209, 66, 0.75); color: #f8e08a;
+  font: 700 10.5px/16px 'Orbitron', 'Inter', sans-serif; text-align: center; letter-spacing: 0.02em;
+  box-shadow: 0 0 8px rgba(245, 209, 66, 0.25);
+}
+.nge-trophy-medal-img .nge-medal-count { right: -8px; bottom: 4px; font-size: 11.5px; line-height: 18px; min-width: 24px; }
+.nge-trophy-medal-place { margin-top: 1px; font-size: 0.72em; color: rgba(196, 228, 255, 0.55); }
+.nge-medal-wins { color: #f8e08a; }
 
 .nge-profile-badges-empty {
   font-size: 0.75em;
