@@ -333,6 +333,12 @@ async function listTries(io, args) {
     rows = await io.sb(`proofreading_test_attempts?select=${TRY_COLUMNS},${TRY_PLAYER}&order=id.desc&limit=${limit}`);
   }
   const tests = (await io.sb('proofreading_tests?select=id,title,enabled,status,pass_mark,time_limit_minutes,claimed_by,claimed_at,deadline_at&order=created_at.desc')) || [];
+  // The line, first in line first (before supabase-proofreading-test.sql adds it: none).
+  let line = [];
+  try {
+    line = ((await io.sb('proofreading_test_queue?select=user_id,test_id,joined_at,called_at,player:users(username)&order=joined_at')) || [])
+      .map(({player, ...r}) => ({...r, username: (player && player.username) || null}));
+  } catch (e) { line = []; }
   const t = tests.find(x => x.enabled) || tests[0] || null;
   let test = null, key = null;
   if (t) {
@@ -348,7 +354,7 @@ async function listTries(io, args) {
     test = {id: t.id, title: t.title, enabled: !!t.enabled, status: t.status, pass_mark: t.pass_mark, time_limit_minutes: t.time_limit_minutes,
       holder, claimed_at: t.claimed_at || null, deadline_at: t.deadline_at || null};
   }
-  return {kept, test, key, tries: (rows || []).map(r => {
+  return {kept, test, key, line, tries: (rows || []).map(r => {
     const {player, ...rest} = r;
     return {...rest, username: (player && player.username) || null, cave_user_id: player ? player.cave_user_id ?? null : null};
   })};
@@ -383,7 +389,10 @@ async function oneTry(io, args) {
  *   test.heartbeat  {id, session}    keep the hold
  *   test.submit     {id, session, annotations}   score, grant, put back, record
  *   test.abandon    {id, session}    put back, record
- *   test.tries      {limit?}         admins: every try, newest first
+ *   test.queueJoin  {id?}            join the line for the cell
+ *   test.queueLeave {id?}            leave it
+ *   test.queueRemove {user}          admins: take a player out of the line
+ *   test.tries      {limit?}         admins: every try, newest first, and the line
  *   test.try        {attempt}        admins: one try in full, with the player's cell
  */
 async function handle({action, args, who, me, io}) {
@@ -399,6 +408,16 @@ async function handle({action, args, who, me, io}) {
   // in full with the player's cell as they left it.
   if (action === 'test.tries') { await assertAdmin(io, who); return listTries(io, args); }
   if (action === 'test.try') { await assertAdmin(io, who); return oneTry(io, args); }
+
+  // The line (Ames, 2026-10-21): the rules are in the database function.
+  if (action === 'test.queueJoin') return rpc('queue_join', args.id ? {id: idOf(args.id)} : {});
+  if (action === 'test.queueLeave') return rpc('queue_leave', args.id ? {id: idOf(args.id)} : {});
+  if (action === 'test.queueRemove') {
+    await assertAdmin(io, who);
+    const user = String(args.user || '');
+    if (!UUID.test(user)) fail(400, 'Unknown player');
+    return rpc('queue_remove', {user});
+  }
 
   if (action === 'test.start') {
     const claim = await rpc('claim', args.id ? {id: idOf(args.id)} : {});

@@ -1,3 +1,4 @@
+import { notifKind } from './util/notif_kinds';
 import { startViewHash } from './util/start_view';
 import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
@@ -5074,6 +5075,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const unreadNotificationCount = computed(() =>
     notifications.value.filter(n => !notificationReads.value.has(n.id)).length
   );
+  /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
+   *  on the bell (Ames 2026-10-21). Always 0 for players. */
+  const unreadAdminNotificationCount = computed(() =>
+    notifications.value.filter(n => !notificationReads.value.has(n.id) && notifKind(n.title, isAdmin.value) === 'admin').length
+  );
 
   // The bell used to ask for the 50 newest notifications in full, twice a
   // minute, in every open tab, with every read mark the player has: after
@@ -6011,7 +6017,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor,
     // Notifications
-    notifications, notificationReads, unreadNotificationCount, loadNotifications,
+    notifications, notificationReads, unreadNotificationCount, unreadAdminNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,

@@ -6,7 +6,7 @@
  * at the player's cell as they left it (src/proofreading-test-review.ts).
  */
 import { ref, computed, onMounted } from 'vue';
-import { listTestTries, loadTestTry, reviewTryInView, reviewingTry, tryParts, outcomeWord, playerName,
+import { listTestTries, loadTestTry, reviewTryInView, reviewingTry, tryParts, outcomeWord, playerName, removeFromLine,
   type TestTriesList, type TestTry, type TestTryDetail } from '../proofreading-test-review';
 
 const data = ref<TestTriesList | null>(null);
@@ -72,6 +72,15 @@ function tally(t: TestTry): string {
 }
 const chip = (t: TestTry) => t.outcome === 'pass' ? 'pass' : t.outcome === 'fail' ? 'fail' : 'other';
 const FIRST = 8;
+/** Take someone out of the line (Ames, 2026-10-21). */
+const removing = ref('');
+async function takeOut(userId: string) {
+  removing.value = userId; error.value = '';
+  try { await removeFromLine(userId); await load(); }
+  catch (e: any) { error.value = e?.message || 'They were not taken out of the line.'; }
+  finally { removing.value = ''; }
+}
+const turnUntil = (iso: string) => new Date(Date.parse(iso) + 10 * 60000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 /** Each opened try's checks, grouped once. */
 const partsOf = computed(() => Object.fromEntries(Object.entries(details.value).map(([id, d]) => [id, tryParts(d)])));
 const PARTS = [
@@ -100,6 +109,16 @@ const PARTS = [
       <template v-if="data.test.holder"> <b>{{ data.test.holder }}</b> has the cell now<template v-if="data.test.deadline_at">, until {{ when(data.test.deadline_at) }}</template>.</template>
       <template v-else> Nobody has the cell now.</template>
     </p>
+    <div v-if="data?.line?.length" class="nge-ttr-line">
+      <h3>In line ({{ data.line.length }})</h3>
+      <ol>
+        <li v-for="p in data.line" :key="p.user_id">
+          <span class="nge-ttr-line-name">{{ p.username || 'A player' }}</span>
+          <span class="nge-ttr-meta">joined {{ when(p.joined_at) }}<template v-if="p.called_at">, called: their turn until {{ turnUntil(p.called_at) }}</template></span>
+          <button class="nge-ttr-btn nge-ttr-btn--small" :disabled="removing === p.user_id" @click="takeOut(p.user_id)">Take out of the line</button>
+        </li>
+      </ol>
+    </div>
     <p v-if="data && !data.kept" class="nge-ttr-warn">Players' cells are not being kept yet: run supabase-proofreading-test-tries.sql in Supabase.</p>
     <p v-if="error" class="nge-ttr-err" role="alert">{{ error }}</p>
     <p v-if="loading" class="nge-ttr-how">Loading…</p>
@@ -190,5 +209,11 @@ const PARTS = [
 .nge-ttr-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
 .nge-ttr-btn { font: inherit; font-size: 0.95rem; padding: 5px 12px; border-radius: 6px; border: 1px solid #74859a; background: #152434; color: #f1f5f9; cursor: pointer; }
 .nge-ttr-btn--look { border-color: #9fd3ff; color: #fff; background: #183049; }
+.nge-ttr-line { border: 1px solid #2f4155; border-radius: 10px; padding: 8px 14px; margin: 10px 0; background: #0f1b28; }
+.nge-ttr-line h3 { font-size: 0.95rem; margin: 0 0 4px; color: #9fd3ff; }
+.nge-ttr-line ol { margin: 0; padding-left: 20px; }
+.nge-ttr-line li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 3px 0; }
+.nge-ttr-line-name { font-weight: 600; }
+.nge-ttr-btn--small { font-size: 0.8rem; padding: 2px 8px; margin-left: auto; }
 .nge-ttr-root { color: #9fb0c4; font-size: 0.85rem; font-variant-numeric: tabular-nums; user-select: all; }
 </style>

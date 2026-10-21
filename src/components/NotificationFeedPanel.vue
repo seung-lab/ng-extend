@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
+import { notifKind, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
@@ -174,15 +175,35 @@ const confirmDeleteAll = ref(false);
 // that shipped) in a tab of their own, so they stop burying everything else
 // (Ames 2026-10-06: "they are clogging up my feed"). Players never see the
 // tabs: a "Fixed!" note about their own report stays in their one feed.
-const feedTab = ref<'main' | 'triage'>('main');
-function isTriageNote(n: { title?: string | null }): boolean {
-  const t = n.title || '';
-  return backend.isAdmin && (t.startsWith('🗂') || t.startsWith('🎉 Fixed'));
+// A third tab, Admin (Ames 2026-10-21): access requests, proofreading test
+// results and players' answers to replies an admin asked for. Bug reports
+// stay in Triage. Which is which: util/notif_kinds.ts, shared with the bell's
+// red count.
+const feedTab = ref<NotifKind>('main');
+const kindOf = (n: { title?: string | null }) => notifKind(n.title, backend.isAdmin);
+const triageNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'triage'));
+const adminNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'admin'));
+const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
+const showFeedTabs = computed(() => backend.isAdmin && (triageNotes.value.length > 0 || adminNotes.value.length > 0));
+const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications
+  : feedTab.value === 'triage' ? triageNotes.value : feedTab.value === 'admin' ? adminNotes.value : mainNotes.value);
+// The feed loads the newest notifications of every kind together, so one tab
+// could show only two or three while triage alerts took the rest (Ames
+// 2026-10-21: "this should load more than 2"). While the panel is open, the
+// tab on screen asks for older ones until it has a screenful or there are
+// no more.
+const TAB_FILL = 12;
+let filling = false;
+async function fillTab() {
+  if (filling || !props.visible) return;
+  filling = true;
+  try {
+    for (let round = 0; round < 6 && shownNotes.value.length < TAB_FILL && backend.notificationsHaveMore; round++) {
+      await backend.loadMoreNotifications();
+    }
+  } finally { filling = false; }
 }
-const triageNotes = computed(() => backend.notifications.filter(isTriageNote));
-const mainNotes = computed(() => backend.notifications.filter(n => !isTriageNote(n)));
-const showFeedTabs = computed(() => backend.isAdmin && triageNotes.value.length > 0);
-const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications : feedTab.value === 'triage' ? triageNotes.value : mainNotes.value);
+watch([() => props.visible, feedTab, () => shownNotes.value.length], () => { void fillTab(); });
 const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
 watch(showFeedTabs, on => { if (!on) feedTab.value = 'main'; });
 watch(feedTab, () => { confirmDeleteAll.value = false; });   // the question was about the other tab
@@ -588,7 +609,7 @@ function padRank(rank: number): string {
           v-if="showFeedTabs ? unreadIn(shownNotes) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
           @click="showFeedTabs ? backend.markAllNotificationsRead(shownNotes.map(n => n.id)) : backend.markAllNotificationsRead()"
-        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : 'Mark all read' }}</button>
+        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && feedTab === 'admin' ? 'Mark admin read' : 'Mark all read' }}</button>
         <!-- Separate from "mark all read" on purpose: read state controls the
              unread pip, this clears the feed. Only hides them for THIS user —
              the underlying notification rows are untouched. -->
@@ -616,6 +637,10 @@ function padRank(rank: number): string {
     <div v-if="showFeedTabs" class="nge-notif-tabs" role="tablist">
       <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'main' }" role="tab" :aria-selected="feedTab === 'main'" @click="feedTab = 'main'">
         Notifications<b v-if="unreadIn(mainNotes) > 0">{{ unreadIn(mainNotes) }}</b>
+      </button>
+      <button class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
+              title="Access requests, proofreading tests, and players' answers to replies you asked for">
+        Admin<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
       </button>
       <button class="nge-notif-tab nge-notif-tab--triage" :class="{ 'nge-notif-tab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'">
         Triage<b v-if="unreadIn(triageNotes) > 0">{{ unreadIn(triageNotes) }}</b>
@@ -989,6 +1014,8 @@ function padRank(rank: number): string {
 .nge-notif-tab:hover { color: #dce6f5; }
 .nge-notif-tab--on { color: #ffffff; border-bottom-color: #7ee0ff; }
 .nge-notif-tab--triage.nge-notif-tab--on { border-bottom-color: #ff8f8f; }
+.nge-notif-tab--admin.nge-notif-tab--on { border-bottom-color: #e5484d; }
+.nge-notif-tab--admin b { background: #e5484d; color: #fff; }
 .nge-notif-tab b {
   min-width: 16px; padding: 2px 5px; border-radius: 8px; box-sizing: border-box;
   font-size: 10px; font-weight: 700; text-align: center; color: #06121f; background: #7ee0ff;

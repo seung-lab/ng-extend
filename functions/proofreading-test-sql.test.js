@@ -148,3 +148,101 @@ test('pilot_test_action: one player at a time, holds, tries, the pass opens the 
     }
   } finally { await db.close(); }
 });
+
+test('the line: join while the cell is held, called in turn with a notice, 10 minutes to start, 15 quiet minutes while anyone waits', async () => {
+  const db = new PGlite();
+  const C = '55555555-5555-4555-8555-555555555555';
+  try {
+    await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+      CREATE TABLE users(id uuid PRIMARY KEY, middleauth_email text);
+      CREATE TABLE admins(email text);
+      CREATE TABLE pilot_members(email text PRIMARY KEY CHECK (email = lower(trim(email)) AND email LIKE '%@%'), enabled boolean NOT NULL DEFAULT true, added_by uuid REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now());
+      CREATE TABLE notifications(id serial PRIMARY KEY, title text NOT NULL, body text NOT NULL, send_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz,
+        target_type text NOT NULL DEFAULT 'all', target_id text, created_by uuid REFERENCES users(id));
+      INSERT INTO users VALUES('${A}','a@example.invalid'),('${B}','b@example.invalid'),('${C}','c@example.invalid'),('${ADMIN}','admin@example.invalid');
+      INSERT INTO admins VALUES('admin@example.invalid');`);
+    await db.exec(fs.readFileSync(path.join(__dirname, '../supabase-proofreading-test.sql'), 'utf8'));
+    const call = async (user, action, args) => (await db.query('SELECT public.pilot_test_action($1,$2,$3::jsonb) AS r', [user, action, JSON.stringify(args || {})])).rows[0].r;
+    const one = async sql => (await db.query(sql)).rows[0];
+    const {id} = await one(`INSERT INTO proofreading_tests(title,dataset,pcg_server,pcg_table,state_url,anchor_supervoxel,hold_minutes,enabled,grant_pilot,cave_groups)
+      VALUES('Test','pinky_nf_v2','https://minnie.microns-daf.com','pinky_nf_v2','middleauth+https://x/1','100',60,true,false,'{}') RETURNING id`);
+    const minutesLeft = iso => (Date.parse(iso) - Date.now()) / 60000;
+    const notices = async () => (await db.query('SELECT target_id FROM notifications ORDER BY id')).rows.map(r => r.target_id);
+
+    // Nobody waiting: the usual hour of quiet.
+    let s = await call(A, 'status');
+    assert.deepEqual([s.free, s.queue.length, s.queue.position, s.queue.quiet_minutes], [true, 0, null, 60]);
+    const a = await call(A, 'claim');
+    await call(A, 'cleaned', {id, session: a.session});
+    assert.ok(minutesLeft((await call(A, 'heartbeat', {id, session: a.session})).expires_at) > 59);
+
+    // B and C join while A has it.
+    await assert.rejects(() => call(A, 'queue_join'), /yours already/);
+    await call(B, 'queue_join');
+    await call(B, 'queue_join');   // twice is once
+    await call(C, 'queue_join');
+    s = await call(B, 'status');
+    assert.deepEqual([s.free, s.queue.length, s.queue.position, s.queue.other_turn, s.queue.called_until], [false, 2, 1, false, null]);
+    assert.ok(minutesLeft(s.queue.holder_until) > 50, 'when A\'s time runs out, for the wait');
+    assert.equal((await call(C, 'status')).queue.position, 2);
+    assert.ok(minutesLeft((await one(`SELECT expires_at FROM proofreading_tests WHERE id='${id}'`)).expires_at) <= 15.01, 'A has 15 minutes from the join to move');
+    const hb = await call(A, 'heartbeat', {id, session: a.session});
+    assert.equal(hb.quiet_minutes, 15); assert.equal(hb.waiting, 2);
+    assert.ok(Math.abs(minutesLeft(hb.expires_at) - 15) < 0.1, 'renewed by 15 quiet minutes, not the hour');
+    assert.deepEqual(await notices(), [], 'nobody is called while the cell is held');
+
+    // A finishes: B is called at once, with a notice that goes when the turn does.
+    await call(A, 'record', {id, session: a.session, outcome: 'fail', found: 0, errors: 1, damaged: 0, percent: 0, clean: true});
+    assert.deepEqual(await notices(), [B]);
+    assert.ok(Math.abs(minutesLeft((await one('SELECT expires_at FROM notifications')).expires_at) - 10) < 0.1);
+    s = await call(B, 'status');
+    assert.equal(s.free, true); assert.ok(Math.abs(minutesLeft(s.queue.called_until) - 10) < 0.1);
+    s = await call(C, 'status');
+    assert.deepEqual([s.free, s.queue.position, s.queue.other_turn], [false, 2, true]);
+    await assert.rejects(() => call(C, 'claim'), /turn of the next player/);
+    await assert.rejects(() => call(ADMIN, 'claim'), /turn of the next player/, 'admins wait their turn too');
+
+    // B takes it: out of the line, C first, nobody called while B has it.
+    const b = await call(B, 'claim');
+    s = await call(C, 'status');
+    assert.deepEqual([s.queue.position, s.queue.length, s.queue.other_turn], [1, 1, false]);
+    assert.equal((await call(B, 'status')).queue.position, null);
+    assert.ok(minutesLeft((await one(`SELECT expires_at FROM proofreading_tests WHERE id='${id}'`)).expires_at) <= 15.01, 'C waits, so B gets 15 quiet minutes from the start');
+    await call(B, 'record', {id, session: b.session, outcome: 'abandoned', clean: true});
+    assert.deepEqual(await notices(), [B, C]);
+
+    // C does not come in 10 minutes: out of the line at the next look, and the cell is free for anyone.
+    await db.exec(`UPDATE proofreading_test_queue SET called_at = now() - interval '11 minutes' WHERE user_id='${C}'`);
+    s = await call(A, 'status');
+    assert.deepEqual([s.free, s.queue.length], [true, 0]);
+    assert.equal((await call(C, 'status')).queue.position, null);
+
+    // Joining a free cell: called at once. Leaving calls the next.
+    await call(A, 'queue_join');
+    await call(C, 'queue_join');
+    assert.equal(((await call(A, 'status')).queue.called_until !== null), true);
+    assert.deepEqual((await notices()).slice(-1), [A]);
+    await call(A, 'queue_leave');
+    assert.deepEqual((await notices()).slice(-1), [C]);
+    assert.equal((await call(C, 'status')).free, true);
+
+    // Only an admin takes someone out of the line; that calls the next too.
+    await call(B, 'queue_join');
+    await assert.rejects(() => call(A, 'queue_remove', {user: C}), /Only admins/);
+    await call(ADMIN, 'queue_remove', {user: C});
+    assert.equal((await call(C, 'status')).queue.position, null);
+    assert.deepEqual((await notices()).slice(-1), [B]);
+    await call(B, 'queue_leave');
+
+    // The same rules as taking the cell: a player who passed cannot join.
+    const c = await call(C, 'claim');
+    await call(C, 'record', {id, session: c.session, outcome: 'pass', found: 1, errors: 1, damaged: 0, percent: 100, clean: true});
+    await assert.rejects(() => call(C, 'queue_join'), /already passed/);
+    // The line is the server's alone.
+    for (const role of ['anon', 'authenticated']) {
+      await db.exec(`SET ROLE ${role}`);
+      await assert.rejects(() => db.query('SELECT * FROM proofreading_test_queue'), /permission denied/);
+      await db.exec('RESET ROLE');
+    }
+  } finally { await db.close(); }
+});

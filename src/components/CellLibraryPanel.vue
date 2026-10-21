@@ -2010,6 +2010,15 @@ function jumpToAiTag(tag: IssueTag) {
   }
 }
 
+/** Who may close a help request: the player who asked, and admins. */
+function canResolve(req: HelpRequest): boolean {
+  return backend.isAdmin || (!!req.userId && req.userId === backend.userId);
+}
+/** A note longer than its two shown lines gets a Show more button. */
+function noteIsLong(note: string): boolean {
+  return note.length > 90 || note.includes('\n');
+}
+
 function resolveReq(req: HelpRequest) {
   helpStore.resolve(req.id);
   helpStore.refreshPending();
@@ -2929,6 +2938,8 @@ const panelStyle = computed(() => ({
                         <span class="nge-cl-notes">{{ relativeTime(req.createdAt) }}</span>
                       </div>
                       <div v-if="req.note" class="nge-cl-help-note" :class="{ 'nge-cl-help-note--expanded': expandedNotes.has(req.id) }" @click="toggleNoteExpand(req.id)">{{ req.note }}</div>
+                      <!-- A long note shows two lines; say it opens (Ames 2026-10-21). -->
+                      <button v-if="req.note && noteIsLong(req.note)" class="nge-cl-help-note-more" @click="toggleNoteExpand(req.id)">{{ expandedNotes.has(req.id) ? 'Show less' : 'Show more' }}</button>
                       <a v-if="req.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(req.viewUrl)"
                          title="Load the view they were looking at">↗ Open their view</a>
                       <span v-if="req.annotationLayer" class="nge-cl-response-layer"
@@ -2953,7 +2964,10 @@ const panelStyle = computed(() => ({
                     <button class="nge-cl-btn nge-cl-btn--respond" @click="toggleResponseForm(req.id)" :title="respondingTo === req.id ? 'Cancel' : 'Respond'">
                       {{ respondingTo === req.id ? '▾' : '💬' }}
                     </button>
-                    <button class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(req)">Resolve</button>
+                    <!-- Only the player who asked, or an admin, closes a request; the
+                         bare "Resolve" read as something everyone should press (Ames 2026-10-21). -->
+                    <button v-if="canResolve(req)" class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(req)"
+                            :title="req.userId === backend.userId ? 'Your question is answered: move it to Resolved for everyone' : 'Close this request for everyone: it moves to Resolved'">Mark solved</button>
                   </div>
                 </div>
 
@@ -3018,10 +3032,12 @@ const panelStyle = computed(() => ({
                 @click="submitResponse(req)"
               >Submit Response</button>
               <button
+                v-if="canResolve(req)"
                 class="nge-cl-btn nge-cl-btn--submit-response nge-cl-btn--resolve"
                 :disabled="!responseNote.trim() && !responseScreenshotUrl"
+                title="Send the reply and move the request to Resolved for everyone"
                 @click="submitResponse(req, true)"
-              >Submit & Resolve</button>
+              >Reply and mark solved</button>
             </div>
               </div>
             </template>
@@ -4319,7 +4335,7 @@ const panelStyle = computed(() => ({
   color: #f8a;
 }
 .nge-cl-help-note {
-  font-size: 0.72em;
+  font-size: 13px;
   color: #99a;
   margin-top: 3px;
   line-height: 1.35;
@@ -4335,6 +4351,11 @@ const panelStyle = computed(() => ({
   -webkit-line-clamp: unset;
   display: block;
 }
+.nge-cl-help-note-more {
+  display: block; background: none; border: none; padding: 2px 0 4px; cursor: pointer;
+  color: #8bf; font: inherit; font-size: 12px;
+}
+.nge-cl-help-note-more:hover { color: #adf; text-decoration: underline; }
 .nge-cl-help-resolved-header {
   display: flex;
   align-items: center;
@@ -4491,7 +4512,7 @@ const panelStyle = computed(() => ({
 /* Response display on resolved items */
 .nge-cl-response-display {
   padding: 4px 12px 8px 28px;
-  font-size: 0.72em;
+  font-size: 13px;
 }
 .nge-cl-response-label {
   color: #7f8;
@@ -4517,8 +4538,8 @@ const panelStyle = computed(() => ({
 .nge-cl-btn--reply {
   display: inline-block;
   margin-top: 4px;
-  font-size: 0.7em;
-  padding: 2px 8px;
+  font-size: 12px;
+  padding: 3px 10px;
   color: #8cf;
   background: rgba(100, 180, 255, 0.1);
   border: 1px solid rgba(100, 180, 255, 0.2);
@@ -5228,8 +5249,8 @@ select.nge-cl-complete-type:hover {
 }
 .nge-cl-help-shot-thumb img {
   display: block;
-  width: 96px;
-  height: 54px;
+  width: 192px;
+  height: 108px;
   object-fit: cover;
 }
 

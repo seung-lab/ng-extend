@@ -16,6 +16,7 @@ import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
 import TestReviewBar from "components/TestReviewBar.vue";
+import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
@@ -781,6 +782,8 @@ interface ToolbarIcon {
   label: string;
   action: () => void;
   badge?: () => number;
+  /** A second, red count beside the badge (the bell's Admin tab). */
+  adminBadge?: () => number;
 }
 
 // ── Toolbar definitions ────────────────────────────────────────────
@@ -847,7 +850,9 @@ const toolbarActions: Record<string, ToolbarAction> = {
   highlight:   { action: () => { if (highlightOff.value) return; showHighlight.value = !showHighlight.value; sprayHighlightIcon(); } },
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
+  // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount,
+                 adminBadge: () => backendStore.unreadAdminNotificationCount },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
@@ -865,6 +870,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => {
         label: def.label,
         action: a.action,
         badge: a.badge,
+        adminBadge: (a as any).adminBadge,
       } as ToolbarIcon;
     })
     .filter((x): x is ToolbarIcon => x !== null);
@@ -1010,6 +1016,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <access-request-panel v-if="showAccess" @hide="showAccess = false" />
   <access-review-bar />
   <test-review-bar />
+  <test-queue-card />
   <!-- Help requests now live in Cell Library's Help tab -->
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
@@ -1207,7 +1214,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         :data-icon-id="icon.id"
         class="nge-icon-btn"
         :class="{
-          'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
+          'nge-icon-btn--badge': (icon.badge && icon.badge() > 0) || (icon.adminBadge && icon.adminBadge() > 0),
           'nge-icon-btn--mention': icon.id === 'chat' && chatMentionPending,
           'nge-icon-btn--active': isIconActive(icon.id),
           'nge-icon-btn--off': icon.id === 'highlight' && !!highlightOff,
@@ -1225,7 +1232,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         @dragleave="onIconDragLeave(icon.id)"
         @drop="onIconDrop($event, icon.id)"
         @click="icon.action()"
-      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat' }">{{ icon.badge() }}</span></button>
+      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ icon.badge() }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
     </div>
 
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
@@ -1281,7 +1288,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
             <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
-            <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
+            <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
         <!-- Standalone cut exercises (Ames, 2026-10-06): each opens on its
@@ -1870,6 +1877,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 
 /* Chat unread pip is green to read as "live conversation" rather than
    the purple admin/notification accent. */
+.nge-toolbar-badge--admin {
+  background: #e5484d;
+  box-shadow: 0 0 8px rgba(229, 72, 77, 0.55);
+}
+/* With both counts on the bell, the purple one steps left of the red. */
+.nge-toolbar-badge--beside { right: 14px; }
 .nge-toolbar-badge--chat {
   background: #4ad07a;
   color: #06170d;
