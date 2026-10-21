@@ -202,6 +202,9 @@ function show(which: number[]) {
   try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
 
+/** How many pumpkins are in the patch (the field report's sightings). */
+export function patchSize(): number { return PATCH.length; }
+
 /** For the chat bar's pumpkin button (ChatPanel.vue). `here`: a patch cell
  *  is on screen in season, its pumpkin hidden or not. */
 export const pumpkinUi = reactive({ here: false });

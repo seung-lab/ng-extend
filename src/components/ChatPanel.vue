@@ -36,7 +36,7 @@ const showPumpkinBtn = pumpkinSeason();
 const askPatch = ref(false);
 function pumpkinOff(): boolean { return pumpkinUi.here && useUserPreferencesStore().prefs.hidePumpkin === true; }
 function pumpkinTitle(): string {
-  if (!pumpkinUi.here) return 'Visit the pumpkin patch';
+  if (!pumpkinUi.here) return 'A rare cell type has been spotted';
   return useUserPreferencesStore().prefs.hidePumpkin === true ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell';
 }
 function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
