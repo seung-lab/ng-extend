@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-21T00:00:00Z",
+      "title": "Advanced Interface: naming your layer",
+      "items": [
+        "The step that asks you to name your new annotation layer now opens that layer's side panel, even when the layer was already selected."
+      ]
+    },
+    {
+      "at": "2026-10-21T00:00:00Z",
       "title": "A tidier Layers list",
       "items": [
         "The Layers list in the side panel matches the rest of Pyr: rounded rows, small numbers, and the layer you have selected marked in blue."
