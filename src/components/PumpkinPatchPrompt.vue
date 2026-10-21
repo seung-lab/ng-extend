@@ -43,8 +43,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
           <span class="nge-patch-pips-label">{{ sightings }} sightings</span>
         </div>
         <p class="nge-patch-row nge-patch-text" style="--i: 2">
-          Proofreaders in the Sandbox report a <b>jack o' lantern neuron</b>: its cell body is a pumpkin,
-          and its dendrites grow out through the eyes and mouth. Only ever seen in October.
+          Proofreaders in the Sandbox report a <b>jack o' lantern neuron</b>. Only ever seen in October.
         </p>
         <div class="nge-patch-row nge-patch-btns" style="--i: 3">
           <button class="nge-patch-no" @click="emit('no')">Not now</button>
@@ -65,7 +64,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 @keyframes nge-patch-fade { from { opacity: 0; } to { opacity: 1; } }
 
 .nge-patch {
-  position: relative; width: 340px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 16px 18px 14px;
+  position: relative; width: 390px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 18px 20px 16px;
   border-radius: 12px;
   /* the holopanel surface: dark gradient, a lit top hairline, in pumpkin orange */
   background:
@@ -73,7 +72,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
     linear-gradient(160deg, rgba(18, 12, 8, 0.97), rgba(9, 12, 22, 0.97));
   border: 1px solid rgba(255, 140, 40, 0.38);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6), 0 0 28px rgba(255, 130, 20, 0.14), inset 0 1px 0 rgba(255, 200, 140, 0.24);
-  color: #d8e2f0; font-family: 'Inter', 'Segoe UI', sans-serif; font-size: 13px; line-height: 1.5;
+  color: #d8e2f0; font-family: 'Inter', 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5;
   animation: nge-patch-in 520ms cubic-bezier(.16, 1, .3, 1) both;
 }
 @keyframes nge-patch-in {
@@ -119,15 +118,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 @keyframes nge-patch-row { 0% { opacity: 0; transform: translateY(7px); filter: blur(3px); } 100% { opacity: 1; transform: none; filter: none; } }
 
 .nge-patch-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.nge-patch-pumpkin { font-size: 34px; line-height: 1; filter: drop-shadow(0 0 10px rgba(255, 140, 30, 0.55)); animation: nge-patch-bob 2.6s ease-in-out 900ms infinite; }
+.nge-patch-pumpkin { font-size: 42px; line-height: 1; filter: drop-shadow(0 0 10px rgba(255, 140, 30, 0.55)); animation: nge-patch-bob 2.6s ease-in-out 900ms infinite; }
 @keyframes nge-patch-bob { 50% { transform: translateY(-3px) rotate(-5deg); } }
-.nge-patch-tag { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #c98a45; }
-.nge-patch-title { display: block; font-size: 16px; font-weight: 700; color: #ffb35c; }
+.nge-patch-tag { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #c98a45; }
+.nge-patch-title { display: block; font-size: 20px; font-weight: 700; color: #ffb35c; }
 
 /* sightings: one pip a pumpkin, lit in order */
 .nge-patch-pips { display: flex; align-items: center; gap: 5px; margin-bottom: 10px; }
 .nge-patch-pip {
-  width: 22px; height: 5px; border-radius: 3px;
+  width: 26px; height: 6px; border-radius: 3px;
   background: rgba(255, 160, 80, 0.13); box-shadow: inset 0 0 0 1px rgba(255, 160, 80, 0.16);
   animation: nge-patch-pip 380ms cubic-bezier(.2, 1.5, .4, 1) calc(380ms + var(--n) * 110ms) both;
 }
@@ -136,12 +135,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
   40% { background: #fff0dc; transform: scaleY(2.2); box-shadow: 0 0 10px rgba(255, 150, 60, 0.95); }
   100% { background: linear-gradient(90deg, #ff8a1e, #ffc27a); transform: scaleY(1); box-shadow: 0 0 6px rgba(255, 130, 30, 0.55); }
 }
-.nge-patch-pips-label { margin-left: 4px; font-size: 11.5px; color: #9fb3cc; font-variant-numeric: tabular-nums; }
+.nge-patch-pips-label { margin-left: 4px; font-size: 13.5px; color: #9fb3cc; font-variant-numeric: tabular-nums; }
 
-.nge-patch-text { margin: 0 0 14px; color: #c9d3e2; }
-.nge-patch-text b { color: #ffc27a; font-weight: 600; }
+.nge-patch-text { margin: 0 0 16px; color: #d4dcea; font-size: 15.5px; }
+.nge-patch-text b { color: #ffc27a; font-weight: 600; white-space: nowrap; }
 .nge-patch-btns { display: flex; justify-content: flex-end; gap: 8px; }
-.nge-patch-no, .nge-patch-yes { font: inherit; font-size: 13.5px; padding: 6px 14px; border-radius: 8px; cursor: pointer; }
+.nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 18px; border-radius: 8px; cursor: pointer; }
 .nge-patch-no { color: #d8e2f0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(160, 175, 200, 0.35); }
 .nge-patch-no:hover { background: rgba(255, 255, 255, 0.1); }
 .nge-patch-yes {
