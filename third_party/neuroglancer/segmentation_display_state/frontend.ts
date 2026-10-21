@@ -748,6 +748,78 @@ export function registerRedrawWhenSegmentationDisplayState3DChanged(
 }
 
 /**
+ * EyeWire II (wolfryder101 #181, Ames 2026-10-20: "can we make highlight
+ * cooler? like a glow"): how the cell under the mouse is shown. The classic
+ * fade washed the cell out; the others leave its colours as they are:
+ *   halo     a slim glowing line around the cell in 3D (new players' default)
+ *   outline  a crisp line just outside the cell in 3D (Ames did not like it;
+ *            not offered in Settings, kept for a saved choice)
+ *   pulse    bands of light running out along the cell from the mouse in 3D
+ *   wireframe  the cell's triangles drawn in lines of its own colour over a
+ *            dimmed body (Ames 2026-10-20)
+ *   saturate the opposite of the fade: the cell's colour turns richer and a
+ *            little brighter, in 2D and 3D (Ames 2026-10-20)
+ *   fade     the classic look, the cell turns pale (existing players' default)
+ * In 2D every style but fade keeps the cell's colour and makes it more solid.
+ * The 3D outline and halo are drawn by perspective_view/panel.ts (ngeDrawShells
+ * in mesh/frontend.ts), the pulse by the mesh shader. Read once at load;
+ * Settings updates it live.
+ */
+export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'wireframe'|'saturate'|'fade';
+/** The style when the player has not chosen one (Ames 2026-10-20: "make
+ *  Halo the default highlight mode for new users. We can retain
+ *  legacy/original one for existing users"): a browser with settings in it
+ *  already is an existing player's, and keeps the classic fade. The settings
+ *  store (store.ts) settles it, and corrects it from the account copy. */
+export function ngeDefaultHoverStyle(prefs: any): NgeHoverStyle {
+  return prefs && Object.keys(prefs).length || ngeBrowserUsedBefore() ? 'fade' : 'halo';
+}
+/** Pyr was used in this browser before, even by a player who never saved a
+ *  setting: they signed in here (the sign in token) or played a tutorial or
+ *  earned a tutorial badge. */
+function ngeBrowserUsedBefore(): boolean {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || '';
+      if (k.startsWith('auth_token_v2_') || k.startsWith('nge-badge-')) return true;
+      if (/^nge-tutorial(-\d+)?-step$/.test(k) && Number(localStorage.getItem(k)) > 0) return true;
+    }
+  } catch { /* no storage: treat as new */ }
+  return false;
+}
+export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
+  const v = prefs?.hoverStyle;
+  return v === 'halo' || v === 'pulse' || v === 'wireframe' || v === 'saturate' || v === 'fade' || v === 'outline' ? v : ngeDefaultHoverStyle(prefs);
+}
+export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
+  try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
+})()};
+/** How far the halo has faded for zoom, 0 (all there) to 1 (gone); set each
+ *  frame by mesh/frontend.ts. */
+export const ngeHaloFar = {value: 0};
+
+/** EyeWire II 'saturate': richer colour, a little brighter (2D does the same
+ *  in sliceview/volume/segmentation_renderlayer.ts). */
+export function ngeSaturate(color: Float32Array|number[]) {
+  const grey = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2];
+  for (let i = 0; i < 3; ++i) {
+    color[i] = Math.max(0, Math.min(1, (grey + (color[i] - grey) * 1.7) * 1.12));
+  }
+}
+
+/** The pulse's colour (Nseraf: "if we can also change the colour of the
+ *  'electricity'"): '#rrggbb', or '' for a light tint of the cell's own. */
+export function ngeParsePulseColor(hex: unknown): [number, number, number]|null {
+  const m = typeof hex === 'string' ? /^#([0-9a-f]{6})$/i.exec(hex) : null;
+  if (!m) return null;
+  const v = parseInt(m[1], 16);
+  return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+}
+export const ngePulseColor = {value: ((): [number, number, number]|null => {
+  try { return ngeParsePulseColor(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').pulseColor); } catch { return null; }
+})()};
+
+/**
  * Temporary values used by getObjectColor.
  */
 const tempColor = vec4.create();
@@ -790,7 +862,7 @@ export function getObjectColor(
   color[3] = alpha;
   getBaseObjectColor(displayState, objectId, color);
   let saturation = displayState.saturation.value;
-  if (displayState.hoverHighlight.value &&
+  if (ngeHoverStyle.value === 'fade' && displayState.hoverHighlight.value &&
       displayState.segmentSelectionState.isSelected(objectId)) {
     if (saturation > 0.5) {
       saturation = saturation -= 0.5;
@@ -800,6 +872,17 @@ export function getObjectColor(
   }
   for (let i = 0; i < 3; ++i) {
     color[i] = color[i] * saturation + (1 - saturation);
+  }
+  if (ngeHoverStyle.value === 'saturate' && displayState.hoverHighlight.value &&
+      displayState.segmentSelectionState.isSelected(objectId)) {
+    ngeSaturate(color);
+  } else if (ngeHoverStyle.value === 'halo' && ngeHaloFar.value > 0 && displayState.hoverHighlight.value &&
+      displayState.segmentSelectionState.isSelected(objectId)) {
+    // Far out the halo fades away, and the cell takes Saturate's colour in
+    // its place, so the cell under the mouse still stands out.
+    const before = [color[0], color[1], color[2]];
+    ngeSaturate(color);
+    for (let i = 0; i < 3; ++i) color[i] = before[i] + (color[i] - before[i]) * ngeHaloFar.value;
   }
 
   color[0] *= alpha;

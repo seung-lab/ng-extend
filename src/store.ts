@@ -7,6 +7,7 @@ import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
 import {Ref, ref, reactive, computed, watch} from 'vue';
+import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
 
 import {Viewer} from 'neuroglancer/viewer';
@@ -1028,6 +1029,13 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse' or 'wireframe', the classic look. */
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade';
+  /** Set when hoverStyle was given (a new player's halo), not chosen; the
+   *  account copy can still say they were here before. Local only. */
+  hoverStyleAuto?: boolean;
+  /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
+  pulseColor?: string;
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). */
@@ -1096,7 +1104,18 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   function load() {
     try {
       const raw = localStorage.getItem(PREFS_KEY);
-      if (raw) Object.assign(prefs.value, JSON.parse(raw));
+      const stored = raw ? JSON.parse(raw) : {};
+      Object.assign(prefs.value, stored);
+      // 3D Hover (wolfryder101 #181): settle the style once. A browser with
+      // settings in it already keeps the classic fade; a new one gets the
+      // halo, marked as given, so the account copy can still say the player
+      // was here before (pullFromAccount). Written now, so saving any other
+      // setting later does not make a new player look like an old one.
+      if (!prefs.value.hoverStyle) {
+        prefs.value.hoverStyle = ngeDefaultHoverStyle(stored);
+        if (prefs.value.hoverStyle === 'halo') prefs.value.hoverStyleAuto = true;
+        localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+      }
     } catch { /* ignore parse errors */ }
   }
 
@@ -1112,7 +1131,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'hoverStyle', 'pulseColor'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1165,16 +1184,27 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
         // What was delivered on this computer before the account copy
         // arrived is kept too: delivery is never taken back.
         const hadHere = prefs.value.notifDelivered || [];
+        // A player who was here before, on a browser new to them: the halo
+        // given to "a new player" here gives way to their classic fade.
+        if (prefs.value.hoverStyleAuto && !remote.hoverStyle) remote.hoverStyle = 'fade';
+        prefs.value.hoverStyleAuto = false;
         Object.assign(prefs.value, syncedPart(remote));
         if (hadHere.length) prefs.value.notifDelivered = [...new Set([...(prefs.value.notifDelivered || []), ...hadHere])].sort((a, b) => b - a).slice(0, 300);
         localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
       } else {
+        prefs.value.hoverStyleAuto = false;
         pushToAccount(); // first sign in since this shipped: keep this browser's choices
       }
     } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }
   }
 
   load(); // hydrate from localStorage on store init
+  // The renderer reads the hover style and pulse colour from these.
+  watch(() => [prefs.value.hoverStyle, prefs.value.pulseColor], () => {
+    ngeHoverStyle.value = ngeParseHoverStyle(prefs.value);
+    ngePulseColor.value = ngeParsePulseColor(prefs.value.pulseColor);
+    try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
+  }, { immediate: true });
   // Another Pyr tab changed a setting: take it here too, so this tab's next
   // save does not put the old value back (Ames 2026-10-20, several tabs).
   window.addEventListener('storage', e => {
