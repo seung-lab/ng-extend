@@ -225,10 +225,10 @@ let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
   if (style === 'hologram' && ngeRimGl) {
-    const rgb = ngeGlowColor(color);
-    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], 1);
-    // Its scanlines drift, so keep drawing while the mouse is on it.
-    if (ngeMouseActive) ngePulseRunning = true;
+    // The rim's hot colour: the pulse colour if one is chosen, else gold
+    // (Ames's scifi-ui hologram, style goldOnBlue: core #FFD27A).
+    const pc = ngePulseColor.value;
+    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), pc ? pc[0] : 1, pc ? pc[1] : 0.824, pc ? pc[2] : 0.478, 1);
     return 5;
   }
   if (style === 'saturate' && ngeRimGl) {
@@ -356,7 +356,6 @@ export class MeshShaderManager {
     gl.uniform4f(shader.uniform('uNgeShell'), 0, 0, 0, 0);
     gl.uniform1f(shader.uniform('uNgeGlow'), 0);
     ngeRimGl = {gl, shader};
-    gl.uniform1f(shader.uniform('uNgeTime'), (performance.now() / 1000) % 1000);
     const {projectionParameters} = renderContext;
     ngeUpdateHaloZoom(projectionParameters);
     gl.uniform2f(shader.uniform('uNgeViewport'), projectionParameters.width, projectionParameters.height);
@@ -517,7 +516,6 @@ export class MeshShaderManager {
         builder.addUniform('highp vec3', 'uNgePulseScale');
         builder.addUniform('highp vec4', 'uNgePulseColor');
         builder.addUniform('highp vec4', 'uNgeRim');
-        builder.addUniform('highp float', 'uNgeTime');
         builder.addVarying('highp vec4', 'vNgeHolo');
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
@@ -562,14 +560,14 @@ float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
 vNgeHolo = vec4(0.0);
 if (uNgeGlow > 4.5) {
-  // EyeWire II hover hologram (Ames 2026-10-21: the real wireframe was too
-  // slow; "a hologram effect ... or an inner glow?"): a dark body that glows
-  // from its edges inward, with drifting scanlines (fragment main). Shader
-  // only, so it costs no more than drawing the cell.
+  // EyeWire II hover hologram, after Ames's scifi-ui hologram (style
+  // goldOnBlue, fresnelPower 3.9, glowIntensity 3.55, bodyAlpha 0.75): a body
+  // darker where it faces you and a thin, hot rim at its edges, worked out
+  // per pixel (fragment main). No scanlines and nothing moves (Ames
+  // 2026-10-21); shader only, so it costs no more than drawing the cell.
   highp float holoLen = length(uLightDirection.xyz);
   highp float holoFacing = holoLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / holoLen)) : 1.0;
-  vNgeHolo = vec4(1.0 - holoFacing, 0.0, 0.0, 1.0);
-  vColor.rgb = uColor.rgb * (0.2 + 0.2 * lightingFactor);
+  vNgeHolo = vec4(1.0 - holoFacing, 0.6 + 0.4 * holoFacing, 0.0, 1.0);
 } else if (uNgeGlow > 3.5) {
   // EyeWire II hover 'saturate', lit from within (Ames 2026-10-20: a colour
   // already at full strength cannot get richer): the shading flattens toward
@@ -660,10 +658,14 @@ if (uNgeShell.w > 0.5) {
         builder.setVertexMain(vertexMain);
         builder.setFragmentMain(`
 if (vNgeHolo.w > 0.5) {
-  highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 2.0);
-  highp float holoScan = smoothstep(0.6, 1.0, 0.5 + 0.5 * sin((gl_FragCoord.y - uNgeTime * 30.0) * 0.8));
-  highp vec3 holoGlow = uNgeRim.rgb * uColor.a;
-  emit(vec4(min(vColor.rgb + holoGlow * (0.95 * holoRim + 0.3 * holoScan), vec3(1.0)), vColor.a), uPickID);
+  highp float holoF = clamp(vNgeHolo.x, 0.0, 1.0);
+  highp vec3 holoC = uColor.rgb / max(uColor.a, 1e-3);
+  highp float holoRim = pow(holoF, 3.9) * 3.55;
+  highp vec3 holoBody = holoC * (0.75 * vNgeHolo.y * (0.4 + 0.6 * holoF));
+  highp vec3 holoRimCol = mix(holoC, uNgeRim.rgb, clamp(holoRim * 0.45, 0.0, 1.0));
+  // Toward the rim colour, not added on: added onto the bright body a gold rim
+  // burned to white (the scifi-ui page tone maps; this renderer does not).
+  emit(vec4(min(mix(holoBody, holoRimCol * 1.1, min(holoRim, 1.0)), vec3(1.0)) * uColor.a, uColor.a), uPickID);
 } else {
   emit(vColor, uPickID);
 }`);
