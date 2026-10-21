@@ -181,7 +181,7 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
 
 <style scoped>
 .nge-stt-tab {
-  position: fixed; left: 12px; bottom: 56px; z-index: 9300;
+  position: fixed; left: 12px; bottom: 56px; z-index: 140;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 7px 12px; border-radius: 8px;
   border: 1px solid rgba(74, 150, 224, 0.45);
@@ -191,7 +191,7 @@ function toggleSim(e: Event) { setSimulating((e.target as HTMLInputElement).chec
 .nge-stt-tab:focus-visible, .nge-stt-x:focus-visible, .nge-stt-step:focus-visible { outline: 2px solid #7ecaff; outline-offset: 2px; }
 .nge-stt-dot { width: 8px; height: 8px; border-radius: 50%; background: #7cffb2; }
 .nge-stt {
-  position: fixed; left: 12px; top: 58px; z-index: 9300;
+  position: fixed; left: 12px; top: 58px; z-index: 140;
   width: 300px; max-width: calc(100vw - 24px); max-height: calc(100vh - 120px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 10px;
   padding: 12px 14px 14px; border-radius: 10px;
