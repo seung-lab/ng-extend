@@ -156,7 +156,7 @@ function scheduleRefresh() {
   // ceremony said "The awards are being given…" and stayed that way).
   const awaiting = huntState.hunts.some(h => (h.phase === 'ended' && !h.awarded) || (h.phase === 'live' && Date.parse(h.end_at) <= t))
     && huntState.hunts.some(h => t - Date.parse(h.end_at) < 10 * 60_000);   // at most ten minutes after an end
-  const wait = awaiting ? 5000 + Math.random() * 2000 : next ? Math.min(next - t + 1500 + Math.random() * 3000, 2 * 3600_000) : 2 * 3600_000;
+  const wait = awaiting ? 5000 + Math.random() * 2000 : next ? Math.min(next - t + 500 + Math.random() * 1500, 2 * 3600_000) : 2 * 3600_000;
   refreshTimer = setTimeout(() => { void loadHunts(); }, wait);
 }
 
@@ -316,7 +316,7 @@ export function pickKind(h: HuntInfo, kind: GemKind) {
   huntState.kind = kind;
   const ml = managed(huntLayerName(h, kind));
   const v = viewer();
-  if (ml && v) { try { v.selectedLayer.layer = ml; v.selectedLayer.visible = true; } catch { /* the panel is optional */ } }
+  if (ml && v) { try { v.selectedLayer.layer = ml; v.selectedLayer.visible = huntPrefs.panels; } catch { /* the panel is optional */ } }
 }
 
 /** Put a judged gem in its folder (and the folder back, if the player removed it). */
@@ -347,8 +347,17 @@ let active: HuntInfo | null = null;
  * carries on), its starting view, and the gem layers with the player's gems.
  * 'switching' when the page is about to reload.
  */
-export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
-  if (!h.view) throw new Error(h.phase === 'announced' ? 'The Hunt has not started yet.' : 'This Hunt has no view to open.');
+export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
+  let h = given;
+  // Before the start the server keeps the view back (nobody peeks), and the page asks again a few
+  // seconds after the start. A click in between asks now, and again for a moment while the server's
+  // clock catches up (Ames 2026-10-21: "a slight delay between when it started and when it let me click").
+  for (let i = 0; i < 5 && !h.view && !h.test && phaseNow(h) === 'live'; i++) {
+    if (i) await new Promise(r => setTimeout(r, 800));
+    await loadHunts();
+    h = huntState.hunts.find(x => x.id === given.id) ?? h;
+  }
+  if (!h.view) throw new Error(phaseNow(h) === 'announced' ? 'The Hunt has not started yet.' : 'This Hunt has no view to open.');
   if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) {
     const ds = findDatasetByCanonical(canonicalDataset(h.dataset));
     if (!ds) throw new Error('This Hunt is on a dataset this version of Pyr does not have. Reload the page to update.');
@@ -380,6 +389,7 @@ export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
   judged.clear();
   for (const d of h.you?.drops ?? []) judged.add(d.id);
   active = h;
+  quietPanels();
   startDropWatch();
   // The run's clock starts at the first open (the server keeps the first time; a second open changes nothing).
   if (!h.test && h.phase === 'live' && !h.you?.started_at) {
@@ -424,9 +434,10 @@ export interface DropNews {
 
 // Where the last Ctrl + Click (⌘ + Click) landed, so each gem's answer can burst on the spot.
 let lastClick: { x: number; y: number; at: number } | null = null;
+let lastCtrlAt = 0;
 try {
   window.addEventListener('pointerdown', (e: PointerEvent) => {
-    if (e.button === 0 && (e.ctrlKey || e.metaKey)) lastClick = { x: e.clientX, y: e.clientY, at: Date.now() };
+    if (e.button === 0 && (e.ctrlKey || e.metaKey)) { lastClick = { x: e.clientX, y: e.clientY, at: Date.now() }; lastCtrlAt = lastClick.at; }
   }, true);
 } catch { /* no window */ }
 
@@ -438,7 +449,43 @@ const judged = new Set<string>();   // gems the server has answered for (or put 
  */
 export const huntPrefs = reactive({
   auto: (() => { try { return localStorage.getItem('nge-hunt-auto') !== '0'; } catch { return true; } })(),
+  /** The Annotations and Selection panels while hunting (Ames 2026-10-21: "an option to hide Annotations
+   *  side panel during hunt"): closed unless the player opens them here. Kept in this browser. */
+  panels: (() => { try { return localStorage.getItem('nge-hunt-panels') === '1'; } catch { return false; } })(),
 });
+export function setHuntPanels(on: boolean) {
+  huntPrefs.panels = on;
+  try { localStorage.setItem('nge-hunt-panels', on ? '1' : '0'); } catch { /* private window */ }
+  const v = viewer(); if (!v) return;
+  try {
+    if (isGemLayer(v.selectedLayer?.layer?.name)) v.selectedLayer.visible = on;
+    if (!on) v.selectionDetailsState.location.visible = false;
+  } catch { /* the panels are optional */ }
+}
+function isGemLayer(name: unknown): boolean {
+  return !!active && typeof name === 'string' && gemKinds(active).some(k => huntLayerName(active!, k) === name);
+}
+/** Closed while hunting: the gem layer's panel, and the Selection panel each new gem opens. */
+function quietPanels() {
+  if (huntPrefs.panels || !active) return;
+  const v = viewer(); if (!v) return;
+  try {
+    if (isGemLayer(v.selectedLayer?.layer?.name)) v.selectedLayer.visible = false;
+    v.selectionDetailsState.location.visible = false;
+  } catch { /* the panels are optional */ }
+}
+/** A gem's Ctrl + Click opens the Selection panel (neuroglancer selects the new point): closed at once, no flash.
+ *  A panel the player opens by hand stays open. */
+const hookedViewers = new WeakSet<object>();
+function hookPanels() {
+  const v = viewer();
+  const w = v?.selectionDetailsState?.location?.watchableVisible;
+  if (!v || !w?.changed || hookedViewers.has(v)) return;
+  hookedViewers.add(v);
+  w.changed.add(() => {
+    if (w.value && active && !huntPrefs.panels && lastCtrlAt && Date.now() - lastCtrlAt < 1500) w.value = false;
+  });
+}
 /** Gems dropped but not sent yet (Submit mode). */
 const waiting: { id: string; kind: GemKind; x?: number; y?: number }[] = [];
 export function setAutoJudge(on: boolean) {
@@ -515,7 +562,15 @@ async function judgeNext() {
         nearest_um: h.test ? r.nearest_um : undefined, at: Date.now(), x, y });
     }
     const copy = liveCopy(h);
-    if (copy && r.run) copy.you = { ...copy.you, ...r.run };
+    if (copy && r.run) {
+      copy.you = { ...copy.you, ...r.run };
+      // Your own row on the board moves with your gems (the rest wait for the next ask).
+      const mine = copy.board?.find(b => b.you);
+      if (mine) {
+        mine.found = r.run.found; mine.gems = r.run.gems_used;
+        copy.board.sort((a, b) => b.found - a.found || a.gems - b.gems).forEach((b, i) => { b.rank = i + 1; });
+      }
+    }
   } finally {
     busy = false;
     huntState.pending = null;
@@ -531,6 +586,7 @@ export function startDropWatch() {
     if (!active) resumeOnScreen();   // layers that came back with the link load after the list
     const h = active;
     if (!h) return;
+    hookPanels();
     for (const kind of gemKinds(h)) {
       const src = managed(huntLayerName(h, kind))?.layer?.localAnnotations;
       if (!src) continue;

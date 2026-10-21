@@ -105,7 +105,8 @@ test('the three notes say when, in words, with no dashes', () => {
   assert.deepEqual(rows.map((r) => r.kind), ['announce', 'start', 'end']);
   assert.match(rows[0].body, /starts in 2 days and runs for 3 days\. 1 merger is hidden on one cell/);
   assert.match(rows[1].title, /^🔎 The Hunt is on: The Pinky Hunt$/);
-  assert.match(rows[2].body, /awards ceremony/);
+  assert.match(rows[2].body, /see who placed: Gold, Silver, Bronze and the fastest hunter/);
+  assert.doesNotMatch(rows[2].body, /ceremony/);
   for (const r of rows) assert.doesNotMatch(r.title + r.body, /[—–]| - /);
   assert.equal(H.notificationRows({ ...h, announce_at: null }).length, 2);
   assert.equal(H.inWords(3600000 * 5), '5 hours');
@@ -158,6 +159,11 @@ function fakeDb() {
     insertNotification: async (row) => { const n = { id: s.seq++, ...clone(row) }; s.notes.push(n); return clone(n); },
     patchNotification: async (id, row) => { const n = s.notes.find((x) => x.id === Number(id)); Object.assign(n, clone(row)); return clone(n); },
     deleteNotification: async (id) => { s.notes = s.notes.filter((n) => n.id !== Number(id)); },
+    huntMedals: async (h) => {
+      const tierOf = new Map(s.badges.filter((b) => b.slug.startsWith(`hunt-${h.id}-`)).map((b) => [b.id, b.slug.split('-').pop()]));
+      for (const t of ['gold', 'silver', 'bronze', 'fastest']) { const id = h.art && h.art[t] && h.art[t].badge_id; if (id && !tierOf.has(id)) tierOf.set(id, t); }
+      return clone(s.awards.filter((a) => tierOf.has(a.badge_id)).map((a) => ({ user_id: a.user_id, tier: tierOf.get(a.badge_id), reason: a.reason || '' })));
+    },
     speedAward: async (huntId) => { const b = s.badges.find((x) => x.slug === `hunt-${huntId}-fastest`); const a = b && s.awards.find((x) => x.badge_id === b.id); return a ? clone({ user_id: a.user_id, reason: a.reason }) : null; },
     badgeById: async (id) => clone(s.badges.find((b) => b.id === Number(id)) || null),
     upsertBadge: async (row) => { let b = s.badges.find((x) => x.slug === row.slug); if (b) Object.assign(b, clone(row)); else { b = { id: s.seq++, ...clone(row) }; s.badges.push(b); } return clone(b); },
@@ -256,7 +262,7 @@ test('each gem is judged as it lands: right, wrong, or found already; a run ends
   assert.equal(r3.run.gems_used, 2);
   await one(pt(5000, 5050, 100), 'd');
   const r5 = await one(pt(9000, 1000, 200), 'e');
-  assert.deepEqual([r5.run.found, r5.run.gems_used, r5.run.done, r5.run.tier], [3, 4, true, 'gold']);
+  assert.deepEqual([r5.run.found, r5.run.gems_used, r5.run.done, r5.run.tier], [3, 4, true, null]);   // the medal is a place, given at the end
   await assert.rejects(one(pt(2, 2, 2), 'f'), /found them all/);
   // The run is one row, every gem in order.
   const rows = h.db._s.subs.filter((x) => x.user_id === P1.id);
@@ -272,7 +278,7 @@ test('each gem is judged as it lands: right, wrong, or found already; a run ends
   await assert.rejects(H.huntAction('hunt.drop', { id: d.id, layer: layer([pt(1, 1, 1), pt(2, 2, 2)]), dims: DIMS }, h.ctx(P3, at(61))), /one gem at a time/);
   // Your run comes back with the hunt, so the game can put your gems back.
   const cur = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(62)))).hunts[0];
-  assert.deepEqual([cur.you.found, cur.you.gems_used, cur.you.done, cur.you.tier, cur.you.rank], [3, 4, true, 'gold', 1]);
+  assert.deepEqual([cur.you.found, cur.you.gems_used, cur.you.done, cur.you.tier, cur.you.rank], [3, 4, true, null, 1]);
   assert.deepEqual(cur.you.drops.map((x) => [x.id, x.hit]), [['a', true], ['b', false], ['d', true], ['e', true]]);
   assert.deepEqual(cur.you.drops[0].at, [1010, 1000, 100]);
   assert.deepEqual(cur.board.map((b) => [b.found, b.gems]), [[3, 4], [0, 6]]);
@@ -419,10 +425,10 @@ test('the Achievement lines are jokes with counts, and use the art set for the h
   const th = H.thresholds(hunt);
   const g = H.badgeRow(hunt, 'gold', th, 'https://pyr.example');
   assert.equal(g.image_url, 'https://art.example/g.png');
-  assert.match(g.description, /^Gold in Pinky Hunt, every one of the 5 mergers found\. /);
+  assert.match(g.description, /^Gold in Pinky Hunt: first place\. /);
   const s = H.badgeRow(hunt, 'silver', th, 'https://pyr.example');
   assert.equal(s.image_url, 'https://pyr.example/hunt/silver.png');
-  assert.match(s.description, /4 or more of the 5 mergers/);
+  assert.match(s.description, /^Silver in Pinky Hunt: second place\. /);
   for (const r of [g, s]) assert.doesNotMatch(r.name + r.description, /[—–]|badge/i);
 });
 
@@ -645,4 +651,47 @@ test('an admins only hunt sends each note to every admin, never to chat; turned 
   await H.huntAction('hunt.save', { id: d.id, fields: { admins_only: false } }, h.ctx(ADMIN, at(3), true));
   assert.equal(h.db._s.notes.length, 3);
   assert.ok(h.db._s.notes.every((n) => n.target_type === 'all' && n.post_to_chat === true));
+});
+
+test('Gold, Silver and Bronze are 1st, 2nd and 3rd: most found, then fewest gems, then the quicker clock; one each', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  // All three find everything; P2 with fewest gems; P1 and P3 tie on gems, P3 quicker.
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P1, at(60)));
+  await dropAll(d.id, [pt(1, 1, 1), pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P1, at(62)));
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P2, at(60)));
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P2, at(64)));
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P3, at(60)));
+  await dropAll(d.id, [pt(2, 2, 2), pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P3, at(61)));
+  // While it runs nobody sees a medal.
+  const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(70)))).hunts[0];
+  assert.ok(live.board.every((b) => b.tier === null) && live.you.tier === null);
+  const end = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(121)))).hunts[0];
+  const medal = (uid) => h.db._s.badges.find((b) => b.id === h.db._s.awards.find((a) => a.user_id === uid && !/fastest/.test(h.db._s.badges.find((x) => x.id === a.badge_id).slug)).badge_id).slug.split('-').pop();
+  assert.deepEqual([medal(P2.id), medal(P3.id), medal(P1.id)], ['gold', 'silver', 'bronze']);
+  assert.deepEqual(end.winners, { gold: 1, silver: 1, bronze: 1 });
+  assert.deepEqual(end.board.map((b) => b.tier), ['gold', 'silver', 'bronze']);
+  assert.equal(end.you.tier, 'bronze');
+  assert.match(h.db._s.awards.find((a) => a.user_id === P2.id).reason, /^Gold, first place in Pinky Hunt: 3 of 3 found with 3 gems/);
+});
+
+test('Count it: an admin turns a hunter\'s miss on a real error into a place in the key, and everyone is judged again', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  // A real error the key missed, at [20000, 20000, 100] (voxels); P1 and P2 both put a gem there.
+  await dropAll(d.id, [pt(20000, 20000, 100)], h.ctx(P1, at(60)));
+  await dropAll(d.id, [pt(20010, 20000, 100)], h.ctx(P2, at(61)));
+  const admin = h.ctx(ADMIN, at(62), true);
+  await assert.rejects(H.huntAction('hunt.run', { id: d.id, user_id: P1.id }, h.ctx(P2, at(62))), /Admins only/);
+  const run = await H.huntAction('hunt.run', { id: d.id, user_id: P1.id }, admin);
+  assert.equal(run.drops.length, 1);
+  assert.equal(run.drops[0].hit, false);
+  const after = await H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: run.drops[0].id }, admin);
+  assert.equal(after.target_count, 4);
+  assert.equal(h.db._s.keys[d.id].length, 4);
+  assert.deepEqual(h.db._s.subs.map((x) => x.found), [1, 1]);   // both get it
+  await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: run.drops[0].id }, admin), /already found/);
+  await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'nope' }, admin), /not in this hunter/);
 });

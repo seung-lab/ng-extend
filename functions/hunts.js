@@ -362,7 +362,7 @@ function runView(h, drops, targets, run) {
     found_by: foundBy, of_by: kinds,
     started_at: (run && run.created_at) || null, time_ms: run ? runClock(run, drops) : null,
     done: (targets.length > 0 && found >= targets.length) || used >= budget,
-    tier: tierFor(found, thresholds(h), used, gemLimits(h)),
+    tier: null,   // the medals are places, given and shown at the end
     drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, kind: d.hit >= 0 ? kindOf(targets[d.hit]) : null, k: d.k })),
   };
 }
@@ -390,6 +390,27 @@ function clockWords(msTime) {
   if (m) return `${m}m ${String(x).padStart(2, '0')}s`;
   return `${x}s`;
 }
+
+/**
+ * The places (Ames 2026-10-21: "This isn't really gold/silver/bronze bc it's not one per person"):
+ * Gold, Silver and Bronze go to 1st, 2nd and 3rd, ranked by her rule, most problems found, then
+ * fewest gems, then the quicker clock, then the earlier start. Only runs that found something place.
+ */
+function placeRuns(runs) {
+  const best = new Map();
+  for (const r of runs) {
+    const x = { ...r, gems: r.drops.length, ms: runClock(r, r.drops), startMs: ms(r.created_at) };
+    const was = best.get(r.user_id);
+    if (!was || x.found > was.found || (x.found === was.found && x.gems < was.gems)) best.set(r.user_id, x);
+  }
+  const key = (x) => [-x.found, x.gems, x.ms == null ? Infinity : x.ms, Number.isFinite(x.startMs) ? x.startMs : Infinity];
+  return [...best.values()].filter((x) => x.found > 0).sort((a, b) => {
+    const ka = key(a), kb = key(b);
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return 0;
+  });
+}
+const PLACE_WORD = { gold: 'first place', silver: 'second place', bronze: 'third place' };
 
 /**
  * The speed award (Ames 2026-10-21): "for the fastest player to get all points (or fastest
@@ -453,14 +474,10 @@ function notificationRows(h) {
     body: `${spotWords(kinds)} hidden on ${whereWords(h)}. Open the Hunt and Ctrl + Click to drop a gem on each one you find. You have ${maxPoints(h)} gems and ${runs}.` });
   rows.push({ kind: 'end', send_at: h.end_at,
     title: `${TITLE_PREFIX} is over: ${h.title}`,
-    body: 'Time is up. Open the Hunt for the awards ceremony: the gold, silver and bronze hunters get their Achievements now.' });
-  // A test (admins only) says so, in the title and the words (Ames 2026-10-21: "how did I know this was
-  // an admin only hunt note?"). The title still starts with the Hunt's prefix, which the bell opens the Hunt by.
-  const test = !!h.admins_only;
-  return rows.map((r) => ({ ...r,
-    title: (test ? r.title.replace(/^(🔎 The Hunt is (?:coming|on|over))/u, '$1 (test)') : r.title).slice(0, 120),
-    body: test ? `${r.body} A test: only admins get this note.` : r.body,
-    ...noteImage(h, r.kind) }));
+    body: 'Time is up. Open the Hunt to see who placed: Gold, Silver, Bronze and the fastest hunter get their Achievements now.' });
+  // An admins only Hunt's notes read exactly as the real ones (Ames 2026-10-21: "don't need all this ADMINS
+  // TEST stuff, we need to nail the real UI"); who gets them is what differs.
+  return rows.map((r) => ({ ...r, title: r.title.slice(0, 120), ...noteImage(h, r.kind) }));
 }
 
 // ── Achievements ──────────────────────────────────────────────────────────
@@ -474,9 +491,7 @@ const LINES = {
 
 /** The special Achievement for one tier of one hunt. */
 function badgeRow(h, tier, th, site) {
-  const n = posInt(h.target_count);
-  const k = th[tier];
-  const count = k >= n ? `every one of the ${n} mergers found` : `${k} or more of the ${n} mergers found`;
+  const count = PLACE_WORD[tier] || 'a medal';
   const a = h.art && h.art[tier];
   const own = typeof a === 'string' ? a : a && a.image_url;
   // Ames's medals (2026-10-21: "the badges that we will use consistently for hunt"), unless a picture was set.
@@ -485,7 +500,7 @@ function badgeRow(h, tier, th, site) {
   return {
     slug: `hunt-${h.id}-${tier}`,
     name: `${h.title}: ${TIER_NAME[tier]}`.slice(0, 80),
-    description: `${TIER_NAME[tier]} in ${h.title}, ${count}. ${LINES[tier]}`.slice(0, 300),
+    description: `${TIER_NAME[tier]} in ${h.title}: ${count}. ${LINES[tier]}`.slice(0, 300),
     image_url: art, thumbnail_url: thumb, created_by: h.created_by || null,
   };
 }
@@ -649,6 +664,8 @@ async function huntAction(action, args, ctx) {
     case 'hunt.rescore': needAdmin(); return rescore(args, ctx);
     case 'hunt.notes': needAdmin(); return notesPreview(args, ctx);
     case 'hunt.duplicate': needAdmin(); return duplicate(args, ctx);
+    case 'hunt.run': needAdmin(); return adminRun(args, ctx);
+    case 'hunt.count_it': needAdmin(); return countIt(args, ctx);
     case 'hunt.test': needAdmin(); return testOpen(args, ctx);
     case 'hunt.test_drop': needAdmin(); return testDrop(args, ctx);
     default: fail(400, 'Unknown Hunt action.');
@@ -686,18 +703,23 @@ async function current(ctx) {
     const mine = runView(h, runDrops || [], key, runDrops ? run : null);
     const ended = phase(h, now) === 'ended';
     // At the ceremony everyone who took part is listed (Ames 2026-10-21); while it runs, the top ten.
-    const shown = ended ? board.slice(0, 200) : top;
-    const speed = ended && h.awarded_at && db.speedAward ? await db.speedAward(h.id) : null;
+    // The medals, from the awards once they are given (never before: they are places, decided at the end).
+    const medals = ended && h.awarded_at && db.huntMedals ? await db.huntMedals(h) : [];
+    const medalOf = new Map(medals.filter((m) => m.tier !== 'fastest').map((m) => [m.user_id, m.tier]));
+    const speed = medals.find((m) => m.tier === 'fastest') || null;
+    const order = { gold: 0, silver: 1, bronze: 2 };
+    const ranked = ended ? [...board].sort((a, b) => (order[medalOf.get(a.user_id)] ?? 9) - (order[medalOf.get(b.user_id)] ?? 9)) : board;
+    const shown = ended ? ranked.slice(0, 200) : top;
     if (ended) { const more = await db.names([...new Set([...shown.map((b) => b.user_id), ...(speed ? [speed.user_id] : [])])]); Object.assign(names, more); }
     hunts.push({
       ...publicHunt(h, now), prizes: await prizesFor(h, db, ctx.site),
       you: { ...mine, best: mineBest ? mineBest.found : 0, submissions: run ? 1 : 0,
-        tier: mineBest ? tierFor(mineBest.found, th, mineBest.gems, gl) : null, rank: mineBest ? board.indexOf(mineBest) + 1 : 0 },
-      board: shown.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: tierFor(b.found, th, b.gems, gl), you: b.user_id === me.id,
+        tier: medalOf.get(me.id) || null, rank: mineBest ? ranked.indexOf(mineBest) + 1 : 0 },
+      board: shown.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: medalOf.get(b.user_id) || null, you: b.user_id === me.id,
         fastest: !!speed && speed.user_id === b.user_id })),
       fastest: speed ? { name: names[speed.user_id] || 'Player', reason: speed.reason || '', you: speed.user_id === me.id } : null,
       players: board.length,
-      winners: TIERS.reduce((o, t) => { o[t] = board.filter((b) => tierFor(b.found, th, b.gems, gl) === t).length; return o; }, {}),
+      winners: TIERS.reduce((o, t) => { o[t] = medals.filter((m) => m.tier === t).length; return o; }, {}),
     });
   }
   return { now: now.toISOString(), hunts };
@@ -736,6 +758,40 @@ async function drop(args, ctx) {
   });
   // A player hears right or wrong, and what is left; never how near a miss was.
   return { drop: r.drop, run: row ? runView(h, kept, targets, row) : r.run };
+}
+
+/** One hunter's gems, for the Admin Hub: where each landed, its kind, right or wrong. */
+async function adminRun(args, ctx) {
+  const { db } = ctx;
+  const h = await getHunt(db, args.id);
+  const run = await db.myRun(h.id, String(args.user_id || ''));
+  const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
+  return { user_id: args.user_id, drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, k: d.k, t: d.t })) };
+}
+
+/**
+ * Count it (Ames 2026-10-21: "a way for admins to manually correct a mistake (or award an extra
+ * point). Sometimes on EW1 hunts someone would find a (real) error that was not an official error"):
+ * a hunter's missed gem becomes a place in the answer key (of the kind of that gem), and every run
+ * is judged again, so whoever else found it gets it too. After the end, Give the awards again.
+ */
+async function countIt(args, ctx) {
+  const { db } = ctx;
+  const h = await getHunt(db, args.id);
+  const run = await db.myRun(h.id, String(args.user_id || ''));
+  const drops = run && Array.isArray(run.points) ? normalizeDrops(run.points) : [];
+  const d = drops.find((x) => x.id === String(args.drop_id || ''));
+  if (!d) fail(404, 'That gem is not in this hunter\'s run.');
+  if (d.hit >= 0) fail(409, 'That gem already found a problem.');
+  const targets = await db.key(h.id);
+  if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
+  const tol = tolOf(h);
+  if (targets.some((t) => dist(t, d.nm) <= tol / 4)) fail(409, 'The key already has a place there.');
+  const next = [...targets, [d.nm[0], d.nm[1], d.nm[2], d.k === 'merge' ? 'merge' : 'cut']];
+  await db.setKey(h.id, next);
+  const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
+  const r = await rescore({ id: h.id }, ctx);
+  return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed };
 }
 
 /** A copy of a hunt, as a draft: its key, view, cells, words and settings; no notes, no answers. */
@@ -805,13 +861,13 @@ async function finalize(h, ctx, { force = false } = {}) {
     if (!row) return null;   // another request is giving the awards
   }
   const board = leaderboard(await db.submissions(row.id));
-  const th = thresholds(row), gl = gemLimits(row);
-  const winners = board.map((b) => ({ ...b, tier: tierFor(b.found, th, b.gems, gl) })).filter((b) => b.tier);
+  const th = thresholds(row);
   const counts = { gold: 0, silver: 0, bronze: 0, fastest: 0 };
-  // The speed award, from every run's clock (read once, here).
+  // Every run, read once here: the places and the speed award come from their gems and clocks.
   const n = posInt(row.target_count);
   const runs = (await db.allSubmissions(row.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)))
     .map((x) => ({ user_id: x.user_id, created_at: x.created_at, found: x.found, drops: normalizeDrops(x.points) }));
+  const winners = placeRuns(runs).slice(0, 3).map((r, i) => ({ user_id: r.user_id, found: r.found, gems: r.gems, tier: TIERS[i] }));
   const speed = speedWinner(runs, n);
   if (speed) winners.push({ user_id: speed.user_id, found: speed.found, gems: speed.drops.length, tier: 'fastest', time: clockWords(speed.ms), all: speed.all });
   await postResults(row, board, winners, speed, ctx);
@@ -828,7 +884,7 @@ async function finalize(h, ctx, { force = false } = {}) {
   const fresh = winners.filter((w) => !held.has(`${badges[w.tier].id}:${w.user_id}`));
   await db.award(winners.map((w) => ({ badge_id: badges[w.tier].id, user_id: w.user_id, awarded_by: row.created_by || null,
     reason: w.tier === 'fastest' ? `${w.all ? `All ${row.target_count}` : `${w.found} of ${row.target_count}`} found in ${w.time}, the fastest in ${row.title}`
-      : `Found ${w.found} of ${row.target_count} with ${w.gems} gems in ${row.title}` })));
+      : `${TIER_NAME[w.tier]}, ${PLACE_WORD[w.tier]} in ${row.title}: ${w.found} of ${row.target_count} found with ${w.gems} gems` })));
   for (const w of winners) counts[w.tier]++;
   if (fresh.length && notify) {
     await notify(fresh.map((w) => ({ user_id: w.user_id, title: `🏅 New Achievement: ${badges[w.tier].name}`,
@@ -875,8 +931,8 @@ async function postResults(row, board, winners, speed, ctx) {
   const body = board.length
     ? `Congratulations to all ${who} who took part!${parts.length ? ' ' + parts.join(' ') : ''}`
     : 'Nobody hunted this time. The next Hunt is yours.';
-  const test = !!row.admins_only;
-  const base = { title: `${TITLE_PREFIX} results${test ? ' (test)' : ''}: ${row.title}`.slice(0, 120), body: test ? `${body} A test: only admins get this note.` : body,
+  const test = !!row.admins_only;   // who gets it: admins only, never chat (the words are the real ones)
+  const base = { title: `${TITLE_PREFIX} results: ${row.title}`.slice(0, 120), body,
     send_at: now.toISOString(), ...(ctx.site ? { image_url: `${ctx.site}/hunt/gold.png`, thumbnail_url: `${ctx.site}/hunt/gold-128.png` } : { image_url: null, thumbnail_url: null }),
     created_by: (me && me.id) || row.created_by || null };
   try {
@@ -1110,10 +1166,12 @@ async function adminRead(args, ctx) {
   const board = leaderboard(subs);
   const names = await db.names(board.map((b) => b.user_id));
   const th = thresholds(h);
-  const gl = gemLimits(h);
+  const runs = (await db.allSubmissions(h.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)))
+    .map((x) => ({ user_id: x.user_id, created_at: x.created_at, found: x.found, drops: normalizeDrops(x.points) }));
+  const placed = placeRuns(runs).slice(0, 3).map((r) => r.user_id);
   return { ...(await adminView(h, ctx)), view: h.view || null, targets,
     board: board.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', user_id: b.user_id, found: b.found, at: b.at,
-      gems: b.gems, tier: tierFor(b.found, th, b.gems, gl) })) };
+      gems: b.gems, tier: placed.includes(b.user_id) ? TIERS[placed.indexOf(b.user_id)] : null })) };
 }
 
 // ── The database ──────────────────────────────────────────────────────────
@@ -1172,6 +1230,17 @@ function restDb(sb) {
       adminsOnlyColumn.at = Date.now();
       return adminsOnlyColumn.ok;
     },
+    huntMedals: async (h) => {
+      const own = ['gold', 'silver', 'bronze', 'fastest'].map((t) => `hunt-${posInt(h.id)}-${t}`);
+      const badges = await sb(`special_badges?slug=in.(${own.map(enc).join(',')})&select=id,slug`);
+      const tierOf = new Map(badges.map((b) => [b.id, b.slug.split('-').pop()]));
+      // A special Achievement chosen for a medal can be held for other things too: its awards for this hunt name it.
+      for (const t of ['gold', 'silver', 'bronze', 'fastest']) { const id = posInt(h.art && h.art[t] && h.art[t].badge_id); if (id && !tierOf.has(id)) tierOf.set(id, t); }
+      if (!tierOf.size) return [];
+      const awards = await sb(`special_badge_awards?badge_id=in.(${[...tierOf.keys()].join(',')})&select=badge_id,user_id,reason&limit=1000`);
+      return awards.filter((a) => badges.some((b) => b.id === a.badge_id) || String(a.reason || '').includes(h.title))
+        .map((a) => ({ user_id: a.user_id, tier: tierOf.get(a.badge_id), reason: a.reason || '' }));
+    },
     speedAward: async (huntId) => {
       const b = await one(sb(`special_badges?slug=eq.${encodeURIComponent(`hunt-${posInt(huntId)}-fastest`)}&select=id&limit=1`));
       if (!b) return null;
@@ -1188,7 +1257,7 @@ function restDb(sb) {
 }
 
 module.exports = {
-  huntAction, restDb, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
+  huntAction, restDb, placeRuns, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM,
 };

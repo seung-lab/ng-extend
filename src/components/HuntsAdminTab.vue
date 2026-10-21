@@ -13,7 +13,7 @@ import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { useProofreadingBackendStore } from '../store';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
-import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
+import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
 import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
@@ -35,7 +35,8 @@ interface AdminHunt {
   notes?: Partial<Record<NoteKind, NoteInfo>>;
   notif_images?: Partial<Record<NoteKind, Picture>>;
 }
-interface BoardRow { rank: number; name: string; found: number; at: string; gems: number; tier: Tier | null }
+interface BoardRow { rank: number; name: string; user_id: string; found: number; at: string; gems: number; tier: Tier | null }
+interface RunGem { id: string; at: number[] | null; hit: boolean; k: 'cut' | 'merge' | null }
 
 const TIERS: Tier[] = ['gold', 'silver', 'bronze'];
 const TIER_WORD: Record<Tier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
@@ -377,6 +378,26 @@ function tryIt() {
   document.dispatchEvent(new CustomEvent('nge:hunt-test', { detail: { id } }));
 }
 
+// ── A hunter's gems, and Count it (Ames 2026-10-21: "a way for admins to manually correct a mistake") ──
+const runOf = ref<null | { user_id: string; drops: RunGem[] }>(null);
+async function showRun(b: BoardRow) {
+  if (runOf.value?.user_id === b.user_id) { runOf.value = null; return; }
+  try { runOf.value = await huntCall<{ user_id: string; drops: RunGem[] }>('hunt.run', { id: editing.value?.id, user_id: b.user_id }); }
+  catch (e: any) { error.value = e?.message || String(e); }
+}
+function goToGem(d: RunGem) { if (d.at) goToSoma(d.at.slice(0, 3)); }
+async function countIt(b: BoardRow, d: RunGem) {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  busy.value = 'count'; error.value = ''; message.value = '';
+  try {
+    const r = await huntCall<any>('hunt.count_it', { id: h.id, user_id: b.user_id, drop_id: d.id });
+    busy.value = '';
+    await open(r);
+    message.value = `Counted: the key has ${r.target_count} places now. ${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
+
 // Duplicate (Ames 2026-10-21: "let me duplicate a hunt on the test server for during testing"):
 // a draft with the same key, view, cells, words and settings, and no notes or answers.
 async function duplicate() {
@@ -398,7 +419,6 @@ async function duplicate() {
       <h3>Hunts</h3>
       <p class="nge-hunts-lead">A timed hunt for mergers and missing extensions: players Ctrl + Click to drop gems, each judged as it lands, until they find them all or run out of gems. Gold, silver and bronze go to the best hunters when it ends.</p>
     </header>
-    <p v-if="ON_TEST_SITE" class="nge-hunts-testsite"><b>Test site:</b> every Hunt here is a test. Only admins see it and get its notes; nothing reaches players or chat.</p>
 
     <p v-if="notInstalled" class="nge-hunts-warn">The Hunt is not set up on the server yet: run <code>supabase-hunts.sql</code> in Supabase, then deploy the <code>ewHunt</code> function.</p>
     <p v-if="error && !notInstalled" class="nge-hunts-error" role="alert">{{ error }}</p>
@@ -479,7 +499,7 @@ async function duplicate() {
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>3. When</legend>
         <p class="nge-hunts-help">Eastern time (ET). Players see each time in their own time zone, named.</p>
-        <label class="nge-hunts-check"><input :checked="form.admins_only || ON_TEST_SITE" :disabled="ON_TEST_SITE" type="checkbox" @change="setAdminsOnly" /> <span><b>Only admins</b>, to test the whole Hunt: players never see it, the notes go only to you, and nothing is posted in chat.<template v-if="ON_TEST_SITE"> On this test site every Hunt is admins only.</template></span></label>
+        <label class="nge-hunts-check"><input :checked="form.admins_only || ON_TEST_SITE" :disabled="ON_TEST_SITE" type="checkbox" @change="setAdminsOnly" /> <span><b>Only admins</b>: players never see it, and nothing posts in chat.</span></label>
         <p v-if="!form.admins_only && !ON_TEST_SITE" class="nge-hunts-warnline">Scheduled, the notes go to every player's bell and post in chat.</p>
         <div class="nge-hunts-grid">
           <label>Announce (ET) <input v-model="form.announce" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.announce) || 'no announcement' }}</span></label>
@@ -495,14 +515,7 @@ async function duplicate() {
           <label>Gems per player <input v-model.number="form.max_points" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor.points}` : 'auto'" /></label>
         </div>
         <p class="nge-hunts-help">A gem finds a problem of its kind within the tolerance. Each player has <b>Gems per player</b> gems, one run: their Hunt ends when they find them all or the gems run out. Left empty: twice the problems.</p>
-        <p class="nge-hunts-help">For each medal: problems to find, and the most gems used. Left empty: all for Gold, using the problems and a third more in gems; two thirds for Silver and one third for Bronze, with no gem limit.</p>
-        <div class="nge-hunts-grid">
-          <div v-for="t in TIERS" :key="t" class="nge-hunts-tierbox">
-            <span class="nge-hunts-tierword">{{ TIER_WORD[t] }}</span>
-            <label>find at least <input v-model.number="form.tiers[t]" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor[t]}` : 'auto'" /></label>
-            <label>using at most <input v-model.number="form.tierGems[t]" type="number" min="1" class="nge-hunts-input" :placeholder="t === 'gold' && defaultsFor ? `auto: ${defaultsFor.goldGems} gems` : 'any gems'" /></label>
-          </div>
-        </div>
+        <p class="nge-hunts-help"><b>The medals are places:</b> Gold for 1st, Silver for 2nd, Bronze for 3rd, ranked by most problems found, then fewest gems, then the quicker clock (from each hunter's first open of the Hunt). The Speed award goes to the fastest to find them all, or, if nobody does, the fastest of those who found the most. Medals are revealed at the end.</p>
       </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
@@ -607,10 +620,27 @@ async function duplicate() {
       <!-- Results -->
       <fieldset v-if="board.length" class="nge-hunts-group">
         <legend>Hunters ({{ board.length }})</legend>
+        <p class="nge-hunts-help">Click a hunter to see their gems. A miss on a real error the key missed: <b>Count it</b> adds that spot to the key and judges everyone again. After the end, Give the awards again.</p>
         <table class="nge-hunts-board">
-          <thead><tr><th>#</th><th>Player</th><th>Found</th><th>Gems</th><th>Medal</th></tr></thead>
+          <thead><tr><th>#</th><th>Player</th><th>Found</th><th>Gems</th><th>{{ phase === 'ended' ? 'Medal' : 'Place so far' }}</th></tr></thead>
           <tbody>
-            <tr v-for="b in board" :key="b.rank"><td>{{ b.rank }}</td><td>{{ b.name }}</td><td>{{ b.found }} / {{ editing.target_count }}</td><td>{{ b.gems }}</td><td>{{ b.tier ? TIER_WORD[b.tier] : '' }}</td></tr>
+            <template v-for="b in board" :key="b.rank">
+              <tr class="nge-hunts-hunter" :class="{ 'nge-hunts-hunter--open': runOf?.user_id === b.user_id }" tabindex="0" @click="showRun(b)" @keydown.enter="showRun(b)">
+                <td>{{ b.rank }}</td><td>{{ b.name }}</td><td>{{ b.found }} / {{ editing.target_count }}</td><td>{{ b.gems }}</td><td>{{ b.tier ? TIER_WORD[b.tier] : '' }}</td>
+              </tr>
+              <tr v-if="runOf?.user_id === b.user_id"><td colspan="5">
+                <p v-if="!runOf.drops.length" class="nge-hunts-muted">No gems yet.</p>
+                <ul class="nge-hunts-gems">
+                  <li v-for="(d, i) in runOf.drops" :key="d.id" :class="d.hit ? 'nge-hunts-gem--hit' : 'nge-hunts-gem--miss'">
+                    <span class="nge-hunts-gem-n">{{ i + 1 }}</span>
+                    <span>{{ d.k === 'merge' ? 'Extend' : 'Cut' }} gem · {{ d.hit ? 'found' : 'missed' }}</span>
+                    <span class="nge-hunts-muted">{{ (d.at || []).slice(0, 3).map((v) => Math.round(v)).join(', ') }}</span>
+                    <button class="nge-hunts-btn nge-hunts-btn--small" :disabled="!d.at" title="Move the view to this gem" @click.stop="goToGem(d)">Go there</button>
+                    <button v-if="!d.hit" class="nge-hunts-btn nge-hunts-btn--small" :disabled="!!busy" title="A real error the key missed: add it to the key, and judge everyone again" @click.stop="countIt(b, d)">Count it</button>
+                  </li>
+                </ul>
+              </td></tr>
+            </template>
           </tbody>
         </table>
       </fieldset>
@@ -670,7 +700,6 @@ async function duplicate() {
 .nge-hunts-cellrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .nge-hunts-cellid { min-width: 210px; color: #e6f0ff; font-size: 13px; }
 .nge-hunts-xyz { width: 118px !important; flex: none; }
-.nge-hunts-testsite { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(90, 170, 255, 0.1); border: 1px solid rgba(90, 170, 255, 0.5); color: #cfe4ff; font-size: 13px; }
 .nge-hunts-desc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nge-hunts-desc-label { font-size: 12.5px; color: #a9bbd3; }
 .nge-hunts-fmt { display: flex; gap: 4px; }
@@ -679,6 +708,13 @@ async function duplicate() {
 .nge-hunts-desc-preview { padding: 8px 10px; border-radius: 8px; background: rgba(4, 8, 18, 0.6); border: 1px dashed rgba(90, 170, 255, 0.3); font-size: 13.5px; }
 .nge-hunts-desc-preview :deep(p) { margin: 4px 0; }
 .nge-hunts-desc-preview :deep(ol), .nge-hunts-desc-preview :deep(ul) { margin: 4px 0; padding-left: 20px; }
+.nge-hunts-hunter { cursor: pointer; }
+.nge-hunts-hunter:hover td, .nge-hunts-hunter--open td { background: rgba(90, 170, 255, 0.08); }
+.nge-hunts-gems { list-style: none; margin: 4px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.nge-hunts-gems li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.nge-hunts-gem-n { width: 18px; color: #8fa3bf; }
+.nge-hunts-gem--hit span:nth-child(2) { color: #f8e08a; }
+.nge-hunts-gem--miss span:nth-child(2) { color: #c9d2e0; }
 .nge-hunts-tierbox { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(90, 170, 255, 0.04); border: 1px solid rgba(90, 170, 255, 0.15); }
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }

@@ -2,20 +2,22 @@
 /**
  * The Hunt box (Ames 2026-10-20, rules of play 2026-10-21): a narrow box at
  * the right, dragged by its header, opened from the Hunt pill in the top bar
- * or a Hunt notification. Before the start: the countdown and the awards.
- * While it runs: Ames's five lines of instructions, the Cut and Extend gems
+ * or a Hunt notification. Before the start: the countdown and the instructions
+ * (with the medals at their foot). While it runs: the Cut and Extend gems
  * (which layer Ctrl + Click drops into), what is found and what gems are left,
  * and each gem's answer as it lands (the burst on the spot is HuntGemFx.vue).
- * After the end: the awards ceremony. Logic in src/hunt.ts; rules on the
+ * After the end: the congratulations. Made small, a slim strip with the same
+ * main things (found, gems left, the gem switch, Submit). Logic in src/hunt.ts; rules on the
  * server (functions/hunts.js).
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, submitWaiting,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, submitWaiting,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { useDragBox } from '../util/drag_box';
+import EditableText from './EditableText.vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 
 const props = defineProps<{ huntId?: number | null; test?: boolean }>();
@@ -62,24 +64,6 @@ const KIND: Record<GemKind, { word: string; finds: string; one: string }> = {
   cut: { word: 'Cut', finds: 'mergers', one: 'merger' },
   merge: { word: 'Extend', finds: 'missing extensions', one: 'missing extension' },
 };
-
-function need(t: HuntTier): string {
-  const h = hunt.value; if (!h) return '';
-  const k = h.tiers[t];
-  const finds = k >= h.target_count ? (h.target_count === 1 ? 'find it' : `find all ${h.target_count}`) : `find ${k} or more`;
-  const g = h.gem_limits?.[t];
-  return g ? `${finds} using ${g} ${g === 1 ? 'gem' : 'gems'} or fewer` : finds;
-}
-/** The awards that can be won: a medal that asks no less than the one above it is never given. */
-const awards = computed<HuntTier[]>(() => {
-  const h = hunt.value; if (!h) return [];
-  const gl = h.gem_limits ?? { gold: 0, silver: 0, bronze: 0 };
-  return TIERS.filter((t, i) => {
-    if (i === 0) return true;
-    const up = TIERS[i - 1];
-    return h.tiers[t] < h.tiers[up] || (!!gl[up] && (!gl[t] || gl[t] > gl[up]));
-  });
-});
 
 let gemTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
@@ -158,10 +142,11 @@ watch(() => [hunt.value?.id, run.value?.done, run.value?.found, run.value?.of] a
   try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch { /* still celebrate */ }
   setTimeout(() => document.dispatchEvent(new CustomEvent('nge:quest-confetti', { detail: {} })), 300);
 });
-const doneLine = computed(() => {
-  const r = run.value; const h = hunt.value; if (!r || !h || !r.done) return '';
-  const gemsWord = `${r.gems_used} ${r.gems_used === 1 ? 'gem' : 'gems'}`;
-  return r.found === r.of ? `You found all ${r.of} with ${gemsWord}!` : `You found ${r.found} of ${r.of} and used all your gems.`;
+/** Why a run is over: everything found, or every gem used. */
+const doneWhy = computed(() => {
+  const r = run.value; if (!r) return { head: '', text: '', short: '' };
+  if (r.of && r.found >= r.of) return { head: 'All found!', text: `You found all ${r.of} with ${r.gems_used} ${r.gems_used === 1 ? 'gem' : 'gems'}. Your Hunt is complete.`, short: `with ${r.gems_used} ${r.gems_used === 1 ? 'gem' : 'gems'}` };
+  return { head: 'Out of gems', text: `All ${r.budget} gems used, so your Hunt is complete.`, short: 'Hunt complete' };
 });
 const description = computed(() => (hunt.value?.description ? renderSafeMarkdown(hunt.value.description, true) : ''));
 
@@ -179,15 +164,17 @@ const clock = computed(() => {
 const howChoice = ref<boolean | null>(null);
 const howOpen = computed(() => howChoice.value ?? !opened.value);
 function toggleHow() { howChoice.value = !howOpen.value; }
-/** A medal's ask, short, for its tile. */
-function needShort(t: HuntTier): string {
-  const h = hunt.value; if (!h) return '';
-  const k = h.tiers[t];
-  const finds = k >= h.target_count ? (h.target_count === 1 ? 'find it' : `all ${h.target_count}`) : `${k}+ found`;
-  const g = h.gem_limits?.[t];
-  return g ? `${finds} · ≤${g} gems` : finds;
-}
-/** Folded to a strip: the readouts, the gem switch and the last answer (kept in this browser). */
+/** Ames's own five lines (2026-10-21); admins can change them in the game (site text howto.hunt). */
+const HUNT_STEPS = [
+  'Ctrl + Click to drop a gem on a merger or missing extension',
+  'The Hunt will let you know if you got it right or wrong, and how many Hunt problems and gems remain',
+  'The Hunt finishes when you find all the problems or run out of gems',
+  "You'll be awarded Gold, Silver or Bronze based on how many problems were found and how many gems were used",
+  'Happy Hunting!',
+];
+/** A medal is a place (Ames 2026-10-21: "it's not one per person"): 1st, 2nd, 3rd. */
+const PLACE: Record<HuntTier, string> = { gold: '1st place', silver: '2nd place', bronze: '3rd place' };
+/** Folded to a slim strip: found, gems left, the gem switch, Submit, the last answer (kept in this browser). */
 const mini = ref((() => { try { return localStorage.getItem('nge-hunt-mini') === '1'; } catch { return false; } })());
 function toggleMini() { mini.value = !mini.value; try { localStorage.setItem('nge-hunt-mini', mini.value ? '1' : '0'); } catch { /* private window */ } }
 /** "5 mergers · 5 extensions · 2 cells · 15 gems" (Ames 2026-10-21: "too much text!"). */
@@ -205,29 +192,12 @@ const briefShort = computed(() => {
 const fastestShort = computed(() => (hunt.value?.fastest?.reason || '').replace(/, the fastest in .*$/, ''));
 const medalArt = (t: HuntTier) => hunt.value?.prizes?.[t]?.image || `hunt/${t}-128.png`;
 
-// ── The awards ceremony ──
-const podium = computed(() => {
-  const h = hunt.value; if (!h) return [];
-  return TIERS.map(t => {
-    const names = h.board.filter(b => b.tier === t).map(b => b.name);
-    const more = Math.max(0, (h.winners?.[t] ?? 0) - names.length);
-    return { tier: t, names, more };
-  }).filter(p => p.names.length || p.more);
-});
-const everyone = computed(() => hunt.value?.board ?? []);
+// ── The end ──
 const myResult = computed(() => {
   const h = hunt.value; if (!h) return null;
   const y = h.you;
   if (!y.gems_used && !y.best) return null;
   return { tier: y.tier, found: y.found || y.best, of: h.target_count, gems: y.gems_used };
-});
-const myLine = computed(() => {
-  const h = hunt.value; if (!h) return '';
-  const y = h.you;
-  if (!y.gems_used && !y.best) return 'You did not hunt this time. The next Hunt is yours.';
-  const gemsWord = `${y.gems_used} ${y.gems_used === 1 ? 'gem' : 'gems'}`;
-  if (y.tier) return `You found ${y.found} of ${h.target_count} with ${gemsWord}: ${TIER_WORD[y.tier]}! Your Achievement is in your profile.`;
-  return `You found ${y.found} of ${h.target_count} with ${gemsWord}. No medal this time, but every problem you spot helps.`;
 });
 // Confetti once per hunt for a winner opening the ceremony.
 watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, p, tier]) => {
@@ -248,10 +218,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <svg class="nge-hunt-eyegem" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
         The Hunt
       </span>
-      <span v-if="test" class="nge-hunt-chip">Test run</span>
-      <span v-else-if="hunt?.admins_only" class="nge-hunt-chip" title="A test Hunt: only admins see it and get its notes">Admins' test</span>
       <button class="nge-hunt-min" :title="mini ? 'Show everything' : 'Make it small'" :aria-label="mini ? 'Show everything' : 'Make it small'" :aria-pressed="mini" @click="toggleMini">
-        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path v-if="mini" d="M3 3h10v10H3z" fill="none" stroke="currentColor" stroke-width="1.5"/><path v-else d="M3 12h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path v-if="mini" d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path v-else d="M3 12h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
       <button class="nge-hunt-x" title="Close" aria-label="Close" @click="emit('hide')">×</button>
     </header>
@@ -275,25 +243,64 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <h2 class="nge-hunt-title">{{ hunt.title }}</h2>
         <div v-if="clock" class="nge-hunt-clock"><span class="nge-hunt-clock-label">{{ clock.label }}</span><span class="nge-hunt-clock-time">{{ clock.value }}</span></div>
       </div>
-      <p v-if="!mini" class="nge-hunt-brief">{{ briefShort }}</p>
+      <div v-if="!mini" class="nge-hunt-briefrow">
+        <p class="nge-hunt-brief">{{ briefShort }}</p>
+        <span v-if="phase !== 'ended'" class="nge-hunt-links">
+          <a v-if="opened && phase === 'live'" class="nge-hunt-howlink" :class="{ 'nge-hunt-howlink--open': huntPrefs.panels }" href="#" :aria-pressed="huntPrefs.panels"
+             :title="huntPrefs.panels ? 'Hide the Annotations and Selection panels while hunting' : 'Show the Annotations and Selection panels (your gems in Found and Missed)'"
+             @click.prevent="setHuntPanels(!huntPrefs.panels)">{{ huntPrefs.panels ? 'hide panels' : 'show panels' }}</a>
+          <a class="nge-hunt-howlink" :class="{ 'nge-hunt-howlink--open': howOpen }" href="#" :aria-expanded="howOpen" @click.prevent="toggleHow">instructions</a>
+        </span>
+      </div>
       <p v-if="phase === 'announced' && !mini" class="nge-hunt-when">{{ localTime(hunt.start_at) }} until {{ localTime(hunt.end_at) }}</p>
 
       <!-- While it runs -->
       <template v-if="phase === 'live'">
-        <div v-if="hunt.test && !mini" class="nge-hunt-testnote">Test run: only you see it, and nothing is kept.</div>
 
-        <template v-if="opened && run">
+        <!-- Small (Ames 2026-10-21: "a slim version of the main functions"): found of all, gems left,
+             the gem switch, Submit, and the last answer, in two thin rows. -->
+        <div v-if="mini && run" class="nge-hunt-slim">
+          <div class="nge-hunt-slim-row">
+            <span class="nge-hunt-slim-read" :title="`${run.found} of ${run.of} found`"><b :key="'f' + run.found" class="nge-hunt-pop">{{ run.found }}</b><i>/{{ run.of }}</i><small>found</small></span>
+            <span class="nge-hunt-slim-read" :title="`${run.gems_left} of ${run.budget} gems left`"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i>/{{ run.budget }}</i><small>gems left</small></span>
+            <span v-if="yourTime" class="nge-hunt-slim-time" title="Your clock, from your first open of the Hunt">{{ yourTime }}</span>
+          </div>
+          <div v-if="opened && !run.done && (kinds.length > 1 || !huntPrefs.auto)" class="nge-hunt-slim-row">
+            <div v-if="kinds.length > 1" class="nge-hunt-seg nge-hunt-seg--slim" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
+              <button v-for="k in kinds" :key="k" class="nge-hunt-seg-btn" :class="[`nge-hunt-seg-btn--${k}`, { 'nge-hunt-seg-btn--on': huntState.kind === k }]"
+                      role="radio" :aria-checked="huntState.kind === k" :title="`Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}`" @click="choose(k)">
+                <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
+                <span>{{ KIND[k].word }}</span>
+              </button>
+            </div>
+            <button v-if="!huntPrefs.auto" class="nge-hunt-submit nge-hunt-submit--slim" :disabled="!huntState.waiting" :title="huntState.waiting ? '' : 'Drop gems, then submit'" @click="submitWaiting">
+              {{ huntState.waiting ? `Submit ${huntState.waiting}` : 'Submit' }}
+            </button>
+          </div>
+          <button v-if="!opened" class="nge-hunt-btn nge-hunt-btn--primary nge-hunt-btn--slim" :disabled="!!busy" @click="go">
+            {{ busy === 'go' ? 'Opening…' : onDataset ? 'Open the Hunt' : `Open on ${datasetName}` }}
+          </button>
+          <p v-if="run.done" class="nge-hunt-slim-done">{{ doneWhy.head }}<span>{{ doneWhy.short }}</span></p>
+          <div v-if="huntState.pending" class="nge-hunt-slim-news nge-hunt-news--pending" role="status"><b>Checking…</b></div>
+          <div v-else-if="newsLine" :key="news?.at" class="nge-hunt-slim-news" :class="`nge-hunt-news--${newsLine.cls}`" role="status">
+            <b>{{ newsLine.head }}</b><span>{{ newsLine.text }}</span>
+            <button v-if="newsLine.other && kinds.includes(newsLine.other)" class="nge-hunt-news-switch" @click="choose(newsLine.other)">Switch to {{ KIND[newsLine.other].word }}</button>
+          </div>
+        </div>
+
+        <template v-if="opened && run && !mini">
           <!-- The HUD: what is found, what is left, the medal so far -->
           <div class="nge-hunt-hud">
             <div class="nge-hunt-read">
               <span class="nge-hunt-read-label">Found</span>
               <span class="nge-hunt-read-val"><b :key="'f' + run.found" class="nge-hunt-pop">{{ run.found }}</b><i>/{{ run.of }}</i></span>
-              <span v-if="run.of_by && run.of_by.cut && run.of_by.merge" class="nge-hunt-read-sub">cut {{ run.found_by?.cut ?? 0 }}/{{ run.of_by.cut }} · ext {{ run.found_by?.merge ?? 0 }}/{{ run.of_by.merge }}</span>
+              <span v-if="run.of_by && run.of_by.cut && run.of_by.merge" class="nge-hunt-read-sub nge-hunt-read-sub--wrap">cut {{ run.found_by?.cut ?? 0 }}/{{ run.of_by.cut }}, ext {{ run.found_by?.merge ?? 0 }}/{{ run.of_by.merge }}</span>
             </div>
             <div class="nge-hunt-read">
               <span class="nge-hunt-read-label">Gems</span>
               <span class="nge-hunt-read-val"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i>/{{ run.budget }}</i></span>
               <span v-if="huntState.waiting" class="nge-hunt-read-sub">{{ huntState.waiting }} waiting</span>
+              <span v-else-if="run.gems_left === 0" class="nge-hunt-read-sub">none left</span>
             </div>
             <!-- The medal stays a secret until the end (Ames 2026-10-21: "do we want to reveal what achievement they have before they win it?"); the clock shows instead. -->
             <div class="nge-hunt-read" title="Your clock started when you first opened the Hunt, and runs once">
@@ -337,13 +344,14 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 
           <!-- Done -->
           <div v-if="run.done && !mini" class="nge-hunt-done" :class="{ 'nge-hunt-done--all': run.found === run.of }">
-            <div class="nge-hunt-done-head">Hunt complete</div>
-            <p>{{ run.found }}/{{ run.of }} found · {{ run.gems_used }} gems<template v-if="yourTime"> · {{ yourTime }}</template></p>
+            <div class="nge-hunt-done-head">{{ doneWhy.head }}</div>
+            <p class="nge-hunt-done-why">{{ doneWhy.text }}</p>
+            <p>{{ run.found }}/{{ run.of }} found<template v-if="yourTime"> · {{ yourTime }}</template></p>
             <p v-if="!hunt.test" class="nge-hunt-muted">Medals at the end, {{ localTime(hunt.end_at) }}.</p>
           </div>
         </template>
 
-        <div v-if="!mini || !opened" class="nge-hunt-actions">
+        <div v-if="!mini" class="nge-hunt-actions">
           <button class="nge-hunt-btn" :class="{ 'nge-hunt-btn--primary': !opened }" :disabled="!!busy" @click="go">
             {{ busy === 'go' ? 'Opening…' : onDataset ? (opened ? 'Back to the start view' : 'Open the Hunt') : `Switch to ${datasetName} and open the Hunt` }}
           </button>
@@ -372,41 +380,27 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 
       <p v-if="error" class="nge-hunt-error" role="alert">{{ error }}</p>
 
-      <!-- Instructions: this Hunt's description, then Ames's own five lines (2026-10-21); open before the Hunt is
-           opened, folded while hunting, a click opens or folds it, like the Instructions of other tasks. -->
-      <section v-if="phase !== 'ended' && !mini" class="nge-hunt-how" :class="{ 'nge-hunt-how--open': howOpen }">
-        <button class="nge-hunt-how-head" :aria-expanded="howOpen" @click="toggleHow">
-          <span class="nge-hunt-how-title"><span class="nge-hunt-how-i" aria-hidden="true">i</span>Instructions</span><span class="nge-hunt-how-chev" aria-hidden="true">▾</span>
-        </button>
-        <div v-if="howOpen" class="nge-hunt-how-body">
-          <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
-          <ol class="nge-hunt-steps">
-            <li>Ctrl + Click to drop a gem on a merger or missing extension</li>
-            <li>The Hunt will let you know if you got it right or wrong, and how many Hunt problems and gems remain</li>
-            <li>The Hunt finishes when you find all the problems or run out of gems</li>
-            <li>You'll be awarded Gold, Silver or Bronze based on how many problems were found and how many gems were used</li>
-            <li>Happy Hunting!</li>
-          </ol>
-          <p v-if="!hunt.test" class="nge-hunt-fine">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
+      <!-- Instructions, as Cell Library shows them (Ames 2026-10-21): a small link that opens a panel with the
+           Hunt's description, Ames's five lines (admins can change them in the game, EditableText), and the
+           medals in one slim row at the bottom ("we can put tiers at bottom of instructions"). Open before the
+           Hunt is opened, folded while hunting. -->
+      <div v-if="howOpen && phase !== 'ended' && !mini" class="nge-hunt-howpanel">
+        <div class="nge-hunt-howpanel-head">
+          <span>How to hunt</span>
+          <button class="nge-hunt-howclose" title="Close" aria-label="Close the instructions" @click="toggleHow">×</button>
         </div>
-      </section>
-
-      <!-- Awards: Ames's medals -->
-      <section v-if="!mini" class="nge-hunt-awards" aria-label="Awards">
-        <div class="nge-hunt-label">Awards</div>
-        <div class="nge-hunt-tiles">
-          <div v-for="t in awards" :key="t" class="nge-hunt-tile" :class="[`nge-hunt-tile--${t}`, { 'nge-hunt-tile--yours': phase === 'ended' && hunt.you.tier === t }]" :title="hunt.prizes?.[t]?.name || TIER_WORD[t]">
-            <img :src="medalArt(t)" alt="" class="nge-hunt-tile-img" />
-            <span class="nge-hunt-tile-word" :class="`nge-hunt-tierword--${t}`">{{ TIER_WORD[t] }}</span>
-            <span class="nge-hunt-tile-need">{{ needShort(t) }}</span>
-          </div>
-          <div class="nge-hunt-tile nge-hunt-tile--speed" title="The fastest to find every problem (or the most, if nobody finds all), from your first open of the Hunt. One try.">
-            <img src="hunt/fastest-128.png" alt="" class="nge-hunt-tile-img" />
-            <span class="nge-hunt-tile-word nge-hunt-tierword--speed">Speed</span>
-            <span class="nge-hunt-tile-need">fastest to find all</span>
-          </div>
+        <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
+        <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" />
+        <div class="nge-hunt-medalrow" aria-label="Medals">
+          <span v-for="t in TIERS" :key="t" class="nge-hunt-medalmini" :title="`${TIER_WORD[t]}: ${PLACE[t]}`">
+            <img :src="medalArt(t)" alt="" /><b :class="`nge-hunt-tierword--${t}`">{{ TIER_WORD[t] }}</b><small>{{ PLACE[t] }}</small>
+          </span>
+          <span class="nge-hunt-medalmini" title="Speed: the fastest to find them all (or the most, if nobody finds all), from your first open of the Hunt. One try.">
+            <img src="hunt/fastest-128.png" alt="" /><b class="nge-hunt-tierword--speed">Speed</b><small>fastest</small>
+          </span>
         </div>
-      </section>
+        <p v-if="!hunt.test" class="nge-hunt-fine">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
+      </div>
 
       <section v-if="hunt.board.length && phase !== 'announced' && !mini" class="nge-hunt-board" aria-label="Top hunters">
         <div class="nge-hunt-label">{{ phase === 'ended' ? 'Everyone who took part' : 'Top hunters' }}</div>
@@ -477,9 +471,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 /* ── Head ── */
 .nge-hunt-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px 18px; cursor: grab; touch-action: none; user-select: none; border-bottom: 1px solid rgb(var(--hn-accent) / 0.14); }
 .nge-hunt--dragging .nge-hunt-head { cursor: grabbing; }
-.nge-hunt-eyebrow { display: flex; align-items: center; gap: 6px; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
+.nge-hunt-eyebrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-eyegem { filter: drop-shadow(0 0 4px rgb(var(--hn-gold) / 0.7)); }
-.nge-hunt-chip { padding: 1px 7px; border-radius: 999px; background: rgb(var(--hn-accent) / 0.16); border: 1px solid rgb(var(--hn-accent) / 0.45); color: #9fd0ff; font: 600 9.5px 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
 .nge-hunt-min { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border-radius: 6px; cursor: pointer; background: none; border: 1px solid transparent; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-min:hover, .nge-hunt-min:focus-visible { color: #fff; border-color: rgb(var(--hn-accent) / 0.4); }
 .nge-hunt-min + .nge-hunt-x { margin-left: 2px; }
@@ -487,13 +480,34 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt--mini .nge-hunt-head { padding: 8px 10px 6px 14px; }
 .nge-hunt--mini .nge-hunt-body { padding: 8px 12px 12px 14px; gap: 6px; }
 .nge-hunt--mini .nge-hunt-title { font-size: 13px; }
-.nge-hunt--mini .nge-hunt-read { padding: 5px 8px 6px; }
-.nge-hunt--mini .nge-hunt-read-val { font-size: 16px; }
-.nge-hunt--mini .nge-hunt-news { padding: 5px 9px; }
-.nge-hunt--mini .nge-hunt-news-head { font-size: 12px; }
-.nge-hunt--mini .nge-hunt-news-text { font-size: 11.5px; }
-.nge-hunt--mini .nge-hunt-seg-btn small { display: none; }
-.nge-hunt--mini .nge-hunt-read-medal { font-size: 10.5px; letter-spacing: 0.02em; }
+.nge-hunt--mini .nge-hunt-titlerow { align-items: baseline; }
+.nge-hunt--mini .nge-hunt-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.nge-hunt--mini .nge-hunt-clock { flex-direction: row; align-items: baseline; gap: 5px; }
+.nge-hunt--mini .nge-hunt-clock-time { font-size: 13px; }
+/* The slim strip */
+.nge-hunt-slim { display: flex; flex-direction: column; gap: 6px; }
+.nge-hunt-slim-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nge-hunt-slim-read {
+  display: flex; align-items: baseline; padding: 3px 8px; border-radius: 8px; white-space: nowrap;
+  border: 1px solid rgb(var(--hn-accent) / 0.22); background: rgb(var(--hn-accent) / 0.05);
+  font: 700 15px 'Orbitron', 'Inter', sans-serif; color: #fff; font-variant-numeric: tabular-nums;
+}
+.nge-hunt-slim-read b { color: rgb(var(--hn-gold)); text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); }
+.nge-hunt-slim-read i { font-style: normal; font-size: 11px; color: rgb(var(--hn-line) / 0.6); }
+.nge-hunt-slim-read small { margin-left: 5px; font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
+.nge-hunt-slim-time { margin-left: auto; font: 600 11px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.7); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nge-hunt-seg--slim { flex: 1; min-width: 0; border-radius: 8px; }
+.nge-hunt-seg--slim .nge-hunt-seg-btn { padding: 4px 6px; font-size: 11.5px; }
+.nge-hunt-submit--slim { flex: 1 0 auto; padding: 5px 10px; font-size: 11px; }
+.nge-hunt-seg--slim + .nge-hunt-submit--slim { flex: none; }
+.nge-hunt-btn--slim { flex: none; padding: 6px 10px; font-size: 11.5px; }
+.nge-hunt-slim-done { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
+.nge-hunt-slim-done span { font: 500 11px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; color: rgb(var(--hn-line) / 0.7); }
+.nge-hunt-done-why { color: #fff; }
+.nge-hunt-slim-news { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; padding: 4px 8px; border-radius: 8px; font-size: 11.5px; border-left-width: 3px !important; }
+.nge-hunt-slim-news b { font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; }
+.nge-hunt-slim-news.nge-hunt-news--hit b { color: rgb(var(--hn-gold)); }
+.nge-hunt-slim-news .nge-hunt-news-switch { margin-top: 0; padding: 2px 8px; font-size: 11px; }
 .nge-hunt-read-medal { overflow: hidden; text-overflow: ellipsis; }
 .nge-hunt-x { margin-left: auto; background: none; border: none; color: rgb(var(--hn-line) / 0.6); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-hunt-x:hover, .nge-hunt-x:focus-visible { color: #fff; }
@@ -519,7 +533,6 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-desc :deep(p) { margin: 0 0 4px; }
 .nge-hunt-desc :deep(ol), .nge-hunt-desc :deep(ul) { margin: 2px 0 4px; padding-left: 18px; }
 .nge-hunt-desc :deep(li) { margin: 1px 0; }
-.nge-hunt-testnote { padding: 6px 9px; border-radius: 8px; background: rgb(var(--hn-accent) / 0.08); border: 1px solid rgb(var(--hn-accent) / 0.35); color: #cfe4ff; font-size: 12px; }
 .nge-hunt-muted { color: rgb(var(--hn-line) / 0.55); margin: 0; }
 .nge-hunt-fine { margin: 6px 0 0; font-size: 11.5px; color: rgb(var(--hn-line) / 0.5); }
 .nge-hunt-error { margin: 0; color: #ff9c9c; }
@@ -536,6 +549,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-read-time { font-size: 15px; line-height: 1.6; }
 .nge-hunt-read-medal { font-size: 13px; line-height: 1.9; text-transform: uppercase; letter-spacing: 0.06em; color: rgb(var(--hn-line) / 0.45); }
 .nge-hunt-read-sub { font-size: 10.5px; color: rgb(var(--hn-line) / 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nge-hunt-read-sub--wrap { white-space: normal; }
 .nge-hunt-pop { display: inline-block; animation: ngeHuntPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
 @keyframes ngeHuntPop { 0% { transform: scale(1.8); } 100% { transform: scale(1); } }
 .nge-hunt-tierword--gold { color: #f5d142 !important; text-shadow: 0 0 8px rgba(245, 209, 66, 0.4); }
@@ -606,28 +620,40 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-cellbtn { padding: 3px 10px; border-radius: 999px; cursor: pointer; background: rgb(var(--hn-accent) / 0.1); border: 1px solid rgb(var(--hn-accent) / 0.4); color: #cfe4ff; font: 600 11.5px 'Inter', sans-serif; }
 .nge-hunt-cellbtn:hover, .nge-hunt-cellbtn:focus-visible { background: rgb(var(--hn-accent) / 0.22); }
 
-/* ── How to play ── */
-.nge-hunt-how { border: 1px solid rgb(var(--hn-accent) / 0.2); border-radius: 9px; background: rgba(4, 8, 18, 0.45); }
-.nge-hunt-how-head { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; cursor: pointer; background: none; border: none; color: rgb(var(--hn-line) / 0.75); font: 600 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; }
-.nge-hunt-how-head:hover, .nge-hunt-how-head:focus-visible { color: #fff; }
-.nge-hunt-how-title { display: inline-flex; align-items: center; gap: 6px; }
-.nge-hunt-how-i { width: 15px; height: 15px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 700 10px/1 'Inter', sans-serif; color: #06111f; background: #7ecaff; letter-spacing: 0; }
-.nge-hunt-how-chev { transition: transform 0.2s; }
-.nge-hunt-how--open .nge-hunt-how-chev { transform: rotate(180deg); }
-.nge-hunt-how-body { padding: 0 10px 8px; }
-.nge-hunt-desc--how { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgb(var(--hn-accent) / 0.15); font-size: 12.5px; }
-.nge-hunt-steps { margin: 0; padding-left: 18px; font-size: 12.5px; }
-.nge-hunt-steps li { margin: 2px 0; }
-.nge-hunt-steps li::marker { color: rgb(var(--hn-gold)); font-family: 'Orbitron', 'Inter', sans-serif; font-weight: 700; }
-.nge-hunt-mac { color: rgb(var(--hn-line) / 0.5); font-size: 11px; }
-
-/* ── Awards: medal tiles ── */
-.nge-hunt-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
-.nge-hunt-tile { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px 7px; border-radius: 10px; background: rgba(4, 8, 18, 0.5); border: 1px solid rgb(var(--hn-accent) / 0.18); text-align: center; min-width: 0; }
-.nge-hunt-tile-img { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5)); }
-.nge-hunt-tile-word { font: 700 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
-.nge-hunt-tile-need { font-size: 10.5px; color: rgb(var(--hn-line) / 0.6); line-height: 1.25; }
-.nge-hunt-tile--yours { border-color: rgb(var(--hn-gold) / 0.8); box-shadow: 0 0 14px rgb(var(--hn-gold) / 0.25), inset 0 0 12px rgb(var(--hn-gold) / 0.08); }
+/* ── Instructions, as Cell Library shows them (CellLibraryPanel .nge-cl-howto, .nge-cl-howto-panel, .nge-cl-howto-steps) ── */
+.nge-hunt-briefrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.nge-hunt-briefrow .nge-hunt-brief { flex: 1 1 auto; min-width: 0; }
+.nge-hunt-links { margin-left: auto; display: inline-flex; gap: 12px; }
+.nge-hunt-howlink {
+  position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 0; font-size: 9.5px; font-weight: 600; letter-spacing: 0.16em;
+  text-transform: uppercase; color: rgba(126, 202, 255, 0.78); text-decoration: none;
+  transition: color 0.15s, text-shadow 0.15s;
+}
+.nge-hunt-howlink::before { content: ''; width: 5px; height: 5px; flex: none; transform: rotate(45deg); background: currentColor; opacity: 0.8; }
+.nge-hunt-howlink:hover, .nge-hunt-howlink:focus-visible, .nge-hunt-howlink--open { color: #fff; text-shadow: 0 0 8px rgba(126, 202, 255, 0.5); }
+.nge-hunt-howpanel {
+  padding: 10px 12px 8px; border-radius: 10px;
+  background: rgba(66, 213, 236, 0.06); border: 1px solid rgba(66, 213, 236, 0.28);
+  animation: ngeHuntHowIn 0.2s ease-out both;
+}
+@keyframes ngeHuntHowIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.nge-hunt-howpanel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #7ee8ff; margin-bottom: 6px;
+}
+.nge-hunt-howclose { background: none; border: none; color: #8aa; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.nge-hunt-howclose:hover { color: #fff; }
+:deep(.nge-hunt-howto-steps) { margin: 0; padding-left: 20px; font-size: 12.5px; line-height: 1.5; color: #cfdcef; }
+:deep(.nge-hunt-howto-steps li) { margin: 3px 0; padding-left: 2px; }
+:deep(.nge-hunt-howto-steps li::marker) { color: #42d5ec; font-weight: 700; }
+:deep(.nge-hunt-howto-steps b) { color: #fff; font-weight: 600; }
+.nge-hunt-medalrow { display: flex; gap: 4px; margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(66, 213, 236, 0.18); }
+.nge-hunt-medalmini { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0; text-align: center; }
+.nge-hunt-medalmini img { width: 30px; height: 30px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
+.nge-hunt-medalmini b { font: 700 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
+.nge-hunt-medalmini small { font-size: 10px; color: rgb(var(--hn-line) / 0.6); }
+.nge-hunt-desc--how { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(66, 213, 236, 0.18); font-size: 12.5px; }
 
 /* ── Board and ceremony ── */
 .nge-hunt-board ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -643,8 +669,6 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-tierdot--bronze { background: #b88a63; }
 .nge-hunt-ceremony { font: 700 13px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-text { margin: 0; }
-.nge-hunt-podium { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.nge-hunt-podium li { display: flex; gap: 8px; align-items: baseline; }
 .nge-hunt-names { color: #fff; }
 .nge-hunt-mine { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgb(var(--hn-accent) / 0.08); }
 .nge-hunt-chipmedal { flex: none; min-width: 54px; text-align: center; padding: 1px 8px; border-radius: 999px; font: 600 10.5px 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
