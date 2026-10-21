@@ -1029,8 +1029,8 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
-  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse' or 'wireframe', the classic look. */
-  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade' | 'none';
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse', 'hologram' ('wireframe' before), 'saturate', 'spotlight' or 'none'. */
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'hologram' | 'wireframe' | 'saturate' | 'spotlight' | 'fade' | 'none';
   /** Set when hoverStyle was given (a new player's halo), not chosen; the
    *  account copy can still say they were here before. Local only. */
   hoverStyleAuto?: boolean;
