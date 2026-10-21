@@ -22,7 +22,7 @@
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 
 const TIERS = ['gold', 'silver', 'bronze'];
-const TIER_NAME = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
+const TIER_NAME = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Fastest' };
 const DEFAULT_TOLERANCE_NM = 3000;
 const DEFAULT_MAX_SUBMISSIONS = 10;
 const MIN_POINTS = 10;
@@ -349,8 +349,8 @@ function replay(targets, drops, tol) {
 
 const tolOf = (h) => (Number(h && h.tolerance_nm) > 0 ? Number(h.tolerance_nm) : DEFAULT_TOLERANCE_NM);
 
-/** What a player sees of their own run. */
-function runView(h, drops, targets) {
+/** What a player sees of their own run (with its clock, given the run row). */
+function runView(h, drops, targets, run) {
   const budget = maxPoints(h);
   const found = drops.filter((d) => d.hit >= 0).length;
   const used = drops.length;
@@ -360,10 +360,49 @@ function runView(h, drops, targets) {
   return {
     budget, found, of: targets.length, gems_used: used, gems_left: Math.max(0, budget - used),
     found_by: foundBy, of_by: kinds,
+    started_at: (run && run.created_at) || null, time_ms: run ? runClock(run, drops) : null,
     done: (targets.length > 0 && found >= targets.length) || used >= budget,
     tier: tierFor(found, thresholds(h), used, gemLimits(h)),
     drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, kind: d.hit >= 0 ? kindOf(targets[d.hit]) : null, k: d.k })),
   };
+}
+
+/**
+ * A run's clock (Ames 2026-10-21: the speed award, "it should only let them try one time"):
+ * it starts when the player first opens the Hunt (hunt.start makes the run then; a run made
+ * by a first gem starts at that gem) and stops at their last find. One run each, never reset.
+ */
+function lastFindAt(drops) {
+  let at = null;
+  for (const d of drops) if (d.hit >= 0 && d.t) at = d.t;
+  return at;
+}
+function runClock(run, drops) {
+  const a = ms(run && run.created_at), b = ms(lastFindAt(drops));
+  return Number.isFinite(a) && Number.isFinite(b) && b >= a ? b - a : null;
+}
+
+/** "4m 12s", "1h 03m", "52s". */
+function clockWords(msTime) {
+  const sec = Math.max(0, Math.round(Number(msTime) / 1000));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = sec % 60;
+  if (h) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m) return `${m}m ${String(x).padStart(2, '0')}s`;
+  return `${x}s`;
+}
+
+/**
+ * The speed award (Ames 2026-10-21): "for the fastest player to get all points (or fastest
+ * with highest accuracy if no one finds all)". The quickest run that found every problem;
+ * if none did, the quickest of the runs that found the most. Ties: the earlier finish.
+ */
+function speedWinner(runs, n) {
+  const timed = runs.map((r) => ({ ...r, ms: runClock(r, r.drops) })).filter((r) => r.found > 0 && r.ms != null);
+  if (!timed.length) return null;
+  const top = Math.max(...timed.map((r) => r.found));
+  const pool = timed.filter((r) => (n > 0 && top >= n ? r.found >= n : r.found === top));
+  pool.sort((a, b) => a.ms - b.ms || ms(lastFindAt(a.drops)) - ms(lastFindAt(b.drops)));
+  return pool[0] ? { ...pool[0], all: n > 0 && pool[0].found >= n } : null;
 }
 
 /** Judge one gem against a run, and keep it (save) unless it lands on a problem found already. */
@@ -391,7 +430,11 @@ const NOTE_KINDS = ['announce', 'start', 'end'];
 /** The picture a note carries (null for none): set per note in the Admin Hub, one picture can serve several. */
 function noteImage(h, kind) {
   const v = h && h.notif_images && h.notif_images[kind];
-  return v && v.image_url ? { image_url: v.image_url, thumbnail_url: v.thumbnail_url || v.image_url } : { image_url: null, thumbnail_url: null };
+  if (v && v.image_url) return { image_url: v.image_url, thumbnail_url: v.thumbnail_url || v.image_url };
+  // A Hunt's note always has a picture (Ames 2026-10-21: "a default image that appears for hunts
+  // vs default being no picture"): the Hunt's gold medal, until a picture is chosen.
+  const site = h && h._site;
+  return site ? { image_url: `${site}/hunt/gold.png`, thumbnail_url: `${site}/hunt/gold-128.png` } : { image_url: null, thumbnail_url: null };
 }
 
 /** The three notes a scheduled hunt sends, each at its own time. */
@@ -423,6 +466,7 @@ function notificationRows(h) {
 // ── Achievements ──────────────────────────────────────────────────────────
 
 const LINES = {
+  fastest: 'You spotted them all first. Takes one to know one.',
   gold: 'Two cells walked into a bar, and you told them apart.',
   silver: 'So close to gold, you could merge with it.',
   bronze: 'Every merger you spot is one less cell living a double life.',
@@ -550,7 +594,7 @@ function cleanFields(f) {
     const a = f.art || {};
     const https = (v) => typeof v === 'string' && /^https:\/\/\S{4,800}$/.test(v);
     out.art = {};
-    for (const t of TIERS) {
+    for (const t of [...TIERS, 'fastest']) {
       const v = a[t];
       if (https(v)) out.art[t] = { image_url: v, thumbnail_url: v };
       else if (v && typeof v === 'object' && posInt(v.badge_id)) out.art[t] = { badge_id: posInt(v.badge_id) };
@@ -593,6 +637,7 @@ async function huntAction(action, args, ctx) {
   switch (action) {
     case 'hunt.current': return current(ctx);
     case 'hunt.drop': return drop(args, ctx);
+    case 'hunt.start': return startRun(args, ctx);
     case 'hunt.submit': fail(410, 'The Hunt now judges each gem as it lands. Reload Pyr for the new Hunt box.'); break;
     case 'hunt.list': needAdmin(); return adminList(ctx);
     case 'hunt.read': needAdmin(); return adminRead(args, ctx);
@@ -603,6 +648,7 @@ async function huntAction(action, args, ctx) {
     case 'hunt.award': needAdmin(); return awardAction(args, ctx);
     case 'hunt.rescore': needAdmin(); return rescore(args, ctx);
     case 'hunt.notes': needAdmin(); return notesPreview(args, ctx);
+    case 'hunt.duplicate': needAdmin(); return duplicate(args, ctx);
     case 'hunt.test': needAdmin(); return testOpen(args, ctx);
     case 'hunt.test_drop': needAdmin(); return testDrop(args, ctx);
     default: fail(400, 'Unknown Hunt action.');
@@ -634,19 +680,41 @@ async function current(ctx) {
     const th = thresholds(h), gl = gemLimits(h);
     const top = board.slice(0, 10);
     const mineBest = board.find((b) => b.user_id === me.id);
-    const names = await db.names([...new Set([...top.map((b) => b.user_id), me.id])]);
+    const names = { ...(await db.names([...new Set([...top.map((b) => b.user_id), me.id])])) };
     const run = phase(h, now) === 'announced' ? null : await db.myRun(h.id, me.id);
-    const mine = runView(h, run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [], key);
+    const runDrops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : null;
+    const mine = runView(h, runDrops || [], key, runDrops ? run : null);
+    const ended = phase(h, now) === 'ended';
+    // At the ceremony everyone who took part is listed (Ames 2026-10-21); while it runs, the top ten.
+    const shown = ended ? board.slice(0, 200) : top;
+    const speed = ended && h.awarded_at && db.speedAward ? await db.speedAward(h.id) : null;
+    if (ended) { const more = await db.names([...new Set([...shown.map((b) => b.user_id), ...(speed ? [speed.user_id] : [])])]); Object.assign(names, more); }
     hunts.push({
       ...publicHunt(h, now), prizes: await prizesFor(h, db, ctx.site),
       you: { ...mine, best: mineBest ? mineBest.found : 0, submissions: run ? 1 : 0,
         tier: mineBest ? tierFor(mineBest.found, th, mineBest.gems, gl) : null, rank: mineBest ? board.indexOf(mineBest) + 1 : 0 },
-      board: top.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: tierFor(b.found, th, b.gems, gl), you: b.user_id === me.id })),
+      board: shown.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: tierFor(b.found, th, b.gems, gl), you: b.user_id === me.id,
+        fastest: !!speed && speed.user_id === b.user_id })),
+      fastest: speed ? { name: names[speed.user_id] || 'Player', reason: speed.reason || '', you: speed.user_id === me.id } : null,
       players: board.length,
       winners: TIERS.reduce((o, t) => { o[t] = board.filter((b) => tierFor(b.found, th, b.gems, gl) === t).length; return o; }, {}),
     });
   }
   return { now: now.toISOString(), hunts };
+}
+
+/** The player opened the Hunt: their run, and its clock, start now (once; a second call changes nothing). */
+async function startRun(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args.id);
+  if (h.admins_only && !ctx.isAdmin) fail(404, 'No such Hunt.');
+  if (phase(h, now) !== 'live') fail(409, 'The Hunt is not running.');
+  const targets = await db.key(h.id);
+  let run = await db.myRun(h.id, me.id);
+  if (!run || !Array.isArray(run.points) || run.points.some((x) => Array.isArray(x))) {
+    run = await db.addSubmission({ hunt_id: h.id, user_id: me.id, points: [], found: 0, close: 0, created_at: now.toISOString() });
+  }
+  return { run: runView(h, normalizeDrops(run.points), targets, run) };
 }
 
 async function drop(args, ctx) {
@@ -660,12 +728,29 @@ async function drop(args, ctx) {
   const run = await db.myRun(h.id, me.id);
   const fresh = !run || !Array.isArray(run.points) || run.points.some((x) => Array.isArray(x));   // an answer from before is not a run
   const drops = fresh ? [] : normalizeDrops(run.points);
+  let row = fresh ? null : run, kept = drops;
   const r = await dropInto(h, targets, drops, args, ctx, async (next, found) => {
-    if (fresh) await db.addSubmission({ hunt_id: h.id, user_id: me.id, points: next, found, close: next.length });
+    kept = next;
+    if (fresh) row = await db.addSubmission({ hunt_id: h.id, user_id: me.id, points: next, found, close: next.length, created_at: (ctx.now || new Date()).toISOString() });
     else await db.patchSubmission(run.id, { points: next, found, close: next.length });
   });
   // A player hears right or wrong, and what is left; never how near a miss was.
-  return { drop: r.drop, run: r.run };
+  return { drop: r.drop, run: row ? runView(h, kept, targets, row) : r.run };
+}
+
+/** A copy of a hunt, as a draft: its key, view, cells, words and settings; no notes, no answers. */
+async function duplicate(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args.id);
+  const keep = ['description', 'dataset', 'cells', 'view', 'target_count', 'tolerance_nm', 'max_points', 'max_submissions', 'tiers', 'art', 'notif_images',
+    'announce_at', 'start_at', 'end_at'];
+  const row = { title: `${h.title} (copy)`.slice(0, 80), status: 'draft', created_by: me.id, notif_ids: {}, updated_at: now.toISOString() };
+  for (const k of keep) if (h[k] !== undefined) row[k] = h[k];
+  const canFlag = db.hasAdminsOnly ? await db.hasAdminsOnly() : true;
+  if (canFlag) row.admins_only = ctx.testSite ? true : !!h.admins_only;
+  const copy = await db.insertHunt(row);
+  await db.setKey(copy.id, await db.key(h.id));
+  return adminView(copy, ctx);
 }
 
 /** The notes as they would go out with the form as it is (for the Admin Hub's Preview); nothing is saved. */
@@ -677,6 +762,7 @@ async function notesPreview(args, ctx) {
   else if (base.id) h._kinds = kindCounts(await ctx.db.key(base.id));
   if (!h.title) h.title = 'Untitled Hunt';
   if (!h.start_at || !h.end_at) fail(400, 'Set when the Hunt starts and ends first.');
+  if (ctx.site) h._site = ctx.site;
   return notificationRows(h).map(({ kind, title, body, send_at, image_url, thumbnail_url }) => ({ kind, title, body, send_at, image_url, thumbnail_url }));
 }
 
@@ -721,28 +807,85 @@ async function finalize(h, ctx, { force = false } = {}) {
   const board = leaderboard(await db.submissions(row.id));
   const th = thresholds(row), gl = gemLimits(row);
   const winners = board.map((b) => ({ ...b, tier: tierFor(b.found, th, b.gems, gl) })).filter((b) => b.tier);
-  const counts = { gold: 0, silver: 0, bronze: 0 };
+  const counts = { gold: 0, silver: 0, bronze: 0, fastest: 0 };
+  // The speed award, from every run's clock (read once, here).
+  const n = posInt(row.target_count);
+  const runs = (await db.allSubmissions(row.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)))
+    .map((x) => ({ user_id: x.user_id, created_at: x.created_at, found: x.found, drops: normalizeDrops(x.points) }));
+  const speed = speedWinner(runs, n);
+  if (speed) winners.push({ user_id: speed.user_id, found: speed.found, gems: speed.drops.length, tier: 'fastest', time: clockWords(speed.ms), all: speed.all });
+  await postResults(row, board, winners, speed, ctx);
   if (!winners.length) return { awarded: 0, ...counts };
   const badges = {};
-  for (const tier of TIERS) {
+  for (const tier of [...TIERS, 'fastest']) {
     if (!winners.some((w) => w.tier === tier)) continue;
     // A special Achievement the admin chose, else (or if it was deleted) the hunt's own.
     const id = chosenBadge(row, tier);
     const chosen = id ? await db.badgeById(id) : null;
-    badges[tier] = chosen || await db.upsertBadge(badgeRow(row, tier, th, site));
+    badges[tier] = chosen || await db.upsertBadge(tier === 'fastest' ? speedBadgeRow(row, winners.find((w) => w.tier === 'fastest'), site) : badgeRow(row, tier, th, site));
   }
   const held = await db.held(Object.values(badges).map((b) => b.id));
   const fresh = winners.filter((w) => !held.has(`${badges[w.tier].id}:${w.user_id}`));
   await db.award(winners.map((w) => ({ badge_id: badges[w.tier].id, user_id: w.user_id, awarded_by: row.created_by || null,
-    reason: `Found ${w.found} of ${row.target_count} with ${w.gems} gems in ${row.title}` })));
+    reason: w.tier === 'fastest' ? `${w.all ? `All ${row.target_count}` : `${w.found} of ${row.target_count}`} found in ${w.time}, the fastest in ${row.title}`
+      : `Found ${w.found} of ${row.target_count} with ${w.gems} gems in ${row.title}` })));
   for (const w of winners) counts[w.tier]++;
   if (fresh.length && notify) {
     await notify(fresh.map((w) => ({ user_id: w.user_id, title: `🏅 New Achievement: ${badges[w.tier].name}`,
-      body: `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`, image: badges[w.tier].image_url })));
+      body: w.tier === 'fastest' ? `${badges[w.tier].description}` : `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`,
+      image: badges[w.tier].image_url })));
   }
-  // An admins only hunt is a test: no chat line, which every player would see.
-  if (chatAward && !row.admins_only) for (const w of fresh) { try { await chatAward(w.user_id, badges[w.tier]); } catch (e) { /* a chat line is a courtesy */ } }
+  // Chat hears the results once, in the results post (postResults), not a line per winner.
   return { awarded: winners.length, fresh: fresh.length, ...counts };
+}
+
+/** The speed award's Achievement for this hunt (its own; the cheetah art, or a picture set for it). */
+function speedBadgeRow(h, w, site) {
+  const a = h.art && h.art.fastest;
+  const own = typeof a === 'string' ? a : a && a.image_url;
+  const art = typeof own === 'string' && /^https:\/\//.test(own) ? own : `${site}/hunt/fastest.png`;
+  const what = w ? (w.all ? `every problem found in ${w.time}` : `${w.found} of ${posInt(h.target_count)} found in ${w.time}, the most of anyone`) : 'the quickest run';
+  return {
+    slug: `hunt-${h.id}-fastest`,
+    name: `${h.title}: Fastest`.slice(0, 80),
+    description: `Fastest in ${h.title}: ${what}. ${LINES.fastest}`.slice(0, 300),
+    image_url: art, thumbnail_url: own === art ? art : `${site}/hunt/fastest-128.png`, created_by: h.created_by || null,
+  };
+}
+
+function listNames(names, ids, max = 6) {
+  const list = ids.map((id) => names[id] || 'Player');
+  return list.length <= max ? list.join(', ') : `${list.slice(0, max).join(', ')} and ${list.length - max} more`;
+}
+
+/**
+ * The results, once, when a hunt ends (Ames 2026-10-21: "Awards should post to chat",
+ * "Congratulations to all who participated!"): a note to everyone that also posts in chat,
+ * or, for an admins only hunt, a note to each admin and nothing in chat.
+ */
+async function postResults(row, board, winners, speed, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  if (!db.insertNotification) return;
+  const names = await db.names([...new Set([...winners.map((w) => w.user_id)])]);
+  const by = (t) => winners.filter((w) => w.tier === t).map((w) => w.user_id);
+  const parts = [];
+  for (const t of TIERS) { const ids = by(t); if (ids.length) parts.push(`${TIER_NAME[t]}: ${listNames(names, ids)}.`); }
+  if (speed) parts.push(`Fastest: ${names[speed.user_id] || 'Player'}, ${speed.all ? `all ${posInt(row.target_count)}` : `${speed.found}`} in ${clockWords(speed.ms)}.`);
+  const who = board.length === 1 ? '1 hunter' : `${board.length} hunters`;
+  const body = board.length
+    ? `Congratulations to all ${who} who took part!${parts.length ? ' ' + parts.join(' ') : ''}`
+    : 'Nobody hunted this time. The next Hunt is yours.';
+  const test = !!row.admins_only;
+  const base = { title: `${TITLE_PREFIX} results${test ? ' (test)' : ''}: ${row.title}`.slice(0, 120), body: test ? `${body} A test: only admins get this note.` : body,
+    send_at: now.toISOString(), ...(ctx.site ? { image_url: `${ctx.site}/hunt/gold.png`, thumbnail_url: `${ctx.site}/hunt/gold-128.png` } : { image_url: null, thumbnail_url: null }),
+    created_by: (me && me.id) || row.created_by || null };
+  try {
+    if (!test) await db.insertNotification({ ...base, target_type: 'all', target_id: null, post_to_chat: true });
+    else {
+      const admins = db.adminUserIds ? await db.adminUserIds() : [];
+      for (const uid of (admins.length ? admins : [row.created_by]).filter(Boolean)) await db.insertNotification({ ...base, target_type: 'user', target_id: uid, post_to_chat: false });
+    }
+  } catch (e) { console.warn('[hunt] results note failed:', e && e.message); }
 }
 
 async function awardAction(args, ctx) {
@@ -770,6 +913,7 @@ async function syncNotifications(h, ctx) {
   const ids = { ...(h.notif_ids || {}) };
   const list = (v) => (Array.isArray(v) ? v : v ? [v] : []);
   if (h.status === 'scheduled' && h.id && !h._kinds) h = { ...h, _kinds: kindCounts(await db.key(h.id)) };
+  if (ctx.site && !h._site) h = { ...h, _site: ctx.site };
   const wanted = h.status === 'scheduled' ? notificationRows(h) : [];
   const wantedKinds = new Set(wanted.map((r) => r.kind));
   for (const kind of Object.keys(ids)) {
@@ -992,7 +1136,7 @@ function restDb(sb) {
       body: JSON.stringify({ hunt_id: id, targets, updated_at: new Date().toISOString() }) }),
     submissions: (id) => sb(`hunt_submissions?hunt_id=eq.${id}&select=user_id,found,close,created_at&order=created_at.asc&limit=10000`),
     myRun: (id, uid) => one(sb(`hunt_submissions?hunt_id=eq.${id}&user_id=eq.${encodeURIComponent(uid)}&select=id,points,found,close,created_at&order=id.desc&limit=1`)),
-    allSubmissions: (id) => sb(`hunt_submissions?hunt_id=eq.${id}&select=id,points,found,close&limit=10000`),
+    allSubmissions: (id) => sb(`hunt_submissions?hunt_id=eq.${id}&select=id,user_id,points,found,close,created_at&limit=10000`),
     mySubmissions: (id, uid) => sb(`hunt_submissions?hunt_id=eq.${id}&user_id=eq.${uid}&select=found,close,created_at&limit=1000`),
     addSubmission: (row) => one(sb('hunt_submissions', { method: 'POST', body: JSON.stringify(row) })),
     patchSubmission: (id, row) => sb(`hunt_submissions?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }),
@@ -1028,6 +1172,11 @@ function restDb(sb) {
       adminsOnlyColumn.at = Date.now();
       return adminsOnlyColumn.ok;
     },
+    speedAward: async (huntId) => {
+      const b = await one(sb(`special_badges?slug=eq.${encodeURIComponent(`hunt-${posInt(huntId)}-fastest`)}&select=id&limit=1`));
+      if (!b) return null;
+      return one(sb(`special_badge_awards?badge_id=eq.${b.id}&select=user_id,reason&limit=1`));
+    },
     badgeById: (id) => one(sb(`special_badges?id=eq.${posInt(id)}&select=id,name,description,slug,image_url,thumbnail_url&limit=1`)),
     held: async (badgeIds) => {
       if (!badgeIds.length) return new Set();
@@ -1039,7 +1188,7 @@ function restDb(sb) {
 }
 
 module.exports = {
-  huntAction, restDb, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
+  huntAction, restDb, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM,
 };

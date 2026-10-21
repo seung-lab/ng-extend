@@ -39,7 +39,9 @@ export interface HuntInfo {
   admins_only?: boolean;
   /** What each medal gives: the Achievement's name and picture. */
   prizes?: Partial<Record<HuntTier, { name: string; image: string }>>;
-  board: { rank: number; name: string; found: number; gems: number; at: string; tier: HuntTier | null; you: boolean }[];
+  board: { rank: number; name: string; found: number; gems: number; at: string; tier: HuntTier | null; you: boolean; fastest?: boolean }[];
+  /** At the ceremony: who won the speed award, and for what. */
+  fastest?: { name: string; reason: string; you: boolean } | null;
   players: number;
   winners: { gold: number; silver: number; bronze: number };
 }
@@ -50,6 +52,8 @@ export interface HuntDrop { id: string; at: number[] | null; hit: boolean; kind:
 export interface HuntRun {
   budget: number; found: number; of: number; gems_used: number; gems_left: number; done: boolean;
   found_by?: { cut: number; merge: number }; of_by?: { cut: number; merge: number };
+  /** When the run's clock started (the first open), and the time to the last find so far (ms). */
+  started_at?: string | null; time_ms?: number | null;
   tier: HuntTier | null; drops: HuntDrop[];
 }
 
@@ -60,6 +64,8 @@ export const huntState = reactive({
   test: null as HuntInfo | null,
   /** What the last gem dropped did (right, wrong, found already, refused). */
   news: null as null | DropNews,
+  /** The last few answers, newest first (Ames 2026-10-21: a quick second gem hid the first one's answer). */
+  log: [] as DropNews[],
   /** The gem being judged now, for its spinning gem on the spot. */
   pending: null as null | { id: string; gem: GemKind; x?: number; y?: number; at: number },
   /** Which layer Ctrl + Click drops into: cut gems or extend gems. */
@@ -162,7 +168,10 @@ function startTicker() {
 /** The hunt the top bar shows: a running one first, then the next to start, then the latest to end. */
 export function featuredHunt(): HuntInfo | null {
   const list = huntState.hunts;
-  return list.find(h => h.phase === 'live')
+  // Several at once (Ames 2026-10-21): the one open on screen, else the one that ends first.
+  const live = list.filter(h => h.phase === 'live').sort((a, b) => Date.parse(a.end_at) - Date.parse(b.end_at));
+  const onScreen = active && !active.test ? live.find(h => h.id === active!.id) : undefined;
+  return onScreen ?? live[0]
     ?? [...list].filter(h => h.phase === 'announced').sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at))[0]
     ?? [...list].filter(h => h.phase === 'ended').sort((a, b) => Date.parse(b.end_at) - Date.parse(a.end_at))[0]
     ?? null;
@@ -372,6 +381,14 @@ export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
   for (const d of h.you?.drops ?? []) judged.add(d.id);
   active = h;
   startDropWatch();
+  // The run's clock starts at the first open (the server keeps the first time; a second open changes nothing).
+  if (!h.test && h.phase === 'live' && !h.you?.started_at) {
+    try {
+      const r = await huntCall<{ run: HuntRun }>('hunt.start', { id: h.id });
+      const copy = liveCopy(h);
+      if (copy && r?.run) copy.you = { ...copy.you, ...r.run };
+    } catch (e) { console.warn('[hunt] could not start the clock:', e); }
+  }
   return 'ok';
 }
 
@@ -390,6 +407,7 @@ export function takeHuntAfterSwitch(): { id: number; test: boolean } | null {
 export async function openTestHunt(id: number): Promise<HuntInfo> {
   huntState.test = null;
   huntState.news = null;
+  huntState.log = [];
   testDrops.length = 0;
   const t = await huntCall<HuntInfo>('hunt.test', { id });
   huntState.test = { ...t, test: true, phase: 'live' };
@@ -446,6 +464,11 @@ function liveCopy(h: HuntInfo): HuntInfo | null {
   return h.test ? huntState.test : (huntState.hunts.find(x => x.id === h.id) ?? null);
 }
 
+function tell(n: DropNews) {
+  huntState.news = n;
+  huntState.log = [n, ...huntState.log].slice(0, 4);
+}
+
 async function judgeNext() {
   if (busy) return;
   const h = active;
@@ -477,19 +500,19 @@ async function judgeNext() {
       // Out of gems, all found, or the Hunt is over: the gem does not stay.
       judged.add(id);
       removeGem(h, kind, id);
-      huntState.news = { id, gem: kind, result: 'refused', text: e?.message || String(e), at: Date.now(), x, y };
+      tell({ id, gem: kind, result: 'refused', text: e?.message || String(e), at: Date.now(), x, y });
       return;
     }
     judged.add(id);
     if (r.drop?.already) {
       removeGem(h, kind, id);
-      huntState.news = { id, gem: kind, result: 'already', at: Date.now(), x, y };
+      tell({ id, gem: kind, result: 'already', at: Date.now(), x, y });
     } else {
       const hit = !!r.drop?.hit;
       fileGem(h, kind, id, hit);
       if (h.test) testDrops.push({ id, nm: r.nm, hit: hit ? 0 : -1, k: kind });
-      huntState.news = { id, gem: kind, result: hit ? 'hit' : 'miss', kind: r.drop?.kind ?? null, other: r.drop?.other ?? null,
-        nearest_um: h.test ? r.nearest_um : undefined, at: Date.now(), x, y };
+      tell({ id, gem: kind, result: hit ? 'hit' : 'miss', kind: r.drop?.kind ?? null, other: r.drop?.other ?? null,
+        nearest_um: h.test ? r.nearest_um : undefined, at: Date.now(), x, y });
     }
     const copy = liveCopy(h);
     if (copy && r.run) copy.you = { ...copy.you, ...r.run };

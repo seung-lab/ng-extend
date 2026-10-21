@@ -376,6 +376,20 @@ function tryIt() {
   const id = editing.value?.id; if (!id) return;
   document.dispatchEvent(new CustomEvent('nge:hunt-test', { detail: { id } }));
 }
+
+// Duplicate (Ames 2026-10-21: "let me duplicate a hunt on the test server for during testing"):
+// a draft with the same key, view, cells, words and settings, and no notes or answers.
+async function duplicate() {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  busy.value = 'dup'; error.value = ''; message.value = '';
+  try {
+    const copy = await huntCall<AdminHunt>('hunt.duplicate', { id: h.id });
+    busy.value = '';
+    await open(copy);
+    message.value = `Copied as "${copy.title}", a draft. Set its times, then schedule it.`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 </script>
 
 <template>
@@ -539,7 +553,7 @@ function tryIt() {
             <button class="nge-hunts-btn nge-hunts-btn--quiet nge-hunts-btn--small" :disabled="!form.start || !form.end" @click="previewNote(k)">Preview</button>
           </div>
           <div class="nge-hunts-pics" role="radiogroup" :aria-label="`Picture for ${NOTE_WORD[k]}`">
-            <button class="nge-hunts-pic nge-hunts-pic--none" role="radio" :aria-checked="!form.images[k]" :class="{ 'nge-hunts-pic--on': !form.images[k] }" @click="form.images[k] = null">No picture</button>
+            <button class="nge-hunts-pic nge-hunts-pic--none" role="radio" :aria-checked="!form.images[k]" :class="{ 'nge-hunts-pic--on': !form.images[k] }" title="The Hunt's gold medal" @click="form.images[k] = null"><img src="hunt/gold-128.png" alt="Hunt default" /><span class="nge-hunts-pic-tag">Default</span></button>
             <button v-for="(p, i) in library" :key="p.image_url" class="nge-hunts-pic" role="radio" :aria-checked="form.images[k]?.image_url === p.image_url"
                     :class="{ 'nge-hunts-pic--on': form.images[k]?.image_url === p.image_url }" :title="`Picture ${i + 1}`" @click="form.images[k] = p">
               <img :src="p.thumbnail_url" :alt="`Picture ${i + 1}`" loading="lazy" />
@@ -563,10 +577,11 @@ function tryIt() {
       </div>
 
       <fieldset v-if="!isNew" class="nge-hunts-group">
-        <legend>Try it yourself</legend>
+        <legend>Try it yourself, or copy it</legend>
         <p class="nge-hunts-help">Play this Hunt as players will, at any time, even as a draft. Only you see it. Your gems are scored against the real answer key and you see which mergers they found, but no answer is kept or awarded. You can also play a running Hunt for real, like anyone.</p>
         <div class="nge-hunts-actions">
           <button class="nge-hunts-btn" :disabled="!!busy || !canTry || !!read" @click="tryIt">Try it yourself</button>
+          <button class="nge-hunts-btn nge-hunts-btn--quiet" :disabled="!!busy" title="A draft copy: the same key, view, cells, words and settings" @click="duplicate">{{ busy === 'dup' ? 'Copying…' : 'Duplicate' }}</button>
           <span v-if="read" class="nge-hunts-muted">Save first: a test uses the saved key and view.</span>
           <span v-else-if="!canTry" class="nge-hunts-muted">Read the answer key and save first.</span>
         </div>
@@ -689,7 +704,9 @@ function tryIt() {
 .nge-hunts-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .nge-hunts-pic:hover, .nge-hunts-pic:focus-visible { border-color: rgba(90, 170, 255, 0.7); }
 .nge-hunts-pic--on { border-color: #f5d142; box-shadow: 0 0 0 2px rgba(245, 209, 66, 0.25); }
-.nge-hunts-pic--none { line-height: 1.15; padding: 4px; font-size: 10.5px; }
+.nge-hunts-pic--none { line-height: 1.15; }
+.nge-hunts-pic--none img { padding: 4px 4px 12px; object-fit: contain; }
+.nge-hunts-pic-tag { position: absolute; left: 0; right: 0; bottom: 1px; font-size: 9px; text-align: center; color: #cfe4ff; }
 .nge-hunts-pic--add { border-style: dashed; color: #9fd0ff; }
 .nge-hunts-pic--busy { opacity: 0.6; cursor: progress; }
 .nge-hunts-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; }

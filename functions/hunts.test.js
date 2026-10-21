@@ -158,6 +158,7 @@ function fakeDb() {
     insertNotification: async (row) => { const n = { id: s.seq++, ...clone(row) }; s.notes.push(n); return clone(n); },
     patchNotification: async (id, row) => { const n = s.notes.find((x) => x.id === Number(id)); Object.assign(n, clone(row)); return clone(n); },
     deleteNotification: async (id) => { s.notes = s.notes.filter((n) => n.id !== Number(id)); },
+    speedAward: async (huntId) => { const b = s.badges.find((x) => x.slug === `hunt-${huntId}-fastest`); const a = b && s.awards.find((x) => x.badge_id === b.id); return a ? clone({ user_id: a.user_id, reason: a.reason }) : null; },
     badgeById: async (id) => clone(s.badges.find((b) => b.id === Number(id)) || null),
     upsertBadge: async (row) => { let b = s.badges.find((x) => x.slug === row.slug); if (b) Object.assign(b, clone(row)); else { b = { id: s.seq++, ...clone(row) }; s.badges.push(b); } return clone(b); },
     held: async (ids) => new Set(s.awards.filter((a) => ids.includes(a.badge_id)).map((a) => `${a.badge_id}:${a.user_id}`)),
@@ -281,11 +282,14 @@ test('each gem is judged as it lands: right, wrong, or found already; a run ends
   await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: KEY, dims: DIMS }, p1), /judges each gem/);
 });
 
-test('at the end the awards are given once, to each tier, with a bell note and a chat line', async () => {
+test('at the end the awards are given once, the speed award too, with a bell note each and one results post in chat', async () => {
   const h = harness();
   const d = await makeHunt(h);
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
-  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P1, at(60)));
+  // Nseraf opens the Hunt at hour 60 and finds all three by 60:30; P2 finds two; P3 one miss.
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P1, at(60)));
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100)], h.ctx(P1, at(60.25)));
+  await dropAll(d.id, [pt(9000, 1000, 200)], h.ctx(P1, at(60.5)));
   await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100)], h.ctx(P2, at(61)));
   await dropAll(d.id, [pt(1, 1, 1)], h.ctx(P3, at(62)));
   // Before the end, an admin cannot award.
@@ -294,21 +298,70 @@ test('at the end the awards are given once, to each tier, with a bell note and a
   const hunt = after.hunts[0];
   assert.equal(hunt.phase, 'ended'); assert.equal(hunt.awarded, true);
   assert.deepEqual(hunt.winners, { gold: 1, silver: 1, bronze: 0 });
-  assert.deepEqual(h.db._s.badges.map((b) => b.slug).sort(), [`hunt-${d.id}-gold`, `hunt-${d.id}-silver`]);
+  assert.deepEqual(h.db._s.badges.map((b) => b.slug).sort(), [`hunt-${d.id}-fastest`, `hunt-${d.id}-gold`, `hunt-${d.id}-silver`]);
   assert.equal(h.db._s.badges.find((b) => b.slug.endsWith('gold')).name, 'Pinky Hunt: Gold');
   assert.equal(h.db._s.badges.find((b) => b.slug.endsWith('gold')).image_url, 'https://pyr.example/hunt/gold.png');
-  assert.equal(h.db._s.awards.length, 2);
-  assert.deepEqual(h.bell.map((b) => b.title).sort(), ['🏅 New Achievement: Pinky Hunt: Gold', '🏅 New Achievement: Pinky Hunt: Silver']);
-  assert.equal(h.chat.length, 2);
+  const speed = h.db._s.badges.find((b) => b.slug.endsWith('fastest'));
+  assert.equal(speed.image_url, 'https://pyr.example/hunt/fastest.png');
+  assert.match(speed.description, /every problem found in 30m 00s/);
+  assert.equal(h.db._s.awards.length, 3);
+  assert.equal(h.db._s.awards.find((a) => a.badge_id === speed.id).user_id, P1.id);
+  assert.deepEqual(h.bell.map((b) => b.title).sort(), ['🏅 New Achievement: Pinky Hunt: Fastest', '🏅 New Achievement: Pinky Hunt: Gold', '🏅 New Achievement: Pinky Hunt: Silver']);
+  // Chat hears it once: the results post, to everyone, with the default picture.
+  assert.equal(h.chat.length, 0);
+  const results = h.db._s.notes.filter((n) => /results/.test(n.title));
+  assert.equal(results.length, 1);
+  assert.equal(results[0].title, '🔎 The Hunt results: Pinky Hunt');
+  assert.ok(results[0].target_type === 'all' && results[0].post_to_chat === true && results[0].image_url === 'https://pyr.example/hunt/gold.png');
+  assert.match(results[0].body, /^Congratulations to all 3 hunters who took part! Gold: nseraf\. Silver: .+\. Fastest: nseraf, all 3 in 30m 00s\.$/);
+  // The ceremony lists everyone, and who was fastest.
+  assert.equal(hunt.board.length, 3);
+  assert.equal(hunt.fastest.name, 'nseraf');
+  assert.match(hunt.fastest.reason, /All 3 found in 30m 00s, the fastest in Pinky Hunt/);
   // Others opening the game later change nothing.
   await H.huntAction('hunt.current', {}, h.ctx(P1, at(122)));
   await H.huntAction('hunt.current', {}, h.ctx(P2, at(123)));
-  assert.equal(h.db._s.awards.length, 2); assert.equal(h.bell.length, 2); assert.equal(h.chat.length, 2);
-  // An admin's Award again is idempotent: no second note.
-  const again = await H.huntAction('hunt.award', { id: d.id }, h.ctx(ADMIN, at(124), true));
-  assert.equal(again.fresh, 0); assert.equal(h.bell.length, 2);
+  assert.equal(h.db._s.awards.length, 3); assert.equal(h.bell.length, 3);
+  assert.equal(h.db._s.notes.filter((n) => /results/.test(n.title)).length, 1);
   // No more gems after the end.
   await assert.rejects(H.huntAction('hunt.drop', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, h.ctx(P3, at(125))), /over/);
+});
+
+test('one try: opening the Hunt starts a run once; if nobody finds all, the speed award goes to the quickest of those who found the most', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const s1 = await H.huntAction('hunt.start', { id: d.id }, h.ctx(P1, at(60)));
+  assert.equal(s1.run.started_at, iso(at(60)));
+  const s2 = await H.huntAction('hunt.start', { id: d.id }, h.ctx(P1, at(70)));   // a second open: the clock does not restart
+  assert.equal(s2.run.started_at, iso(at(60)));
+  assert.equal(h.db._s.subs.filter((x) => x.user_id === P1.id).length, 1);
+  // P1: two found in 2 hours. P2: two found in 1 hour. P3: one in 5 minutes.
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100)], h.ctx(P1, at(62)));
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P2, at(64)));
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(1, 1, 1), pt(9000, 1000, 200)], h.ctx(P2, at(65)));
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P3, at(66)));
+  await dropAll(d.id, [pt(1000, 1000, 100)], h.ctx(P3, at(66 + 5 / 60)));
+  await H.huntAction('hunt.current', {}, h.ctx(P3, at(121)));
+  const speed = h.db._s.badges.find((b) => b.slug === `hunt-${d.id}-fastest`);
+  assert.equal(h.db._s.awards.find((a) => a.badge_id === speed.id).user_id, P2.id);
+  assert.match(speed.description, /2 of 3 found in 1h 00m, the most of anyone/);
+  assert.equal(H.clockWords(252000), '4m 12s');
+  // Opening an ended or unstarted hunt does not start a run.
+  await assert.rejects(H.huntAction('hunt.start', { id: d.id }, h.ctx(P3, at(130))), /not running/);
+});
+
+test('a hunt can be duplicated as a draft, with its key, and on a test site the copy is admins only', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  const copy = await H.huntAction('hunt.duplicate', { id: d.id }, { ...h.ctx(ADMIN, at(2), true), testSite: true });
+  assert.equal(copy.title, 'Pinky Hunt (copy)');
+  assert.equal(copy.status, 'draft');
+  assert.equal(copy.admins_only, true);
+  assert.deepEqual(h.db._s.keys[copy.id], h.db._s.keys[d.id]);
+  assert.deepEqual(copy.cells, h.db._s.hunts[0].cells);
+  assert.equal(copy.players, 0);
+  await assert.rejects(H.huntAction('hunt.duplicate', { id: d.id }, h.ctx(P1, at(2))), /Admins only/);
 });
 
 test('admins can announce, start and end now; ending awards at once', async () => {
@@ -323,8 +376,9 @@ test('admins can announce, start and end now; ending awards at once', async () =
   await dropAll(d.id, [pt(1000, 1000, 100)], h.ctx(P1, at(4)));
   const e = await H.huntAction('hunt.now', { id: d.id, kind: 'end' }, h.ctx(ADMIN, at(5), true));
   assert.equal(e.phase, 'ended'); assert.ok(e.awarded_at); assert.equal(e.notes.end.sent, true);
-  assert.equal(h.db._s.awards.length, 1);
-  assert.equal(h.db._s.notes.length, 3);
+  // Bronze, and the speed award (nobody found all; P1 found the most, the quickest).
+  assert.equal(h.db._s.awards.length, 2);
+  assert.equal(h.db._s.notes.length, 4);   // the three notes and the results
 });
 
 test('cancelling takes back the notes not yet sent; deleting needs a cancel first', async () => {
@@ -394,8 +448,8 @@ test('each note can carry its own picture, one picture can serve several, and a 
   assert.equal(h.db._s.notes[0].image_url, B.image_url);
   assert.equal(h.db._s.notes[0].title, sent.title);
   assert.equal(h.db._s.notes[0].send_at, sent.send_at);
-  // The start note is not out yet: it takes the new title and loses its picture.
-  assert.equal(h.db._s.notes[1].image_url, null);
+  // The start note is not out yet: it takes the new title, and the Hunt's default picture.
+  assert.equal(h.db._s.notes[1].image_url, 'https://pyr.example/hunt/gold.png');
   assert.ok(h.db._s.notes[1].title.endsWith('Renamed Hunt'));
 });
 
@@ -435,7 +489,7 @@ test('the Admin Hub can preview the notes with the form as it is, before anythin
   const rows = await H.huntAction('hunt.notes', { fields, target_count: 4 }, h.ctx(ADMIN, at(1), true));
   assert.deepEqual(rows.map((r) => r.kind), ['announce', 'start', 'end']);
   assert.ok(/4 mergers are hidden on one cell/.test(rows[1].body));
-  assert.deepEqual(rows.map((r) => r.image_url), [null, 'https://img.example/s.png', null]);
+  assert.deepEqual(rows.map((r) => r.image_url), ['https://pyr.example/hunt/gold.png', 'https://img.example/s.png', 'https://pyr.example/hunt/gold.png']);
   assert.equal(h.db._s.hunts.length + h.db._s.notes.length, 0);
   await assert.rejects(H.huntAction('hunt.notes', { fields }, h.ctx(P1, at(1))), /Admins only/);
 });
@@ -492,7 +546,7 @@ test('an admins only hunt is a test: players never see it, its notes go to the a
   assert.equal(seen.admins_only, true);
   await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(ADMIN, at(61), true));
   await H.huntAction('hunt.current', {}, h.ctx(ADMIN, at(121), true));
-  assert.equal(h.db._s.awards.length, 1);
+  assert.equal(h.db._s.awards.length, 2);   // gold and the speed award
   assert.equal(h.chat.length, 0);
   // Turned off again before the notes go out, they go to everyone.
   await H.huntAction('hunt.save', { id: d.id, fields: { admins_only: false, start_at: iso(at(130)), end_at: iso(at(140)) } }, h.ctx(ADMIN, at(122), true));

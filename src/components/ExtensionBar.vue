@@ -419,10 +419,12 @@ const huntPill = computed(() => {
   if (!h) return null;
   const p = phaseNow(h);
   void huntState.now;   // the countdown ticks with the hunt clock
-  if (p === 'live') return { id: h.id, phase: p, text: `Hunt on · ${countdown(h.end_at)}` };
-  if (p === 'announced') return { id: h.id, phase: p, text: `Hunt in ${countdown(h.start_at)}` };
-  return { id: h.id, phase: p, text: 'Hunt results' };
+  const live = huntState.hunts.filter(x => phaseNow(x) === 'live').length;
+  if (p === 'live') return { id: h.id, phase: p, word: live > 1 ? `${live} Hunts` : 'Hunt', time: countdown(h.end_at) };
+  if (p === 'announced') return { id: h.id, phase: p, word: 'Hunt in', time: countdown(h.start_at) };
+  return { id: h.id, phase: p, word: 'Hunt results', time: '' };
 });
+function pickHunt(id: number) { huntPanelTest.value = false; huntPanelId.value = id; }
 function openHunt(id?: number | null) { huntPanelTest.value = false; huntPanelId.value = id ?? null; showHunt.value = true; void loadHunts(); }
 /** Admins: try a hunt. Out of the profile, into the hunt's view, with the panel in its test run. */
 async function tryHunt(id: number, alreadyThere = false) {
@@ -439,10 +441,17 @@ async function tryHunt(id: number, alreadyThere = false) {
 }
 document.addEventListener('nge:hunt-test', ((e: CustomEvent) => { const id = Number(e.detail?.id); if (id) void tryHunt(id); }) as EventListener);
 // From a notification: the hunt its title names, once the list is fresh.
+// A Hunt note opens its own Hunt at once (Ames 2026-10-21: an old note showed the running Hunt for
+// two seconds first): the one in the list now, else "looking" until the list is fresh, else "gone".
 document.addEventListener('nge:hunt-open', (async (e: CustomEvent) => {
   const title = String(e.detail?.title || '');
-  openHunt(e.detail?.id ?? null);
-  if (title) { await loadHunts(); const h = huntState.hunts.find(x => title.endsWith(`: ${x.title}`)); if (h) huntPanelId.value = h.id; }
+  if (!title) { openHunt(e.detail?.id ?? null); return; }
+  const match = () => huntState.hunts.find(x => title.endsWith(`: ${x.title}`));
+  const now = match();
+  openHunt(now ? now.id : -1);
+  await loadHunts();
+  const h = match();
+  huntPanelId.value = h ? h.id : -2;
 }) as EventListener);
 let huntsStarted = false;
 // Its own handle on the store: this runs before the bar's backendStore is defined below.
@@ -1039,7 +1048,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
-  <hunt-panel v-if="showHunt" :hunt-id="huntPanelId" :test="huntPanelTest" @hide="showHunt = false; huntPanelTest = false" />
+  <hunt-panel v-if="showHunt" :hunt-id="huntPanelId" :test="huntPanelTest" @hide="showHunt = false; huntPanelTest = false" @pick="pickHunt" />
   <!-- Each gem's answer on the spot; the start of a Hunt (Ames 2026-10-21) -->
   <hunt-gem-fx />
   <hunt-begins @open="openHunt" />
@@ -1189,7 +1198,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <svg class="nge-hunt-pill-gem" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
           <path d="M7 3h10l4 6-9 12L3 9z" fill="currentColor" opacity="0.9"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" fill="none" stroke="rgba(8,13,26,0.55)" stroke-width="1.2"/>
         </svg>
-        <span>{{ huntPill.text }}</span>
+        <span class="nge-hunt-pill-word">{{ huntPill.word }}</span>
+        <span v-if="huntPill.time" class="nge-hunt-pill-time">{{ huntPill.time }}</span>
       </button>
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
@@ -2389,18 +2399,22 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
 }
 /* The Site Tour's compass sits in the same circle as the numbers. */
 .nge-menu-num--icon { font-size: 10px; line-height: 1; }
-/* The Hunt pill (Ames 2026-10-20): only while a hunt is announced, running or just over. */
-.nge-hunt-pill {
-  display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; padding: 3px 10px 3px 8px;
-  border-radius: 999px; cursor: pointer; white-space: nowrap;
-  font: 600 12px 'Inter', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #e6f0ff;
-  background: rgba(90, 170, 255, 0.12); border: 1px solid rgba(90, 170, 255, 0.45);
+/* The Hunt pill (Ames 2026-10-20; restyled 2026-10-21, "does not look good"): an instrument chip like
+   the Hunt box, a gold hairline while a Hunt runs, the word in Orbitron and a steady countdown. The
+   doubled class wins over the top bar's own button rules, which had flattened it. No pulsing. */
+button.nge-hunt-pill.nge-hunt-pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; margin: 0 6px 0 0; padding: 0 9px 0 7px;
+  border-radius: 7px; cursor: pointer; white-space: nowrap;
+  background: linear-gradient(158deg, rgba(10, 17, 32, 0.92), rgba(5, 9, 19, 0.96));
+  border: 1px solid rgba(74, 158, 255, 0.45); box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.12);
+  color: #e6f0ff;
 }
-.nge-hunt-pill:hover, .nge-hunt-pill:focus-visible { background: rgba(90, 170, 255, 0.22); }
-.nge-hunt-pill--live { color: #fff3c4; background: rgba(245, 209, 66, 0.14); border-color: rgba(245, 209, 66, 0.65); animation: nge-hunt-pill-glow 2.4s ease-in-out infinite; }
-.nge-hunt-pill--live:hover, .nge-hunt-pill--live:focus-visible { background: rgba(245, 209, 66, 0.26); }
-.nge-hunt-pill-gem { color: #f5d142; flex: none; }
-@keyframes nge-hunt-pill-glow { 0%, 100% { box-shadow: 0 0 0 rgba(245, 209, 66, 0); } 50% { box-shadow: 0 0 12px rgba(245, 209, 66, 0.35); } }
-@media (prefers-reduced-motion: reduce) { .nge-hunt-pill--live { animation: none; } }
-body.nge-calm .nge-hunt-pill--live { animation: none; box-shadow: none; }
+button.nge-hunt-pill.nge-hunt-pill:hover, button.nge-hunt-pill.nge-hunt-pill:focus-visible { border-color: rgba(126, 224, 255, 0.8); background: linear-gradient(158deg, rgba(16, 28, 52, 0.95), rgba(8, 14, 28, 0.98)); }
+button.nge-hunt-pill.nge-hunt-pill--live { border-color: rgba(245, 209, 66, 0.7); box-shadow: inset 0 1px 0 rgba(255, 243, 196, 0.15), 0 0 10px rgba(245, 209, 66, 0.18); }
+button.nge-hunt-pill.nge-hunt-pill--live:hover, button.nge-hunt-pill.nge-hunt-pill--live:focus-visible { border-color: #f5d142; }
+.nge-hunt-pill-gem { color: #f5d142; flex: none; filter: drop-shadow(0 0 3px rgba(245, 209, 66, 0.6)); }
+.nge-hunt-pill-word { font: 700 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #9fd0ff; }
+.nge-hunt-pill--live .nge-hunt-pill-word { color: #f5d142; }
+.nge-hunt-pill-time { font: 700 12px 'Orbitron', 'Inter', sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
+.nge-hunt-pill--live .nge-hunt-pill-time { color: #fff3c4; }
 </style>
