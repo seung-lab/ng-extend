@@ -194,7 +194,10 @@ function helpHtml(): string {
 <p><strong>Cut off anything that does not belong, and merge any missing pieces.</strong></p>
 <p>When the cell is right, press <strong>Submit for scoring</strong> up here.${session.deadline !== null ? ' The clock beside it is the time you have left: at zero your cell is scored as it stands.' : ''}</p>`;
 }
-const HUD_ID = 'nge-test-hud', HELP_ID = 'nge-test-help';
+const HUD_ID = 'nge-test-hud', HELP_ID = 'nge-test-help', LEAVE_ID = 'nge-test-leave';
+/** The app's own font. The bar and its cards hang off <body>, outside the
+ *  styled app, and fell back to a serif without it (Ames, 2026-10-21). */
+const APP_FONT = "font-family:Inter,system-ui,'Segoe UI',sans-serif;";
 
 function showTestHud() {
   if (document.getElementById(HUD_ID)) return;
@@ -204,7 +207,7 @@ function showTestHud() {
   hud.setAttribute('role', 'status');
   hud.style.cssText = 'position:fixed;top:64px;left:12px;z-index:60;display:flex;align-items:center;gap:10px;padding:4px 6px 4px 4px;'
     + 'border:1px solid rgba(126,224,255,.45);border-radius:999px;background:rgba(8,16,28,.9);color:#d8f3ff;'
-    + 'font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:12px;letter-spacing:.04em;backdrop-filter:blur(4px);';
+    + APP_FONT + 'font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:.04em;backdrop-filter:blur(4px);';
   const info = document.createElement('button');
   info.type = 'button';
   info.textContent = 'i';
@@ -224,7 +227,15 @@ function showTestHud() {
   submit.textContent = 'Submit for scoring';
   submit.style.cssText = 'margin:0;border-radius:999px;';
   submit.addEventListener('click', submitFromHud);
-  hud.append(info, count, time, submit);
+  // A way out without a score (Ames, 2026-10-21: "we need a way to cancel").
+  const leave = document.createElement('button');
+  leave.type = 'button';
+  leave.className = 'nge-hud-btn nge-hud-btn--sm nge-hud-btn--quiet';
+  leave.textContent = 'Leave';
+  leave.title = 'Leave the test without a score';
+  leave.style.cssText = 'margin:0;border-radius:999px;';
+  leave.addEventListener('click', askLeave);
+  hud.append(info, count, time, submit, leave);
   document.body.appendChild(hud);
 }
 function updateTestHud(msLeft: number) {
@@ -239,9 +250,50 @@ function updateTestHud(msLeft: number) {
 function hideTestHud() {
   document.getElementById(HUD_ID)?.remove();
   document.getElementById(HELP_ID)?.remove();
+  document.getElementById(LEAVE_ID)?.remove();
+}
+/** Leave without a score: asked once, since the edits come off. */
+function askLeave() {
+  if (document.getElementById(LEAVE_ID) || session.phase !== 'working') return;
+  document.getElementById(HELP_ID)?.remove();
+  const card = document.createElement('div');
+  card.id = LEAVE_ID;
+  card.className = 'ng-extend';
+  card.setAttribute('role', 'alertdialog');
+  card.setAttribute('aria-label', 'Leave the test?');
+  card.style.cssText = 'position:fixed;top:104px;left:12px;z-index:61;max-width:420px;padding:16px 18px;'
+    + 'border:1px solid rgba(126,224,255,.45);border-radius:10px;background:rgba(8,16,28,.96);color:#e8f6ff;'
+    + APP_FONT + 'font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);';
+  card.innerHTML = '<div style="font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;color:#7ee0ff;margin-bottom:6px">Leave the test?</div>'
+    + '<p style="margin:0 0 10px">Your cell is handed back without a score, and your edits on it are undone for the next person. You can start again from the menu.</p>';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+  const stay = document.createElement('button');
+  stay.type = 'button';
+  stay.className = 'nge-hud-btn';
+  stay.textContent = 'Keep working';
+  stay.addEventListener('click', () => card.remove());
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'nge-hud-btn nge-hud-btn--quiet';
+  go.textContent = 'Leave the test';
+  go.addEventListener('click', () => { card.remove(); void leaveTest(); });
+  row.append(stay, go);
+  card.appendChild(row);
+  document.body.appendChild(card);
+  stay.focus();
+}
+/** Hand the cell back and close the test. */
+async function leaveTest() {
+  const store = useTutorialStore();
+  await abandonTest();
+  session.error = '';
+  session.result = null;
+  if (store.activeTutorial === TEST_TUTORIAL) store.setTutorialStep(steps.length);
 }
 function openTestHelp() {
   if (document.getElementById(HELP_ID)) return;
+  document.getElementById(LEAVE_ID)?.remove();
   const card = document.createElement('div');
   card.id = HELP_ID;
   card.className = 'ng-extend';
@@ -249,7 +301,7 @@ function openTestHelp() {
   card.setAttribute('aria-label', 'How to work the cell');
   card.style.cssText = 'position:fixed;top:104px;left:12px;z-index:61;max-width:520px;padding:16px 18px;'
     + 'border:1px solid rgba(126,224,255,.45);border-radius:10px;background:rgba(8,16,28,.96);color:#e8f6ff;'
-    + 'font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);';
+    + APP_FONT + 'font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);';
   card.innerHTML = '<div style="font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;color:#7ee0ff;margin-bottom:6px">How to work the cell</div>' + helpHtml();
   const ok = document.createElement('button');
   ok.type = 'button';

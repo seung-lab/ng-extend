@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T15:40:46Z",
+      "title": "Proofreading Test: a way out",
+      "digest": "minor",
+      "items": [
+        "The bar at the top left of the Proofreading Test has Leave, to hand the cell back without a score, and its help card uses the same lettering as the rest of Pyr."
+      ]
+    },
+    {
       "at": "2026-10-21T15:38:20Z",
       "title": "Proofreading Test: not open yet",
       "digest": "minor",
