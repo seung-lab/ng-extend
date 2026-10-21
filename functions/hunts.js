@@ -91,6 +91,12 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
  * the "you are close" of EyeWire's 2013 Hunt, never saying which.
  */
 function score(targets, points, toleranceNm) {
+  const { found, close } = match(targets, points, toleranceNm);
+  return { found, close };
+}
+
+/** The pairing behind score(), with which mergers were found (`hit`, one per merger). */
+function match(targets, points, toleranceNm) {
   const tol = Number(toleranceNm) > 0 ? Number(toleranceNm) : DEFAULT_TOLERANCE_NM;
   const T = Array.isArray(targets) ? targets : [];
   const P = Array.isArray(points) ? points : [];
@@ -113,7 +119,22 @@ function score(targets, points, toleranceNm) {
     if (owner[pi] >= 0) return;
     if (T.some((t, ti) => !foundTargets.has(ti) && dist(t, p) <= 2 * tol)) close++;
   });
-  return { found, close };
+  return { found, close, hit: T.map((t, ti) => foundTargets.has(ti)) };
+}
+
+/**
+ * For an admin's test run only: each merger, whether it was found, and how
+ * far the nearest gem was (µm). Players never get this; it is for setting
+ * the tolerance.
+ */
+function testDetail(targets, points, toleranceNm) {
+  const T = Array.isArray(targets) ? targets : [];
+  const P = Array.isArray(points) ? points : [];
+  const m = match(T, P, toleranceNm);
+  return T.map((t, ti) => {
+    const near = P.length ? Math.min(...P.map((p) => dist(t, p))) : null;
+    return { found: m.hit[ti], nearest_um: near == null ? null : Math.round(near / 100) / 10 };
+  });
 }
 
 // ── Tiers ─────────────────────────────────────────────────────────────────
@@ -215,6 +236,14 @@ function leaderboard(subs) {
 
 // ── Notifications ─────────────────────────────────────────────────────────
 
+const NOTE_KINDS = ['announce', 'start', 'end'];
+
+/** The picture a note carries (null for none): set per note in the Admin Hub, one picture can serve several. */
+function noteImage(h, kind) {
+  const v = h && h.notif_images && h.notif_images[kind];
+  return v && v.image_url ? { image_url: v.image_url, thumbnail_url: v.thumbnail_url || v.image_url } : { image_url: null, thumbnail_url: null };
+}
+
 /** The three notes a scheduled hunt sends, each at its own time. */
 function notificationRows(h) {
   const start = ms(h.start_at), end = ms(h.end_at);
@@ -224,15 +253,15 @@ function notificationRows(h) {
   if (h.announce_at) {
     rows.push({ kind: 'announce', send_at: h.announce_at,
       title: `${TITLE_PREFIX} is coming: ${h.title}`,
-      body: `${h.title} starts in ${inWords(start - ms(h.announce_at))} and runs for ${runs}. ${mergerWords(n)} hidden on ${whereWords(h)}: find each one, put a point on it, and submit. Gold, silver and bronze Achievements go to the best hunters.` });
+      body: `${h.title} starts in ${inWords(start - ms(h.announce_at))} and runs for ${runs}. ${mergerWords(n)} hidden on ${whereWords(h)}: find each one, drop a gold gem on it, and submit. Gold, silver and bronze Achievements go to the best hunters.` });
   }
   rows.push({ kind: 'start', send_at: h.start_at,
     title: `${TITLE_PREFIX} is on: ${h.title}`,
-    body: `${mergerWords(n)} hidden on ${whereWords(h)}. Open the Hunt, find each one, put a point on it, and submit. You have ${runs}.` });
+    body: `${mergerWords(n)} hidden on ${whereWords(h)}. Open the Hunt, find each one, drop a gold gem on it, and submit. You have ${runs}.` });
   rows.push({ kind: 'end', send_at: h.end_at,
     title: `${TITLE_PREFIX} is over: ${h.title}`,
     body: 'Time is up. Open the Hunt for the awards ceremony: the gold, silver and bronze hunters get their Achievements now.' });
-  return rows.map((r) => ({ ...r, title: r.title.slice(0, 120) }));
+  return rows.map((r) => ({ ...r, title: r.title.slice(0, 120), ...noteImage(h, r.kind) }));
 }
 
 // ── Achievements ──────────────────────────────────────────────────────────
@@ -302,6 +331,16 @@ function cleanFields(f) {
     const a = f.art || {};
     out.art = Object.fromEntries(TIERS.filter((t) => typeof a[t] === 'string' && /^https:\/\/\S{4,500}$/.test(a[t])).map((t) => [t, a[t]]));
   }
+  if ('notif_images' in f) {
+    // { announce: { image_url, thumbnail_url }, start: ..., end: ... }; a note left out has no picture.
+    const a = f.notif_images || {};
+    const https = (v) => typeof v === 'string' && /^https:\/\/\S{4,800}$/.test(v);
+    out.notif_images = {};
+    for (const k of NOTE_KINDS) {
+      const v = a[k];
+      if (v && https(v.image_url)) out.notif_images[k] = { image_url: v.image_url, thumbnail_url: https(v.thumbnail_url) ? v.thumbnail_url : v.image_url };
+    }
+  }
   for (const k of DATE_FIELDS) if (k in f) out[k] = cleanDate(f[k]);
   return out;
 }
@@ -335,6 +374,9 @@ async function huntAction(action, args, ctx) {
     case 'hunt.delete': needAdmin(); return remove(args, ctx);
     case 'hunt.award': needAdmin(); return awardAction(args, ctx);
     case 'hunt.rescore': needAdmin(); return rescore(args, ctx);
+    case 'hunt.notes': needAdmin(); return notesPreview(args, ctx);
+    case 'hunt.test': needAdmin(); return testOpen(args, ctx);
+    case 'hunt.test_submit': needAdmin(); return testSubmit(args, ctx);
     default: fail(400, 'Unknown Hunt action.');
   }
 }
@@ -397,6 +439,48 @@ async function submit(args, ctx) {
     left: Math.max(0, cap - mine.length - 1), tier: tierFor(best, thresholds(h)) };
 }
 
+/** The notes as they would go out with the form as it is (for the Admin Hub's Preview); nothing is saved. */
+async function notesPreview(args, ctx) {
+  const base = args.id ? await getHunt(ctx.db, args.id) : {};
+  const h = { ...base, ...cleanFields(args.fields || {}) };
+  if (!base.id) h.target_count = Math.min(posInt(args.target_count), MAX_TARGETS);
+  if (!h.title) h.title = 'Untitled Hunt';
+  if (!h.start_at || !h.end_at) fail(400, 'Set when the Hunt starts and ends first.');
+  return notificationRows(h).map(({ kind, title, body, send_at, image_url, thumbnail_url }) => ({ kind, title, body, send_at, image_url, thumbnail_url }));
+}
+
+// ── An admin's test run ───────────────────────────────────────────────────
+// Ames 2026-10-21: admins play a hunt to test it, at any time (a draft, a
+// scheduled one before its start, a running one). The hunt opens as if it
+// were running, for that admin only; answers are scored against the real key
+// and never kept, so a test never shows on the board or wins an Achievement.
+// Admins can also play a running hunt for real, like anyone.
+
+const TEST_ANSWERS = 99;
+
+async function testOpen(args, ctx) {
+  const { db, now = new Date() } = ctx;
+  const h = await getHunt(db, args.id);
+  if (!h.view || !(await db.key(h.id)).length) fail(409, 'Read the answer key and save the Hunt before trying it.');
+  const cells = cleanCells(h.cells);
+  return { ...publicHunt(h, now), phase: 'live', test: true, cells, cell_count: cells.length, view: h.view,
+    you: { best: 0, submissions: 0, left: TEST_ANSWERS, tier: null, rank: 0 }, board: [], players: 0, winners: { gold: 0, silver: 0, bronze: 0 } };
+}
+
+async function testSubmit(args, ctx) {
+  const { db } = ctx;
+  const h = await getHunt(db, args.id);
+  const points = layerPointsNm(args.layer, args.dims);
+  if (!points.length) fail(400, 'Drop a gem on each merger you find, then submit.');
+  const most = maxPoints(h);
+  if (points.length > most) fail(400, `An answer can have at most ${most} gems. Take some away, then submit again.`);
+  const targets = await db.key(h.id);
+  const r = score(targets, points, h.tolerance_nm);
+  return { found: r.found, of: targets.length, close: r.close, best: r.found, points: points.length, left: TEST_ANSWERS,
+    tier: tierFor(r.found, thresholds(h)), test: true, tolerance_um: Math.round((Number(h.tolerance_nm) || DEFAULT_TOLERANCE_NM) / 100) / 10,
+    mergers: testDetail(targets, points, h.tolerance_nm) };
+}
+
 /** Award the gold, silver and bronze Achievements of an ended hunt, once. */
 async function finalize(h, ctx, { force = false } = {}) {
   const { db, now = new Date(), site, notify, chatAward } = ctx;
@@ -435,7 +519,11 @@ async function awardAction(args, ctx) {
   return finalize(h, ctx, { force: true });
 }
 
-/** Write, move or clear the hunt's three notes so they match its times. Notes already sent stay as they are. */
+/**
+ * Write, move or clear the hunt's three notes so they match its times. Notes
+ * already sent keep their words and time; only a changed picture reaches them,
+ * so a picture added late (or a wrong one) can still be put right.
+ */
 async function syncNotifications(h, ctx) {
   const { db, me, now = new Date() } = ctx;
   const t = now.getTime();
@@ -452,9 +540,13 @@ async function syncNotifications(h, ctx) {
     // An announcement for a hunt that has already started would only confuse.
     if (row.kind === 'announce' && ms(h.start_at) <= t) continue;
     const existing = ids[row.kind] ? await db.notification(ids[row.kind]) : null;
-    if (existing && ms(existing.send_at) <= t) continue;     // already out
+    const picture = { image_url: row.image_url, thumbnail_url: row.thumbnail_url };
+    if (existing && ms(existing.send_at) <= t) {            // already out: the picture only
+      if ((existing.image_url || null) !== picture.image_url || (existing.thumbnail_url || null) !== picture.thumbnail_url) await db.patchNotification(existing.id, picture);
+      continue;
+    }
     const sendAt = ms(row.send_at) <= t ? now.toISOString() : new Date(ms(row.send_at)).toISOString();
-    const fields = { title: row.title, body: row.body, send_at: sendAt, post_to_chat: true, target_type: 'all' };
+    const fields = { title: row.title, body: row.body, send_at: sendAt, post_to_chat: true, target_type: 'all', ...picture };
     if (existing) await db.patchNotification(existing.id, fields);
     else ids[row.kind] = (await db.insertNotification({ ...fields, created_by: me.id })).id;
   }
@@ -565,7 +657,8 @@ async function adminView(h, ctx) {
   const notes = {};
   for (const [kind, id] of Object.entries(h.notif_ids || {})) {
     const n = await db.notification(id);
-    if (n) notes[kind] = { id: n.id, send_at: n.send_at, sent: ms(n.send_at) <= now.getTime() };
+    if (n) notes[kind] = { id: n.id, send_at: n.send_at, sent: ms(n.send_at) <= now.getTime(),
+      title: n.title || '', body: n.body || '', image_url: n.image_url || null, thumbnail_url: n.thumbnail_url || null };
   }
   const { view, ...rest } = h;
   return { ...rest, has_view: !!view, phase: phase(h, now), thresholds: thresholds(h), max_points_used: maxPoints(h),
@@ -631,7 +724,7 @@ function restDb(sb) {
       const rows = await sb(`users?id=in.(${list.map(enc).join(',')})&select=id,username,display_name`);
       return Object.fromEntries(rows.map((u) => [u.id, u.username || u.display_name || 'Player']));
     },
-    notification: (id) => one(sb(`notifications?id=eq.${posInt(id)}&select=id,send_at&limit=1`)),
+    notification: (id) => one(sb(`notifications?id=eq.${posInt(id)}&select=id,send_at,title,body,image_url,thumbnail_url&limit=1`)),
     insertNotification: (row) => one(sb('notifications', { method: 'POST', body: JSON.stringify(row) })),
     patchNotification: (id, row) => one(sb(`notifications?id=eq.${posInt(id)}`, { method: 'PATCH', body: JSON.stringify(row) })),
     deleteNotification: (id) => sb(`notifications?id=eq.${posInt(id)}`, { method: 'DELETE' }),
@@ -646,7 +739,7 @@ function restDb(sb) {
 }
 
 module.exports = {
-  huntAction, restDb, layerPointsNm, score, thresholds, tierFor, maxPoints, phase, visible, inWords,
+  huntAction, restDb, layerPointsNm, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM,
 };

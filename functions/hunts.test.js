@@ -6,6 +6,7 @@ const H = require('./hunts');
 
 const DIMS = { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] };
 const pt = (x, y, z) => ({ type: 'point', point: [x, y, z], id: `${x}-${y}-${z}` });
+const clone = (o) => JSON.parse(JSON.stringify(o));
 const layer = (points, extra = {}) => ({ type: 'annotation', name: 'Hunt', source: 'local://annotations', annotations: points, ...extra });
 const ADMIN = { id: '11111111-1111-4111-8111-111111111111', username: 'ames' };
 const P1 = { id: '22222222-2222-4222-8222-222222222222', username: 'nseraf' };
@@ -331,4 +332,67 @@ test('the Achievement lines are jokes with counts, and use the art set for the h
   assert.equal(s.image_url, 'https://pyr.example/hunt/silver.svg');
   assert.match(s.description, /4 or more of the 5 mergers/);
   for (const r of [g, s]) assert.doesNotMatch(r.name + r.description, /[—–]|badge/i);
+});
+
+test('each note can carry its own picture, one picture can serve several, and a sent note takes a changed picture only', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  const A = { image_url: 'https://img.example/a.png', thumbnail_url: 'https://img.example/a-t.png' };
+  const B = { image_url: 'https://img.example/b.png', thumbnail_url: 'https://img.example/b-t.png' };
+  // Only https pictures are kept; a note left out has none.
+  const f = H.cleanFields({ notif_images: { announce: A, start: { image_url: 'javascript:alert(1)' }, end: { image_url: 'https://img.example/c.png' }, other: A } });
+  assert.deepEqual(f.notif_images, { announce: A, end: { image_url: 'https://img.example/c.png', thumbnail_url: 'https://img.example/c.png' } });
+  // The same picture for the announcement and the start, another for the end.
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { notif_images: { announce: A, start: A, end: B } } }, h.ctx(ADMIN, at(1), true));
+  assert.deepEqual(h.db._s.notes.map((n) => n.image_url), [A.image_url, A.image_url, B.image_url]);
+  assert.deepEqual(h.db._s.notes.map((n) => n.thumbnail_url), [A.thumbnail_url, A.thumbnail_url, B.thumbnail_url]);
+  // The admin sees each note's words and picture, to preview it.
+  const view = await H.huntAction('hunt.read', { id: d.id }, h.ctx(ADMIN, at(2), true));
+  assert.equal(view.notes.start.image_url, A.image_url);
+  assert.ok(/drop a gold gem/.test(view.notes.start.body));
+  // After the announcement is out, a new picture still reaches it; its words and time stay.
+  const sent = clone(h.db._s.notes[0]);
+  await H.huntAction('hunt.save', { id: d.id, fields: { notif_images: { announce: B, end: B }, title: 'Renamed Hunt' } }, h.ctx(ADMIN, at(30), true));
+  assert.equal(h.db._s.notes[0].image_url, B.image_url);
+  assert.equal(h.db._s.notes[0].title, sent.title);
+  assert.equal(h.db._s.notes[0].send_at, sent.send_at);
+  // The start note is not out yet: it takes the new title and loses its picture.
+  assert.equal(h.db._s.notes[1].image_url, null);
+  assert.ok(h.db._s.notes[1].title.endsWith('Renamed Hunt'));
+});
+
+test('an admin can try any hunt: it opens as running, is scored against the real key, and nothing is kept', async () => {
+  const h = harness();
+  const d = await makeHunt(h);   // a draft: players see nothing
+  await assert.rejects(H.huntAction('hunt.test', { id: d.id }, h.ctx(P1, at(1))), /Admins only/);
+  await assert.rejects(H.huntAction('hunt.test_submit', { id: d.id, layer: KEY, dims: DIMS }, h.ctx(P1, at(1))), /Admins only/);
+  const t = await H.huntAction('hunt.test', { id: d.id }, h.ctx(ADMIN, at(1), true));
+  assert.equal(t.test, true);
+  assert.equal(t.phase, 'live');
+  assert.ok(t.view && Array.isArray(t.view.layers) && !JSON.stringify(t.view).includes('Mergers'));
+  assert.deepEqual(t.cells.map((c) => c.root), ['648518346350533705']);
+  // Two gems on mergers, one 2.5 µm off the third (tolerance 2 µm).
+  const gems = layer([pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000 + 625, 1000, 200)]);
+  const r = await H.huntAction('hunt.test_submit', { id: d.id, layer: gems, dims: DIMS }, h.ctx(ADMIN, at(1), true));
+  assert.equal(r.found, 2);
+  assert.equal(r.of, 3);
+  assert.equal(r.test, true);
+  assert.deepEqual(r.mergers.map((m) => m.found), [true, true, false]);
+  assert.deepEqual(r.mergers.map((m) => m.nearest_um), [0, 0, 2.5]);
+  assert.equal(h.db._s.subs.length, 0);
+  // A hunt with no key yet cannot be tried.
+  const empty = await H.huntAction('hunt.save', { fields: { title: 'Empty', dataset: 'pinky_nf_v2' }, status: 'draft' }, h.ctx(ADMIN, at(1), true));
+  await assert.rejects(H.huntAction('hunt.test', { id: empty.id }, h.ctx(ADMIN, at(1), true)), /answer key/);
+});
+
+test('the Admin Hub can preview the notes with the form as it is, before anything is saved', async () => {
+  const h = harness();
+  const fields = { title: 'Preview Hunt', cells: [{ root: '648518346350533705' }], announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)),
+    notif_images: { start: { image_url: 'https://img.example/s.png' } } };
+  const rows = await H.huntAction('hunt.notes', { fields, target_count: 4 }, h.ctx(ADMIN, at(1), true));
+  assert.deepEqual(rows.map((r) => r.kind), ['announce', 'start', 'end']);
+  assert.ok(/4 mergers are hidden on one cell/.test(rows[1].body));
+  assert.deepEqual(rows.map((r) => r.image_url), [null, 'https://img.example/s.png', null]);
+  assert.equal(h.db._s.hunts.length + h.db._s.notes.length, 0);
+  await assert.rejects(H.huntAction('hunt.notes', { fields }, h.ctx(P1, at(1))), /Admins only/);
 });

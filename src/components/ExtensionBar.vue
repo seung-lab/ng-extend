@@ -32,7 +32,7 @@ import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import HuntPanel from "components/HuntPanel.vue";
-import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch } from '../hunt';
+import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
@@ -399,6 +399,8 @@ document.addEventListener('nge:access-open', () => { showAccess.value = true; })
 // the player is signed in (hunt.ts asks again at each start and end).
 const showHunt = ref(false);
 const huntPanelId = ref<number | null>(null);
+/** The panel shows an admin's test run (Admin Hub > Hunts > Try it yourself). */
+const huntPanelTest = ref(false);
 const huntPill = computed(() => {
   const h = featuredHunt();
   if (!h) return null;
@@ -408,7 +410,21 @@ const huntPill = computed(() => {
   if (p === 'announced') return { id: h.id, phase: p, text: `Hunt in ${countdown(h.start_at)}` };
   return { id: h.id, phase: p, text: 'Hunt results' };
 });
-function openHunt(id?: number | null) { huntPanelId.value = id ?? null; showHunt.value = true; void loadHunts(); }
+function openHunt(id?: number | null) { huntPanelTest.value = false; huntPanelId.value = id ?? null; showHunt.value = true; void loadHunts(); }
+/** Admins: try a hunt. Out of the profile, into the hunt's view, with the panel in its test run. */
+async function tryHunt(id: number, alreadyThere = false) {
+  showProfile.value = false;
+  huntPanelTest.value = true; huntPanelId.value = id; showHunt.value = true;
+  huntState.error = '';
+  try {
+    const t = await openTestHunt(id);
+    if (alreadyThere) await new Promise(r => setTimeout(r, 1500));
+    await goToHunt(t);
+  } catch (err: any) {
+    huntState.error = err?.message || String(err);
+  }
+}
+document.addEventListener('nge:hunt-test', ((e: CustomEvent) => { const id = Number(e.detail?.id); if (id) void tryHunt(id); }) as EventListener);
 // From a notification: the hunt its title names, once the list is fresh.
 document.addEventListener('nge:hunt-open', (async (e: CustomEvent) => {
   const title = String(e.detail?.title || '');
@@ -425,7 +441,8 @@ watch(() => huntBackend.userId, async id => {
   startGemWatch();
   // A dataset switch made for a hunt reloads the page: carry on into it.
   const after = takeHuntAfterSwitch();
-  const h = after ? huntState.hunts.find(x => x.id === after) : null;
+  if (after?.test) { void tryHunt(after.id, true); return; }
+  const h = after ? huntState.hunts.find(x => x.id === after.id) : null;
   if (h) {
     openHunt(h.id);
     setTimeout(() => { void goToHunt(h).catch(err => console.warn('[hunt] could not open after the switch:', err)); }, 1500);
@@ -992,7 +1009,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
-  <hunt-panel v-if="showHunt" :hunt-id="huntPanelId" @hide="showHunt = false" />
+  <hunt-panel v-if="showHunt" :hunt-id="huntPanelId" :test="huntPanelTest" @hide="showHunt = false; huntPanelTest = false" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <!-- The Ask dock is now the single command surface: it searches the same

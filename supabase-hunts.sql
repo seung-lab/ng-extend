@@ -45,6 +45,8 @@ create table if not exists hunts (
   end_at          timestamptz,
   -- { "announce": 123, "start": 124, "end": 125 }: rows in notifications
   notif_ids       jsonb       not null default '{}'::jsonb,
+  -- a picture per note: { "announce": { "image_url": "https://...", "thumbnail_url": "https://..." }, ... }
+  notif_images    jsonb       not null default '{}'::jsonb,
   awarded_at      timestamptz,
   created_by      uuid        references users (id) on delete set null,
   created_at      timestamptz not null default now(),
@@ -52,6 +54,8 @@ create table if not exists hunts (
   check (end_at is null or start_at is null or end_at > start_at)
 );
 create index if not exists hunts_status_end_idx on hunts (status, end_at);
+-- 2026-10-21: pictures for the notes (for a table made by the first version of this file)
+alter table hunts add column if not exists notif_images jsonb not null default '{}'::jsonb;
 
 create table if not exists hunt_keys (
   hunt_id     bigint      primary key references hunts (id) on delete cascade,

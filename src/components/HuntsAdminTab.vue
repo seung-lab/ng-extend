@@ -10,24 +10,32 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
+import { useProofreadingBackendStore } from '../store';
 import { huntCall, keyCandidates, readHuntFromScreen, type KeyCandidate } from '../hunt';
 import { openStartLink } from '../util/start_link';
 import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 
 type Tier = 'gold' | 'silver' | 'bronze';
+type NoteKind = 'announce' | 'start' | 'end';
+interface Picture { image_url: string; thumbnail_url: string }
+interface NoteInfo { id: number; send_at: string; sent: boolean; title: string; body: string; image_url: string | null; thumbnail_url: string | null }
 interface AdminHunt {
   id: number; title: string; description: string; dataset: string; cells: { root: string; label: string }[];
   target_count: number; tolerance_nm: number; max_points: number; max_submissions: number;
   tiers: Record<Tier, number>; art: Partial<Record<Tier, string>>; status: string; phase: string;
   announce_at: string | null; start_at: string | null; end_at: string | null; awarded_at: string | null;
   has_view: boolean; thresholds: Record<Tier, number>; players: number;
-  notes?: Record<string, { id: number; send_at: string; sent: boolean }>;
+  notes?: Partial<Record<NoteKind, NoteInfo>>;
+  notif_images?: Partial<Record<NoteKind, Picture>>;
 }
 interface BoardRow { rank: number; name: string; found: number; at: string; tries: number; tier: Tier | null }
 
 const TIERS: Tier[] = ['gold', 'silver', 'bronze'];
 const TIER_WORD: Record<Tier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
 const PHASE_WORD: Record<string, string> = { draft: 'Draft', announced: 'Scheduled', live: 'Running', ended: 'Over', cancelled: 'Cancelled' };
+const NOTE_KINDS: NoteKind[] = ['announce', 'start', 'end'];
+const NOTE_WORD: Record<NoteKind, string> = { announce: 'Announcement', start: 'The start', end: 'The end and the awards' };
+const backend = useProofreadingBackendStore();
 
 const list = ref<AdminHunt[]>([]);
 const loading = ref(false);
@@ -42,7 +50,8 @@ const notInstalled = ref(false);
 // The form
 const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: 0, max_submissions: 10,
   tiers: { gold: 0, silver: 0, bronze: 0 } as Record<Tier, number>, art: { gold: '', silver: '', bronze: '' } as Record<Tier, string>,
-  announce: '', start: '', end: '' });
+  announce: '', start: '', end: '',
+  images: { announce: null, start: null, end: null } as Record<NoteKind, Picture | null> });
 const form = ref(blank());
 const candidates = ref<KeyCandidate[]>([]);
 const keyLayer = ref('');
@@ -94,7 +103,8 @@ async function open(h: AdminHunt) {
       max_points: full.max_points || 0, max_submissions: full.max_submissions || 10,
       tiers: { gold: full.tiers?.gold || 0, silver: full.tiers?.silver || 0, bronze: full.tiers?.bronze || 0 },
       art: { gold: full.art?.gold || '', silver: full.art?.silver || '', bronze: full.art?.bronze || '' },
-      announce: toLocalInput(full.announce_at), start: toLocalInput(full.start_at), end: toLocalInput(full.end_at) };
+      announce: toLocalInput(full.announce_at), start: toLocalInput(full.start_at), end: toLocalInput(full.end_at),
+      images: { announce: full.notif_images?.announce ?? null, start: full.notif_images?.start ?? null, end: full.notif_images?.end ?? null } };
     read.value = null;
     scan();
   } catch (e: any) { error.value = e?.message || String(e); }
@@ -146,6 +156,7 @@ async function save(status?: 'draft' | 'scheduled') {
       max_points: Number(f.max_points) || 0, max_submissions: Number(f.max_submissions) || 10,
       tiers: f.tiers, art: f.art,
       announce_at: fromLocalInput(f.announce), start_at: fromLocalInput(f.start), end_at: fromLocalInput(f.end),
+      notif_images: pictureFields(),
     };
     const args: Record<string, any> = { fields };
     if (editing.value?.id) args.id = editing.value.id;
@@ -173,10 +184,66 @@ async function act(action: 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.aw
   finally { busy.value = ''; }
 }
 
-const notes = computed(() => {
-  const n = editing.value?.notes || {};
-  return (['announce', 'start', 'end'] as const).map(k => ({ kind: k, word: k === 'announce' ? 'Announcement' : k === 'start' ? 'Start' : 'End and awards', note: n[k] || null }));
+// ── Pictures for the notes (Ames 2026-10-21) ──
+// Each note can have its own picture, or share one: every picture already
+// used (in this Hunt or another) can be picked again for any note.
+const uploaded = ref<Picture[]>([]);
+const uploading = ref<NoteKind | ''>('');
+function pictureFields(): Partial<Record<NoteKind, Picture>> {
+  const out: Partial<Record<NoteKind, Picture>> = {};
+  for (const k of NOTE_KINDS) { const p = form.value.images[k]; if (p?.image_url) out[k] = p; }
+  return out;
+}
+const library = computed<Picture[]>(() => {
+  const seen = new Set<string>(); const out: Picture[] = [];
+  const add = (p?: Picture | null) => { if (p?.image_url && !seen.has(p.image_url)) { seen.add(p.image_url); out.push({ image_url: p.image_url, thumbnail_url: p.thumbnail_url || p.image_url }); } };
+  for (const k of NOTE_KINDS) add(form.value.images[k]);
+  uploaded.value.forEach(add);
+  for (const h of list.value) for (const k of NOTE_KINDS) add(h.notif_images?.[k]);
+  return out.slice(0, 24);
 });
+async function addPicture(kind: NoteKind, e: Event) {
+  const input = e.target as HTMLInputElement; const file = input.files?.[0]; input.value = '';
+  if (!file || uploading.value) return;
+  uploading.value = kind; error.value = ''; message.value = '';
+  try {
+    const urls = await backend.uploadAdminImage(file, 'notifications');
+    const pic = { image_url: urls.fullUrl, thumbnail_url: urls.thumbUrl || urls.fullUrl };
+    uploaded.value = [pic, ...uploaded.value];
+    const first = NOTE_KINDS.every(k => !form.value.images[k]);
+    if (first) { for (const k of NOTE_KINDS) form.value.images[k] = pic; message.value = 'Added for all three notes. Pick another picture for any of them below. Save to keep it.'; }
+    else { form.value.images[kind] = pic; message.value = `Added for ${NOTE_WORD[kind].toLowerCase()}. Save to keep it.`; }
+  } catch (err: any) { error.value = err?.message || String(err); }
+  finally { uploading.value = ''; }
+}
+function sameForAll(kind: NoteKind) {
+  const p = form.value.images[kind];
+  for (const k of NOTE_KINDS) form.value.images[k] = p;
+}
+const noteWhen = (k: NoteKind) => local(fromLocalInput(k === 'announce' ? form.value.announce : k === 'start' ? form.value.start : form.value.end));
+const noteSaved = (k: NoteKind) => editing.value?.notes?.[k] ?? null;
+/** The note as players will see it, with the form as it is (the server writes the words). */
+async function previewNote(kind: NoteKind) {
+  error.value = '';
+  try {
+    const f = form.value;
+    const fields: Record<string, any> = { title: f.title || editing.value?.title || '', announce_at: fromLocalInput(f.announce), start_at: fromLocalInput(f.start),
+      end_at: fromLocalInput(f.end), notif_images: pictureFields(), ...(read.value ? { cells: read.value.cells } : {}) };
+    const rows = await huntCall<{ kind: NoteKind; title: string; body: string; image_url: string | null; thumbnail_url: string | null; send_at: string }[]>('hunt.notes', {
+      id: editing.value?.id || undefined, fields, target_count: read.value?.count ?? editing.value?.target_count ?? 0 });
+    const row = rows.find(r => r.kind === kind);
+    if (!row) throw new Error(kind === 'announce' ? 'Set an announce time to send an announcement.' : 'This note is not sent.');
+    document.dispatchEvent(new CustomEvent('nge:preview-notification', { detail: { title: row.title, body: row.body,
+      image_url: row.image_url || '', thumbnail_url: row.thumbnail_url || '', send_at: row.send_at, target_type: 'all' } }));
+  } catch (err: any) { error.value = err?.message || String(err); }
+}
+
+// ── Try it yourself (Ames 2026-10-21): admins play the hunt to test it ──
+const canTry = computed(() => !!editing.value?.id && !!editing.value?.has_view && !!editing.value?.target_count);
+function tryIt() {
+  const id = editing.value?.id; if (!id) return;
+  document.dispatchEvent(new CustomEvent('nge:hunt-test', { detail: { id } }));
+}
 </script>
 
 <template>
@@ -264,6 +331,33 @@ const notes = computed(() => {
         </details>
       </fieldset>
 
+      <fieldset class="nge-hunts-group" :disabled="!!busy">
+        <legend>5. Notifications and their pictures</legend>
+        <p class="nge-hunts-help">Three notes go to every player at their times. Give each a picture, or share one: any picture added here, or used in another Hunt, can be picked again for any note.</p>
+        <div v-for="k in NOTE_KINDS" :key="k" class="nge-hunts-note">
+          <div class="nge-hunts-note-head">
+            <span class="nge-hunts-note-word">{{ NOTE_WORD[k] }}</span>
+            <span v-if="noteSaved(k)" :class="noteSaved(k)?.sent ? 'nge-hunts-sent' : 'nge-hunts-due'">{{ noteSaved(k)?.sent ? 'sent' : 'goes out' }} {{ local(noteSaved(k)?.send_at) }}</span>
+            <span v-else-if="k === 'announce' && !form.announce" class="nge-hunts-muted">no announce time, so no announcement</span>
+            <span v-else class="nge-hunts-muted">{{ noteWhen(k) }}</span>
+            <button class="nge-hunts-btn nge-hunts-btn--quiet nge-hunts-btn--small" :disabled="!form.start || !form.end" @click="previewNote(k)">Preview</button>
+          </div>
+          <div class="nge-hunts-pics" role="radiogroup" :aria-label="`Picture for ${NOTE_WORD[k]}`">
+            <button class="nge-hunts-pic nge-hunts-pic--none" role="radio" :aria-checked="!form.images[k]" :class="{ 'nge-hunts-pic--on': !form.images[k] }" @click="form.images[k] = null">No picture</button>
+            <button v-for="(p, i) in library" :key="p.image_url" class="nge-hunts-pic" role="radio" :aria-checked="form.images[k]?.image_url === p.image_url"
+                    :class="{ 'nge-hunts-pic--on': form.images[k]?.image_url === p.image_url }" :title="`Picture ${i + 1}`" @click="form.images[k] = p">
+              <img :src="p.thumbnail_url" :alt="`Picture ${i + 1}`" loading="lazy" />
+            </button>
+            <label class="nge-hunts-pic nge-hunts-pic--add" :class="{ 'nge-hunts-pic--busy': uploading === k }">
+              {{ uploading === k ? 'Adding…' : '+ Add' }}
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="nge-hunts-file" :disabled="!!uploading" @change="addPicture(k, $event)" />
+            </label>
+          </div>
+          <button v-if="form.images[k] && NOTE_KINDS.some(o => form.images[o]?.image_url !== form.images[k]?.image_url)" class="nge-hunts-link" @click="sameForAll(k)">Use this picture for all three</button>
+        </div>
+        <p class="nge-hunts-help">PNG, JPEG, WebP or GIF, up to 3 MB. Players see the small version in the bell list and the full picture when they open the note.<template v-if="scheduled"> A changed picture reaches a note even after it was sent.</template></p>
+      </fieldset>
+
       <div class="nge-hunts-actions">
         <button class="nge-hunts-btn" :disabled="!!busy || keyNeeded || !form.title.trim()" @click="save('draft')" v-if="!scheduled">Save draft</button>
         <button class="nge-hunts-btn nge-hunts-btn--primary" :disabled="!!busy || keyNeeded || !form.title.trim()" @click="save(scheduled ? undefined : 'scheduled')">
@@ -272,16 +366,20 @@ const notes = computed(() => {
         <span v-if="keyNeeded" class="nge-hunts-muted">Read the answer key first.</span>
       </div>
 
+      <fieldset v-if="!isNew" class="nge-hunts-group">
+        <legend>Try it yourself</legend>
+        <p class="nge-hunts-help">Play this Hunt as players will, at any time, even as a draft. Only you see it. Your gems are scored against the real answer key and you see which mergers they found, but no answer is kept or awarded. You can also play a running Hunt for real, like anyone.</p>
+        <div class="nge-hunts-actions">
+          <button class="nge-hunts-btn" :disabled="!!busy || !canTry || !!read" @click="tryIt">Try it yourself</button>
+          <span v-if="read" class="nge-hunts-muted">Save first: a test uses the saved key and view.</span>
+          <span v-else-if="!canTry" class="nge-hunts-muted">Read the answer key and save first.</span>
+        </div>
+      </fieldset>
+
       <!-- Notes and controls for a scheduled hunt -->
       <fieldset v-if="scheduled" class="nge-hunts-group">
-        <legend>Notifications</legend>
-        <ul class="nge-hunts-notes">
-          <li v-for="n in notes" :key="n.kind">
-            <span class="nge-hunts-note-word">{{ n.word }}</span>
-            <span v-if="n.note" :class="n.note.sent ? 'nge-hunts-sent' : 'nge-hunts-due'">{{ n.note.sent ? 'sent' : 'goes out' }} {{ local(n.note.send_at) }}</span>
-            <span v-else class="nge-hunts-muted">none</span>
-          </li>
-        </ul>
+        <legend>Run it</legend>
+        <p class="nge-hunts-help">The notes go out on their own at their times. To move things along early:</p>
         <div class="nge-hunts-actions">
           <button v-if="phase === 'announced'" class="nge-hunts-btn" :disabled="!!busy" @click="asking = 'announce'">Announce now</button>
           <button v-if="phase === 'announced'" class="nge-hunts-btn" :disabled="!!busy" @click="asking = 'start'">Start now</button>
@@ -352,9 +450,22 @@ const notes = computed(() => {
 .nge-hunts-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .nge-hunts-art summary { cursor: pointer; color: #9fd0ff; font-size: 13px; }
 .nge-hunts-art label { margin-top: 6px; }
-.nge-hunts-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.nge-hunts-notes li { display: flex; gap: 10px; }
-.nge-hunts-note-word { width: 120px; color: #cfdcef; }
+.nge-hunts-note { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid rgba(90, 170, 255, 0.12); }
+.nge-hunts-note-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.nge-hunts-note-word { min-width: 150px; color: #fff; font-weight: 600; }
+.nge-hunts-note-head .nge-hunts-btn--small { margin-left: auto; }
+.nge-hunts-btn--small { padding: 3px 10px; font-size: 12px; }
+.nge-hunts-pics { display: flex; flex-wrap: wrap; gap: 6px; }
+.nge-hunts-pic { position: relative; width: 56px; height: 56px; padding: 0; border-radius: 8px; overflow: hidden; cursor: pointer; background: rgba(4, 8, 18, 0.8);
+  border: 2px solid rgba(90, 170, 255, 0.25); color: #a9bbd3; font: 600 11px 'Inter', sans-serif; display: flex; align-items: center; justify-content: center; text-align: center; }
+.nge-hunts-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nge-hunts-pic:hover, .nge-hunts-pic:focus-visible { border-color: rgba(90, 170, 255, 0.7); }
+.nge-hunts-pic--on { border-color: #f5d142; box-shadow: 0 0 0 2px rgba(245, 209, 66, 0.25); }
+.nge-hunts-pic--none { line-height: 1.15; padding: 4px; font-size: 10.5px; }
+.nge-hunts-pic--add { border-style: dashed; color: #9fd0ff; }
+.nge-hunts-pic--busy { opacity: 0.6; cursor: progress; }
+.nge-hunts-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.nge-hunts-link { align-self: flex-start; background: none; border: none; padding: 0; color: #9fd0ff; cursor: pointer; font-size: 12.5px; text-decoration: underline; }
 .nge-hunts-sent { color: #b8f5cf; }
 .nge-hunts-due { color: #9fd0ff; }
 .nge-hunts-board { border-collapse: collapse; width: 100%; font-size: 13px; }

@@ -14,7 +14,7 @@ import {
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 
-const props = defineProps<{ huntId?: number | null }>();
+const props = defineProps<{ huntId?: number | null; test?: boolean }>();
 const emit = defineEmits({ hide: null });
 
 const busy = ref('');
@@ -22,7 +22,7 @@ const error = ref('');
 const result = ref<HuntResult | null>(null);
 const gems = ref(-1);
 
-const hunt = computed<HuntInfo | null>(() =>
+const hunt = computed<HuntInfo | null>(() => props.test ? huntState.test :
   (props.huntId ? huntState.hunts.find(h => h.id === props.huntId) : null) ?? featuredHunt());
 const phase = computed(() => (hunt.value ? phaseNow(hunt.value) : null));
 const onDataset = computed(() => !!hunt.value && canonicalDataset(currentDatasetTag()) === canonicalDataset(hunt.value.dataset));
@@ -55,8 +55,9 @@ onMounted(() => {
 });
 onUnmounted(() => { if (gemTimer) clearInterval(gemTimer); });
 
-// A new hunt in the panel starts with no answer shown.
-watch(() => hunt.value?.id, () => { result.value = null; error.value = ''; });
+// A new hunt in the panel (or a switch between a test run and the real one) starts with no answer shown.
+// (A string key: an array would be new on every reload of the list and wipe the answer just shown.)
+watch(() => `${hunt.value?.id ?? ''}:${hunt.value?.test ? 'test' : ''}`, () => { result.value = null; error.value = ''; });
 
 async function go() {
   const h = hunt.value; if (!h || busy.value) return;
@@ -89,6 +90,12 @@ const resultLine = computed(() => {
   const close = r.close === 1 ? ' One more gem is close.' : r.close > 1 ? ` ${r.close} more gems are close.` : '';
   return `${found}.${close}`;
 });
+// A test run says which mergers were found and how near the nearest gem was, to set the tolerance by.
+const testLines = computed(() => {
+  const r = result.value; if (!r?.test || !r.mergers) return [];
+  return r.mergers.map((m, i) => ({ n: i + 1, found: m.found,
+    text: m.nearest_um == null ? 'no gem' : `nearest gem ${m.nearest_um} µm` }));
+});
 
 // ── The awards ceremony ──
 const podium = computed(() => {
@@ -118,12 +125,14 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 <template>
   <aside class="nge-hunt" role="dialog" aria-label="The Hunt">
     <header class="nge-hunt-head">
-      <div class="nge-hunt-eyebrow">The Hunt</div>
+      <div class="nge-hunt-eyebrow">The Hunt<span v-if="test" class="nge-hunt-testchip">Test run</span></div>
       <button class="nge-hunt-x" title="Close" aria-label="Close" @click="emit('hide')">×</button>
     </header>
 
     <div v-if="!hunt" class="nge-hunt-body">
-      <p v-if="huntState.loading" class="nge-hunt-muted">Looking for a Hunt…</p>
+      <p v-if="test && huntState.error" class="nge-hunt-error">{{ huntState.error }}</p>
+      <p v-else-if="test" class="nge-hunt-muted">Opening your test run…</p>
+      <p v-else-if="huntState.loading" class="nge-hunt-muted">Looking for a Hunt…</p>
       <p v-else-if="huntState.error" class="nge-hunt-error">{{ huntState.error }}</p>
       <p v-else class="nge-hunt-muted">No Hunt right now. When one is coming, it is announced in your notifications.</p>
     </div>
@@ -141,14 +150,16 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 
       <!-- While it runs -->
       <template v-else-if="phase === 'live'">
-        <div class="nge-hunt-clock nge-hunt-clock--live"><span class="nge-hunt-clock-label">Ends in</span><span class="nge-hunt-clock-time">{{ countdown(hunt.end_at) }}</span></div>
+        <div v-if="hunt.test" class="nge-hunt-testnote">Only you see this test run. It opens the Hunt as players will see it and scores your gems against the real answer key, but no answer is kept, shown to players or awarded.</div>
+        <div v-else class="nge-hunt-clock nge-hunt-clock--live"><span class="nge-hunt-clock-label">Ends in</span><span class="nge-hunt-clock-time">{{ countdown(hunt.end_at) }}</span></div>
         <p v-if="hunt.description" class="nge-hunt-desc">{{ hunt.description }}</p>
         <ol class="nge-hunt-steps">
           <li>Open the Hunt: {{ mergers }} {{ hunt.target_count === 1 ? 'is' : 'are' }} hidden on {{ where }}.</li>
           <li>Drop a gold gem on each merger: <b>Ctrl</b> + click (<b>⌘</b> + click on a Mac) where two cells join.</li>
-          <li>Submit. You hear how many gems found a merger, never which.</li>
+          <li v-if="hunt.test">Submit. Players hear how many gems found a merger, never which; your test run also shows which.</li>
+          <li v-else>Submit. You hear how many gems found a merger, never which.</li>
         </ol>
-        <p class="nge-hunt-muted nge-hunt-frozen">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
+        <p v-if="!hunt.test" class="nge-hunt-muted nge-hunt-frozen">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
         <button class="nge-hunt-btn" :disabled="!!busy" @click="go">
           {{ busy === 'go' ? 'Opening…' : onDataset ? (gems >= 0 ? 'Back to the start view' : 'Open the Hunt') : `Switch to ${datasetName} and open the Hunt` }}
         </button>
@@ -158,9 +169,15 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             {{ busy === 'submit' ? 'Checking…' : 'Submit' }}
           </button>
         </div>
-        <p class="nge-hunt-fine">{{ hunt.you.left === 1 ? '1 answer left' : `${hunt.you.left} answers left` }}. At most {{ hunt.max_points }} gems per answer. Your best answer counts.</p>
+        <p v-if="hunt.test" class="nge-hunt-fine">Submit as often as you like. At most {{ hunt.max_points }} gems per answer, as for players. Tolerance {{ hunt.tolerance_um }} µm.</p>
+        <p v-else class="nge-hunt-fine">{{ hunt.you.left === 1 ? '1 answer left' : `${hunt.you.left} answers left` }}. At most {{ hunt.max_points }} gems per answer. Your best answer counts.</p>
         <div v-if="resultLine" class="nge-hunt-result" role="status">{{ resultLine }}</div>
-        <p v-if="hunt.you.best" class="nge-hunt-best">Your best: {{ hunt.you.best }} of {{ hunt.target_count }}<template v-if="hunt.you.tier">, {{ TIER_WORD[hunt.you.tier] }} so far</template>.</p>
+        <ul v-if="testLines.length" class="nge-hunt-testlines" aria-label="Each merger">
+          <li v-for="m in testLines" :key="m.n" :class="m.found ? 'nge-hunt-test-found' : 'nge-hunt-test-missed'">
+            Merger {{ m.n }}: {{ m.found ? 'found' : 'missed' }}, {{ m.text }}
+          </li>
+        </ul>
+        <p v-if="hunt.you.best && !hunt.test" class="nge-hunt-best">Your best: {{ hunt.you.best }} of {{ hunt.target_count }}<template v-if="hunt.you.tier">, {{ TIER_WORD[hunt.you.tier] }} so far</template>.</p>
       </template>
 
       <!-- The awards ceremony -->
@@ -180,7 +197,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
       <p v-if="error" class="nge-hunt-error" role="alert">{{ error }}</p>
 
       <section class="nge-hunt-tiers" aria-label="Prizes">
-        <div v-for="t in TIERS" :key="t" class="nge-hunt-tier" :class="{ 'nge-hunt-tier--yours': hunt.you.tier === t }">
+        <div v-for="t in TIERS" :key="t" class="nge-hunt-tier" :class="{ 'nge-hunt-tier--yours': hunt.you.tier === t || (hunt.test && result?.tier === t) }">
           <span class="nge-hunt-medal" :class="`nge-hunt-medal--${t}`">{{ TIER_WORD[t] }}</span>
           <span>find {{ need(t) }}</span>
         </div>
@@ -211,7 +228,12 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
   color: #dbe7f7; font-family: 'Inter', system-ui, sans-serif; font-size: 14px; line-height: 1.45;
 }
 .nge-hunt-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 0; }
-.nge-hunt-eyebrow { font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #f5d142; }
+.nge-hunt-eyebrow { font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #f5d142; display: flex; align-items: center; gap: 8px; }
+.nge-hunt-testchip { padding: 1px 7px; border-radius: 999px; background: rgba(90, 170, 255, 0.18); border: 1px solid rgba(90, 170, 255, 0.5); color: #9fd0ff; font: 600 10px 'Inter', sans-serif; letter-spacing: 0.08em; }
+.nge-hunt-testnote { margin: 8px 0 4px; padding: 8px 10px; border-radius: 8px; background: rgba(90, 170, 255, 0.08); border: 1px solid rgba(90, 170, 255, 0.35); color: #cfe4ff; font-size: 13px; }
+.nge-hunt-testlines { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.nge-hunt-test-found { color: #b8f5cf; }
+.nge-hunt-test-missed { color: #ffc4c4; }
 .nge-hunt-x { background: none; border: none; color: #a9bbd3; font-size: 22px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-hunt-x:hover, .nge-hunt-x:focus-visible { color: #fff; }
 .nge-hunt-body { padding: 6px 14px 14px; }

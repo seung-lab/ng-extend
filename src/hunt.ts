@@ -29,16 +29,24 @@ export interface HuntInfo {
   tiers: { gold: number; silver: number; bronze: number }; awarded: boolean;
   view: any | null;
   you: { best: number; submissions: number; left: number; tier: HuntTier | null; rank: number };
+  /** An admin's test run (hunt.test): open as if running, for that admin only; answers are never kept. */
+  test?: boolean;
   board: { rank: number; name: string; found: number; at: string; tier: HuntTier | null; you: boolean }[];
   players: number;
   winners: { gold: number; silver: number; bronze: number };
 }
 
-export interface HuntResult { found: number; of: number; close: number; best: number; points: number; left: number; tier: HuntTier | null }
+export interface HuntResult {
+  found: number; of: number; close: number; best: number; points: number; left: number; tier: HuntTier | null;
+  /** A test run only: each merger, found or not, and the nearest gem in µm (for setting the tolerance). */
+  test?: boolean; tolerance_um?: number; mergers?: { found: boolean; nearest_um: number | null }[];
+}
 
 /** What the server last said, plus a clock for the countdowns (server time). */
 export const huntState = reactive({
   hunts: [] as HuntInfo[],
+  /** The hunt an admin is trying (Admin Hub > Hunts > Try it yourself), or null. */
+  test: null as HuntInfo | null,
   loaded: false,
   loading: false,
   error: '',
@@ -111,6 +119,7 @@ export function featuredHunt(): HuntInfo | null {
 
 /** The phase by this page's clock (the server's answer can be a few minutes old). */
 export function phaseNow(h: HuntInfo): HuntPhase {
+  if (h.test) return 'live';   // a test run is always open
   const t = huntState.now;
   if (t >= Date.parse(h.end_at)) return 'ended';
   if (t >= Date.parse(h.start_at)) return 'live';
@@ -159,8 +168,9 @@ export function localTime(iso: string | null | undefined): string {
 // ── The gem layer ─────────────────────────────────────────────────────────
 
 const viewer = (): any => (window as any)['viewer'];
-export function huntLayerName(h: Pick<HuntInfo, 'title'>): string { return `Hunt: ${h.title}`.slice(0, 60); }
-const POINTS_KEY = (id: number) => `nge-hunt-gems-${id}`;
+/** A test run has a layer and saved gems of its own, so trying a hunt never mixes with playing it. */
+export function huntLayerName(h: Pick<HuntInfo, 'title' | 'test'>): string { return `${h.test ? 'Hunt test' : 'Hunt'}: ${h.title}`.slice(0, 60); }
+const POINTS_KEY = (h: Pick<HuntInfo, 'id' | 'test'>) => `nge-hunt-gems-${h.test ? 'test-' : ''}${h.id}`;
 
 function managed(name: string): any {
   return (viewer()?.layerManager?.managedLayers ?? []).find((ml: any) => ml.name === name && !ml.archived) ?? null;
@@ -172,22 +182,22 @@ function layerJson(name: string): any | null {
   catch { return null; }
 }
 
-function savedGems(id: number): any[] {
-  try { const v = JSON.parse(localStorage.getItem(POINTS_KEY(id)) || '[]'); return Array.isArray(v) ? v : []; }
+function savedGems(h: Pick<HuntInfo, 'id' | 'test'>): any[] {
+  try { const v = JSON.parse(localStorage.getItem(POINTS_KEY(h)) || '[]'); return Array.isArray(v) ? v : []; }
   catch { return []; }
 }
 
 /** Keep the player's gems in this browser, so leaving and coming back keeps them. */
-export function saveGems(h: Pick<HuntInfo, 'id' | 'title'>): number {
+export function saveGems(h: Pick<HuntInfo, 'id' | 'title' | 'test'>): number {
   const l = layerJson(huntLayerName(h));
   if (!l) return -1;
   const gems = (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && a.type === 'point');
-  try { localStorage.setItem(POINTS_KEY(h.id), JSON.stringify(gems)); } catch { /* full, or private */ }
+  try { localStorage.setItem(POINTS_KEY(h), JSON.stringify(gems)); } catch { /* full, or private */ }
   return gems.length;
 }
 
 /** How many gems the player has on screen for this hunt (-1 when its layer is not open). */
-export function gemsOnScreen(h: Pick<HuntInfo, 'title'>): number {
+export function gemsOnScreen(h: Pick<HuntInfo, 'title' | 'test'>): number {
   const l = layerJson(huntLayerName(h));
   if (!l) return -1;
   return (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && a.type === 'point').length;
@@ -201,7 +211,7 @@ function ensureGemLayer(h: HuntInfo) {
   let ml = managed(name);
   if (!ml) {
     ml = makeLayer(v.layerSpecification, name, {
-      type: 'annotation', source: { url: 'local://annotations' }, annotations: savedGems(h.id),
+      type: 'annotation', source: { url: 'local://annotations' }, annotations: savedGems(h),
       annotationColor: GEM_COLOR, pointMarker: 'pyr', pointSize: 1.6, tool: 'annotatePoint',
     });
     v.layerSpecification.add(ml);
@@ -221,7 +231,7 @@ export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
   if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) {
     const ds = findDatasetByCanonical(canonicalDataset(h.dataset));
     if (!ds) throw new Error('This Hunt is on a dataset this version of Pyr does not have. Reload the page to update.');
-    try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ id: h.id, at: Date.now() })); } catch { /* private window */ }
+    try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ id: h.id, test: !!h.test, at: Date.now() })); } catch { /* private window */ }
     const ok = await switchToDataset(ds, { forJump: true });
     if (!ok) throw new Error('Could not switch dataset.');
     return 'switching';
@@ -247,14 +257,23 @@ export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
   return 'ok';
 }
 
-/** After a dataset switch for a hunt: the id of the hunt to carry on with, once. */
-export function takeHuntAfterSwitch(): number | null {
+/** After a dataset switch for a hunt: the hunt to carry on with (and whether it is a test run), once. */
+export function takeHuntAfterSwitch(): { id: number; test: boolean } | null {
   try {
     const want = JSON.parse(sessionStorage.getItem(AFTER_SWITCH_KEY) || 'null');
     sessionStorage.removeItem(AFTER_SWITCH_KEY);
     if (!want || Date.now() - (want.at || 0) > 120_000) return null;
-    return Number(want.id) || null;
+    const id = Number(want.id) || 0;
+    return id ? { id, test: !!want.test } : null;
   } catch { return null; }
+}
+
+/** Admins: open a hunt to try it (any phase, a draft too). Answers are scored and never kept. */
+export async function openTestHunt(id: number): Promise<HuntInfo> {
+  huntState.test = null;
+  const t = await huntCall<HuntInfo>('hunt.test', { id });
+  huntState.test = { ...t, test: true, phase: 'live' };
+  return huntState.test;
 }
 
 /** Send the gems on screen as an answer. */
@@ -264,8 +283,8 @@ export async function submitGems(h: HuntInfo): Promise<HuntResult> {
   if (!l) throw new Error('Open the Hunt first: your gems go in its own layer.');
   saveGems(h);
   const dims = viewer()?.state?.toJSON?.()?.dimensions;
-  const r = await huntCall<HuntResult>('hunt.submit', { id: h.id, layer: { source: l.source, annotations: l.annotations }, dims });
-  void loadHunts();
+  const r = await huntCall<HuntResult>(h.test ? 'hunt.test_submit' : 'hunt.submit', { id: h.id, layer: { source: l.source, annotations: l.annotations }, dims });
+  if (!h.test) void loadHunts();
   return r;
 }
 
@@ -275,6 +294,7 @@ export function startGemWatch() {
   if (watchTimer) return;
   watchTimer = setInterval(() => {
     for (const h of huntState.hunts) if (h.phase === 'live') saveGems(h);
+    if (huntState.test) saveGems(huntState.test);
   }, 4000);
 }
 
