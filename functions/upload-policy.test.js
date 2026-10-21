@@ -21,3 +21,7 @@ test('notification and badge images are capped at 3 MB; player screenshots at 8 
  assert.throws(()=>prepareUpload({...image,kind:'badges',data:png},who,true),/under 3/);
  assert.equal(prepareUpload({...image,kind:'help',data:png},who,false).contentType,'image/png');
 });
+test('reply images: admins only, in their own folder that the 7 day cleanup empties',()=>{
+ assert.throws(()=>prepareUpload({...image,kind:'reply'},who,false),/Admins only/);
+ assert.match(prepareUpload({...image,kind:'reply'},who,true).path,/^reply-images\/[a-f0-9]{24}\/[a-f0-9-]+\.png$/);
+});

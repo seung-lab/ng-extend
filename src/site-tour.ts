@@ -1,4 +1,5 @@
 import { Step } from "./store-pyr";
+import { siteTourShows } from "./util/toolbar_staging";
 import neuronIcon from '../static/badges/pyr/neuron-icon-white.png';
 import mossyFibersHero from '../static/tour-mossy-fibers.png';
 import brainToSynapseHero from '../static/tour-brain-to-synapse.png';
@@ -412,3 +413,11 @@ Click a segment to select it. A **Delta menu** next to the segment ID has comple
     nextLabel: "finish",
   },
 ];
+
+// A toolbar step shows only when its icon is in the player's top bar: a new
+// player receives icons over time (util/toolbar_staging.ts), and anyone may
+// have taken one off in Settings.
+for (const s of steps) {
+  const m = typeof (s.position as any)?.element === 'string' && (s.position as any).element.match(/data-icon-id="([a-zA-Z]+)"/);
+  if (m && !s.onlyIf) s.onlyIf = () => siteTourShows(m[1]);
+}

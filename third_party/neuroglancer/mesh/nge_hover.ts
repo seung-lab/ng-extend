@@ -7,14 +7,6 @@
  */
 export type NgeShell = {widthPx: number, alpha: number};
 
-/** On while the wireframe pass draws: mesh/frontend.ts then draws each
- *  fragment as the edges of its triangles. */
-export const ngeWireframePass = {on: false};
-
-/** The wireframe: the mesh's own lines on its surface, in a bright tint of
- *  the cell's colour over its dimmed body. */
-export const NGE_WIREFRAME_SHELLS: NgeShell[] = [{widthPx: 0, alpha: 0.9}];
-
 /** The outline: one crisp line. */
 export const NGE_OUTLINE_SHELLS: NgeShell[] = [{widthPx: 2.5, alpha: 1}];
 

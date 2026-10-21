@@ -241,3 +241,13 @@ test('the admin who asked gets a bell when the player answers, and only them', a
   assert.match(bells[0].title, /Sam/); assert.equal(bells[0].body, 'The big one');
   assert.equal(bells[0].reply_triage_id, undefined, 'the bell itself asks for nothing');
 });
+
+test('a reply image must be one of ours from the reply-images folder', () => {
+  const { replyImage, OWN_STORAGE } = require('./report-reply');
+  const ok = OWN_STORAGE + 'admin-uploads/reply-images/abc/1.png';
+  assert.equal(replyImage(ok), ok);
+  assert.equal(replyImage(''), null);
+  assert.equal(replyImage(undefined), null);
+  assert.throws(() => replyImage('https://evil.example/x.png'), /reply box/);
+  assert.throws(() => replyImage(OWN_STORAGE + 'admin-uploads/badges/x.png'), /reply box/);
+});

@@ -169,6 +169,9 @@ export interface Step {
   /** Shown only while this holds; skipped otherwise (the Site Tour's streak
    *  step needs the streak chip, which only a player with a streak has). */
   onlyIf?: () => boolean;
+  /** Top bar icons this step brings in for a new player (util/toolbar_staging.ts),
+   *  besides the one its box points at. */
+  reveals?: string[];
   /** Glow-ring around the targeted element + hide the chip arrow.
    *  Used by the Site Tour (Tutorial 4); existing tutorials keep arrows. */
   highlight?: boolean;

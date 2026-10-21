@@ -28,7 +28,18 @@ function openUsernameDialog() {
 
 const draftFlag = ref('');
 const draftBio  = ref('');
+// Boxes folded shut by clicking their title (Ames 2026-10-21), remembered in this browser.
+const FOLD_KEY = 'nge-settings-folded';
+const folded = ref<string[]>((() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '[]'); } catch { return []; } })());
+function isFolded(key: string) { return folded.value.includes(key); }
+function toggleFold(key: string) {
+  folded.value = isFolded(key) ? folded.value.filter(k => k !== key) : [...folded.value, key];
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded.value)); } catch { /* no storage */ }
+}
 const draftToolbar = ref<string[]>([]);
+// What the grid showed on opening, and whether Reset was pressed (top bar staging).
+let toolbarShownAtOpen: string[] = [];
+let toolbarReset = false;
 /** A pill shows the name only. A label may go on to explain itself after a
  *  colon (the Lantern's ran out of the panel, Krzysztof Kruk 2026-10-11);
  *  the whole label is the pill's tooltip. */
@@ -40,7 +51,7 @@ const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
 /** How the cell under the mouse is shown (wolfryder101 #181): the classic fade (default), halo or pulse. */
-const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade' | 'none'>('fade');
+const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'saturate' | 'spotlight' | 'fade' | 'none'>('fade');
 /** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
 const draftPulseColor = ref('');
 const PULSE_COLORS = [
@@ -150,7 +161,9 @@ onMounted(() => {
   pickStartViewDataset();
   // Seed via the same resolver the toolbar uses, so the grid reflects exactly
   // what's in the top bar — including icons auto-injected into older prefs.
-  draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
+  // A new player's icons that have not arrived yet show as off (util/toolbar_staging.ts).
+  draftToolbar.value = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected).filter(id => iconArrived(id));
+  toolbarShownAtOpen = [...draftToolbar.value];
 });
 
 // "Restore all settings to default" (Ames 2026-10-15), behind a warning.
@@ -190,8 +203,21 @@ async function handleSave() {
   // also stamps the injected marker: every auto-inject icon has now been
   // offered in the grid, so absence from a future save means the user removed
   // it, and resolveToolbarOrder must not re-add it (Celia's report).
+  // While a new player's icons are held back (util/toolbar_staging.ts): an
+  // icon switched on here has arrived, early, and only the switches change the
+  // saved order, so icons still on their way keep their places. Reset gives
+  // the default order, in which those icons stay hidden until they arrive.
+  let savedToolbar = draftToolbar.value;
+  if (isStaged()) {
+    const fullToolbar = resolveToolbarOrder(prefsStore.prefs.toolbarIcons, prefsStore.prefs.toolbarIconsInjected);
+    const shownBefore = toolbarShownAtOpen;
+    reveal(draftToolbar.value.filter(id => !iconArrived(id)));
+    savedToolbar = toolbarReset
+      ? [...DEFAULT_ORDER.filter(id => !iconArrived(id) || draftToolbar.value.includes(id)), ...draftToolbar.value.filter(id => !DEFAULT_ORDER.includes(id))]
+      : togglesInFull(fullToolbar, shownBefore, draftToolbar.value);
+  }
   prefsStore.save({
-    flag, bio, toolbarIcons: draftToolbar.value,
+    flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
     chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
@@ -222,6 +248,7 @@ async function handleSave() {
 
 // ── Toolbar icon choices (shared with the actual top bar) ──────
 import { TOOLBAR_ICON_DEFS, RETIRED_TOOLBAR_ICON_IDS, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder, markInjected } from '../data/toolbar-icons';
+import { iconArrived, isStaged, reveal, togglesInFull } from '../util/toolbar_staging';
 
 // Only offer icons the top bar can actually show — exclude retired ones so this
 // grid matches the real toolbar rather than listing dead toggles.
@@ -244,7 +271,8 @@ function toggleToolbarIcon(id: string) {
 }
 
 function resetToolbar() {
-  draftToolbar.value = [...DEFAULT_ORDER];
+  draftToolbar.value = DEFAULT_ORDER.filter(id => iconArrived(id));
+  toolbarReset = true;
 }
 
 // ── Country dropdown state ──
@@ -361,8 +389,8 @@ const props = defineProps<{ embedded?: boolean }>();
                happens in the dedicated dialog (validation + availability check),
                opened by the button. `force` bypasses the dialog's "ask once"
                guards so it works when you already have a handle. -->
-          <div class="nge-settings-section nge-set-card--username">
-            <label class="nge-settings-label">Username</label>
+          <div class="nge-settings-section nge-set-card--username" :class="{ 'nge-set-folded': isFolded('username') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('username')" title="Fold or unfold this box" @click.prevent="toggleFold('username')" @keydown.enter.prevent="toggleFold('username')" @keydown.space.prevent="toggleFold('username')">Username<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">
               How you appear in chat, and how others tag you. 3-20 characters, letters/numbers/underscore, no spaces.
             </p>
@@ -376,8 +404,8 @@ const props = defineProps<{ embedded?: boolean }>();
             </div>
           </div>
 
-          <div class="nge-settings-section nge-set-card--flag">
-            <label class="nge-settings-label">Country / Flag</label>
+          <div class="nge-settings-section nge-set-card--flag" :class="{ 'nge-set-folded': isFolded('flag') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('flag')" title="Fold or unfold this box" @click.prevent="toggleFold('flag')" @keydown.enter.prevent="toggleFold('flag')" @keydown.space.prevent="toggleFold('flag')">Country / Flag<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Pick your country or the EyeWire logo.</p>
             <div id="nge-settings-country-wrap" class="nge-settings-country-wrap" @click.stop>
               <button class="nge-settings-country-btn" @click="showCountryList = !showCountryList">
@@ -419,8 +447,8 @@ const props = defineProps<{ embedded?: boolean }>();
             </div>
           </div>
 
-          <div class="nge-settings-section nge-set-card--bio">
-            <label class="nge-settings-label">Bio</label>
+          <div class="nge-settings-section nge-set-card--bio" :class="{ 'nge-set-folded': isFolded('bio') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('bio')" title="Fold or unfold this box" @click.prevent="toggleFold('bio')" @keydown.enter.prevent="toggleFold('bio')" @keydown.space.prevent="toggleFold('bio')">Bio<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Share a little about yourself with the community.</p>
             <textarea v-model="draftBio" class="nge-settings-textarea" maxlength="280" rows="4" placeholder="e.g. PhD student at MIT. Loves connectomics and cold brew."></textarea>
             <div class="nge-settings-charcount" :class="{ 'nge-settings-charcount--warn': draftBio.length > 250 }">{{ draftBio.length }} / 280</div>
@@ -429,8 +457,8 @@ const props = defineProps<{ embedded?: boolean }>();
         </div>
         <div class="nge-set-col nge-set-col--topbar">
           <div class="nge-set-col-head"><span class="nge-set-col-title">Top bar</span><span class="nge-set-col-sub">what you see</span></div>
-          <div class="nge-settings-section nge-set-card--toolbar">
-            <label class="nge-settings-label">Toolbar Icons</label>
+          <div class="nge-settings-section nge-set-card--toolbar" :class="{ 'nge-set-folded': isFolded('toolbar') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('toolbar')" title="Fold or unfold this box" @click.prevent="toggleFold('toolbar')" @keydown.enter.prevent="toggleFold('toolbar')" @keydown.space.prevent="toggleFold('toolbar')">Toolbar Icons<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
             <div class="nge-settings-toolbar-grid">
               <button v-for="opt in TOOLBAR_ICON_OPTIONS" :key="opt.id" class="nge-settings-toolbar-item" :class="{ 'nge-settings-toolbar-item--active': isToolbarIconEnabled(opt.id) }" :title="opt.label" @click="toggleToolbarIcon(opt.id)">
@@ -446,8 +474,8 @@ const props = defineProps<{ embedded?: boolean }>();
           <!-- How the game behaves, in a card of its own (Ames 2026-10-06).
                Annotation point size is not here: it is set on the annotation
                layer itself. -->
-          <div class="nge-settings-section nge-set-card--ui">
-            <label class="nge-settings-label">User Interface</label>
+          <div class="nge-settings-section nge-set-card--ui" :class="{ 'nge-set-folded': isFolded('ui') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('ui')" title="Fold or unfold this box" @click.prevent="toggleFold('ui')" @keydown.enter.prevent="toggleFold('ui')" @keydown.space.prevent="toggleFold('ui')">User Interface<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">How layers, jumps and annotations behave.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationGems" />
@@ -481,14 +509,16 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. None: nothing marks it. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Spotlight: the cell turns a little richer and the other cells in 3D dim, so it stands out gently. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Hologram: the cell turns dark and glows from its edges in its own colour, with faint lines across it. Metallic: a dark, shiny cell with bright edges. None: nothing marks it. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
                 <option value="halo">Halo</option>
                 <option value="saturate">Saturate</option>
+                <option value="spotlight">Spotlight</option>
                 <option value="fade">Fade (original)</option>
                 <option value="pulse">Pulse</option>
-                <option value="wireframe">Wireframe</option>
+                <option value="hologram">Hologram</option>
+                <option value="metallic">Metallic</option>
                 <option value="none">None</option>
               </select>
             </label>
@@ -547,8 +577,8 @@ const props = defineProps<{ embedded?: boolean }>();
             </label>
           </div>
 
-          <div class="nge-settings-section nge-set-card--notif">
-            <label class="nge-settings-label">Notifications</label>
+          <div class="nge-settings-section nge-set-card--notif" :class="{ 'nge-set-folded': isFolded('notif') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('notif')" title="Fold or unfold this box" @click.prevent="toggleFold('notif')" @keydown.enter.prevent="toggleFold('notif')" @keydown.space.prevent="toggleFold('notif')">Notifications<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Control the badges on your toolbar icons.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftChatMuted" />
@@ -571,8 +601,8 @@ const props = defineProps<{ embedded?: boolean }>();
         </div>
         <div class="nge-set-col nge-set-col--viewer">
           <div class="nge-set-col-head"><span class="nge-set-col-title">Viewer</span><span class="nge-set-col-sub">how it opens</span></div>
-          <div class="nge-settings-section nge-set-card--datasets">
-            <label class="nge-settings-label">Switching datasets</label>
+          <div class="nge-settings-section nge-set-card--datasets" :class="{ 'nge-set-folded': isFolded('datasets') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('datasets')" title="Fold or unfold this box" @click.prevent="toggleFold('datasets')" @keydown.enter.prevent="toggleFold('datasets')" @keydown.space.prevent="toggleFold('datasets')">Switching datasets<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftBareSwitch" />
@@ -604,8 +634,8 @@ const props = defineProps<{ embedded?: boolean }>();
             <p class="nge-settings-hint">Click Save below to keep these.</p>
           </div>
 
-          <div class="nge-settings-section nge-set-card--advanced">
-            <label class="nge-settings-label">Advanced</label>
+          <div class="nge-settings-section nge-set-card--advanced" :class="{ 'nge-set-folded': isFolded('advanced') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('advanced')" title="Fold or unfold this box" @click.prevent="toggleFold('advanced')" @keydown.enter.prevent="toggleFold('advanced')" @keydown.space.prevent="toggleFold('advanced')">Advanced<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
               <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
               <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
@@ -1446,6 +1476,14 @@ const props = defineProps<{ embedded?: boolean }>();
   background: rgba(74, 158, 255, 0.08);
 }
 .nge-settings-shell--embedded .nge-settings-hint { color: #7f93ad; }
+
+/* A box folds shut from its title: only the title stays (Ames 2026-10-21). */
+.nge-set-fold { cursor: pointer; user-select: none; }
+.nge-set-fold:focus-visible { outline: 1px solid rgba(74, 158, 255, 0.7); outline-offset: 3px; border-radius: 3px; }
+.nge-set-fold-chev { margin-left: auto; font-size: 13px; color: #7ecaff; transition: transform 0.2s ease; }
+.nge-set-folded .nge-set-fold-chev { transform: rotate(-90deg); }
+.nge-set-folded > :not(.nge-settings-label) { display: none !important; }
+.nge-settings-shell--embedded .nge-set-folded { padding-bottom: 13px; }
 
 /* The toolbar picker gets the room it needs in the middle column. */
 .nge-settings-shell--embedded .nge-set-card--toolbar .nge-settings-toolbar-grid { gap: 7px; }

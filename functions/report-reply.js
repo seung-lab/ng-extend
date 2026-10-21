@@ -59,6 +59,13 @@ async function submitterOf(sb, triageId) {
   return (issue && issue.user_id) || null;
 }
 
+/** An admin's reply image: our own reply-images folder only, or nothing. */
+function replyImage(url) {
+  if (url == null || url === '') return null;
+  if (typeof url === 'string' && url.startsWith(OWN_STORAGE + 'admin-uploads/reply-images/') && url.length <= 500 && /^[^\s"'<>]+$/.test(url)) return url;
+  fail(400, 'The image must be one added in the reply box.');
+}
+
 /** The optional parts of a reply, each checked; anything else is dropped. */
 function replyParts(args) {
   const out = {};
@@ -83,7 +90,10 @@ async function ask(args, {sb, me, isAdmin}) {
   const userId = await submitterOf(sb, triageId);
   // Only ever targeted: an anonymous report gets nothing, never a broadcast.
   if (!userId) fail(409, 'This report has no signed-in submitter, so there is nobody to notify. Nothing was sent.');
-  const row = { title: ASK_TITLE, body, thumbnail_url: ASK_IMAGE, image_url: ASK_IMAGE,
+  // An image the admin added (Ames 2026-10-20): only one of ours, from the
+  // reply-images folder that the cleanup empties after 7 days.
+  const image = replyImage(args.imageUrl);
+  const row = { title: ASK_TITLE, body, thumbnail_url: ASK_IMAGE, image_url: image || ASK_IMAGE,
     target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: (me && me.id) || null,
     reply_triage_id: triageId };
   try { return (await sb('notifications', {method: 'POST', body: JSON.stringify(row)}))[0]; }
@@ -186,4 +196,4 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanText, replyParts, ASK_TITLE, REPLIED_TITLE, ASK_IMAGE, REPLY_MAX, OWN_STORAGE};
+module.exports = { handle, cleanText, replyImage, replyParts, ASK_TITLE, REPLIED_TITLE, ASK_IMAGE, REPLY_MAX, OWN_STORAGE};
