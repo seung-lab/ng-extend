@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-21T00:00:00Z",
+      "at": "2026-10-21T13:23:47Z",
       "title": "Tidier corners",
       "items": [
         "The music button sits in the bottom right corner of the 3D view, with the Sections box beside it, and no longer floats up when a message bar shows along the bottom.",
