@@ -64,6 +64,8 @@ export const huntState = reactive({
   pending: null as null | { id: string; gem: GemKind; x?: number; y?: number; at: number },
   /** Which layer Ctrl + Click drops into: cut gems or extend gems. */
   kind: 'cut' as GemKind,
+  /** Gems dropped and waiting for Submit (when each gem is not checked as it lands). */
+  waiting: 0,
   loaded: false,
   loading: false,
   error: '',
@@ -290,7 +292,9 @@ function ensureGemLayers(h: HuntInfo) {
     const ml = makeLayer(v.layerSpecification, name, {
       type: 'annotation', source: { url: 'local://annotations' },
       annotations: drops.map(d => ({ type: 'point', id: d.id, point: d.at })),
-      annotationColor: KIND_COLOR[k], pointMarker: 'pyr', pointSize: 1.6, tool: 'annotatePoint',
+      // Drawn over the cells in 3D ("Show through cells in 3D"): a gem dropped inside a branch
+      // stays in sight (Ames 2026-10-21: "needs to retain marks otherwise I can't tell where I have been").
+      annotationColor: KIND_COLOR[k], pointMarker: 'pyr', pointSize: 2, tool: 'annotatePoint', onTop: true,
       ngeAnnFolders: foldersFor(drops),
     });
     v.layerSpecification.add(ml);
@@ -348,6 +352,8 @@ export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
   if (!v?.state) throw new Error('The viewer is not ready yet. Try again in a moment.');
   active = null;   // the old layers go with the restore; nothing in them is judged meanwhile
   queue.length = 0;
+  waiting.length = 0;
+  huntState.waiting = 0;
   const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
   v.state.restoreState(h.view);
   restoreDisplayAfterLoad(snap);
@@ -407,6 +413,29 @@ try {
 } catch { /* no window */ }
 
 const judged = new Set<string>();   // gems the server has answered for (or put back from the run)
+
+/**
+ * Check each gem as it lands, or keep them until Submit (Ames 2026-10-21: "want option to
+ * autosubmit or submit manually"). Kept in this browser.
+ */
+export const huntPrefs = reactive({
+  auto: (() => { try { return localStorage.getItem('nge-hunt-auto') !== '0'; } catch { return true; } })(),
+});
+/** Gems dropped but not sent yet (Submit mode). */
+const waiting: { id: string; kind: GemKind; x?: number; y?: number }[] = [];
+export function setAutoJudge(on: boolean) {
+  huntPrefs.auto = on;
+  try { localStorage.setItem('nge-hunt-auto', on ? '1' : '0'); } catch { /* private window */ }
+  if (on) submitWaiting();
+}
+/** Send the waiting gems, one after another. */
+export function submitWaiting() {
+  while (waiting.length) queue.push(waiting.shift()!);
+  huntState.waiting = 0;
+  if (queue.length) void judgeNext();
+}
+const transient = (m: string) => /wait a moment|Save failed \(5\d\d\)|Failed to fetch|NetworkError|Load failed|did not go through|timed? ?out/i.test(m);
+const tries = new Map<string, number>();
 const queue: { id: string; kind: GemKind; x?: number; y?: number }[] = [];
 let busy = false;
 /** A test run's gems so far (sent back with each new one; the server judges them again). */
@@ -437,6 +466,14 @@ async function judgeNext() {
     try {
       r = await huntCall<any>(h.test ? 'hunt.test_drop' : 'hunt.drop', { id: h.id, kind, layer, dims, ...(h.test ? { prev: testDrops } : {}) });
     } catch (e: any) {
+      const m = e?.message || String(e);
+      // A busy server or a blink in the network: the gem stays and is sent again in a moment.
+      const n = (tries.get(id) ?? 0) + 1;
+      if (transient(m) && n <= 6) {
+        tries.set(id, n);
+        setTimeout(() => { if (!queue.some(q => q.id === id)) { queue.unshift(next); void judgeNext(); } }, 1200 * n);
+        return;
+      }
       // Out of gems, all found, or the Hunt is over: the gem does not stay.
       judged.add(id);
       removeGem(h, kind, id);
@@ -479,8 +516,19 @@ export function startDropWatch() {
         // The click that made it, if it was just now.
         const click = lastClick && Date.now() - lastClick.at < 3000 ? lastClick : null;
         lastClick = null;
-        queue.push({ id: a.id, kind, ...(click ? { x: click.x, y: click.y } : {}) });
+        if (waiting.some(w => w.id === a.id)) continue;
+        const item = { id: a.id, kind, ...(click ? { x: click.x, y: click.y } : {}) };
+        if (huntPrefs.auto) queue.push(item);
+        else { waiting.push(item); huntState.waiting = waiting.length; }
       }
+    }
+    // A waiting gem the player took away is not sent.
+    if (waiting.length) {
+      for (let i = waiting.length - 1; i >= 0; i--) {
+        const src = managed(huntLayerName(h, waiting[i].kind))?.layer?.localAnnotations;
+        if (!src?.get?.(waiting[i].id)) waiting.splice(i, 1);
+      }
+      huntState.waiting = waiting.length;
     }
     if (queue.length) void judgeNext();
   }, 400);
