@@ -25,7 +25,7 @@ import {setNgeProps, type NgeProp, type NgePropMesh} from 'neuroglancer/perspect
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
-import {getRootFromSupervoxel} from '../widgets/pcg_service';
+import {getRootFromSupervoxel, latestDescendants} from '../widgets/pcg_service';
 import {setStatedColor} from '../widgets/widget_utils';
 import {useUserPreferencesStore} from '../store';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
@@ -77,11 +77,11 @@ export function pumpkinSeason(now = new Date()): boolean {
   return now.getMonth() === 9 || (now.getMonth() === 10 && now.getDate() === 1);
 }
 
-interface PatchState { supervoxel: string | null; liveRoot: string | null; askedAt: number; painted: Set<string>; prop: NgeProp | null; meshSeen: boolean }
+interface PatchState { supervoxel: string | null; current: string[]; askedAt: number; painted: Set<string>; prop: NgeProp | null; meshSeen: boolean }
 const svKey = (c: PatchCell) => `nge.pumpkin.sv.${c.soma.join(',')}`;
 const states: PatchState[] = PATCH.map(c => ({
   supervoxel: (() => { try { return localStorage.getItem(svKey(c)); } catch { return null; } })(),
-  liveRoot: null, askedAt: 0, painted: new Set(), prop: null, meshSeen: false,
+  current: [], askedAt: 0, painted: new Set(), prop: null, meshSeen: false,
 }));
 /** Share of a cell's mesh pieces that must be drawn before its pumpkin
  *  shows (Ames: "the pumpkins load before the neurons"). */
@@ -139,17 +139,32 @@ function readSupervoxel(c: PatchCell, st: PatchState, layers: any[]) {
   }
 }
 
+/** The cell's ids now. Sandbox cells are edited all the time (the default
+ *  cell most of all), and an edit gives a cell a new id, so the trip would
+ *  otherwise turn on an id that no longer draws (Ames: "I only see 2
+ *  neurons!"). Best: the root of the supervoxel at the soma. Otherwise: the
+ *  newest descendants of the id written here. Both read ids as text, so
+ *  they are not rounded. */
+async function resolveCurrent(c: PatchCell, st: PatchState): Promise<void> {
+  st.askedAt = Date.now();
+  try {
+    if (st.supervoxel) {
+      const r = await getRootFromSupervoxel(st.supervoxel);
+      if (r) { st.current = [r]; return; }
+    }
+    if (c.ids.length) {
+      const ends = await latestDescendants(c.ids[0]);
+      if (ends?.length) st.current = ends;
+    }
+  } catch { /* keep the last answer */ }
+}
+
 /** Is this patch cell on screen? Paints it green the first time, and notes
  *  once its mesh has been drawn. */
 function onScreen(c: PatchCell, st: PatchState, layers: any[]): boolean {
   readSupervoxel(c, st, layers);
-  const now = Date.now();
-  if (st.supervoxel && now - st.askedAt > ROOT_EVERY_MS) {
-    st.askedAt = now;
-    getRootFromSupervoxel(st.supervoxel).then(r => { if (r) st.liveRoot = r; }).catch(() => { /* keep the last one */ });
-  }
-  const wanted = new Set(c.ids);
-  if (st.liveRoot) wanted.add(st.liveRoot);
+  if (Date.now() - st.askedAt > ROOT_EVERY_MS) resolveCurrent(c, st);
+  const wanted = new Set([...c.ids, ...st.current]);
   for (const ml of layers) {
     for (const s of ml.layer.displayState.segmentationGroupState.value.visibleSegments) {
       const id = s.toString();
@@ -197,7 +212,7 @@ function show(which: number[]) {
   }
   setNgeProps(props, GROUP);
   shownKey = key;
-  (window as any).__ngePumpkin = which.length ? which.map(i => ({ soma: PATCH[i].soma, heightNm: PATCH[i].heightNm, supervoxel: states[i].supervoxel, liveRoot: states[i].liveRoot })) : null;
+  (window as any).__ngePumpkin = which.length ? which.map(i => ({ soma: PATCH[i].soma, heightNm: PATCH[i].heightNm, supervoxel: states[i].supervoxel, current: states[i].current })) : null;
   try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
 }
 
@@ -224,11 +239,6 @@ export function togglePumpkin() {
  *  "make 3D full screen and make sure to put the segments on", "I want to
  *  see all 3 pumpkins"). */
 export async function visitPumpkinPatch(): Promise<boolean> {
-  // A cell known only by its soma: ask the server which cell that is now.
-  await Promise.all(states.map(async (st, i) => {
-    if (PATCH[i].ids.length || st.liveRoot || !st.supervoxel) return;
-    try { st.liveRoot = await getRootFromSupervoxel(st.supervoxel); } catch { /* left off */ }
-  }));
   const centre = [0, 1, 2].map(k => PATCH.reduce((a, c) => a + c.soma[k], 0) / PATCH.length);
   try { if (pumpkinHidden()) useUserPreferencesStore().save({ hidePumpkin: false }); } catch { /* fine */ }
   if (!viewer?.layerManager?.managedLayers?.some((ml: any) => !ml?.archived && String(ml?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/pinky_nf'))) {
@@ -240,16 +250,23 @@ export async function visitPumpkinPatch(): Promise<boolean> {
     const ml = (viewer?.layerManager?.managedLayers ?? []).find((m: any) => !m?.archived &&
       String(m?.layer?.dataSources?.[0]?.spec?.url ?? '').includes('/table/pinky_nf') && m.layer?.displayState?.segmentationGroupState?.value?.visibleSegments);
     if (ml) {
+      // Each cell's id now, asked once the Sandbox layer is up (the server
+      // lookup goes to that layer's table). A few seconds at most.
+      await Promise.race([
+        Promise.all(PATCH.map((c, i) => resolveCurrent(c, states[i]))),
+        new Promise(r => setTimeout(r, 4000)),
+      ]);
       try {
         ml.setVisible?.(true);
         const g = ml.layer.displayState.segmentationGroupState.value;
         // Only the pumpkin cells (Ames: "remove the blue mesh").
         g.visibleSegments.clear();
         PATCH.forEach((cell, i) => {
-          const id = states[i].liveRoot ?? cell.ids[0];
-          if (!id) return;  // not known yet: found once its soma has been seen
-          const seg = Uint64.parseString(id);
-          if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
+          const ids = states[i].current.length ? states[i].current : cell.ids.slice(0, 1);
+          for (const id of ids) {
+            const seg = Uint64.parseString(id);
+            if (!g.visibleSegments.has(seg)) g.visibleSegments.add(seg);
+          }
         });
         viewer.layout.restoreState('3d');
         // Looking at the faces: the models face the data's -z.
