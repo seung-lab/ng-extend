@@ -2,6 +2,38 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T18:49:56Z",
+      "title": "New players meet the top bar one tool at a time",
+      "digest": "headline",
+      "items": [
+        "A brand new player starts with only the bell in the top bar. Each tool arrives with the tutorial step that teaches it, and Nurro introduces the others.",
+        "Finishing Get Started brings the Leaderboard, Undelete and Chat, and the Merge tutorial starts by itself.",
+        "The Merge and Cut tutorials bring their tools, and finishing both brings the Cell Library.",
+        "Advanced Interface brings Find Path, Tags, Highlight and Lantern, and finishing it brings the Layer side panel.",
+        "Coming back on a second and third day fills in anything missed, and Your Week in Science arrives after a week.",
+        "Every tool is still in Profile, Settings, Toolbar Icons and in the Ctrl+K command bar, which now also opens Find Path, Highlight, Lantern, Undelete, Chat and more.",
+        "Players who already have an account keep their top bar exactly as it is."
+      ]
+    },
+    {
+      "at": "2026-10-21T18:49:56Z",
+      "title": "Settings use the whole screen",
+      "digest": "minor",
+      "items": [
+        "Profile Settings now use the full width of the profile.",
+        "Click a box's title in Settings to fold it away. Pyr remembers which ones you folded."
+      ]
+    },
+    {
+      "at": "2026-10-21T18:45:00Z",
+      "title": "Was your help request answered?",
+      "digest": "minor",
+      "items": [
+        "A day after someone replies to your help request, the bell asks whether it was answered, with a link that marks it solved right there.",
+        "Mark it solved before then and the question never comes. You only get it once per request."
+      ]
+    },
+    {
       "at": "2026-10-21T18:28:16Z",
       "title": "Advanced Interface: naming your layer",
       "items": [

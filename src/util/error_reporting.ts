@@ -115,6 +115,13 @@ export function reportFeedbackFailure(message: string, detail?: string) {
   void report(`feedback_submit: ${message}`.slice(0, 2000), detail, 'window');
 }
 
+/** Top bar staging went wrong for a real player: a tutorial box pointed at an
+ *  icon that should have arrived but is not in the top bar
+ *  (util/toolbar_staging.ts). One row per kind, like any other error. */
+export function reportStagingProblem(message: string, detail?: string) {
+  void report(`topbar_staging: ${message}`.slice(0, 2000), detail, 'window', 'toolbar_staging');
+}
+
 export function installErrorReporting(app?: { config: { errorHandler?: any } }) {
   if (installed) return;
   installed = true;

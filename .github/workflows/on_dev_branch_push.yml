@@ -60,6 +60,11 @@ jobs:
       - run: npm ci
       - name: Security regression tests
         run: node --test scripts/security-regression.cjs
+      # New players' top bar icons arrive with the tutorial steps that teach
+      # them (src/data/toolbar-stages.ts). A tutorial rewrite that drops such
+      # a step fails here instead of leaving new players without the icon.
+      - name: Top bar staging still wired to the tutorials
+        run: node --test scripts/topbar-staging.test.mjs
       - name: Verify pilot access and PostgreSQL transactions
         run: |
           npm ci --prefix functions

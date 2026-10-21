@@ -2022,6 +2022,20 @@ exports.ewSecureWrite = onRequest(
             body: `${(me.display_name || "Someone")} responded${args.segId ? ` on ${String(args.segId).slice(0, 40)}` : ""}: ${String(args.note || "").slice(0, 160)}`,
             target_type: "user", target_id: target, send_at: new Date().toISOString(), created_by: me.id };
           out = (await sb("notifications", { method: "POST", body: JSON.stringify(row) }))[0];
+          // A day later, if the request is still open: was it answered? With
+          // a link that marks it solved (help-reminder.js, Ames 2026-10-21).
+          if (args.requestId) {
+            const { scheduleReminder } = require("./help-reminder");
+            try { await scheduleReminder({ sb, me, target, requestId: args.requestId }); }
+            catch (e) { console.warn("[helpReply] reminder not scheduled:", e && e.message); }
+          }
+          break;
+        }
+        case "help.dropReminder": {
+          // A request was marked solved: its reminder, if still waiting, goes.
+          if (!me) throw ewErr(403, "no EyeWire II profile");
+          const { dropReminder } = require("./help-reminder");
+          out = await dropReminder({ sb, requestId: args.requestId });
           break;
         }
         case "notification.claimChatPost": {

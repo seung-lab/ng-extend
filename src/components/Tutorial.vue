@@ -20,6 +20,9 @@ import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
+import { practiceShown } from '../practice';
+import { currentTest } from '../proofreading-test';
+import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialFinished, tutorialStepReveals, verifyStepIcons } from '../util/toolbar_staging';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Mini Michelangelo art from Ames (2026-10-07).
@@ -212,6 +215,8 @@ const next = (_auto?: unknown) => {
         // The sandbox records each merger as it is cut, not the box closing.
         // The sandbox and the test record themselves (the test on the server).
         if (tutorialNum !== 9 && tutorialNum !== TEST_TUTORIAL) recordTutorialDone(tutorialNum);
+        // Merge and Cut both finished brings the Cell Library (toolbar_staging.ts).
+        tutorialFinished(tutorialNum);
         // Say so if anything puts a box back in the next few seconds.
         const stop = watch(currentStep, (now) => {
             if (store.activeTutorial === tutorialNum && now < steps.value.length) {
@@ -234,6 +239,9 @@ const next = (_auto?: unknown) => {
         }
         if (tutorialNum === 1) {
             document.dispatchEvent(new CustomEvent('nge:prompt-username'));
+            // Then its top bar icons arrive and Merge starts by itself.
+            const doneStep = store.getTutorialStep();
+            getStartedFinished(() => store.activeTutorial === 1 && store.getTutorialStep() === doneStep);
         }
     }
 };
@@ -257,6 +265,22 @@ const back = () => { (window as any).__ngeStepPending = false; store.setTutorial
 // Continue / Exit card and loads nothing until you choose. Starting a
 // tutorial from the menu (step 0) needs no prompt.
 const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox', 11: 'Proofreading Test' };
+// Top bar staging: a step that points at an icon (or names it in `reveals`)
+// brings it in, whichever tutorial gets there first. The Site Tour points at
+// every icon, so it skips the ones not yet received instead (site-tour.ts).
+watch(activeStep, (now) => {
+    if (!now || store.activeTutorial === SITE_TOUR) return;
+    const ids = tutorialStepReveals(now.step as any);
+    const where = `${TUTORIAL_NAMES[store.activeTutorial] ?? 'Tutorial ' + store.activeTutorial}, step ${now.index + 1}`;
+    reveal(ids, undefined, where);
+    // Live site: say so if one of them did not reach the top bar.
+    verifyStepIcons(ids, where);
+}, { immediate: true });
+// Edits made in a tutorial, on a practice cell or in the test are not a
+// player's own first edit.
+setTutorialBusy(() => !!activeStep.value || practiceShown()
+    || ['claiming', 'working', 'scoring'].includes((currentTest() as any)?.phase));
+
 const resumeDecided = ref(false);
 watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu
@@ -297,6 +321,9 @@ const exitIntro = () => {
     const leaving = store.activeTutorial;
     if (PRACTICE_TUTORIALS.includes(leaving)) { stopWatching(); endPractice(); }
     if (leaving === TEST_TUTORIAL) abandonTest();
+    // Leaving Get Started early still brings its top bar icons, so a player
+    // who skips it is not left with an empty bar (Merge does not start).
+    if (leaving === 1) runMoment('getStarted');
     store.setTutorialStep(steps.value.length);
     // Exit is reported as not always closing the tutorial, and it closes in
     // every test: say what puts a box back, if anything does.

@@ -857,6 +857,7 @@ Now let's put it together. <strong>Find Path</strong> draws the route through a 
 We've made the cell see through, so the path stands out.`,
     width: "500px",
     position: OVER_3D,
+    reveals: ['findPath'],
     onEnter: findPathStep,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4781279796002816",
