@@ -492,3 +492,20 @@ test('from a test site every Hunt is admins only, and an everyone Hunt cannot be
   await H.huntAction('hunt.now', { id: d.id, kind: 'start' }, fromTest);
   assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(3)))).hunts.length, 0);
 });
+
+test('before the admins_only column exists, a test site saves drafts and tries them, but cannot schedule', async () => {
+  const h = harness();
+  h.db.hasAdminsOnly = async () => false;
+  const fromTest = { ...h.ctx(ADMIN, at(0), true), testSite: true };
+  const d = await H.huntAction('hunt.save', { fields: { title: 'Draft', dataset: 'pinky_nf_v2', cells: [{ root: '648518346350533705' }],
+    announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)), admins_only: true }, key: { layer: KEY, dims: DIMS }, view: VIEW, status: 'draft' }, fromTest);
+  assert.equal(d.status, 'draft');
+  assert.equal('admins_only' in h.db._s.hunts[0], false);   // never written to a column that is not there
+  const t = await H.huntAction('hunt.test', { id: d.id }, fromTest);
+  assert.equal(t.test, true);
+  await assert.rejects(H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, fromTest), /one more line/);
+  assert.equal(h.db._s.notes.length, 0);
+  // From the live game it schedules as before.
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  assert.equal(h.db._s.notes.length, 3);
+});

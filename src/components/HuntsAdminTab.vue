@@ -99,7 +99,13 @@ function whenLine(v: string): string {
   const ms = Date.parse(iso) - Date.now();
   if (ms < 0) return `${local(iso)}, already past`;
   const m = Math.round(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
-  return `${local(iso)}, in ${d ? `${d} d ${h} h` : h ? `${h} h ${mm} m` : `${mm} m`}`;
+  return `${local(iso)}${mine(iso)}, in ${d ? `${d} d ${h} h` : h ? `${h} h ${mm} m` : `${mm} m`}`;
+}
+/** The admin's own time beside ET when their computer is in another zone: " (12:56 PM PDT your time)". */
+const MY_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } })();
+function mine(iso: string): string {
+  if (!MY_ZONE || MY_ZONE === ET_ZONE) return '';
+  try { return ` (${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(iso))} your time)`; } catch { return ''; }
 }
 function datasetName(canon: string) { const ds = findDatasetByCanonical(canon); return ds ? datasetAbbrev(segLayerName(ds)) : canon; }
 
@@ -148,7 +154,8 @@ function close() { editing.value = null; read.value = null; board.value = []; me
 function scan() {
   candidates.value = keyCandidates();
   const next: Record<string, { on: boolean; kind: KeyKind }> = {};
-  for (const c of candidates.value) next[c.name] = keyPick.value[c.name] ?? { on: candidates.value.length === 1, kind: guessKind(c.name) };
+  // One layer of cuts and one of merges (Ames 2026-10-21): layers named so are ticked at once.
+  for (const c of candidates.value) next[c.name] = keyPick.value[c.name] ?? { on: candidates.value.length === 1 || /cut|merge|extension/i.test(c.name), kind: guessKind(c.name) };
   keyPick.value = next;
 }
 const picked = computed(() => candidates.value.filter(c => keyPick.value[c.name]?.on).map(c => ({ name: c.name, kind: keyPick.value[c.name].kind, points: c.points })));
@@ -412,7 +419,7 @@ function tryIt() {
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>3. When</legend>
-        <p class="nge-hunts-help">Eastern time (ET). Players see each time in their own time zone.</p>
+        <p class="nge-hunts-help">Eastern time (ET). Players see each time in their own time zone, named.</p>
         <label class="nge-hunts-check"><input :checked="form.admins_only || ON_TEST_SITE" :disabled="ON_TEST_SITE" type="checkbox" @change="setAdminsOnly" /> <span><b>Only admins</b>, to test the whole Hunt: players never see it, the notes go only to you, and nothing is posted in chat.<template v-if="ON_TEST_SITE"> On this test site every Hunt is admins only.</template></span></label>
         <p v-if="!form.admins_only && !ON_TEST_SITE" class="nge-hunts-warnline">Scheduled, the notes go to every player's bell and post in chat.</p>
         <div class="nge-hunts-grid">

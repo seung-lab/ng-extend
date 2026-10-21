@@ -195,7 +195,8 @@ export function countdown(iso: string | null | undefined): string {
 export function localTime(iso: string | null | undefined): string {
   const t = Date.parse(iso || '');
   if (!Number.isFinite(t)) return '';
-  return new Date(t).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  // With the player's own zone named (Ames 2026-10-21), e.g. "Thu, Oct 22, 12:00 PM PDT".
+  return new Date(t).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 }
 
 // ── The gem layer ─────────────────────────────────────────────────────────

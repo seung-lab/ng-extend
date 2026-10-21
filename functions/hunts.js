@@ -678,9 +678,11 @@ async function syncNotifications(h, ctx) {
 async function save(args, ctx) {
   const { db, me, now = new Date() } = ctx;
   const fields = cleanFields(args.fields);
-  // Saved from a test site: admins only, whatever the box says (the notes stay off the players' bells and chat).
-  if (ctx.testSite) fields.admins_only = true;
   const status = args.status === 'scheduled' ? 'scheduled' : args.status === 'draft' ? 'draft' : null;
+  // Until hunts.admins_only exists (Ames runs the SQL), the flag is not written. A test site then
+  // saves drafts and tries them, but cannot schedule: a scheduled test would reach every player.
+  const canFlag = db.hasAdminsOnly ? await db.hasAdminsOnly() : true;
+  if (!canFlag) delete fields.admins_only;
   let targets = null;
   if (args.key) {
     targets = keyTargets(args.key);
@@ -690,6 +692,11 @@ async function save(args, ctx) {
   }
   if (args.view) fields.view = stripView(args.view);
   let h = args.id ? await getHunt(db, args.id) : null;
+  // Saved from a test site: admins only, whatever the box says (the notes stay off the players' bells and chat).
+  if (ctx.testSite && canFlag) fields.admins_only = true;
+  if (ctx.testSite && !canFlag && (status || (h && h.status)) === 'scheduled') {
+    fail(409, 'A test site keeps every Hunt admins only, and the database needs one more line for that (hunts.admins_only, in supabase-hunts.sql). Until it is run, save drafts here and use Try it yourself.');
+  }
   const was = h ? phase(h, now) : 'draft';
   if (h && was === 'ended' && h.awarded_at && (targets || 'tolerance_nm' in fields)) fail(409, 'The awards have been given. Re-score from the list instead.');
   const next = { ...(h || {}), ...fields, ...(status ? { status } : {}) };
@@ -819,6 +826,7 @@ async function adminRead(args, ctx) {
 
 // ── The database ──────────────────────────────────────────────────────────
 
+const adminsOnlyColumn = { ok: false, at: 0 };
 function restDb(sb) {
   const enc = encodeURIComponent;
   const merge = { Prefer: 'resolution=merge-duplicates,return=representation' };
@@ -857,6 +865,13 @@ function restDb(sb) {
     patchNotification: (id, row) => one(sb(`notifications?id=eq.${posInt(id)}`, { method: 'PATCH', body: JSON.stringify(row) })),
     deleteNotification: (id) => sb(`notifications?id=eq.${posInt(id)}`, { method: 'DELETE' }),
     upsertBadge: (row) => one(sb('special_badges?on_conflict=slug', { method: 'POST', headers: merge, body: JSON.stringify(row) })),
+    // Is the hunts.admins_only column there yet? Asked once (again a minute later while it is not).
+    hasAdminsOnly: async () => {
+      if (adminsOnlyColumn.ok || Date.now() - adminsOnlyColumn.at < 60000) return adminsOnlyColumn.ok;
+      try { await sb('hunts?select=admins_only&limit=0'); adminsOnlyColumn.ok = true; } catch (e) { adminsOnlyColumn.ok = false; }
+      adminsOnlyColumn.at = Date.now();
+      return adminsOnlyColumn.ok;
+    },
     badgeById: (id) => one(sb(`special_badges?id=eq.${posInt(id)}&select=id,name,description,slug,image_url,thumbnail_url&limit=1`)),
     held: async (badgeIds) => {
       if (!badgeIds.length) return new Set();
