@@ -26,7 +26,7 @@ import {PerspectivePanel} from 'neuroglancer/perspective_view/panel';
 import {PerspectiveViewReadyRenderContext, PerspectiveViewRenderContext, PerspectiveViewRenderLayer} from 'neuroglancer/perspective_view/render_layer';
 import {ThreeDimensionalRenderLayerAttachmentState, update3dRenderLayerAttachment} from 'neuroglancer/renderlayer';
 import {forEachVisibleSegment, getObjectKey} from 'neuroglancer/segmentation_display_state/base';
-import {forEachVisibleSegmentToDraw, ngeHoverStyle, ngePulseColor, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
+import {forEachVisibleSegmentToDraw, ngeHaloFar, ngeHoverStyle, ngePulseColor, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {Borrowed, RefCounted} from 'neuroglancer/util/disposable';
 import {getFrustrumPlanes, mat3, mat3FromMat4, mat4, scaleMat3Output, vec3, vec4} from 'neuroglancer/util/geom';
@@ -331,7 +331,8 @@ function ngeShellColorFor(color: Float32Array|number[], alpha: number) {
   const rgb = ngeGlowColor(color);
   // Times alpha: the halo keeps the brightest shell at each pixel (MAX blending).
   // It does not breathe (Ames 2026-10-20: "I don't like the breathing").
-  for (let i = 0; i < 3; i++) ngeShellColor[i] = rgb[i] * alpha * a;
+  const fade = ngeHoverStyle.value === 'halo' ? ngeHaloFade : 1;
+  for (let i = 0; i < 3; i++) ngeShellColor[i] = rgb[i] * alpha * fade * a;
   ngeShellColor[3] = alpha;
   return ngeShellColor;
 }
@@ -349,6 +350,7 @@ let ngePulseRunning = false;
  *  "looks good up close but far away too thick"). Set per frame from how
  *  many pixels a 1 um branch covers: full from about 12 px up. */
 let ngeHaloZoom = 1;
+let ngeHaloFade = 1;
 function ngeUpdateHaloZoom(projectionParameters: any) {
   const viewer: any = (window as any).viewer;
   const info = projectionParameters.displayDimensionRenderInfo;
@@ -357,6 +359,11 @@ function ngeUpdateHaloZoom(projectionParameters: any) {
   const viewNm = Math.max(1, (viewer?.projectionScale?.value ?? 1000) * minNm);
   const branchPx = 1000 / (viewNm / Math.max(1, projectionParameters.height));
   ngeHaloZoom = Math.max(0.3, Math.min(1, branchPx / 12));
+  // And fainter: thinner alone still left every spine outlined far out (Ames
+  // 2026-10-20: "still looks too heavy when I am zoomed out").
+  // Gone when a branch is about 3 px across, where Saturate's colour takes over.
+  ngeHaloFade = Math.max(0, Math.min(1, (branchPx - 3) / 14));
+  ngeHaloFar.value = 1 - ngeHaloFade;
   ngeNmPerPx = viewNm / Math.max(1, projectionParameters.height);
 }
 /** Start of a wireframe pass: this frame's time for making coarser copies. */
@@ -374,9 +381,13 @@ let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
   if (style === 'wireframe') return 3;
+  if (style === 'saturate' && ngeRimGl) {
+    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), 0, 0, 0, 0.45);
+    return 4;
+  }
   if (style === 'halo' && ngeRimGl) {
     const rgb = ngeGlowColor(color);
-    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], ngeHaloZoom);
+    ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], ngeHaloFade);
     return 2;
   }
   return 0;
@@ -713,7 +724,12 @@ vec3 normal = normalize(uNormalMatrix * (normalMultiplier * origNormal));
 float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
-if (uNgeGlow > 2.5) {
+if (uNgeGlow > 3.5) {
+  // EyeWire II hover 'saturate', lit from within (Ames 2026-10-20: a colour
+  // already at full strength cannot get richer): the shading flattens toward
+  // full light, so the shadowed sides brighten and the cell seems to glow.
+  vColor.rgb = min(uColor.rgb * mix(lightingFactor, 1.12, uNgeRim.w), vec3(uColor.a));
+} else if (uNgeGlow > 2.5) {
   // EyeWire II hover wireframe: the body dims so its mesh lines, drawn over
   // it by the wireframe pass (perspective_view/panel.ts), stand out.
   vColor.rgb *= 0.3;
@@ -724,8 +740,11 @@ if (uNgeGlow > 2.5) {
   highp float rimLen = length(uLightDirection.xyz);
   highp float rimFacing = rimLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / rimLen)) : 1.0;
   highp float rimAmount = pow(1.0 - rimFacing, 4.0);
+  // As the halo fades for zoom (uNgeRim.w down), the cell is lit from within
+  // instead, as with Saturate.
+  vColor.rgb = min(uColor.rgb * mix(lightingFactor, 1.12, 0.6 * (1.0 - uNgeRim.w)), vec3(uColor.a));
   // Fainter when zoomed out, where a thin branch is nearly all edge.
-  vColor.rgb = mix(vColor.rgb, uNgeRim.rgb * uColor.a, 0.35 * uNgeRim.w * uNgeRim.w * rimAmount);
+  vColor.rgb = mix(vColor.rgb, uNgeRim.rgb * uColor.a, 0.35 * uNgeRim.w * rimAmount);
 } else if (uNgeGlow > 0.5 && uNgePulse.w > 0.5) {
   // EyeWire II hover pulse: bands of light run out along the cell from the
   // mouse, like a signal firing. Distances in nm, so z counts as much as x.

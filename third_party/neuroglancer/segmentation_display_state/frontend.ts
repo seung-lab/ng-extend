@@ -781,6 +781,10 @@ export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
 })()};
+/** How far the halo has faded for zoom, 0 (all there) to 1 (gone); set each
+ *  frame by mesh/frontend.ts. */
+export const ngeHaloFar = {value: 0};
+
 /** EyeWire II 'saturate': richer colour, a little brighter (2D does the same
  *  in sliceview/volume/segmentation_renderlayer.ts). */
 export function ngeSaturate(color: Float32Array|number[]) {
@@ -859,6 +863,13 @@ export function getObjectColor(
   if (ngeHoverStyle.value === 'saturate' && displayState.hoverHighlight.value &&
       displayState.segmentSelectionState.isSelected(objectId)) {
     ngeSaturate(color);
+  } else if (ngeHoverStyle.value === 'halo' && ngeHaloFar.value > 0 && displayState.hoverHighlight.value &&
+      displayState.segmentSelectionState.isSelected(objectId)) {
+    // Far out the halo fades away, and the cell takes Saturate's colour in
+    // its place, so the cell under the mouse still stands out.
+    const before = [color[0], color[1], color[2]];
+    ngeSaturate(color);
+    for (let i = 0; i < 3; ++i) color[i] = before[i] + (color[i] - before[i]) * ngeHaloFar.value;
   }
 
   color[0] *= alpha;

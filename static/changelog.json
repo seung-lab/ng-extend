@@ -5,7 +5,7 @@
       "at": "2026-10-20T00:00:00Z",
       "title": "3D Hover: Halo, Pulse, Wireframe and Saturate",
       "items": [
-        "New 3D Hover looks for the cell under your mouse, in Settings under 3D Hover: Halo, a slim glowing line around the cell; Pulse, a ring of light running out along the cell from your mouse when you point at it, in a colour you choose; Wireframe, the cell's 3D mesh drawn in glowing lines, finer as you zoom in; and Saturate, the cell's colour turning richer instead of paler.",
+        "New 3D Hover looks for the cell under your mouse, in Settings under 3D Hover: Halo, a slim glowing line around the cell; Pulse, a ring of light running out along the cell from your mouse when you point at it, in a colour you choose; Wireframe, the cell's 3D mesh drawn in glowing lines, finer as you zoom in; and Saturate, the cell's colour turning richer and lit from within instead of paler.",
         "Press P with your mouse over a cell in 3D to send a ring of light along it, whichever look you use. The pulse colour can be any colour you like.",
         "New players start with Halo. If you were already playing, the original look stays until you pick another.",
         "In 2D, the cell under your mouse keeps its own colour and turns more solid instead of fading to white.",
