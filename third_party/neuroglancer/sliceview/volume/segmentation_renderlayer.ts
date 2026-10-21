@@ -18,7 +18,7 @@ import {HashMapUint64} from 'neuroglancer/gpu_hash/hash_table';
 import {GPUHashTable, HashMapShaderManager, HashSetShaderManager} from 'neuroglancer/gpu_hash/shader';
 import {SegmentColorShaderManager, SegmentStatedColorShaderManager} from 'neuroglancer/segment_color';
 import {getVisibleSegments} from 'neuroglancer/segmentation_display_state/base';
-import {registerRedrawWhenSegmentationDisplayStateChanged, SegmentationDisplayState} from 'neuroglancer/segmentation_display_state/frontend';
+import {ngeHoverStyle, registerRedrawWhenSegmentationDisplayStateChanged, SegmentationDisplayState} from 'neuroglancer/segmentation_display_state/frontend';
 import {SliceViewSourceOptions} from 'neuroglancer/sliceview/base';
 import {SliceView, SliceViewSingleResolutionSource} from 'neuroglancer/sliceview/frontend';
 import {MultiscaleVolumeChunkSource, VolumeChunkSource} from 'neuroglancer/sliceview/volume/frontend';
@@ -167,6 +167,7 @@ uint64_t getMappedObjectId(uint64_t value) {
     builder.addUniform('highp float', 'uSelectedAlpha');
     builder.addUniform('highp float', 'uNotSelectedAlpha');
     builder.addUniform('highp float', 'uSaturation');
+    builder.addUniform('highp float', 'uNgeGlow');
     let fragmentMain = `
   uint64_t baseValue = getUint64DataValue();
   uint64_t value = getMappedObjectId(baseValue);
@@ -175,6 +176,7 @@ uint64_t getMappedObjectId(uint64_t value) {
 
   float alpha = uSelectedAlpha;
   float saturation = uSaturation;
+  bool ngeGlowHit = false;
 `;
     if (parameters.hideSegmentZero) {
       fragmentMain += `
@@ -187,11 +189,16 @@ uint64_t getMappedObjectId(uint64_t value) {
     fragmentMain += `
   bool has = (uFlags & ${SHOW_ALL_SEGMENTS_FLAG}u) != 0u ? true : ${this.hashTableManager.hasFunctionName}(value);
   if ((uFlags & ${HAS_SELECTED_SEGMENT_FLAG}u) != 0u && uSelectedSegment == valueForHighlight.value) {
+    if (uNgeGlow > 0.5) {
+      // EyeWire II (ngeHoverStyle): its own colour, more solid.
+      ngeGlowHit = true;
+    } else {
     float adjustment = has ? 0.5 : 0.75;
     if (saturation > adjustment) {
       saturation -= adjustment;
     } else {
       saturation += adjustment;
+    }
     }
 `;
     if (parameters.hasHighlightColor) {
@@ -237,7 +244,17 @@ uint64_t getMappedObjectId(uint64_t value) {
   if (rgba.a > 0.0) {
     alpha = rgba.a;
   }
-  emit(vec4(mix(vec3(1.0,1.0,1.0), vec3(rgba), saturation), alpha));
+  vec3 ngeColor = mix(vec3(1.0,1.0,1.0), vec3(rgba), saturation);
+  if (ngeGlowHit) {
+    ngeColor = min(ngeColor * 1.08, vec3(1.0));
+    if (uNgeGlow > 1.5) {
+      // EyeWire II 'saturate': richer colour (ngeSaturate in 3D).
+      float ngeGrey = dot(ngeColor, vec3(0.299, 0.587, 0.114));
+      ngeColor = clamp((vec3(ngeGrey) + (ngeColor - vec3(ngeGrey)) * 1.7) * 1.04, 0.0, 1.0);
+    }
+    alpha = min(1.0, max(alpha, 0.35) + 0.35);
+  }
+  emit(vec4(ngeColor, alpha));
 `;
     builder.setFragmentMain(fragmentMain);
   }
@@ -262,6 +279,7 @@ uint64_t getMappedObjectId(uint64_t value) {
     }
     gl.uniform1f(shader.uniform('uSelectedAlpha'), displayState.selectedAlpha.value);
     gl.uniform1f(shader.uniform('uSaturation'), displayState.saturation.value);
+    gl.uniform1f(shader.uniform('uNgeGlow'), ngeHoverStyle.value === 'saturate' ? 2 : ngeHoverStyle.value !== 'fade' ? 1 : 0);
     gl.uniform1f(shader.uniform('uNotSelectedAlpha'), displayState.notSelectedAlpha.value);
     gl.uniform2ui(shader.uniform('uSelectedSegment'), selectedSegmentLow, selectedSegmentHigh);
     if (visibleSegments.hashTable.size === 0 && ignoreNullSegmentSet) {

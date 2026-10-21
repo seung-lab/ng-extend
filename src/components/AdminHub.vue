@@ -138,6 +138,8 @@ interface TriageRow {
   tested_by?: string | null;
   slack_ts?: string | null;
   slack_channel?: string | null;
+  /** Notes with no decision (Celia #178, supabase-triage-notes.sql). */
+  admin_notes?: { by: string; text: string; at: string }[];
 }
 type ImplState = 'queued' | 'implementing' | 'needs_info' | 'testing' | 'changes_requested'
   | 'answer_queued' | 'answering' | 'deploy_queued' | 'deploying' | 'deployed'
@@ -201,7 +203,7 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
 }
 
 // ── Who submitted each report (site_issues, admins only via the gateway) ──
-const reporters = ref<Record<string, { name: string; category: string; at: string; message?: string; url?: string; shot?: string }>>({});
+const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string }>>({});
 async function loadReporters(rows: TriageRow[]) {
   const ids = [...new Set(rows.filter(r => r.source === 'site_issue' && r.source_id && !reporters.value[r.source_id]).map(r => r.source_id))];
   if (!ids.length) return;
@@ -210,7 +212,9 @@ async function loadReporters(rows: TriageRow[]) {
     // The view they were in and their screenshot, as Slack shows them (Ames
     // 2026-10-16: "triage panel now missing view"). Older tables may lack the
     // screenshot column, so ask again without it if need be.
-    let { data, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', ids);
+    // A title (Celia #178) once supabase-site-issues-title.sql has run.
+    let { data, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url').in('id', ids);
+    if (error) ({ data, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', ids));
     if (error) ({ data } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url').in('id', ids));
     const next = { ...reporters.value };
     // An older report saved "page @ x,y,z" when no short link could be made;
@@ -222,7 +226,7 @@ async function loadReporters(rows: TriageRow[]) {
       if (m) { try { const x = new URL(m[1]); x.search = ''; x.hash = ''; x.searchParams.set('at', [m[2], m[3], m[4]].map(n => Math.round(Number(n))).join(',')); return x.toString(); } catch { return undefined; } }
       return /\s/.test(u) ? undefined : u;
     };
-    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', message: String(i.message || '').trim(),
+    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
       url: web(i.url), shot: web(i.screenshot_url) };
     reporters.value = next;
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
@@ -382,13 +386,34 @@ function toggleTriageLight() {
 // "#42" finds report 42. Typing opens every section that has a match.
 const triageSearch = ref('');
 const triageWords = computed(() => triageSearch.value.toLowerCase().split(/\s+/).filter(Boolean));
+// Bug, Idea or Other (Ames 2026-10-20: "can we have a way to filter by bug /
+// idea / other?"). What the submitter picked; an old Data problem counts as a
+// Bug, and a report with no category goes by its suggestion (closedKind).
+type TriageKind = 'all' | 'bug' | 'feature' | 'other';
+const TRIAGE_KIND_KEY = 'nge_triage_kind_v1';
+const triageKind = ref<TriageKind>((() => {
+  try { const v = localStorage.getItem(TRIAGE_KIND_KEY); if (v === 'bug' || v === 'feature' || v === 'other') return v; } catch { /* private window */ }
+  return 'all';
+})());
+watch(triageKind, v => { try { localStorage.setItem(TRIAGE_KIND_KEY, v); } catch { /* not remembered */ } });
+const kindOf = (r: TriageRow) => closedKind(r, reporterOf(r)?.category);
+const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
+  { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' },
+];
+const triageKindCount = computed(() => {
+  const n = { all: 0, bug: 0, feature: 0, other: 0 } as Record<TriageKind, number>;
+  for (const r of triageRows.value) { n.all++; n[kindOf(r)]++; }
+  return n;
+});
 function triageMatches(r: TriageRow): boolean {
+  if (triageKind.value !== 'all' && kindOf(r) !== triageKind.value) return false;
   const words = triageWords.value;
   if (!words.length) return true;
   const n = triageNumbers.value[r.id];
   const who = reporterOf(r);
-  const hay = [n ? `#${n}` : '', who?.name, who?.category, who?.message, r.source_excerpt, r.rationale, r.spec, r.proposed_message,
+  const hay = [n ? `#${n}` : '', who?.name, who?.category, who?.title, who?.message, r.source_excerpt, r.rationale, r.spec, r.proposed_message,
     r.approver_note, r.impl_summary, r.result_note, r.reviewed_by, r.status, r.impl_state, TRIAGE_LABELS[r.recommendation],
+    ...(r.admin_notes || []).map(n => n.text),
     ...(r.feedback_log || []).map(f => f.text)].filter(Boolean).join(' | ').toLowerCase();
   return words.every(w => hay.includes(w));
 }
@@ -647,6 +672,29 @@ const todoBoardUrl = `${boardUrl}&todo`;
 function openTodoBoard() {
   if (props.standalone || triageBoard.value) todoView.value = true;
   else window.open(todoBoardUrl, '_blank', 'noopener');
+}
+
+// ── Notes, with no decision (Celia #178: "a way to leave notes on entries in
+// the triage panel without submitting any other actions") ──
+// functions/triage-notes.js: nothing else on the card changes. "@Celia" tags
+// her: the bell in Pyr and a ping in the report's Slack thread.
+const noteDrafts = ref<Record<string, string>>({});
+const noteOpen = ref<Record<string, boolean>>({});
+const noteSaving = ref<string | null>(null);
+async function saveNote(row: TriageRow) {
+  const text = (noteDrafts.value[row.id] || '').trim();
+  if (!text || noteSaving.value) return;
+  noteSaving.value = row.id;
+  try {
+    const r = await secureWrite<any>('triage.note', { id: row.id, text });
+    row.admin_notes = r?.admin_notes || [...(row.admin_notes || []), { by: backend.userName || 'you', text, at: new Date().toISOString() }];
+    noteDrafts.value[row.id] = '';
+    noteOpen.value[row.id] = false;
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    noteSaving.value = null;
+  }
 }
 
 async function loadTriage() {
@@ -2607,6 +2655,11 @@ function practiceWhen(iso: string | null) {
           <input v-model="triageSearch" class="nge-triage-search" type="search" placeholder="Search reports, or #number"
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
+          <span class="nge-triage-kinds" role="radiogroup" aria-label="Show">
+            <button v-for="k in TRIAGE_KINDS" :key="k.key" type="button" role="radio" class="nge-triage-kind"
+                    :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
+                    @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
+          </span>
           <button v-if="triageBoard" class="nge-admin-action-btn" :aria-pressed="triageLight ? 'true' : 'false'"
                   :title="triageLight ? 'Switch to the dark page' : 'Switch to a light page, easier for reading a lot of text'"
                   @click="toggleTriageLight">{{ triageLight ? '☾ Dark' : '☀ Light' }}</button>
@@ -2660,6 +2713,7 @@ function practiceWhen(iso: string | null) {
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
+            <span v-if="row.admin_notes?.length" class="nge-triage-impl nge-triage-notes-chip" :title="`${row.admin_notes.length} note${row.admin_notes.length === 1 ? '' : 's'} from admins`">📝 {{ row.admin_notes.length }}</span>
             <span v-if="isAwaitingReply(row)" class="nge-triage-rec nge-triage-rec--waiting"
                   :title="'You asked the submitter for a reply' + (awaitingReplySince(row) ? ' ' + ago(awaitingReplySince(row) || '') + ' ago' : '') + ' and it has not come yet. It comes back under Needs your decision when it does.'">⏳ Waiting on their reply<template v-if="awaitingReplySince(row)"> · {{ ago(awaitingReplySince(row) || '') }}</template></span>
             <span class="nge-triage-rec" :class="isNewReport(row) ? 'nge-triage-rec--new' : `nge-triage-rec--${row.recommendation}`">{{ isNewReport(row) ? 'New report' : hadNoSuggestion(row) ? 'No suggestion' : TRIAGE_LABELS[row.recommendation] }}</span>
@@ -2673,7 +2727,9 @@ function practiceWhen(iso: string | null) {
             <span class="nge-triage-avatar" aria-hidden="true" :style="{ '--hue': avatarHue(reporterOf(row)?.name || '') }">{{ (reporterOf(row)?.name || '?').slice(0, 1).toUpperCase() }}</span>
             <span class="nge-triage-from-word">From </span><strong>{{ reporterOf(row)?.name }}</strong><template v-if="reporterOf(row)?.category"> · {{ reporterOf(row)?.category }}</template><template v-if="reporterOf(row)?.at"> · <span class="nge-triage-when" :title="shortDate(reporterOf(row)?.at || '')">{{ shortDate(reporterOf(row)?.at || '') }}</span><span class="nge-triage-ago" :title="shortDate(reporterOf(row)?.at || '')">{{ ago(reporterOf(row)?.at || '') }}</span></template>
           </div>
-          <div v-if="fullTextOf(row)" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
+          <div v-if="reporterOf(row)?.title" class="nge-triage-title">{{ reporterOf(row)?.title }}</div>
+          <!-- A one line report is all title: say it once. -->
+          <div v-if="fullTextOf(row) && fullTextOf(row) !== reporterOf(row)?.title" class="nge-triage-excerpt">"<template v-for="(pt, pi) in linkParts(fullTextOf(row))" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template>"</div>
           <div v-if="row.source === 'site_issue'" class="nge-triage-console">
             <a v-if="reporterOf(row)?.url" class="nge-triage-console-btn nge-triage-view-btn" :href="reporterOf(row)?.url" target="_blank" rel="noopener noreferrer" @click.stop
                title="The view they were in when they sent the report">↗ Open their view</a>
@@ -2710,6 +2766,24 @@ function practiceWhen(iso: string | null) {
             <div v-if="row.impl_state === 'testing' || row.impl_state === 'live_testing' || row.impl_state === 'needs_info'"><span class="nge-triage-spec-label">Waiting on</span> the tester in the Slack thread{{ row.impl_state === 'needs_info' ? ', to answer Claude' : '' }}. Reminded {{ row.nag_count || 0 }} time{{ row.nag_count === 1 ? '' : 's' }}.</div>
             <div v-for="f in (row.feedback_log || []).slice(-3)" :key="f.ts"><span class="nge-triage-spec-label">{{ roleLabel(f.role) }}</span> <template v-for="(pt, pi) in linkParts(f.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
             <div v-if="row.impl_run_url"><a :href="row.impl_run_url" target="_blank" rel="noopener">Claude's run log</a><template v-if="row.impl_attempts"> · attempt {{ row.impl_attempts }}</template></div>
+          </div>
+          <!-- Notes from admins, with no decision (Celia #178). -->
+          <div class="nge-triage-notes" @click.stop>
+            <div v-for="(n, i) in row.admin_notes || []" :key="i" class="nge-triage-note nge-triage-admin-note">
+              <span class="nge-triage-spec-label">Note</span>
+              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
+            </div>
+            <template v-if="noteOpen[row.id]">
+              <textarea v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
+                        placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her."
+                        @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <div class="nge-triage-actions">
+                <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id || !noteDrafts[row.id]?.trim()" @click="saveNote(row)">{{ noteSaving === row.id ? 'Saving…' : 'Save note' }}</button>
+                <button class="nge-admin-action-btn" :disabled="noteSaving === row.id" @click="noteOpen[row.id] = false">Cancel</button>
+              </div>
+            </template>
+            <button v-else class="nge-admin-action-btn nge-triage-note-btn" title="Leave a note for the admins. Nothing else on the card changes, nothing is sent to the submitter, and the robot ignores it."
+                    @click="noteOpen[row.id] = true">📝 Add a note</button>
           </div>
           <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
                never sent to the reporter (the message box above is). -->
@@ -3515,7 +3589,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-board .nge-triage-card { cursor: pointer; background: rgba(10, 18, 32, 0.9); }
 .nge-triage-board .nge-triage-card:hover { border-top-color: rgba(79, 207, 255, 0.45); border-right-color: rgba(79, 207, 255, 0.45); border-bottom-color: rgba(79, 207, 255, 0.45); }
 /* Compact until clicked: who, what they said, where it stands. */
-.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) > :not(.nge-triage-meta):not(.nge-triage-from):not(.nge-triage-excerpt) { display: none; }
+.nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) > :not(.nge-triage-meta):not(.nge-triage-from):not(.nge-triage-excerpt):not(.nge-triage-title) { display: none; }
 /* The whole report on the chip too, never cut short (Ames 2026-10-10:
    "these are supposed to show the full bug report text"). */
 .nge-triage-board .nge-triage-card:not(.nge-triage-card--selected) .nge-triage-excerpt { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -3788,6 +3862,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-light .nge-triage-note--reply { background: #e9f6fd; border-left-color: #58b6dc; }
 .nge-triage-light .nge-triage-note--unread { background: #cfecfa; border-left-color: #1487b8; }
 .nge-triage-light .nge-triage-rec--reply { background: #0f7fae; color: #ffffff; }
+.nge-triage-light .nge-triage-admin-note { border-left-color: #8a77e0; }
 .nge-triage-light .nge-triage-rec--waiting { background: #ece8ff; color: #4a36a8; }
 .nge-triage-light .nge-triage-card.nge-triage-card--waiting { outline-color: #8a77e0; }
 .nge-triage-light.nge-triage-board .nge-triage-card.nge-triage-card--reply,
@@ -4004,6 +4079,23 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-note--unread { background: rgba(126,224,255,0.16); border-left-color: #7ee0ff; }
 .nge-triage-rec--reply { background: #7ee0ff; color: #06202c; font-weight: 700; }
 .nge-triage-board .nge-triage-card.nge-triage-card--reply { box-shadow: 0 0 0 1px rgba(126,224,255,0.55), 0 0 14px rgba(126,224,255,0.18); }
+.nge-triage-notes { display: flex; flex-direction: column; gap: 6px; }
+.nge-triage-admin-note { border-left: 2px solid rgba(160, 140, 255, 0.6); padding-left: 8px; }
+.nge-triage-note-btn { align-self: flex-start; }
+/* Bug, Idea, Other filter in the header. */
+.nge-triage-kinds { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.nge-triage-kind {
+  font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 999px; cursor: pointer;
+  background: transparent; border: 1px solid rgba(120, 170, 255, 0.3); color: #cfe0ff;
+}
+.nge-triage-kind:hover { border-color: rgba(120, 170, 255, 0.7); }
+.nge-triage-kind--on { background: #3f6fd8; border-color: #3f6fd8; color: #fff; }
+.nge-triage-kind-n { opacity: 0.7; font-size: 11px; }
+.nge-triage-light .nge-triage-kind { border-color: #b9c6da; color: #23324a; }
+.nge-triage-light .nge-triage-kind--on { background: #2f6fd6; border-color: #2f6fd6; color: #fff; }
+/* The report's title (Celia #178), above what they wrote. */
+.nge-triage-title { font-size: 15px; font-weight: 700; line-height: 1.35; color: #eef3ff; overflow-wrap: anywhere; }
+.nge-triage-light .nge-triage-title { color: #121a28; }
 /* Asked the submitter for a reply, none yet: a dashed edge and a tag. */
 .nge-triage-rec--waiting { background: rgba(160, 140, 255, 0.16); color: #c4b8ff; text-transform: none; letter-spacing: 0; }
 .nge-triage-card.nge-triage-card--waiting { outline: 1px dashed rgba(160, 140, 255, 0.6); outline-offset: -1px; }

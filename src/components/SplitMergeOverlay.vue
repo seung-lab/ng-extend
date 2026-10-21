@@ -242,11 +242,14 @@ function toggleKeepCutOpen() {
 /** The size of the cut points, apart from annotation points (Celia #177:
  *  "too large for multicut even though I sometimes like larger ones for
  *  annotation layers"). Remembered with the player's settings. */
-const CUT_POINT_SIZES = [{ v: 0.5, label: 'Small' }, { v: 0.75, label: 'Medium' }, { v: 1, label: 'Regular' }, { v: 1.5, label: 'Large' }];
+// Small is a merge point's size; Celia (2026-10-20) asked for that as the
+// smallest, every size one step down, and no biggest.
+const CUT_POINT_SIZES = [{ v: 1, label: 'Small' }, { v: 1.5, label: 'Medium' }, { v: 2, label: 'Large' }];
 const prefsStore = useUserPreferencesStore();
 const cutPointSize = ref(ngeCutPointScale.value);
+const nearestCutSize = (v: number) => CUT_POINT_SIZES.reduce((a, b) => Math.abs(b.v - v) < Math.abs(a.v - v) ? b : a).v;
 watch(() => prefsStore.prefs.cutPointSize, v => {
-  if (typeof v === 'number' && v !== ngeCutPointScale.value) { ngeCutPointScale.value = cutPointSize.value = v; redrawViews(); }
+  if (typeof v === 'number' && Math.max(1, v) !== ngeCutPointScale.value) { ngeCutPointScale.value = cutPointSize.value = Math.max(1, v); redrawViews(); }
 });
 function redrawViews() {
   try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
@@ -377,7 +380,7 @@ function cancelTool() {
                one cell (Nseraf). -->
           <label class="nge-smo-auto-submit nge-smo-point-size" title="How big the red and blue cut points are drawn. Annotation layers keep their own size.">
             Points
-            <select class="nge-smo-point-size-pick" :value="cutPointSize" @change="onCutPointSizePick">
+            <select class="nge-smo-point-size-pick" :value="nearestCutSize(cutPointSize)" @change="onCutPointSizePick">
               <option v-for="s in CUT_POINT_SIZES" :key="s.v" :value="s.v">{{ s.label }}</option>
             </select>
           </label>

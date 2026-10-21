@@ -3,11 +3,11 @@ import {ContextMenu} from 'neuroglancer/ui/context_menu';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {addPastedSegments, segmentLabels, segmentLabelsChanged, setPlaceCellLoader, setSegmentLabelRequester} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
-import {cellAtCrosshair} from '../util/crosshair_cell';
+import {cellAtCrosshair, supervoxelAtPlace} from '../util/crosshair_cell';
 import {getPcgInfo} from './pcg_service';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
-import {currentCellTypes} from '../datasets';
+import {currentCellTypes, cellTypeLabel} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
@@ -24,24 +24,21 @@ function cellLabel(status: CellStatus|null|undefined): string {
 let placeLoad = 0;
 setPlaceCellLoader(async (group: any) => {
   const mine = ++placeLoad;
-  // The cell is read from the 2D image, which loads only in a 2D view close
-  // enough in: open one and zoom in when there is none (Ames 2026-10-19:
-  // "pasting coords into Seg panel doesn't show the corresponding mesh").
-  try {
-    const v = (window as any).viewer;
-    const l = v.layout.toJSON();
-    const name = typeof l === 'string' ? l : l?.type;
-    if (name === '3d') v.layout.restoreState('xy-3d');
-    if (v.navigationState.zoomFactor.value > 12) v.navigationState.zoomFactor.value = 3;
-  } catch { /* no viewer */ }
   let at = '';
-  try { at = Array.from((window as any).viewer.navigationState.position.value as Float32Array).map(v => Math.round(v)).join(', '); } catch { /* none */ }
+  let place: number[] = [];
+  try { place = Array.from((window as any).viewer.navigationState.position.value as Float32Array); at = place.map(v => Math.round(v)).join(', '); } catch { /* none */ }
   let found: Awaited<ReturnType<typeof cellAtCrosshair>> | null = null;
-  for (let i = 0; i < 30; ++i) {
+  // First, read the cell straight from the stored segmentation: no 2D view
+  // needed, the view stays as the player has it (Ames and a player,
+  // 2026-10-20). Otherwise, wait for the 2D view to load it.
+  const direct = place.length ? await supervoxelAtPlace(place) : null;
+  if (mine !== placeLoad) return;
+  if (direct) found = { position: place.slice(0, 3).map(Math.round) as [number, number, number], supervoxel: direct, root: direct === '0' ? null : await getRootFromSupervoxel(direct) };
+  for (let i = 0; !found && i < 30; ++i) {
     await new Promise(r => setTimeout(r, 500));
     if (mine !== placeLoad) return;  // a newer paste took over
-    found = await cellAtCrosshair();
-    if (found.supervoxel) break;
+    const f = await cellAtCrosshair();
+    if (f.supervoxel) found = f;
   }
   if (!found || !found.supervoxel) {
     StatusMessage.showTemporaryMessage('Nothing has loaded at that place yet. Look at the 2D view, then paste again.', 4000);
@@ -109,7 +106,7 @@ setSegmentLabelRequester(ids => {
 });
 import {getDatasetCaveConfig} from '../config';
 import {currentSegLayerName} from '../datasets';
-import {useHelpRequestStore, useProofreadingBackendStore, type ClaimPoint} from '../store';
+import {useHelpRequestStore, useProofreadingBackendStore, useProofreadingQueueStore, type ClaimPoint} from '../store';
 import {getRootFromSupervoxel, getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
 import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
@@ -684,7 +681,7 @@ export class ButtonService {
     for (const ct of currentCellTypes()) {
       const opt = document.createElement('option');
       opt.value = ct;
-      opt.textContent = ct;
+      opt.textContent = cellTypeLabel(ct);
       { const spelled = explainCellType(ct); if (spelled.length) opt.title = spelled.join(String.fromCharCode(10)); }
       if (cachedStatus?.cellType === ct) opt.selected = true;
       select.appendChild(opt);
@@ -701,6 +698,25 @@ export class ButtonService {
       labTypeLine.hidden = !text;
     };
     showLabType();
+    // What the lab's AI predicts this cell is, from the cell sheet's AI column
+    // (Ames 2026-10-19), when the cell is one of the list's: by its listed ID,
+    // its final ID, or the ID one of your claims has now.
+    const aiType = (() => {
+      try {
+        const backend = useProofreadingBackendStore();
+        const claim = backend.tasks.find(t => backend.liveRoots[t.id] === segmentIDString);
+        const listed = claim ? String(claim.segment_id) : segmentIDString;
+        const row = useProofreadingQueueStore().items.find(i => i.segId === listed || i.finalSegId === segmentIDString);
+        return row?.aiType || '';
+      } catch { return ''; }
+    })();
+    if (aiType) {
+      const aiLine = document.createElement('div');
+      aiLine.classList.add('nge-lb-status-line', 'nge-lb-ai-type');
+      aiLine.textContent = `AI predicted: ${cellTypeLabel(aiType)}`;
+      aiLine.title = ["The type the lab's AI predicts for this cell, from the cell sheet.", ...explainCellType(aiType)].join(String.fromCharCode(10));
+      cellTypeSection.insertBefore(aiLine, select);
+    }
     let typeLine: HTMLDivElement | null = null;
     if (roCfg.cellTypeReadOnly) {
       select.style.display = 'none';

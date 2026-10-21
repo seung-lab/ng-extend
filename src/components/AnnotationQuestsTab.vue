@@ -18,6 +18,7 @@ import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '..
 import { mintShortStateLink } from '../util/state_link';
 import { runPanelLap } from '../util/holo_trace';
 import { QUEST_STATUS_GUIDE, openQuestExamples } from '../annotation_quest_examples';
+import EditableText from './EditableText.vue';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { cellAtCrosshair } from '../util/crosshair_cell';
@@ -75,6 +76,19 @@ function label(r: QuestRow) {
   const kind = cellTypeForPlayers(r.cellType || r.cellClass);
   return kind ? `${r.index || r.segmentId}, ${kind}` : (r.index || r.segmentId);
 }
+/** The quest's steps as the code has them (Celia, 2026-10-13). An admin can
+ *  change them in the game (EditableText, key quest.retina_cilia.steps). The
+ *  sentence on the centerline's keys is ours: the polyline tool is new here. */
+const QUEST_STEPS: string[] = [
+  '<b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body, Daughter centriole, and Cilium centerline.</b>',
+  `Use <a href="${QUEST_GUIDE_URL}" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.` +
+    (QUEST_VIDEO_URL ? ` Check out this <a href="${QUEST_VIDEO_URL}" target="_blank" rel="noopener">training video</a> as well!` : ''),
+  `Find the cilium, an appendage that projects from the cell's soma. Annotate its centerline, basal body, and daughter centriole in each of their respective layers. For the centerline, hold <b>Ctrl</b> and click along the cilium, then press <b>Enter</b>.`,
+  `Some cells will not have a visible cilium. You may still be able to find their internal basal body and daughter centriole. <a href="#" data-nge-action="examples">Here's a reference</a> for a variety of cilia states you may encounter.`,
+  'Press <b>Submit</b>, and choose a cilium status from the list. The lab will receive your view as a share link.',
+  'You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.',
+];
+function onQuestTextAction(name: string) { if (name === 'examples') void openQuestExamples(); }
 /** The Instructions box with the lab's steps (Ames 2026-10-13). */
 const showHelp = ref(false);
 /** The first time a player opens the tab, the Instructions button is lit
@@ -286,22 +300,13 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
           <span class="nge-aq-info-i" aria-hidden="true">i</span><span class="nge-aq-info-word">Instructions</span>
         </button>
       </div>
-      <div class="nge-aq-lead">{{ QUEST_LEAD }}</div>
+      <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
       <div v-if="showHelp" class="nge-aq-help">
         <div class="nge-aq-help-head">
           <span>How to do a Cilia Quest</span>
           <button class="nge-aq-help-close" @click="showHelp = false" title="Close">×</button>
         </div>
-        <!-- The lab's own steps (Celia, 2026-10-13). The sentence on the
-             centerline's keys is ours: the polyline tool is new here. -->
-        <ol class="nge-aq-help-steps">
-          <li><b>Claim</b> a cell. Its view opens with three annotation layers: <b>Basal body, Daughter centriole, and Cilium centerline.</b></li>
-          <li>Use <a :href="QUEST_GUIDE_URL" target="_blank" rel="noopener">this guide</a> to learn how to locate and annotate cilia.<template v-if="QUEST_VIDEO_URL"> Check out this <a :href="QUEST_VIDEO_URL" target="_blank" rel="noopener">training video</a> as well!</template></li>
-          <li>Find the cilium, an appendage that projects from the cell's soma. Annotate its centerline, basal body, and daughter centriole in each of their respective layers. For the centerline, hold <b>Ctrl</b> and click along the cilium, then press <b>Enter</b>.</li>
-          <li>Some cells will not have a visible cilium. You may still be able to find their internal basal body and daughter centriole. <a href="#" title="Opens three real example cells, annotated by the lab, in a new tab" @click.prevent="openQuestExamples()">Here's a reference</a> for a variety of cilia states you may encounter.</li>
-          <li>Press <b>Submit</b>, and choose a cilium status from the list. The lab will receive your view as a share link.</li>
-          <li>You can hold three cells at a time. <b>Release</b> will send your cell back to the queue.</li>
-        </ol>
+        <EditableText text-key="quest.retina_cilia.steps" :original="QUEST_STEPS" list-class="nge-aq-help-steps" @action="onQuestTextAction" />
       </div>
       <div v-if="backend.userId" class="nge-aq-headrow">
         <button class="nge-aq-btn nge-aq-refresh" :disabled="loading" @click="load" title="Read the quest sheet again">{{ loading ? 'Reading…' : 'Refresh' }}</button>
@@ -463,7 +468,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 /* Sizes are in px (Ames 2026-10-13: "font is so tiny"): the panel's em
    chain made them smaller than they looked in the stylesheet. */
 .nge-aq-title { font-family: 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; font-size: 14px; font-weight: 700; color: #eef; }
-.nge-aq-lead { font-size: 14px; line-height: 1.5; color: #b3c0d3; }
+:deep(.nge-aq-lead) { font-size: 14px; line-height: 1.5; color: #b3c0d3; }
 .nge-aq-headrow { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
 .nge-aq-refresh { align-self: flex-start; }
 .nge-aq-tally { font-size: 13px; color: #a9b8cc; }
@@ -512,12 +517,12 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 }
 .nge-aq-help-close { background: none; border: none; color: #8aa; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .nge-aq-help-close:hover { color: #fff; }
-.nge-aq-help-steps { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.5; color: #cfdcef; }
-.nge-aq-help-steps li { margin: 4px 0; padding-left: 2px; }
-.nge-aq-help-steps li::marker { color: #42d5ec; font-weight: 700; }
-.nge-aq-help-steps b { color: #fff; font-weight: 600; }
-.nge-aq-help-steps a { color: #7ecaff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.nge-aq-help-steps a:hover { color: #fff; }
+:deep(.nge-aq-help-steps) { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.5; color: #cfdcef; }
+:deep(.nge-aq-help-steps li) { margin: 4px 0; padding-left: 2px; }
+:deep(.nge-aq-help-steps li::marker) { color: #42d5ec; font-weight: 700; }
+:deep(.nge-aq-help-steps b) { color: #fff; font-weight: 600; }
+:deep(.nge-aq-help-steps a) { color: #7ecaff; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+:deep(.nge-aq-help-steps a:hover) { color: #fff; }
 .nge-aq-section {
   padding: 10px 12px 4px;
   font-family: 'Orbitron', 'Inter', sans-serif;

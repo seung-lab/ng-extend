@@ -1457,8 +1457,10 @@ async function postIssueToSlack(token, issue) {
     const emoji = ISSUE_EMOJI[issue.category] || ISSUE_EMOJI.Other;
     const lines = [
       `${emoji} *New site issue submitted* — _${issue.category}_`,
+      issue.title ? `*${issue.title}*` : null,
       `*From:* ${issue.user || "anonymous"}${issue.dataset ? ` · dataset: ${issue.dataset}` : ""}`,
-      `*Report:* ${issue.message}`,
+      // A one line report is all title: say it once.
+      issue.message && issue.message !== issue.title ? `*Report:* ${issue.message}` : null,
       issue.url ? `*Page:* ${issue.url}` : null,
       mentions || null,
       "_For a suggested fix, reply here tagging @Amy's Claude._",
@@ -1502,6 +1504,8 @@ exports.submitIssue = onRequest(
     const message = typeof b.message === "string" ? b.message.trim().slice(0, 4000) : "";
     if (!message) { res.status(400).json({ error: "message required" }); return; }
     const category = ISSUE_CATEGORIES.includes(b.category) ? b.category : "Other";
+    // A short title (Celia #178); older clients send none.
+    const title = typeof b.title === "string" ? b.title.replace(/\s+/g, " ").trim().slice(0, 120) : "";
     const user = pilot.me.username || pilot.me.display_name || "Player";
     const dataset = typeof b.dataset === "string" ? b.dataset.slice(0, 120) : "";
     const pageUrl = typeof b.url === "string" ? b.url.slice(0, 500) : "";
@@ -1511,13 +1515,13 @@ exports.submitIssue = onRequest(
 
     try {
       await db.collection("site_issues").add({
-        message, category,
+        message, category, title: title || null,
         user: user || null, dataset: dataset || null, url: pageUrl || null,
         origin, at: admin.firestore.FieldValue.serverTimestamp(),
       });
       res.json({ ok: true });
       // Fire-and-forget Slack post (response already sent).
-      postIssueToSlack(slackBotToken.value(), { message, category, user, dataset, url: pageUrl });
+      postIssueToSlack(slackBotToken.value(), { title, message, category, user, dataset, url: pageUrl });
     } catch (err) {
       console.error("submitIssue error:", err);
       if (!res.headersSent) res.status(500).json({ error: "could not record issue" });
@@ -1870,6 +1874,35 @@ exports.ewSecureWrite = onRequest(
             feedback_log: [...log, approval], impl_state: mode === "final" ? "deploy_queued" : "live_test_queued",
             tested_by: me?.display_name || by, tested_at: new Date().toISOString() }) }))[0];
           await wakeWorkflow("slack-triage-bridge.yml", "admin hub release");
+          break;
+        }
+        // A note on a card, with no decision (Celia #178): every rule is in
+        // triage-notes.js. The bridge is not woken: nothing for it to do.
+        case "triage.note": {
+          needAdmin();
+          if (!me) throw ewErr(403, "no EyeWire II profile");
+          const { addNote } = require("./triage-notes");
+          const { restDb: todoDb } = require("./todos");
+          const token = slackBotToken.value().trim();
+          try {
+            out = await addNote(args, {
+              db: {
+                row: async id => (await sb(`feedback_triage?id=eq.${id}&select=id,source_excerpt,slack_ts,slack_channel,admin_notes&limit=1`))[0] || null,
+                saveNotes: (id, notes) => sb(`feedback_triage?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ admin_notes: notes }) }),
+                people: () => todoDb(sb).people(),
+              },
+              me, byName: me.display_name || me.username || who.email, channel: REVIEW_CHANNEL_ID, site: EW_LIVE_SITE,
+              bell: rows => sb("notifications", { method: "POST", body: JSON.stringify(rows) }).catch(e => console.warn("[note] bell failed:", e.message)),
+              slack: async (channel, thread, text) => {
+                const r = await slackPost(token, "chat.postMessage", { channel, text, unfurl_links: false, ...(thread ? { thread_ts: thread } : {}) }).catch(e => ({ ok: false, error: e.message }));
+                if (!r.ok) console.warn("[note] slack failed:", r.error);
+              },
+            });
+          } catch (e) {
+            // Until supabase-triage-notes.sql is run the column is missing.
+            if (!e.status && /supabase 400/.test(String(e && e.message))) throw ewErr(409, "Notes need their column: run supabase-triage-notes.sql in the Supabase SQL editor.");
+            throw e;
+          }
           break;
         }
         case "triage.update": {

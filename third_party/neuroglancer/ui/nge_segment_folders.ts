@@ -21,6 +21,9 @@ export interface SegmentFolder {
   /** True once a colour was picked for the folder's cells: cells that join
    *  the folder later take it too. */
   paint?: boolean;
+  /** The tallest its box may be, in px, once dragged by the grip under it
+   *  (Nseraf, report 179); none = the panel's own cap. */
+  height?: number;
 }
 
 /** nge: cells picked with Ctrl+click or Shift+click, to move, show, hide,
@@ -88,6 +91,8 @@ export class SegmentFolders {
           parent: typeof f.parent === 'string' && f.parent ? f.parent : undefined,
           color: typeof f.color === 'string' && /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : undefined,
           paint: f.paint === true,
+          height: typeof f.height === 'number' && Number.isFinite(f.height) ?
+              Math.round(Math.max(FOLDER_MIN_HEIGHT, Math.min(FOLDER_MAX_HEIGHT, f.height))) : undefined,
         });
       }
     }
@@ -111,6 +116,7 @@ export class SegmentFolders {
       ...(f.parent ? {parent: f.parent} : {}),
       ...(f.color ? {color: f.color} : {}),
       ...(f.paint ? {paint: true} : {}),
+      ...(f.height ? {height: f.height} : {}),
     }));
   }
 
@@ -178,6 +184,14 @@ export class SegmentFolders {
     }
     rest.splice(where === 'after' ? end : at, 0, {...moving, parent: target.parent});
     this.value = rest;
+    this.changed.dispatch();
+  }
+
+  /** The box's height from the grip; undefined goes back to the panel's cap. */
+  setHeight(id: string, height: number|undefined) {
+    const h = height === undefined ? undefined :
+        Math.round(Math.max(FOLDER_MIN_HEIGHT, Math.min(FOLDER_MAX_HEIGHT, height)));
+    this.value = this.value.map(f => f.id === id ? {...f, height: h} : f);
     this.changed.dispatch();
   }
 
@@ -250,6 +264,8 @@ export class SegmentFolders {
 }
 
 const PAINT_DEFAULT_KEY = 'nge-folder-paint-default';
+export const FOLDER_MIN_HEIGHT = 48;
+export const FOLDER_MAX_HEIGHT = 2000;
 function paintDefault(key = PAINT_DEFAULT_KEY): boolean {
   try { return localStorage.getItem(key) === '1'; } catch { return false; }
 }

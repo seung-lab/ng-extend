@@ -89,14 +89,13 @@ const MESH_SHARE = 0.6;
 const GPU_MEMORY = 0;  // neuroglancer's ChunkState.GPU_MEMORY
 
 /** Has enough of this cell's mesh arrived to be seen? Read from the mesh
- *  layer's own chunks, the same test as its isReady. A layer without that
- *  kind of mesh does not hold the pumpkin back. */
+ *  layer's own chunks, the same test as its isReady. The Sandbox always has
+ *  meshes, so no mesh layer yet (the layer still loading, or no sign in)
+ *  means wait, not go. */
 function meshDrawn(ml: any, seg: any): boolean {
-  let sawMeshLayer = false;
   for (const rl of ml.layer.renderLayers ?? []) {
     const src = rl?.source;
     if (!src?.chunks?.get || !src.fragmentSource?.chunks?.get || typeof src.getFragmentKey !== 'function') continue;
-    sawMeshLayer = true;
     const key = `${seg.low},${seg.high}`;
     const manifest = src.chunks.get(key);
     const ids: string[] = manifest?.fragmentIds ?? [];
@@ -105,7 +104,7 @@ function meshDrawn(ml: any, seg: any): boolean {
     for (const id of ids) if (src.fragmentSource.chunks.get(src.getFragmentKey(key, id).key)?.state === GPU_MEMORY) drawn++;
     if (drawn / ids.length >= MESH_SHARE) return true;
   }
-  return !sawMeshLayer;
+  return false;
 }
 
 let viewer: any = null;
@@ -159,7 +158,7 @@ function onScreen(c: PatchCell, st: PatchState, layers: any[]): boolean {
         st.painted.add(id);
         try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, s, packed(c.green)); } catch { /* colour stays */ }
       }
-      if (!st.meshSeen) { try { st.meshSeen = meshDrawn(ml, s); } catch { st.meshSeen = true; } }
+      if (!st.meshSeen) { try { st.meshSeen = meshDrawn(ml, s); } catch { /* look again next time */ } }
       return true;
     }
   }

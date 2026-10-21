@@ -42,11 +42,13 @@ export const ngePointScale = {value: (() => {
 
 /** EyeWire II (Celia #177): the size of cut mode's points, set in the cut bar,
  *  apart from annotation layers (some like those big, cut points small).
- *  A multiple of the regular dot. */
+ *  A multiple of the regular dot, on its own: not times the annotation size,
+ *  so Small (1) is exactly a merge point (Celia: "similar to merge point").
+ *  Sizes saved below 1 by the first version read as Small. */
 export const ngeCutPointScale = {value: (() => {
   try {
     const v = Number(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').cutPointSize);
-    return Number.isFinite(v) && v >= 0.25 && v <= 3 ? v : 1;
+    return Number.isFinite(v) && v <= 3 ? Math.max(1, v) : 1;
   } catch { return 1; }
 })()};
 
@@ -205,7 +207,7 @@ emitAnnotation(vec4(color.rgb, color.a * ${this.getCrossSectionFadeFactor()}));
       callback: (shader: ShaderProgram) => void) {
     super.enable(shaderGetter, context, shader => {
       const cut = context.annotationLayer.state.displayState.ngeCutPoints;
-      this.gl.uniform1f(shader.uniform('uNgePointScale'), ngePointScale.value * (cut ? ngeCutPointScale.value : 1));
+      this.gl.uniform1f(shader.uniform('uNgePointScale'), cut ? ngeCutPointScale.value : ngePointScale.value);
       // Gems only in the 3D view; 2D slices keep the precise centred dot.
       const {ngeMarker, ngeSize} = context.annotationLayer.state.displayState;
       const marker = ngeMarker.value;

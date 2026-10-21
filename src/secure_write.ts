@@ -29,7 +29,7 @@ export function caveToken(): string | null {
 
 export type SecureAction =
   | 'notification.insert' | 'notification.update' | 'notification.delete'
-  | 'triage.update' | 'triage.release'
+  | 'triage.update' | 'triage.release' | 'triage.note'
   | 'todo.list' | 'todo.save' | 'todo.comment' | 'todo.delete' | 'todo.key' | 'todo.keyStatus'
   | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log' | 'activity.visit'
   | 'reply.ask' | 'reply.send' | 'reply.console'

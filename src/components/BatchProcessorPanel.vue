@@ -12,7 +12,7 @@ import { setCellComplete, saveCellType, activeCaveServer, NURRO_IMAGES } from '.
 import { planMenuCompletion, finishMenuCompletion, clearOwnAnnotations } from '../util/menu_complete';
 import { mintShortStateLink } from '../util/state_link';
 import { useProofreadingBackendStore, useUserStatsStore } from '../store';
-import { currentCellTypes } from '../datasets';
+import { currentCellTypes, cellTypeLabel } from '../datasets';
 
 const emit = defineEmits({ hide: null });
 
@@ -979,7 +979,7 @@ const panelStyle = computed(() => ({
                 <div class="nge-bp-sub-label">Cell type:</div>
                 <select v-model="selectedCellType" class="nge-bp-select" @keydown.stop @keyup.stop @keypress.stop>
                   <option value="">Select type...</option>
-                  <option v-for="ct in currentCellTypes()" :key="ct" :value="ct">{{ ct }}</option>
+                  <option v-for="ct in currentCellTypes()" :key="ct" :value="ct">{{ cellTypeLabel(ct) }}</option>
                 </select>
                 <button class="nge-bp-btn nge-bp-btn--go" @click="batchAnnotate(group)" :disabled="!selectedCellType">Apply</button>
                 <!-- Each cell is typed at its own saved point; say how many have one. -->
