@@ -205,8 +205,9 @@ export const EXPLORATION_BADGES: BadgeDefinition[] = [
   { id: 132, track: 'exploration', sequence: 32, slug: 'electron-microscope', code: 'EM', name: 'Electron Microscope', description: 'The very kind of microscope that took these pictures!', imageKey: 'exploration/electron-microscope', threshold: 1_800, editThreshold: 1_800 },
   { id: 133, track: 'exploration', sequence: 33, slug: 'tomography', code: 'TOM', name: 'Tomography', description: 'Slice, slice, baby.', imageKey: 'exploration/tomography', threshold: 1_900, editThreshold: 1_900 },
   // Was Diamond Knife until Ames 2026-10-20 ("redo Diamond Knife as an ultramicrotome");
-  // the old Diamond Knife lives on as a Special Badge held only by Nik, who won it first.
-  { id: 134, track: 'exploration', sequence: 34, slug: 'ultramicrotome', code: 'UM', name: 'Ultramicrotome', description: 'Slicing brains thinner than a soap bubble. Gently.', imageKey: 'exploration/ultramicrotome', threshold: 2_000, editThreshold: 2_000 },
+  // the old Diamond Knife lives on as a Special Badge held only by Nik, who won it first. Its line
+  // was "Slicing brains thinner than a soap bubble" until Ames 2026-10-21 ("too creepy").
+  { id: 134, track: 'exploration', sequence: 34, slug: 'ultramicrotome', code: 'UM', name: 'Ultramicrotome', description: 'Your work is cutting edge.', imageKey: 'exploration/ultramicrotome', threshold: 2_000, editThreshold: 2_000 },
   { id: 135, track: 'exploration', sequence: 35, slug: 'pipette', code: 'PIP', name: 'Pipette', description: 'A drop in the bucket? Not you.', imageKey: 'exploration/pipette', threshold: 2_250, editThreshold: 2_250 },
   { id: 136, track: 'exploration', sequence: 36, slug: 'test-tube', code: 'TT', name: 'Test Tube', description: 'Test results are in: you\'re a natural.', imageKey: 'exploration/test-tube', threshold: 2_500, editThreshold: 2_500 },
   { id: 137, track: 'exploration', sequence: 37, slug: 'petri-dish', code: 'PD', name: 'Petri Dish', description: 'Your skills are growing faster than mold in here.', imageKey: 'exploration/petri-dish', threshold: 2_750, editThreshold: 2_750 },
