@@ -25,8 +25,8 @@ export const NEVER_AUTO = ['datasetStats', 'batch'];
 export const STAGE_MOMENTS: StageMoment[] = [
   { key: 'start', label: 'First visit', icons: ['notif'] },
   // Undelete comes early too (Ames 2026-10-20): it rescues a cell taken out of view by mistake.
-  { key: 'getStarted', label: 'Finish Get Started', icons: ['leaderboard', 'layers', 'undelete', 'chat'],
-    nurro: 'You know your way around now. Four things just landed in your top bar: the Leaderboard, the Layer panel, Undelete (it brings back a cell you took out of view) and Chat. Come say hi!' },
+  { key: 'getStarted', label: 'Finish Get Started', icons: ['leaderboard', 'undelete', 'chat'],
+    nurro: 'You know your way around now. Three things just landed in your top bar: the Leaderboard, Undelete (it brings back a cell you took out of view) and Chat. Come say hi!' },
   { key: 'merge', label: 'Merge tutorial: How to Merge', icons: ['merge'] },
   { key: 'cut', label: 'Cut tutorial: How to Cut', icons: ['split'] },
   // Ames 2026-10-20: the Cell Library waits until a player can merge and cut.
@@ -38,13 +38,16 @@ export const STAGE_MOMENTS: StageMoment[] = [
   { key: 'ai-tags', label: 'Advanced Interface: Tag a merger', icons: ['tags'] },
   { key: 'ai-highlight', label: 'Advanced Interface: Highlight', icons: ['highlight'] },
   { key: 'ai-lantern', label: 'Advanced Interface: Lantern', icons: ['lantern'] },
+  // Ames 2026-10-21: the layer side panel comes after Advanced Interface.
+  { key: 'aiDone', label: 'Finish Advanced Interface', icons: ['layers'],
+    nurro: 'Advanced Interface, done! The Layer side panel button is in your top bar now, for every layer and its settings.' },
   { key: 'ownEdit', label: 'First edit on your own', icons: ['help', 'tags'],
     nurro: 'Your first edit on your own! Not sure about a spot? Ask for a Second Opinion with the magnifier in your top bar.' },
   // A player who skips the tutorials is not left with a bare bar: coming back
   // brings whatever the earlier moments would have, tutorial or not.
-  { key: 'day2', label: 'Come back on day 2', icons: ['help', 'tags', 'leaderboard', 'layers', 'undelete', 'chat', 'merge', 'split', 'cells'],
+  { key: 'day2', label: 'Come back on day 2', icons: ['help', 'tags', 'leaderboard', 'undelete', 'chat', 'merge', 'split', 'cells'],
     nurro: 'Welcome back! Your top bar has a few more tools now. Not sure about a spot? Ask for a Second Opinion with the magnifier.' },
-  { key: 'day3', label: 'Come back on day 3', icons: ['screenshot', 'findPath', 'highlight', 'lantern'],
+  { key: 'day3', label: 'Come back on day 3', icons: ['screenshot', 'findPath', 'highlight', 'lantern', 'layers'],
     nurro: 'Day three! Your top bar has the rest of the everyday tools now. Found something beautiful? The camera saves a picture of it.' },
   // Ames 2026-10-20: Your Week in Science after a week, and a way to the
   // Settings where the top bar is chosen.

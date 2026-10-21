@@ -6,11 +6,12 @@
  * bar. Each other icon arrives at the moment that teaches it:
  *
  *   first visit                        notif
- *   Get Started finished (or left)     leaderboard, layers, undelete, chat (Nurro says so), then Merge starts
+ *   Get Started finished (or left)     leaderboard, undelete, chat (Nurro says so), then Merge starts
  *   Merge tutorial, "How to Merge"     merge
  *   Cut tutorial, "How to Cut"         split
  *   Merge and Cut both finished        cells (Nurro)
  *   Advanced Interface, its own steps  findPath, tags, highlight, lantern
+ *   Advanced Interface finished        layers (Nurro)
  *   first edit on your own             help, tags (Nurro)
  *   day 2 / day 3                      anything still missing, then screenshot (Nurro)
  *   a week after first staged          recap, with a Profile Settings button (Nurro)
@@ -322,6 +323,7 @@ async function untilQuietExceptTutorial() {
 export function tutorialFinished(n: number) {
   const s = current();
   if (!s) return;
+  if (n === 2) { void momentWhenQuiet('aiDone'); return; }
   const mark = n === 3 ? 'mergeDone' : n === 5 ? 'cutDone' : '';
   if (!mark || s.done.includes(mark)) return;
   s.done.push(mark);

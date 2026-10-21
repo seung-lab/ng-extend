@@ -39,7 +39,8 @@ test('a brand new player starts with the bell alone', () => {
 });
 
 test('the order Ames set', () => {
-  assert.deepEqual([...moment('getStarted').icons].sort(), ['chat', 'layers', 'leaderboard', 'undelete']);
+  assert.deepEqual([...moment('getStarted').icons].sort(), ['chat', 'leaderboard', 'undelete']);
+  assert.deepEqual(moment('aiDone').icons, ['layers'], 'the layer side panel after Advanced Interface');
   assert.ok(moment('basics').icons.includes('cells'), 'Cell Library comes with finishing Merge and Cut');
   assert.ok(!moment('getStarted').icons.includes('cells'), 'Cell Library does not come with Get Started');
   assert.ok(moment('week1').icons.includes('recap') && moment('week1').settingsButton, 'Your Week after a week, with the Settings button');
