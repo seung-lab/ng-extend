@@ -1682,6 +1682,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         resolved_by_name: responderName,
       }).eq('id', id);
       if (updErr) console.warn('[helpRequests] resolve-on-response error:', updErr.message);
+      else dropSolvedReminder(id);
     }
 
     // Optimistic local update
@@ -1697,7 +1698,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       const note = payload.note || (payload.screenshotUrl ? 'attached a screenshot' : '');
       const notePreview = note.slice(0, 120) + (note.length > 120 ? '...' : '');
       // The server builds the wording and checks the target asked for help.
-      await secureWrite('notification.helpReply', { targetUserId: r.userId, segId: r.segId, note: notePreview })
+      // With the request, the server also schedules tomorrow's "was it answered?".
+      await secureWrite('notification.helpReply', { targetUserId: r.userId, segId: r.segId, note: notePreview, requestId: id })
         .catch((e: any) => console.warn('[helpRequests] notification error:', e?.message));
     }
   }
@@ -1816,7 +1818,8 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
 
   /** Mark a help request as resolved in Supabase. Replies (with notes, links,
    *  screenshots) go through addResponse(); this only flips the thread flag. */
-  async function resolve(id: string) {
+  /** Mark a request solved. True when the server took it. */
+  async function resolve(id: string): Promise<boolean> {
     const backend = useProofreadingBackendStore();
     const resolverName = backend.userName || backend.userEmail?.split('@')[0] || 'Anonymous';
 
@@ -1832,7 +1835,7 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
 
     if (error) {
       console.warn('[helpRequests] resolve error:', error.message);
-    }
+    } else dropSolvedReminder(id);
     // Optimistic update
     const r = requests.value.find(x => x.id === id);
     if (r) {
@@ -1840,6 +1843,13 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
       r.resolvedByName = resolverName;
     }
     refreshPending();
+    return !error;
+  }
+
+  /** A solved request's "was it answered?" reminder, if it has not arrived
+   *  yet, is deleted (functions/help-reminder.js). */
+  function dropSolvedReminder(id: string) {
+    secureWrite('help.dropReminder', { requestId: id }).catch(() => { /* the reminder's link says it is solved */ });
   }
 
   /** Remove a help request (delete from Supabase). */

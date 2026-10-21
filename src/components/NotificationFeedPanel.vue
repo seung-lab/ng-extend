@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
-import { useProofreadingBackendStore } from '../store';
+import { useProofreadingBackendStore, useHelpRequestStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
@@ -286,6 +286,27 @@ function openDetail(notif: any) {
 
 function closeDetail() {
   openNotif.value = null;
+  helpSolvedNote.value = '';
+}
+
+// ── "Was your help request answered?" (Ames 2026-10-21) ──────────────────
+// The reminder a day after a reply links #nge-help-solved=<request id>
+// (functions/help-reminder.js). That link marks the request solved here,
+// instead of going anywhere.
+const helpSolvedNote = ref('');
+async function onDetailBodyClick(e: MouseEvent) {
+  const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
+  const m = a?.getAttribute('href')?.match(/^#nge-help-solved=([0-9a-f-]{1,40})$/i);
+  if (!m) return;
+  e.preventDefault();
+  const help = useHelpRequestStore();
+  if (!help.requests.length) { try { await help.load(); } catch { /* said below */ } }
+  const req = help.requests.find(r => r.id === m[1]);
+  if (!req) { helpSolvedNote.value = 'That help request is no longer there.'; return; }
+  if (req.resolved) { helpSolvedNote.value = 'This request is already marked solved.'; return; }
+  if (req.userId && req.userId !== backend.userId && !backend.isAdmin) { helpSolvedNote.value = 'Only the player who asked can mark this solved.'; return; }
+  const ok = await help.resolve(req.id);
+  helpSolvedNote.value = ok ? 'Marked solved. Thanks for letting the helpers know!' : 'That did not work. Try Mark solved in the Help tab.';
 }
 
 // ── A reply the team asked for (Ames 2026-10-13) ─────────────────────────
@@ -816,7 +837,9 @@ function padRank(rank: number): string {
                   <div
                     class="nge-notif-detail-body"
                     v-html="renderMarkdown(cleanCopy(openNotif.body))"
+                    @click="onDetailBodyClick"
                   ></div>
+                  <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
                 </template>
                 <!-- A reply the team asked for: one per request, with what a report carries. -->
                 <div v-if="replyAsked" class="nge-notif-reply">
@@ -1694,6 +1717,14 @@ span.nge-notif-reply-part { cursor: default; }
 }
 
 /* Help notification action */
+.nge-notif-help-solved {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgb(var(--nd-cyan) / 0.08);
+  color: rgb(var(--nd-cyan));
+  font-size: 14px;
+}
 .nge-notif-open-help {
   margin-top: 16px;
   padding: 8px 16px;
