@@ -64,7 +64,7 @@ test('close counts points near a merger not yet found, never the ones that found
 
 // ── Tiers, time, words ────────────────────────────────────────────────────
 
-test('tiers default to all, two thirds and one third, and can be set', () => {
+test('tiers default to all, two thirds and one third; gems count too; each player has a budget of gems', () => {
   assert.deepEqual(H.thresholds({ target_count: 5 }), { gold: 5, silver: 4, bronze: 2 });
   assert.deepEqual(H.thresholds({ target_count: 3 }), { gold: 3, silver: 2, bronze: 1 });
   assert.deepEqual(H.thresholds({ target_count: 1 }), { gold: 1, silver: 1, bronze: 1 });
@@ -73,9 +73,17 @@ test('tiers default to all, two thirds and one third, and can be set', () => {
   assert.deepEqual(H.thresholds({ target_count: 4, tiers: { gold: 9, silver: 9, bronze: 0 } }), { gold: 4, silver: 4, bronze: 2 });
   const th = H.thresholds({ target_count: 5 });
   assert.deepEqual([5, 4, 3, 2, 1, 0].map((f) => H.tierFor(f, th)), ['gold', 'silver', 'bronze', 'bronze', null, null]);
-  assert.equal(H.maxPoints({ target_count: 2 }), 2);   // one gem per place
-  assert.equal(H.maxPoints({ target_count: 0 }), 1);
+  // Gems: twice the problems, at least two spare; the admin can set it.
+  assert.equal(H.maxPoints({ target_count: 3 }), 6);
+  assert.equal(H.maxPoints({ target_count: 1 }), 3);
   assert.equal(H.maxPoints({ target_count: 7, max_points: 12 }), 12);
+  // Gold allows the problems and a third more gems by default; the other medals no limit unless set.
+  assert.deepEqual(H.gemLimits({ target_count: 3 }), { gold: 4, silver: 0, bronze: 0 });
+  assert.deepEqual(H.gemLimits({ target_count: 3, tiers: { gold_gems: 3, silver_gems: 5, bronze_gems: 99 } }), { gold: 3, silver: 5, bronze: 6 });
+  const t3 = H.thresholds({ target_count: 3 }), g3 = H.gemLimits({ target_count: 3 });
+  assert.equal(H.tierFor(3, t3, 4, g3), 'gold');
+  assert.equal(H.tierFor(3, t3, 5, g3), 'silver');   // all found, but too many gems for gold
+  assert.equal(H.tierFor(1, t3, 6, g3), 'bronze');
 });
 
 test('phases follow the clock; players see a hunt from its announcement to a week after', () => {
@@ -138,8 +146,9 @@ function fakeDb() {
     claimAward: async (id, at) => { const h = s.hunts.find((x) => x.id === id); if (!h || h.awarded_at) return null; h.awarded_at = at; return clone(h); },
     key: async (id) => clone(s.keys[id] || []),
     setKey: async (id, t) => { s.keys[id] = clone(t); },
-    submissions: async (id) => clone(s.subs.filter((x) => x.hunt_id === id).map(({ user_id, found, created_at }) => ({ user_id, found, created_at }))),
+    submissions: async (id) => clone(s.subs.filter((x) => x.hunt_id === id).map(({ user_id, found, close, created_at }) => ({ user_id, found, close, created_at }))),
     allSubmissions: async (id) => clone(s.subs.filter((x) => x.hunt_id === id)),
+    myRun: async (id, uid) => clone([...s.subs].reverse().find((x) => x.hunt_id === id && x.user_id === uid) || null),
     mySubmissions: async (id, uid) => clone(s.subs.filter((x) => x.hunt_id === id && x.user_id === uid)),
     addSubmission: async (row) => { const r = { id: s.seq++, created_at: new Date(Date.UTC(2026, 9, 26) + s.subs.length * 1000).toISOString(), ...clone(row) }; s.subs.push(r); return clone(r); },
     patchSubmission: async (id, row) => { Object.assign(s.subs.find((x) => x.id === id), clone(row)); },
@@ -169,6 +178,13 @@ const T0 = Date.UTC(2026, 9, 20, 12);
 const at = (hours) => new Date(T0 + hours * 3600000);
 const KEY = layer([pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)]);   // nm: [4000,4000,4000] [20000,20000,4000] [36000,4000,8000]
 const VIEW = { dimensions: DIMS, position: [1000, 1000, 100], layers: [{ type: 'segmentation', name: 'seg', segments: ['648518346350533705'] }, { ...KEY, name: 'Mergers' }] };
+
+/** Drop gems one at a time, as the game does; the last answer back. */
+async function dropAll(id, points, ctx) {
+  let r = null;
+  for (const [i, p] of points.entries()) r = await H.huntAction('hunt.drop', { id, layer: layer([{ ...p, id: `g${i}-${p.id}` }]), dims: DIMS }, ctx);
+  return r;
+}
 
 async function makeHunt(h) {
   const admin = h.ctx(ADMIN, at(0), true);
@@ -208,7 +224,7 @@ test('players see nothing before the announcement, then no view until the start,
   // The cells come with the view at the start, so nobody hunts early; the count shows before.
   assert.deepEqual(before.cells, []);
   assert.equal(before.cell_count, 1);
-  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100)]), dims: DIMS }, h.ctx(P1, at(30))), /not started/);
+  await assert.rejects(H.huntAction('hunt.drop', { id: d.id, layer: layer([pt(1000, 1000, 100)]), dims: DIMS }, h.ctx(P1, at(30))), /not started/);
   const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0];
   assert.equal(live.phase, 'live');
   assert.ok(live.view && Array.isArray(live.view.layers));
@@ -221,36 +237,57 @@ test('players see nothing before the announcement, then no view until the start,
   await assert.rejects(H.huntAction('hunt.list', {}, h.ctx(P1, at(60))), /Admins only/);
 });
 
-test('answers are scored, capped and counted; the best answer counts', async () => {
+test('each gem is judged as it lands: right, wrong, or found already; a run ends when all are found or the gems run out', async () => {
   const h = harness();
   const d = await makeHunt(h);
-  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { max_submissions: 3 } }, h.ctx(ADMIN, at(1), true));
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
   const p1 = h.ctx(P1, at(60));
-  const r1 = await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1010, 1000, 100)]), dims: DIMS }, p1);
-  assert.deepEqual({ found: r1.found, of: r1.of, best: r1.best, left: r1.left, tier: r1.tier }, { found: 1, of: 3, best: 1, left: 2, tier: 'bronze' });
-  const r2 = await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100), pt(5000, 5050, 100), pt(9000, 1000, 200)]), dims: DIMS }, p1);
-  assert.equal(r2.found, 3); assert.equal(r2.tier, 'gold');
-  // A worse answer later does not lower the best.
-  const r3 = await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, p1);
-  assert.equal(r3.found, 0); assert.equal(r3.best, 3); assert.equal(r3.left, 0);
-  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, p1), /all 3/);
-  // Too many points, or none, is refused before it counts.
-  const many = layer(Array.from({ length: 4 }, (_, i) => pt(i * 100, 0, 0)));
-  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: many, dims: DIMS }, h.ctx(P2, at(61))), /at most 3 gems/);
-  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([]), dims: DIMS }, h.ctx(P2, at(61))), /Drop a gem/);
-  assert.equal(h.db._s.subs.filter((s) => s.user_id === P2.id).length, 0);
+  const one = (p, id, c = p1) => H.huntAction('hunt.drop', { id: d.id, layer: layer([{ ...p, id }]), dims: DIMS }, c);
+  const r1 = await one(pt(1010, 1000, 100), 'a');      // right: the first merger
+  assert.deepEqual(r1.drop, { id: 'a', hit: true, kind: 'cut' });
+  assert.deepEqual([r1.run.found, r1.run.of, r1.run.gems_used, r1.run.gems_left, r1.run.done], [1, 3, 1, 5, false]);
+  assert.equal(r1.nearest_um, undefined);               // a player never hears how near a miss was
+  const r2 = await one(pt(1, 1, 1), 'b');               // wrong
+  assert.equal(r2.drop.hit, false);
+  assert.equal(r2.run.gems_left, 4);
+  const r3 = await one(pt(1020, 1000, 100), 'c');       // the first merger again: no gem used
+  assert.equal(r3.drop.already, true);
+  assert.equal(r3.run.gems_used, 2);
+  await one(pt(5000, 5050, 100), 'd');
+  const r5 = await one(pt(9000, 1000, 200), 'e');
+  assert.deepEqual([r5.run.found, r5.run.gems_used, r5.run.done, r5.run.tier], [3, 4, true, 'gold']);
+  await assert.rejects(one(pt(2, 2, 2), 'f'), /found them all/);
+  // The run is one row, every gem in order.
+  const rows = h.db._s.subs.filter((x) => x.user_id === P1.id);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].found, 3);
+  assert.equal(rows[0].close, 4);
+  assert.deepEqual(rows[0].points.map((x) => x.id), ['a', 'b', 'd', 'e']);
+  // Out of gems: six misses end a run.
+  const p2 = h.ctx(P2, at(61));
+  for (let i = 0; i < 6; i++) await one(pt(1, i + 1, 1), 'm' + i, p2);
+  await assert.rejects(one(pt(1000, 1000, 100), 'late', p2), /used all your gems/);
+  // One gem at a time.
+  await assert.rejects(H.huntAction('hunt.drop', { id: d.id, layer: layer([pt(1, 1, 1), pt(2, 2, 2)]), dims: DIMS }, h.ctx(P3, at(61))), /one gem at a time/);
+  // Your run comes back with the hunt, so the game can put your gems back.
   const cur = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(62)))).hunts[0];
-  assert.deepEqual(cur.you, { best: 3, submissions: 3, left: 0, tier: 'gold', rank: 1 });
+  assert.deepEqual([cur.you.found, cur.you.gems_used, cur.you.done, cur.you.tier, cur.you.rank], [3, 4, true, 'gold', 1]);
+  assert.deepEqual(cur.you.drops.map((x) => [x.id, x.hit]), [['a', true], ['b', false], ['d', true], ['e', true]]);
+  assert.deepEqual(cur.you.drops[0].at, [1010, 1000, 100]);
+  assert.deepEqual(cur.board.map((b) => [b.found, b.gems]), [[3, 4], [0, 6]]);
   assert.equal(cur.board[0].name, 'nseraf');
+  assert.equal(cur.budget, 6);
+  // The old answer button is gone.
+  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: KEY, dims: DIMS }, p1), /judges each gem/);
 });
 
 test('at the end the awards are given once, to each tier, with a bell note and a chat line', async () => {
   const h = harness();
   const d = await makeHunt(h);
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
-  await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)]), dims: DIMS }, h.ctx(P1, at(60)));
-  await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100)]), dims: DIMS }, h.ctx(P2, at(61)));
-  await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, h.ctx(P3, at(62)));
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P1, at(60)));
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100)], h.ctx(P2, at(61)));
+  await dropAll(d.id, [pt(1, 1, 1)], h.ctx(P3, at(62)));
   // Before the end, an admin cannot award.
   await assert.rejects(H.huntAction('hunt.award', { id: d.id }, h.ctx(ADMIN, at(100), true)), /not ended/);
   const after = await H.huntAction('hunt.current', {}, h.ctx(P3, at(121)));
@@ -259,7 +296,7 @@ test('at the end the awards are given once, to each tier, with a bell note and a
   assert.deepEqual(hunt.winners, { gold: 1, silver: 1, bronze: 0 });
   assert.deepEqual(h.db._s.badges.map((b) => b.slug).sort(), [`hunt-${d.id}-gold`, `hunt-${d.id}-silver`]);
   assert.equal(h.db._s.badges.find((b) => b.slug.endsWith('gold')).name, 'Pinky Hunt: Gold');
-  assert.equal(h.db._s.badges.find((b) => b.slug.endsWith('gold')).image_url, 'https://pyr.example/hunt/gold.svg');
+  assert.equal(h.db._s.badges.find((b) => b.slug.endsWith('gold')).image_url, 'https://pyr.example/hunt/gold.png');
   assert.equal(h.db._s.awards.length, 2);
   assert.deepEqual(h.bell.map((b) => b.title).sort(), ['🏅 New Achievement: Pinky Hunt: Gold', '🏅 New Achievement: Pinky Hunt: Silver']);
   assert.equal(h.chat.length, 2);
@@ -270,8 +307,8 @@ test('at the end the awards are given once, to each tier, with a bell note and a
   // An admin's Award again is idempotent: no second note.
   const again = await H.huntAction('hunt.award', { id: d.id }, h.ctx(ADMIN, at(124), true));
   assert.equal(again.fresh, 0); assert.equal(h.bell.length, 2);
-  // The submit window is closed.
-  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, h.ctx(P3, at(125))), /over/);
+  // No more gems after the end.
+  await assert.rejects(H.huntAction('hunt.drop', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, h.ctx(P3, at(125))), /over/);
 });
 
 test('admins can announce, start and end now; ending awards at once', async () => {
@@ -283,7 +320,7 @@ test('admins can announce, start and end now; ending awards at once', async () =
   assert.equal(h.db._s.notes.find((n) => n.id === a.notes.announce.id).send_at, iso(at(2)));
   const s = await H.huntAction('hunt.now', { id: d.id, kind: 'start' }, h.ctx(ADMIN, at(3), true));
   assert.equal(s.phase, 'live'); assert.equal(s.notes.start.sent, true);
-  await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100)]), dims: DIMS }, h.ctx(P1, at(4)));
+  await dropAll(d.id, [pt(1000, 1000, 100)], h.ctx(P1, at(4)));
   const e = await H.huntAction('hunt.now', { id: d.id, kind: 'end' }, h.ctx(ADMIN, at(5), true));
   assert.equal(e.phase, 'ended'); assert.ok(e.awarded_at); assert.equal(e.notes.end.sent, true);
   assert.equal(h.db._s.awards.length, 1);
@@ -316,7 +353,7 @@ test('a new key re-scores every answer so far', async () => {
   const h = harness();
   const d = await makeHunt(h);
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
-  await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100)]), dims: DIMS }, h.ctx(P1, at(60)));
+  await dropAll(d.id, [pt(1000, 1000, 100)], h.ctx(P1, at(60)));
   assert.equal(h.db._s.subs[0].found, 1);
   // The admin moves the first merger far away: that answer no longer finds it.
   await H.huntAction('hunt.save', { id: d.id, key: { layer: layer([pt(90000, 90000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)]), dims: DIMS } }, h.ctx(ADMIN, at(61), true));
@@ -330,7 +367,7 @@ test('the Achievement lines are jokes with counts, and use the art set for the h
   assert.equal(g.image_url, 'https://art.example/g.png');
   assert.match(g.description, /^Gold in Pinky Hunt, every one of the 5 mergers found\. /);
   const s = H.badgeRow(hunt, 'silver', th, 'https://pyr.example');
-  assert.equal(s.image_url, 'https://pyr.example/hunt/silver.svg');
+  assert.equal(s.image_url, 'https://pyr.example/hunt/silver.png');
   assert.match(s.description, /4 or more of the 5 mergers/);
   for (const r of [g, s]) assert.doesNotMatch(r.name + r.description, /[—–]|badge/i);
 });
@@ -350,7 +387,7 @@ test('each note can carry its own picture, one picture can serve several, and a 
   // The admin sees each note's words and picture, to preview it.
   const view = await H.huntAction('hunt.read', { id: d.id }, h.ctx(ADMIN, at(2), true));
   assert.equal(view.notes.start.image_url, A.image_url);
-  assert.ok(/drop a gold gem/.test(view.notes.start.body));
+  assert.ok(/drop a gem on each one you find/.test(view.notes.start.body));
   // After the announcement is out, a new picture still reaches it; its words and time stay.
   const sent = clone(h.db._s.notes[0]);
   await H.huntAction('hunt.save', { id: d.id, fields: { notif_images: { announce: B, end: B }, title: 'Renamed Hunt' } }, h.ctx(ADMIN, at(30), true));
@@ -362,28 +399,33 @@ test('each note can carry its own picture, one picture can serve several, and a 
   assert.ok(h.db._s.notes[1].title.endsWith('Renamed Hunt'));
 });
 
-test('an admin can try any hunt: it opens as running, is scored against the real key, and nothing is kept', async () => {
+test('an admin can try any hunt: it opens as running, each gem is judged against the real key, and nothing is kept', async () => {
   const h = harness();
   const d = await makeHunt(h);   // a draft: players see nothing
+  const admin = h.ctx(ADMIN, at(1), true);
   await assert.rejects(H.huntAction('hunt.test', { id: d.id }, h.ctx(P1, at(1))), /Admins only/);
-  await assert.rejects(H.huntAction('hunt.test_submit', { id: d.id, layer: KEY, dims: DIMS }, h.ctx(P1, at(1))), /Admins only/);
-  const t = await H.huntAction('hunt.test', { id: d.id }, h.ctx(ADMIN, at(1), true));
+  await assert.rejects(H.huntAction('hunt.test_drop', { id: d.id, layer: layer([pt(1, 1, 1)]), dims: DIMS }, h.ctx(P1, at(1))), /Admins only/);
+  const t = await H.huntAction('hunt.test', { id: d.id }, admin);
   assert.equal(t.test, true);
   assert.equal(t.phase, 'live');
   assert.ok(t.view && Array.isArray(t.view.layers) && !JSON.stringify(t.view).includes('Mergers'));
   assert.deepEqual(t.cells.map((c) => c.root), ['648518346350533705']);
-  // Two gems on mergers, one 2.5 µm off the third (tolerance 2 µm).
-  const gems = layer([pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000 + 625, 1000, 200)]);
-  const r = await H.huntAction('hunt.test_submit', { id: d.id, layer: gems, dims: DIMS }, h.ctx(ADMIN, at(1), true));
-  assert.equal(r.found, 2);
-  assert.equal(r.of, 3);
-  assert.equal(r.test, true);
-  assert.deepEqual(r.mergers.map((m) => m.found), [true, true, false]);
-  assert.deepEqual(r.mergers.map((m) => m.nearest_um), [0, 0, 2.5]);
+  assert.deepEqual([t.you.found, t.you.gems_left, t.you.done], [0, 6, false]);
+  // A right gem, then one 2.5 µm off the third merger (tolerance 2 µm): the admin hears how near.
+  const a = await H.huntAction('hunt.test_drop', { id: d.id, layer: layer([{ ...pt(1000, 1000, 100), id: 't1' }]), dims: DIMS, prev: [] }, admin);
+  assert.equal(a.drop.hit, true);
+  assert.equal(a.test, true);
+  const b = await H.huntAction('hunt.test_drop', { id: d.id, layer: layer([{ ...pt(9625, 1000, 200), id: 't2' }]), dims: DIMS, prev: [{ id: 't1', nm: a.nm, hit: 0 }] }, admin);
+  assert.equal(b.drop.hit, false);
+  assert.equal(b.nearest_um, 2.5);
+  assert.deepEqual([b.run.found, b.run.gems_used], [1, 2]);
+  // The game's word is not taken for earlier gems: a "hit" far from every problem is judged again.
+  const c = await H.huntAction('hunt.test_drop', { id: d.id, layer: layer([{ ...pt(5000, 5000, 100), id: 't3' }]), dims: DIMS, prev: [{ id: 'x', nm: [1, 1, 1], hit: 0 }] }, admin);
+  assert.deepEqual([c.run.found, c.run.gems_used], [1, 2]);
   assert.equal(h.db._s.subs.length, 0);
   // A hunt with no key yet cannot be tried.
-  const empty = await H.huntAction('hunt.save', { fields: { title: 'Empty', dataset: 'pinky_nf_v2' }, status: 'draft' }, h.ctx(ADMIN, at(1), true));
-  await assert.rejects(H.huntAction('hunt.test', { id: empty.id }, h.ctx(ADMIN, at(1), true)), /answer key/);
+  const empty = await H.huntAction('hunt.save', { fields: { title: 'Empty', dataset: 'pinky_nf_v2' }, status: 'draft' }, admin);
+  await assert.rejects(H.huntAction('hunt.test', { id: empty.id }, admin), /answer key/);
 });
 
 test('the Admin Hub can preview the notes with the form as it is, before anything is saved', async () => {
@@ -412,13 +454,10 @@ test('an answer key can come from two layers, one of places to cut and one of pl
   const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0];
   assert.deepEqual(live.spots, { cut: 2, merge: 1 });
   assert.ok(!JSON.stringify(live).includes('36000'));   // still no key coordinates
-  // One gem per place by default: three gems, and the merge place is found like the cuts.
-  const r = await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)]), dims: DIMS }, h.ctx(P1, at(61)));
-  assert.equal(r.found, 3);
-  await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1, 1, 1), pt(2, 2, 2), pt(3, 3, 3), pt(4, 4, 4)]), dims: DIMS }, h.ctx(P2, at(61))), /at most 3 gems/);
-  // The test run says each place's kind.
-  const t = await H.huntAction('hunt.test_submit', { id: d.id, layer: layer([pt(9000, 1000, 200)]), dims: DIMS }, h.ctx(ADMIN, at(61), true));
-  assert.deepEqual(t.mergers.map((m) => [m.kind, m.found]), [['cut', false], ['cut', false], ['merge', true]]);
+  // The extension is found like the mergers, and a right gem says which kind it found.
+  const r = await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P1, at(61)));
+  assert.equal(r.run.found, 3);
+  assert.equal(r.drop.kind, 'merge');
   assert.equal(H.spotWords({ cut: 0, merge: 2 }), '2 extensions are');
   assert.equal(H.spotWords({ cut: 1, merge: 0 }), '1 merger is');
 });
@@ -431,9 +470,9 @@ test('a medal can give a special Achievement an admin made, instead of the one t
   const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0];
   assert.deepEqual(live.prizes.gold, { name: 'Pumpkin King', image: 'https://img.example/pk-t.png' });
   assert.deepEqual(live.prizes.silver, { name: 'Pinky Hunt: Silver', image: 'https://img.example/s.png' });
-  assert.deepEqual(live.prizes.bronze, { name: 'Pinky Hunt: Bronze', image: 'https://pyr.example/hunt/bronze.svg' });
-  await H.huntAction('hunt.submit', { id: d.id, layer: KEY, dims: DIMS }, h.ctx(P1, at(61)));          // all 3: gold
-  await H.huntAction('hunt.submit', { id: d.id, layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100)]), dims: DIMS }, h.ctx(P2, at(62)));   // 2: silver
+  assert.deepEqual(live.prizes.bronze, { name: 'Pinky Hunt: Bronze', image: 'https://pyr.example/hunt/bronze-128.png' });
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P1, at(61)));   // all 3: gold
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100)], h.ctx(P2, at(62)));   // 2: silver
   await H.huntAction('hunt.current', {}, h.ctx(P3, at(121)));
   const gold = h.db._s.awards.find((a) => a.user_id === P1.id);
   assert.equal(gold.badge_id, 900);
@@ -451,7 +490,7 @@ test('an admins only hunt is a test: players never see it, its notes go to the a
   assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts.length, 0);
   const seen = (await H.huntAction('hunt.current', {}, h.ctx(ADMIN, at(60), true))).hunts[0];
   assert.equal(seen.admins_only, true);
-  await H.huntAction('hunt.submit', { id: d.id, layer: KEY, dims: DIMS }, h.ctx(ADMIN, at(61), true));
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(ADMIN, at(61), true));
   await H.huntAction('hunt.current', {}, h.ctx(ADMIN, at(121), true));
   assert.equal(h.db._s.awards.length, 1);
   assert.equal(h.chat.length, 0);
@@ -508,4 +547,48 @@ test('before the admins_only column exists, a test site saves drafts and tries t
   // From the live game it schedules as before.
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
   assert.equal(h.db._s.notes.length, 3);
+});
+
+test('cut gems find mergers and extend gems find missing extensions; the wrong kind on a real problem is a miss that says so', async () => {
+  const h = harness();
+  const admin = h.ctx(ADMIN, at(0), true);
+  const d = await H.huntAction('hunt.save', { fields: { title: 'Two Kinds', dataset: 'pinky_nf_v2', cells: [{ root: '648518346350533705' }],
+    announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)) },
+    key: { layers: [{ layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100)]), kind: 'cut' }, { layer: layer([pt(9000, 1000, 200)]), kind: 'merge' }], dims: DIMS },
+    view: VIEW, status: 'scheduled' }, admin);
+  const p1 = h.ctx(P1, at(60));
+  const one = (p, id, kind) => H.huntAction('hunt.drop', { id: d.id, kind, layer: layer([{ ...p, id }]), dims: DIMS }, p1);
+  const wrong = await one(pt(9000, 1000, 200), 'a', 'cut');      // a cut gem on the extension
+  assert.deepEqual(wrong.drop, { id: 'a', hit: false, kind: null, other: 'merge' });
+  assert.equal(wrong.run.gems_used, 1);
+  const right = await one(pt(9000, 1000, 200), 'b', 'merge');    // an extend gem there
+  assert.deepEqual(right.drop, { id: 'b', hit: true, kind: 'merge' });
+  assert.deepEqual([right.run.found_by, right.run.of_by], [{ cut: 0, merge: 1 }, { cut: 2, merge: 1 }]);
+  const cut = await one(pt(1000, 1000, 100), 'c', 'cut');
+  assert.equal(cut.drop.hit, true);
+  const cur = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(61)))).hunts[0];
+  assert.deepEqual(cur.you.drops.map((x) => [x.id, x.k, x.hit]), [['a', 'cut', false], ['b', 'merge', true], ['c', 'cut', true]]);
+  // A new key judges each gem again by its own kind.
+  await H.huntAction('hunt.save', { id: d.id, key: { layers: [{ layer: layer([pt(1000, 1000, 100), pt(5000, 5000, 100)]), kind: 'cut' }, { layer: layer([pt(9000, 1000, 200)]), kind: 'cut' }], dims: DIMS } }, h.ctx(ADMIN, at(62), true));
+  assert.deepEqual(h.db._s.subs[0].points.map((x) => x.hit >= 0), [true, false, true]);
+});
+
+test('an admins only hunt sends each note to every admin, never to chat; turned to everyone, one note each again', async () => {
+  const h = harness();
+  h.db.adminUserIds = async () => [ADMIN.id, P2.id];   // Ames and Celia
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { admins_only: true } }, h.ctx(ADMIN, at(1), true));
+  assert.equal(h.db._s.notes.length, 6);
+  assert.deepEqual([...new Set(h.db._s.notes.map((n) => n.target_id))].sort(), [ADMIN.id, P2.id].sort());
+  assert.ok(h.db._s.notes.every((n) => n.target_type === 'user' && n.post_to_chat === false));
+  const row = h.db._s.hunts[0];
+  assert.ok(Array.isArray(row.notif_ids.start) && row.notif_ids.start.length === 2);
+  // Moving the start moves both start notes (made again), and the admin view still shows it.
+  const v = await H.huntAction('hunt.save', { id: d.id, fields: { start_at: iso(at(50)) } }, h.ctx(ADMIN, at(2), true));
+  assert.equal(h.db._s.notes.filter((n) => n.send_at === iso(at(50))).length, 2);
+  assert.equal(v.notes.start.send_at, iso(at(50)));
+  // Back to everyone, before any note went out: one note of each kind, to all, in chat.
+  await H.huntAction('hunt.save', { id: d.id, fields: { admins_only: false } }, h.ctx(ADMIN, at(3), true));
+  assert.equal(h.db._s.notes.length, 3);
+  assert.ok(h.db._s.notes.every((n) => n.target_type === 'all' && n.post_to_chat === true));
 });

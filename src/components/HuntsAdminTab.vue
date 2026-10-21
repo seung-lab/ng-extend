@@ -11,6 +11,8 @@
 import { computed, onMounted, ref } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { useProofreadingBackendStore } from '../store';
+import { renderSafeMarkdown } from '../util/safe_markdown';
+import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
 import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
 import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -33,7 +35,7 @@ interface AdminHunt {
   notes?: Partial<Record<NoteKind, NoteInfo>>;
   notif_images?: Partial<Record<NoteKind, Picture>>;
 }
-interface BoardRow { rank: number; name: string; found: number; at: string; tries: number; tier: Tier | null }
+interface BoardRow { rank: number; name: string; found: number; at: string; gems: number; tier: Tier | null }
 
 const TIERS: Tier[] = ['gold', 'silver', 'bronze'];
 const TIER_WORD: Record<Tier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
@@ -57,6 +59,8 @@ const notInstalled = ref(false);
 const blankPrize = (): Prize => ({ mode: 'own', badge_id: '', image: null });
 const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: '' as number | '', max_submissions: 10,
   tiers: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
+  /** The most gems each medal allows (empty: Gold auto, the others no limit). */
+  tierGems: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
   prize: { gold: blankPrize(), silver: blankPrize(), bronze: blankPrize() } as Record<Tier, Prize>,
   announce: '', start: '', end: '', admins_only: false,
   images: { announce: null, start: null, end: null } as Record<NoteKind, Picture | null> });
@@ -71,6 +75,13 @@ function setCells(cells: { root: string; label: string; soma?: number[] }[]) {
   const was = new Map(cellRows.value.map(c => [c.root, c]));
   cellRows.value = cells.map(c => ({ root: c.root, label: c.label || '', soma: c.soma && c.soma.length === 3 ? [...c.soma] : (was.get(c.root)?.soma ?? ['', '', '']) }));
 }
+/** Paste "89245, 55709, 978" (or with spaces, as the coordinate bar copies it) into any box: all three fill (Ames 2026-10-21). */
+function pasteSoma(i: number, e: ClipboardEvent) {
+  const nums = (e.clipboardData?.getData('text') || '').match(/-?\d+(?:\.\d+)?/g);
+  if (!nums || nums.length < 3) return;   // one number: an ordinary paste into that box
+  e.preventDefault();
+  cellRows.value[i].soma = nums.slice(0, 3).map(Number);
+}
 function useCrosshair(i: number) {
   const p = crosshairXyz();
   if (!p) { error.value = 'The viewer is not ready yet.'; return; }
@@ -78,6 +89,11 @@ function useCrosshair(i: number) {
 }
 const cellFields = () => cellRows.value.map(c => ({ root: c.root, label: c.label,
   ...(c.soma.every(v => v !== '' && Number.isFinite(Number(v))) ? { soma: c.soma.map(Number) } : {}) }));
+// The description, with Bold, Bullets and Numbers (Ames 2026-10-21: "need formatting here").
+const descEl = ref<HTMLTextAreaElement | null>(null);
+const desc: Composer = { get el() { return descEl.value; }, get: () => form.value.description, set: v => { form.value.description = v; } };
+const descPreview = computed(() => (form.value.description.trim() ? renderSafeMarkdown(form.value.description, true) : ''));
+
 function setAdminsOnly(e: Event) { form.value.admins_only = (e.target as HTMLInputElement).checked; }
 const somaMissing = computed(() => cellRows.value.length > 0 && !cellRows.value[0].soma.every(v => v !== '' && Number.isFinite(Number(v))));
 const read = ref<null | { key: any; view: any; cells: { root: string; label: string }[]; dataset: string; count: number; kinds: { cut: number; merge: number } }>(null);
@@ -139,6 +155,7 @@ async function open(h: AdminHunt) {
     form.value = { title: full.title, description: full.description || '', link: '', tolerance_um: Math.round(full.tolerance_nm / 100) / 10,
       max_points: full.max_points || '', max_submissions: full.max_submissions || 10,
       tiers: { gold: full.tiers?.gold || '', silver: full.tiers?.silver || '', bronze: full.tiers?.bronze || '' },
+      tierGems: { gold: (full.tiers as any)?.gold_gems || '', silver: (full.tiers as any)?.silver_gems || '', bronze: (full.tiers as any)?.bronze_gems || '' },
       prize: { gold: prizeFrom(full.art?.gold), silver: prizeFrom(full.art?.silver), bronze: prizeFrom(full.art?.bronze) },
       announce: toLocalInput(full.announce_at), start: toLocalInput(full.start_at), end: toLocalInput(full.end_at), admins_only: !!full.admins_only,
       images: { announce: full.notif_images?.announce ?? null, start: full.notif_images?.start ?? null, end: full.notif_images?.end ?? null } };
@@ -190,7 +207,8 @@ const scheduled = computed(() => phase.value === 'announced' || phase.value === 
 const keyNeeded = computed(() => isNew.value && !read.value);
 const defaultsFor = computed(() => {
   const n = read.value?.count ?? editing.value?.target_count ?? 0;
-  return n ? { gold: n, silver: Math.ceil((2 * n) / 3), bronze: Math.ceil(n / 3), points: n } : null;
+  // As the server: twice the problems (at least two spare); Gold allows a third more gems than problems.
+  return n ? { gold: n, silver: Math.ceil((2 * n) / 3), bronze: Math.ceil(n / 3), points: Math.max(n + 2, 2 * n), goldGems: n + Math.ceil(n / 3) } : null;
 });
 
 async function save(status?: 'draft' | 'scheduled') {
@@ -201,7 +219,8 @@ async function save(status?: 'draft' | 'scheduled') {
     const fields: Record<string, any> = {
       title: f.title, description: f.description, tolerance_nm: Math.round(Number(f.tolerance_um) * 1000),
       max_points: Number(f.max_points) || 0, max_submissions: Number(f.max_submissions) || 10,
-      tiers: { gold: Number(f.tiers.gold) || 0, silver: Number(f.tiers.silver) || 0, bronze: Number(f.tiers.bronze) || 0 },
+      tiers: { gold: Number(f.tiers.gold) || 0, silver: Number(f.tiers.silver) || 0, bronze: Number(f.tiers.bronze) || 0,
+        gold_gems: Number(f.tierGems.gold) || 0, silver_gems: Number(f.tierGems.silver) || 0, bronze_gems: Number(f.tierGems.bronze) || 0 },
       art: artFields(),
       announce_at: fromLocalInput(f.announce), start_at: fromLocalInput(f.start), end_at: fromLocalInput(f.end),
       notif_images: pictureFields(), admins_only: !!f.admins_only,
@@ -319,7 +338,7 @@ const prizeLibrary = computed<Picture[]>(() => {
   for (const h of list.value) for (const t of TIERS) { const pr = prizeFrom(h.art?.[t]); if (pr.mode === 'own') add(pr.image); }
   return out.slice(0, 24);
 });
-const medalSrc = (t: Tier) => `hunt/${t}.svg`;
+const medalSrc = (t: Tier) => `hunt/${t}-128.png`;   // Ames's medals
 async function addPrizePicture(t: Tier, e: Event) {
   const input = e.target as HTMLInputElement; const file = input.files?.[0]; input.value = '';
   if (!file || prizeUploading.value) return;
@@ -347,8 +366,9 @@ function tryIt() {
   <section class="nge-hunts-admin">
     <header class="nge-hunts-head">
       <h3>Hunts</h3>
-      <p class="nge-hunts-lead">A timed merger hunt: players drop gold gems on the mergers of a cell and submit; gold, silver and bronze Achievements go to the best hunters when it ends.</p>
+      <p class="nge-hunts-lead">A timed hunt for mergers and missing extensions: players Ctrl + Click to drop gems, each judged as it lands, until they find them all or run out of gems. Gold, silver and bronze go to the best hunters when it ends.</p>
     </header>
+    <p v-if="ON_TEST_SITE" class="nge-hunts-testsite"><b>Test site:</b> every Hunt here is a test. Only admins see it and get its notes; nothing reaches players or chat.</p>
 
     <p v-if="notInstalled" class="nge-hunts-warn">The Hunt is not set up on the server yet: run <code>supabase-hunts.sql</code> in Supabase, then deploy the <code>ewHunt</code> function.</p>
     <p v-if="error && !notInstalled" class="nge-hunts-error" role="alert">{{ error }}</p>
@@ -403,7 +423,7 @@ function tryIt() {
           <p class="nge-hunts-help"><b>Where players start.</b> A link is often centered on a merger, which would give it away. Give each cell's soma: x, y and z as the coordinate bar shows them. Players start at the first; with several cells they get a button for each.</p>
           <div v-for="(c, i) in cellRows" :key="c.root" class="nge-hunts-cellrow">
             <span class="nge-hunts-cellid" :title="c.root">Cell {{ i + 1 }} <span class="nge-hunts-muted">{{ c.root }}</span></span>
-            <input v-for="(axis, k) in ['x', 'y', 'z']" :key="axis" v-model.number="c.soma[k]" type="number" class="nge-hunts-input nge-hunts-xyz" :placeholder="axis" :aria-label="`Cell ${i + 1} soma ${axis}`" />
+            <input v-for="(axis, k) in ['x', 'y', 'z']" :key="axis" v-model.number="c.soma[k]" type="number" class="nge-hunts-input nge-hunts-xyz" :placeholder="k === 0 ? 'x (or paste x, y, z)' : axis" :aria-label="`Cell ${i + 1} soma ${axis}`" @paste="pasteSoma(i, $event)" />
             <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="useCrosshair(i)">Use the crosshair</button>
           </div>
         </div>
@@ -414,7 +434,17 @@ function tryIt() {
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>2. The words</legend>
         <label>Title <input v-model="form.title" class="nge-hunts-input" maxlength="80" placeholder="The Pinky Merger Hunt" /></label>
-        <label>Description <textarea v-model="form.description" class="nge-hunts-input" rows="3" maxlength="1500" placeholder="What players are looking for, and any hint."></textarea></label>
+        <div class="nge-hunts-desc-head">
+          <span class="nge-hunts-desc-label">Description</span>
+          <span class="nge-hunts-fmt" role="toolbar" aria-label="Format">
+            <button type="button" title="Bold" @click="wrapSelection(desc, '**', 'bold')"><b>B</b></button>
+            <button type="button" title="Bullets" @click="prefixLines(desc, '• ', 'A point')">• Bullets</button>
+            <button type="button" title="Numbers" @click="prefixLines(desc, i => `${i + 1}. `, 'A step')">1. Numbers</button>
+          </span>
+        </div>
+        <textarea ref="descEl" v-model="form.description" class="nge-hunts-input" rows="4" maxlength="1500" aria-label="Description"
+                  placeholder="What players are looking for, and any hint. The Hunt box already shows how to play." @paste="pasteFormatted(desc, $event)"></textarea>
+        <div v-if="descPreview" class="nge-hunts-desc-preview"><span class="nge-hunts-muted">What players see:</span><div v-html="descPreview"></div></div>
       </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
@@ -433,13 +463,16 @@ function tryIt() {
         <legend>4. Scoring and prizes</legend>
         <div class="nge-hunts-grid">
           <label>Tolerance (µm) <input v-model.number="form.tolerance_um" type="number" min="0.1" max="100" step="0.5" class="nge-hunts-input" /></label>
-          <label>Most gems per answer <input v-model.number="form.max_points" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor.points}` : 'auto'" /></label>
-          <label>Answers per player <input v-model.number="form.max_submissions" type="number" min="1" class="nge-hunts-input" /></label>
+          <label>Gems per player <input v-model.number="form.max_points" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor.points}` : 'auto'" /></label>
         </div>
-        <p class="nge-hunts-help">A gem finds a merger when it is within the tolerance. <b>Most gems per answer</b> stops a player covering the cell in gems to catch every merger; left empty it is three per merger, at least 10.</p>
-        <p class="nge-hunts-help">Mergers a player must find for each medal. Left empty: all of them for Gold, two thirds for Silver, one third for Bronze.</p>
+        <p class="nge-hunts-help">A gem finds a problem of its kind within the tolerance. Each player has <b>Gems per player</b> gems, one run: their Hunt ends when they find them all or the gems run out. Left empty: twice the problems.</p>
+        <p class="nge-hunts-help">For each medal: problems to find, and the most gems used. Left empty: all for Gold, using the problems and a third more in gems; two thirds for Silver and one third for Bronze, with no gem limit.</p>
         <div class="nge-hunts-grid">
-          <label v-for="t in TIERS" :key="t">{{ TIER_WORD[t] }} <input v-model.number="form.tiers[t]" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor[t]}` : 'auto'" /></label>
+          <div v-for="t in TIERS" :key="t" class="nge-hunts-tierbox">
+            <span class="nge-hunts-tierword">{{ TIER_WORD[t] }}</span>
+            <label>find at least <input v-model.number="form.tiers[t]" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor[t]}` : 'auto'" /></label>
+            <label>using at most <input v-model.number="form.tierGems[t]" type="number" min="1" class="nge-hunts-input" :placeholder="t === 'gold' && defaultsFor ? `auto: ${defaultsFor.goldGems} gems` : 'any gems'" /></label>
+          </div>
         </div>
       </fieldset>
 
@@ -545,9 +578,9 @@ function tryIt() {
       <fieldset v-if="board.length" class="nge-hunts-group">
         <legend>Hunters ({{ board.length }})</legend>
         <table class="nge-hunts-board">
-          <thead><tr><th>#</th><th>Player</th><th>Best</th><th>Answers</th><th>Medal</th></tr></thead>
+          <thead><tr><th>#</th><th>Player</th><th>Found</th><th>Gems</th><th>Medal</th></tr></thead>
           <tbody>
-            <tr v-for="b in board" :key="b.rank"><td>{{ b.rank }}</td><td>{{ b.name }}</td><td>{{ b.found }} / {{ editing.target_count }}</td><td>{{ b.tries }}</td><td>{{ b.tier ? TIER_WORD[b.tier] : '' }}</td></tr>
+            <tr v-for="b in board" :key="b.rank"><td>{{ b.rank }}</td><td>{{ b.name }}</td><td>{{ b.found }} / {{ editing.target_count }}</td><td>{{ b.gems }}</td><td>{{ b.tier ? TIER_WORD[b.tier] : '' }}</td></tr>
           </tbody>
         </table>
       </fieldset>
@@ -606,7 +639,18 @@ function tryIt() {
 .nge-hunts-cells { display: flex; flex-direction: column; gap: 6px; }
 .nge-hunts-cellrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .nge-hunts-cellid { min-width: 210px; color: #e6f0ff; font-size: 13px; }
-.nge-hunts-xyz { width: 92px !important; flex: none; }
+.nge-hunts-xyz { width: 118px !important; flex: none; }
+.nge-hunts-testsite { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(90, 170, 255, 0.1); border: 1px solid rgba(90, 170, 255, 0.5); color: #cfe4ff; font-size: 13px; }
+.nge-hunts-desc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nge-hunts-desc-label { font-size: 12.5px; color: #a9bbd3; }
+.nge-hunts-fmt { display: flex; gap: 4px; }
+.nge-hunts-fmt button { padding: 2px 8px; border-radius: 6px; cursor: pointer; background: rgba(90, 170, 255, 0.1); border: 1px solid rgba(90, 170, 255, 0.35); color: #cfe4ff; font: 600 12px 'Inter', sans-serif; }
+.nge-hunts-fmt button:hover, .nge-hunts-fmt button:focus-visible { background: rgba(90, 170, 255, 0.22); }
+.nge-hunts-desc-preview { padding: 8px 10px; border-radius: 8px; background: rgba(4, 8, 18, 0.6); border: 1px dashed rgba(90, 170, 255, 0.3); font-size: 13.5px; }
+.nge-hunts-desc-preview :deep(p) { margin: 4px 0; }
+.nge-hunts-desc-preview :deep(ol), .nge-hunts-desc-preview :deep(ul) { margin: 4px 0; padding-left: 20px; }
+.nge-hunts-tierbox { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(90, 170, 255, 0.04); border: 1px solid rgba(90, 170, 255, 0.15); }
+.nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
 .nge-hunts-warnline { margin: 0; color: #f8e08a; font-size: 12.5px; }
 .nge-hunts-chip--admins { background: rgba(90, 170, 255, 0.18); color: #9fd0ff; }

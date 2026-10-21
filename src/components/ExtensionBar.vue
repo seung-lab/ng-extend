@@ -36,6 +36,8 @@ import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import HuntPanel from "components/HuntPanel.vue";
+import HuntGemFx from "components/HuntGemFx.vue";
+import HuntBegins from "components/HuntBegins.vue";
 import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
@@ -1031,6 +1033,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
   <hunt-panel v-if="showHunt" :hunt-id="huntPanelId" :test="huntPanelTest" @hide="showHunt = false; huntPanelTest = false" />
+  <!-- Each gem's answer on the spot; the start of a Hunt (Ames 2026-10-21) -->
+  <hunt-gem-fx />
+  <hunt-begins @open="openHunt" />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <!-- The Ask dock is now the single command surface: it searches the same

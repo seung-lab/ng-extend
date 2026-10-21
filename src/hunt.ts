@@ -27,8 +27,10 @@ export interface HuntInfo {
   announce_at: string | null; start_at: string; end_at: string; phase: HuntPhase;
   target_count: number; tolerance_um: number; max_points: number; max_submissions: number;
   tiers: { gold: number; silver: number; bronze: number }; awarded: boolean;
+  /** Gems each player has, and the most gems each medal allows (0: no limit). */
+  budget: number; gem_limits: { gold: number; silver: number; bronze: number };
   view: any | null;
-  you: { best: number; submissions: number; left: number; tier: HuntTier | null; rank: number };
+  you: HuntRun & { best: number; submissions: number; rank: number };
   /** An admin's test run (hunt.test): open as if running, for that admin only; answers are never kept. */
   test?: boolean;
   /** How many places of each kind are hidden: mergers to cut, places to merge. */
@@ -37,15 +39,18 @@ export interface HuntInfo {
   admins_only?: boolean;
   /** What each medal gives: the Achievement's name and picture. */
   prizes?: Partial<Record<HuntTier, { name: string; image: string }>>;
-  board: { rank: number; name: string; found: number; at: string; tier: HuntTier | null; you: boolean }[];
+  board: { rank: number; name: string; found: number; gems: number; at: string; tier: HuntTier | null; you: boolean }[];
   players: number;
   winners: { gold: number; silver: number; bronze: number };
 }
 
-export interface HuntResult {
-  found: number; of: number; close: number; best: number; points: number; left: number; tier: HuntTier | null;
-  /** A test run only: each merger, found or not, and the nearest gem in µm (for setting the tolerance). */
-  test?: boolean; tolerance_um?: number; mergers?: { kind?: 'cut' | 'merge'; found: boolean; nearest_um: number | null }[];
+/** One gem the server judged: where it is (as the layer holds it), and whether it found a problem. */
+export interface HuntDrop { id: string; at: number[] | null; hit: boolean; kind: 'cut' | 'merge' | null; k?: 'cut' | 'merge' | null }
+/** A player's run: their gems so far, what they found, what is left. */
+export interface HuntRun {
+  budget: number; found: number; of: number; gems_used: number; gems_left: number; done: boolean;
+  found_by?: { cut: number; merge: number }; of_by?: { cut: number; merge: number };
+  tier: HuntTier | null; drops: HuntDrop[];
 }
 
 /** What the server last said, plus a clock for the countdowns (server time). */
@@ -53,6 +58,12 @@ export const huntState = reactive({
   hunts: [] as HuntInfo[],
   /** The hunt an admin is trying (Admin Hub > Hunts > Try it yourself), or null. */
   test: null as HuntInfo | null,
+  /** What the last gem dropped did (right, wrong, found already, refused). */
+  news: null as null | DropNews,
+  /** The gem being judged now, for its spinning gem on the spot. */
+  pending: null as null | { id: string; gem: GemKind; x?: number; y?: number; at: number },
+  /** Which layer Ctrl + Click drops into: cut gems or extend gems. */
+  kind: 'cut' as GemKind,
   loaded: false,
   loading: false,
   error: '',
@@ -131,8 +142,12 @@ function scheduleRefresh() {
   const t = serverNow();
   const next = huntState.hunts.flatMap(h => [h.start_at, h.end_at].map(s => Date.parse(s)))
     .filter(x => Number.isFinite(x) && x > t).sort((a, b) => a - b)[0];
-  // At least every two hours, so a hunt announced after the page opened shows too.
-  const wait = next ? Math.min(next - t + 1500 + Math.random() * 3000, 2 * 3600_000) : 2 * 3600_000;
+  // At least every two hours, so a hunt announced after the page opened shows too; every few
+  // seconds while a hunt is over and its awards are still being given (Ames 2026-10-21: the
+  // ceremony said "The awards are being given…" and stayed that way).
+  const awaiting = huntState.hunts.some(h => (h.phase === 'ended' && !h.awarded) || (h.phase === 'live' && Date.parse(h.end_at) <= t))
+    && huntState.hunts.some(h => t - Date.parse(h.end_at) < 10 * 60_000);   // at most ten minutes after an end
+  const wait = awaiting ? 5000 + Math.random() * 2000 : next ? Math.min(next - t + 1500 + Math.random() * 3000, 2 * 3600_000) : 2 * 3600_000;
   refreshTimer = setTimeout(() => { void loadHunts(); }, wait);
 }
 
@@ -199,65 +214,123 @@ export function localTime(iso: string | null | undefined): string {
   return new Date(t).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 }
 
-// ── The gem layer ─────────────────────────────────────────────────────────
+// ── The gem layers, and each gem judged as it lands ──────────────────────
+// Ames 2026-10-21: "Ctrl + Click to drop a gem on a merger or missing extension.
+// The Hunt will let you know if you got it right or wrong, and how many Hunt
+// problems and gems remain. The Hunt finishes when you find all the problems or
+// run out of gems." And: "we could give players 2 layers: cut, extend". So a hunt
+// opens with a Cut layer (red gems, for mergers) and an Extend layer (blue gems,
+// for missing extensions), one of them picked for Ctrl + Click. The server keeps
+// each player's run (its gems in order, each right or wrong); the layers are
+// drawn from it, so leaving and coming back, or another computer, shows the same
+// gems. Right gems turn gold in a "Found" folder, wrong ones gray in "Missed".
 
 const viewer = (): any => (window as any)['viewer'];
-/** A test run has a layer and saved gems of its own, so trying a hunt never mixes with playing it. */
-export function huntLayerName(h: Pick<HuntInfo, 'title' | 'test'>): string { return `${h.test ? 'Hunt test' : 'Hunt'}: ${h.title}`.slice(0, 60); }
-const POINTS_KEY = (h: Pick<HuntInfo, 'id' | 'test'>) => `nge-hunt-gems-${h.test ? 'test-' : ''}${h.id}`;
+export type GemKind = 'cut' | 'merge';
+const KIND_WORD: Record<GemKind, string> = { cut: 'cut', merge: 'extend' };
+const KIND_COLOR: Record<GemKind, string> = { cut: '#e06060', merge: '#5aaaff' };   // the color key's red; a blue
+const FOUND = { id: 'hunt-found', name: 'Found', color: '#f5d142' };    // a found gem shines gold
+const MISSED = { id: 'hunt-missed', name: 'Missed', color: '#7d8799' }; // a missed one goes gray
+
+/** The layer for one kind of gem; a test run has layers of its own, so trying a hunt never mixes with playing it. */
+export function huntLayerName(h: Pick<HuntInfo, 'title' | 'test'>, kind: GemKind = 'cut'): string {
+  return `${h.test ? 'Hunt test' : 'Hunt'} ${KIND_WORD[kind]}: ${h.title}`.slice(0, 60);
+}
+/** The kinds of gem a hunt needs: cut when it hides mergers, extend when it hides missing extensions. */
+export function gemKinds(h: Pick<HuntInfo, 'spots'>): GemKind[] {
+  const s = h.spots;
+  if (!s) return ['cut'];
+  const out: GemKind[] = [];
+  if (s.cut > 0) out.push('cut');
+  if (s.merge > 0) out.push('merge');
+  return out.length ? out : ['cut'];
+}
 
 function managed(name: string): any {
   return (viewer()?.layerManager?.managedLayers ?? []).find((ml: any) => ml.name === name && !ml.archived) ?? null;
 }
 
-/** The hunt layer as the view would save it, or null when it is not on screen. */
+/** A hunt layer as the view would save it, or null when it is not on screen. */
 function layerJson(name: string): any | null {
   try { return (viewer()?.state?.toJSON?.()?.layers ?? []).find((l: any) => l && l.name === name && l.type === 'annotation') ?? null; }
   catch { return null; }
 }
 
-function savedGems(h: Pick<HuntInfo, 'id' | 'test'>): any[] {
-  try { const v = JSON.parse(localStorage.getItem(POINTS_KEY(h)) || '[]'); return Array.isArray(v) ? v : []; }
-  catch { return []; }
+/** The gems in a hunt's layers right now (-1 when none of them is on screen). */
+export function gemsOnScreen(h: Pick<HuntInfo, 'title' | 'test' | 'spots'>): number {
+  let n = -1;
+  for (const k of gemKinds(h)) {
+    const src = managed(huntLayerName(h, k))?.layer?.localAnnotations;
+    if (!src) continue;
+    if (n < 0) n = 0;
+    for (const a of src) if (a && a.type === 0 /* point */) n++;
+  }
+  return n;
 }
 
-/** Keep the player's gems in this browser, so leaving and coming back keeps them. */
-export function saveGems(h: Pick<HuntInfo, 'id' | 'title' | 'test'>): number {
-  const l = layerJson(huntLayerName(h));
-  if (!l) return -1;
-  const gems = (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && a.type === 'point');
-  try { localStorage.setItem(POINTS_KEY(h), JSON.stringify(gems)); } catch { /* full, or private */ }
-  return gems.length;
+function foldersFor(drops: HuntDrop[]) {
+  return [
+    { id: FOUND.id, name: FOUND.name, ids: drops.filter(d => d.hit).map(d => d.id), color: FOUND.color, paint: true },
+    { id: MISSED.id, name: MISSED.name, ids: drops.filter(d => !d.hit).map(d => d.id), color: MISSED.color, paint: true },
+  ];
 }
 
-/** How many gems the player has on screen for this hunt (-1 when its layer is not open). */
-export function gemsOnScreen(h: Pick<HuntInfo, 'title' | 'test'>): number {
-  const l = layerJson(huntLayerName(h));
-  if (!l) return -1;
-  return (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && a.type === 'point').length;
-}
+/** The kind of a gem already judged: the layer it was dropped from (older gems: what it found, else cut). */
+const dropKind = (d: HuntDrop): GemKind => (d.k === 'merge' || d.k === 'cut' ? d.k : d.kind === 'merge' ? 'merge' : 'cut');
 
-/** The hunt's gem layer: gold Pyr gems, the point tool picked, the player's own gems back in it. */
-function ensureGemLayer(h: HuntInfo) {
+/** The hunt's gem layers, the player's judged gems back in their folders, one layer picked for Ctrl + Click. */
+function ensureGemLayers(h: HuntInfo) {
   const v = viewer();
   if (!v?.layerSpecification) return;
-  const name = huntLayerName(h);
-  let ml = managed(name);
-  if (!ml) {
-    ml = makeLayer(v.layerSpecification, name, {
-      type: 'annotation', source: { url: 'local://annotations' }, annotations: savedGems(h),
-      annotationColor: GEM_COLOR, pointMarker: 'pyr', pointSize: 1.6, tool: 'annotatePoint',
+  for (const k of gemKinds(h)) {
+    const name = huntLayerName(h, k);
+    if (managed(name)) continue;
+    const drops = (h.you?.drops ?? []).filter(d => dropKind(d) === k && Array.isArray(d.at) && d.at.length >= 3);
+    const ml = makeLayer(v.layerSpecification, name, {
+      type: 'annotation', source: { url: 'local://annotations' },
+      annotations: drops.map(d => ({ type: 'point', id: d.id, point: d.at })),
+      annotationColor: KIND_COLOR[k], pointMarker: 'pyr', pointSize: 1.6, tool: 'annotatePoint',
+      ngeAnnFolders: foldersFor(drops),
     });
     v.layerSpecification.add(ml);
   }
-  try { v.selectedLayer.layer = ml; v.selectedLayer.visible = true; } catch { /* the panel is optional */ }
+  pickKind(h, gemKinds(h).includes(huntState.kind) ? huntState.kind : gemKinds(h)[0]);
+}
+
+/** Which layer Ctrl + Click drops into: the Hunt box's Cut and Extend buttons. */
+export function pickKind(h: HuntInfo, kind: GemKind) {
+  huntState.kind = kind;
+  const ml = managed(huntLayerName(h, kind));
+  const v = viewer();
+  if (ml && v) { try { v.selectedLayer.layer = ml; v.selectedLayer.visible = true; } catch { /* the panel is optional */ } }
+}
+
+/** Put a judged gem in its folder (and the folder back, if the player removed it). */
+function fileGem(h: HuntInfo, kind: GemKind, id: string, hit: boolean) {
+  const folders = managed(huntLayerName(h, kind))?.layer?.ngeAnnFolders;
+  if (!folders) return;
+  const want = hit ? FOUND : MISSED;
+  let value = (folders.value as any[]).map(f => ({ ...f, ids: f.ids.filter((x: string) => x !== id) }));
+  if (!value.some(f => f.id === want.id)) value = [...value, { id: want.id, name: want.name, ids: [], color: want.color, paint: true }];
+  folders.value = value.map(f => (f.id === want.id ? { ...f, ids: [...f.ids, id] } : f));
+  folders.changed.dispatch();
+}
+
+function removeGem(h: HuntInfo, kind: GemKind, id: string) {
+  const src = managed(huntLayerName(h, kind))?.layer?.localAnnotations;
+  if (!src) return;
+  const ref = src.getReference(id);
+  try { src.delete(ref); } finally { ref.dispose(); }
 }
 
 const AFTER_SWITCH_KEY = 'nge_hunt_after_switch';
 
+/** The hunt open on screen, whose new gems are judged. */
+let active: HuntInfo | null = null;
+
 /**
  * Open a hunt: its dataset (switching reloads the page, so the next page
- * carries on), its starting view, and the gem layer with the player's gems.
+ * carries on), its starting view, and the gem layers with the player's gems.
  * 'switching' when the page is about to reload.
  */
 export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
@@ -270,24 +343,28 @@ export async function goToHunt(h: HuntInfo): Promise<'ok' | 'switching'> {
     if (!ok) throw new Error('Could not switch dataset.');
     return 'switching';
   }
-  // Gems already on screen (coming back to the hunt) are kept first.
-  if (managed(huntLayerName(h))) saveGems(h);
   const v = viewer();
   if (!v?.state) throw new Error('The viewer is not ready yet. Try again in a moment.');
+  active = null;   // the old layers go with the restore; nothing in them is judged meanwhile
+  queue.length = 0;
   const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
   v.state.restoreState(h.view);
   restoreDisplayAfterLoad(snap);
   // The restore and the display keeper settle over a moment and can drop a
-  // layer added too early, so add the gem layer until it has stayed put.
-  const name = huntLayerName(h);
+  // layer added too early, so add the gem layers until they have stayed put.
+  const names = gemKinds(h).map(k => huntLayerName(h, k));
   let steady = 0;
   for (let i = 0; i < 16 && steady < 3; i++) {
     await new Promise(r => setTimeout(r, 250));
-    if (layerJson(name)) { steady++; continue; }
+    if (names.every(n => layerJson(n))) { steady++; continue; }
     steady = 0;
-    ensureGemLayer(h);
+    ensureGemLayers(h);
   }
-  ensureGemLayer(h);
+  ensureGemLayers(h);
+  judged.clear();
+  for (const d of h.you?.drops ?? []) judged.add(d.id);
+  active = h;
+  startDropWatch();
   return 'ok';
 }
 
@@ -302,35 +379,112 @@ export function takeHuntAfterSwitch(): { id: number; test: boolean } | null {
   } catch { return null; }
 }
 
-/** Admins: open a hunt to try it (any phase, a draft too). Answers are scored and never kept. */
+/** Admins: open a hunt to try it (any phase, a draft too). Each gem is judged and nothing is kept. */
 export async function openTestHunt(id: number): Promise<HuntInfo> {
   huntState.test = null;
+  huntState.news = null;
+  testDrops.length = 0;
   const t = await huntCall<HuntInfo>('hunt.test', { id });
   huntState.test = { ...t, test: true, phase: 'live' };
   return huntState.test;
 }
 
-/** Send the gems on screen as an answer. */
-export async function submitGems(h: HuntInfo): Promise<HuntResult> {
-  const name = huntLayerName(h);
-  const l = layerJson(name);
-  if (!l) throw new Error('Open the Hunt first: your gems go in its own layer.');
-  saveGems(h);
-  const dims = viewer()?.state?.toJSON?.()?.dimensions;
-  const r = await huntCall<HuntResult>(h.test ? 'hunt.test_submit' : 'hunt.submit', { id: h.id, layer: { source: l.source, annotations: l.annotations }, dims });
-  if (!h.test) void loadHunts();
-  return r;
+/** What the last gem did, for the Hunt box. */
+export interface DropNews {
+  id: string; result: 'hit' | 'miss' | 'already' | 'refused'; kind?: GemKind | null; gem: GemKind;
+  other?: GemKind | null; text?: string; nearest_um?: number | null; at: number;
+  /** Where on screen the gem was dropped (the Ctrl + Click), for the burst there. */
+  x?: number; y?: number;
 }
 
-let watchTimer: ReturnType<typeof setInterval> | null = null;
-/** Every few seconds, keep the gems of a running hunt in this browser. */
-export function startGemWatch() {
-  if (watchTimer) return;
-  watchTimer = setInterval(() => {
-    for (const h of huntState.hunts) if (h.phase === 'live') saveGems(h);
-    if (huntState.test) saveGems(huntState.test);
-  }, 4000);
+// Where the last Ctrl + Click (⌘ + Click) landed, so each gem's answer can burst on the spot.
+let lastClick: { x: number; y: number; at: number } | null = null;
+try {
+  window.addEventListener('pointerdown', (e: PointerEvent) => {
+    if (e.button === 0 && (e.ctrlKey || e.metaKey)) lastClick = { x: e.clientX, y: e.clientY, at: Date.now() };
+  }, true);
+} catch { /* no window */ }
+
+const judged = new Set<string>();   // gems the server has answered for (or put back from the run)
+const queue: { id: string; kind: GemKind; x?: number; y?: number }[] = [];
+let busy = false;
+/** A test run's gems so far (sent back with each new one; the server judges them again). */
+const testDrops: { id: string; nm: number[]; hit: number; k: GemKind }[] = [];
+
+/** The running hunt in the list (or the test run), to update with each answer. */
+function liveCopy(h: HuntInfo): HuntInfo | null {
+  return h.test ? huntState.test : (huntState.hunts.find(x => x.id === h.id) ?? null);
 }
+
+async function judgeNext() {
+  if (busy) return;
+  const h = active;
+  const next = queue.shift();
+  if (!h || !next) return;
+  const { id, kind, x, y } = next;
+  busy = true;
+  huntState.pending = { id, gem: kind, x, y, at: Date.now() };
+  try {
+    const name = huntLayerName(h, kind);
+    const src = managed(name)?.layer?.localAnnotations;
+    const a = src?.get?.(id);
+    if (!a || !a.point) return;
+    const json = layerJson(name);
+    const dims = viewer()?.state?.toJSON?.()?.dimensions;
+    const layer = { source: json?.source ?? 'local://annotations', annotations: [{ type: 'point', id, point: Array.from(a.point as Float32Array) }] };
+    let r: any;
+    try {
+      r = await huntCall<any>(h.test ? 'hunt.test_drop' : 'hunt.drop', { id: h.id, kind, layer, dims, ...(h.test ? { prev: testDrops } : {}) });
+    } catch (e: any) {
+      // Out of gems, all found, or the Hunt is over: the gem does not stay.
+      judged.add(id);
+      removeGem(h, kind, id);
+      huntState.news = { id, gem: kind, result: 'refused', text: e?.message || String(e), at: Date.now(), x, y };
+      return;
+    }
+    judged.add(id);
+    if (r.drop?.already) {
+      removeGem(h, kind, id);
+      huntState.news = { id, gem: kind, result: 'already', at: Date.now(), x, y };
+    } else {
+      const hit = !!r.drop?.hit;
+      fileGem(h, kind, id, hit);
+      if (h.test) testDrops.push({ id, nm: r.nm, hit: hit ? 0 : -1, k: kind });
+      huntState.news = { id, gem: kind, result: hit ? 'hit' : 'miss', kind: r.drop?.kind ?? null, other: r.drop?.other ?? null,
+        nearest_um: h.test ? r.nearest_um : undefined, at: Date.now(), x, y };
+    }
+    const copy = liveCopy(h);
+    if (copy && r.run) copy.you = { ...copy.you, ...r.run };
+  } finally {
+    busy = false;
+    huntState.pending = null;
+    if (queue.length) void judgeNext();
+  }
+}
+
+let dropTimer: ReturnType<typeof setInterval> | null = null;
+/** Look for new gems in the open hunt's layers, a few times a second, and judge each in turn. */
+export function startDropWatch() {
+  if (dropTimer) return;
+  dropTimer = setInterval(() => {
+    const h = active;
+    if (!h) return;
+    for (const kind of gemKinds(h)) {
+      const src = managed(huntLayerName(h, kind))?.layer?.localAnnotations;
+      if (!src) continue;
+      for (const a of src) {
+        if (!a || a.type !== 0 /* point */ || judged.has(a.id) || queue.some(q => q.id === a.id) || src.pending?.has?.(a.id)) continue;
+        // The click that made it, if it was just now.
+        const click = lastClick && Date.now() - lastClick.at < 3000 ? lastClick : null;
+        lastClick = null;
+        queue.push({ id: a.id, kind, ...(click ? { x: click.x, y: click.y } : {}) });
+      }
+    }
+    if (queue.length) void judgeNext();
+  }, 400);
+}
+/** Kept for the top bar, which starts it at sign in. */
+export const startGemWatch = startDropWatch;
 
 // ── For the Admin Hub: read an answer key, the cells and the view from the screen ──
 
