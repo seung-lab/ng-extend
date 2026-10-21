@@ -15,6 +15,7 @@ import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
+import TestReviewBar from "components/TestReviewBar.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
@@ -460,6 +461,8 @@ watch(() => huntBackend.userId, async id => {
 // A reviewer opened an example from Admin Hub > Access requests: out of the
 // profile, into the view, with the review bar (AccessReviewBar).
 document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
+// An admin opened a Proofreading Test try in the view (Admin Hub > Test tries).
+document.addEventListener('nge:test-review', () => { showProfile.value = false; showAccess.value = false; });
 /** Chat visibility persists across reloads so closing it stays closed.
  *  Default = open on first visit (key absent in localStorage). */
 const CHAT_VISIBLE_KEY = 'nge_chat_visible_v1';
@@ -1004,6 +1007,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <access-request-panel v-if="showAccess" @hide="showAccess = false" />
   <access-review-bar />
+  <test-review-bar />
   <!-- Help requests now live in Cell Library's Help tab -->
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
@@ -1272,7 +1276,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
             <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
-            <span>Proofreading Test (WIP){{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
+            <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
         <!-- Standalone cut exercises (Ames, 2026-10-06): each opens on its

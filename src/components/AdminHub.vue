@@ -11,6 +11,7 @@ import RollUp from 'components/RollUp.vue';
 import CellTypeCheck from 'components/CellTypeCheck.vue';
 import AccessRequestsTab from 'components/AccessRequestsTab.vue';
 import HuntsAdminTab from 'components/HuntsAdminTab.vue';
+import TestTriesTab from 'components/TestTriesTab.vue';
 import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
@@ -39,8 +40,8 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'hunts'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests'
     ? props.initialSubTab
     : 'notifications');
 
@@ -205,6 +206,12 @@ function parseSpec(spec: string): { label: string | null; text: string }[] {
 
 // ── Who submitted each report (site_issues, admins only via the gateway) ──
 const reporters = ref<Record<string, { name: string; category: string; at: string; title?: string; message?: string; url?: string; shot?: string }>>({});
+/** Reports asked for by id at most this many at a time. The gateway refuses a
+ *  filter over 4096 characters (functions/community-data.js), and 100 ids
+ *  come to about 3700. 150 came to 5554: once more than about 110 reports
+ *  were closed, the lookup was refused and every closed report lost its
+ *  category (Ames 2026-10-21: bugs fixed fell from 72 to 27). */
+const IDS_PER_ASK = 100;
 async function loadReporters(rows: TriageRow[]) {
   const ids = [...new Set(rows.filter(r => r.source === 'site_issue' && r.source_id && !reporters.value[r.source_id]).map(r => r.source_id))];
   if (!ids.length) return;
@@ -214,9 +221,14 @@ async function loadReporters(rows: TriageRow[]) {
     // 2026-10-16: "triage panel now missing view"). Older tables may lack the
     // screenshot column, so ask again without it if need be.
     // A title (Celia #178) once supabase-site-issues-title.sql has run.
-    let { data, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url').in('id', ids);
-    if (error) ({ data, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', ids));
-    if (error) ({ data } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url').in('id', ids));
+    const data: any[] = [];
+    for (let k = 0; k < ids.length; k += IDS_PER_ASK) {
+      const part = ids.slice(k, k + IDS_PER_ASK);
+      let { data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,title,message,url,screenshot_url').in('id', part);
+      if (error) ({ data: got, error } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url,screenshot_url').in('id', part));
+      if (error) ({ data: got } = await supabase.from('site_issues').select('id,user_name,category,created_at,message,url').in('id', part));
+      data.push(...(got ?? []));
+    }
     const next = { ...reporters.value };
     // An older report saved "page @ x,y,z" when no short link could be made;
     // as a link that went to a missing page (Ames 2026-10-18). Read it as the
@@ -227,7 +239,7 @@ async function loadReporters(rows: TriageRow[]) {
       if (m) { try { const x = new URL(m[1]); x.search = ''; x.hash = ''; x.searchParams.set('at', [m[2], m[3], m[4]].map(n => Math.round(Number(n))).join(',')); return x.toString(); } catch { return undefined; } }
       return /\s/.test(u) ? undefined : u;
     };
-    for (const i of (data ?? []) as any[]) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
+    for (const i of data) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
       url: web(i.url), shot: web(i.screenshot_url) };
     reporters.value = next;
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
@@ -401,9 +413,14 @@ const kindOf = (r: TriageRow) => closedKind(r, reporterOf(r)?.category);
 const TRIAGE_KINDS: { key: TriageKind; label: string }[] = [
   { key: 'all', label: 'All' }, { key: 'bug', label: '🐛 Bug' }, { key: 'feature', label: '💡 Idea' }, { key: 'other', label: 'Other' },
 ];
+/** Open reports only (Ames 2026-10-21: the filter is for active reports):
+ *  Needs your decision, In progress, On the To do board, Ideas for later. */
 const triageKindCount = computed(() => {
   const n = { all: 0, bug: 0, feature: 0, other: 0 } as Record<TriageKind, number>;
-  for (const r of triageRows.value) { n.all++; n[kindOf(r)]++; }
+  for (const r of triageRows.value) {
+    if (['done', 'dismissed'].includes(triageGroupOf(r))) continue;
+    n.all++; n[kindOf(r)]++;
+  }
   return n;
 });
 function triageMatches(r: TriageRow): boolean {
@@ -467,11 +484,14 @@ async function loadTriageNumbers() {
       }
       if (data.length < 500) break;
     }
-    // What each closed report was filed as, 150 at a time.
+    // What each closed report was filed as, IDS_PER_ASK at a time.
     const cats: Record<string, string> = {};
+    let catsFailed = false;
     const ids = [...new Set(closed.filter(r => r.source === 'site_issue' && r.source_id).map(r => String(r.source_id)))];
-    for (let i = 0; i < ids.length; i += 150) {
-      const { data: got } = await supabase.from('site_issues').select('id,category').in('id', ids.slice(i, i + 150));
+    for (let i = 0; i < ids.length; i += IDS_PER_ASK) {
+      const { data: got, error: catErr } = await supabase.from('site_issues').select('id,category').in('id', ids.slice(i, i + IDS_PER_ASK));
+      // A refused lookup must not quietly turn every bug into "answered".
+      if (catErr) { console.warn('[triage] categories not loaded:', catErr.message); catsFailed = true; break; }
       for (const x of (got ?? []) as any[]) cats[String(x.id)] = x.category || '';
     }
     for (const r of closed) {
@@ -479,7 +499,8 @@ async function loadTriageNumbers() {
       if (k === 'bug') bugs++; else if (k === 'feature') features++; else other++;
     }
     triageNumbers.value = next;
-    triageTally.value = { bugs, features, other, today, days };
+    // Keep the last good counts rather than show wrong ones.
+    if (!catsFailed) triageTally.value = { bugs, features, other, today, days };
   } catch { /* the cards simply show no number */ }
 }
 
@@ -2152,6 +2173,7 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'practice' }" @click="adminSubTab = 'practice'">Practice cells</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'pilot' }" @click="adminSubTab = 'pilot'">Pilot testers</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'access' }" @click="adminSubTab = 'access'" title="Players' ten examples for retina access">Access requests</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tests' }" @click="adminSubTab = 'tests'" title="Every Proofreading Test try: the score, what was missed, and the player's cell">Test tries</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'hunts' }" @click="adminSubTab = 'hunts'" title="Timed merger hunts, with gold, silver and bronze Achievements">Hunts</button>
     </div>
@@ -2159,6 +2181,9 @@ function practiceWhen(iso: string | null) {
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
     <HuntsAdminTab v-if="adminSubTab === 'hunts'" />
+
+    <!-- ── Proofreading Test tries (Ames 2026-10-21): every try, and the player's cell ── -->
+    <TestTriesTab v-if="adminSubTab === 'tests'" />
 
     <!-- ── Cell types: the game's log against CAVE ── -->
     <div v-if="adminSubTab === 'celltypes'" class="nge-admin-section">
@@ -2659,7 +2684,7 @@ function practiceWhen(iso: string | null) {
                  aria-label="Search reports" @keydown.stop @keyup.stop @keypress.stop @keydown.esc.stop="triageSearch = ''" />
           <span v-if="triageWords.length" class="nge-triage-search-count">{{ triageMatchCount }} of {{ triageRows.length }}</span>
           <span class="nge-triage-kinds" role="radiogroup" aria-label="Show">
-            <button v-for="k in TRIAGE_KINDS" :key="k.key" type="button" role="radio" class="nge-triage-kind"
+            <button v-for="k in TRIAGE_KINDS" :key="k.key" type="button" role="radio" class="nge-triage-kind" title="Open reports of this kind. The board shows only these."
                     :class="{ 'nge-triage-kind--on': triageKind === k.key }" :aria-checked="triageKind === k.key ? 'true' : 'false'"
                     @click="triageKind = k.key">{{ k.label }} <span class="nge-triage-kind-n">{{ triageKindCount[k.key] }}</span></button>
           </span>

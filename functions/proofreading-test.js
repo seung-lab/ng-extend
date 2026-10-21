@@ -279,6 +279,103 @@ async function loadChecks(io, id) {
   return Array.isArray(rows) ? rows : [];
 }
 
+// ─── What the admins see (Admin Hub > Test tries, Ames 2026-10-21) ─────────
+
+/** Admins only. The list is short; emails compare without case. */
+async function assertAdmin(io, who) {
+  const mine = String((who && who.email) || '').trim().toLowerCase();
+  const rows = mine ? await io.sb('admins?select=email') : [];
+  if (!(rows || []).some(a => String(a.email || '').trim().toLowerCase() === mine)) fail(403, 'Only admins can see the tries.');
+}
+
+/** Write what the admins see of a try (supabase-proofreading-test-tries.sql
+ *  adds the columns). Never stands between a player and their result. */
+async function keepTry(io, attempt, fields) {
+  const n = Number(attempt);
+  if (!Number.isInteger(n) || n <= 0) return false;
+  try { await io.sb(`proofreading_test_attempts?id=eq.${n}`, {method: 'PATCH', body: JSON.stringify(fields)}); return true; }
+  catch (e) { console.warn('[test] try', n, 'was not kept:', e && e.message); return false; }
+}
+
+/**
+ * The try before this one, when its player went without submitting (the
+ * hold ran out with the page closed: Kim, 2026-10-21). Nothing has put the
+ * cell back since, so it is still as they left it: its root and each
+ * mistake's state are kept on that try before the undo. Not a score, since
+ * the branch ends they marked never reached the server. Only when that try
+ * was handed a clean cell, so nobody else's edits are counted as theirs.
+ */
+async function keepUnfinished(io, test, checks, cave, currentAttempt) {
+  const rows = await io.sb(`proofreading_test_attempts?test_id=eq.${test.id}&id=neq.${Number(currentAttempt) || 0}&select=id,outcome,started_at,end_root&order=id.desc&limit=1`);
+  const last = rows && rows[0];
+  if (!last || last.outcome !== 'expired' || last.end_root) return false;
+  if (!test.last_reset_at || !last.started_at || Date.parse(test.last_reset_at) < Date.parse(last.started_at)) return false;
+  const roots = await readRoots(test, checks, cave.get);
+  const results = graphResults(checks, roots, 'end');
+  const errors = results.filter(r => ERROR_KINDS.includes(r.kind));
+  return keepTry(io, last.id, {end_root: roots[String(test.anchor_supervoxel)] || null, checks: results,
+    found: errors.filter(r => r.ok).length, errors: errors.length, damaged: results.filter(r => DAMAGE_KINDS.includes(r.kind) && !r.ok).length});
+}
+
+const TRY_COLUMNS = 'id,test_id,started_at,submitted_at,outcome,found,errors,damaged,percent,timed_out,error';
+const TRY_KEPT = 'end_root,ends_found,ends_total';
+const TRY_PLAYER = 'player:users(username,cave_user_id)';
+
+/** Every try, newest first, and the test as it stands: its key in counts
+ *  and who holds the cell. No answers beyond counts. */
+async function listTries(io, args) {
+  const limit = Math.min(200, Math.max(1, Math.floor(Number(args.limit)) || 100));
+  let rows, kept = true;
+  try { rows = await io.sb(`proofreading_test_attempts?select=${TRY_COLUMNS},${TRY_KEPT},${TRY_PLAYER}&order=id.desc&limit=${limit}`); }
+  catch (e) {
+    // Before supabase-proofreading-test-tries.sql: the tries, without their cells.
+    kept = false;
+    rows = await io.sb(`proofreading_test_attempts?select=${TRY_COLUMNS},${TRY_PLAYER}&order=id.desc&limit=${limit}`);
+  }
+  const tests = (await io.sb('proofreading_tests?select=id,title,enabled,status,pass_mark,time_limit_minutes,claimed_by,claimed_at,deadline_at&order=created_at.desc')) || [];
+  const t = tests.find(x => x.enabled) || tests[0] || null;
+  let test = null, key = null;
+  if (t) {
+    const checks = (await io.sb(`proofreading_test_checks?test_id=eq.${t.id}&select=kind,weight`)) || [];
+    const scored = checks.filter(c => ERROR_KINDS.includes(c.kind) || c.kind === 'endpoint');
+    key = {mistakes: checks.filter(c => ERROR_KINDS.includes(c.kind)).length, ends: checks.filter(c => c.kind === 'endpoint').length,
+      protect: checks.filter(c => DAMAGE_KINDS.includes(c.kind)).length, points: scored.reduce((n, c) => n + (c.weight ?? 1), 0)};
+    let holder = null;
+    if (t.claimed_by) {
+      const u = await io.sb(`users?id=eq.${t.claimed_by}&select=username&limit=1`);
+      holder = (u && u[0] && u[0].username) || 'a player';
+    }
+    test = {id: t.id, title: t.title, enabled: !!t.enabled, status: t.status, pass_mark: t.pass_mark, time_limit_minutes: t.time_limit_minutes,
+      holder, claimed_at: t.claimed_at || null, deadline_at: t.deadline_at || null};
+  }
+  return {kept, test, key, tries: (rows || []).map(r => {
+    const {player, ...rest} = r;
+    return {...rest, username: (player && player.username) || null, cave_user_id: player ? player.cave_user_id ?? null : null};
+  })};
+}
+
+/** One try in full: each check's result with a place to look, the points
+ *  the player placed, and their cell. */
+async function oneTry(io, args) {
+  const n = Number(args.attempt);
+  if (!Number.isInteger(n) || n <= 0) fail(400, 'Unknown try');
+  const rows = await io.sb(`proofreading_test_attempts?id=eq.${n}&select=*,${TRY_PLAYER}&limit=1`);
+  const a = rows && rows[0];
+  if (!a) fail(404, 'That try was not found');
+  const test = await loadTest(io, a.test_id);
+  const ends = a.endpoints && typeof a.endpoints === 'object' ? a.endpoints : {};
+  return {
+    id: a.id, test_id: a.test_id, started_at: a.started_at, submitted_at: a.submitted_at, outcome: a.outcome,
+    found: a.found, errors: a.errors, damaged: a.damaged, percent: a.percent, timed_out: !!a.timed_out, error: a.error || null,
+    username: (a.player && a.player.username) || null, cave_user_id: a.player ? a.player.cave_user_id ?? null : null,
+    end_root: a.end_root || null, dataset: test.dataset, state_url: test.state_url,
+    checks: (Array.isArray(a.checks) ? a.checks : []).map(c => ({kind: c.kind, label: c.label || '', ok: !!c.ok, weight: c.weight ?? 1,
+      point: c.kind === 'endpoint' ? (c.point_a || null) : (c.point_b || c.point_a || null)})),
+    given: Array.isArray(ends.given) ? ends.given.slice(0, 500) : [],
+    stray: typeof ends.stray === 'number' ? ends.stray : null,
+  };
+}
+
 /**
  * One request from the signed in player.
  *   test.status                      the test, their tries, whether they may start
@@ -286,6 +383,8 @@ async function loadChecks(io, id) {
  *   test.heartbeat  {id, session}    keep the hold
  *   test.submit     {id, session, annotations}   score, grant, put back, record
  *   test.abandon    {id, session}    put back, record
+ *   test.tries      {limit?}         admins: every try, newest first
+ *   test.try        {attempt}        admins: one try in full, with the player's cell
  */
 async function handle({action, args, who, me, io}) {
   if (!who || !me || !me.id) fail(401, 'Sign in and create your Pyr profile first.');
@@ -295,6 +394,11 @@ async function handle({action, args, who, me, io}) {
   const sessionOf = v => { const s = String(v || ''); if (!UUID.test(s)) fail(400, 'Unknown test session'); return s; };
 
   if (action === 'test.status') return rpc('status', args.id ? {id: idOf(args.id)} : {});
+
+  // Admins (Admin Hub > Test tries, Ames 2026-10-21): every try, and one try
+  // in full with the player's cell as they left it.
+  if (action === 'test.tries') { await assertAdmin(io, who); return listTries(io, args); }
+  if (action === 'test.try') { await assertAdmin(io, who); return oneTry(io, args); }
 
   if (action === 'test.start') {
     const claim = await rpc('claim', args.id ? {id: idOf(args.id)} : {});
@@ -315,6 +419,8 @@ async function handle({action, args, who, me, io}) {
     const cleanedForThisClaim = !!(full.last_reset_at && full.claimed_at && Date.parse(full.last_reset_at) >= Date.parse(full.claimed_at));
     if (!claim.resumed || !cleanedForThisClaim) {
       const cave = caveClient(io);
+      try { await keepUnfinished(io, full, checks, cave, claim.attempt); }
+      catch (e) { console.warn('[test] the last unfinished try was not kept:', e && e.message); }
       let put;
       try { put = await putBack(full, checks, cave, () => rpc('heartbeat', {id, session}), io.resetBudgetMs ?? RESET_BUDGET_MS); }
       catch (e) {
@@ -354,12 +460,13 @@ async function handle({action, args, who, me, io}) {
     const [full, checks] = await Promise.all([loadTest(io, id), loadChecks(io, id)]);
     const cave = caveClient(io);
     const lease = () => rpc('heartbeat', {id, session});
-    let decision = null, results = [], granted = null, endpoints = null;
+    let decision = null, results = [], granted = null, endpoints = null, endRoot = null;
     // Scored after the time limit: the player's page submits by itself when
     // the clock reaches zero, and the database allows a short grace for it.
     const timedOut = !!full.deadline_at && Date.now() >= Date.parse(full.deadline_at);
     if (action === 'test.submit') {
       const roots = await readRoots(full, checks, cave.get);
+      endRoot = roots[String(full.anchor_supervoxel)] || null;
       const annotations = cleanAnnotations(args.annotations);
       const ends = endpointResults(checks, annotations);
       results = [...graphResults(checks, roots, 'end'), ...ends.results];
@@ -374,10 +481,13 @@ async function handle({action, args, who, me, io}) {
       clean = put.clean;
       if (!clean) error = 'Not at its start after the undo: ' + put.wrong.join('; ');
     } catch (e) { error = String(e && e.message).slice(0, 300); }
-    await rpc('record', decision
+    const recorded = await rpc('record', decision
       ? {id, session, outcome: decision.passed ? 'pass' : 'fail', found: decision.found, errors: decision.errors, damaged: decision.damaged,
         percent: decision.percent, checks: results, endpoints, granted, clean, error, timed_out: timedOut}
       : {id, session, outcome: 'abandoned', clean, error});
+    // The player's cell as they left it, for the admins: a root id names
+    // that set of supervoxels for good, after the undos too.
+    if (decision) await keepTry(io, recorded && recorded.attempt, {end_root: endRoot, ends_found: decision.endpointsFound, ends_total: decision.endpoints});
     if (decision && decision.passed) { try { if (io.onGranted) io.onGranted(); } catch (e) { /* the cache clears itself in time */ } }
     // A notice to the admins never stands between a player and their result.
     if (decision && io.notifyAdmins) { try { await io.notifyAdmins(adminNote(me, decision, timedOut)); } catch (e) { console.warn('[test] the admins were not told:', e && e.message); } }
@@ -386,4 +496,4 @@ async function handle({action, args, who, me, io}) {
   fail(400, 'Unknown test action');
 }
 
-module.exports = {handle, adminNote, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoPass, grantGroups, RESET_BUDGET_MS, EXPECT};
+module.exports = {handle, keepUnfinished, listTries, oneTry, adminNote, decide, feedback, graphResults, endpointResults, cleanAnnotations, wrongAtStart, readRoots, putBack, undoPass, grantGroups, RESET_BUDGET_MS, EXPECT};

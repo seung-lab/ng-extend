@@ -38,7 +38,7 @@ export type SecureAction =
   | 'pilot.task' | 'pilot.practice' | 'pilot.status' | 'activity.log' | 'activity.visit'
   | 'reply.ask' | 'reply.send' | 'reply.console'
   | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
-  | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon'
+  | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon' | 'test.tries' | 'test.try'
   | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide' | 'access.reset'
   | 'notification.self' | 'notification.helpReply' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin'
   | 'hunt.current' | 'hunt.submit' | 'hunt.list' | 'hunt.read' | 'hunt.save' | 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.award' | 'hunt.rescore'
