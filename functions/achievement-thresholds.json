@@ -132,7 +132,7 @@
   {"id":131,"track":"exploration","slug":"compound-microscope","name":"Compound Microscope","threshold":1700},
   {"id":132,"track":"exploration","slug":"electron-microscope","name":"Electron Microscope","threshold":1800},
   {"id":133,"track":"exploration","slug":"tomography","name":"Tomography","threshold":1900},
-  {"id":134,"track":"exploration","slug":"diamond-knife","name":"Diamond Knife","threshold":2000},
+  {"id":134,"track":"exploration","slug":"ultramicrotome","name":"Ultramicrotome","threshold":2000},
   {"id":135,"track":"exploration","slug":"pipette","name":"Pipette","threshold":2250},
   {"id":136,"track":"exploration","slug":"test-tube","name":"Test Tube","threshold":2500},
   {"id":137,"track":"exploration","slug":"petri-dish","name":"Petri Dish","threshold":2750},
