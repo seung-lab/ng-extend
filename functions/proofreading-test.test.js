@@ -91,6 +91,10 @@ test('scoring: every cut, merge and endpoint counts, damage fails outright', () 
   const half = decide(T, [...graphResults(CHECKS, {...roots, 301: '800'}, 'end'), ...endpointResults(CHECKS, []).results], 0);
   assert.equal(half.percent, 33); assert.equal(half.passed, false);
   assert.equal(decide({...T, pass_mark: 30}, [...graphResults(CHECKS, {...roots, 301: '800'}, 'end'), ...endpointResults(CHECKS, []).results], 0).passed, true);
+  // 89.6 percent against a mark of 90: shown as 89, not a pass.
+  const nearly = decide({...T, pass_mark: 90}, [{kind: 'merge', ok: true, weight: 896}, {kind: 'merge', ok: false, weight: 104}], 0);
+  assert.equal(nearly.percent, 89); assert.equal(nearly.passed, false);
+  assert.equal(decide({...T, pass_mark: 90}, [{kind: 'merge', ok: true, weight: 9}, {kind: 'merge', ok: false, weight: 1}], 0).passed, true, 'exactly 90 passes');
 });
 
 test('endpoints: within the radius in nm, one point serves one endpoint, strays are counted', () => {
@@ -226,6 +230,7 @@ test('submit: detail feedback names each miss with a place to look; none says on
     if (level === 'detail') {
       const miss = out.checks.find(c => c.kind === 'cut');
       assert.deepEqual(miss.point, [2, 2, 2]);
+      assert.equal(miss.weight, 1, 'each check says what it weighs, so the page can list the biggest misses first');
       assert.equal(out.checks.find(c => c.kind === 'keep').point, null);
     }
   }
@@ -285,4 +290,131 @@ test('abandon: the edits come off and the attempt is closed without a score', as
   assert.equal(g.roots[201], '900');
   const rec = calls.find(c => c.action === 'record');
   assert.equal(rec.args.outcome, 'abandoned'); assert.equal(rec.args.found, undefined);
+});
+
+// ─── What the admins see (Admin Hub > Test tries, 2026-10-21) ────────────────
+
+test('submit keeps the player\'s cell and their ends on the try, for the admins', async () => {
+  const g = fakeGraph(START);
+  g.edit({201: '700'}, Date.parse(T.baseline_at) + 60000);   // the neighbour cut off: the cell is now 900 without 201
+  const {rpc} = fakeRpc({});
+  const writes = [];
+  const sb = async (path, init) => {
+    if (init && init.method === 'PATCH') { writes.push({path, body: JSON.parse(init.body)}); return []; }
+    return path.startsWith('proofreading_tests?') ? [T] : CHECKS;
+  };
+  await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: [[1000, 1000, 100]]}, who, me, io: {...io(g, rpc), sb}});
+  assert.deepEqual(writes, [{path: 'proofreading_test_attempts?id=eq.7', body: {end_root: '900', ends_found: 1, ends_total: 1}}],
+    'the root the soma had when scored, before the undos');
+  // The columns not there yet: the player still gets their result.
+  const out = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me,
+    io: {...io(fakeGraph(START), fakeRpc({}).rpc), sb: async (path, init) => { if (init && init.method === 'PATCH') throw new Error('supabase 400'); return path.startsWith('proofreading_tests?') ? [T] : CHECKS; }}});
+  assert.equal(out.passed, false);
+  // An abandon keeps nothing.
+  const quiet = [];
+  await handle({action: 'test.abandon', args: {id: T.id, session: SESSION}, who, me,
+    io: {...io(fakeGraph(START), fakeRpc({}).rpc), sb: async (path, init) => { if (init && init.method === 'PATCH') quiet.push(path); return path.startsWith('proofreading_tests?') ? [T] : CHECKS; }}});
+  assert.deepEqual(quiet, []);
+});
+
+test('start: a try left unfinished is kept as it was left, before the cell is put back', async () => {
+  const handed = '2026-10-21T02:50:00Z';
+  const run = async (last, testRow = {...T, last_reset_at: handed}) => {
+    const g = fakeGraph(START);
+    g.edit({201: '700'}, Date.parse(T.baseline_at) + 60000); // their one fix, still on the cell
+    const writes = [];
+    const sb = async (path, init) => {
+      if (init && init.method === 'PATCH') { writes.push({path, body: JSON.parse(init.body)}); return []; }
+      if (path.startsWith('proofreading_tests?')) return [testRow];
+      if (path.startsWith('proofreading_test_attempts?')) { assert.match(path, /test_id=eq\.[0-9a-f-]+&id=neq\.7&/); return last ? [last] : []; }
+      return CHECKS;
+    };
+    const out = await handle({action: 'test.start', args: {}, who, me, io: {...io(g, fakeRpc({}).rpc), sb}});
+    assert.equal(g.roots[201], '900', 'the cell was still put back');
+    assert.equal(out.root, '900');
+    return writes;
+  };
+  const kept = await run({id: 6, outcome: 'expired', started_at: '2026-10-21T02:49:00Z', end_root: null});
+  assert.equal(kept.length, 1); assert.equal(kept[0].path, 'proofreading_test_attempts?id=eq.6');
+  const b = kept[0].body;
+  assert.equal(b.end_root, '900'); assert.equal(b.found, 1); assert.equal(b.errors, 2); assert.equal(b.damaged, 0);
+  assert.deepEqual(b.checks.map(c => [c.kind, c.ok]), [['cut', true], ['keep', true], ['merge', false]], 'each mistake as it was left; no ends, they never reached the server');
+  assert.equal('percent' in b, false, 'not a score');
+  // Nothing kept: a scored try, one already kept, one never handed a clean cell, or none at all.
+  assert.deepEqual(await run({id: 6, outcome: 'fail', started_at: '2026-10-21T02:49:00Z', end_root: null}), []);
+  assert.deepEqual(await run({id: 6, outcome: 'expired', started_at: '2026-10-21T02:49:00Z', end_root: '123'}), []);
+  assert.deepEqual(await run({id: 6, outcome: 'expired', started_at: '2026-10-21T02:55:00Z', end_root: null}), []);
+  assert.deepEqual(await run(null), []);
+});
+
+test('test.tries and test.try: admins only; the list has counts, a try has its checks and cell', async () => {
+  const PLAYER = {username: 'Kim_OZ', cave_user_id: 10711};
+  const TRY = {id: 9, test_id: T.id, started_at: '2026-10-20T05:27:00Z', submitted_at: '2026-10-20T06:28:45Z', outcome: 'fail', found: 6, errors: 57,
+    damaged: 1, percent: 16, timed_out: true, error: null, end_root: '648518346350612738', ends_found: 0, ends_total: 39, player: PLAYER,
+    checks: [{kind: 'merge', label: 'piece', ok: false, weight: 6475, point_a: [3, 3, 3], point_b: null, state: 'apart'},
+      {kind: 'keep', label: 'Branch 14', ok: false, weight: 0, point_a: [115194, 43603, 1000], point_b: null},
+      {kind: 'endpoint', label: 'Branch end 1', ok: true, weight: 236, point_a: [9, 9, 9], point_b: null, radius: 1500}],
+    endpoints: {given: [[9, 9, 9]], hit: 1, stray: 0}};
+  const sb = admins => async path => {
+    if (path.startsWith('admins?')) return admins;
+    if (path.startsWith('proofreading_test_attempts?id=eq.9')) return [TRY];
+    if (path.startsWith('proofreading_test_attempts?')) { const {checks, endpoints, ...row} = TRY; return [row]; }
+    if (path.startsWith('proofreading_tests?select=id,title')) return [{...T, claimed_by: me.id, claimed_at: 'now'}];
+    if (path.startsWith('proofreading_tests?')) return [T];
+    if (path.startsWith('proofreading_test_checks?')) return CHECKS;
+    if (path.startsWith('users?')) return [{username: 'Celia'}];
+    throw new Error('unexpected ' + path);
+  };
+  const g = fakeGraph(START), {rpc} = fakeRpc({});
+  for (const action of ['test.tries', 'test.try']) {
+    await assert.rejects(() => handle({action, args: {attempt: 9}, who, me, io: {...io(g, rpc), sb: sb([{email: 'someone@else.invalid'}])}}), e => e.status === 403);
+  }
+  const admin = sb([{email: 'Player@Example.invalid'}]);   // the same person, other case
+  const list = await handle({action: 'test.tries', args: {}, who, me, io: {...io(g, rpc), sb: admin}});
+  assert.equal(list.kept, true);
+  assert.deepEqual(list.key, {mistakes: 2, ends: 1, protect: 1, points: 3});
+  assert.equal(list.test.holder, 'Celia'); assert.equal(list.test.pass_mark, 100);
+  assert.equal(list.tries.length, 1);
+  assert.equal(list.tries[0].username, 'Kim_OZ'); assert.equal(list.tries[0].cave_user_id, 10711); assert.equal(list.tries[0].end_root, '648518346350612738');
+  assert.equal('player' in list.tries[0], false); assert.equal('checks' in list.tries[0], false, 'the list stays small');
+  const one = await handle({action: 'test.try', args: {attempt: 9}, who, me, io: {...io(g, rpc), sb: admin}});
+  assert.equal(one.end_root, '648518346350612738'); assert.equal(one.state_url, T.state_url); assert.equal(one.username, 'Kim_OZ');
+  assert.deepEqual(one.checks.map(c => [c.kind, c.ok, c.point]), [['merge', false, [3, 3, 3]], ['keep', false, [115194, 43603, 1000]], ['endpoint', true, [9, 9, 9]]]);
+  assert.deepEqual(one.given, [[9, 9, 9]]); assert.equal(one.stray, 0);
+  await assert.rejects(() => handle({action: 'test.try', args: {attempt: 'x'}, who, me, io: {...io(g, rpc), sb: admin}}), /Unknown try/);
+  // Before the tries SQL: the list still comes, without the cells.
+  const old = async path => { if (path.startsWith('proofreading_test_attempts?') && path.includes('end_root')) throw new Error('supabase 400'); return admin(path); };
+  const before = await handle({action: 'test.tries', args: {}, who, me, io: {...io(g, rpc), sb: old}});
+  assert.equal(before.kept, false); assert.equal(before.tries.length, 1);
+});
+
+test('the line: join and leave go to the database; only admins take someone out; admins see the line', async () => {
+  const calls = [];
+  const rpc = async (action, args) => { calls.push({action, args}); return {ok: true}; };
+  const sb = admins => async path => {
+    if (path.startsWith('admins?')) return admins;
+    if (path.startsWith('proofreading_test_queue?')) return [{user_id: me.id, test_id: T.id, joined_at: 't1', called_at: null, player: {username: 'Kim_OZ'}}];
+    if (path.startsWith('proofreading_test_attempts?')) return [];
+    if (path.startsWith('proofreading_tests?')) return [T];
+    if (path.startsWith('proofreading_test_checks?')) return CHECKS;
+    throw new Error('unexpected ' + path);
+  };
+  const g = fakeGraph(START);
+  const base = {...io(g, rpc), sb: sb([])};
+  await handle({action: 'test.queueJoin', args: {}, who, me, io: base});
+  await handle({action: 'test.queueJoin', args: {id: T.id}, who, me, io: base});
+  await handle({action: 'test.queueLeave', args: {}, who, me, io: base});
+  assert.deepEqual(calls, [{action: 'queue_join', args: {}}, {action: 'queue_join', args: {id: T.id}}, {action: 'queue_leave', args: {}}]);
+  await assert.rejects(() => handle({action: 'test.queueJoin', args: {id: 'x'}, who, me, io: base}), /Unknown test/);
+  // Taking someone out: admins only, a real player id.
+  await assert.rejects(() => handle({action: 'test.queueRemove', args: {user: me.id}, who, me, io: base}), e => e.status === 403);
+  const admin = {...io(g, rpc), sb: sb([{email: who.email}])};
+  await assert.rejects(() => handle({action: 'test.queueRemove', args: {user: 'nobody'}, who, me, io: admin}), /Unknown player/);
+  await handle({action: 'test.queueRemove', args: {user: me.id}, who, me, io: admin});
+  assert.deepEqual(calls.at(-1), {action: 'queue_remove', args: {user: me.id}});
+  const list = await handle({action: 'test.tries', args: {}, who, me, io: admin});
+  assert.deepEqual(list.line, [{user_id: me.id, test_id: T.id, joined_at: 't1', called_at: null, username: 'Kim_OZ'}]);
+  // Before the line's SQL: an empty line, the list still comes.
+  const noLine = async path => { if (path.startsWith('proofreading_test_queue?')) throw new Error('supabase 404'); return sb([{email: who.email}])(path); };
+  assert.deepEqual((await handle({action: 'test.tries', args: {}, who, me, io: {...io(g, rpc), sb: noLine}})).line, []);
 });

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { QUIET_TEST_HOST } from '../util/test_host';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
@@ -14,6 +15,8 @@ import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
+import TestReviewBar from "components/TestReviewBar.vue";
+import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
@@ -26,6 +29,9 @@ import TeamPanel from "components/TeamPanel.vue";
 import VersionNotice from "components/VersionNotice.vue";
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
+import PhotoMode from "components/PhotoMode.vue";
+import PyrArcade from "components/PyrArcade.vue";
+import { ARCADE_ENABLED } from "../util/arcade";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
@@ -167,6 +173,10 @@ function shareActionScreenshot() {
   dismissShareToast();
   showScreenshotDialog.value = true;
 }
+function shareActionPhoto() {
+  dismissShareToast();
+  showPhotoMode.value = true;
+}
 function shareActionEmail() {
   dismissShareToast();
   const subject = 'Check out this neuron in EyeWire II';
@@ -204,6 +214,8 @@ onMounted(() => {
   }) as EventListener);
 
   // Tag mode: global hotkey (Shift+T) and the palette command's event.
+  document.addEventListener('nge:photo-mode', () => { showPhotoMode.value = true; });
+  document.addEventListener('nge:open-arcade', () => { if (ARCADE_ENABLED) showArcade.value = true; });
   document.addEventListener('nge:toggle-tag-mode', (() => {
     showTagMode.value = !showTagMode.value;
   }) as EventListener);
@@ -349,6 +361,8 @@ const leaderboardPeek = ref(false);
 // (Ames 2026-09-28), unless you turned that off on the leaderboard, a
 // tutorial is running, another window is open, or you're on a phone.
 function maybeOpenLeaderboardOnArrival() {
+  // Not on a branch test site (util/test_host.ts).
+  if (QUIET_TEST_HOST) return;
   try {
     if (localStorage.getItem('nge-leaderboard-on-open') === '0') return;
     if (sessionStorage.getItem('nge-lb-greeted') === '1') return;
@@ -390,6 +404,8 @@ document.addEventListener('nge:access-open', () => { showAccess.value = true; })
 // A reviewer opened an example from Admin Hub > Access requests: out of the
 // profile, into the view, with the review bar (AccessReviewBar).
 document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
+// An admin opened a Proofreading Test try in the view (Admin Hub > Test tries).
+document.addEventListener('nge:test-review', () => { showProfile.value = false; showAccess.value = false; });
 /** Chat visibility persists across reloads so closing it stays closed.
  *  Default = open on first visit (key absent in localStorage). */
 const CHAT_VISIBLE_KEY = 'nge_chat_visible_v1';
@@ -422,6 +438,12 @@ function sprayHighlightIcon() {
   });
 }
 const showFlightMode = ref(false);
+// Photo mode (Ames 2026-10-20): from the Share toast and the palette.
+const showPhotoMode = ref(false);
+// The Pyr Arcade (Ames 2026-10-20): from the menu and the palette. Held back
+// for now (Ames: "remind me to add it at a later time for like new years"):
+// set ARCADE_ENABLED to true, with a changelog entry, to open it to players.
+const showArcade = ref(false);
 const konamiBuf: string[] = [];
 const showDatasetSelector = ref(false);
 const showNotifications = ref(false);
@@ -700,6 +722,8 @@ interface ToolbarIcon {
   label: string;
   action: () => void;
   badge?: () => number;
+  /** A second, red count beside the badge (the bell's Admin tab). */
+  adminBadge?: () => number;
 }
 
 // ── Toolbar definitions ────────────────────────────────────────────
@@ -769,7 +793,9 @@ const toolbarActions: Record<string, ToolbarAction> = {
   highlight:   { action: () => { if (highlightOff.value) return; showHighlight.value = !showHighlight.value; sprayHighlightIcon(); } },
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount },
+  // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount,
+                 adminBadge: () => backendStore.unreadAdminNotificationCount },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
@@ -787,6 +813,7 @@ const toolbarDefs = computed<ToolbarIcon[]>(() => {
         label: def.label,
         action: a.action,
         badge: a.badge,
+        adminBadge: (a as any).adminBadge,
       } as ToolbarIcon;
     })
     .filter((x): x is ToolbarIcon => x !== null);
@@ -943,6 +970,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <access-request-panel v-if="showAccess" @hide="showAccess = false" />
   <access-review-bar />
+  <test-review-bar />
+  <test-queue-card />
   <!-- Help requests now live in Cell Library's Help tab -->
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
@@ -954,6 +983,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <!-- "A newer version is out": only when the game was updated since this page loaded. -->
   <version-notice />
   <flight-mode v-if="showFlightMode" @hide="showFlightMode = false" />
+  <photo-mode v-if="showPhotoMode" @hide="showPhotoMode = false" />
+  <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
@@ -1064,6 +1095,14 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
               <circle cx="12" cy="13.5" r="3.8"/>
             </svg>
           </button>
+          <button class="nge-share-action" title="Photo mode: full screen 3D, spin, save a picture or a spin"
+                  @click="shareActionPhoto">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"/>
+              <path d="M8.5 12a3.5 3.5 0 1 0 1-2.45"/><path d="M8.5 8.2v1.6h1.6"/>
+            </svg>
+          </button>
           <button class="nge-share-action" title="Email link"
                   @click="shareActionEmail">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
@@ -1117,7 +1156,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         :data-icon-id="icon.id"
         class="nge-icon-btn"
         :class="{
-          'nge-icon-btn--badge': icon.badge && icon.badge() > 0,
+          'nge-icon-btn--badge': (icon.badge && icon.badge() > 0) || (icon.adminBadge && icon.adminBadge() > 0),
           'nge-icon-btn--mention': icon.id === 'chat' && chatMentionPending,
           'nge-icon-btn--active': isIconActive(icon.id),
           'nge-icon-btn--fresh': freshIcons.has(icon.id),
@@ -1136,7 +1175,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         @dragleave="onIconDragLeave(icon.id)"
         @drop="onIconDrop($event, icon.id)"
         @click="icon.action()"
-      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat' }">{{ icon.badge() }}</span></button>
+      ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ icon.badge() }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
     </div>
 
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
@@ -1192,7 +1231,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
             <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
-            <span>Proofreading Test (WIP){{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
+            <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
         <!-- Standalone cut exercises (Ames, 2026-10-06): each opens on its
@@ -1204,6 +1243,17 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
             <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
+          </div>
+        </li>
+        <li class="nge-menu-heading" @click.stop>Just for fun</li>
+        <li v-if="ARCADE_ENABLED">
+          <div class="logoutButton button nge-menu-item" @click="showArcade = true; closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">🕹️</span><span>Pyr Arcade</span>
+          </div>
+        </li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="showPhotoMode = true; closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">📷</span><span>Photo Mode</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Learn more</li>
@@ -1788,6 +1838,12 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 
 /* Chat unread pip is green to read as "live conversation" rather than
    the purple admin/notification accent. */
+.nge-toolbar-badge--admin {
+  background: #e5484d;
+  box-shadow: 0 0 8px rgba(229, 72, 77, 0.55);
+}
+/* With both counts on the bell, the purple one steps left of the red. */
+.nge-toolbar-badge--beside { right: 14px; }
 .nge-toolbar-badge--chat {
   background: #4ad07a;
   color: #06170d;

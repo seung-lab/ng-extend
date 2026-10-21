@@ -10,10 +10,12 @@
 --   proofreading_test_checks    the answers: one row per thing to check,
 --                               two supervoxels and what should become of them
 --   proofreading_test_attempts  one row per try, written by the server only
+--   proofreading_test_queue     the line of players waiting for the cell
 -- Function
 --   pilot_test_action(p_user, p_action, p_args)  status, claim, heartbeat,
---                               cleaned, record. Service role only; called by
---                               ewSecureWrite (functions/proofreading-test.js).
+--                               cleaned, record, queue_join, queue_leave,
+--                               queue_remove. Service role only; called by
+--                               ewProofreadingTest (functions/proofreading-test.js).
 --                               No pilot membership needed: the test is how a
 --                               player earns it.
 BEGIN;
@@ -84,12 +86,15 @@ CREATE TABLE IF NOT EXISTS public.proofreading_test_checks (
   point_a jsonb,       -- viewer voxel [x, y, z], where a sits (or the endpoint)
   point_b jsonb,
   radius_nm integer,   -- endpoint only
-  weight integer NOT NULL DEFAULT 1 CHECK (weight BETWEEN 0 AND 100),
+  weight integer NOT NULL DEFAULT 1 CHECK (weight BETWEEN 0 AND 1000000),  -- a piece weighs its size in supervoxels
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (kind = 'endpoint' OR (supervoxel_a <> '' AND supervoxel_b <> '' AND supervoxel_a <> supervoxel_b)),
   CHECK (kind <> 'endpoint' OR point_a IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS proofreading_test_checks_test_idx ON public.proofreading_test_checks (test_id, ordinal);
+-- Weights are piece sizes in supervoxels since 2026-10-19; the first cap was 100.
+ALTER TABLE public.proofreading_test_checks DROP CONSTRAINT IF EXISTS proofreading_test_checks_weight_check;
+ALTER TABLE public.proofreading_test_checks ADD CONSTRAINT proofreading_test_checks_weight_check CHECK (weight BETWEEN 0 AND 1000000);
 
 CREATE TABLE IF NOT EXISTS public.proofreading_test_attempts (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -110,7 +115,29 @@ CREATE TABLE IF NOT EXISTS public.proofreading_test_attempts (
   timed_out boolean NOT NULL DEFAULT false  -- scored because the time limit ran out
 );
 ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS timed_out boolean NOT NULL DEFAULT false;
+-- What the admins see of a try (2026-10-21, supabase-proofreading-test-tries.sql):
+-- the player's cell as they left it, and the ends they marked of how many.
+ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS end_root text CHECK (end_root IS NULL OR end_root ~ '^[0-9]{1,20}$');
+ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS ends_found integer;
+ALTER TABLE public.proofreading_test_attempts ADD COLUMN IF NOT EXISTS ends_total integer;
 CREATE INDEX IF NOT EXISTS proofreading_test_attempts_user_idx ON public.proofreading_test_attempts (user_id, test_id, started_at DESC);
+
+-- The line (Ames, 2026-10-21): one player at a time, so the others wait
+-- their turn. When the cell is free, the first in line is called: a
+-- notification, and the cell held for them for 10 minutes. A turn not taken
+-- in time drops them from the line and the next is called. While anyone is
+-- waiting, the player on the cell keeps it through 15 quiet minutes, not the
+-- test's usual hold.
+CREATE TABLE IF NOT EXISTS public.proofreading_test_queue (
+  test_id uuid NOT NULL REFERENCES public.proofreading_tests(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  called_at timestamptz,                        -- their turn: the cell is held for them
+  PRIMARY KEY (test_id, user_id)
+);
+ALTER TABLE public.proofreading_test_queue ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.proofreading_test_queue FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.proofreading_test_queue TO service_role;
 
 ALTER TABLE public.proofreading_tests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proofreading_test_checks ENABLE ROW LEVEL SECURITY;
@@ -135,6 +162,54 @@ LANGUAGE sql IMMUTABLE AS $$
     'grants', (t.grant_pilot OR cardinality(t.cave_groups) > 0), 'time_limit_minutes', t.time_limit_minutes);
 $$;
 
+-- The line moves: a turn not taken in 10 minutes drops out, and a free cell
+-- calls the first in line, with a notification. Run under the test's lock by
+-- pilot_test_action on every call, so the line moves whenever anyone looks.
+CREATE OR REPLACE FUNCTION public.proofreading_test_call_next() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  q public.proofreading_test_queue%ROWTYPE;
+  turn constant interval := interval '10 minutes';
+BEGIN
+  DELETE FROM public.proofreading_test_queue WHERE called_at IS NOT NULL AND called_at + turn <= now();
+  FOR q IN
+    SELECT DISTINCT ON (l.test_id) l.* FROM public.proofreading_test_queue l
+      JOIN public.proofreading_tests x ON x.id = l.test_id
+      WHERE x.enabled AND x.status IN ('ready', 'needs_reset')
+        AND NOT EXISTS (SELECT 1 FROM public.proofreading_test_queue c WHERE c.test_id = l.test_id AND c.called_at IS NOT NULL)
+      ORDER BY l.test_id, l.joined_at
+  LOOP
+    UPDATE public.proofreading_test_queue SET called_at = now() WHERE test_id = q.test_id AND user_id = q.user_id;
+    INSERT INTO public.notifications (title, body, target_type, target_id, send_at, expires_at)
+      VALUES ('Your turn: the Proofreading Test',
+        'The test cell is held for you for 10 minutes. Open the menu and start the Proofreading Test, or press Start the test on the card at the top left.',
+        'user', q.user_id::text, now(), now() + turn);
+  END LOOP;
+END;
+$$;
+
+-- Why this player may not take the test now (NULL: they may). The same
+-- rules for taking the cell and for joining the line.
+CREATE OR REPLACE FUNCTION public.proofreading_test_refusal(t public.proofreading_tests, p_user uuid, p_admin boolean) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  n_done integer;
+  last_fail timestamptz;
+BEGIN
+  IF p_admin THEN RETURN NULL; END IF;
+  IF EXISTS (SELECT 1 FROM public.proofreading_test_attempts WHERE test_id = t.id AND user_id = p_user AND outcome = 'pass') THEN
+    RETURN 'You have already passed this test';
+  END IF;
+  SELECT count(*) INTO n_done FROM public.proofreading_test_attempts WHERE test_id = t.id AND user_id = p_user AND outcome IN ('pass', 'fail');
+  IF t.attempts_allowed IS NOT NULL AND n_done >= t.attempts_allowed THEN RETURN 'No tries left on this test'; END IF;
+  SELECT max(submitted_at) INTO last_fail FROM public.proofreading_test_attempts WHERE test_id = t.id AND user_id = p_user AND outcome = 'fail';
+  IF last_fail IS NOT NULL AND t.retry_hours > 0 AND last_fail + make_interval(hours => t.retry_hours) > now() THEN
+    RETURN 'Try again after ' || to_char(last_fail + make_interval(hours => t.retry_hours), 'YYYY-MM-DD HH24:MI "UTC"');
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.pilot_test_action(p_user uuid, p_action text, p_args jsonb DEFAULT '{}')
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
@@ -152,6 +227,16 @@ DECLARE
   -- After the time limit a submit still gets through for this long: the
   -- player's page submits by itself the moment the clock reaches zero.
   grace constant interval := interval '2 minutes';
+  -- The line: how long a called player has to start, and the quiet minutes
+  -- the player on the cell gets while anyone is waiting.
+  turn constant interval := interval '10 minutes';
+  quiet_waiting constant integer := 15;
+  q public.proofreading_test_queue%ROWTYPE;
+  pos integer;
+  n_line integer;
+  other_turn boolean;
+  quiet integer;
+  why text;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.users WHERE id = p_user) THEN
     RAISE EXCEPTION 'Create your Pyr profile first' USING ERRCODE = '42501';
@@ -167,6 +252,8 @@ BEGIN
   UPDATE public.proofreading_tests SET status = 'needs_reset', claimed_by = NULL, claimed_at = NULL,
       expires_at = NULL, deadline_at = NULL, claim_nonce = NULL, updated_at = now()
     WHERE status = 'in_use' AND expires_at <= now();
+  -- The line moves on whatever just freed up.
+  PERFORM public.proofreading_test_call_next();
 
   IF p_action = 'status' THEN
     SELECT * INTO t FROM public.proofreading_tests WHERE enabled AND (want IS NULL OR id = want)
@@ -178,9 +265,20 @@ BEGIN
     wait_until := CASE WHEN last_fail IS NULL OR t.retry_hours = 0 THEN NULL ELSE last_fail + make_interval(hours => t.retry_hours) END;
     SELECT * INTO att FROM public.proofreading_test_attempts WHERE test_id = t.id AND user_id = p_user AND outcome IN ('pass', 'fail')
       ORDER BY submitted_at DESC LIMIT 1;
+    SELECT count(*) INTO n_line FROM public.proofreading_test_queue WHERE test_id = t.id;
+    SELECT * INTO q FROM public.proofreading_test_queue WHERE test_id = t.id AND user_id = p_user;
+    pos := CASE WHEN q.user_id IS NULL THEN NULL
+      ELSE (SELECT count(*) + 1 FROM public.proofreading_test_queue l WHERE l.test_id = t.id AND l.joined_at < q.joined_at) END;
+    other_turn := EXISTS (SELECT 1 FROM public.proofreading_test_queue WHERE test_id = t.id AND called_at IS NOT NULL AND user_id <> p_user);
     RETURN jsonb_build_object(
       'test', public.proofreading_test_public(t),
-      'free', t.status IN ('ready', 'needs_reset') OR (t.status = 'in_use' AND t.claimed_by = p_user),
+      'free', (t.status IN ('ready', 'needs_reset') AND NOT other_turn) OR (t.status = 'in_use' AND t.claimed_by = p_user),
+      'queue', jsonb_build_object('length', n_line, 'position', pos,
+        'called_until', CASE WHEN q.called_at IS NOT NULL THEN q.called_at + turn ELSE NULL END,
+        'other_turn', other_turn,
+        'holder_until', CASE WHEN t.status = 'in_use' AND t.claimed_by IS DISTINCT FROM p_user THEN coalesce(t.deadline_at, t.expires_at) ELSE NULL END,
+        'turn_minutes', 10,
+        'quiet_minutes', CASE WHEN n_line > 0 THEN least(t.hold_minutes, quiet_waiting) ELSE t.hold_minutes END),
       'mine', t.status = 'in_use' AND t.claimed_by = p_user,
       'attempts', n_done,
       'passed', has_passed,
@@ -198,8 +296,9 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'There is no test to take right now'; END IF;
     -- The same player again (a reload mid test): keep the session and its edits.
     IF t.status = 'in_use' AND t.claimed_by = p_user AND t.expires_at > now() THEN
+      quiet := CASE WHEN EXISTS (SELECT 1 FROM public.proofreading_test_queue WHERE test_id = t.id) THEN least(t.hold_minutes, quiet_waiting) ELSE t.hold_minutes END;
       -- least() skips a NULL, so a test with no limit keeps renewing freely.
-      UPDATE public.proofreading_tests SET expires_at = least(now() + make_interval(mins => hold_minutes), deadline_at + grace), updated_at = now()
+      UPDATE public.proofreading_tests SET expires_at = least(now() + make_interval(mins => quiet), deadline_at + grace), updated_at = now()
         WHERE id = t.id RETURNING * INTO t;
       SELECT * INTO att FROM public.proofreading_test_attempts WHERE test_id = t.id AND claim_nonce = t.claim_nonce AND outcome IS NULL
         ORDER BY id DESC LIMIT 1;
@@ -211,29 +310,54 @@ BEGIN
       RAISE EXCEPTION 'The test cell is being put back to its start; try again in a few minutes' USING ERRCODE = '55P03';
     END IF;
     IF t.status = 'broken' THEN RAISE EXCEPTION 'The test cell needs an admin to look at it; try again later'; END IF;
-    IF NOT is_admin THEN
-      IF EXISTS (SELECT 1 FROM public.proofreading_test_attempts WHERE test_id = t.id AND user_id = p_user AND outcome = 'pass') THEN
-        RAISE EXCEPTION 'You have already passed this test';
-      END IF;
-      SELECT count(*) INTO n_done FROM public.proofreading_test_attempts WHERE test_id = t.id AND user_id = p_user AND outcome IN ('pass', 'fail');
-      IF t.attempts_allowed IS NOT NULL AND n_done >= t.attempts_allowed THEN RAISE EXCEPTION 'No tries left on this test'; END IF;
-      SELECT max(submitted_at) INTO last_fail FROM public.proofreading_test_attempts WHERE test_id = t.id AND user_id = p_user AND outcome = 'fail';
-      IF last_fail IS NOT NULL AND t.retry_hours > 0 AND last_fail + make_interval(hours => t.retry_hours) > now() THEN
-        RAISE EXCEPTION 'Try again after %', to_char(last_fail + make_interval(hours => t.retry_hours), 'YYYY-MM-DD HH24:MI "UTC"');
-      END IF;
+    -- The line: while it is someone else's turn, nobody else takes the cell.
+    IF EXISTS (SELECT 1 FROM public.proofreading_test_queue WHERE test_id = t.id AND called_at IS NOT NULL AND user_id <> p_user) THEN
+      RAISE EXCEPTION 'It is the turn of the next player in line. Join the line, and Pyr calls you when it is yours.' USING ERRCODE = '55P03';
     END IF;
+    why := public.proofreading_test_refusal(t, p_user, is_admin);
+    IF why IS NOT NULL THEN RAISE EXCEPTION '%', why; END IF;
+    -- Their turn, taken: out of the line.
+    DELETE FROM public.proofreading_test_queue WHERE test_id = t.id AND user_id = p_user;
+    quiet := CASE WHEN EXISTS (SELECT 1 FROM public.proofreading_test_queue WHERE test_id = t.id) THEN least(t.hold_minutes, quiet_waiting) ELSE t.hold_minutes END;
     was := t.status;
     -- No clock yet: it starts when the cell is handed over ('cleaned'), so
     -- time spent putting a long history back is not the player's.
     UPDATE public.proofreading_tests SET status = 'in_use', claimed_by = p_user, claimed_at = now(),
         deadline_at = NULL,
-        expires_at = now() + make_interval(mins => hold_minutes),
+        expires_at = now() + make_interval(mins => quiet),
         claim_nonce = gen_random_uuid(), reset_nonce = NULL,
         uses = uses + 1, updated_at = now()
       WHERE id = t.id RETURNING * INTO t;
     INSERT INTO public.proofreading_test_attempts (test_id, user_id, claim_nonce) VALUES (t.id, p_user, t.claim_nonce) RETURNING * INTO att;
     RETURN jsonb_build_object('test', public.proofreading_test_public(t), 'session', t.claim_nonce,
       'attempt', att.id, 'resumed', false, 'was', was, 'deadline_at', t.deadline_at);
+
+  ELSIF p_action = 'queue_join' THEN
+    SELECT * INTO t FROM public.proofreading_tests WHERE enabled AND (want IS NULL OR id = want) ORDER BY created_at LIMIT 1 FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'There is no test to take right now'; END IF;
+    IF t.status = 'in_use' AND t.claimed_by = p_user THEN RAISE EXCEPTION 'The test cell is yours already'; END IF;
+    why := public.proofreading_test_refusal(t, p_user, is_admin);
+    IF why IS NOT NULL THEN RAISE EXCEPTION '%', why; END IF;
+    INSERT INTO public.proofreading_test_queue (test_id, user_id) VALUES (t.id, p_user) ON CONFLICT DO NOTHING;
+    -- Someone is waiting now: the player on the cell has 15 minutes from
+    -- here to make a move (any move renews it), not the usual hold.
+    UPDATE public.proofreading_tests
+      SET expires_at = least(expires_at, now() + make_interval(mins => least(hold_minutes, quiet_waiting)))
+      WHERE id = t.id AND status = 'in_use' AND claimed_by IS DISTINCT FROM p_user;
+    -- A free cell calls them at once.
+    PERFORM public.proofreading_test_call_next();
+    RETURN jsonb_build_object('ok', true);
+
+  ELSIF p_action = 'queue_leave' THEN
+    DELETE FROM public.proofreading_test_queue WHERE user_id = p_user AND (want IS NULL OR test_id = want);
+    PERFORM public.proofreading_test_call_next();
+    RETURN jsonb_build_object('ok', true);
+
+  ELSIF p_action = 'queue_remove' THEN
+    IF NOT is_admin THEN RAISE EXCEPTION 'Only admins can take someone out of the line' USING ERRCODE = '42501'; END IF;
+    DELETE FROM public.proofreading_test_queue WHERE user_id = (p_args->>'user')::uuid AND (want IS NULL OR test_id = want);
+    PERFORM public.proofreading_test_call_next();
+    RETURN jsonb_build_object('ok', true);
 
   ELSE
     SELECT * INTO t FROM public.proofreading_tests WHERE id = want FOR UPDATE;
@@ -243,9 +367,11 @@ BEGIN
       RAISE EXCEPTION 'This test session has ended';
     END IF;
     IF p_action = 'heartbeat' THEN
-      UPDATE public.proofreading_tests SET expires_at = least(now() + make_interval(mins => hold_minutes), deadline_at + grace), updated_at = now()
+      quiet := CASE WHEN EXISTS (SELECT 1 FROM public.proofreading_test_queue WHERE test_id = t.id) THEN least(t.hold_minutes, quiet_waiting) ELSE t.hold_minutes END;
+      UPDATE public.proofreading_tests SET expires_at = least(now() + make_interval(mins => quiet), deadline_at + grace), updated_at = now()
         WHERE id = t.id RETURNING * INTO t;
-      RETURN jsonb_build_object('expires_at', t.expires_at, 'deadline_at', t.deadline_at);
+      RETURN jsonb_build_object('expires_at', t.expires_at, 'deadline_at', t.deadline_at, 'quiet_minutes', quiet,
+        'waiting', (SELECT count(*) FROM public.proofreading_test_queue WHERE test_id = t.id));
     ELSIF p_action = 'cleaned' THEN
       -- The server put the cell back to its start under this claim and hands
       -- it over: the time limit starts now (2026-10-19), and the hold can be
@@ -278,6 +404,8 @@ BEGIN
           last_error = CASE WHEN clean THEN NULL ELSE left(p_args->>'error', 500) END,
           updated_at = now()
         WHERE id = t.id RETURNING * INTO t;
+      -- The cell is free: the next in line is called now, not at the next look.
+      PERFORM public.proofreading_test_call_next();
       RETURN jsonb_build_object('attempt', att.id, 'outcome', att.outcome, 'status', t.status);
     ELSE
       RAISE EXCEPTION 'Unknown test action';
@@ -286,7 +414,9 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.pilot_test_action(uuid, text, jsonb), public.proofreading_test_public(public.proofreading_tests) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.pilot_test_action(uuid, text, jsonb), public.proofreading_test_public(public.proofreading_tests) TO service_role;
+REVOKE ALL ON FUNCTION public.pilot_test_action(uuid, text, jsonb), public.proofreading_test_public(public.proofreading_tests),
+  public.proofreading_test_call_next(), public.proofreading_test_refusal(public.proofreading_tests, uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.pilot_test_action(uuid, text, jsonb), public.proofreading_test_public(public.proofreading_tests),
+  public.proofreading_test_call_next(), public.proofreading_test_refusal(public.proofreading_tests, uuid, boolean) TO service_role;
 NOTIFY pgrst, 'reload schema';
 COMMIT;

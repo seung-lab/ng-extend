@@ -584,7 +584,7 @@ textarea.neuroglancer-annotation-details-description:focus {
 .nge-polyline-hint-badge {
   font-family: 'Orbitron', 'Inter', sans-serif;
   font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
-  color: #7CFFB2; text-shadow: 0 0 10px rgb(124 255 178 / .45);
+  color: #87ceeb; text-shadow: 0 0 10px rgb(124 255 178 / .45);
 }
 .nge-polyline-hint-count {
   min-width: 62px; padding: 2px 9px; border-radius: 999px; text-align: center;
@@ -618,3 +618,72 @@ textarea.neuroglancer-annotation-details-description:focus {
   color: rgba(204, 222, 244, 0.9);
 }
 .neuroglancer-annotation-list-entry > .nge-ann-row-actions { top: 1px; transform: none; }
+
+/* ── Numbers, folders and dragging (Ames 2026-10-19: "can we modify
+   annotations so they are numbered and add folders to them, and let me drag
+   and drop to reorder?"). Folders look like the Segments panel's
+   (ng-override.css, Folders); the code is ui/nge_annotation_list.ts. ── */
+.nge-ann-num,
+.nge-ann-num-header {
+  grid-column: num;
+  text-align: right;
+  padding-right: 0.8ch;
+  color: rgba(150, 185, 225, 0.72);
+  font-variant-numeric: tabular-nums;
+  user-select: none; -webkit-user-select: none;
+}
+.nge-ann-num-header { color: rgba(150, 185, 225, 0.5); }
+/* the number is the handle on the layer's own annotations */
+.neuroglancer-annotation-list-entry[data-nge-pickable] > .nge-ann-num { cursor: grab; border-radius: 3px; }
+.neuroglancer-annotation-list-entry[data-nge-pickable] > .nge-ann-num:hover { color: #e6f7ff; background: rgba(74, 158, 255, 0.18); }
+.neuroglancer-annotation-list.nge-ann-dragging,
+.neuroglancer-annotation-list.nge-ann-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.neuroglancer-annotation-list-entry.nge-drag-source,
+.nge-ann-folder.nge-drag-source { opacity: 0.4; }
+.neuroglancer-annotation-list-entry.nge-drop-flash { animation: nge-drop-flash 2.5s ease-out; }
+/* picked with Ctrl or Shift click: the Segments panel's green */
+.neuroglancer-annotation-list-entry.nge-ann-picked {
+  background: rgba(135, 206, 235, 0.1) !important;
+  box-shadow: inset 2px 0 0 #87ceeb, 0 0 0 1px rgba(135, 206, 235, 0.35) !important;
+}
+.neuroglancer-annotation-list-entry.nge-ann-picked > .nge-ann-num { color: #87ceeb; }
+/* in a folder: stepped in, with the folder's color as a rail */
+.neuroglancer-annotation-list-entry.nge-ann-in-folder {
+  margin-left: calc(var(--nge-ann-depth, 1) * 12px);
+  border-left: 1px solid color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 45%, transparent);
+}
+
+.nge-ann-list-tools { display: flex; align-items: center; padding: 2px 6px 4px; }
+.nge-ann-list-tools .nge-ann-folder-new { margin-left: 0; }
+
+.nge-ann-folder {
+  display: flex; align-items: center; gap: 2px;
+  min-height: 24px; box-sizing: border-box;
+  padding: 3px 6px 3px calc(2px + var(--nge-ann-depth, 0) * 12px);
+  margin-top: 2px;
+  border-top: 1px solid color-mix(in srgb, var(--nge-folder-color, #8cb4eb) 30%, transparent);
+  border-radius: 4px;
+  font-family: Inter, system-ui, sans-serif; font-size: 12px;
+  cursor: grab; user-select: none; -webkit-user-select: none;
+}
+.nge-ann-folder:hover { background: rgba(79, 207, 255, 0.06); }
+.nge-ann-folder .nge-seg-folder-name { flex: 1 1 auto; min-width: 40px; max-width: none; cursor: text; }
+.nge-ann-folder .nge-seg-folder-color { margin: 0 6px 0 2px; }
+.nge-ann-folder-count {
+  flex: none; margin: 0 4px; color: rgba(200, 215, 240, 0.6);
+  font-variant-numeric: tabular-nums; font-size: 11px;
+}
+.nge-ann-folder-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.nge-ann-folder-actions .nge-seg-folder-icon { margin-left: 0; }
+@media (hover: hover) {
+  .nge-ann-folder:not(:hover) .nge-ann-folder-actions { visibility: hidden; }
+}
+.nge-ann-folder.nge-folder-drop-target {
+  box-shadow: inset 0 0 0 2px rgba(245, 209, 66, 0.8);
+  background: rgba(245, 209, 66, 0.12);
+}
+.nge-ann-folder.nge-folder-drop-before { box-shadow: inset 0 3px 0 rgba(140, 200, 255, 0.95); }
+.nge-ann-folder.nge-folder-drop-after { box-shadow: inset 0 -3px 0 rgba(140, 200, 255, 0.95); }
+.nge-ann-pick-bar { margin: 4px 6px; }
+/* the whole row drags, so a drag never selects its text */
+.neuroglancer-annotation-list-entry[data-nge-pickable] { user-select: none; -webkit-user-select: none; }

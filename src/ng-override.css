@@ -111,6 +111,9 @@
    along the bottom of the screen covered it (Ames 2026-10-12). It rises with
    the bar like the coordinates do. */
 label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-bar, 0px)); transition: bottom 0.2s ease; }
+/* The music button has the corner (RadioPlayer.vue); Sections sits left of
+   it, on the same line, centred on the button's height. */
+body.nge-radio-on label.perspective-panel-show-slice-views { right: 46px; bottom: calc(10px + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 .neuroglancer-mouse-position-widget:empty {
@@ -1368,26 +1371,26 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
   background-color: rgba(224, 96, 96, 0.18) !important;
 }
 .neuroglancer-segment-list-entry .nge-seg-list-remove:hover > svg { stroke: #e06060 !important; }
-.neuroglancer-segment-list-entry .nge-seg-list-add > svg { stroke: #7cffb2 !important; }
+.neuroglancer-segment-list-entry .nge-seg-list-add > svg { stroke: #87ceeb !important; }
 
 .neuroglancer-segment-list-status.nge-seg-list-heading--pasted {
-  border-top: 1px solid rgba(124, 255, 178, 0.35);
-  background: rgba(124, 255, 178, 0.06) !important;
+  border-top: 1px solid rgba(135, 206, 235, 0.35);
+  background: rgba(135, 206, 235, 0.06) !important;
 }
 .neuroglancer-segment-list-status.nge-seg-list-heading--pasted .neuroglancer-segment-list-status-message {
-  color: #7cffb2;
+  color: #87ceeb;
 }
 .nge-seg-list-group--pasted:not([style*="none"]) + .nge-seg-list-group--inview > .neuroglancer-segment-list-status {
   margin-top: 6px;
   border-top: 1px solid rgba(140, 180, 235, 0.35);
 }
-.nge-seg-list--pasted { border-bottom: 1px solid rgba(124, 255, 178, 0.18); flex: 0 1 auto !important; max-height: 45%; }
+.nge-seg-list--pasted { border-bottom: 1px solid rgba(135, 206, 235, 0.18); flex: 0 1 auto !important; max-height: 45%; }
 .nge-seg-list-keep {
   margin-left: auto; margin-right: 6px;
-  background: none; border: 1px solid rgba(124, 255, 178, 0.35); border-radius: 6px;
-  color: #7cffb2; font: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer; white-space: nowrap; flex: none;
+  background: none; border: 1px solid rgba(135, 206, 235, 0.35); border-radius: 6px;
+  color: #87ceeb; font: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer; white-space: nowrap; flex: none;
 }
-.nge-seg-list-keep:hover { background: rgba(124, 255, 178, 0.12); }
+.nge-seg-list-keep:hover { background: rgba(135, 206, 235, 0.12); }
 
 /* ── Seg panel rows: eye, then the cell, then copy and remove on hover; the
  *    empty column on the left is gone (Ames 2026-10-14: "a lot of empty
@@ -1458,11 +1461,11 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-pick-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   padding: 6px 8px; margin: 4px 0;
-  border: 1px solid rgba(124, 255, 178, 0.35); border-radius: 6px;
-  background: rgba(124, 255, 178, 0.07);
+  border: 1px solid rgba(135, 206, 235, 0.35); border-radius: 6px;
+  background: rgba(135, 206, 235, 0.07);
   font-family: Inter, system-ui, sans-serif; font-size: 12px;
 }
-.nge-pick-count { color: #7cffb2; font-weight: 600; margin-right: 2px; }
+.nge-pick-count { color: #87ceeb; font-weight: 600; margin-right: 2px; }
 .nge-pick-move, .nge-pick-btn {
   background: rgba(10, 15, 30, 0.9); color: rgba(220, 230, 245, 0.95);
   border: 1px solid rgba(140, 180, 235, 0.3); border-radius: 5px;
@@ -1650,7 +1653,7 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
 .nge-confirm-ok:hover { background: #6fb3ff; }
 .nge-confirm-ok.nge-confirm-danger { background: #e06060; color: #fff; }
 .nge-confirm-ok.nge-confirm-danger:hover { background: #ec7676; }
-.nge-confirm-ok:focus-visible, .nge-confirm-cancel:focus-visible { outline: 2px solid rgba(124, 255, 178, 0.8); outline-offset: 2px; }
+.nge-confirm-ok:focus-visible, .nge-confirm-cancel:focus-visible { outline: 2px solid rgba(135, 206, 235, 0.8); outline-offset: 2px; }
 
 /* Rows line up the same with a name or a number (Ames 2026-10-15: "weird
    spacing of segIDs with names vs only numbers"): copy shows on hover on
@@ -1735,7 +1738,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
   font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; color: rgba(200, 215, 240, 0.85); padding-left: 4px;
 }
-.nge-h.nge-seg-list-heading--pasted .nge-h-label { color: #7cffb2; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-label { color: #87ceeb; }
 .nge-h > .neuroglancer-eye-icon { flex: none; order: 0; }
 .nge-h .nge-h-region { flex: none; width: 112px; display: flex; align-items: center; gap: 4px; }
 .nge-h .nge-h-swap { position: relative; flex: 1 1 auto; min-width: 0; height: 22px; display: flex; align-items: center; }
@@ -1950,3 +1953,106 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .neuroglancer-segment-list .neuroglancer-segment-list-entry { padding-right: 72px !important; }
 .neuroglancer-segment-list-entry > .neuroglancer-segment-list-entry-sticky { min-width: 0 !important; flex: 0 1 auto !important; }
 .neuroglancer-segment-list-entry-sticky > .neuroglancer-segment-list-entry-id-container { min-width: 0 !important; flex: 0 1 auto !important; overflow: hidden !important; }
+
+/* The lab AI's predicted type in the Cell Profile (Ames 2026-10-19) */
+.nge-lb-ai-type { color: #c9b2ff; }
+/* A grip under each folder's box: drag to make it taller or shorter (Nseraf,
+   report 179), like the line above the Selection panel. The height is the
+   folder's own (saved with it); a double click gives back the usual cap. */
+.nge-seg-list--folder[data-nge-sized] { max-height: var(--nge-folder-h, 220px) !important; }
+.nge-seg-folder-grip {
+  flex: 0 0 auto; height: 9px; margin-left: calc(10px + var(--nge-folder-depth, 0) * 14px);
+  cursor: row-resize; position: relative; touch-action: none;
+}
+.nge-seg-folder-grip::after {
+  content: ''; position: absolute; left: 50%; top: 3px; width: 28px; height: 3px;
+  transform: translateX(-50%); border-radius: 2px;
+  border-top: 1px solid rgba(160, 190, 230, 0.35); border-bottom: 1px solid rgba(160, 190, 230, 0.35);
+}
+.nge-seg-folder-grip:hover::after,
+.nge-seg-folder-grip--active::after { border-color: rgba(140, 200, 255, 0.95); }
+.nge-seg-folder-grip:hover,
+.nge-seg-folder-grip--active { background: rgba(74, 158, 255, 0.1); }
+/* Pasted holds + Folder beside Move down (Ames 2026-10-20), so its buttons get the room */
+.nge-h.nge-seg-list-heading--pasted .nge-h-region { width: auto !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-seg-pasted-folder { margin-left: auto !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-seg-pasted-folder + .nge-seg-list-keep { margin-left: 0 !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-label { flex: none !important; overflow: visible !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-region { gap: 6px !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-label { margin-right: auto !important; padding-right: 8px; }
+/* Pasted with + Folder and Move down: the buttons a little tighter so the
+   remove X stays inside the panel on hover (Ames 2026-10-20: "it's also
+   blocking the X"). */
+.nge-h.nge-seg-list-heading--pasted .nge-seg-list-keep { padding: 1px 5px !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-region { gap: 2px !important; }
+.nge-h.nge-seg-list-heading--pasted .nge-h-label { padding-right: 2px !important; }
+/* Rows in a folder are narrower: the jump arrow wrapped under a full ID
+   (Ames 2026-10-20). The copy and remove buttons take no room until the row
+   is pointed at (the ID shortens with "..." then, as before), and the ID part
+   always leaves room for the arrow, so it never drops to a second line. */
+.neuroglancer-segment-list-entry > .neuroglancer-segment-list-entry-sticky { max-width: calc(100% - 26px) !important; }
+@media (hover: hover) and (pointer: fine) {
+  .neuroglancer-segment-list:not(.neuroglancer-preview-list) .neuroglancer-segment-list-entry:not(:hover) .neuroglancer-segment-list-entry-copy-container,
+  .neuroglancer-segment-list:not(.neuroglancer-preview-list) .neuroglancer-segment-list-entry:not(:hover) .nge-seg-list-toggle { display: none !important; }
+}
+
+/* ── View scale card (hover the x y z letters in a view's corner) ──
+   Neuroglancer's own panel: how much each axis is stretched, "Default" to
+   go back to the data's own scale, and in 3D the depth that is drawn. It
+   opened as bare white monospace on the image (Ames 2026-10-21: "they
+   aren't styled"). Open, it is a card like Pyr's other small panels; closed,
+   the x y z letters stay as they are. */
+.neuroglancer-display-dimensions-widget:hover,
+.neuroglancer-display-dimensions-widget[data-active="true"] {
+  background: rgba(8, 14, 28, 0.94);
+  border: 1px solid rgba(120, 170, 255, 0.28);
+  border-radius: 8px;
+  padding: 6px 10px 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+}
+.neuroglancer-display-dimensions-widget {
+  font: 500 11.5px/1.6 ui-monospace, 'Cascadia Code', Consolas, monospace;
+  color: #d6e2f5;
+  transition: background 0.12s ease;
+}
+.neuroglancer-display-dimensions-widget input { color: #e6edf7; font: inherit; }
+.neuroglancer-display-dimensions-widget-dimension:hover { outline: 1px solid rgba(120, 170, 255, 0.35); border-radius: 3px; }
+.neuroglancer-display-dimensions-widget-scale { color: #8fa3bd; }
+/* "Default" and "Zoom-relative": words, not code. */
+.neuroglancer-display-dimensions-widget-default,
+.neuroglancer-depth-range-relative-checkbox-label {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+  font: 500 11.5px/1.4 system-ui, sans-serif; color: #b3c0d3; cursor: pointer;
+}
+.neuroglancer-display-dimensions-widget input[type="checkbox"] { accent-color: #42d5ec; margin: 0; cursor: pointer; }
+.neuroglancer-depth-range-widget-grid { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(120, 170, 255, 0.16); }
+
+/* ── Layers side panel (the layer bar's list, "Layers (2/2 visible)") ──
+   Neuroglancer's own rows: grey boxes, a lime outline on the selected one
+   and a solid number block (Ames 2026-10-21: "fix this styling"). Rows like
+   Pyr's layer tabs: dark, rounded, a small tinted number, cyan when selected. */
+.neuroglancer-layer-list-panel-items { padding: 6px 8px; gap: 4px; }
+.neuroglancer-layer-list-panel-item {
+  align-items: center; gap: 8px;
+  margin: 0; padding: 5px 8px; min-height: 30px; box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  font: 500 12.5px/1.3 system-ui, sans-serif; color: #d6e2f5;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.neuroglancer-layer-list-panel-item:hover { background: rgba(120, 170, 255, 0.08); border-color: rgba(120, 170, 255, 0.22); }
+.neuroglancer-layer-list-panel-item[data-selected=true] {
+  border-color: rgba(66, 213, 236, 0.55);
+  background: rgba(66, 213, 236, 0.08);
+  box-shadow: inset 2px 0 0 #42d5ec;
+}
+.neuroglancer-layer-list-panel-item[data-archived=true] { border-color: rgba(255, 255, 255, 0.05); background: transparent; }
+.neuroglancer-layer-list-panel-item-number {
+  font: 600 10.5px/1 system-ui, sans-serif;
+  min-width: 18px; text-align: center; padding: 3px 5px; border-radius: 4px;
+  background: rgba(74, 158, 255, 0.15); color: rgba(150, 200, 255, 0.95);
+}
+.neuroglancer-layer-list-panel-item input[type="checkbox"] { accent-color: #42d5ec; margin: 0; cursor: pointer; }
+.neuroglancer-layer-list-panel-item .neuroglancer-icon { opacity: 0.75; }
+.neuroglancer-layer-list-panel-item .neuroglancer-icon:hover { opacity: 1; }

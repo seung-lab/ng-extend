@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { QUIET_TEST_HOST } from '../util/test_host';
 import TutorialStep from "components/TutorialStep.vue";
 
 import { computed, ref, watch } from "vue";
@@ -16,7 +17,7 @@ import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9, sandboxContinue, sandboxRestart } from '../merger-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
-import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue } from '../proofreading-test';
+import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
@@ -33,6 +34,9 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 const store = useTutorialStore();
 
 const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11 };
+// The real lengths, for the landing's "is a tutorial under way" test in
+// store.ts (isUserInActiveTutorial), which cannot import the step lists.
+(window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {
@@ -201,6 +205,8 @@ const next = (_auto?: unknown) => {
     if (!isLastStep && tutorialNum === 9 && sandboxRestart()) return;
     // The test's last box: "Try again" starts over.
     if (isLastStep && tutorialNum === TEST_TUTORIAL && testContinue()) return;
+    // Its first box, while someone else has the cell: join the line, or close.
+    if (!isLastStep && tutorialNum === TEST_TUTORIAL && testQueueNext()) return;
     // The last box closes the tutorial outright, by its length, so nothing
     // that moves the step at the same moment can leave it showing.
     store.setTutorialStep(isLastStep ? steps.value.length : stepFrom(store.getTutorialStep() + 1, 1));
@@ -280,6 +286,31 @@ watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) =>
     if (stepNow === 0) resumeDecided.value = true;       // a fresh start from the menu
 });
 const needsResumePrompt = computed(() => !resumeDecided.value && !!activeStep.value && activeStep.value.index > 0);
+// A branch test site starts with empty storage, so Get Started (or the resume
+// card) came up on every one (util/test_host.ts). There, nothing shows until
+// a tutorial is started from the menu.
+const startedHere = ref(false);
+if (QUIET_TEST_HOST) {
+    const started = () => { startedHere.value = true; resumeDecided.value = true; };
+    document.addEventListener('nge:tutorial-start', started);
+    document.addEventListener('click', (e) => {
+        // the menu is a custom element: look along the click's whole path
+        const path = e.composedPath() as Element[];
+        if (path.some(n => n instanceof Element && n.classList.contains('nge-menu-item')) &&
+            path.some(n => n instanceof Element && n.id === 'hamburger')) started();
+    }, true);
+    // Other starts (the dataset tours, the Merger Sandbox, the test) begin at
+    // step 0 or follow a click; the account's saved progress arriving after
+    // sign in does neither, so it stays quiet.
+    let lastGesture = 0;
+    for (const type of ['pointerdown', 'keydown']) {
+        document.addEventListener(type, (e) => { if (e.isTrusted) lastGesture = performance.now(); }, true);
+    }
+    watch(() => [store.activeTutorial, currentStep.value] as const, ([, stepNow]) => {
+        if (stepNow === 0 || performance.now() - lastGesture < 3000) startedHere.value = true;
+    });
+}
+const quietOnLoad = computed(() => QUIET_TEST_HOST && !startedHere.value);
 const resumeName = computed(() => TUTORIAL_NAMES[store.activeTutorial] ?? 'the tutorial');
 function continueTutorial() { resumeDecided.value = true; }
 function exitFromPrompt() { resumeDecided.value = true; exitIntro(); }
@@ -307,6 +338,7 @@ const exitIntro = () => {
 </script>
 
 <template>
+    <template v-if="!quietOnLoad">
     <div v-if="needsResumePrompt" class="ng-extend nge-tut-resume" role="dialog" aria-label="Resume tutorial">
         <div class="nge-tut-resume-text">
             You're partway through <strong>{{ resumeName }}</strong>
@@ -321,6 +353,7 @@ const exitIntro = () => {
         :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel"
         v-on:next="next"
         v-on:back="back" v-on:exitIntro="exitIntro" />
+    </template>
 
 </template>
 

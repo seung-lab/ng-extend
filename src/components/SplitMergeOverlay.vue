@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useSplitMergeOverlayStore } from 'src/store';
+import { useSplitMergeOverlayStore, useUserPreferencesStore } from 'src/store';
+import { ngeCutPointScale } from 'neuroglancer/annotation/point';
 import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points';
@@ -238,6 +239,30 @@ function toggleKeepCutOpen() {
   store.setKeepCutOpen(!store.keepCutOpen);
 }
 
+/** The size of the cut points, apart from annotation points (Celia #177:
+ *  "too large for multicut even though I sometimes like larger ones for
+ *  annotation layers"). Remembered with the player's settings. */
+// Small is a merge point's size; Celia (2026-10-20) asked for that as the
+// smallest, every size one step down, and no biggest.
+const CUT_POINT_SIZES = [{ v: 1, label: 'Small' }, { v: 1.5, label: 'Medium' }, { v: 2, label: 'Large' }];
+const prefsStore = useUserPreferencesStore();
+const cutPointSize = ref(ngeCutPointScale.value);
+const nearestCutSize = (v: number) => CUT_POINT_SIZES.reduce((a, b) => Math.abs(b.v - v) < Math.abs(a.v - v) ? b : a).v;
+watch(() => prefsStore.prefs.cutPointSize, v => {
+  if (typeof v === 'number' && Math.max(1, v) !== ngeCutPointScale.value) { ngeCutPointScale.value = cutPointSize.value = Math.max(1, v); redrawViews(); }
+});
+function redrawViews() {
+  try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
+}
+function onCutPointSizePick(e: Event) {
+  setCutPointSize(Number((e.target as HTMLSelectElement).value));
+}
+function setCutPointSize(v: number) {
+  ngeCutPointScale.value = cutPointSize.value = v;
+  prefsStore.save({ cutPointSize: v });
+  redrawViews();
+}
+
 /** Toggle NG's native auto-submit checkbox */
 function toggleAutoSubmit() {
   const mergeEl = document.querySelector('.graphene-merge-segments');
@@ -353,6 +378,12 @@ function cancelTool() {
           <!-- At the right end: whether the bar stays after a cut. Off by
                default (Ames: one cut, then move on); on for a run of cuts on
                one cell (Nseraf). -->
+          <label class="nge-smo-auto-submit nge-smo-point-size" title="How big the red and blue cut points are drawn. Annotation layers keep their own size.">
+            Points
+            <select class="nge-smo-point-size-pick" :value="nearestCutSize(cutPointSize)" @change="onCutPointSizePick">
+              <option v-for="s in CUT_POINT_SIZES" :key="s.v" :value="s.v">{{ s.label }}</option>
+            </select>
+          </label>
           <label class="nge-smo-auto-submit nge-smo-keep-open" title="Keep cut mode open after a cut, ready for the next one. Esc or C closes it. Off, cut mode closes after each cut." @click.prevent="toggleKeepCutOpen">
             <span class="nge-smo-checkbox" :class="{ checked: store.keepCutOpen }">{{ store.keepCutOpen ? '☑' : '☐' }}</span>
             Keep open after a cut
@@ -1342,6 +1373,11 @@ function cancelTool() {
 .nge-smo-auto-submit:hover { color: #a6ffd6; }
 /* the cut bar's one option sits at the right end, after the hint */
 .nge-smo-keep-open { margin-left: auto; margin-right: 0; flex-shrink: 0; }
+.nge-smo-point-size { margin-left: auto; flex-shrink: 0; gap: 6px; cursor: default; }
+.nge-smo-point-size + .nge-smo-keep-open { margin-left: 14px; }
+.nge-smo-point-size-pick { background: rgba(0, 0, 0, 0.35); color: inherit; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; font: inherit; padding: 1px 4px; cursor: pointer; }
+.nge-smo-point-size-pick option { background: #1b1b22; color: #eee; }
+body.nge-mobile .nge-smo-point-size { display: none; }
 /* On a phone the cut bar already runs off the right edge (the hint is
    squeezed to nothing), and a cut needs Ctrl+click and C, so the option
    would be off screen and unusable there: not drawn. */

@@ -266,7 +266,11 @@ export class VirtualList extends RefCounted {
   private source: VirtualListSource;
   private debouncedUpdateView =
       this.registerCancellable(animationFrameDebounce(() => this.updateView()));
-  private resizeObserver = new ResizeObserver(() => this.updateView());
+  // nge: a list taken off the page (its layer closed or restored) can still
+  // get one last resize: it must not draw rows from a closed layer.
+  private resizeObserver = new ResizeObserver(() => {
+    if (!this.wasDisposed && this.element.isConnected) this.updateView();
+  });
   // nge: a row can change height after it was measured (the game adds a cell
   // name or label under it a moment later). The list then believed it was
   // shorter than it is, and the last rows could not be scrolled to. Rows are

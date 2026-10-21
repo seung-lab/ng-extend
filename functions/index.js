@@ -1457,8 +1457,10 @@ async function postIssueToSlack(token, issue) {
     const emoji = ISSUE_EMOJI[issue.category] || ISSUE_EMOJI.Other;
     const lines = [
       `${emoji} *New site issue submitted* — _${issue.category}_`,
+      issue.title ? `*${issue.title}*` : null,
       `*From:* ${issue.user || "anonymous"}${issue.dataset ? ` · dataset: ${issue.dataset}` : ""}`,
-      `*Report:* ${issue.message}`,
+      // A one line report is all title: say it once.
+      issue.message && issue.message !== issue.title ? `*Report:* ${issue.message}` : null,
       issue.url ? `*Page:* ${issue.url}` : null,
       mentions || null,
       "_For a suggested fix, reply here tagging @Amy's Claude._",
@@ -1502,6 +1504,8 @@ exports.submitIssue = onRequest(
     const message = typeof b.message === "string" ? b.message.trim().slice(0, 4000) : "";
     if (!message) { res.status(400).json({ error: "message required" }); return; }
     const category = ISSUE_CATEGORIES.includes(b.category) ? b.category : "Other";
+    // A short title (Celia #178); older clients send none.
+    const title = typeof b.title === "string" ? b.title.replace(/\s+/g, " ").trim().slice(0, 120) : "";
     const user = pilot.me.username || pilot.me.display_name || "Player";
     const dataset = typeof b.dataset === "string" ? b.dataset.slice(0, 120) : "";
     const pageUrl = typeof b.url === "string" ? b.url.slice(0, 500) : "";
@@ -1511,13 +1515,13 @@ exports.submitIssue = onRequest(
 
     try {
       await db.collection("site_issues").add({
-        message, category,
+        message, category, title: title || null,
         user: user || null, dataset: dataset || null, url: pageUrl || null,
         origin, at: admin.firestore.FieldValue.serverTimestamp(),
       });
       res.json({ ok: true });
       // Fire-and-forget Slack post (response already sent).
-      postIssueToSlack(slackBotToken.value(), { message, category, user, dataset, url: pageUrl });
+      postIssueToSlack(slackBotToken.value(), { title, message, category, user, dataset, url: pageUrl });
     } catch (err) {
       console.error("submitIssue error:", err);
       if (!res.headersSent) res.status(500).json({ error: "could not record issue" });
@@ -1701,7 +1705,11 @@ const ewRecordActivity = (key, sb, ctx, who, token, value) => recordActivity({
 });
 
 const EW_NOTIF_FIELDS = ["title", "body", "image_url", "thumbnail_url", "target_type", "target_id", "send_at", "expires_at", "post_to_chat", "chat_posted_at"];
-const EW_TRIAGE_FIELDS = ["status", "proposed_message", "approver_note", "impl_state", "reviewed_by", "reviewed_at", "result_note", "tested_by", "tested_at", "feedback_log", "approver_slack_id"];
+// todo_rank, todo_size: the To do column's order and S/M/L tag
+// (supabase-triage-todo.sql, Ames 2026-10-19).
+const EW_TRIAGE_FIELDS = ["status", "proposed_message", "approver_note", "impl_state", "reviewed_by", "reviewed_at", "result_note", "tested_by", "tested_at", "feedback_log", "approver_slack_id", "todo_rank", "todo_size"];
+const ewTodoRank = v => (v === null || Number.isFinite(v) ? v : (() => { throw ewErr(400, "bad todo_rank"); })());
+const ewTodoSize = v => (v === null || ["S", "M", "L"].includes(v) ? v : (() => { throw ewErr(400, "bad todo_size"); })());
 const ewPick = (obj, keys) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keys.includes(k)));
 const EW_SELF_TITLES = ["📊 Your Week in Science", "💙 Thank you, for science!", "Your practice cell is ready"];
 const ewErr = (status, msg) => Object.assign(new Error(msg), { status });
@@ -1712,6 +1720,39 @@ const ewIsStreakMilestone = (d) => {
   if (d <= 100) return d % 10 === 0;
   return d % 25 === 0 || d % 365 === 0;
 };
+
+// The live game, where links in tags and connector answers point.
+const EW_LIVE_SITE = "https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com";
+
+// The To do board connector (Ames 2026-10-20): an MCP server an admin adds to
+// their own AI as a custom connector, at ewTodoConnector/<key>. Every rule is
+// in todo-connector.js and todos.js; writes are signed "<name> (via AI)".
+exports.ewTodoConnector = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken], cors: false, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    const { handleConnector } = require("./todo-connector");
+    const { restDb, makeTagger } = require("./todos");
+    const sb = ewSb(ewServiceKey.value().trim());
+    const key = String(req.path || "").split("/").filter(Boolean).pop() || String(req.query.key || "");
+    try {
+      if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+      const db = restDb(sb);
+      const out = await handleConnector(req.method, key, req.body, {
+        db,
+        makeCtx: person => {
+          const byName = `${person.name} (via AI)`;
+          return { db, me: person, byName, site: EW_LIVE_SITE,
+            tag: makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site: EW_LIVE_SITE, byName, meId: person.id }) };
+        },
+      });
+      if (out.body === null) return res.status(out.status).end();
+      res.status(out.status).json(out.body);
+    } catch (e) {
+      console.warn("[ewTodoConnector]", e.message);
+      res.status(500).json({ error: "The To do board could not answer just now." });
+    }
+  }
+);
 
 exports.ewSecureWrite = onRequest(
   { region: "us-central1", secrets: [ewServiceKey, githubDispatchToken, slackBotToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
@@ -1835,13 +1876,47 @@ exports.ewSecureWrite = onRequest(
           await wakeWorkflow("slack-triage-bridge.yml", "admin hub release");
           break;
         }
+        // A note on a card, with no decision (Celia #178): every rule is in
+        // triage-notes.js. The bridge is not woken: nothing for it to do.
+        case "triage.note": {
+          needAdmin();
+          if (!me) throw ewErr(403, "no EyeWire II profile");
+          const { addNote } = require("./triage-notes");
+          const { restDb: todoDb } = require("./todos");
+          const token = slackBotToken.value().trim();
+          try {
+            out = await addNote(args, {
+              db: {
+                row: async id => (await sb(`feedback_triage?id=eq.${id}&select=id,source_excerpt,slack_ts,slack_channel,admin_notes&limit=1`))[0] || null,
+                saveNotes: (id, notes) => sb(`feedback_triage?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ admin_notes: notes }) }),
+                people: () => todoDb(sb).people(),
+              },
+              me, byName: me.display_name || me.username || who.email, channel: REVIEW_CHANNEL_ID, site: EW_LIVE_SITE,
+              bell: rows => sb("notifications", { method: "POST", body: JSON.stringify(rows) }).catch(e => console.warn("[note] bell failed:", e.message)),
+              slack: async (channel, thread, text) => {
+                const r = await slackPost(token, "chat.postMessage", { channel, text, unfurl_links: false, ...(thread ? { thread_ts: thread } : {}) }).catch(e => ({ ok: false, error: e.message }));
+                if (!r.ok) console.warn("[note] slack failed:", r.error);
+              },
+            });
+          } catch (e) {
+            // Until supabase-triage-notes.sql is run the column is missing.
+            if (!e.status && /supabase 400/.test(String(e && e.message))) throw ewErr(409, "Notes need their column: run supabase-triage-notes.sql in the Supabase SQL editor.");
+            throw e;
+          }
+          break;
+        }
         case "triage.update": {
           needAdmin();
           if (!/^[0-9a-f-]{36}$/i.test(String(args.id))) throw ewErr(400, "bad id");
-          out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(ewPick(args.fields, EW_TRIAGE_FIELDS)) }))[0];
+          const fields = ewPick(args.fields, EW_TRIAGE_FIELDS);
+          if ("todo_rank" in fields) ewTodoRank(fields.todo_rank);
+          if ("todo_size" in fields) ewTodoSize(fields.todo_size);
+          out = (await sb(`feedback_triage?id=eq.${args.id}`, { method: "PATCH", body: JSON.stringify(fields) }))[0];
+          // Moving or sizing a To do card changes nothing the bridge mirrors.
+          const onlyTodo = Object.keys(fields).every(k => k === "todo_rank" || k === "todo_size");
           // An Admin Hub decision: the bridge mirrors it to Slack and starts
           // any build now instead of on its next timer.
-          await wakeWorkflow("slack-triage-bridge.yml", "admin hub");
+          if (!onlyTodo) await wakeWorkflow("slack-triage-bridge.yml", "admin hub");
           break;
         }
         // ── any signed in user, fixed shapes only ──
@@ -1947,6 +2022,20 @@ exports.ewSecureWrite = onRequest(
             body: `${(me.display_name || "Someone")} responded${args.segId ? ` on ${String(args.segId).slice(0, 40)}` : ""}: ${String(args.note || "").slice(0, 160)}`,
             target_type: "user", target_id: target, send_at: new Date().toISOString(), created_by: me.id };
           out = (await sb("notifications", { method: "POST", body: JSON.stringify(row) }))[0];
+          // A day later, if the request is still open: was it answered? With
+          // a link that marks it solved (help-reminder.js, Ames 2026-10-21).
+          if (args.requestId) {
+            const { scheduleReminder } = require("./help-reminder");
+            try { await scheduleReminder({ sb, me, target, requestId: args.requestId }); }
+            catch (e) { console.warn("[helpReply] reminder not scheduled:", e && e.message); }
+          }
+          break;
+        }
+        case "help.dropReminder": {
+          // A request was marked solved: its reminder, if still waiting, goes.
+          if (!me) throw ewErr(403, "no EyeWire II profile");
+          const { dropReminder } = require("./help-reminder");
+          out = await dropReminder({ sb, requestId: args.requestId });
           break;
         }
         case "notification.claimChatPost": {
@@ -1973,6 +2062,27 @@ exports.ewSecureWrite = onRequest(
               if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
               throw e;
             }
+            break;
+          }
+          // The admins' To do board (supabase-admin-todos.sql, Ames
+          // 2026-10-19): every rule is in todos.js. A tag reaches the person
+          // twice: the bell in Pyr, and a Slack message that pings them.
+          if (typeof action === "string" && action.startsWith("todo.")) {
+            needAdmin();
+            const { todoAction, restDb, makeTagger } = require("./todos");
+            if (!me) throw ewErr(403, "no EyeWire II profile");
+            const byName = me.display_name || me.username || who.email;
+            const site = EW_ORIGINS.some(o => o.test(String(req.headers.origin || ""))) && !/localhost/.test(String(req.headers.origin))
+              ? String(req.headers.origin) : EW_LIVE_SITE;
+            const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
+            try {
+              out = await todoAction(action, args, { db: restDb(sb), me, byName, tag });
+            } catch (e) {
+              // Until the SQL is run the table is missing: say so plainly.
+              if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
+              throw e;
+            }
+            if (args.fields && args.fields.triage_id) await wakeWorkflow("slack-triage-bridge.yml", "to do board");
             break;
           }
           // Saved teams (supabase-teams.sql): every rule is in teams.js.
@@ -2014,7 +2124,7 @@ exports.ewSecureWrite = onRequest(
 // minutes both times. This function is deployed only from the branch that
 // has it, and it alone binds the CAVE token:
 //   firebase deploy --only functions:ewProofreadingTest --project eyewire-ii-e4d52
-const EW_TEST_CODE_VERSION = "2026-10-14-proofreading-test-5";
+const EW_TEST_CODE_VERSION = "2026-10-21-proofreading-test-8";
 exports.ewProofreadingTest = onRequest(
   // 120 s: scoring reads the graph and undoes the player's edits.
   { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, timeoutSeconds: 120 },

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
-import { useProofreadingBackendStore } from '../store';
+import { notifKind, type NotifKind } from '../util/notif_kinds';
+import { useProofreadingBackendStore, useHelpRequestStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
@@ -15,6 +16,56 @@ const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
 const backend = useProofreadingBackendStore();
 const panelRef = ref<HTMLElement | null>(null);
+
+// ── Height you drag to, kept in this browser (Ames 2026-10-20: "I also want
+// to be able to drag to make my notifications window longer") ──
+const HEIGHT_KEY = 'nge_notif_panel_height_v1';
+const panelHeight = ref<number | null>((() => {
+  try { const v = Number(localStorage.getItem(HEIGHT_KEY)); return Number.isFinite(v) && v >= 160 ? v : null; } catch { return null; }
+})());
+function applyHeight() {
+  const el = panelRef.value;
+  if (!el) return;
+  const h = panelHeight.value;
+  if (h) el.style.setProperty('--nge-notif-h', `${h}px`); else el.style.removeProperty('--nge-notif-h');
+  el.classList.toggle('nge-notif-panel--sized', !!h);
+}
+watch(panelHeight, applyHeight, { flush: 'post' });
+onMounted(applyHeight);
+function startResize(e: PointerEvent) {
+  const el = panelRef.value;
+  if (!el || e.button !== 0) return;
+  e.preventDefault();
+  const grip = e.currentTarget as HTMLElement;
+  grip.setPointerCapture(e.pointerId);
+  const startY = e.clientY;
+  const startH = el.getBoundingClientRect().height;
+  const top = el.getBoundingClientRect().top;
+  const move = (ev: PointerEvent) => {
+    panelHeight.value = Math.round(Math.max(160, Math.min(window.innerHeight - top - 8, startH + ev.clientY - startY)));
+  };
+  const up = () => {
+    grip.removeEventListener('pointermove', move);
+    grip.removeEventListener('pointerup', up);
+    grip.removeEventListener('pointercancel', up);
+    try { if (panelHeight.value) localStorage.setItem(HEIGHT_KEY, String(panelHeight.value)); } catch { /* private window */ }
+  };
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', up);
+  grip.addEventListener('pointercancel', up);
+}
+function resetHeight() {
+  panelHeight.value = null;
+  try { localStorage.removeItem(HEIGHT_KEY); } catch { /* private window */ }
+}
+
+// ── Older notifications on request (the feed loads the newest 20) ──
+const loadingMore = ref(false);
+async function showMore() {
+  if (loadingMore.value) return;
+  loadingMore.value = true;
+  try { await backend.loadMoreNotifications(); } finally { loadingMore.value = false; }
+}
 
 function onDocClick(e: MouseEvent) {
   if (!props.visible) return;
@@ -124,15 +175,35 @@ const confirmDeleteAll = ref(false);
 // that shipped) in a tab of their own, so they stop burying everything else
 // (Ames 2026-10-06: "they are clogging up my feed"). Players never see the
 // tabs: a "Fixed!" note about their own report stays in their one feed.
-const feedTab = ref<'main' | 'triage'>('main');
-function isTriageNote(n: { title?: string | null }): boolean {
-  const t = n.title || '';
-  return backend.isAdmin && (t.startsWith('🗂') || t.startsWith('🎉 Fixed'));
+// A third tab, Admin (Ames 2026-10-21): access requests, proofreading test
+// results and players' answers to replies an admin asked for. Bug reports
+// stay in Triage. Which is which: util/notif_kinds.ts, shared with the bell's
+// red count.
+const feedTab = ref<NotifKind>('main');
+const kindOf = (n: { title?: string | null }) => notifKind(n.title, backend.isAdmin);
+const triageNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'triage'));
+const adminNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'admin'));
+const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
+const showFeedTabs = computed(() => backend.isAdmin && (triageNotes.value.length > 0 || adminNotes.value.length > 0));
+const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications
+  : feedTab.value === 'triage' ? triageNotes.value : feedTab.value === 'admin' ? adminNotes.value : mainNotes.value);
+// The feed loads the newest notifications of every kind together, so one tab
+// could show only two or three while triage alerts took the rest (Ames
+// 2026-10-21: "this should load more than 2"). While the panel is open, the
+// tab on screen asks for older ones until it has a screenful or there are
+// no more.
+const TAB_FILL = 12;
+let filling = false;
+async function fillTab() {
+  if (filling || !props.visible) return;
+  filling = true;
+  try {
+    for (let round = 0; round < 6 && shownNotes.value.length < TAB_FILL && backend.notificationsHaveMore; round++) {
+      await backend.loadMoreNotifications();
+    }
+  } finally { filling = false; }
 }
-const triageNotes = computed(() => backend.notifications.filter(isTriageNote));
-const mainNotes = computed(() => backend.notifications.filter(n => !isTriageNote(n)));
-const showFeedTabs = computed(() => backend.isAdmin && triageNotes.value.length > 0);
-const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications : feedTab.value === 'triage' ? triageNotes.value : mainNotes.value);
+watch([() => props.visible, feedTab, () => shownNotes.value.length], () => { void fillTab(); });
 const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
 watch(showFeedTabs, on => { if (!on) feedTab.value = 'main'; });
 watch(feedTab, () => { confirmDeleteAll.value = false; });   // the question was about the other tab
@@ -215,6 +286,27 @@ function openDetail(notif: any) {
 
 function closeDetail() {
   openNotif.value = null;
+  helpSolvedNote.value = '';
+}
+
+// ── "Was your help request answered?" (Ames 2026-10-21) ──────────────────
+// The reminder a day after a reply links #nge-help-solved=<request id>
+// (functions/help-reminder.js). That link marks the request solved here,
+// instead of going anywhere.
+const helpSolvedNote = ref('');
+async function onDetailBodyClick(e: MouseEvent) {
+  const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
+  const m = a?.getAttribute('href')?.match(/^#nge-help-solved=([0-9a-f-]{1,40})$/i);
+  if (!m) return;
+  e.preventDefault();
+  const help = useHelpRequestStore();
+  if (!help.requests.length) { try { await help.load(); } catch { /* said below */ } }
+  const req = help.requests.find(r => r.id === m[1]);
+  if (!req) { helpSolvedNote.value = 'That help request is no longer there.'; return; }
+  if (req.resolved) { helpSolvedNote.value = 'This request is already marked solved.'; return; }
+  if (req.userId && req.userId !== backend.userId && !backend.isAdmin) { helpSolvedNote.value = 'Only the player who asked can mark this solved.'; return; }
+  const ok = await help.resolve(req.id);
+  helpSolvedNote.value = ok ? 'Marked solved. Thanks for letting the helpers know!' : 'That did not work. Try Mark solved in the Help tab.';
 }
 
 // ── A reply the team asked for (Ames 2026-10-13) ─────────────────────────
@@ -532,7 +624,7 @@ function padRank(rank: number): string {
           v-if="showFeedTabs ? unreadIn(shownNotes) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
           @click="showFeedTabs ? backend.markAllNotificationsRead(shownNotes.map(n => n.id)) : backend.markAllNotificationsRead()"
-        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : 'Mark all read' }}</button>
+        >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && feedTab === 'admin' ? 'Mark admin read' : 'Mark all read' }}</button>
         <!-- Separate from "mark all read" on purpose: read state controls the
              unread pip, this clears the feed. Only hides them for THIS user —
              the underlying notification rows are untouched. -->
@@ -560,6 +652,10 @@ function padRank(rank: number): string {
     <div v-if="showFeedTabs" class="nge-notif-tabs" role="tablist">
       <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'main' }" role="tab" :aria-selected="feedTab === 'main'" @click="feedTab = 'main'">
         Notifications<b v-if="unreadIn(mainNotes) > 0">{{ unreadIn(mainNotes) }}</b>
+      </button>
+      <button class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
+              title="Access requests, proofreading tests, and players' answers to replies you asked for">
+        Admin<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
       </button>
       <button class="nge-notif-tab nge-notif-tab--triage" :class="{ 'nge-notif-tab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'">
         Triage<b v-if="unreadIn(triageNotes) > 0">{{ unreadIn(triageNotes) }}</b>
@@ -600,12 +696,22 @@ function padRank(rank: number): string {
           </div>
         </div>
       </div>
+      <button v-if="backend.notificationsHaveMore" class="nge-notif-more" :disabled="loadingMore" @click.stop="showMore">
+        {{ loadingMore ? 'Loading\u2026' : 'Show more' }}
+      </button>
     </div>
 
     <div class="nge-notif-empty" v-else>
       No notifications yet.
+      <button v-if="backend.notificationsHaveMore" class="nge-notif-more" :disabled="loadingMore" @click.stop="showMore">
+        {{ loadingMore ? 'Loading\u2026' : 'Show more' }}
+      </button>
     </div>
 
+    <!-- Drag to make the window taller or shorter (Ames 2026-10-20); a
+         double click gives back its usual height. -->
+    <div class="nge-notif-grip" title="Drag to make this window taller or shorter. Double click for its usual size."
+      @pointerdown="startResize" @dblclick.stop="resetHeight"></div>
   </div>
   </Teleport>
 
@@ -731,7 +837,9 @@ function padRank(rank: number): string {
                   <div
                     class="nge-notif-detail-body"
                     v-html="renderMarkdown(cleanCopy(openNotif.body))"
+                    @click="onDetailBodyClick"
                   ></div>
+                  <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
                 </template>
                 <!-- A reply the team asked for: one per request, with what a report carries. -->
                 <div v-if="replyAsked" class="nge-notif-reply">
@@ -831,6 +939,25 @@ function padRank(rank: number): string {
 </template>
 
 <style scoped>
+/* Dragged taller or shorter by the grip at the bottom (Ames 2026-10-20). */
+.nge-notif-panel.nge-notif-panel--sized { height: var(--nge-notif-h); max-height: calc(100vh - 50px); }
+.nge-notif-panel--sized .nge-notif-list { max-height: none; flex: 1 1 auto; min-height: 0; }
+.nge-notif-grip {
+  flex: 0 0 auto; height: 10px; cursor: row-resize; position: relative; touch-action: none;
+  border-radius: 0 0 10px 10px;
+}
+.nge-notif-grip::after {
+  content: ''; position: absolute; left: 50%; top: 3px; width: 30px; height: 3px; transform: translateX(-50%);
+  border-top: 1px solid rgba(160, 190, 230, 0.35); border-bottom: 1px solid rgba(160, 190, 230, 0.35);
+}
+.nge-notif-grip:hover { background: rgba(74, 158, 255, 0.1); }
+.nge-notif-grip:hover::after { border-color: rgba(140, 200, 255, 0.95); }
+.nge-notif-more {
+  display: block; margin: 6px auto 4px; padding: 4px 14px; border-radius: 6px; cursor: pointer;
+  background: none; border: 1px solid rgba(140, 180, 235, 0.35); color: rgba(170, 200, 240, 0.95); font: inherit;
+}
+.nge-notif-more:hover:not(:disabled) { background: rgba(74, 158, 255, 0.15); color: #fff; }
+.nge-notif-more:disabled { opacity: 0.6; cursor: default; }
 .nge-notif-panel {
   position: fixed;
   top: 42px;
@@ -904,6 +1031,8 @@ function padRank(rank: number): string {
 .nge-notif-tab:hover { color: #dce6f5; }
 .nge-notif-tab--on { color: #ffffff; border-bottom-color: #7ee0ff; }
 .nge-notif-tab--triage.nge-notif-tab--on { border-bottom-color: #ff8f8f; }
+.nge-notif-tab--admin.nge-notif-tab--on { border-bottom-color: #e5484d; }
+.nge-notif-tab--admin b { background: #e5484d; color: #fff; }
 .nge-notif-tab b {
   min-width: 16px; padding: 2px 5px; border-radius: 8px; box-sizing: border-box;
   font-size: 10px; font-weight: 700; text-align: center; color: #06121f; background: #7ee0ff;
@@ -1588,6 +1717,14 @@ span.nge-notif-reply-part { cursor: default; }
 }
 
 /* Help notification action */
+.nge-notif-help-solved {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgb(var(--nd-cyan) / 0.08);
+  color: rgb(var(--nd-cyan));
+  font-size: 14px;
+}
 .nge-notif-open-help {
   margin-top: 16px;
   padding: 8px 16px;

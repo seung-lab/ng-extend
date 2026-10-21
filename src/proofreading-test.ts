@@ -44,6 +44,22 @@ export interface TestStatus {
   test: TestInfo | null; free?: boolean; mine?: boolean; attempts?: number; passed?: boolean; admin?: boolean;
   last?: { outcome: string; found: number; errors: number; damaged: number; percent: number; submitted_at: string } | null;
   wait_until?: string | null; can_start?: boolean;
+  /** The line for the cell (Ames, 2026-10-21). */
+  queue?: TestQueue;
+}
+export interface TestQueue {
+  length: number;
+  /** This player's place in line (1 = next), or null when not in it. */
+  position: number | null;
+  /** Their turn: the cell is held for them until then. */
+  called_until: string | null;
+  /** The cell is held for someone else's turn. */
+  other_turn: boolean;
+  /** When the player on the cell runs out of time, for the wait. */
+  holder_until: string | null;
+  turn_minutes: number;
+  /** Quiet minutes before the cell goes: shorter while anyone waits. */
+  quiet_minutes: number;
 }
 interface StartResult { test: TestInfo; session: string; attempt: number; resumed: boolean; checks: number; endpoints: number; root: string | null; deadline?: string | null;
   /** The cell is still being put back (a long history): call again. */
@@ -54,7 +70,7 @@ export interface TestResult {
   timedOut?: boolean;
   granted?: { pilot: boolean; groups: { id: number; ok: boolean }[] };
   found?: number; errors?: number; damaged?: number; percent?: number; endpoints?: number; endpointsFound?: number; stray?: number;
-  checks?: { kind: string; label: string; ok: boolean; point: number[] | null }[];
+  checks?: { kind: string; label: string; ok: boolean; point: number[] | null; weight?: number }[];
 }
 
 /** What the server last said about the test and this player. null until
@@ -98,6 +114,9 @@ const session = reactive({
   resumed: false,
   /** When this try's time limit runs out (ms), or null with no limit. */
   deadline: null as number | null,
+  /** Quiet minutes before the cell goes to the next person: the test's hold,
+   *  or 15 while anyone is waiting in line (the server says, each heartbeat). */
+  quietMinutes: 60,
   result: null as TestResult | null,
   error: '',
 });
@@ -123,7 +142,7 @@ function startHold() {
   holdTimer = setInterval(() => {
     if (session.phase !== 'working' || !session.nonce || !session.test) { stopHold(); return; }
     const idle = Date.now() - lastActivity;
-    const quiet = Math.max(5, session.test.hold_minutes || 60) * 60 * 1000;
+    const quiet = Math.max(5, session.quietMinutes || session.test.hold_minutes || 60) * 60 * 1000;
     // The time limit (Ames, 2026-10-13): at zero the cell is scored as it
     // stands. The server holds the same clock and refuses anything later.
     if (session.deadline !== null) {
@@ -133,7 +152,9 @@ function startHold() {
     }
     if (idle < 60 * 1000 && Date.now() - lastHeartbeat > 60 * 1000) {
       lastHeartbeat = Date.now();
-      secureWrite('test.heartbeat', { id: session.test.id, session: session.nonce }).catch((e: any) => {
+      secureWrite<{ quiet_minutes?: number }>('test.heartbeat', { id: session.test.id, session: session.nonce }).then(r => {
+        if (r && typeof r.quiet_minutes === 'number') session.quietMinutes = r.quiet_minutes;
+      }).catch((e: any) => {
         const why = String(e?.message || e);
         console.warn('[test] the hold could not be renewed:', why);
         // Only a hold the server says is over ends the test here; a busy
@@ -194,7 +215,10 @@ function helpHtml(): string {
 <p><strong>Cut off anything that does not belong, and merge any missing pieces.</strong></p>
 <p>When the cell is right, press <strong>Submit for scoring</strong> up here.${session.deadline !== null ? ' The clock beside it is the time you have left: at zero your cell is scored as it stands.' : ''}</p>`;
 }
-const HUD_ID = 'nge-test-hud', HELP_ID = 'nge-test-help';
+const HUD_ID = 'nge-test-hud', HELP_ID = 'nge-test-help', LEAVE_ID = 'nge-test-leave';
+/** The app's own font. The bar and its cards hang off <body>, outside the
+ *  styled app, and fell back to a serif without it (Ames, 2026-10-21). */
+const APP_FONT = "font-family:Inter,system-ui,'Segoe UI',sans-serif;";
 
 function showTestHud() {
   if (document.getElementById(HUD_ID)) return;
@@ -204,7 +228,7 @@ function showTestHud() {
   hud.setAttribute('role', 'status');
   hud.style.cssText = 'position:fixed;top:64px;left:12px;z-index:60;display:flex;align-items:center;gap:10px;padding:4px 6px 4px 4px;'
     + 'border:1px solid rgba(126,224,255,.45);border-radius:999px;background:rgba(8,16,28,.9);color:#d8f3ff;'
-    + 'font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:12px;letter-spacing:.04em;backdrop-filter:blur(4px);';
+    + APP_FONT + 'font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:.04em;backdrop-filter:blur(4px);';
   const info = document.createElement('button');
   info.type = 'button';
   info.textContent = 'i';
@@ -224,7 +248,15 @@ function showTestHud() {
   submit.textContent = 'Submit for scoring';
   submit.style.cssText = 'margin:0;border-radius:999px;';
   submit.addEventListener('click', submitFromHud);
-  hud.append(info, count, time, submit);
+  // A way out without a score (Ames, 2026-10-21: "we need a way to cancel").
+  const leave = document.createElement('button');
+  leave.type = 'button';
+  leave.className = 'nge-hud-btn nge-hud-btn--sm nge-hud-btn--quiet';
+  leave.textContent = 'Leave';
+  leave.title = 'Leave the test without a score';
+  leave.style.cssText = 'margin:0;border-radius:999px;';
+  leave.addEventListener('click', askLeave);
+  hud.append(info, count, time, submit, leave);
   document.body.appendChild(hud);
 }
 function updateTestHud(msLeft: number) {
@@ -239,9 +271,50 @@ function updateTestHud(msLeft: number) {
 function hideTestHud() {
   document.getElementById(HUD_ID)?.remove();
   document.getElementById(HELP_ID)?.remove();
+  document.getElementById(LEAVE_ID)?.remove();
+}
+/** Leave without a score: asked once, since the edits come off. */
+function askLeave() {
+  if (document.getElementById(LEAVE_ID) || session.phase !== 'working') return;
+  document.getElementById(HELP_ID)?.remove();
+  const card = document.createElement('div');
+  card.id = LEAVE_ID;
+  card.className = 'ng-extend';
+  card.setAttribute('role', 'alertdialog');
+  card.setAttribute('aria-label', 'Leave the test?');
+  card.style.cssText = 'position:fixed;top:104px;left:12px;z-index:61;max-width:420px;padding:16px 18px;'
+    + 'border:1px solid rgba(126,224,255,.45);border-radius:10px;background:rgba(8,16,28,.96);color:#e8f6ff;'
+    + APP_FONT + 'font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);';
+  card.innerHTML = '<div style="font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;color:#7ee0ff;margin-bottom:6px">Leave the test?</div>'
+    + '<p style="margin:0 0 10px">Your cell is handed back without a score, and your edits on it are undone for the next person. You can start again from the menu.</p>';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+  const stay = document.createElement('button');
+  stay.type = 'button';
+  stay.className = 'nge-hud-btn';
+  stay.textContent = 'Keep working';
+  stay.addEventListener('click', () => card.remove());
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'nge-hud-btn nge-hud-btn--quiet';
+  go.textContent = 'Leave the test';
+  go.addEventListener('click', () => { card.remove(); void leaveTest(); });
+  row.append(stay, go);
+  card.appendChild(row);
+  document.body.appendChild(card);
+  stay.focus();
+}
+/** Hand the cell back and close the test. */
+async function leaveTest() {
+  const store = useTutorialStore();
+  await abandonTest();
+  session.error = '';
+  session.result = null;
+  if (store.activeTutorial === TEST_TUTORIAL) store.setTutorialStep(steps.length);
 }
 function openTestHelp() {
   if (document.getElementById(HELP_ID)) return;
+  document.getElementById(LEAVE_ID)?.remove();
   const card = document.createElement('div');
   card.id = HELP_ID;
   card.className = 'ng-extend';
@@ -249,7 +322,7 @@ function openTestHelp() {
   card.setAttribute('aria-label', 'How to work the cell');
   card.style.cssText = 'position:fixed;top:104px;left:12px;z-index:61;max-width:520px;padding:16px 18px;'
     + 'border:1px solid rgba(126,224,255,.45);border-radius:10px;background:rgba(8,16,28,.96);color:#e8f6ff;'
-    + 'font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);';
+    + APP_FONT + 'font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);';
   card.innerHTML = '<div style="font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;color:#7ee0ff;margin-bottom:6px">How to work the cell</div>' + helpHtml();
   const ok = document.createElement('button');
   ok.type = 'button';
@@ -281,7 +354,7 @@ function ensureEndLayer() {
 }
 /** The End layer as a view holds it: Pyr gems (Ames, 2026-10-13), pink so
  *  they show on a cell of any colour. */
-function endLayerSpec(): Record<string, any> {
+export function endLayerSpec(): Record<string, any> {
   return { type: 'annotation', source: { url: 'local://annotations' }, annotationColor: '#ff4fd8', pointMarker: 'pyr', pointSize: 1.5, annotations: [] };
 }
 
@@ -292,7 +365,7 @@ function endLayerSpec(): Record<string, any> {
  * (even hidden) shows as a second copy of the cell and the cut tool will
  * not work on it (Ames, 2026-10-13), so the list is emptied first.
  */
-function showExactly(dataset: string, root: string) {
+export function showExactly(dataset: string, root: string) {
   try {
     for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
       const url: string = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
@@ -332,8 +405,9 @@ function collectPointAnnotations(): number[][] {
 
 // ─── Starting, submitting, leaving ──────────────────────────────────────────
 
-/** Open the test from the menu (or again after a fail). */
-export async function startTest() {
+/** Open the test from the menu (or again after a fail). From the line's
+ *  card, at the second box: the player has read the first. */
+export async function startTest(atStep = 0) {
   const store = useTutorialStore();
   stopWatching();
   hidePyrMarkers();
@@ -347,9 +421,59 @@ export async function startTest() {
   // Past the end, then to the start: a step is keyed by its index, so going
   // from box 1 to box 1 would not reload it.
   store.setTutorialStep(steps.length);
-  setTimeout(() => store.setTutorialStep(0), 60);
+  setTimeout(() => store.setTutorialStep(atStep), 60);
 }
 document.addEventListener('nge:test-start', () => { startTest(); });
+
+// ─── The line (Ames, 2026-10-21) ────────────────────────────────────────────
+// One player at a time. While someone else has the cell, a player can join
+// the line; when the cell frees up, the first in line is called (a
+// notification, and the cell held for them for 10 minutes). The rules are on
+// the server (supabase-proofreading-test.sql); TestQueueCard.vue shows a
+// player their place and calls them.
+
+/** Busy for this player: someone else has the cell, or it is someone
+ *  else's turn. */
+export function cellBusyForMe(st = testStatus.value): boolean {
+  return !!st?.test && st.free === false && !st.mine;
+}
+export const queueBusy = ref(false);
+export const queueError = ref('');
+export async function joinLine(): Promise<void> {
+  if (queueBusy.value) return;
+  queueBusy.value = true; queueError.value = '';
+  try { await secureWrite('test.queueJoin', {}); }
+  catch (e: any) { queueError.value = String(e?.message || e); }
+  finally { queueBusy.value = false; }
+  await refreshTestStatus();
+}
+export async function leaveLine(): Promise<void> {
+  if (queueBusy.value) return;
+  queueBusy.value = true; queueError.value = '';
+  try { await secureWrite('test.queueLeave', {}); }
+  catch (e: any) { queueError.value = String(e?.message || e); }
+  finally { queueBusy.value = false; }
+  await refreshTestStatus();
+}
+/** For Tutorial.vue, on the first box: while the cell is someone else's,
+ *  the button joins the line (and the box says where they are), or, once
+ *  they are in it, closes the box. True when it did. */
+export function testQueueNext(): boolean {
+  const store = useTutorialStore();
+  if (store.getTutorialStep() !== 0) return false;
+  const st = testStatus.value;
+  // No line on the server yet (before its SQL): the box works as before.
+  if (!cellBusyForMe(st) || !st?.queue) return false;
+  if (st?.queue?.position) { store.setTutorialStep(steps.length); return true; }
+  if (!st?.can_start) { store.setTutorialStep(steps.length); return true; }
+  // Joined: the box closes and the card at the top left takes over (it
+  // shows their place and calls them). Refused: said under the box.
+  void joinLine().then(() => {
+    if (testStatus.value?.queue?.position) store.setTutorialStep(steps.length);
+    else if (queueError.value) statusLine(queueError.value);
+  });
+  return true;
+}
 
 /** For Tutorial.vue: on the last box, "Try again" starts over instead of
  *  closing. True when it did. */
@@ -404,7 +528,15 @@ async function startWork() {
     });
   }
   if (got?.resetting) { session.error = 'The test cell is taking a while to put back. Try again in a few minutes.'; got = null; }
-  if (!got) { session.phase = 'busy'; releaseDatasetTransition(); return; }
+  if (!got) {
+    session.phase = 'busy';
+    releaseDatasetTransition();
+    // Someone else has the cell, or it is someone's turn: the first box
+    // shows the line and lets them join it.
+    const st = await refreshTestStatus();
+    if (cellBusyForMe(st) && st?.queue) { session.phase = 'none'; useTutorialStore().setTutorialStep(0); }
+    return;
+  }
   session.test = got.test;
   session.nonce = got.session;
   session.attempt = got.attempt;
@@ -415,6 +547,7 @@ async function startWork() {
   session.endpoints = got.test.feedback === 'none' ? 0 : got.endpoints;
   const until = got.deadline ? Date.parse(got.deadline) : NaN;
   session.deadline = Number.isFinite(until) ? until : null;
+  session.quietMinutes = testStatus.value?.queue?.quiet_minutes ?? got.test.hold_minutes ?? 60;
   // The saved view names the id the cell had when it was saved. It is
   // rewritten on the way in to the id the cell has now, and given the End
   // layer, so nothing out of date ever reaches the segment list.
@@ -482,14 +615,39 @@ async function submitWork() {
   refreshTestStatus();
 }
 
-/** Detail feedback: a Pyr pin on each miss, for two minutes. */
+/** The misses, damage first, then the biggest pieces, then the ends. */
+function missesInOrder(checks: NonNullable<TestResult['checks']>) {
+  const rank = (k: string) => (k === 'keep' || k === 'apart' ? 0 : k === 'endpoint' ? 2 : 1);
+  return checks.filter(c => !c.ok).sort((a, b) => rank(a.kind) - rank(b.kind) || (b.weight ?? 1) - (a.weight ?? 1));
+}
+
+/** Detail feedback: a Pyr pin on each miss, for two minutes; at most 25,
+ *  the most important first (a whole cell can have dozens). */
 function showMisses(checks: NonNullable<TestResult['checks']>) {
-  const missed = checks.filter(c => !c.ok && Array.isArray(c.point));
+  const missed = missesInOrder(checks).filter(c => Array.isArray(c.point)).slice(0, 25);
   if (!missed.length) return;
   showPyrMarkers(missed.map(c => c.point as number[]), missed.map(c => c.label || c.kind), 120);
 }
 
 const percentWord = (r: TestResult) => `${r.percent ?? 0} percent`;
+
+export function ordinal(n: number): string {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] || 'th';
+  return `${n}${s}`;
+}
+/** A rough wait: the time the player on the cell has left, then a whole try
+ *  (the time limit) for each player ahead, plus a turn for one being called. */
+export function waitWords(q: TestQueue): string {
+  const limit = testStatus.value?.test?.time_limit_minutes || 60;
+  const ahead = Math.max(0, (q.position ?? 1) - 1);
+  let min = q.holder_until ? Math.max(0, (Date.parse(q.holder_until) - Date.now()) / 60000) : 0;
+  if (q.other_turn) min += q.turn_minutes + limit;
+  min += Math.max(0, ahead - (q.other_turn ? 1 : 0)) * limit;
+  if (min < 1) return 'You are next.';
+  const m = Math.round(min);
+  const words = m < 60 ? `${m} minutes` : `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ''}`.trim();
+  return `The wait is at most about ${words}, less when people finish early.`;
+}
 
 function resultText(): string {
   const r = session.result;
@@ -523,8 +681,15 @@ function resultText(): string {
     parts.push(`**Score: ${percentWord(r)}.** ${bits.join('; ')}.`);
     if (!r.passed && r.damaged) parts.push('Damage to the real cell fails the test on its own, however many mistakes you found. Cut only where two different cells touch, and look at the 2D images before you place a point.');
     if (r.checks) {
-      const missed = r.checks.filter(c => !c.ok);
-      if (missed.length) parts.push('Pins mark what was missed for the next two minutes: ' + missed.map(c => c.label || c.kind).join(', ') + '.');
+      const missed = missesInOrder(r.checks);
+      const broken = missed.filter(c => c.kind === 'keep' || c.kind === 'apart');
+      const pieces = missed.filter(c => c.kind === 'merge' || c.kind === 'cut');
+      const ends = missed.filter(c => c.kind === 'endpoint');
+      const lines: string[] = [];
+      if (broken.length) lines.push(`Cut off from the real cell: ${broken.slice(0, 5).map(c => c.label).join(', ')}${broken.length > 5 ? ` and ${broken.length - 5} more` : ''}.`);
+      if (pieces.length) lines.push(`Biggest misses: ${pieces.slice(0, 5).map(c => c.label).join('; ')}${pieces.length > 5 ? `; and ${pieces.length - 5} smaller` : ''}.`);
+      if (ends.length) lines.push(`${ends.length} branch end${ends.length === 1 ? '' : 's'} not marked.`);
+      if (lines.length) parts.push(lines.join(' ') + ' Pins mark them on the cell for two minutes, the most important first.');
     }
   }
   if (!r.passed) {
@@ -545,7 +710,7 @@ const CLAIM_STEP = 2, RESULT_STEP = 3;
 export const steps: Step[] = [
   // 1: What the test is
   {
-    title: 'Proofreading Test (WIP)',
+    title: 'Proofreading Test (DO NOT TAKE, WIP)',
     get text() {
       const st = testStatus.value;
       const t = st?.test;
@@ -568,7 +733,15 @@ export const steps: Step[] = [
         else if (st.wait_until) lines.push(`Your last try scored ${st.last?.percent ?? 0} percent. You can try again after ${new Date(st.wait_until).toLocaleString()}.`);
         else if (st.attempts && t.attempts_allowed) lines.push(`Tries used: ${st.attempts} of ${t.attempts_allowed}. Last score: ${st.last?.percent ?? 0} percent.`);
         else if (st.attempts) lines.push(`Tries so far: ${st.attempts}. Last score: ${st.last?.percent ?? 0} percent.`);
-        if (!st.free && !st.mine) lines.push('Someone is taking the test right now, and it is one player at a time. It frees up when they finish or go quiet.');
+        const q = st.queue;
+        if (q?.called_until) lines.push(`**It is your turn.** The cell is held for you until ${new Date(q.called_until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`);
+        else if (q?.position) lines.push(`**You are ${ordinal(q.position)} in line.** ${waitWords(q)} Pyr calls you when it is your turn: a notification, and the card at the top left, with 10 minutes to start.`);
+        else if (cellBusyForMe(st)) {
+          lines.push(q?.other_turn && !q.holder_until
+            ? 'It is the turn of the next player in line right now. It is one player at a time.'
+            : 'Someone is taking the test right now, and it is one player at a time.');
+          if (st.can_start && q) lines.push(`**Join the line** and Pyr calls you when it is your turn: you get a notification and 10 minutes to start.${q && q.length ? ` ${q.length === 1 ? '1 player is' : `${q.length} players are`} waiting.` : ''}`);
+        }
       }
       return lines.join('\n\n');
     },
@@ -576,6 +749,7 @@ export const steps: Step[] = [
     width: '620px',
     get nextLabel() {
       const st = testStatus.value;
+      if (cellBusyForMe(st) && st?.queue) return st.queue.position ? 'OK' : queueBusy.value ? 'one moment' : st?.can_start ? 'Join the line' : 'OK';
       return st?.test && (st.can_start || st.admin) ? 'Start the test' : 'next';
     },
     onEnter: () => { closeSidePanel(); stopWatching(); refreshTestStatus(); },

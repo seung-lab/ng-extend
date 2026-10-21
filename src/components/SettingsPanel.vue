@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pumpkinSeason } from '../util/pumpkin';
 import {ref, onMounted, onUnmounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
@@ -7,6 +8,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
 import { startViewHash } from '../util/start_view';
 import { ngePointScale, ngePointGem } from 'neuroglancer/annotation/point';
+import { ngeHoverStyle } from 'neuroglancer/segmentation_display_state/frontend';
 
 const prefsStore = useUserPreferencesStore();
 
@@ -48,9 +50,24 @@ const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
+/** How the cell under the mouse is shown (wolfryder101 #181): the classic fade (default), halo or pulse. */
+const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade' | 'none'>('fade');
+/** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
+const draftPulseColor = ref('');
+const PULSE_COLORS = [
+  { value: '', label: "Each cell's own colour: a blue cell pulses light blue" }, { value: '#59d8ff', label: 'Electric blue' },
+  { value: '#ffffff', label: 'White' }, { value: '#ffd34d', label: 'Gold' }, { value: '#ff6fd8', label: 'Pink' },
+  { value: '#6dff8a', label: 'Green' }, { value: '#b48cff', label: 'Purple' }, { value: '#ff5a4f', label: 'Red' },
+];
+/** A colour from the picker, not one of the swatches. */
+const isCustomPulseColor = computed(() => !!draftPulseColor.value && !PULSE_COLORS.some(c => c.value === draftPulseColor.value));
+function onPulseColorPick(e: Event) {
+  draftPulseColor.value = (e.target as HTMLInputElement).value;
+}
 const draftImageDetail = ref<1 | 2 | 4>(1);
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
+const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
@@ -122,9 +139,12 @@ onMounted(() => {
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
+  draftHoverStyle.value = ngeHoverStyle.value;
+  draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
+  draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
@@ -199,9 +219,10 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
+    hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
@@ -466,7 +487,7 @@ const props = defineProps<{ embedded?: boolean }>();
             </label>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftKeepDisplay" />
-              <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout) when jumping to cells</span>
+              <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
             </label>
             <label class="nge-settings-toggle" title="Off: left click selects a layer, right click hides or shows it. On: the other way round, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
@@ -476,6 +497,10 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftUndeleteCounter" />
               <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
             </label>
+            <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
+              <input type="checkbox" v-model="draftPumpkin" />
+              <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
+            </label>
             <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
               <input type="checkbox" v-model="draftSegShowId" />
               <span class="nge-settings-toggle-label">Show the segment ID under a cell's label</span>
@@ -484,6 +509,31 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. None: nothing marks it. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+              <span class="nge-settings-toggle-label">3D Hover</span>
+              <select v-model="draftHoverStyle" class="nge-sv-select">
+                <option value="halo">Halo</option>
+                <option value="saturate">Saturate</option>
+                <option value="fade">Fade (original)</option>
+                <option value="pulse">Pulse</option>
+                <option value="wireframe">Wireframe</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="The colour of the light that runs along the cell, with the Pulse look and with the P key.">
+              <span class="nge-settings-toggle-label">Pulse colour</span>
+              <div class="nge-pulse-swatches">
+                <button v-for="c in PULSE_COLORS" :key="c.value" type="button" class="nge-pulse-swatch"
+                        :class="{ 'nge-pulse-swatch--own': !c.value, 'nge-pulse-swatch--on': draftPulseColor === c.value }"
+                        :style="c.value ? { background: c.value } : undefined" :title="c.label" :aria-label="c.label"
+                        @click="draftPulseColor = c.value"></button>
+                <label class="nge-pulse-swatch nge-pulse-swatch--pick" :class="{ 'nge-pulse-swatch--on': isCustomPulseColor }"
+                       :style="isCustomPulseColor ? { background: draftPulseColor } : undefined" title="Any colour">
+                  <input type="color" :value="draftPulseColor || '#59d8ff'" @input="onPulseColorPick" />
+                </label>
+              </div>
+            </div>
+            <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
             <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">
               <span class="nge-settings-toggle-label">When I complete a cell, show</span>
               <select v-model="draftCellMessage" class="nge-sv-select">
@@ -1488,4 +1538,17 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-settings-reset-text ul { margin: 0 0 8px; padding-left: 18px; }
 .nge-settings-reset-error { margin: 4px 0 8px; font-size: 12.5px; color: #ff9d9d; }
 .nge-settings-reset-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+/* Pulse colour: swatches and a picker (Ames 2026-10-20: "make this an actual color picker") */
+.nge-pulse-color { align-items: center; }
+.nge-pulse-swatches { display: flex; flex-wrap: nowrap; gap: 5px; justify-content: flex-end; align-items: center; }
+.nge-pulse-swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.18); padding: 0; cursor: pointer; position: relative; flex: none; }
+.nge-pulse-swatch--on { border-color: #fff; box-shadow: 0 0 0 2px rgba(120, 180, 255, 0.6); }
+/* Each cell's own colour: a dark middle in a ring of colours. */
+.nge-pulse-swatch--own { background: radial-gradient(circle, #141a26 0 42%, transparent 44%), conic-gradient(#59d8ff, #6dff8a, #ffd34d, #ff6fd8, #b48cff, #59d8ff); }
+.nge-pulse-swatch--pick { background: #1c2333; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+.nge-pulse-swatch--pick::after { content: '+'; color: #cfe0ff; font-size: 15px; line-height: 1; pointer-events: none; }
+.nge-pulse-swatch--pick.nge-pulse-swatch--on::after { content: ''; }
+.nge-pulse-swatch--pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
+.nge-pulse-hint { margin: 2px 0 8px; }
 </style>

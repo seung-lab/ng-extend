@@ -37,7 +37,7 @@ function getAuthToken(server: string): string | null {
   return null;
 }
 
-function authHeaders(server: string): HeadersInit {
+export function authHeaders(server: string): HeadersInit {
   const token = getAuthToken(server);
   return {
     'Content-Type': 'application/json',

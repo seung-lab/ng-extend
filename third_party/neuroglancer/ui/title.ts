@@ -20,10 +20,12 @@ import {animationFrameDebounce} from 'neuroglancer/util/animation_frame_debounce
 export function bindTitle(title: WatchableValueInterface<string|undefined>) {
   const debouncedSetTitle = animationFrameDebounce(() => {
     const value = title.value?.trim();
+    // The game is Pyr (Ames 2026-10-17: the tab said "neuroglancer"); a
+    // state title, when one is set, comes first.
     if (value) {
-      document.title = `${value} - neuroglancer`;
+      document.title = `${value} · Pyr`;
     } else {
-      document.title = 'neuroglancer';
+      document.title = 'Pyr · EyeWire II';
     }
   });
   const unregisterSignalHandler = title.changed.add(debouncedSetTitle);
