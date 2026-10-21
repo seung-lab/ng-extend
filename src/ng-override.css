@@ -2027,3 +2027,32 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 }
 .neuroglancer-display-dimensions-widget input[type="checkbox"] { accent-color: #42d5ec; margin: 0; cursor: pointer; }
 .neuroglancer-depth-range-widget-grid { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(120, 170, 255, 0.16); }
+
+/* ── Layers side panel (the layer bar's list, "Layers (2/2 visible)") ──
+   Neuroglancer's own rows: grey boxes, a lime outline on the selected one
+   and a solid number block (Ames 2026-10-21: "fix this styling"). Rows like
+   Pyr's layer tabs: dark, rounded, a small tinted number, cyan when selected. */
+.neuroglancer-layer-list-panel-items { padding: 6px 8px; gap: 4px; }
+.neuroglancer-layer-list-panel-item {
+  align-items: center; gap: 8px;
+  margin: 0; padding: 5px 8px; min-height: 30px; box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  font: 500 12.5px/1.3 system-ui, sans-serif; color: #d6e2f5;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.neuroglancer-layer-list-panel-item:hover { background: rgba(120, 170, 255, 0.08); border-color: rgba(120, 170, 255, 0.22); }
+.neuroglancer-layer-list-panel-item[data-selected=true] {
+  border-color: rgba(66, 213, 236, 0.55);
+  background: rgba(66, 213, 236, 0.08);
+  box-shadow: inset 2px 0 0 #42d5ec;
+}
+.neuroglancer-layer-list-panel-item[data-archived=true] { border-color: rgba(255, 255, 255, 0.05); background: transparent; }
+.neuroglancer-layer-list-panel-item-number {
+  font: 600 10.5px/1 system-ui, sans-serif;
+  min-width: 18px; text-align: center; padding: 3px 5px; border-radius: 4px;
+  background: rgba(74, 158, 255, 0.15); color: rgba(150, 200, 255, 0.95);
+}
+.neuroglancer-layer-list-panel-item input[type="checkbox"] { accent-color: #42d5ec; margin: 0; cursor: pointer; }
+.neuroglancer-layer-list-panel-item .neuroglancer-icon { opacity: 0.75; }
+.neuroglancer-layer-list-panel-item .neuroglancer-icon:hover { opacity: 1; }
