@@ -53,9 +53,12 @@ interface PatchCell {
 }
 type Model = 'pumpkin' | 'creep-o-lantern' | 'fang-o-lantern';
 const PATCH: PatchCell[] = [
-  // The cell the Sandbox opens on for Ames. 648518346355727683 (soma given
-  // as 71847, 54909, 1158) is the same cell body, so it shares this one.
-  { soma: [71942, 54909, 1162], ids: ['648518346353862024', '648518346355727683'], heightNm: 32000, dropNm: 3500, model: 'pumpkin', green: 0x52cb85 },
+  // The Sandbox's starter cell (config.ts), on the same cell body as the cell
+  // the Sandbox opened on for Ames (648518346353862024). That one was edited
+  // and the server could not trace it (lineage_graph 500), so the trip turns
+  // on 648518346355727683 first (Ames 2026-10-21: "can we just use an old
+  // segID or something").
+  { soma: [71942, 54909, 1162], ids: ['648518346355727683', '648518346353862024'], heightNm: 32000, dropNm: 3500, model: 'pumpkin', green: 0x52cb85 },
   // Far enough from the others that no two pumpkins touch (Ames: "The other
   // two are too close", then "how about this as the 3rd one").
   { soma: [92944, 56926, 1164], ids: ['648518346352449202'], heightNm: 32000, dropNm: 3500, model: 'creep-o-lantern', green: 0x2ac6a7 },
