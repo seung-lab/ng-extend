@@ -387,3 +387,34 @@ test('test.tries and test.try: admins only; the list has counts, a try has its c
   const before = await handle({action: 'test.tries', args: {}, who, me, io: {...io(g, rpc), sb: old}});
   assert.equal(before.kept, false); assert.equal(before.tries.length, 1);
 });
+
+test('the line: join and leave go to the database; only admins take someone out; admins see the line', async () => {
+  const calls = [];
+  const rpc = async (action, args) => { calls.push({action, args}); return {ok: true}; };
+  const sb = admins => async path => {
+    if (path.startsWith('admins?')) return admins;
+    if (path.startsWith('proofreading_test_queue?')) return [{user_id: me.id, test_id: T.id, joined_at: 't1', called_at: null, player: {username: 'Kim_OZ'}}];
+    if (path.startsWith('proofreading_test_attempts?')) return [];
+    if (path.startsWith('proofreading_tests?')) return [T];
+    if (path.startsWith('proofreading_test_checks?')) return CHECKS;
+    throw new Error('unexpected ' + path);
+  };
+  const g = fakeGraph(START);
+  const base = {...io(g, rpc), sb: sb([])};
+  await handle({action: 'test.queueJoin', args: {}, who, me, io: base});
+  await handle({action: 'test.queueJoin', args: {id: T.id}, who, me, io: base});
+  await handle({action: 'test.queueLeave', args: {}, who, me, io: base});
+  assert.deepEqual(calls, [{action: 'queue_join', args: {}}, {action: 'queue_join', args: {id: T.id}}, {action: 'queue_leave', args: {}}]);
+  await assert.rejects(() => handle({action: 'test.queueJoin', args: {id: 'x'}, who, me, io: base}), /Unknown test/);
+  // Taking someone out: admins only, a real player id.
+  await assert.rejects(() => handle({action: 'test.queueRemove', args: {user: me.id}, who, me, io: base}), e => e.status === 403);
+  const admin = {...io(g, rpc), sb: sb([{email: who.email}])};
+  await assert.rejects(() => handle({action: 'test.queueRemove', args: {user: 'nobody'}, who, me, io: admin}), /Unknown player/);
+  await handle({action: 'test.queueRemove', args: {user: me.id}, who, me, io: admin});
+  assert.deepEqual(calls.at(-1), {action: 'queue_remove', args: {user: me.id}});
+  const list = await handle({action: 'test.tries', args: {}, who, me, io: admin});
+  assert.deepEqual(list.line, [{user_id: me.id, test_id: T.id, joined_at: 't1', called_at: null, username: 'Kim_OZ'}]);
+  // Before the line's SQL: an empty line, the list still comes.
+  const noLine = async path => { if (path.startsWith('proofreading_test_queue?')) throw new Error('supabase 404'); return sb([{email: who.email}])(path); };
+  assert.deepEqual((await handle({action: 'test.tries', args: {}, who, me, io: {...io(g, rpc), sb: noLine}})).line, []);
+});

@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-21T17:11:37Z",
+      "title": "A line for the Proofreading Test",
+      "digest": "minor",
+      "items": [
+        "When someone else is taking the Proofreading Test, its first box has Join the line. A card at the top left shows your place and a rough wait.",
+        "When the cell frees up, the first in line gets a notification, and the card says it is your turn: the cell is held for you for 10 minutes.",
+        "While anyone is waiting, the player on the cell keeps it through 15 quiet minutes instead of an hour."
+      ]
+    },
+    {
       "at": "2026-10-21T15:40:46Z",
       "title": "Proofreading Test: a way out",
       "digest": "minor",

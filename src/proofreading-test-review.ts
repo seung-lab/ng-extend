@@ -28,6 +28,7 @@ export interface TestTry {
   end_root?: string | null; ends_found?: number | null; ends_total?: number | null;
   username: string | null; cave_user_id: number | null;
 }
+export interface TestLineEntry { user_id: string; test_id: string; joined_at: string; called_at: string | null; username: string | null }
 export interface TestTriesList {
   /** False until supabase-proofreading-test-tries.sql has run: no cells kept. */
   kept: boolean;
@@ -36,6 +37,8 @@ export interface TestTriesList {
   /** The key as it stands, in counts only. */
   key: { mistakes: number; ends: number; protect: number; points: number } | null;
   tries: TestTry[];
+  /** The line for the cell, first in line first. */
+  line?: TestLineEntry[];
 }
 export interface TestTryCheck { kind: string; label: string; ok: boolean; weight: number; point: number[] | null }
 export interface TestTryDetail extends TestTry {
@@ -46,6 +49,10 @@ export interface TestTryDetail extends TestTry {
 
 export function listTestTries(): Promise<TestTriesList> {
   return secureWrite<TestTriesList>('test.tries', {});
+}
+/** Admins: take a player out of the line (the next is called if it was their turn). */
+export async function removeFromLine(userId: string): Promise<void> {
+  await secureWrite('test.queueRemove', { user: userId });
 }
 export function loadTestTry(id: number): Promise<TestTryDetail> {
   return secureWrite<TestTryDetail>('test.try', { attempt: id });

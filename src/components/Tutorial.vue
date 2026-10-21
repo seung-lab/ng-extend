@@ -17,7 +17,7 @@ import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
 import { steps as steps9, sandboxContinue, sandboxRestart } from '../merger-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
-import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue } from '../proofreading-test';
+import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
@@ -202,6 +202,8 @@ const next = (_auto?: unknown) => {
     if (!isLastStep && tutorialNum === 9 && sandboxRestart()) return;
     // The test's last box: "Try again" starts over.
     if (isLastStep && tutorialNum === TEST_TUTORIAL && testContinue()) return;
+    // Its first box, while someone else has the cell: join the line, or close.
+    if (!isLastStep && tutorialNum === TEST_TUTORIAL && testQueueNext()) return;
     // The last box closes the tutorial outright, by its length, so nothing
     // that moves the step at the same moment can leave it showing.
     store.setTutorialStep(isLastStep ? steps.value.length : stepFrom(store.getTutorialStep() + 1, 1));

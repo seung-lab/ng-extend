@@ -16,6 +16,7 @@ import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
 import TestReviewBar from "components/TestReviewBar.vue";
+import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
 import ChatPanel from "components/ChatPanel.vue";
 import AssistantDock from "components/AssistantDock.vue";
@@ -950,6 +951,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <access-request-panel v-if="showAccess" @hide="showAccess = false" />
   <access-review-bar />
   <test-review-bar />
+  <test-queue-card />
   <!-- Help requests now live in Cell Library's Help tab -->
   <proofreading-queue-panel v-if="showQueue" @hide="showQueue = false" />
   <cell-library-panel v-if="showCellLibrary" :initial-tab="cellLibraryInitialTab" @hide="showCellLibrary = false; cellLibraryInitialTab = undefined" />
@@ -1208,7 +1210,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
             <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
-            <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
+            <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
         <!-- Standalone cut exercises (Ames, 2026-10-06): each opens on its
