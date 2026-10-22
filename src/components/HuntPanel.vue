@@ -234,9 +234,6 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
     <span class="nge-hunt-scan" aria-hidden="true"></span>
 
     <header class="nge-hunt-head" title="Drag to move" @pointerdown="startDrag">
-      <button class="nge-hunt-caret" :class="{ 'nge-hunt-caret--down': mini }" :title="mini ? 'Show everything' : 'Make it small'" :aria-label="mini ? 'Show everything' : 'Make it small'" :aria-expanded="!mini" @pointerdown.stop @click="toggleMini">
-        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
       <span class="nge-hunt-eyebrow">
         <svg class="nge-hunt-eyegem" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
         The Hunt
@@ -246,6 +243,9 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               :title="huntPrefs.panels ? 'Hide the Annotations and Selection panels while hunting' : 'Show the Annotations and Selection panels (your gems in Found and Missed)'"
               :aria-label="huntPrefs.panels ? 'Hide the side panels' : 'Show the side panels'" @pointerdown.stop @click="setHuntPanels(!huntPrefs.panels)">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.4"/><path v-if="huntPrefs.panels" d="M11.2 5.5h1.8M11.2 8h1.8M11.2 10.5h1.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="nge-hunt-caret" :class="{ 'nge-hunt-caret--down': mini }" :title="mini ? 'Show everything' : 'Make it small'" :aria-label="mini ? 'Show everything' : 'Make it small'" :aria-expanded="!mini" @pointerdown.stop @click="toggleMini">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button class="nge-hunt-x" title="Close" aria-label="Close" @pointerdown.stop @click="emit('hide')">×</button>
     </header>
@@ -264,7 +264,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
       <p v-else class="nge-hunt-muted">No Hunt right now. When one is coming, it is announced in your notifications.</p>
     </div>
 
-    <div v-else class="nge-hunt-body">
+    <!-- Small before the start: the header alone, with its countdown (Ames 2026-10-22: "this looks wonky") -->
+    <div v-else-if="!(mini && phase === 'announced' && !error)" class="nge-hunt-body">
       <div v-if="!mini" class="nge-hunt-titlerow">
         <h2 class="nge-hunt-title">{{ hunt.title }}</h2>
         <div v-if="clock" class="nge-hunt-clock"><span class="nge-hunt-clock-label">{{ clock.label }}</span><span class="nge-hunt-clock-time">{{ clock.value }}</span></div>
@@ -492,11 +493,13 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt--dragging .nge-hunt-head { cursor: grabbing; }
 .nge-hunt-eyebrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-eyegem { filter: drop-shadow(0 0 4px rgb(var(--hn-gold) / 0.7)); }
-.nge-hunt--mini { width: min(280px, calc(100vw - 24px)); }
+.nge-hunt--mini { width: min(300px, calc(100vw - 24px)); }
+.nge-hunt--mini .nge-hunt-eyebrow { letter-spacing: 0.16em; }
+.nge-hunt--mini .nge-hunt-head { gap: 6px; }
 .nge-hunt-headclock { margin-left: auto; display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .nge-hunt-headclock span { font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
 .nge-hunt-headclock b { font: 700 13px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); }
-.nge-hunt-headclock + .nge-hunt-x { margin-left: 10px; }
+
 .nge-hunt--mini .nge-hunt-head { padding: 8px 10px 6px 14px; }
 .nge-hunt--mini .nge-hunt-body { padding: 8px 12px 12px 14px; gap: 6px; }
 .nge-hunt--mini .nge-hunt-title { font-size: 13px; }
@@ -638,7 +641,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 /* ── Instructions, as Cell Library shows them (CellLibraryPanel .nge-cl-howto, .nge-cl-howto-panel, .nge-cl-howto-steps) ── */
 /* The caret, as Cell Library's (on the left, Ames 2026-10-20: "the shrink/expand arrow should be consistently left") */
 .nge-hunt-caret {
-  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; flex: none;
+  margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; flex: none;
   border-radius: 999px; cursor: pointer; color: #9fdcff; background: rgba(100, 200, 255, 0.12); border: 1px solid rgba(100, 200, 255, 0.4);
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -648,7 +651,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-panelsbtn { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0; border-radius: 6px; cursor: pointer; background: none; border: 1px solid transparent; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-panelsbtn:hover, .nge-hunt-panelsbtn:focus-visible { color: #fff; border-color: rgb(var(--hn-accent) / 0.4); }
 .nge-hunt-panelsbtn--on { color: #9fdcff; border-color: rgba(100, 200, 255, 0.45); background: rgba(100, 200, 255, 0.12); }
-.nge-hunt-panelsbtn + .nge-hunt-x { margin-left: 4px; }
+.nge-hunt-panelsbtn + .nge-hunt-caret, .nge-hunt-headclock + .nge-hunt-caret { margin-left: 8px; }
+.nge-hunt-caret + .nge-hunt-x { margin-left: 6px; }
 /* Instructions: a centered dropdown (Ames 2026-10-22: "dropdown, not X", not left aligned) */
 .nge-hunt-howtoggle {
   display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 6px 10px; cursor: pointer;
