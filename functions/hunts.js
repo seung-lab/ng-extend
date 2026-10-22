@@ -31,6 +31,15 @@ const MAX_CELLS = 20;
 const SHOW_ENDED_DAYS = 7;
 const MAX_VIEW_BYTES = 150000;
 const TITLE_PREFIX = '🔎 The Hunt';
+
+/**
+ * Until The Hunt is launched in the live game, every Hunt is admins only, whatever its own
+ * setting says: players never see it, and no note or results post reaches them or chat.
+ * (2026-10-22: the first "test" Hunt, made before test-site Hunts were forced admins only,
+ * posted its results to every player's chat; Ames: "players are still getting these".)
+ * At launch, functions/index.js passes huntPublic: true.
+ */
+const adminsOnly = (h, ctx) => !(ctx && ctx.huntPublic === true) || !!(h && h.admins_only);
 const DAY = 86400000;
 
 // ── Points, in nanometres ─────────────────────────────────────────────────
@@ -683,7 +692,7 @@ async function current(ctx) {
   const { db, me, now = new Date() } = ctx;
   const since = new Date(now.getTime() - SHOW_ENDED_DAYS * DAY).toISOString();
   // An admins only hunt (for testing) is never shown to players.
-  const rows = (await db.visibleHunts(since)).filter((h) => visible(h, now) && (!h.admins_only || ctx.isAdmin));
+  const rows = (await db.visibleHunts(since)).filter((h) => visible(h, now) && (!adminsOnly(h, ctx) || ctx.isAdmin));
   const hunts = [];
   for (const h of rows) {
     if (phase(h, now) === 'ended' && !h.awarded_at) {
@@ -729,7 +738,7 @@ async function current(ctx) {
 async function startRun(args, ctx) {
   const { db, me, now = new Date() } = ctx;
   const h = await getHunt(db, args.id);
-  if (h.admins_only && !ctx.isAdmin) fail(404, 'No such Hunt.');
+  if (adminsOnly(h, ctx) && !ctx.isAdmin) fail(404, 'No such Hunt.');
   if (phase(h, now) !== 'live') fail(409, 'The Hunt is not running.');
   const targets = await db.key(h.id);
   let run = await db.myRun(h.id, me.id);
@@ -742,7 +751,7 @@ async function startRun(args, ctx) {
 async function drop(args, ctx) {
   const { db, me, now = new Date() } = ctx;
   const h = await getHunt(db, args.id);
-  if (h.admins_only && !ctx.isAdmin) fail(404, 'No such Hunt.');
+  if (adminsOnly(h, ctx) && !ctx.isAdmin) fail(404, 'No such Hunt.');
   const p = phase(h, now);
   if (p === 'announced') fail(409, 'The Hunt has not started yet.');
   if (p !== 'live') fail(409, 'This Hunt is over.');
@@ -931,7 +940,7 @@ async function postResults(row, board, winners, speed, ctx) {
   const body = board.length
     ? `Congratulations to all ${who} who took part!${parts.length ? ' ' + parts.join(' ') : ''}`
     : 'Nobody hunted this time. The next Hunt is yours.';
-  const test = !!row.admins_only;   // who gets it: admins only, never chat (the words are the real ones)
+  const test = adminsOnly(row, ctx);   // who gets it: admins only, never chat (the words are the real ones)
   const base = { title: `${TITLE_PREFIX} results: ${row.title}`.slice(0, 120), body,
     send_at: now.toISOString(), ...(ctx.site ? { image_url: `${ctx.site}/hunt/gold.png`, thumbnail_url: `${ctx.site}/hunt/gold-128.png` } : { image_url: null, thumbnail_url: null }),
     created_by: (me && me.id) || row.created_by || null };
@@ -996,7 +1005,7 @@ async function syncNotifications(h, ctx) {
     }
     const sendAt = ms(row.send_at) <= t ? now.toISOString() : new Date(ms(row.send_at)).toISOString();
     const base = { title: row.title, body: row.body, send_at: sendAt, ...picture };
-    if (!h.admins_only) {
+    if (!adminsOnly(h, ctx)) {
       const fields = { ...base, target_type: 'all', target_id: null, post_to_chat: true };
       const one = existing.find((n) => n.target_type === 'all' || n.target_type == null);
       for (const n of existing) if (n !== one) await db.deleteNotification(n.id);

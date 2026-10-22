@@ -176,7 +176,7 @@ function fakeDb() {
 function harness() {
   const db = fakeDb();
   const bell = [], chat = [];
-  const ctx = (me, now, isAdmin = false) => ({ db, me, isAdmin, now, site: 'https://pyr.example',
+  const ctx = (me, now, isAdmin = false, huntPublic = true) => ({ db, me, isAdmin, now, huntPublic, site: 'https://pyr.example',
     notify: async (rows) => { bell.push(...rows); }, chatAward: async (uid, badge) => { chat.push([uid, badge.name]); } });
   return { db, bell, chat, ctx };
 }
@@ -694,4 +694,24 @@ test('Count it: an admin turns a hunter\'s miss on a real error into a place in 
   assert.deepEqual(h.db._s.subs.map((x) => x.found), [1, 1]);   // both get it
   await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: run.drops[0].id }, admin), /already found/);
   await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'nope' }, admin), /not in this hunter/);
+});
+
+test('before The Hunt is launched, a Hunt set for everyone stays admins only: hidden from players, every note and the results to admins, never chat', async () => {
+  const h = harness();
+  h.db.adminUserIds = async () => [ADMIN.id, P2.id];
+  const d = await makeHunt(h);
+  const pre = (me, t, isAdmin = false) => h.ctx(me, at(t), isAdmin, false);   // not launched
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { admins_only: false } }, pre(ADMIN, 1, true));
+  assert.equal(h.db._s.hunts[0].admins_only, false);
+  assert.ok(h.db._s.notes.length === 6 && h.db._s.notes.every((n) => n.target_type === 'user' && n.post_to_chat === false));
+  // Players see nothing and cannot play; an admin can.
+  assert.deepEqual((await H.huntAction('hunt.current', {}, pre(P1, 60))).hunts, []);
+  await assert.rejects(H.huntAction('hunt.drop', { id: d.id, point: pt(1000, 1000, 100), drop_id: 'x' }, pre(P1, 60)), /No such Hunt/);
+  await dropAll(d.id, [pt(1000, 1000, 100)], pre(ADMIN, 61, true));
+  // The end: the results go to the admins, never to everyone or chat.
+  const end = await H.huntAction('hunt.current', {}, pre(ADMIN, 121, true));
+  assert.equal(end.hunts[0].awarded, true);
+  const results = h.db._s.notes.filter((n) => /results/.test(n.title));
+  assert.ok(results.length === 2 && results.every((n) => n.target_type === 'user' && n.post_to_chat === false), JSON.stringify(results.map((n) => [n.target_type, n.post_to_chat])));
+  assert.ok(!h.db._s.notes.some((n) => n.target_type === 'all' || n.post_to_chat), 'nothing to all players or chat');
 });
