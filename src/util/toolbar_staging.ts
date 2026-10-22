@@ -43,9 +43,10 @@ export { STAGE_MOMENTS, NEVER_AUTO, ALL_AUTO, TUTORIAL_REVEALS, checkTutorialWir
 export type { StageMoment } from '../data/toolbar-stages';
 
 
-/** Live site accounts created at or after this are staged: the deploy time
- *  (Ames said deploy, 2026-10-21). Everyone older keeps their top bar. */
-export const STAGING_SINCE = '2026-10-21T18:49:56Z';
+/** Live site accounts created at or after this are staged. Moved to the deploy
+ *  of the startup fix (Ames, 2026-10-22): accounts from before it were never
+ *  sorted and have had the full top bar, so they keep it. */
+export const STAGING_SINCE = '2026-10-22T13:25:00Z';
 
 export const IS_LIVE_SITE = typeof location !== 'undefined' && location.hostname.startsWith('eyewire-ii-community-dot-');
 /** The test panel exists on every test site, and for admins on the live site
