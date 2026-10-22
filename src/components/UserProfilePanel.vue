@@ -838,8 +838,8 @@ function medalTooltip(m: MedalTile): string {
   const more = m.awards.length > 12 ? [`and ${m.awards.length - 12} more`] : [];
   return [head, ...lines, ...more].join('\n');
 }
-/** Ames's medal art, the same for every Hunt. */
-const medalArt = (m: MedalTile) => `hunt/${m.tier}-128.png`;
+/** Ames's medal art, the same for every Hunt; the cheetah in its wide cut, at the medals' height. */
+const medalArt = (m: MedalTile) => (m.tier === 'fastest' ? 'hunt/fastest-wide.png' : `hunt/${m.tier}-128.png`);
 const medalSelected = (m: MedalTile) => !!selectedSpecialBadge.value && m.awards.some((a: any) => a.id === selectedSpecialBadge.value.id);
 function onMedalClick(m: MedalTile) { if (m.latest) onSpecialBadgeClick(m.latest); }
 /** For a medal won more than once, the Hunts it was won in, under its picture. */
@@ -1573,7 +1573,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                   @click="onMedalClick(m)"
                 >
                   <div class="nge-profile-badge-img">
-                    <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
+                    <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" :class="{ 'nge-medal-wide': m.tier === 'fastest' }" />
                     <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
                   </div>
                   <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
@@ -2514,7 +2514,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 @click="onMedalClick(m)"
               >
                 <span class="nge-trophy-medal-img">
-                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
+                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" :class="{ 'nge-medal-wide': m.tier === 'fastest' }" />
                   <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
                 </span>
                 <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
@@ -3685,6 +3685,9 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-trophy-medal-img .nge-medal-count { right: -8px; bottom: 4px; font-size: 11.5px; line-height: 18px; min-width: 24px; }
 .nge-trophy-medal-place { margin-top: 1px; font-size: 0.72em; color: rgba(196, 228, 255, 0.55); }
 .nge-medal-wins { color: #f8e08a; }
+.nge-profile-badge-icon.nge-medal-wide { width: 64px; height: 30px; }
+.nge-profile-badge--medal .nge-profile-badge-img:has(.nge-medal-wide) { width: 66px; }
+.nge-trophy-badge-icon.nge-medal-wide { width: 96px; height: 40px; margin: 8px 0 14px; }
 .nge-profile-medal-gap { align-self: center; width: 1px; height: 30px; margin: 0 4px; background: rgba(100, 180, 255, 0.25); }
 
 .nge-profile-badges-empty {

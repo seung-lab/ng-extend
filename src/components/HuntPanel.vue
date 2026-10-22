@@ -393,7 +393,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         </div>
         <p v-else-if="myResult" class="nge-hunt-mine">{{ myResult.found }}/{{ myResult.of }} found · {{ myResult.gems }} gems. Thanks for hunting!</p>
         <div v-if="hunt.fastest" class="nge-hunt-mymedal nge-hunt-mymedal--speed">
-          <img src="hunt/fastest-128.png" alt="" />
+          <img src="hunt/fastest-wide.png" class="nge-hunt-speedart" alt="" />
           <div><b>Fastest: {{ hunt.fastest.you ? 'you!' : hunt.fastest.name }}</b><span>{{ fastestShort }}</span></div>
         </div>
       </template>
@@ -416,7 +416,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <img :src="medalArt(t)" alt="" /><b :class="`nge-hunt-tierword--${t}`">{{ TIER_WORD[t] }}</b><small>{{ PLACE[t] }}</small>
           </span>
           <span class="nge-hunt-medalmini" title="Speed: the fastest to find them all (or the most, if nobody finds all), from your first open of the Hunt. One try.">
-            <img src="hunt/fastest-128.png" alt="" /><b class="nge-hunt-tierword--speed">Speed</b><small>fastest</small>
+            <img src="hunt/fastest-wide.png" class="nge-hunt-speedart" alt="" /><b class="nge-hunt-tierword--speed">Speed</b><small>fastest</small>
           </span>
         </div>
         <p v-if="!hunt.test" class="nge-hunt-fine">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
@@ -428,7 +428,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           <li v-for="b in hunt.board" :key="b.rank" :class="{ 'nge-hunt-board--you': b.you }">
             <span class="nge-hunt-rank">{{ b.rank }}</span>
             <span class="nge-hunt-who">{{ b.name }}</span>
-            <span v-if="b.fastest" class="nge-hunt-speedmark" title="Fastest">⚡</span>
+            <img v-if="b.fastest" src="hunt/fastest-wide.png" class="nge-hunt-speedmark" title="Fastest" alt="Fastest" />
             <span v-if="b.tier && phase === 'ended'" class="nge-hunt-tierdot" :class="`nge-hunt-tierdot--${b.tier}`" :title="TIER_WORD[b.tier]"></span>
             <span class="nge-hunt-found">{{ b.found }}/{{ hunt.target_count }}<span class="nge-hunt-gemcount"> · {{ b.gems }}◆</span></span>
           </li>
@@ -708,6 +708,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-medalrow { display: flex; gap: 4px; margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(66, 213, 236, 0.18); }
 .nge-hunt-medalmini { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0; text-align: center; }
 .nge-hunt-medalmini img { width: 30px; height: 30px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
+.nge-hunt-medalmini img.nge-hunt-speedart { width: 64px; height: 26px; margin: 2px 0; }
 .nge-hunt-medalmini b { font: 700 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
 .nge-hunt-medalmini small { font-size: 10px; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-desc--how { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(66, 213, 236, 0.18); font-size: 12.5px; }
@@ -751,13 +752,14 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-congrats p { margin: 4px 0 0; color: rgb(var(--hn-ink) / 0.85); }
 .nge-hunt-mymedal { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(4, 8, 18, 0.5); border: 1px solid rgb(var(--hn-accent) / 0.25); }
 .nge-hunt-mymedal img { width: 56px; height: 56px; object-fit: contain; flex: none; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6)); }
+.nge-hunt-mymedal img.nge-hunt-speedart { width: 84px; height: 40px; margin: 8px 0; }
 .nge-hunt-mymedal div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .nge-hunt-mymedal b { font: 800 14px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; }
 .nge-hunt-mymedal span { font-size: 12px; color: rgb(var(--hn-ink) / 0.8); }
 .nge-hunt-mymedal--gold { border-color: rgb(var(--hn-gold) / 0.75); box-shadow: 0 0 18px rgb(var(--hn-gold) / 0.2); }
 .nge-hunt-mymedal--speed b { color: #7fd8ff; }
 .nge-hunt-tierword--speed { color: #7fd8ff !important; text-shadow: 0 0 8px rgba(127, 216, 255, 0.35); }
-.nge-hunt-speedmark { color: #7fd8ff; font-size: 12px; }
+.nge-hunt-speedmark { width: 30px; height: 13px; object-fit: contain; flex: none; }
 
 /* Calm screen and reduced motion: the same box, still. */
 @media (prefers-reduced-motion: reduce) {
