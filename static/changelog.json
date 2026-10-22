@@ -3,9 +3,9 @@
   "entries": [
     {
       "at": "2026-10-22T00:00:00Z",
-      "title": "3D Hover: Hologram with dots",
+      "title": "3D Hover: a new Hologram",
       "items": [
-        "Hologram swaps its lines for small glowing dots that sit on the cell, so it reads less stripey."
+        "Hologram now turns the cell into cyan light, or your pulse colour: a bright body glowing brightest at its edges, a fine sprinkle of dots and a soft glow around it, instead of dark stripes."
       ]
     },
     {

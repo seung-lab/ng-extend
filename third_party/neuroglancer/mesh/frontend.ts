@@ -180,9 +180,14 @@ const NGE_SHELL_DEPTH_BIAS = 0.004;
 const NGE_SHELL_NORMAL_STEP = 20;
 const ngeShellColor = new Float32Array(4);
 /** The rim colour: a light tint of the cell's own colour. */
+/** The hologram's colour: the pulse colour if one is chosen, else cyan. */
+function ngeHoloRgb(): ArrayLike<number> {
+  return ngePulseColor.value ?? NGE_HOLO_CYAN;
+}
+const NGE_HOLO_CYAN = [0.36, 0.86, 1.0];
 function ngeShellColorFor(color: Float32Array|number[], alpha: number) {
   const a = color[3] || 1;
-  const rgb = ngeGlowColor(color);
+  const rgb = ngeHoverStyle.value === 'hologram' ? ngeHoloRgb() : ngeGlowColor(color);
   // Times alpha: the halo keeps the brightest shell at each pixel (MAX blending).
   // It does not breathe (Ames 2026-10-20: "I don't like the breathing").
   const fade = ngeHoverStyle.value === 'halo' ? ngeHaloFade : 1;
@@ -219,8 +224,8 @@ function ngeUpdateHaloZoom(projectionParameters: any) {
   // Gone when a branch is about 3 px across, where Saturate's colour takes over.
   ngeHaloFade = Math.max(0, Math.min(1, (branchPx - 3) / 14));
   ngeHaloFar.value = 1 - ngeHaloFade;
-  // The hologram's dots: about 26 px apart, in power of two steps of nm.
-  ngeHoloStepNm = Math.pow(2, Math.round(Math.log2(Math.max(1, 26 * viewNm / Math.max(1, projectionParameters.height)))));
+  // The hologram's dots: about 14 px apart, in power of two steps of nm.
+  ngeHoloStepNm = Math.pow(2, Math.round(Math.log2(Math.max(1, 14 * viewNm / Math.max(1, projectionParameters.height)))));
 }
 /** The main pass's hover mode for the cell under the mouse: 1 the pulse,
  *  2 the halo's rim of light on the cell's own edges (colour in uNgeRim). */
@@ -228,8 +233,9 @@ let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
   if ((style === 'hologram' || style === 'metallic') && ngeRimGl) {
-    // The glow: a light tint of the cell's own colour.
-    const rgb = ngeGlowColor(color);
+    // Metallic glows in a light tint of the cell's own colour; the hologram
+    // is one colour of light, whatever the cell's.
+    const rgb = style === 'hologram' ? ngeHoloRgb() : ngeGlowColor(color);
     ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], 1);
     return style === 'metallic' ? 6 : 5;
   }
@@ -536,8 +542,8 @@ highp float ngeHoloDot(highp vec2 p) {
   highp vec2 at = vec2(ngeHoloHash(cell), ngeHoloHash(cell + 17.3)) * 0.6 + 0.2;
   highp float d = length(fract(p) - at);
   highp float aa = fwidth(d) * 1.2;
-  highp float on = step(0.35, ngeHoloHash(cell + 41.9));
-  return on * (1.0 - smoothstep(0.11 - aa, 0.11 + aa, d));
+  highp float on = step(0.5, ngeHoloHash(cell + 41.9));
+  return on * (1.0 - smoothstep(0.06 - aa, 0.06 + aa, d));
 }
 `);
         builder.addUniform('highp mat4', 'uNgeModel');
@@ -593,7 +599,7 @@ if (uNgeGlow > 4.5) {
   highp float holoFacing = holoLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / holoLen)) : 1.0;
   // .z: 1 Metallic (uNgeGlow 6), 0 Hologram (5).
   vNgeHolo = vec4(1.0 - holoFacing, lightingFactor, uNgeGlow > 5.5 ? 1.0 : 0.0, 1.0);
-  // The dots' grid: positions in nm, in steps that keep the dots about 26 px
+  // The dots' grid: positions in nm, in steps that keep the dots about 14 px
   // apart (uNgeHoloStep, a power of two, so they do not crawl as you zoom).
   vNgeHoloPos = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale / uNgeHoloStep;
   vNgeHoloN = normalMultiplier * origNormal;
@@ -695,18 +701,21 @@ if (vNgeHolo.w > 0.5) {
     highp vec3 metalBody = uColor.rgb * (0.18 + 0.18 * vNgeHolo.y);
     emit(vec4(min(metalBody + uNgeRim.rgb * uColor.a * (0.12 + 1.3 * metalRim), vec3(1.0)), uColor.a), uPickID);
   } else {
-    // Hologram (Ames 2026-10-22: the bars were "too stripey ... maybe dots"):
-    // a dark body glowing from its edges in its own colour, covered in small
-    // glowing dots fixed to its surface, as in Ames's scifi-ui hologram
-    // (goldDots: dots on the three planes, blended by the normal).
-    highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 2.0);
+    // Hologram, made of light (Ames 2026-10-22, from her pictures: a cyan
+    // chameleon, a globe of light). One colour whatever the cell's own (cyan,
+    // or the pulse colour; uNgeRim), a bright evenly lit body, edges burning
+    // toward white, and a fine sprinkle of small dots fixed to the surface
+    // (dots on the three planes, blended by the normal, as in Ames's
+    // scifi-ui hologram). The glow around it is the halo pass, in cyan.
+    highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 2.2);
     highp vec3 holoW = abs(normalize(vNgeHoloN));
     holoW = holoW * holoW;
     holoW /= max(holoW.x + holoW.y + holoW.z, 1e-6);
     highp float holoDots = ngeHoloDot(vNgeHoloPos.yz) * holoW.x + ngeHoloDot(vNgeHoloPos.xz) * holoW.y + ngeHoloDot(vNgeHoloPos.xy) * holoW.z;
-    highp vec3 holoBody = uColor.rgb * (0.2 + 0.2 * vNgeHolo.y);
-    highp vec3 holoGlow = uNgeRim.rgb * uColor.a;
-    emit(vec4(min(holoBody + holoGlow * (0.95 * holoRim + 1.5 * holoDots * (0.45 + 0.55 * vNgeHolo.x)), vec3(1.0)), uColor.a), uPickID);
+    highp vec3 holoC = uNgeRim.rgb;
+    highp vec3 holoBody = holoC * (0.32 + 0.18 * vNgeHolo.y);
+    highp vec3 holoEdge = mix(holoC, vec3(1.0), 0.55) * 1.25 * holoRim;
+    emit(vec4(min(holoBody + holoEdge + holoC * 0.5 * holoDots, vec3(1.0)) * uColor.a, uColor.a), uPickID);
   }
 } else {
   emit(vColor, uPickID);
