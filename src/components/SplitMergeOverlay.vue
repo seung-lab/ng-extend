@@ -8,14 +8,37 @@ import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
+import { getBaseObjectColor, ngeListHover } from 'neuroglancer/segmentation_display_state/frontend';
 
 // Hovering a segment in the Merge Queue lights it up in the 2D and 3D views
 // and in the segment list, the way neuroglancer's own merge list does (Nik,
 // 2026-10-08). It sets the viewer's hovered segment, nothing more.
+/** A queued cell's chip in its colour in the views and the segment list
+ *  (Nseraf #198: "have the merge queue items' colours correspond to the
+ *  colours in SegID panel"). Dark text on a light colour, light on dark. */
+function segChipStyle(id: string): Record<string, string> {
+  try {
+    const ds = (currentSegLayer()?.layer as any)?.displayState;
+    if (!ds || !/^\d+$/.test(id)) return {};
+    const c = getBaseObjectColor(ds, Uint64.parseString(id), new Float32Array(4));
+    const [r, g, b] = [c[0], c[1], c[2]].map(v => Math.round(Math.max(0, Math.min(1, v)) * 255));
+    const light = 0.299 * r + 0.587 * g + 0.114 * b > 150;
+    return { background: `rgb(${r}, ${g}, ${b})`, color: light ? '#08121c' : '#ffffff' };
+  } catch { return {}; }
+}
+/** Right click on a queued cell: go to it, as a right click in the segment
+ *  list does (Nseraf #198). */
+function jumpToSegment(id: string) {
+  try {
+    if (!/^\d+$/.test(id)) return;
+    (currentSegLayer()?.layer as any)?.displayState?.moveToSegment?.(Uint64.parseString(id));
+  } catch { /* the layer went away */ }
+}
 function hoverSegment(id: string | null) {
   try {
     const state = (currentSegLayer()?.layer as any)?.displayState?.segmentSelectionState;
     if (!state) return;
+    ngeListHover.value = !!id;
     if (id && /^\d+$/.test(id)) state.set(Uint64.parseString(id));
     else state.set(null);
   } catch { /* the layer went away */ }
@@ -431,11 +454,11 @@ function cancelTool() {
         <div class="nge-smo-merge-panel-list">
           <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
             <span class="nge-smo-merge-num">{{ i + 1 }}.</span>
-            <span class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this segment up in the views"
-                  @mouseenter="hoverSegment(pair[0])" @mouseleave="hoverSegment(null)">{{ pair[0] }}</span>
+            <span class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[0])" title="Hover to light this segment up in the views. Right click to go to it."
+                  @mouseenter="hoverSegment(pair[0])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[0])">{{ pair[0] }}</span>
             <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
-            <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this segment up in the views"
-                  @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)">{{ pair[1] }}</span>
+            <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[1])" title="Hover to light this segment up in the views. Right click to go to it."
+                  @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[1])">{{ pair[1] }}</span>
             <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
             <!-- why it failed, in the server's words, on a line of its own -->
@@ -1427,6 +1450,9 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
 .nge-smo-merge-grip { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 0; color: rgb(166 255 214 / .45); }
 .nge-smo-merge-row { padding: 5px 10px; }
 .nge-smo-seg-id { font-size: 11px; color: #a9efcf; padding: 1px 4px; }
+/* In the cell's own colour, like its row in the segment list (Nseraf #198). */
+.nge-smo-seg-id--colored { border-radius: 4px; padding: 1px 6px; font-weight: 600; cursor: pointer; }
+.nge-smo-seg-id--colored:hover { outline: 1.5px solid rgba(255, 255, 255, 0.85); outline-offset: 1px; }
 .nge-smo-merge-num { font-variant-numeric: tabular-nums; }
 .nge-smo-merge-remove { color: #ff8a8a; border-radius: 4px; }
 .nge-smo-merge-status {
