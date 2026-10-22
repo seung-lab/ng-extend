@@ -186,6 +186,18 @@
   border-color: rgba(76, 175, 80, 0.65);
 }
 
+/* Can't complete, under Mark as Proofread: quieter, amber (Ames 2026-10-22) */
+.nge-lb-cant-btn {
+  margin-top: 6px;
+  border-color: rgba(255, 183, 77, 0.4);
+  color: #FFCC80;
+  background: linear-gradient(180deg, rgba(255, 183, 77, 0.08), rgba(255, 183, 77, 0.03));
+}
+.nge-lb-cant-btn:hover {
+  background: linear-gradient(180deg, rgba(255, 183, 77, 0.18), rgba(255, 183, 77, 0.08));
+  border-color: rgba(255, 183, 77, 0.6);
+}
+
 /* Save Cell Type button — accent blue */
 .nge-lb-save-btn {
   border-color: rgba(74, 158, 255, 0.45);
