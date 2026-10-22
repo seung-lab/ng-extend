@@ -6,6 +6,7 @@ import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
+import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
@@ -410,6 +411,7 @@ function setupViewer() {
   startSpooky(viewer);
   startPumpkin(viewer);
   startInvalidSegmentWatch(viewer);
+  recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
   startCloseGuard();
