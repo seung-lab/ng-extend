@@ -1032,9 +1032,11 @@ function observeSplitMergeTools() {
         const points = sub.querySelectorAll('.graphene-merge-segments-point');
         const pair: string[] = [];
         points.forEach(pt => {
-          // Segment ID is in the text of the widget (first line of the double-line entry)
-          const text = (pt.textContent || '').trim().split('\n')[0].trim();
-          if (text) pair.push(text);
+          // The segment ID is the long number in the widget's text. The text
+          // can carry more than the number, and then hovering the queue lit
+          // nothing up (Nseraf #198): keep the number alone.
+          const id = (pt.textContent || '').match(/\d{6,20}/)?.[0];
+          if (id) pair.push(id);
         });
         if (pair.length > 0) {
           segments.push(pair);

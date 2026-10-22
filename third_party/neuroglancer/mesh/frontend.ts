@@ -26,7 +26,7 @@ import {PerspectivePanel} from 'neuroglancer/perspective_view/panel';
 import {PerspectiveViewReadyRenderContext, PerspectiveViewRenderContext, PerspectiveViewRenderLayer} from 'neuroglancer/perspective_view/render_layer';
 import {ThreeDimensionalRenderLayerAttachmentState, update3dRenderLayerAttachment} from 'neuroglancer/renderlayer';
 import {forEachVisibleSegment, getObjectKey} from 'neuroglancer/segmentation_display_state/base';
-import {forEachVisibleSegmentToDraw, ngeHaloFar, ngeHoverStyle, ngePulseColor, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
+import {forEachVisibleSegmentToDraw, ngeHaloFar, ngeHoverStyle, ngeListHover, ngePulseColor, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {Borrowed, RefCounted} from 'neuroglancer/util/disposable';
 import {getFrustrumPlanes, mat3, mat3FromMat4, mat4, scaleMat3Output, vec3, vec4} from 'neuroglancer/util/geom';
@@ -230,7 +230,8 @@ function ngeHoverGlowMode(color: Float32Array|number[]) {
     ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], 1);
     return style === 'metallic' ? 6 : 5;
   }
-  if (style === 'saturate' && ngeRimGl) {
+  // Pulse, pointed at from a list: no mouse in 3D to start a ring from.
+  if ((style === 'saturate' || (style === 'pulse' && ngeListHover.value)) && ngeRimGl) {
     ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), 0, 0, 0, 0.25);
     return 4;
   }
