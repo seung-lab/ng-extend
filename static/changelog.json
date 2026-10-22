@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-22T14:05:47Z",
+      "at": "2026-10-22T14:11:12Z",
       "title": "A smaller cursor on a laptop",
       "items": [
         "On a laptop or a smaller window, the target cursor is a size smaller, so it does not cover the cell. Extra large cursor in Settings keeps its size."
