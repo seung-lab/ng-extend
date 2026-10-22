@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-22T13:16:11Z",
+      "title": "Straight on to Merge",
+      "digest": "minor",
+      "items": [
+        "Get Started ends with a Start Merge button.",
+        "Leaving a tutorial reminds you that all the tutorials live in the hamburger menu."
+      ]
+    },
+    {
       "at": "2026-10-22T00:48:24Z",
       "title": "Cell types come back after a server hiccup",
       "items": [
