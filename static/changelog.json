@@ -5,7 +5,7 @@
       "at": "2026-10-22T00:00:00Z",
       "title": "A target cursor",
       "items": [
-        "A new cursor over the 2D and 3D views: a larger white target that is easy to spot on light and dark images.",
+        "A new cursor over the 2D and 3D views: a white target with a dark edge that is easy to spot on the EM images. On a big screen, Settings has an Extra large cursor.",
         "Right clicking the box drawn around a dataset no longer moves you to that box."
       ]
     },

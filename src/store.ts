@@ -1090,6 +1090,9 @@ export interface UserPreferences {
   /** Calm screen: no animations or glows in the interface (src/util/calm.ts,
    *  annkri #144, Ames 2026-10-16). Defaults to false. */
   calmScreen?: boolean;
+  /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
+   *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
+  cursorXL?: boolean;
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
@@ -1138,7 +1141,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'hoverStyle', 'pulseColor', 'toolbarStage'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'hoverStyle', 'pulseColor', 'toolbarStage'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1209,6 +1212,8 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   }
 
   load(); // hydrate from localStorage on store init
+  // The cursor size follows the setting, on every computer the account uses.
+  watch(() => prefs.value.cursorXL === true, on => { document.body?.classList.toggle('nge-cursor-xl', on); }, { immediate: true });
   // The renderer reads the hover style and pulse colour from these.
   watch(() => [prefs.value.hoverStyle, prefs.value.pulseColor], () => {
     ngeHoverStyle.value = ngeParseHoverStyle(prefs.value);
