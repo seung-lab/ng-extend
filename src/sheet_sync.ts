@@ -11,13 +11,14 @@ export const COMPLETE_STATUSES: Record<string, { value: string; hint: string }[]
     { value: 'Complete (cut off)', hint: 'Finished, but part of the cell leaves the volume' },
     { value: 'Complete', hint: 'Finished, and the whole cell is inside the volume' },
     { value: 'Not BC', hint: 'This is not a bipolar cell' },
-    { value: "Can't Complete", hint: 'It cannot be finished (say why in the notes). Not marked proofread, and not counted as a completed cell' },
+    { value: "Can't Complete", hint: 'It cannot be finished (say why in the notes). Counts as your completed cell, but the cell is not marked proofread' },
   ],
 };
-/** "Can't Complete" ends the claim and is written to the sheet, but the cell
- *  is NOT marked proofread in CAVE and does not count as a completed cell
+/** "Can't Complete" ends the claim, counts as the player's completed cell and
+ *  is written to the sheet, but the cell is NOT marked proofread in CAVE
  *  (Ames 2026-10-22: "We don't want players to be able to mark can't complete
- *  just bc they can't finish the cell, bc that marks the cell proofread"). */
+ *  just bc they can't finish the cell, bc that marks the cell proofread";
+ *  "it should count as a completed cell I think? at least from cell library"). */
 export const CANT_COMPLETE = "Can't Complete";
 export const marksProofread = (status?: string | null) => status !== CANT_COMPLETE;
 

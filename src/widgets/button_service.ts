@@ -610,7 +610,7 @@ export class ButtonService {
     cantBtn.type = 'button';
     cantBtn.classList.add('nge-lb-section-button', 'nge-lb-cant-btn');
     cantBtn.textContent = "Can't complete";
-    cantBtn.title = "This cell can't be finished: say why in the next step. It is recorded as Can't Complete in the cell sheet and your claim ends, but it is not marked proofread and does not count as a completed cell.";
+    cantBtn.title = "This cell can't be finished: say why in the next step. It is recorded as Can't Complete in the cell sheet and counts as your completed cell, but the cell is not marked proofread.";
     const showCant = () => {
       const can = !cachedStatus?.isComplete && completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT) && toggleBtn.style.display !== 'none';
       cantBtn.style.display = can ? '' : 'none';
@@ -659,8 +659,8 @@ export class ButtonService {
         }
         details = asked;
       }
-      // Can't Complete: no proofread mark in CAVE and no count (sheet_sync.ts);
-      // the claim ends and the sheet records it with the player's note.
+      // Can't Complete: no proofread mark in CAVE (sheet_sync.ts); the claim
+      // ends, counts as completed, and the sheet records it with the note.
       if (willBeComplete && plan?.row && !marksProofread(details.status)) {
         statusLine.textContent = "Writing Can't Complete to the sheet…";
         try {

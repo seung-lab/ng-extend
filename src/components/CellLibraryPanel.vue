@@ -1041,11 +1041,12 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
   // the claim: the server only syncs a completed claim.
-  // Can't Complete: the claim ends and the sheet says so, but the cell is
-  // not marked proofread and does not count (sheet_sync.ts marksProofread).
+  // Can't Complete: the claim ends, it counts as the player's completed cell
+  // and the sheet says so, but the cell is not marked proofread in CAVE
+  // (sheet_sync.ts marksProofread).
   const proofread = marksProofread(done.status);
   const cavePromise = proofread ? writeCaveCompletion(cell, done) : Promise.resolve(true);
-  await backend.completeTask(cell.taskId, done.finalSegId, done.coords, proofread);
+  await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
   syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);

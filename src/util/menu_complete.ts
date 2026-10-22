@@ -21,7 +21,7 @@ import { currentDatasetTag, currentSegLayer } from '../datasets';
 import { removeHighlightsOfCells } from './highlight';
 import { ancestorAmong, getRootFromSupervoxel } from '../widgets/pcg_service';
 import { mintShortStateLink } from './state_link';
-import { syncCellToSheet, marksProofread } from '../sheet_sync';
+import { syncCellToSheet } from '../sheet_sync';
 
 export interface MenuCompletionPlan {
   /** Set when the completion must not go ahead; shown to the player. */
@@ -254,7 +254,7 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan, opts: Finis
       task = backend.tasks.find(t => t.segment_id === row.segId);
       if (!task) throw new Error('Saved, but the Cell Library claim could not be found.');
     }
-    await backend.completeTask(task.id, plan.segId, here().join(', '), marksProofread(opts.status));
+    await backend.completeTask(task.id, plan.segId, here().join(', '));
   }
 
   const link = opts.link !== undefined ? opts.link : await mintShortStateLink();
