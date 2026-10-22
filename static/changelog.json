@@ -12,6 +12,14 @@
       ]
     },
     {
+      "at": "2026-10-22T21:20:24Z",
+      "title": "A steadier bottom of the screen in cut mode",
+      "items": [
+        "When several messages come up in a row, as cut and merge errors can, only the newest shows, so the bars and the legend at the bottom stay where they are.",
+        "The big \"Now press G\" prompt in cut mode only shows during the Cut tutorial, not in your own cutting."
+      ]
+    },
+    {
       "at": "2026-10-22T21:00:39Z",
       "title": "Merge and cut mode carry on to your next cell",
       "items": [

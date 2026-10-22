@@ -76,9 +76,15 @@ const needsSwap = computed(() => isMulticut.value && !store.pendingClose
 // the Merge, Cut or Merger Sandbox tutorial is up (Ames, 2026-10-08). Outside
 // a tutorial the lit G key on the bar is the only nudge, and it holds still.
 const tutorialStore = useTutorialStore();
+/** A tutorial box is on screen now. The saved step alone said "in the Cut
+ *  tutorial" for good once a player left it partway, so the big "Now press
+ *  G" banner and the learning styles showed during real cuts (Nseraf,
+ *  Ames 2026-10-22: "we gotta do something about that giant G"). */
+const tutorialOnScreen = ref(false);
+setInterval(() => { tutorialOnScreen.value = !!document.querySelector('.introductionStep'); }, 500);
 const inPracticeTutorial = computed(() => {
   const step = tutorialStore.getTutorialStep();
-  return [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
+  return tutorialOnScreen.value && [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
 });
 const groupPulse = ref(false);
 let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;

@@ -1288,6 +1288,13 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
   color: #dce9fb;
   font: 500 12.5px/1.4 'Inter', 'Roboto', sans-serif;
 }
+/* Only the newest plain message shows (Nseraf: in cut and merge mode the
+   errors stacked up line after line, and the bar, the cut bar and the
+   TODO / PROOFREAD legend all rose with them; "They should stay
+   stationary"). A line with a newer plain line after it is hidden. */
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status):has(~ li:not(.neuroglancer-tool-status):not(.nge-fp-status)) {
+  display: none;
+}
 #statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status)::before {
   content: '';
   position: absolute; left: 16px; top: 13px;
