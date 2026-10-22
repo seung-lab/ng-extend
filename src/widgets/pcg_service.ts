@@ -17,6 +17,8 @@
 // no key matched the API host, which for some players was the state server's
 // (global.brain-wire-test.org) token: CAVE answered 401 "invalid token" and
 // completing a claimed cell failed on the root lookup (st0ck53y 2026-09-30).
+import { evenSample, mainPieces } from '../util/became_share';
+
 const CAVE_STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
 function getAuthToken(server: string): string | null {
@@ -443,6 +445,49 @@ export async function latestDescendants(root: string): Promise<string[] | null> 
     console.warn('[pcg] lineage_graph network error:', e);
     return null;
   }
+}
+
+/**
+ * What an old root became, for showing in its place: the live end(s) of its
+ * edit history that hold a real share of it. latestDescendants alone also
+ * returns every bit that was cut away from it and joined to another cell, so
+ * an old wrong merger came back as all the cells it had swallowed (Nseraf
+ * 2026-10-22). Here a sample of the old cell's level 2 blocks is asked which
+ * cell each is in now (src/util/became_share.ts decides which to keep).
+ * Falls back to latestDescendants when the sample cannot be had.
+ */
+export async function currentPiecesOf(root: string): Promise<string[] | null> {
+  const ends = await latestDescendants(root);
+  if (ends && ends.length <= 1) return ends;
+  const now = await blocksNow(root).catch(e => { console.warn('[pcg] blocks of old root:', e); return null; });
+  const kept = now?.length ? mainPieces(now, ends) : [];
+  return kept.length ? kept : ends;
+}
+
+/** Which cell each of a sample of `root`'s level 2 blocks is in now. Ids
+ *  stay text, and go to CAVE and back as raw 64 bit numbers, never JSON
+ *  numbers, so 18 digits are not rounded. */
+async function blocksNow(root: string): Promise<string[] | null> {
+  const pcg = getPcgInfo();
+  if (!pcg) return null;
+  const api = `${pcg.server}/segmentation/api/v1/table/${pcg.table}`;
+  const idsIn = async (url: string) => {
+    const res = await fetch(url, { headers: authHeaders(pcg.server) });
+    if (!res.ok) throw Error(`${res.status} ${url}`);
+    // int64_as_str: every id is a quoted string of digits.
+    return [...(await res.text()).matchAll(/"(\d+)"/g)].map(m => m[1]);
+  };
+  let ids = new Set(await idsIn(`${api}/node/${root}/lvl2_graph?int64_as_str=1`));
+  // A cell of one block has no links between blocks to list.
+  if (!ids.size) ids = new Set(await idsIn(`${api}/node/${root}/leaves?int64_as_str=1&stop_layer=2`));
+  const sample = evenSample([...ids].sort());
+  if (!sample.length) return null;
+  const headers: Record<string, string> = { ...(authHeaders(pcg.server) as Record<string, string>), 'Content-Type': 'application/octet-stream' };
+  const res = await fetch(`${api}/roots_binary`, {
+    method: 'POST', headers, body: new BigUint64Array(sample.map(id => BigInt(id))).buffer });
+  if (!res.ok) throw Error(`roots_binary ${res.status}`);
+  const out = Array.from(new BigUint64Array(await res.arrayBuffer()), v => v.toString());
+  return out.length === sample.length ? out : null;
 }
 
 /**

@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-22T21:34:03Z",
+      "title": "Updating an old cell ID shows just that cell",
+      "items": [
+        "When an ID in your list is out of date, \"Update to the current ID\" now shows only the cell it became, not every bit that was cut off it and joined to other cells. A cell that was truly split in two still shows both halves."
+      ]
+    },
+    {
       "at": "2026-10-22T21:20:24Z",
       "title": "A steadier bottom of the screen in cut mode",
       "items": [

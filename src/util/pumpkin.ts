@@ -25,7 +25,7 @@ import {setNgeProps, type NgeProp, type NgePropMesh} from 'neuroglancer/perspect
 import {mat4} from 'neuroglancer/util/geom';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {loadGlbModel} from './glb';
-import {getRootFromSupervoxel, latestDescendants} from '../widgets/pcg_service';
+import {getRootFromSupervoxel, currentPiecesOf} from '../widgets/pcg_service';
 import {setStatedColor} from '../widgets/widget_utils';
 import {useUserPreferencesStore} from '../store';
 import {findDatasetBySegName, switchToDataset} from '../datasets';
@@ -148,8 +148,9 @@ function readSupervoxel(c: PatchCell, st: PatchState, layers: any[]) {
 /** The cell's ids now. Sandbox cells are edited all the time (the default
  *  cell most of all), and an edit gives a cell a new id, so the trip would
  *  otherwise turn on an id that no longer draws (Ames: "I only see 2
- *  neurons!"). Best: the root of the supervoxel at the soma. Otherwise: the
- *  newest descendants of the id written here. Both read ids as text, so
+ *  neurons!"). Best: the root of the supervoxel at the soma. Otherwise:
+ *  the newest descendants of the id written here that hold a real share
+ *  of it (not bits cut off it and joined to other cells). Both read ids as text, so
  *  they are not rounded. */
 async function resolveCurrent(c: PatchCell, st: PatchState): Promise<void> {
   st.askedAt = Date.now();
@@ -159,7 +160,7 @@ async function resolveCurrent(c: PatchCell, st: PatchState): Promise<void> {
       if (r) { st.current = [r]; return; }
     }
     if (c.ids.length) {
-      const ends = await latestDescendants(c.ids[0]);
+      const ends = await currentPiecesOf(c.ids[0]);
       if (ends?.length) st.current = ends;
     }
   } catch { /* keep the last answer */ }
