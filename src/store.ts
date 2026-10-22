@@ -1027,6 +1027,10 @@ export interface UserPreferences {
    *  render scale target for image layers. Coarser loads far less on a slow
    *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
   imageDetail?: 1 | 2 | 4;
+  /** Where the 2D images load from (Ames 2026-10-22): 'auto' (the default)
+   *  times both copies once and uses the faster, or the player picks the
+   *  Americas or Asia. See src/util/image_source.ts. */
+  imageSource?: 'auto' | 'americas' | 'asia';
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
@@ -1141,7 +1145,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'hoverStyle', 'pulseColor', 'toolbarStage'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'hoverStyle', 'pulseColor', 'toolbarStage'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

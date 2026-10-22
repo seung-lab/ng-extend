@@ -7,6 +7,7 @@ import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
 import { startViewHash } from '../util/start_view';
+import { automaticRegion, imageRegionLabel } from '../util/image_source';
 import { ngePointScale, ngePointGem } from 'neuroglancer/annotation/point';
 import { ngeHoverStyle } from 'neuroglancer/segmentation_display_state/frontend';
 
@@ -65,6 +66,9 @@ function onPulseColorPick(e: Event) {
   draftPulseColor.value = (e.target as HTMLInputElement).value;
 }
 const draftImageDetail = ref<1 | 2 | 4>(1);
+const draftImageSource = ref<'auto' | 'americas' | 'asia'>('auto');
+/** What Automatic means on this computer right now, shown in its option. */
+const autoImageRegion = computed(() => imageRegionLabel(automaticRegion()));
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftPumpkin = ref(true);
@@ -143,6 +147,7 @@ onMounted(() => {
   draftHoverStyle.value = ngeHoverStyle.value;
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
+  draftImageSource.value = prefsStore.prefs.imageSource === 'americas' || prefsStore.prefs.imageSource === 'asia' ? prefsStore.prefs.imageSource : 'auto';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
@@ -221,7 +226,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -556,6 +561,14 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option :value="1">Full (sharpest)</option>
                 <option :value="2">Half (faster loading)</option>
                 <option :value="4">Quarter (fastest, blurry)</option>
+              </select>
+            </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="Where the 2D images come from. Copies hosted in Asia exist for EyeWire II Retina, MEC and the Sandbox; other datasets always load from the Americas. Automatic times both copies once and uses the faster one for you. Shared links and saved views open on your choice.">
+              <span class="nge-settings-toggle-label">2D images load from</span>
+              <select v-model="draftImageSource" class="nge-sv-select">
+                <option value="auto">Automatic ({{ autoImageRegion }})</option>
+                <option value="americas">Americas</option>
+                <option value="asia">Asia</option>
               </select>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">

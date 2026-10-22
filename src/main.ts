@@ -1,4 +1,5 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startImageSource } from './util/image_source';
 import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
@@ -192,6 +193,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const viewer = setupViewer();
   // const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
+  // Where the 2D images load from (Americas or Asia), and the slow 2D note.
+  startImageSource(viewer);
   loadVolumes(viewer);
   installShowcase();
   runPendingDatasetTour();
