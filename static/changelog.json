@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-22T00:00:00Z",
+      "title": "Right clicks stay inside the data",
+      "items": [
+        "A right click in the 2D view on the box around a dataset, or out past it, no longer moves you there. Inside the data, a right click still moves the view to that spot."
+      ]
+    },
+    {
       "at": "2026-10-22T15:58:50Z",
       "title": "The hovered cell in 2D keeps your opacity",
       "items": [
