@@ -219,8 +219,8 @@ function ngeUpdateHaloZoom(projectionParameters: any) {
   // Gone when a branch is about 3 px across, where Saturate's colour takes over.
   ngeHaloFade = Math.max(0, Math.min(1, (branchPx - 3) / 14));
   ngeHaloFar.value = 1 - ngeHaloFade;
-  // The hologram's dots: about 9 px apart, in power of two steps of nm.
-  ngeHoloStepNm = Math.pow(2, Math.round(Math.log2(Math.max(1, 9 * viewNm / Math.max(1, projectionParameters.height)))));
+  // The hologram's dots: about 26 px apart, in power of two steps of nm.
+  ngeHoloStepNm = Math.pow(2, Math.round(Math.log2(Math.max(1, 26 * viewNm / Math.max(1, projectionParameters.height)))));
 }
 /** The main pass's hover mode for the cell under the mouse: 1 the pulse,
  *  2 the halo's rim of light on the cell's own edges (colour in uNgeRim). */
@@ -523,13 +523,21 @@ export class MeshShaderManager {
         builder.addVarying('highp vec3', 'vNgeHoloPos');
         builder.addVarying('highp vec3', 'vNgeHoloN');
         builder.addUniform('highp float', 'uNgeHoloStep');
-        // One soft dot per grid cell, smoothed by its own size on screen.
+        // Scattered soft dots (Ames 2026-10-22: "not so weirdly a grid ... a
+        // little offset, farther apart, much farther"): each grid cell holds
+        // one dot at a random spot in it, about two cells in three, smoothed
+        // by its size on screen.
         builder.addFragmentCode(`
+highp float ngeHoloHash(highp vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
 highp float ngeHoloDot(highp vec2 p) {
-  highp vec2 c = fract(p) - 0.5;
-  highp float d = length(c);
+  highp vec2 cell = floor(p);
+  highp vec2 at = vec2(ngeHoloHash(cell), ngeHoloHash(cell + 17.3)) * 0.6 + 0.2;
+  highp float d = length(fract(p) - at);
   highp float aa = fwidth(d) * 1.2;
-  return 1.0 - smoothstep(0.16 - aa, 0.16 + aa, d);
+  highp float on = step(0.35, ngeHoloHash(cell + 41.9));
+  return on * (1.0 - smoothstep(0.11 - aa, 0.11 + aa, d));
 }
 `);
         builder.addUniform('highp mat4', 'uNgeModel');
@@ -585,7 +593,7 @@ if (uNgeGlow > 4.5) {
   highp float holoFacing = holoLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / holoLen)) : 1.0;
   // .z: 1 Metallic (uNgeGlow 6), 0 Hologram (5).
   vNgeHolo = vec4(1.0 - holoFacing, lightingFactor, uNgeGlow > 5.5 ? 1.0 : 0.0, 1.0);
-  // The dots' grid: positions in nm, in steps that keep the dots about 9 px
+  // The dots' grid: positions in nm, in steps that keep the dots about 26 px
   // apart (uNgeHoloStep, a power of two, so they do not crawl as you zoom).
   vNgeHoloPos = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale / uNgeHoloStep;
   vNgeHoloN = normalMultiplier * origNormal;
@@ -698,7 +706,7 @@ if (vNgeHolo.w > 0.5) {
     highp float holoDots = ngeHoloDot(vNgeHoloPos.yz) * holoW.x + ngeHoloDot(vNgeHoloPos.xz) * holoW.y + ngeHoloDot(vNgeHoloPos.xy) * holoW.z;
     highp vec3 holoBody = uColor.rgb * (0.2 + 0.2 * vNgeHolo.y);
     highp vec3 holoGlow = uNgeRim.rgb * uColor.a;
-    emit(vec4(min(holoBody + holoGlow * (0.95 * holoRim + 1.05 * holoDots * (0.45 + 0.55 * vNgeHolo.x)), vec3(1.0)), uColor.a), uPickID);
+    emit(vec4(min(holoBody + holoGlow * (0.95 * holoRim + 1.5 * holoDots * (0.45 + 0.55 * vNgeHolo.x)), vec3(1.0)), uColor.a), uPickID);
   }
 } else {
   emit(vColor, uPickID);
