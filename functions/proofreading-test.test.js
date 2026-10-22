@@ -418,3 +418,28 @@ test('the line: join and leave go to the database; only admins take someone out;
   const noLine = async path => { if (path.startsWith('proofreading_test_queue?')) throw new Error('supabase 404'); return sb([{email: who.email}])(path); };
   assert.deepEqual((await handle({action: 'test.tries', args: {}, who, me, io: {...io(g, rpc), sb: noLine}})).line, []);
 });
+
+test('heat map: each try keeps the piece to color for each mistake, and the part a broken branch lost; the player never gets them', async () => {
+  const g = fakeGraph(START);
+  const baseline = Date.parse(T.baseline_at);
+  g.edit({201: '700', 101: '700'}, baseline + 60000); // the spine cut off with the neighbour: damage
+  const keyed = CHECKS.map(c => c.kind === 'cut' ? {...c, piece_root: '5550001'} : c.kind === 'merge' ? {...c, piece_root: '5550002'} : c);
+  const {rpc, calls} = fakeRpc({});
+  const sb = async path => path.startsWith('proofreading_tests?') ? [{...T, feedback: 'detail'}] : keyed;
+  const out = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me, io: {...io(g, rpc), sb}});
+  const kept = calls.find(c => c.action === 'record').args.checks;
+  assert.deepEqual(kept.map(c => [c.kind, c.ok, c.seg]), [['cut', false, '5550001'], ['keep', false, '700'], ['merge', false, '5550002'], ['endpoint', false, undefined]],
+    'the cut and merge pieces from the key; the spine as it was cut off');
+  assert.ok(out.checks.every(c => !('seg' in c)), 'nothing for the heat map reaches the player');
+  // A key without piece roots (before its SQL): nothing to color, the try still scores.
+  const plain = await handle({action: 'test.submit', args: {id: T.id, session: SESSION, annotations: []}, who, me, io: io(fakeGraph(START), fakeRpc({}).rpc)});
+  assert.equal(plain.passed, false);
+  // What the admins get back for one try.
+  const TRY = {id: 9, test_id: T.id, outcome: 'fail', end_root: '900', endpoints: {given: [[1, 1, 1]], hit: 0, stray: 1},
+    checks: [...kept, {kind: 'endpoint', label: 'end', ok: false, weight: 1, point_a: [1000, 1000, 100], radius: 1500, seg: 'x'}]};
+  const admin = async path => path.startsWith('admins?') ? [{email: who.email}] : path.startsWith('proofreading_test_attempts?') ? [TRY] : [T];
+  const one = await handle({action: 'test.try', args: {attempt: 9}, who, me, io: {...io(g, rpc), sb: admin}});
+  assert.deepEqual(one.checks.map(c => [c.kind, c.seg, c.radius]),
+    [['cut', '5550001', undefined], ['keep', '700', undefined], ['merge', '5550002', undefined], ['endpoint', null, 1500], ['endpoint', null, 1500]],
+    'segment ids only when they are ids; every end says its radius');
+});

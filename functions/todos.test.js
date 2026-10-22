@@ -101,3 +101,29 @@ test('a report sent twice keeps one card, back in To do', async () => {
   assert.equal(again.list, 'todo');
   assert.equal((await db.cards()).length, 1);
 });
+
+test('links, a status line and a due date are optional and checked', () => {
+  const f = cleanFields({ status: '  waiting   for Celia ', due_on: '2026-10-31',
+    links: [{ kind: 'test', url: 'https://x-dot-brain-wire-dot-seung-lab.ue.r.appspot.com', label: '' }, { kind: 'weird', url: 'https://a.b/c', label: 'Spec' }] }, false);
+  assert.equal(f.status, 'waiting for Celia');
+  assert.equal(f.due_on, '2026-10-31');
+  assert.deepEqual(f.links.map(l => l.kind), ['test', 'other']);
+  assert.equal(cleanFields({ due_on: '' }, false).due_on, null);
+  assert.throws(() => cleanFields({ due_on: 'Friday' }, false), /due date/);
+  assert.throws(() => cleanFields({ links: [{ url: 'javascript:alert(1)' }] }, false), /https/);
+  assert.throws(() => cleanFields({ links: [{ url: 'https://a b' }] }, false), /https/);
+});
+
+test('a new card given to someone else tells them; to yourself, nobody', async () => {
+  const db = memDb(), tags = [];
+  await todoAction('todo.save', { fields: { title: 'Mine', owner_id: AMES.id } }, ctx(db, tags));
+  assert.equal(tags.length, 0);
+  await todoAction('todo.save', { fields: { title: 'Hers', owner_id: CELIA.id } }, ctx(db, tags));
+  assert.deepEqual(tags.map(t => [t.who[0], t.what]), [['Celia D.', 'gave you']]);
+});
+
+test('card images must be ones added on the board', () => {
+  const ok = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/todo-images/a/1.png';
+  assert.deepEqual(cleanFields({ images: [ok] }, false).images, [ok]);
+  assert.throws(() => cleanFields({ images: ['https://evil.example/1.png'] }, false), /added on the board/);
+});

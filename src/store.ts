@@ -1030,8 +1030,8 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
-  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse' or 'wireframe', the classic look. */
-  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade' | 'none';
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse', 'hologram' ('wireframe' before), 'saturate', 'spotlight' or 'none'. */
+  hoverStyle?: 'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'wireframe' | 'saturate' | 'spotlight' | 'fade' | 'none';
   /** Set when hoverStyle was given (a new player's halo), not chosen; the
    *  account copy can still say they were here before. Local only. */
   hoverStyleAuto?: boolean;
@@ -5032,15 +5032,27 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch { isBlogAuthor.value = false; }
   }
 
-  async function checkAdmin() {
+  // A failed read used to count as "not an admin", so the Admin part of
+  // settings went missing on some refreshes (Celia #195). A failed read now
+  // keeps what this browser last knew for that email and tries again.
+  async function checkAdmin(tries = 4): Promise<void> {
     if (!userEmail.value) { isAdmin.value = false; return; }
-    const { data } = await supabase
+    const email = userEmail.value;
+    const known = `nge-admin-${email}`;
+    try { if (localStorage.getItem(known) === '1') isAdmin.value = true; } catch { /* storage blocked */ }
+    const { data, error } = await supabase
       .from('admins')
       .select('id')
-      .eq('email', userEmail.value)
+      .eq('email', email)
       .maybeSingle();
+    if (error) {
+      console.warn('[backend] admin check failed, will retry:', error.message);
+      if (tries > 1) setTimeout(() => { if (userEmail.value === email) void checkAdmin(tries - 1); }, 2500);
+      return;
+    }
     isAdmin.value = !!data;
-    if (isAdmin.value) console.info('[backend] Admin access granted for', userEmail.value);
+    try { if (isAdmin.value) localStorage.setItem(known, '1'); else localStorage.removeItem(known); } catch { /* storage blocked */ }
+    if (isAdmin.value) console.info('[backend] Admin access granted for', email);
   }
 
   // ── Notifications ─────────────────────────────────────────────────────

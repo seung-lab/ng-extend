@@ -65,7 +65,7 @@ function go(step: number) {
   if (!reviewing.value) return;
   saveNote();
   const n = Math.min(items.value.length - 1, Math.max(0, index.value + step));
-  reviewing.value = { ...reviewing.value, index: n };
+  reviewing.value = { ...reviewing.value, index: n };  // openExample keeps it for a refresh
   if (items.value[n]) openExample(items.value[n]);
 }
 </script>

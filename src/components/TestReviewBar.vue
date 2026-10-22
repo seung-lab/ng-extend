@@ -7,7 +7,7 @@
  * See src/proofreading-test-review.ts.
  */
 import { ref, computed } from 'vue';
-import { reviewingTry, reviewProblem, tryParts, outcomeWord, playerName, backToTries, endTryReview } from '../proofreading-test-review';
+import { reviewingTry, reviewProblem, tryParts, outcomeWord, playerName, backToTries, endTryReview, heatColors, pointsByEnd, RIGHT } from '../proofreading-test-review';
 import { flyTo } from '../access_request';
 import { useDragBox } from '../util/drag_box';
 
@@ -20,11 +20,14 @@ const n = (v: number) => v.toLocaleString('en-US');
 const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 const SECTIONS = [
   { key: 'damage', title: 'Real branches cut off', dot: 'red' },
-  { key: 'missed', title: 'Mistakes missed', dot: 'gold' },
-  { key: 'endsMissed', title: 'Branch ends not marked', dot: 'gold' },
+  { key: 'missed', title: 'Mistakes missed', dot: 'red' },
+  { key: 'endsMissed', title: 'Branch ends not marked', dot: 'red' },
   { key: 'fixed', title: 'Mistakes fixed', dot: 'green' },
 ] as const;
 const has = (p: any[] | undefined) => !!p && p.length > 0;
+/** How much of the heat map this try has: pieces colored, points split. */
+const heat = computed(() => (t.value ? Object.values(heatColors(t.value)) : []));
+const pts = computed(() => (t.value ? pointsByEnd(t.value) : { onEnd: [], offEnd: [] }));
 </script>
 
 <template>
@@ -37,13 +40,14 @@ const has = (p: any[] | undefined) => !!p && p.length > 0;
       <b>{{ outcomeWord(t) }}</b><template v-if="t.percent != null"> · {{ t.percent }} percent</template><template v-if="t.timed_out"> · time ran out</template>
     </p>
     <p v-if="reviewProblem" class="nge-trv-err" role="alert">{{ reviewProblem }}</p>
-    <p class="nge-trv-how">Their cell as they left it, with pins:</p>
+    <p class="nge-trv-how">Their cell as they left it, see-through<template v-if="heat.length">, with every scored piece in color</template>.</p>
     <div class="nge-trv-legend">
-      <span v-if="t.given.length"><span class="nge-trv-key nge-trv-key--pink"></span>their points ({{ t.given.length }})</span>
-      <span><span class="nge-trv-key nge-trv-key--gold"></span>missed</span>
-      <span v-if="parts.damage.length"><span class="nge-trv-key nge-trv-key--red"></span>cut off</span>
-      <span v-if="parts.fixed.length || parts.endsFound.length"><span class="nge-trv-key nge-trv-key--green"></span>fixed (the Fixed layer, off at first)</span>
+      <span><span class="nge-trv-key nge-trv-key--green"></span>right<template v-if="heat.length"> ({{ heat.filter(c => c === RIGHT).length }} pieces)</template></span>
+      <span><span class="nge-trv-key nge-trv-key--red"></span>wrong<template v-if="heat.length"> ({{ heat.filter(c => c !== RIGHT).length }} pieces)</template></span>
     </div>
+    <p v-if="t.given.length" class="nge-trv-how">Their points: {{ pts.onEnd.length }} on an end (green gems), {{ pts.offEnd.length }} near no end (red gems). Red pins mark what they missed.</p>
+    <p v-else class="nge-trv-how">They placed no points. Red pins mark what they missed.</p>
+    <p v-if="!heat.length && t.outcome !== 'expired'" class="nge-trv-how">This try has no pieces to color: it was scored before the heat map.</p>
     <p v-if="t.outcome === 'expired'" class="nge-trv-how">They left without submitting: no score, and their branch end points never reached the server.</p>
 
     <template v-for="s in SECTIONS" :key="s.key">
@@ -85,8 +89,6 @@ const has = (p: any[] | undefined) => !!p && p.length > 0;
 .nge-trv-line { margin: 4px 0; }
 .nge-trv-how { margin: 6px 0; line-height: 1.45; color: rgba(220, 230, 245, 0.75); }
 .nge-trv-key { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 4px 0 2px; vertical-align: 0; }
-.nge-trv-key--pink { background: #ff4fd8; }
-.nge-trv-key--gold { background: #f5d142; }
 .nge-trv-key--red { background: #e06060; }
 .nge-trv-key--green { background: #7CFFB2; }
 .nge-trv-err { margin: 6px 0; color: #f5d142; overflow-wrap: anywhere; }
@@ -96,7 +98,6 @@ const has = (p: any[] | undefined) => !!p && p.length > 0;
 .nge-trv-caret { margin-left: auto; color: rgba(220, 230, 245, 0.6); }
 .nge-trv-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .nge-trv-dot--red { background: #e06060; }
-.nge-trv-dot--gold { background: #f5d142; }
 .nge-trv-dot--green { background: #7CFFB2; }
 .nge-trv-list { display: flex; flex-direction: column; margin: 4px 0 0 15px; }
 .nge-trv-fly { display: flex; gap: 8px; font: inherit; font-size: 14px; color: #dce6f5; background: none; border: none; cursor: pointer; text-align: left; padding: 2px 0; }

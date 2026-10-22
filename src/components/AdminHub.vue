@@ -132,6 +132,8 @@ interface TriageRow {
   feedback_log?: { user?: string; text: string; ts: string; role: string; by?: string; at?: string; via?: string; sent?: boolean; echoed?: boolean;
     /** reporter_update: sent with "Ask for a reply". reporter_reply: not read by an approver yet when seen is false. */
     ask?: boolean; notification_id?: number; seen?: boolean;
+    /** reporter_update: an image sent with it, cleared (image_removed) after 7 days. */
+    image_url?: string | null; image_removed?: boolean;
     /** What came with a reporter_reply (supabase-report-reply-parts.sql). */
     screenshot_url?: string; view_url?: string; dataset?: string; build?: string; console_lines?: number }[];
   result_note?: string | null;
@@ -949,6 +951,51 @@ function draftReporterUpdate(row: TriageRow): string {
 function closeReporterDraft(row: TriageRow) {
   delete reporterDrafts.value[row.id];
   delete reporterAsk.value[row.id];
+  dropReplyImage(row);
+}
+
+// ── An image in a reply to the submitter (Ames 2026-10-20: "add a screenshot
+// or upload an image in a reply? And delete them after 7 days") ──
+// One per reply. It is uploaded as soon as it is added, to the reply-images
+// folder (functions/upload-policy.js), shown on the player's reply card in
+// place of the Nurro picture, and deleted after 7 days by
+// scripts/cleanup-screenshots.mjs, which also clears the links to it.
+const replyImages = ref<Record<string, { preview: string; url?: string; uploading: boolean; error?: string }>>({});
+const replyFileEls: Record<string, HTMLInputElement | null> = {};
+async function attachReplyImage(row: TriageRow, file: File | null | undefined) {
+  if (!file) return;
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { replyImages.value[row.id] = { preview: '', uploading: false, error: 'Use a PNG, JPEG, GIF or WebP image.' }; return; }
+  dropReplyImage(row);
+  const preview = URL.createObjectURL(file);
+  replyImages.value[row.id] = { preview, uploading: true };
+  try {
+    const { secureUpload } = await import('../secure_upload');
+    const url = await secureUpload(file, 'reply');
+    if (replyImages.value[row.id]?.preview === preview) replyImages.value[row.id] = { preview, url, uploading: false };
+  } catch (e: any) {
+    if (replyImages.value[row.id]?.preview === preview) replyImages.value[row.id] = { preview, uploading: false, error: e?.message || 'The image did not upload.' };
+  }
+}
+const setReplyFileEl = (row: TriageRow, el: unknown) => { replyFileEls[row.id] = el as HTMLInputElement | null; };
+function onReplyFile(e: Event, row: TriageRow) {
+  const input = e.target as HTMLInputElement;
+  void attachReplyImage(row, input.files?.[0]);
+  input.value = '';
+}
+function dropReplyImage(row: TriageRow) {
+  const img = replyImages.value[row.id];
+  if (img?.preview) URL.revokeObjectURL(img.preview);
+  delete replyImages.value[row.id];
+}
+/** A pasted screenshot becomes the reply's image; text pastes as before. */
+function onReplyPaste(e: ClipboardEvent, row: TriageRow) {
+  const file = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+  if (file) { e.preventDefault(); void attachReplyImage(row, file); return; }
+  onNotifPaste(e, reporterComposer(row));
+}
+function onReplyDrop(e: DragEvent, row: TriageRow) {
+  const file = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'));
+  if (file) void attachReplyImage(row, file);
 }
 
 /** Console messages that came with a reply. Kept where only the server can
@@ -1074,6 +1121,10 @@ function relTime(iso: string): string {
 async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false, andLater = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
+  const image = replyImages.value[row.id];
+  if (image?.uploading) { triageError.value = 'The image is still uploading. Send again in a moment.'; return; }
+  if (image?.error) { triageError.value = `${image.error} Remove the image or add another.`; return; }
+  const imageUrl = image?.url || null;
   let sent = false;
   reporterSending.value = row.id;
   triageError.value = '';
@@ -1089,7 +1140,7 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
     const storageBase = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads';
     const art = {
       thumbnail_url: `${storageBase}/nurro/guide-avatar.png`,
-      image_url: `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 24)}.jpg`,
+      image_url: imageUrl || `${storageBase}/nurro-neurons/neuron-${1 + Math.floor(Math.random() * 24)}.jpg`,
     };
     // "Ask for a reply": the same note, sent by the server tied to this card,
     // so the submitter (and only them) gets a reply box under it. If that is
@@ -1097,7 +1148,7 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
     // picture is the server's: science Nurro (functions/report-reply.js).
     const ask = !!reporterAsk.value[row.id];
     let asked: { id?: number } | null = null;
-    if (ask) asked = await secureWrite('reply.ask', { triageId: row.id, text });
+    if (ask) asked = await secureWrite('reply.ask', { triageId: row.id, text, ...(imageUrl ? { imageUrl } : {}) });
     else await secureWrite('notification.insert', { row: {
       title: '💬 An update on your report',
       body: text,
@@ -1114,11 +1165,12 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       .map((e: any) => (e.role === 'reporter_reply' && e.seen === false ? { ...e, seen: true } : e));
     const at = new Date().toISOString();
     log.push({ role: 'reporter_update', via: 'admin', by: backend.userName || backend.userEmail || 'admin', text, ts: at, at, sent: true, echoed: false,
-      ...(ask ? { ask: true, notification_id: asked?.id } : {}) });
+      ...(ask ? { ask: true, notification_id: asked?.id } : {}), ...(imageUrl ? { image_url: imageUrl } : {}) });
     await secureWrite('triage.update', { id: row.id, fields: { feedback_log: log } })
       .catch((lErr: any) => console.warn('[triage] reporter update sent but not logged:', lErr?.message));
     delete reporterDrafts.value[row.id];
     delete reporterAsk.value[row.id];
+    dropReplyImage(row);
     sent = true;
     if (!andDone && !andProgress && !andLater) await loadTriage();
   } catch (e: any) {
@@ -2898,7 +2950,7 @@ function practiceWhen(iso: string | null) {
             <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
                  :class="{ 'nge-triage-note--reply': u.reply, 'nge-triage-note--unread': u.reply && u.seen === false }">
               <span class="nge-triage-spec-label">{{ u.reply ? 'Submitter replied' : 'Sent to submitter' }}</span>
-              <div v-if="!u.reply" class="nge-triage-spec-text nge-triage-thread-md"><div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(u.text, true)"></div><span class="nge-triage-reporter-by">{{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></div>
+              <div v-if="!u.reply" class="nge-triage-spec-text nge-triage-thread-md"><div class="nge-admin-fmtpreview-body" v-html="renderSafeMarkdown(u.text, true)"></div><a v-if="u.image_url" :href="u.image_url" target="_blank" rel="noopener" class="nge-triage-reply-shot" title="Open the image you sent"><img :src="u.image_url" alt="Image sent with this reply" loading="lazy" /></a><span v-else-if="u.image_removed" class="nge-triage-reporter-by">Image removed after 7 days. </span><span class="nge-triage-reporter-by">{{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></div>
               <span v-else class="nge-triage-spec-text nge-triage-thread-text"><template v-for="(pt, pi) in linkParts(u.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ u.by || (u.reply ? 'the submitter' : 'Slack') }}{{ u.at ? ', ' + relTime(u.at) : '' }}{{ u.ask ? (u.waiting ? ' · asked for a reply, none yet' : ' · asked for a reply') : '' }}{{ u.reply && u.seen === false ? ' · new' : '' }}</span></span>
               <!-- What came with a reply: a screenshot, their view, console messages. -->
               <div v-if="u.reply && (u.screenshot_url || u.view_url || u.console_lines || u.dataset)" class="nge-triage-reply-parts">
@@ -2926,6 +2978,9 @@ function practiceWhen(iso: string | null) {
                 <button type="button" title="Bold" @click="fmtWrap('**', 'bold text', reporterComposer(row))"><b>B</b></button>
                 <button type="button" title="Bulleted list: each selected line becomes a bullet" @click="fmtLines('- ', 'List item', reporterComposer(row))">• Bullets</button>
                 <button type="button" title="Numbered list: each selected line gets 1, 2, 3" @click="fmtLines(i => `${i + 1}. `, 'List item', reporterComposer(row))">1. Numbers</button>
+                <button type="button" title="Add an image or screenshot. You can also paste or drop one into the box. It is deleted after 7 days." @click="replyFileEls[row.id]?.click()">🖼 Image</button>
+                <input :ref="el => setReplyFileEl(row, el)" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden
+                       @change="onReplyFile($event, row)" />
                 <span class="nge-admin-fmthint">Or start lines with "- " or "1. ". Pasted lists keep their numbers.</span>
                 <button type="button" class="nge-triage-preview-toggle" :aria-pressed="replyPreviewOpen[row.id] ? 'true' : 'false'"
                         title="Show the message as the player will see it" @click="replyPreviewOpen[row.id] = !replyPreviewOpen[row.id]">{{ replyPreviewOpen[row.id] ? 'Hide preview' : 'Preview' }}</button>
@@ -2935,9 +2990,15 @@ function practiceWhen(iso: string | null) {
                 v-model="reporterDrafts[row.id]"
                 class="nge-triage-message nge-triage-comment"
                 rows="6"
-                @paste="onNotifPaste($event, reporterComposer(row))"
+                @paste="onReplyPaste($event, row)"
+                @dragover.prevent @drop.prevent="onReplyDrop($event, row)"
                 @keydown.stop @keyup.stop @keypress.stop
               ></textarea>
+              <div v-if="replyImages[row.id]" class="nge-triage-reply-attach">
+                <img v-if="replyImages[row.id].preview" :src="replyImages[row.id].preview" alt="The image going with this reply" />
+                <span class="nge-triage-reply-attach-state">{{ replyImages[row.id].error || (replyImages[row.id].uploading ? 'Uploading…' : 'Goes with this reply. Deleted after 7 days.') }}</span>
+                <button type="button" class="nge-admin-action-btn" title="Remove the image" @click="dropReplyImage(row)">✕</button>
+              </div>
               <!-- Only when asked for (Ames 2026-10-16: "I keep accidentally clicking there"). -->
               <div v-if="replyPreviewOpen[row.id] && reporterDrafts[row.id]?.trim()" class="nge-admin-fmtpreview nge-triage-fmtpreview">
                 <div class="nge-admin-fmtpreview-label">What they will see</div>
@@ -4110,6 +4171,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-notes { display: flex; flex-direction: column; gap: 6px; }
 .nge-triage-admin-note { border-left: 2px solid rgba(160, 140, 255, 0.6); padding-left: 8px; }
 .nge-triage-note-btn { align-self: flex-start; }
+/* An image going with a reply to the submitter. */
+.nge-triage-reply-attach { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.nge-triage-reply-attach img { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(120, 170, 255, 0.35); }
+.nge-triage-reply-attach-state { flex: 1 1 auto; font-size: 12px; opacity: 0.8; }
 /* Bug, Idea, Other filter in the header. */
 .nge-triage-kinds { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .nge-triage-kind {

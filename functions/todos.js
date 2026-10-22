@@ -23,6 +23,12 @@ const LISTS = ['todo', 'doing', 'done'];
 const SIZES = ['S', 'M', 'L'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CHECK_MAX = 60;
+const LINKS_MAX = 20;
+const IMAGES_MAX = 10;
+/** Images added on the board: our own storage, the todo-images folder. */
+const TODO_IMAGES = 'https://javthknksdcrlhiaaptj.supabase.co/storage/v1/object/public/admin-uploads/todo-images/';
+/** Test site, live, pull request or branch, doc, anything else. */
+const LINK_KINDS = ['test', 'live', 'pr', 'doc', 'other'];
 const COMMENT_MAX = 2000;
 const COMMENTS_MAX = 200;
 
@@ -60,6 +66,29 @@ function cleanFields(f, isNew) {
     out.checklist = f.checklist.map(c => ({ text: text(c && c.text, 300, 'A checklist item').trim(), done: !!(c && c.done) }))
       .filter(c => c.text);
   }
+  // Optional extras (supabase-admin-todos-fields.sql, Ames 2026-10-21).
+  if ('status' in f) out.status = text(f.status, 200, 'The status').replace(/\s+/g, ' ').trim();
+  if ('due_on' in f) {
+    if (f.due_on !== null && f.due_on !== '' && !/^\d{4}-\d\d-\d\d$/.test(String(f.due_on))) fail(400, 'A due date is a day, like 2026-10-31.');
+    out.due_on = f.due_on || null;
+  }
+  if ('links' in f) {
+    if (!Array.isArray(f.links) || f.links.length > LINKS_MAX) fail(400, `At most ${LINKS_MAX} links.`);
+    out.links = f.links.map(l => {
+      const url = String((l && l.url) || '').trim();
+      if (!/^https:\/\/[^\s"'<>]+$/.test(url) || url.length > 500) fail(400, 'A link must be one https address.');
+      const kind = LINK_KINDS.includes(l.kind) ? l.kind : 'other';
+      return { kind, url, label: text((l && l.label) || '', 40, 'A link name').trim() };
+    });
+  }
+  if ('images' in f) {
+    if (!Array.isArray(f.images) || f.images.length > IMAGES_MAX) fail(400, `At most ${IMAGES_MAX} images.`);
+    out.images = f.images.map(u => {
+      const url = String(u || '');
+      if (!url.startsWith(TODO_IMAGES) || url.length > 500 || !/^[^\s"'<>]+$/.test(url)) fail(400, 'An image must be one added on the board.');
+      return url;
+    });
+  }
   if (isNew && f.triage_id) out.triage_id = uuid(f.triage_id, 'report');
   return out;
 }
@@ -95,6 +124,11 @@ async function todoAction(action, args, {db, me, byName, tag, connectorBase = CO
       if (!('rank' in fields)) fields.rank = (await db.maxRank(fields.list)) + 1;
       card = await db.insert({ ...fields, created_by: byName, updated_at: now, done_at: fields.list === 'done' ? now : null });
       if (fields.triage_id) await db.reportToTodo(fields.triage_id, byName);
+      // Given to someone else as it is made: they hear about it.
+      if (fields.owner_id && fields.owner_id !== (me && me.id)) {
+        const owner = (await db.people()).filter(p => p.id === fields.owner_id);
+        if (owner.length) await tag(owner, card, 'gave you');
+      }
     } else {
       const id = uuid(args.id, 'card');
       const before = await db.card(id);

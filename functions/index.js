@@ -1,12 +1,13 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
 admin.initializeApp();
-const db = admin.firestore();
+const db = getFirestore();
 const ewServiceKey = defineSecret("EW_SUPABASE_SERVICE_KEY");
 // A CAVE token for the proofreading test (functions/proofreading-test.js): it
 // reads and undoes on the Pinky sandbox and adds a passing player to the
@@ -48,7 +49,7 @@ const githubDispatchToken = defineSecret("GITHUB_DISPATCH_TOKEN");
 async function wakeWorkflow(file, why) {
   try {
     const slot = Math.floor(Date.now() / 20000);
-    try { await db.collection("workflow_wakes").doc(`${file}:${slot}`).create({ at: admin.firestore.FieldValue.serverTimestamp(), why }); }
+    try { await db.collection("workflow_wakes").doc(`${file}:${slot}`).create({ at: FieldValue.serverTimestamp(), why }); }
     catch (e) { return "debounced"; }
     const r = await fetch(`https://api.github.com/repos/seung-lab/ng-extend/actions/workflows/${file}/dispatches`, {
       method: "POST",
@@ -365,7 +366,7 @@ async function memRead() {
   return snap.exists ? (snap.data().files || {}) : {};
 }
 async function memWrite(files) {
-  await memoryDoc().set({ files, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  await memoryDoc().set({ files, updated_at: FieldValue.serverTimestamp() });
 }
 
 async function toolMemory(input) {
@@ -633,7 +634,7 @@ exports.slackBot = onRequest(
       // produced the duplicate answers in #cave_backend_community.
       const seenRef = db.collection("slack_events_seen").doc(eventId);
       try {
-        await seenRef.create({ at: admin.firestore.FieldValue.serverTimestamp() });
+        await seenRef.create({ at: FieldValue.serverTimestamp() });
       } catch (e) {
         console.log(`dedup: event ${eventId} already claimed, dropping retry`);
         res.status(200).send("duplicate");
@@ -701,9 +702,9 @@ async function handleReviewComment(event, botToken) {
   if (logId) {
     try {
       await db.collection("guide_logs").doc(logId).set({
-        reviewerNotes: admin.firestore.FieldValue.arrayUnion(note),
+        reviewerNotes: FieldValue.arrayUnion(note),
         reviewerCorrection: text.slice(0, 2000),   // latest reviewer note, convenient
-        reviewerCorrectedAt: admin.firestore.FieldValue.serverTimestamp(),
+        reviewerCorrectedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       saved = true;
     } catch (e) {
@@ -1094,7 +1095,7 @@ async function writeGuideLog(entry, ref) {
   try {
     const r = ref || db.collection("guide_logs").doc();
     // Firestore rejects `undefined`; every field is coalesced to a concrete value.
-    await r.set({ at: admin.firestore.FieldValue.serverTimestamp(), ...entry });
+    await r.set({ at: FieldValue.serverTimestamp(), ...entry });
   } catch (e) {
     console.error("[guide] log write failed:", e);
   }
@@ -1430,7 +1431,7 @@ async function postCorrectionReview(token, entry) {
         await db.collection("guide_review_threads").doc(res.ts).set({
           logId: entry.logId || null,
           message: entry.message || null,
-          at: admin.firestore.FieldValue.serverTimestamp(),
+          at: FieldValue.serverTimestamp(),
         });
       } catch (e) { console.error("[guide] thread map write:", e); }
     }
@@ -1517,7 +1518,7 @@ exports.submitIssue = onRequest(
       await db.collection("site_issues").add({
         message, category, title: title || null,
         user: user || null, dataset: dataset || null, url: pageUrl || null,
-        origin, at: admin.firestore.FieldValue.serverTimestamp(),
+        origin, at: FieldValue.serverTimestamp(),
       });
       res.json({ ok: true });
       // Fire-and-forget Slack post (response already sent).
@@ -1568,7 +1569,7 @@ exports.guideFeedback = onRequest(
       const payload = {
         feedback: verdict,
         correction: corr || null,
-        feedbackAt: admin.firestore.FieldValue.serverTimestamp(),
+        feedbackAt: FieldValue.serverTimestamp(),
       };
       let logData = {};
       if (logId && typeof logId === "string") {
@@ -1582,7 +1583,7 @@ exports.guideFeedback = onRequest(
         await db.collection("guide_feedback").add({
           ...payload,
           reply: typeof reply === "string" ? reply.slice(0, 4000) : null,
-          at: admin.firestore.FieldValue.serverTimestamp(),
+          at: FieldValue.serverTimestamp(),
         });
       }
       res.json({ ok: true });
@@ -2124,7 +2125,7 @@ exports.ewSecureWrite = onRequest(
 // minutes both times. This function is deployed only from the branch that
 // has it, and it alone binds the CAVE token:
 //   firebase deploy --only functions:ewProofreadingTest --project eyewire-ii-e4d52
-const EW_TEST_CODE_VERSION = "2026-10-21-proofreading-test-8";
+const EW_TEST_CODE_VERSION = "2026-10-21-proofreading-test-9";
 exports.ewProofreadingTest = onRequest(
   // 120 s: scoring reads the graph and undoes the player's edits.
   { region: "us-central1", secrets: [ewServiceKey, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 5, timeoutSeconds: 120 },
@@ -2513,11 +2514,11 @@ exports.ewSheetSync = onRequest(
     if(!(await rateLimit(req,false,'sheets:health')).ok) throw ewErr(429,'Please wait.');
     const {SOURCES,SEGMENT_HEADERS,START_COORD_HEADERS}=require('./sheet-policy'),{sheetsApi}=require('./sheet-sync');
     for(const source of Object.values(SOURCES)) {
-     const meta=await sheetsApi(admin.credential.applicationDefault(),source.id+'?fields=sheets(properties,protectedRanges)');
+     const meta=await sheetsApi(admin.applicationDefault(),source.id+'?fields=sheets(properties,protectedRanges)');
      const sheet=meta.sheets.find(s=>s.properties.sheetId===source.gid);
      if(!sheet) throw Error('Registered sheet tab missing');
      const range="'"+sheet.properties.title.replace(/'/g,"''")+"'!A1:AZ10";
-     const grid=await sheetsApi(admin.credential.applicationDefault(),source.id+'/values/'+encodeURIComponent(range));
+     const grid=await sheetsApi(admin.applicationDefault(),source.id+'/values/'+encodeURIComponent(range));
      const norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');
      const keys=source.matchBy==='startcoords'?START_COORD_HEADERS:SEGMENT_HEADERS;
      const headerRow=(grid.values||[]).findIndex(row=>row.some(v=>keys.some(p=>norm(v).includes(p))));
@@ -2529,23 +2530,23 @@ exports.ewSheetSync = onRequest(
      // Identity replacement cannot change a value, even if the text existed.
      const probe='__eyewire_sync_noop_785ea491a19d4f7bab5b__';
      console.info('[ewSheetSync] write probe',JSON.stringify({sheet:source.gid,columns,protections:(sheet.protectedRanges||[]).map(p=>({range:p.range,canEdit:p.requestingUserCanEdit,warningOnly:p.warningOnly,unprotected:p.unprotectedRanges}))}));
-     await sheetsApi(admin.credential.applicationDefault(),source.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:columns.map(({i})=>({findReplace:{find:probe,replacement:probe,range:{sheetId:source.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:i,endColumnIndex:i+1},matchCase:true}}))})});
+     await sheetsApi(admin.applicationDefault(),source.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:columns.map(({i})=>({findReplace:{find:probe,replacement:probe,range:{sheetId:source.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:i,endColumnIndex:i+1},matchCase:true}}))})});
     }
     // Annotation Quests: each quest tab is shared with the Sheets identity,
     // has the columns the game writes, and takes a no-op write.
     const {QUESTS,questHeader}=require('./sheet-policy');
     const quests={};
     for(const [key,quest] of Object.entries(QUESTS)) {
-     const meta=await sheetsApi(admin.credential.applicationDefault(),quest.id+'?fields=sheets.properties');
+     const meta=await sheetsApi(admin.applicationDefault(),quest.id+'?fields=sheets.properties');
      const tab=meta.sheets.find(s=>s.properties.sheetId===quest.gid);
      if(!tab) throw Error('Quest sheet tab missing: '+key);
      const range="'"+tab.properties.title.replace(/'/g,"''")+"'!A1:Z10";
-     const grid=(await sheetsApi(admin.credential.applicationDefault(),quest.id+'/values/'+encodeURIComponent(range))).values||[];
+     const grid=(await sheetsApi(admin.applicationDefault(),quest.id+'/values/'+encodeURIComponent(range))).values||[];
      const {headerRow,cols}=questHeader(grid);
      const missing=['startLink','status','splitMerged','link','name','date','notes'].filter(k=>cols[k]<0);
      if(missing.length) throw Error('Quest sheet columns missing: '+key+' '+missing.join(','));
      const probe='__eyewire_sync_noop_785ea491a19d4f7bab5b__';
-     await sheetsApi(admin.credential.applicationDefault(),quest.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[{findReplace:{find:probe,replacement:probe,range:{sheetId:quest.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:cols.name,endColumnIndex:cols.name+1},matchCase:true}}]})});
+     await sheetsApi(admin.applicationDefault(),quest.id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[{findReplace:{find:probe,replacement:probe,range:{sheetId:quest.gid,startRowIndex:headerRow+1,endRowIndex:headerRow+2,startColumnIndex:cols.name,endColumnIndex:cols.name+1},matchCase:true}}]})});
      quests[key]={tab:tab.properties.title,headerRow:headerRow+1};
     }
     return res.json({ok:true,sheets:Object.keys(SOURCES),quests,keyless:true,writable:true});
@@ -2566,8 +2567,8 @@ exports.ewSheetSync = onRequest(
     if(!me) throw ewErr(403,"Create your EyeWire II profile first.");
     // `you` is the name the sheet would carry for this player, so the game
     // can tell their rows apart however the sheet spells them.
-    if(listing) return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows:await questList(input.quest,admin.credential.applicationDefault())});
-    return res.json(await syncQuest(input,me,admin.credential.applicationDefault()));
+    if(listing) return res.json({ok:true,you:String(me.display_name||me.username||'').slice(0,120),rows:await questList(input.quest,admin.applicationDefault())});
+    return res.json(await syncQuest(input,me,admin.applicationDefault()));
    }
    require('./sheet-policy').sourceFor(input);
    if(!(await rateLimit({ip:who.email},true,"write:sheets")).ok) throw ewErr(429,"Please wait before syncing another cell.");
@@ -2589,7 +2590,7 @@ exports.ewSheetSync = onRequest(
        me.sheet_name=sheetSpelling(me.display_name,rows.map(r=>r.proofreader));
      }
    } catch(e) { console.warn('[ewSheetSync] sheet spelling lookup failed',String(e&&e.message||e).slice(0,200)); }
-   return res.json(await require('./sheet-sync').syncSheet(input,me,tasks[0],admin.credential.applicationDefault()));
+   return res.json(await require('./sheet-sync').syncSheet(input,me,tasks[0],admin.applicationDefault()));
   } catch(e) {
    console.warn('[ewSheetSync]',e.status||500,e.message);
    return res.status(e.status||503).json({error:e.status?e.message:"Sheet syncing is temporarily unavailable. Your cell is saved; retry syncing shortly."});

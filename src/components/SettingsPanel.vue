@@ -51,7 +51,7 @@ const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
 const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
 /** How the cell under the mouse is shown (wolfryder101 #181): the classic fade (default), halo or pulse. */
-const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'wireframe' | 'saturate' | 'fade' | 'none'>('fade');
+const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'saturate' | 'spotlight' | 'fade' | 'none'>('fade');
 /** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
 const draftPulseColor = ref('');
 const PULSE_COLORS = [
@@ -509,14 +509,16 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCalm" />
               <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Wireframe: the cell's 3D mesh drawn in glowing lines of its own colour. None: nothing marks it. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Spotlight: the cell turns a little richer and the other cells in 3D dim, so it stands out gently. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Hologram: the cell turns dark and glows from its edges in its own colour, with faint lines across it. Metallic: a dark, shiny cell with bright edges. None: nothing marks it. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
                 <option value="halo">Halo</option>
                 <option value="saturate">Saturate</option>
+                <option value="spotlight">Spotlight</option>
                 <option value="fade">Fade (original)</option>
                 <option value="pulse">Pulse</option>
-                <option value="wireframe">Wireframe</option>
+                <option value="hologram">Hologram</option>
+                <option value="metallic">Metallic</option>
                 <option value="none">None</option>
               </select>
             </label>

@@ -130,3 +130,21 @@ test('a connector address: made once, the old one switched off', async () => {
   assert.equal(off.connected, false);
   assert.equal(db.keys.filter(k => !k.revoked_at).length, 0);
 });
+
+test('cards take a status, a due day and links; a test site is recognized', async () => {
+  const { call, db } = setup();
+  await call('add_card', { title: 'Proofreading Test', status: 'on the test site', due: '2026-10-31',
+    links: [{ url: 'https://todo-board-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/?x' }] });
+  const [card] = await db.cards();
+  assert.equal(card.status, 'on the test site');
+  assert.equal(card.due_on, '2026-10-31');
+  assert.equal(card.links[0].kind, 'test');
+  await call('link', { card: card.id, add: { url: 'https://github.com/seung-lab/ng-extend/pull/1', kind: 'pr' } });
+  const text = (await call('get_card', { card: card.id })).content[0].text;
+  assert.match(text, /Status: on the test site/);
+  assert.match(text, /2\. Pull request: https:\/\/github.com/);
+  await call('link', { card: card.id, remove: 1 });
+  await call('update_card', { card: card.id, due: 'none', status: '' });
+  const after = await db.card(card.id);
+  assert.deepEqual([after.links.length, after.due_on, after.status], [1, null, '']);
+});
