@@ -83,6 +83,15 @@ function inLabelScope() {
     labelAsked.clear();
   }
 }
+/** A cell whose type could not be looked up is asked about again later: the
+ *  segment list asks for every unnamed row it shows when the labels change. */
+const LABEL_RETRY_MS = 30000;
+let labelRetryTimer: ReturnType<typeof setTimeout> | null = null;
+function retryLabelLater(id: string) {
+  labelAsked.delete(id);
+  if (labelRetryTimer) return;
+  labelRetryTimer = setTimeout(() => { labelRetryTimer = null; segmentLabelsChanged.dispatch(); }, LABEL_RETRY_MS);
+}
 setSegmentLabelRequester(ids => {
   inLabelScope();
   const todo = ids.filter(id => !labelAsked.has(id) && !segmentLabels.has(id)).slice(0, 300);
@@ -94,12 +103,17 @@ setSegmentLabelRequester(ids => {
     while (next < todo.length) {
       const id = todo[next++];
       try {
-        const label = cellLabel(await getCellStatus(server, id));
+        const status = await getCellStatus(server, id);
+        const label = cellLabel(status);
         if (label && currentSegLayerName() === labelScope) {
           segmentLabels.set(id, label);
           segmentLabelsChanged.dispatch();
+        } else if (status?.unreachable) {
+          // CAVE could not be asked: ask again in a while, rather than leave
+          // the cell looking untyped for the rest of the session (Nseraf #192).
+          retryLabelLater(id);
         }
-      } catch { /* that cell stays unnamed */ }
+      } catch { retryLabelLater(id); }
     }
   };
   for (let i = 0; i < 4; ++i) void worker();
@@ -269,9 +283,22 @@ export class ButtonService {
       } else {
         this._paint(button, null);
       }
+      // CAVE could not be asked (Nseraf #192: 500s right after an edit made
+      // every type look lost): ask again in a while, while the row is shown.
+      if (status?.unreachable) this._retryButtonStatus(button, localServerURL, segmentIDString);
     } catch {
       this._paint(button, null);
+      this._retryButtonStatus(button, localServerURL, segmentIDString);
     }
+  }
+
+  private _retryButtonStatus(button: HTMLButtonElement, localServerURL: string, segmentIDString: string, delayMs = 30000) {
+    const tries = Number(button.dataset.ngeStatusTries || '0');
+    if (tries >= 6) return;
+    button.dataset.ngeStatusTries = String(tries + 1);
+    setTimeout(() => {
+      if (button.isConnected) void this._refreshButtonStatus(button, localServerURL, segmentIDString);
+    }, delayMs);
   }
 
   /**
@@ -548,7 +575,7 @@ export class ButtonService {
           statusLine.textContent = progressText();
           if (!toggleBtn.disabled) toggleBtn.textContent = st?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
           if (st?.cellType && !select.value) select.value = st.cellType;
-          if (typeLine) typeLine.textContent = st?.cellType || 'No type yet';
+          if (typeLine) typeLine.textContent = st?.cellType || (st?.unreachable ? "Couldn't reach the lab's server to check. Try again in a minute." : 'No type yet');
           showLabType();
           showTitle();
           showLabDone();
