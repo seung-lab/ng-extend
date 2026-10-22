@@ -31,6 +31,7 @@
  * too, so a tutorial can be played through as a new player would.
  */
 import { reactive, ref, watch } from 'vue';
+import { getActivePinia } from 'pinia';
 import { supabase } from '../supabase';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import { DATASETS } from '../datasets';
@@ -389,7 +390,11 @@ async function classify() {
   prefs().save({ toolbarStage: staged ? freshState() : { staged: false, revealed: [], visitDays: [], done: [] } } as any);
 }
 
-setTimeout(() => {
+// The stores need Pinia, which main.ts installs only once the page has loaded.
+// This file can run before that, so wait for it rather than reading the stores
+// too early (which threw on every live page load and skipped classify()).
+function startStaging() {
+  if (!getActivePinia()) { setTimeout(startStaging, 50); return; }
   if (IS_LIVE_SITE) {
     watch(() => [useProofreadingBackendStore().userId, (useUserPreferencesStore() as any).accountLoaded] as const,
       ([id, loaded]) => { if (id && loaded) classify().then(() => noteVisit()).catch(() => {}); }, { immediate: true });
@@ -402,4 +407,5 @@ setTimeout(() => {
     const s = current();
     if (s && !s.done.includes('production')) void momentWhenQuiet('production');
   }, { immediate: true });
-}, 0);
+}
+setTimeout(startStaging, 0);
