@@ -5,9 +5,13 @@
  * joined pieces or cut one off. A play button steps through on a timer, for
  * screen recordings.
  *
- * How the past cell is found: one supervoxel inside today's cell (the
- * anchor) never changes, so the chunked graph's root for it at a moment is
- * what the cell was then. Old roots keep their meshes.
+ * How the past cell is found: the chunked graph's lineage of today's cell
+ * lists every past version (root) that led to it and when each was made. At
+ * a moment, the versions made by then and not yet replaced are the pieces
+ * the cell was then: several where branches were still apart, joining as
+ * the edits go on (Ames 2026-10-22: following one spot only showed the cell
+ * body, and its first 43 edits were all on branches joined later). One
+ * request for the whole history; old roots keep their meshes.
  *
  * How it is shown without touching the player's view: the past cell is drawn
  * in a temporary layer of its own that reads only the meshes (no 2D, no
@@ -19,18 +23,18 @@ import { makeLayer } from 'neuroglancer/layer';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { getBaseObjectColor } from 'neuroglancer/segmentation_display_state/frontend';
 import { currentSegLayer } from '../datasets';
-import { authHeaders, getPcgInfo, getRootFromSupervoxel, getSelectedSupervoxelId } from '../widgets/pcg_service';
-import { supervoxelAtPlace } from './crosshair_cell';
+import { authHeaders, getPcgInfo } from '../widgets/pcg_service';
 import { supabase } from '../supabase';
-import { useProofreadingBackendStore } from '../store';
-import { parseChangeLog, historySteps, editorName, type HistoryEdit, type HistoryStep } from './cell_history_steps';
+import { parseChangeLog, parseLineage, piecesAt, historySteps, editorName, type HistoryEdit, type HistoryStep, type Lineage } from './cell_history_steps';
 import './cell_history.css';
 
 const SHOW_LAYER = 'Cell history (temporary)';
 const AHEAD_LAYER = 'Cell history, next steps (temporary)';
 const OPEN_KEY = 'nge_cell_history_open';
 const LOOK_AHEAD = 3;
-const MAX_LOOKUPS = 4;
+/** Most pieces loaded ahead at once, so a cell built from hundreds of
+ *  fragments does not ask for all their meshes in one go. */
+const MAX_AHEAD = 40;
 const SPEEDS = [
   { label: 'Slow', ms: 2000 },
   { label: 'Normal', ms: 1000 },
@@ -39,8 +43,6 @@ const SPEEDS = [
 
 const viewerOf = (): any => (window as any).viewer;
 const isNumericId = (id: unknown): id is string => typeof id === 'string' && /^\d+$/.test(id) && id !== '0';
-/** A supervoxel lives on level 1 of the graph (the top 8 bits of its id). */
-const isSupervoxel = (id: string) => isNumericId(id) && Math.floor(Number(id) / 2 ** 56) === 1;
 
 function managedByName(name: string): any {
   return viewerOf()?.layerManager?.managedLayers?.find((l: any) => l.name === name && !l.archived);
@@ -51,6 +53,21 @@ function groupOf(ml: any): any {
 
 // ─── Talking to the chunked graph ───────────────────────────────────────────
 
+// A root id names one version of a cell that never changes, so its history
+// never does either: asked once a visit, however often the panel opens.
+const editsMem = new Map<string, Promise<HistoryEdit[]>>();
+const lineageMem = new Map<string, Promise<Lineage>>();
+function remembered<T>(mem: Map<string, Promise<T>>, root: string, get: () => Promise<T>): Promise<T> {
+  const key = `${getPcgInfo()?.server}|${getPcgInfo()?.table}|${root}`;
+  let p = mem.get(key);
+  if (!p) {
+    p = get();
+    mem.set(key, p);
+    p.catch(() => mem.delete(key));   // a failure is asked again next time
+  }
+  return p;
+}
+
 async function fetchEdits(root: string): Promise<HistoryEdit[]> {
   const pcg = getPcgInfo();
   if (!pcg) throw Error('no graph');
@@ -60,17 +77,15 @@ async function fetchEdits(root: string): Promise<HistoryEdit[]> {
   return parseChangeLog(await res.json(), root);
 }
 
-/** The root of a supervoxel at a moment (milliseconds). Read as text: the
- *  ids are 18 digits and a JSON number would round them. */
-async function rootAt(sv: string, at: number): Promise<string | null> {
+/** Every past version of the cell (lineage_graph, read as text inside
+ *  parseLineage so 18 digit ids are not rounded). */
+async function fetchLineage(root: string): Promise<Lineage> {
   const pcg = getPcgInfo();
-  if (!pcg) return null;
-  const res = await fetch(
-    `${pcg.server}/segmentation/api/v1/table/${pcg.table}/node/${sv}/root?int64_as_str=1&timestamp=${(at / 1000).toFixed(3)}`,
+  if (!pcg) throw Error('no graph');
+  const res = await fetch(`${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
     { headers: authHeaders(pcg.server) });
-  if (!res.ok) return null;
-  const m = (await res.text()).match(/"root_id"\s*:\s*"?(\d+)/);
-  return m && m[1] !== '0' ? m[1] : null;
+  if (!res.ok) throw Error(`lineage ${res.status}`);
+  return parseLineage(await res.text(), root);
 }
 
 /** Pyr names for lab logins, where the login is a Pyr player's. */
@@ -85,102 +100,6 @@ async function playerNames(userIds: string[]): Promise<Map<string, string>> {
     }
   } catch { /* names stay unknown */ }
   return names;
-}
-
-// ─── A supervoxel inside today's cell ───────────────────────────────────────
-
-async function insideCell(sv: string | null | undefined, root: string): Promise<string | null> {
-  if (!sv || !isSupervoxel(sv)) return null;
-  return (await getRootFromSupervoxel(sv).catch(() => null)) === root ? sv : null;
-}
-
-/** A supervoxel of the cell from the graph itself, needing nothing on
- *  screen: the cell's best connected piece (its body, as a rule), then one
- *  of that piece's supervoxels. Pointing at the cell in 3D found nothing on
- *  datasets whose stored volume is compressed (Ames 2026-10-22). */
-async function anchorFromGraph(root: string): Promise<string | null> {
-  const pcg = getPcgInfo();
-  if (!pcg) return null;
-  const base = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/node`;
-  const get = async (url: string) => {
-    const res = await fetch(url, { headers: authHeaders(pcg.server) });
-    return res.ok ? res.json() : null;
-  };
-  let pieces: string[] = [];
-  try {
-    const edges = (await get(`${base}/${root}/lvl2_graph?int64_as_str=1`))?.edge_graph;
-    const degree = new Map<string, number>();
-    for (const e of Array.isArray(edges) ? edges : []) {
-      for (const id of [String(e[0]), String(e[1])]) degree.set(id, (degree.get(id) ?? 0) + 1);
-    }
-    pieces = [...degree.keys()].sort((a, b) => degree.get(b)! - degree.get(a)!);
-  } catch { /* try the plain list */ }
-  if (!pieces.length) {
-    // A cell of one piece has no links between pieces to list.
-    try { pieces = ((await get(`${base}/${root}/leaves?int64_as_str=1&stop_layer=2`))?.leaf_ids ?? []).map(String); } catch { /* */ }
-  }
-  for (const piece of pieces.filter(isNumericId).slice(0, 3)) {
-    try {
-      const leaves: string[] = ((await get(`${base}/${piece}/leaves?int64_as_str=1`))?.leaf_ids ?? []).map(String);
-      const sv = leaves.find(isSupervoxel);
-      if (sv) return sv;
-    } catch { /* the next piece */ }
-  }
-  return null;
-}
-
-/** Without asking the player: the claim's own anchor, the supervoxel last
- *  pointed at, a supervoxel from the graph, or the claim's soma point or the
- *  crosshairs. */
-async function findAnchor(root: string): Promise<string | null> {
-  const picked = await insideCell(getSelectedSupervoxelId(), root);
-  if (picked) return picked;
-  try {
-    const backend = useProofreadingBackendStore();
-    const t: any = backend.tasks.find((t: any) => backend.isTaskCell(t, root));
-    const sv = await insideCell(t?.supervoxel_id, root);
-    if (sv) return sv;
-  } catch { /* no claims loaded */ }
-  const fromGraph = await anchorFromGraph(root).catch(() => null);
-  if (fromGraph) return fromGraph;
-  return findAnchorNearby(root);
-}
-
-async function findAnchorNearby(root: string): Promise<string | null> {
-  try {
-    const backend = useProofreadingBackendStore();
-    const t: any = backend.tasks.find((t: any) => backend.isTaskCell(t, root));
-    const p = [t?.claim_point_x, t?.claim_point_y, t?.claim_point_z];
-    if (p.every(n => typeof n === 'number' && Number.isFinite(n)) && p.some(n => n !== 0)) {
-      const at = await insideCell(await supervoxelAtPlace(p), root);
-      if (at) return at;
-    }
-  } catch { /* no claims loaded */ }
-  const pos = viewerOf()?.navigationState?.position?.value;
-  if (pos) {
-    const at = await insideCell(await supervoxelAtPlace(Array.from(pos as Float32Array)), root);
-    if (at) return at;
-    try {
-      const value = currentSegLayer()?.layer?.getValueAt?.(pos, { pickedRenderLayer: null });
-      const sv = value == null ? '' : String(Array.isArray(value) ? value[0] : value);
-      const there = await insideCell(sv, root);
-      if (there) return there;
-    } catch { /* nothing loaded there */ }
-  }
-  return null;
-}
-
-/** The supervoxel the mouse is on, when it is on this cell: in a 2D view,
- *  the hover readout's own supervoxel; in 3D, the stored volume at the
- *  point on the surface. */
-async function anchorUnderMouse(root: string): Promise<string | null> {
-  const picked = await insideCell(getSelectedSupervoxelId(), root);
-  if (picked) return picked;
-  const viewer = viewerOf();
-  const ms = viewer?.mouseState;
-  const sel = currentSegLayer()?.layer?.displayState?.segmentSelectionState;
-  if (!ms?.active || !sel?.hasSelectedSegment || String(sel.selectedSegment) !== root) return null;
-  return insideCell(await supervoxelAtPlace(Array.from(ms.position as Float32Array)), root);
 }
 
 // ─── Putting things back ────────────────────────────────────────────────────
@@ -239,13 +158,12 @@ export function openCellHistory(root: string) {
   let steps: HistoryStep[] = [];
   let edits: HistoryEdit[] = [];
   let names = new Map<string, string>();
-  let anchor: string | null = null;
+  let lineage: Lineage | null = null;
   let current = -1;
-  let shown: string | null = null;
+  let shown: string[] = [];
   let hidMain = false;
   let playing = false;
   let playTimer: ReturnType<typeof setTimeout> | null = null;
-  let pointTimer: ReturnType<typeof setInterval> | null = null;
   let speed = SPEEDS[1].ms;
 
   // ── DOM ──
@@ -318,7 +236,6 @@ export function openCellHistory(root: string) {
     closed = true;
     closeOpen = null;
     if (playTimer) clearTimeout(playTimer);
-    if (pointTimer) clearInterval(pointTimer);
     removeTempLayers();
     if (hidMain) tickAgain(root);
     try { localStorage.removeItem(OPEN_KEY); } catch { /* */ }
@@ -327,41 +244,19 @@ export function openCellHistory(root: string) {
   closeOpen = close;
   $('.nge-ch-close').addEventListener('click', close);
 
-  // ── Roots of each step, looked up a few at a time ──
-  const roots = new Map<number, string | null>();
-  const pending = new Map<number, Promise<string | null>>();
-  const queue: number[] = [];
-  let active = 0;
-  const pump = () => {
-    while (active < MAX_LOOKUPS && queue.length && !closed) {
-      const i = queue.shift()!;
-      const run = runners.get(i);
-      if (run) { runners.delete(i); active++; run().finally(() => { active--; pump(); }); }
-    }
-  };
-  const runners = new Map<number, () => Promise<void>>();
-  function rootOf(i: number, urgent = false): Promise<string | null> {
-    if (roots.has(i)) return Promise.resolve(roots.get(i)!);
-    const step = steps[i];
-    if (step.askAt === null) { roots.set(i, root); return Promise.resolve(root); }
-    let p = pending.get(i);
+  // ── The pieces of each step, worked out from the lineage ──
+  const piecesMem = new Map<number, string[]>();
+  function piecesOf(i: number): string[] {
+    let p = piecesMem.get(i);
     if (!p) {
-      p = new Promise<string | null>(resolve => {
-        runners.set(i, async () => {
-          const r = await rootAt(anchor!, step.askAt!).catch(() => null);
-          // A failed lookup is not remembered, so the step can be tried again.
-          if (r) roots.set(i, r);
-          pending.delete(i);
-          resolve(r);
-        });
-      });
-      pending.set(i, p);
-      queue.push(i);
+      const step = steps[i];
+      p = step.askAt === null || !lineage ? [root] : piecesAt(lineage, step.askAt);
+      if (!p.length) p = [root];
+      piecesMem.set(i, p);
     }
-    if (urgent) { const k = queue.indexOf(i); if (k > 0) { queue.splice(k, 1); queue.unshift(i); } }
-    pump();
     return p;
   }
+  const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
 
   // ── The temporary layers ──
   function setLayerCells(name: string, ids: string[], color: string, alpha: number) {
@@ -399,7 +294,7 @@ export function openCellHistory(root: string) {
     color = '#' + Array.from(c.slice(0, 3)).map(v => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
   } catch { /* the default green */ }
 
-  function showRoot(r: string) {
+  function showPieces(ids: string[]) {
     if (closed) return;
     if (!hidMain) {
       const group = groupOf(main);
@@ -407,20 +302,18 @@ export function openCellHistory(root: string) {
       if (group?.visibleSegments.has(id)) { group.visibleSegments.delete(id); hidMain = true; }
       try { localStorage.setItem(OPEN_KEY, JSON.stringify({ root: hidMain ? root : undefined })); } catch { /* */ }
     }
-    shown = r;
-    setLayerCells(SHOW_LAYER, [r], color, 1);
+    shown = ids;
+    setLayerCells(SHOW_LAYER, ids, color, 1);
   }
 
-  async function lookAhead(from: number) {
+  function lookAhead(from: number) {
+    const now = new Set(shown);
     const next: string[] = [];
     for (let i = from + 1; i < steps.length && i <= from + LOOK_AHEAD; i++) {
-      const r = await rootOf(i);
-      if (closed || current !== from) return;
-      if (r && r !== shown && !next.includes(r)) next.push(r);
+      for (const id of piecesOf(i)) if (!now.has(id) && !next.includes(id)) next.push(id);
     }
-    for (let i = Math.max(0, from - 2); i < from; i++) void rootOf(i);
     // Fetched but never drawn: alpha 0 skips drawing, not loading.
-    setLayerCells(AHEAD_LAYER, next, color, 0);
+    setLayerCells(AHEAD_LAYER, next.slice(0, MAX_AHEAD), color, 0);
   }
 
   /** True once the shown cell's 3D pieces have arrived, false while some
@@ -459,6 +352,12 @@ export function openCellHistory(root: string) {
     whoEl.textContent = `${e.isMerge ? 'Pieces joined' : 'A piece cut off'} by ${editorName(e.userId, names)}, ${when(e.at)}`;
   }
 
+  const quietAt = (i: number) => i > 0 && steps[i].edit >= 0 && sameSet(piecesOf(i), piecesOf(i - 1));
+  function piecesLine(i: number): string {
+    const n = piecesOf(i).length;
+    return n > 1 ? `${n} separate pieces at this point, which are joined into the cell later.` : '';
+  }
+
   let showSeq = 0;
   async function go(i: number) {
     if (closed || !steps.length) return;
@@ -467,21 +366,13 @@ export function openCellHistory(root: string) {
     slider.value = String(i);
     describe(i);
     const seq = ++showSeq;
-    const known = roots.has(i);
-    if (!known) say('Loading this step…');
-    const r = await rootOf(i, true);
-    if (closed || seq !== showSeq) return;
-    if (!r) { say("Couldn't load this step from the lab's server. Move the slider to try again."); return; }
-    const same = r === shown;
-    showRoot(r);
-    void lookAhead(i);
-    if (!same) say('Loading this step in 3D…');
-    const prev = i > 0 && steps[i].edit >= 0 ? await rootOf(i - 1) : null;
-    if (closed || seq !== showSeq) return;
-    const quiet = prev === r;
-    const note = quiet ? 'This edit was on a piece that joined the cell later, so nothing changes here yet.' : '';
+    const ids = piecesOf(i);
+    const same = sameSet(ids, shown);
+    showPieces(ids);
+    lookAhead(i);
+    const note = quietAt(i) ? 'Nothing that ends up in this cell changes at this edit.' : piecesLine(i);
     if (same) { say(note); return; }
-    say(note || 'Loading this step in 3D…');
+    say('Loading this step in 3D…');
     for (let t = 0; t < 80 && !closed && seq === showSeq; t++) {
       await new Promise(res => setTimeout(res, 150));
       if (meshReady() !== false) break;
@@ -503,8 +394,7 @@ export function openCellHistory(root: string) {
     if (!playing || closed) return;
     // Wait for the 3D to arrive, so a recording never shows a gap.
     for (let t = 0; t < 60 && meshReady() === false && playing; t++) await new Promise(res => setTimeout(res, 150));
-    const quiet = current > 0 && roots.get(current) === roots.get(current - 1);
-    playTimer = setTimeout(tick, quiet ? Math.min(250, speed) : speed);
+    playTimer = setTimeout(tick, quietAt(current) ? Math.min(250, speed) : speed);
   }
   playBtn.addEventListener('click', () => {
     if (playing) { stop(); return; }
@@ -523,7 +413,10 @@ export function openCellHistory(root: string) {
   void (async () => {
     say("Getting this cell's edits from the lab's server…");
     try {
-      edits = await fetchEdits(root);
+      [edits, lineage] = await Promise.all([
+        remembered(editsMem, root, () => fetchEdits(root)),
+        remembered(lineageMem, root, () => fetchLineage(root)),
+      ]);
     } catch {
       if (!closed) say("Couldn't get this cell's history from the lab's server. Check you are signed in, then try again.");
       return;
@@ -535,24 +428,6 @@ export function openCellHistory(root: string) {
     }
     steps = historySteps(edits);
     const namesReady = playerNames(edits.map(e => e.userId)).then(n => { names = n; if (!closed && current >= 0) describe(current); });
-
-    say("Finding the cell on the lab's server…");
-    anchor = await findAnchor(root);
-    if (closed) return;
-    if (!anchor) {
-      say("Couldn't find a spot inside this cell from the lab's server just now. Close and try again in a minute, or hover over the cell in a 2D view to start from there.");
-      await new Promise<void>(resolve => {
-        let busy = false;
-        pointTimer = setInterval(async () => {
-          if (busy || closed) { if (closed) resolve(); return; }
-          busy = true;
-          const sv = await anchorUnderMouse(root).catch(() => null);
-          busy = false;
-          if (sv && !closed) { anchor = sv; if (pointTimer) clearInterval(pointTimer); pointTimer = null; resolve(); }
-        }, 400);
-      });
-      if (closed || !anchor) return;
-    }
 
     slider.max = String(steps.length - 1);
     slider.hidden = false;

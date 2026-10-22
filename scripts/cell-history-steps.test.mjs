@@ -9,7 +9,7 @@ import module from 'node:module';
 const strip = module.stripTypeScriptTypes;
 const load = () => {
   const js = strip(fs.readFileSync(new URL('../src/util/cell_history_steps.ts', import.meta.url), 'utf8')).replace(/^export /gm, '');
-  return new Function(js + ';return {parseChangeLog, sampleEdits, historySteps, editorName, MAX_HISTORY_STEPS};')();
+  return new Function(js + ';return {parseChangeLog, sampleEdits, historySteps, editorName, parseLineage, piecesAt, MAX_HISTORY_STEPS};')();
 };
 const H = load();
 
@@ -77,4 +77,27 @@ test('names: a Pyr player, else unknown', () => {
   assert.equal(H.editorName('42', names), 'Nseraf');
   assert.equal(H.editorName('9', names), 'unknown');
   assert.equal(H.editorName('', names), 'unknown');
+});
+
+test('lineage: pieces apart, then joined, then a piece cut off', () => {
+  // A and B are separate at first. Edit 1 (t=100 s) joins them into C.
+  // Edit 2 (t=200 s) cuts C into D (today) and E (thrown away, so not in
+  // the lineage). 18 digit ids must not be rounded.
+  const A = '864691135000000011', B = '864691135000000022', C = '864691135000000033', D = '864691135000000044';
+  const text = `{"directed":true,"nodes":[{"id":${A}},{"id":${B},"timestamp":10.5},{"id":${C},"timestamp":100.0,"operation_id":1},{"id":${D},"timestamp":200,"operation_id":2}],"links":[{"source":${A},"target":${C}},{"source":${B},"target":${C}},{"source":${C},"target":${D}}]}`;
+  const L = H.parseLineage(text);
+  assert.deepEqual(H.piecesAt(L, 50_000), [A, B].sort());
+  assert.deepEqual(H.piecesAt(L, 150_000), [C]);
+  assert.deepEqual(H.piecesAt(L, 250_000), [D]);
+  // Before B existed, only A.
+  assert.deepEqual(H.piecesAt(L, 5_000), [A]);
+});
+
+test('lineage: a piece cut off and dropped is never shown after the cut', () => {
+  const C = '864691135000000033', D = '864691135000000044', E = '864691135000000055';
+  const text = `{"nodes":[{"id":${C},"timestamp":100},{"id":${D},"timestamp":200},{"id":${E},"timestamp":200}],"links":[{"source":${C},"target":${D}},{"source":${C},"target":${E}}]}`;
+  const L = H.parseLineage(text, D);
+  assert.deepEqual(H.piecesAt(L, 150_000), [C]);
+  assert.deepEqual(H.piecesAt(L, 250_000), [D]);
+  assert.equal(L.bornAt.has(E), false);
 });

@@ -4,8 +4,8 @@
  * (scripts/cell-history-steps.test.mjs) can load it as it is.
  *
  * One step before any edit, then one after each edit, oldest first. The last
- * step is the cell as it is today. Each step has a moment to ask the graph
- * about: the root of a supervoxel at that moment is what the cell was then.
+ * step is the cell as it is today. Each step has a moment; the cell's
+ * lineage says which past versions (pieces) existed at that moment.
  */
 
 export interface HistoryEdit {
@@ -87,6 +87,56 @@ export function historySteps(edits: HistoryEdit[], max = MAX_HISTORY_STEPS): His
     steps.push({ edit: i, askAt: next ? (edits[i].at + next.at) / 2 : null });
   }
   return steps;
+}
+
+/** Every past version of a cell, from the graph's lineage_graph answer:
+ *  when each was made, and what each turned into. */
+export interface Lineage {
+  /** Milliseconds; -Infinity for a version with no time given (the
+   *  original segmentation). */
+  bornAt: Map<string, number>;
+  next: Map<string, string[]>;
+}
+
+/** Ids are 18 digits and JSON numbers would round them, so every long
+ *  number is read as text before parsing. Links go from older to newer. */
+export function parseLineage(text: string, root?: string): Lineage {
+  const safe = text.replace(/([:[,]\s*)(\d{16,})(?=\s*[,\]}])/g, '$1"$2"');
+  const graph = JSON.parse(safe);
+  const bornAt = new Map<string, number>();
+  const next = new Map<string, string[]>();
+  for (const n of graph?.nodes ?? []) {
+    const at = stampMs(n?.timestamp);
+    bornAt.set(String(n?.id), Number.isFinite(at) ? at : -Infinity);
+  }
+  for (const e of graph?.links ?? graph?.edges ?? []) {
+    const from = String(e?.source), to = String(e?.target);
+    for (const id of [from, to]) if (!bornAt.has(id)) bornAt.set(id, -Infinity);
+    (next.get(from) ?? next.set(from, []).get(from)!).push(to);
+  }
+  if (root === undefined || !bornAt.has(root)) return { bornAt, next };
+  // Only versions that lead to today's cell: a piece cut off and dropped is
+  // part of the cell until the cut, never after it.
+  const prev = new Map<string, string[]>();
+  for (const [from, tos] of next) for (const to of tos) (prev.get(to) ?? prev.set(to, []).get(to)!).push(from);
+  const keep = new Set([root]), todo = [root];
+  while (todo.length) for (const p of prev.get(todo.pop()!) ?? []) if (!keep.has(p)) { keep.add(p); todo.push(p); }
+  for (const id of [...bornAt.keys()]) if (!keep.has(id)) { bornAt.delete(id); next.delete(id); }
+  for (const [id, tos] of next) next.set(id, tos.filter(t => keep.has(t)));
+  return { bornAt, next };
+}
+
+/** The pieces that made up the cell's past at a moment: every version made
+ *  by then that nothing had replaced yet. Several pieces where branches
+ *  were still apart, to be joined later. */
+export function piecesAt(lineage: Lineage, at: number): string[] {
+  const out: string[] = [];
+  for (const [id, born] of lineage.bornAt) {
+    if (born > at) continue;
+    if ((lineage.next.get(id) ?? []).some(k => (lineage.bornAt.get(k) ?? -Infinity) <= at)) continue;
+    out.push(id);
+  }
+  return out.sort();
 }
 
 /** "unknown" unless the lab login belongs to a Pyr player with a name. */
