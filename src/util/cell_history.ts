@@ -94,24 +94,68 @@ async function insideCell(sv: string | null | undefined, root: string): Promise<
   return (await getRootFromSupervoxel(sv).catch(() => null)) === root ? sv : null;
 }
 
-/** Without asking the player: the claim's own anchor or soma point, the
- *  supervoxel last pointed at, or the one at the crosshairs. */
+/** A supervoxel of the cell from the graph itself, needing nothing on
+ *  screen: the cell's best connected piece (its body, as a rule), then one
+ *  of that piece's supervoxels. Pointing at the cell in 3D found nothing on
+ *  datasets whose stored volume is compressed (Ames 2026-10-22). */
+async function anchorFromGraph(root: string): Promise<string | null> {
+  const pcg = getPcgInfo();
+  if (!pcg) return null;
+  const base = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/node`;
+  const get = async (url: string) => {
+    const res = await fetch(url, { headers: authHeaders(pcg.server) });
+    return res.ok ? res.json() : null;
+  };
+  let pieces: string[] = [];
+  try {
+    const edges = (await get(`${base}/${root}/lvl2_graph?int64_as_str=1`))?.edge_graph;
+    const degree = new Map<string, number>();
+    for (const e of Array.isArray(edges) ? edges : []) {
+      for (const id of [String(e[0]), String(e[1])]) degree.set(id, (degree.get(id) ?? 0) + 1);
+    }
+    pieces = [...degree.keys()].sort((a, b) => degree.get(b)! - degree.get(a)!);
+  } catch { /* try the plain list */ }
+  if (!pieces.length) {
+    // A cell of one piece has no links between pieces to list.
+    try { pieces = ((await get(`${base}/${root}/leaves?int64_as_str=1&stop_layer=2`))?.leaf_ids ?? []).map(String); } catch { /* */ }
+  }
+  for (const piece of pieces.filter(isNumericId).slice(0, 3)) {
+    try {
+      const leaves: string[] = ((await get(`${base}/${piece}/leaves?int64_as_str=1`))?.leaf_ids ?? []).map(String);
+      const sv = leaves.find(isSupervoxel);
+      if (sv) return sv;
+    } catch { /* the next piece */ }
+  }
+  return null;
+}
+
+/** Without asking the player: the claim's own anchor, the supervoxel last
+ *  pointed at, a supervoxel from the graph, or the claim's soma point or the
+ *  crosshairs. */
 async function findAnchor(root: string): Promise<string | null> {
+  const picked = await insideCell(getSelectedSupervoxelId(), root);
+  if (picked) return picked;
   try {
     const backend = useProofreadingBackendStore();
     const t: any = backend.tasks.find((t: any) => backend.isTaskCell(t, root));
-    if (t) {
-      const sv = await insideCell(t.supervoxel_id, root);
-      if (sv) return sv;
-      const p = [t.claim_point_x, t.claim_point_y, t.claim_point_z];
-      if (p.every(n => typeof n === 'number' && Number.isFinite(n)) && p.some(n => n !== 0)) {
-        const at = await insideCell(await supervoxelAtPlace(p), root);
-        if (at) return at;
-      }
+    const sv = await insideCell(t?.supervoxel_id, root);
+    if (sv) return sv;
+  } catch { /* no claims loaded */ }
+  const fromGraph = await anchorFromGraph(root).catch(() => null);
+  if (fromGraph) return fromGraph;
+  return findAnchorNearby(root);
+}
+
+async function findAnchorNearby(root: string): Promise<string | null> {
+  try {
+    const backend = useProofreadingBackendStore();
+    const t: any = backend.tasks.find((t: any) => backend.isTaskCell(t, root));
+    const p = [t?.claim_point_x, t?.claim_point_y, t?.claim_point_z];
+    if (p.every(n => typeof n === 'number' && Number.isFinite(n)) && p.some(n => n !== 0)) {
+      const at = await insideCell(await supervoxelAtPlace(p), root);
+      if (at) return at;
     }
   } catch { /* no claims loaded */ }
-  const picked = await insideCell(getSelectedSupervoxelId(), root);
-  if (picked) return picked;
   const pos = viewerOf()?.navigationState?.position?.value;
   if (pos) {
     const at = await insideCell(await supervoxelAtPlace(Array.from(pos as Float32Array)), root);
@@ -492,11 +536,11 @@ export function openCellHistory(root: string) {
     steps = historySteps(edits);
     const namesReady = playerNames(edits.map(e => e.userId)).then(n => { names = n; if (!closed && current >= 0) describe(current); });
 
-    say('Finding a spot inside the cell to follow…');
+    say("Finding the cell on the lab's server…");
     anchor = await findAnchor(root);
     if (closed) return;
     if (!anchor) {
-      say('Point at this cell to start: hover over it in the 3D view, or in a 2D view. Its cell body works best.');
+      say("Couldn't find a spot inside this cell from the lab's server just now. Close and try again in a minute, or hover over the cell in a 2D view to start from there.");
       await new Promise<void>(resolve => {
         let busy = false;
         pointTimer = setInterval(async () => {
