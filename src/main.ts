@@ -19,6 +19,7 @@ import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
+import { startKeepToolAcrossViews } from './util/keep_tool_across_views';
 import { startCutPreview } from './util/cut_preview';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
 import GrowingCell from 'components/GrowingCell.vue';
@@ -415,6 +416,8 @@ function setupViewer() {
   startInvalidSegmentWatch(viewer);
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
+  // Merge or cut mode keeps working in a view loaded in place (Nseraf #203).
+  startKeepToolAcrossViews();
   startCloseGuard();
   // Saves that waited for CAVE while it was down go out once it is back.
   startCaveOutbox();
