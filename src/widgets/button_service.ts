@@ -10,6 +10,7 @@ import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes, cellTypeLabel} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
+import {completeStatusesFor} from '../sheet_sync';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
 
 /** The name Pyr shows for a cell: its type, with its classification. */
@@ -574,6 +575,7 @@ export class ButtonService {
           }
           statusLine.textContent = progressText();
           if (!toggleBtn.disabled) toggleBtn.textContent = st?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
+          showCant();
           if (st?.cellType && !select.value) select.value = st.cellType;
           if (typeLine) typeLine.textContent = st?.cellType || (st?.unreachable ? "Couldn't reach the lab's server to check. Try again in a minute." : 'No type yet');
           showLabType();
@@ -600,7 +602,28 @@ export class ButtonService {
         : 'This dataset has no proofread list yet, so there is nothing to mark here.';
       completionSection.appendChild(note);
     }
+    // The Δ menu's own Can't complete (Ames 2026-10-22): the same completion
+    // as Mark as Proofread, with "Can't Complete" already chosen in its form.
+    // Only where the cell's sheet has that status, and only while unfinished.
+    const CANT = "Can't Complete";
+    const cantBtn = document.createElement('button');
+    cantBtn.type = 'button';
+    cantBtn.classList.add('nge-lb-section-button', 'nge-lb-cant-btn');
+    cantBtn.textContent = "Can't complete";
+    cantBtn.title = "This cell can't be finished: choose why in the next step. It is recorded as Can't Complete in the cell sheet.";
+    const showCant = () => {
+      const can = !cachedStatus?.isComplete && completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT) && toggleBtn.style.display !== 'none';
+      cantBtn.style.display = can ? '' : 'none';
+    };
+    let forcedStatus = '';
+    cantBtn.addEventListener('click', () => {
+      if (toggleBtn.disabled || cachedStatus?.isComplete) return;
+      forcedStatus = CANT;
+      toggleBtn.click();
+    });
     toggleBtn.addEventListener('click', async () => {
+      const preset = forcedStatus;
+      forcedStatus = '';
       toggleBtn.disabled = true;
       toggleBtn.textContent = 'Saving…';
       const willBeComplete = !(cachedStatus?.isComplete ?? false);
@@ -619,8 +642,16 @@ export class ButtonService {
       // Library's own form does, before anything is written (annkri
       // 2026-10-06). Cancel leaves the cell untouched.
       let details: CompletionDetails = {};
+      // Can't complete needs the sheet's form; without it this would be a
+      // plain Mark as Proofread.
+      if (preset && !needsCompletionDetails(plan)) {
+        statusLine.textContent = "Can't complete is for cells in the Cell Library's sheet. This one is not in it.";
+        toggleBtn.textContent = 'Mark as Proofread';
+        toggleBtn.disabled = false;
+        return;
+      }
       if (plan && needsCompletionDetails(plan)) {
-        const asked = await askCompletionDetails(plan.dataset, plan.row?.index || '');
+        const asked = await askCompletionDetails(plan.dataset, plan.row?.index || '', preset);
         if (!asked) {
           toggleBtn.textContent = 'Mark as Proofread';
           toggleBtn.disabled = false;
@@ -673,9 +704,12 @@ export class ButtonService {
         toggleBtn.textContent = !localServerURL ? 'No CAVE server configured' : 'Error, try again';
       }
       toggleBtn.disabled = false;
+      showCant();
       showLabDone();
     });
     completionSection.appendChild(toggleBtn);
+    completionSection.appendChild(cantBtn);
+    showCant();
     const labDoneNote = document.createElement('div');
     labDoneNote.classList.add('nge-lb-readonly-note');
     labDoneNote.textContent = 'The lab has already proofread this cell, so there is nothing to mark here.';

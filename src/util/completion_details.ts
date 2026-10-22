@@ -63,7 +63,7 @@ let styled = false;
  * when this dataset has nothing to ask, or with null when the player cancels
  * (the completion must then not go ahead).
  */
-export function askCompletionDetails(dataset: string, cellLabel = ''): Promise<CompletionDetails | null> {
+export function askCompletionDetails(dataset: string, cellLabel = '', preset = ''): Promise<CompletionDetails | null> {
   const options = completeStatusesFor(dataset);
   if (!options.length) return Promise.resolve({});
   if (!styled) {
@@ -73,7 +73,8 @@ export function askCompletionDetails(dataset: string, cellLabel = ''): Promise<C
     document.head.appendChild(style);
   }
   return new Promise(resolve => {
-    let status = remembered(dataset, options);
+    // preset: the Δ menu's Can't complete button opens with that status picked.
+    let status = preset && options.some(o => o.value === preset) ? preset : remembered(dataset, options);
     const backdrop = document.createElement('div');
     backdrop.className = 'nge-cd-backdrop';
     const box = document.createElement('div');
