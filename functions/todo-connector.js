@@ -18,6 +18,14 @@ const LIST_WORDS = { todo: 'To do', doing: 'Doing', done: 'Done' };
 const LIST_KEYS = { 'to do': 'todo', todo: 'todo', doing: 'doing', done: 'done' };
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
+const LINK_WORDS = { test: 'Test site', live: 'Live', pr: 'Pull request', doc: 'Doc', other: 'Link' };
+const LINK_SCHEMA = { type: 'object', properties: {
+  url: { type: 'string', description: 'An https address.' },
+  kind: { type: 'string', enum: ['test', 'live', 'pr', 'doc', 'other'], description: 'test = a test site, live = the live page, pr = a pull request or branch, doc = a document.' },
+  label: { type: 'string', description: 'A short name, for kind other.' } }, required: ['url'] };
+/** A link's kind: given, or a Pyr test site recognized by its address. */
+const linkKind = l => l.kind || (/-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com/.test(l.url || '') && !/^https:\/\/eyewire-ii-community-dot/.test(l.url || '') ? 'test' : 'other');
+
 const TOOLS = [
   { name: 'list_cards', description: 'List the cards on the admins\' To do board, optionally only one list (To do, Doing, Done) or one owner. Done cards finished more than 14 days ago are left out unless asked for.',
     inputSchema: { type: 'object', properties: {
@@ -33,14 +41,21 @@ const TOOLS = [
       list: { type: 'string', enum: ['To do', 'Doing', 'Done'] },
       size: { type: 'string', enum: ['S', 'M', 'L'], description: 'S an hour or so, M a session or two, L days.' },
       owner: { type: 'string', description: 'An admin\'s name or first name, or "me".' },
-      checklist: { type: 'array', items: { type: 'string' }, description: 'Checklist items.' } }, required: ['title'] } },
+      checklist: { type: 'array', items: { type: 'string' }, description: 'Checklist items.' },
+      status: { type: 'string', description: 'One short line on where it stands, like "waiting for Celia\'s go".' },
+      due: { type: 'string', description: 'A due day, YYYY-MM-DD.' },
+      links: { type: 'array', items: LINK_SCHEMA, description: 'Links, such as the test site.' } }, required: ['title'] } },
   { name: 'update_card', description: 'Change a card: title, notes (replaces them), size, owner, or move it to another list. Only the fields given change. Newly written @Name tags notify that admin.',
     inputSchema: { type: 'object', properties: {
       card: { type: 'string', description: 'The card id (the first 8 characters are enough).' },
       title: { type: 'string' }, notes: { type: 'string' },
       size: { type: 'string', enum: ['S', 'M', 'L', 'none'] },
       owner: { type: 'string', description: 'An admin\'s name or first name, "me", or "nobody".' },
-      list: { type: 'string', enum: ['To do', 'Doing', 'Done'] } }, required: ['card'] } },
+      list: { type: 'string', enum: ['To do', 'Doing', 'Done'] },
+      status: { type: 'string', description: 'One short line on where it stands; empty clears it.' },
+      due: { type: 'string', description: 'A due day, YYYY-MM-DD, or "none".' } }, required: ['card'] } },
+  { name: 'link', description: 'Add a link to a card (a test site, the live page, a pull request or branch, a doc), or remove one by its number from get_card.',
+    inputSchema: { type: 'object', properties: { card: { type: 'string' }, add: LINK_SCHEMA, remove: { type: 'integer', description: 'Link number to remove.' } }, required: ['card'] } },
   { name: 'checklist', description: 'Add an item to a card\'s checklist, or tick or untick an item by its number (from get_card).',
     inputSchema: { type: 'object', properties: {
       card: { type: 'string' },
@@ -99,7 +114,9 @@ function cardLine(c, people) {
   const owner = people.find(p => p.id === c.owner_id);
   const done = c.checklist.filter(i => i.done).length;
   return `- ${c.title}  (id ${c.id.slice(0, 8)}, ${LIST_WORDS[c.list]}${c.size ? `, size ${c.size}` : ''}${owner ? `, owner ${owner.name}` : ''}` +
-    `${c.checklist.length ? `, checklist ${done}/${c.checklist.length}` : ''}${c.comments.length ? `, ${c.comments.length} comment${c.comments.length === 1 ? '' : 's'}` : ''})`;
+    `${c.checklist.length ? `, checklist ${done}/${c.checklist.length}` : ''}${c.comments.length ? `, ${c.comments.length} comment${c.comments.length === 1 ? '' : 's'}` : ''}` +
+    `${c.due_on ? `, due ${c.due_on}` : ''}${(c.links || []).length ? `, ${(c.links || []).length} link${(c.links || []).length === 1 ? '' : 's'}` : ''})` +
+    `${c.status ? `\n    status: ${c.status}` : ''}`;
 }
 
 function cardText(c, people, site) {
@@ -110,11 +127,14 @@ function cardText(c, people, site) {
     `Added by ${c.created_by || 'someone'} on ${String(c.created_at).slice(0, 10)}${c.done_at ? `, done ${String(c.done_at).slice(0, 10)}` : ''}`,
     c.triage_id ? `Made from a player report: ${site}/?triage=board&report=${c.triage_id}` : '',
     `Open it: ${site}/?triage=board&todo=${c.id}`,
+    c.status ? `Status: ${c.status}` : '',
+    c.due_on ? `Due: ${c.due_on}` : '',
+    (c.links || []).length ? 'Links:\n' + (c.links || []).map((l, k) => `${k + 1}. ${l.label || LINK_WORDS[l.kind] || 'Link'}: ${l.url}`).join('\n') : '',
     '', 'Notes:', c.notes || '(none)',
     '', 'Checklist:', c.checklist.length ? c.checklist.map((i, k) => `${k + 1}. [${i.done ? 'x' : ' '}] ${i.text}`).join('\n') : '(none)',
     '', 'Comments:', c.comments.length ? c.comments.map(m => `${m.by}, ${String(m.at).slice(0, 16).replace('T', ' ')} UTC: ${m.text}`).join('\n') : '(none)',
   ];
-  return lines.filter((l, i) => l !== '' || i > 3).join('\n');
+  return lines.filter(l => l !== '' && l !== undefined).join('\n').replace(/\n(Notes:|Checklist:|Comments:)/g, '\n\n$1');
 }
 
 /** One tool call. ctx: { db, me: {id, name}, byName, tag, site }. */
@@ -156,9 +176,10 @@ async function callTool(name, a, ctx) {
     if (a.size) fields.size = a.size;
     if (a.owner) fields.owner_id = personByName(a.owner, people, me).id;
     if (Array.isArray(a.checklist)) fields.checklist = a.checklist.map(t => ({ text: String(t), done: false }));
+    if (a.status) fields.status = a.status;
+    if (a.due) fields.due_on = a.due;
+    if (Array.isArray(a.links)) fields.links = a.links.map(l => ({ url: l.url, kind: linkKind(l), label: l.label || '' }));
     const { card } = await act('todo.save', { fields, tagIds: tagIdsIn(`${a.title} ${a.notes || ''} ${(a.checklist || []).join(' ')}`, people) });
-    // A card given to someone else at birth: they hear about it too.
-    if (fields.owner_id && fields.owner_id !== me.id) await ctx.tag(people.filter(p => p.id === fields.owner_id), card, 'gave you');
     return `Added: ${cardLine(card, people)}`;
   }
   if (name === 'update_card') {
@@ -170,11 +191,26 @@ async function callTool(name, a, ctx) {
     if (a.size !== undefined) fields.size = a.size === 'none' ? null : a.size;
     if (a.owner !== undefined) fields.owner_id = String(a.owner).trim().toLowerCase() === 'nobody' ? null : personByName(a.owner, people, me).id;
     if (a.list !== undefined) fields.list = listKey(a.list);
-    if (!Object.keys(fields).length) throw userError('Nothing to change: give a title, notes, size, owner or list.');
+    if (a.status !== undefined) fields.status = a.status;
+    if (a.due !== undefined) fields.due_on = String(a.due).trim().toLowerCase() === 'none' ? null : a.due;
+    if (!Object.keys(fields).length) throw userError('Nothing to change: give a title, notes, size, owner, list, status or due day.');
     const old = new Set(tagIdsIn(`${c.title} ${c.notes}`, people));
     const tagIds = tagIdsIn(`${fields.title ?? ''} ${fields.notes ?? ''}`, people).filter(id => !old.has(id));
     const { card } = await act('todo.save', { id: c.id, fields, tagIds });
     return `Updated: ${cardLine(card, people)}`;
+  }
+  if (name === 'link') {
+    const { cards, people } = await board();
+    const c = cardByRef(a.card, cards);
+    let links = (c.links || []).map(l => ({ ...l }));
+    if (a.remove !== undefined) {
+      if (!Number.isInteger(a.remove) || a.remove < 1 || a.remove > links.length) throw userError(`Link numbers on this card run from 1 to ${links.length}.`);
+      links.splice(a.remove - 1, 1);
+    }
+    if (a.add) links = [...links, { url: a.add.url, kind: linkKind(a.add), label: a.add.label || '' }];
+    if (a.remove === undefined && !a.add) throw userError('Say what link to add or remove.');
+    const { card } = await act('todo.save', { id: c.id, fields: { links } });
+    return cardText(card, people, site);
   }
   if (name === 'checklist') {
     const { cards, people } = await board();

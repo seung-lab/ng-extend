@@ -25,3 +25,7 @@ test('reply images: admins only, in their own folder that the 7 day cleanup empt
  assert.throws(()=>prepareUpload({...image,kind:'reply'},who,false),/Admins only/);
  assert.match(prepareUpload({...image,kind:'reply'},who,true).path,/^reply-images\/[a-f0-9]{24}\/[a-f0-9-]+\.png$/);
 });
+test('To do board images: admins only, in their own folder',()=>{
+ assert.throws(()=>prepareUpload({...image,kind:'todo'},who,false),/Admins only/);
+ assert.match(prepareUpload({...image,kind:'todo'},who,true).path,/^todo-images\//);
+});

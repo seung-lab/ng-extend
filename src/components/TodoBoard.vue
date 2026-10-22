@@ -13,6 +13,8 @@
  */
 import { ref, shallowRef, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { secureWrite } from '../secure_write';
+import { secureUpload } from '../secure_upload';
+import { renderSafeMarkdown } from '../util/safe_markdown';
 
 const props = defineProps<{ light?: boolean; focusId?: string | null; reportNumbers?: Record<string, number>; standalone?: boolean }>();
 const emit = defineEmits<{ (e: 'back'): void }>();
@@ -24,6 +26,8 @@ interface Card {
   owner_id: string | null; checklist: { text: string; done: boolean }[];
   comments: { by: string; text: string; at: string }[];
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
+  // Optional (supabase-admin-todos-fields.sql).
+  links?: Link[]; status?: string; due_on?: string | null; images?: string[];
 }
 interface Person { id: string; name: string }
 
@@ -66,7 +70,8 @@ const nameOf = (id: string | null) => people.value.find(p => p.id === id)?.name 
 const initialOf = (id: string | null) => (nameOf(id) || '?').slice(0, 1).toUpperCase();
 const doneOld = (c: Card) => c.list === 'done' && !!c.done_at && Date.now() - Date.parse(c.done_at) > DONE_DAYS * 864e5;
 const columns = computed(() => LISTS.map(l => {
-  const all = cards.value.filter(c => c.list === l.key).sort((a, b) => a.rank - b.rank);
+  const byDue = (a: Card, b: Card) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.rank - b.rank;
+  const all = cards.value.filter(c => c.list === l.key).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
   const rows = l.key === 'done' && !showAllDone.value ? all.filter(c => !doneOld(c)) : all;
   return { ...l, rows, hidden: all.length - rows.length };
 }));
@@ -144,16 +149,27 @@ async function save(c: Card, fields: Partial<Card>, extra: Record<string, any> =
 
 // A new card, at the bottom of its list.
 const adding = ref<ListKey | null>(null);
-const draft = ref({ title: '', notes: '', size: null as Size | null });
+const newDraft = () => ({ title: '', notes: '', size: null as Size | null, status: '', owner_id: '', due_on: '',
+  links: [] as Link[], checklist: [] as { text: string; done: boolean }[], images: [] as string[] });
+const draft = ref(newDraft());
 async function addCard(list: ListKey) {
   const title = draft.value.title.trim();
   if (!title || busy.value) return;
   busy.value = true;
   try {
-    const { card } = await secureWrite<any>('todo.save', { fields: { title, notes: draft.value.notes, size: draft.value.size, list },
-      tagIds: tagsIn(title + ' ' + draft.value.notes) });
+    const d = draft.value;
+    const fields: Record<string, any> = { title, notes: d.notes, size: d.size, list };
+    // Only what was filled in, so a board without the new columns still adds.
+    if (d.status.trim()) fields.status = d.status.trim();
+    if (d.owner_id) fields.owner_id = d.owner_id;
+    if (d.due_on) fields.due_on = d.due_on;
+    if (d.links.length) fields.links = d.links;
+    if (d.checklist.length) fields.checklist = d.checklist;
+    if (d.images.length) fields.images = d.images;
+    const { card } = await secureWrite<any>('todo.save', { fields,
+      tagIds: tagsIn(title + ' ' + d.notes + ' ' + d.checklist.map(i => i.text).join(' ')) });
     if (card) put(card);
-    draft.value = { title: '', notes: '', size: null };
+    draft.value = newDraft();
     adding.value = null;
   } catch (e: any) {
     error.value = e?.message ?? String(e);
@@ -220,6 +236,8 @@ function openUp(c: Card) {
   newItem.value = '';
   comment.value = '';
   notesEditing.value = false;
+  editStatus.value = c.status || '';
+  linkDraft.value = null;
 }
 if (props.focusId) {
   const stop = setInterval(() => {
@@ -348,6 +366,195 @@ async function copyConnectUrl() {
   catch { /* the address is on screen to copy by hand */ }
 }
 
+
+// ── Links, a status line, a due day, images and formatting (Ames 2026-10-21:
+// "we need some more options here, like test server link", "all optional",
+// "need optional images and text formatting") ──
+type LinkKind = 'test' | 'live' | 'pr' | 'doc' | 'other';
+interface Link { kind: LinkKind; url: string; label: string }
+const LINK_KINDS: { key: LinkKind; icon: string; word: string }[] = [
+  { key: 'test', icon: '🧪', word: 'Test site' }, { key: 'live', icon: '🌐', word: 'Live' },
+  { key: 'pr', icon: '🔀', word: 'Pull request' }, { key: 'doc', icon: '📄', word: 'Doc' }, { key: 'other', icon: '🔗', word: 'Link' },
+];
+const linkIcon = (l: Link) => LINK_KINDS.find(k => k.key === l.kind)?.icon || '🔗';
+const linkWord = (l: Link) => l.label || LINK_KINDS.find(k => k.key === l.kind)?.word || 'Link';
+/** What a pasted address most likely is. A Pyr test site is recognized. */
+function guessKind(url: string): LinkKind {
+  if (/^https:\/\/eyewire-ii-community-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com/.test(url)) return 'live';
+  if (/-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com/.test(url)) return 'test';
+  if (/github\.com\/[^/]+\/[^/]+\/(pull|tree|compare|commit)\//.test(url)) return 'pr';
+  if (/docs\.google\.com|claude\.ai\/|notion\.so/.test(url)) return 'doc';
+  return 'other';
+}
+/** The link being typed: for the new card ('new') or an open card (its id). */
+const linkDraft = ref<{ for: string; kind: LinkKind | ''; url: string; label: string } | null>(null);
+function linkFromDraft(): Link | null {
+  const d = linkDraft.value;
+  if (!d) return null;
+  const url = d.url.trim();
+  if (!/^https:\/\/[^\s"'<>]+$/.test(url)) { error.value = 'A link must be one https address.'; return null; }
+  const kind = d.kind || guessKind(url);
+  return { kind, url, label: kind === 'other' ? d.label.trim().slice(0, 40) : '' };
+}
+function addDraftLink() {
+  const l = linkFromDraft();
+  if (!l) return;
+  draft.value.links.push(l);
+  linkDraft.value = null;
+}
+async function addCardLink(c: Card) {
+  const l = linkFromDraft();
+  if (!l) return;
+  linkDraft.value = null;
+  await save(c, { links: [...(c.links || []), l] });
+}
+const removeCardLink = (c: Card, i: number) => save(c, { links: (c.links || []).filter((_, k) => k !== i) });
+
+/** Today, on this computer's calendar, as 2026-10-21. */
+function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+const isOverdue = (c: Card) => !!c.due_on && c.list !== 'done' && c.due_on < todayKey();
+function dueWords(day: string) {
+  const [y, m, d] = day.split('-').map(Number);
+  const when = new Date(y, m - 1, d);
+  const days = Math.round((when.getTime() - new Date(new Date().toDateString()).getTime()) / 864e5);
+  if (days === 0) return 'due today';
+  if (days === 1) return 'due tomorrow';
+  if (days > 1 && days < 7) return 'due ' + when.toLocaleDateString(undefined, { weekday: 'short' });
+  return 'due ' + when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+const onDueChange = (c: Card, e: Event) => save(c, { due_on: (e.target as HTMLInputElement).value || null });
+const editStatus = ref('');
+async function saveStatus(c: Card) {
+  const s = editStatus.value.replace(/\s+/g, ' ').trim().slice(0, 200);
+  if (s !== (c.status || '')) await save(c, { status: s });
+}
+
+// To do in your own order, or by due day (remembered).
+const SORT_KEY = 'nge_todo_sort_v1';
+const todoByDue = ref((() => { try { return localStorage.getItem(SORT_KEY) === 'due'; } catch { return false; } })());
+function toggleTodoSort() {
+  todoByDue.value = !todoByDue.value;
+  try { localStorage.setItem(SORT_KEY, todoByDue.value ? 'due' : 'order'); } catch { /* not remembered */ }
+}
+// Done folds to a narrow strip (Ames 2026-10-21: "a way to collapse Done").
+const FOLD_KEY = 'nge_todo_done_folded_v1';
+const doneFolded = ref((() => { try { return localStorage.getItem(FOLD_KEY) === '1'; } catch { return false; } })());
+function toggleDoneFold() {
+  doneFolded.value = !doneFolded.value;
+  try { localStorage.setItem(FOLD_KEY, doneFolded.value ? '1' : '0'); } catch { /* not remembered */ }
+}
+const listColumns = computed(() => (doneFolded.value ? 'minmax(0, 1fr) minmax(0, 1fr) 44px' : 'repeat(3, minmax(0, 1fr))'));
+
+// Formatting in notes, as in the reply box: bold, bullets, numbers. Notes
+// show through renderSafeMarkdown, never as raw HTML.
+type TextBox = { el: HTMLTextAreaElement | null; get: () => string; set: (v: string) => void };
+function fmtBold(box: TextBox) {
+  const el = box.el; if (!el) return;
+  const v = box.get(), a = el.selectionStart, b = el.selectionEnd;
+  const inner = v.slice(a, b) || 'bold text';
+  box.set(v.slice(0, a) + '**' + inner + '**' + v.slice(b));
+  void nextTick(() => { el.focus(); el.setSelectionRange(a + 2, a + 2 + inner.length); });
+}
+/** The whole lines the selection touches: [start, end) in the text. */
+function selectedLines(el: HTMLTextAreaElement, v: string) {
+  const a = el.selectionStart, b = Math.max(el.selectionStart, el.selectionEnd - (el.selectionEnd > el.selectionStart && v[el.selectionEnd - 1] === '\n' ? 1 : 0));
+  const start = v.lastIndexOf('\n', a - 1) + 1;
+  let end = v.indexOf('\n', b);
+  if (end < 0) end = v.length;
+  return { start, end };
+}
+const LIST_MARK = /^\s*(?:[-*•]|\d+[.)]|\[[ xX]?\])\s*/;
+function fmtList(box: TextBox, numbered: boolean) {
+  const el = box.el; if (!el) return;
+  const v = box.get(), { start, end } = selectedLines(el, v);
+  const lines = v.slice(start, end).split('\n').map((l, i) => (numbered ? `${i + 1}. ` : '- ') + l.replace(LIST_MARK, ''));
+  box.set(v.slice(0, start) + lines.join('\n') + v.slice(end));
+}
+/** The selected lines leave the text and come back as checklist items (Ames
+ *  2026-10-21: "I highlight some rows and click checklist and it becomes
+ *  things they can check off"). With nothing selected, the line the cursor
+ *  is on. */
+function takeLines(box: TextBox): string[] {
+  const el = box.el; if (!el) return [];
+  const v = box.get(), { start, end } = selectedLines(el, v);
+  const items = v.slice(start, end).split('\n').map(l => l.replace(LIST_MARK, '').trim()).filter(Boolean);
+  if (!items.length) return [];
+  box.set((v.slice(0, start) + v.slice(end + 1)).replace(/\n{3,}/g, '\n\n').replace(/\s+$/, ''));
+  return items;
+}
+const draftNotesEl = ref<HTMLTextAreaElement | null>(null);
+const cardNotesEl = ref<HTMLTextAreaElement | null>(null);
+// The add form sits inside the lists' v-for, where a plain ref becomes a list.
+const setDraftNotesEl = (el: unknown) => { if (el) draftNotesEl.value = el as HTMLTextAreaElement; };
+const draftBox: TextBox = { get el() { return draftNotesEl.value; }, get: () => draft.value.notes, set: v => { draft.value.notes = v; } } as TextBox;
+const cardBox: TextBox = { get el() { return cardNotesEl.value; }, get: () => editNotes.value, set: v => { editNotes.value = v; } } as TextBox;
+function draftToChecklist() {
+  const items = takeLines(draftBox);
+  if (!items.length) { error.value = 'Select the lines that should become checklist items.'; return; }
+  draft.value.checklist.push(...items.map(text => ({ text, done: false })));
+}
+async function cardToChecklist(c: Card) {
+  const items = takeLines(cardBox);
+  if (!items.length) { error.value = 'Select the lines that should become checklist items.'; return; }
+  await save(c, { notes: editNotes.value, checklist: [...c.checklist, ...items.map(text => ({ text, done: false }))] }, { tagIds: tagsIn(items.join(' ')) });
+}
+/** Notes with formatting and lit @tags; renderSafeMarkdown escapes the rest. */
+function notesHtml(text: string) {
+  let html = renderSafeMarkdown(text, true);
+  for (const p of [...people.value].sort((a, b) => b.name.length - a.name.length)) {
+    const esc = ('@' + p.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = html.split(esc).join(`<b class="nge-todo-tag">${esc}</b>`);
+  }
+  return html;
+}
+
+// Images on a card: added with the button, pasted, or dropped on the notes.
+// Kept (admin-uploads/todo-images/), not cleaned up like reply images.
+const imageBusy = ref(0);
+async function uploadImage(file: File): Promise<string | null> {
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { error.value = 'Use a PNG, JPEG, GIF or WebP image.'; return null; }
+  imageBusy.value++;
+  try { return await secureUpload(file, 'todo'); }
+  catch (e: any) { error.value = e?.message || 'The image did not upload.'; return null; }
+  finally { imageBusy.value--; }
+}
+async function addImages(files: FileList | File[] | null | undefined, to: 'new' | Card) {
+  for (const f of [...(files || [])]) {
+    const url = await uploadImage(f);
+    if (!url) continue;
+    if (to === 'new') draft.value.images.push(url);
+    else await save(to, { images: [...(to.images || []), url] });
+  }
+}
+const removeCardImage = (c: Card, i: number) => save(c, { images: (c.images || []).filter((_, k) => k !== i) });
+function imageFiles(e: ClipboardEvent | DragEvent): File[] {
+  const items = 'clipboardData' in e ? [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()) : [...(e.dataTransfer?.files || [])];
+  return items.filter((f): f is File => !!f && f.type.startsWith('image/'));
+}
+function onNotesPaste(e: ClipboardEvent, to: 'new' | Card) {
+  const files = imageFiles(e);
+  if (files.length) { e.preventDefault(); void addImages(files, to); }
+}
+function onNotesDrop(e: DragEvent, to: 'new' | Card) {
+  const files = imageFiles(e);
+  if (files.length) { e.preventDefault(); void addImages(files, to); }
+}
+const pickFor = ref<'new' | Card | null>(null);
+const imagePicker = ref<HTMLInputElement | null>(null);
+function pickImages(to: 'new' | Card) { pickFor.value = to; imagePicker.value?.click(); }
+function onPicked(e: Event) {
+  const input = e.target as HTMLInputElement;
+  if (pickFor.value) void addImages(input.files, pickFor.value);
+  input.value = '';
+}
+const onDraftOwner = (e: Event) => { draft.value.owner_id = (e.target as HTMLSelectElement).value; };
+
+// Delete straight from the list, and edit a card's title from the list.
+const titleEl = ref<HTMLInputElement | null>(null);
+function editCard(c: Card) { openUp(c); void nextTick(() => titleEl.value?.focus()); }
+
+const blurOf = (e: Event) => (e.target as HTMLElement).blur();
+
 function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape' || (e.target as HTMLElement)?.closest?.('textarea, input')) return;
   if (openId.value) openId.value = null;
@@ -370,31 +577,77 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
-      <div class="nge-todo-lists">
-        <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="`nge-todo-list--${col.key}`"
+      <div class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
+        <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': col.key === 'done' && doneFolded }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
+          <button v-if="col.key === 'done' && doneFolded" type="button" class="nge-todo-rail" title="Open Done" @click="toggleDoneFold">
+            <span class="nge-todo-list-title">{{ col.title }}</span><span class="nge-todo-count">{{ col.rows.length }}</span>
+          </button>
+          <template v-else>
           <header class="nge-todo-list-head">
+            <button v-if="col.key === 'done'" type="button" class="nge-todo-mini nge-todo-fold" title="Fold Done away" @click="toggleDoneFold">◂</button>
             <span class="nge-todo-list-title">{{ col.title }}</span>
             <span class="nge-todo-count">{{ col.rows.length }}</span>
             <span v-if="col.key === 'todo' && sizeSummary.length" class="nge-todo-sizes" title="Sizes waiting in To do">
               <template v-for="(x, i) in sizeSummary" :key="x.s">{{ i ? ' · ' : '' }}{{ x.n }} {{ x.s }}</template>
             </span>
             <span class="nge-todo-list-hint">{{ col.hint }}</span>
+            <button v-if="col.key === 'todo'" type="button" class="nge-todo-mini nge-todo-sort" :title="todoByDue ? 'Showing by due day. Click for your own order.' : 'Showing your own order. Click to sort by due day.'"
+                    @click="toggleTodoSort">{{ todoByDue ? '⇅ By due day' : '⇅ My order' }}</button>
           </header>
 
           <div v-if="col.key !== 'done'" class="nge-todo-add">
-            <button v-if="adding !== col.key" class="nge-todo-btn nge-todo-add-btn" @click="adding = col.key; draft = { title: '', notes: '', size: null }">＋ Add a card</button>
+            <button v-if="adding !== col.key" class="nge-todo-btn nge-todo-add-btn" @click="adding = col.key; draft = newDraft(); linkDraft = null">＋ Add a card</button>
             <form v-else class="nge-todo-form" @submit.prevent="addCard(col.key)">
               <input v-model="draft.title" class="nge-todo-input" maxlength="200" placeholder="What needs doing" aria-label="Title"
                      @input="onMentionInput($event, v => draft.title = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
-              <textarea v-model="draft.notes" class="nge-todo-input" rows="3" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone." aria-label="Notes"
-                        @input="onMentionInput($event, v => draft.notes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+              <input v-model="draft.status" class="nge-todo-input nge-todo-status-input" maxlength="200" placeholder="Status, in a line (optional)" aria-label="Status"
+                     @keydown.stop @keyup.stop @keypress.stop />
+              <div class="nge-todo-fmtbar" role="toolbar" aria-label="Formatting">
+                <button type="button" title="Bold" @click="fmtBold(draftBox)"><b>B</b></button>
+                <button type="button" title="Bulleted list" @click="fmtList(draftBox, false)">• Bullets</button>
+                <button type="button" title="Numbered list" @click="fmtList(draftBox, true)">1. Numbers</button>
+                <button type="button" title="Select some lines, then click: they become checklist items" @click="draftToChecklist">☑ Checklist</button>
+                <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages('new')">🖼 Image</button>
+              </div>
+              <textarea :ref="setDraftNotesEl" v-model="draft.notes" class="nge-todo-input" rows="4" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
+                        @input="onMentionInput($event, v => draft.notes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
+                        @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
+              <ul v-if="draft.checklist.length" class="nge-todo-check">
+                <li v-for="(it, i) in draft.checklist" :key="i"><label><input type="checkbox" disabled /> <span>{{ it.text }}</span></label>
+                  <button type="button" class="nge-todo-mini" aria-label="Remove" @click="draft.checklist.splice(i, 1)">×</button></li>
+              </ul>
+              <div v-if="draft.images.length || imageBusy" class="nge-todo-images">
+                <span v-for="(u, i) in draft.images" :key="u" class="nge-todo-image"><img :src="u" alt="" /><button type="button" class="nge-todo-image-x" aria-label="Remove image" @click="draft.images.splice(i, 1)">×</button></span>
+                <span v-if="imageBusy" class="nge-todo-warn">Uploading…</span>
+              </div>
+              <div v-if="draft.links.length" class="nge-todo-links">
+                <span v-for="(l, i) in draft.links" :key="i" class="nge-todo-linkchip">{{ linkIcon(l) }} {{ linkWord(l) }}<button type="button" class="nge-todo-mini" aria-label="Remove link" @click="draft.links.splice(i, 1)">×</button></span>
+              </div>
+              <div v-if="linkDraft?.for === 'new'" class="nge-todo-row nge-todo-linkform">
+                <select v-model="linkDraft.kind" class="nge-todo-select" aria-label="Kind of link">
+                  <option value="">Guess from the address</option>
+                  <option v-for="k in LINK_KINDS" :key="k.key" :value="k.key">{{ k.icon }} {{ k.word }}</option>
+                </select>
+                <input v-model="linkDraft.url" class="nge-todo-input nge-todo-grow" placeholder="https://..." aria-label="Address" @keydown.stop @keyup.stop @keypress.stop @keydown.enter.prevent="addDraftLink" />
+                <input v-if="linkDraft.kind === 'other'" v-model="linkDraft.label" class="nge-todo-input nge-todo-short" maxlength="40" placeholder="Name" aria-label="Link name" @keydown.stop @keyup.stop @keypress.stop />
+                <button type="button" class="nge-todo-btn" @click="addDraftLink">Add link</button>
+                <button type="button" class="nge-todo-mini" @click="linkDraft = null">Cancel</button>
+              </div>
               <div class="nge-todo-row">
                 <span class="nge-todo-sizepick" role="radiogroup" aria-label="Size">
                   <button v-for="s in SIZES" :key="s" type="button" role="radio" class="nge-todo-size" :class="{ 'nge-todo-size--on': draft.size === s }"
                           :aria-checked="draft.size === s ? 'true' : 'false'" :title="SIZE_WORDS[s]" @click="draft.size = draft.size === s ? null : s">{{ s }}</button>
                 </span>
-                <button type="submit" class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !draft.title.trim()">{{ busy ? 'Adding…' : 'Add' }}</button>
+                <select class="nge-todo-select" :value="draft.owner_id" aria-label="Owner" @change="onDraftOwner($event)">
+                  <option value="">Owner (optional)</option>
+                  <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+                <input v-model="draft.due_on" type="date" class="nge-todo-select" aria-label="Due day (optional)" title="Due day (optional)" />
+                <button v-if="linkDraft?.for !== 'new'" type="button" class="nge-todo-btn" @click="linkDraft = { for: 'new', kind: '', url: '', label: '' }">＋ Link</button>
+              </div>
+              <div class="nge-todo-row">
+                <button type="submit" class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !!imageBusy || !draft.title.trim()">{{ busy ? 'Adding…' : 'Add' }}</button>
                 <button type="button" class="nge-todo-btn" @click="adding = null">Cancel</button>
               </div>
             </form>
@@ -405,10 +658,20 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                              'nge-todo-card--drop-above': dropAt?.id === c.id && !dropAt.after, 'nge-todo-card--drop-below': dropAt?.id === c.id && dropAt.after }"
                    tabindex="0" @click="openUp(c)" @keydown.enter="openUp(c)"
                    @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c)">
+            <div class="nge-todo-card-tools" @click.stop>
+              <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
+              <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
+            </div>
             <div class="nge-todo-card-title">{{ c.title }}</div>
+            <div v-if="c.status" class="nge-todo-card-status">{{ c.status }}</div>
+            <div v-if="(c.links || []).length" class="nge-todo-links" @click.stop>
+              <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url" draggable="false">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
+            </div>
             <div class="nge-todo-card-meta">
               <span v-if="c.size" class="nge-todo-size nge-todo-size--on" :title="SIZE_WORDS[c.size]">{{ c.size }}</span>
+              <span v-if="c.due_on" class="nge-todo-chip" :class="{ 'nge-todo-chip--late': isOverdue(c) }" :title="'Due ' + c.due_on">{{ dueWords(c.due_on) }}</span>
               <span v-if="c.checklist.length" class="nge-todo-chip" :class="{ 'nge-todo-chip--all': checkCount(c).done === checkCount(c).all }" title="Checklist">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
+              <span v-if="(c.images || []).length" class="nge-todo-chip" title="Images">🖼 {{ c.images.length }}</span>
               <span v-if="c.comments.length" class="nge-todo-chip" title="Comments">💬 {{ c.comments.length }}</span>
               <span v-if="c.triage_id" class="nge-todo-chip" title="Made from a player report">{{ reportLabel(c.triage_id) }}</span>
               <span v-if="c.owner_id" class="nge-todo-avatar" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
@@ -419,6 +682,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button v-if="col.key === 'done' && (col.hidden || showAllDone)" class="nge-todo-btn nge-todo-more" @click="showAllDone = !showAllDone">
             {{ showAllDone ? `Hide finished more than ${DONE_DAYS} days ago` : `Show ${col.hidden} finished more than ${DONE_DAYS} days ago` }}
           </button>
+          </template>
         </section>
       </div>
 
@@ -469,7 +733,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </select>
           <button class="nge-todo-x" @click="openId = null" aria-label="Close" title="Close (Esc)">×</button>
         </div>
-        <input v-model="editTitle" class="nge-todo-input nge-todo-title-edit" maxlength="200" aria-label="Title"
+        <input ref="titleEl" v-model="editTitle" class="nge-todo-input nge-todo-title-edit" maxlength="200" aria-label="Title" title="Click to edit the title"
                @input="onMentionInput($event, v => editTitle = v)" @keydown="onTitleKey"
                @blur="saveTitle(openCard)" @keyup.stop @keypress.stop />
         <a v-if="openCard.triage_id" class="nge-todo-link" :href="reportHref(openCard.triage_id)" target="_blank" rel="noopener">{{ reportLabel(openCard.triage_id) }}: open it on the triage board ↗</a>
@@ -489,17 +753,59 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </select>
         </div>
 
-        <div class="nge-todo-label">Notes</div>
+        <input v-model="editStatus" class="nge-todo-input nge-todo-status-input" maxlength="200" placeholder="Status, in a line (optional)" aria-label="Status"
+               @keydown.stop @keydown.enter="blurOf($event)" @keyup.stop @keypress.stop @blur="saveStatus(openCard)" />
+        <div class="nge-todo-field">
+          <span class="nge-todo-label">Due</span>
+          <input type="date" class="nge-todo-select" :value="openCard.due_on || ''" aria-label="Due day" @change="onDueChange(openCard, $event)" />
+          <button v-if="openCard.due_on" type="button" class="nge-todo-mini" @click="save(openCard, { due_on: null })">Clear</button>
+        </div>
+
+        <div class="nge-todo-label">Links</div>
+        <div v-if="(openCard.links || []).length" class="nge-todo-links">
+          <span v-for="(l, i) in openCard.links" :key="i" class="nge-todo-linkchip"><a :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url">{{ linkIcon(l) }} {{ linkWord(l) }}</a><button type="button" class="nge-todo-mini" aria-label="Remove link" @click="removeCardLink(openCard, i)">×</button></span>
+        </div>
+        <div v-if="linkDraft?.for === openCard.id" class="nge-todo-row nge-todo-linkform">
+          <select v-model="linkDraft.kind" class="nge-todo-select" aria-label="Kind of link">
+            <option value="">Guess from the address</option>
+            <option v-for="k in LINK_KINDS" :key="k.key" :value="k.key">{{ k.icon }} {{ k.word }}</option>
+          </select>
+          <input v-model="linkDraft.url" class="nge-todo-input nge-todo-grow" placeholder="https://..." aria-label="Address" @keydown.stop @keyup.stop @keypress.stop @keydown.enter.prevent="addCardLink(openCard)" />
+          <input v-if="linkDraft.kind === 'other'" v-model="linkDraft.label" class="nge-todo-input nge-todo-short" maxlength="40" placeholder="Name" aria-label="Link name" @keydown.stop @keyup.stop @keypress.stop />
+          <button type="button" class="nge-todo-btn" @click="addCardLink(openCard)">Add link</button>
+          <button type="button" class="nge-todo-mini" @click="linkDraft = null">Cancel</button>
+        </div>
+        <button v-else type="button" class="nge-todo-btn nge-todo-add-btn" @click="linkDraft = { for: openCard.id, kind: '', url: '', label: '' }">＋ Link, like the test site</button>
+
+        <div class="nge-todo-label nge-todo-label-row">Notes
+          <button v-if="!notesEditing && openCard.notes" type="button" class="nge-todo-mini" @click="notesEditing = true">✎ Edit</button></div>
         <template v-if="notesEditing">
-          <textarea v-model="editNotes" class="nge-todo-input" rows="5" maxlength="8000" placeholder="Type @ to tag someone." aria-label="Notes"
-                    @input="onMentionInput($event, v => editNotes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+          <div class="nge-todo-fmtbar" role="toolbar" aria-label="Formatting">
+            <button type="button" title="Bold" @click="fmtBold(cardBox)"><b>B</b></button>
+            <button type="button" title="Bulleted list" @click="fmtList(cardBox, false)">• Bullets</button>
+            <button type="button" title="Numbered list" @click="fmtList(cardBox, true)">1. Numbers</button>
+            <button type="button" title="Select some lines, then click: they become checklist items" @click="cardToChecklist(openCard)">☑ Checklist</button>
+            <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages(openCard)">🖼 Image</button>
+          </div>
+          <textarea ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
+                    @input="onMentionInput($event, v => editNotes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
+                    @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
           <div class="nge-todo-row">
             <button class="nge-todo-btn nge-todo-btn--primary" @click="saveNotes(openCard); notesEditing = false">Save notes</button>
             <button class="nge-todo-btn" @click="editNotes = openCard.notes; notesEditing = false">Cancel</button>
           </div>
         </template>
         <button v-else-if="!openCard.notes" class="nge-todo-btn nge-todo-add-btn" @click="notesEditing = true">＋ Add notes</button>
-        <div v-else class="nge-todo-notes nge-todo-notes--edit" title="Click to edit" @click="notesEditing = true"><template v-for="(pt, i) in parts(openCard.notes)" :key="i"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
+        <div v-else class="nge-todo-notes nge-todo-notes--edit nge-todo-md" title="Click to edit" @click="notesEditing = true" v-html="notesHtml(openCard.notes)"></div>
+
+        <template v-if="(openCard.images || []).length || imageBusy">
+          <div class="nge-todo-label">Images</div>
+          <div class="nge-todo-images">
+            <span v-for="(u, i) in openCard.images" :key="u" class="nge-todo-image"><a :href="u" target="_blank" rel="noopener" title="Open full size"><img :src="u" alt="" loading="lazy" /></a><button type="button" class="nge-todo-image-x" aria-label="Remove image" @click="removeCardImage(openCard, i)">×</button></span>
+            <span v-if="imageBusy" class="nge-todo-warn">Uploading…</span>
+          </div>
+        </template>
+        <button v-if="!notesEditing" type="button" class="nge-todo-btn nge-todo-add-btn" @click="pickImages(openCard)">🖼 Add an image</button>
 
         <div class="nge-todo-label">Checklist<template v-if="openCard.checklist.length"> · {{ checkCount(openCard).done }}/{{ checkCount(openCard).all }}</template></div>
         <ul class="nge-todo-check">
@@ -533,6 +839,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       </aside>
     </div>
 
+    <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden @change="onPicked" />
     <!-- The list of admins while typing a tag. -->
     <Teleport to="body">
       <ul v-if="mention && mentionMatches.length" class="nge-todo-mention" :class="{ 'nge-todo-mention--light': light }" role="listbox"
@@ -557,6 +864,47 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .nge-todo-heading { font-size: 16px; font-weight: 700; }
 .nge-todo-sub { font-size: 12.5px; color: var(--dim); flex: 1 1 260px; }
+.nge-todo-status-input { font-size: 12.5px; }
+.nge-todo-fmtbar { display: flex; gap: 4px; flex-wrap: wrap; }
+.nge-todo-fmtbar button {
+  font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 5px; cursor: pointer;
+  background: transparent; border: 1px solid var(--line); color: var(--text);
+}
+.nge-todo-fmtbar button:hover { border-color: var(--accent); }
+.nge-todo-card { position: relative; }
+.nge-todo-card-tools { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; background: var(--card); border-radius: 6px; }
+.nge-todo-card:hover .nge-todo-card-tools, .nge-todo-card:focus-within .nge-todo-card-tools { display: flex; }
+.nge-todo-card-status { font-size: 12px; color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
+.nge-todo-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.nge-todo-linkchip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--accent); text-decoration: none; background: var(--card-hi);
+}
+.nge-todo-linkchip a { color: inherit; text-decoration: none; }
+a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underline; }
+.nge-todo-linkform { align-items: center; }
+.nge-todo-short { width: 110px; }
+.nge-todo-chip--late { color: #ff8b8b; border-color: rgba(255, 120, 120, 0.5); }
+.nge-todo--light .nge-todo-chip--late { color: #b4231a; border-color: #e3aaa5; }
+.nge-todo-images { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.nge-todo-image { position: relative; }
+.nge-todo-image img { width: 84px; height: 62px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
+.nge-todo-image-x {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 12px; line-height: 18px; padding: 0;
+}
+.nge-todo-label-row { display: flex; align-items: center; gap: 8px; }
+.nge-todo-md :deep(p) { margin: 0 0 6px; }
+.nge-todo-md :deep(ul), .nge-todo-md :deep(ol) { margin: 0 0 6px; padding-left: 20px; }
+.nge-todo-md { white-space: normal; }
+.nge-todo-list--folded { padding: 0; overflow: hidden; }
+.nge-todo-rail {
+  width: 100%; height: 100%; border: none; background: transparent; color: var(--text); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0;
+}
+.nge-todo-rail .nge-todo-list-title { writing-mode: vertical-rl; }
+.nge-todo-fold, .nge-todo-sort { font-size: 12px; }
+.nge-todo-sort { margin-left: auto; }
 .nge-todo-key {
   font: 12px/1.45 'Consolas', 'SF Mono', monospace; word-break: break-all; user-select: all;
   padding: 8px 10px; border-radius: 6px; border: 1px solid var(--accent); background: var(--card-hi);
