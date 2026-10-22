@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-22T00:00:00Z",
+      "at": "2026-10-22T21:00:39Z",
       "title": "Merge and cut mode carry on to your next cell",
       "items": [
         "With merge or cut mode on, moving to your next cell (after completing one, claiming one, or a jump) used to leave the mode on screen but not working until you switched it off and on. It now works straight away in the new cell."
