@@ -17,7 +17,7 @@
 import 'neuroglancer/rendered_data_panel.css';
 import 'neuroglancer/noselect.css';
 
-import {Annotation} from 'neuroglancer/annotation';
+import {Annotation, DATA_BOUNDS_DESCRIPTION} from 'neuroglancer/annotation';
 import {getAnnotationTypeRenderHandler} from 'neuroglancer/annotation/type_handler';
 import {DisplayContext, RenderedPanel} from 'neuroglancer/display_context';
 import {NavigationState} from 'neuroglancer/navigation_state';
@@ -40,6 +40,18 @@ declare var NEUROGLANCER_SHOW_OBJECT_SELECTION_TOOLTIP: boolean|undefined;
 const tempVec3 = vec3.create();
 /** nge: screen pixels of finger travel per 2D slice (report 146). */
 const NGE_TOUCH_PX_PER_SLICE = 6;
+
+/** nge (Ames 2026-10-22): the mouse is on a dataset's bounding box (the
+ *  "Data Bounds" box drawn round the volume). A right click there used to
+ *  centre the view on the box, far from the cell; now it does nothing. */
+function ngeOnDataBounds(mouseState: any): boolean {
+  try {
+    const layer = mouseState.pickedAnnotationLayer, id = mouseState.pickedAnnotationId;
+    if (!layer || id === undefined) return false;
+    const ref = layer.source.getReference(id);
+    try { return ref.value?.description === DATA_BOUNDS_DESCRIPTION; } finally { ref.dispose(); }
+  } catch { return false; }
+}
 
 export interface RenderedDataViewerState extends ViewerState {
   inputEventMap: EventActionMap;
@@ -485,7 +497,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       }, () => {
         if (travelled > 3) return;
         const {mouseState} = this.viewer;
-        if (mouseState.updateUnconditionally()) this.navigationState.position.value = mouseState.position;
+        if (mouseState.updateUnconditionally() && !ngeOnDataBounds(mouseState)) this.navigationState.position.value = mouseState.position;
       });
     });
 
@@ -536,7 +548,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
 
     registerActionListener(element, 'move-to-mouse-position', () => {
       const {mouseState} = this.viewer;
-      if (mouseState.updateUnconditionally()) {
+      if (mouseState.updateUnconditionally() && !ngeOnDataBounds(mouseState)) {
         this.navigationState.position.value = mouseState.position;
       }
     });

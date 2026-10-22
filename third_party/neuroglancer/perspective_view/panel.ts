@@ -277,6 +277,8 @@ export class PerspectivePanel extends RenderedDataPanel {
       showSliceViewsLabel.appendChild(showSliceViewsCheckbox.element);
       this.element.appendChild(showSliceViewsLabel);
     }
+    // nge: the 3D view, for its lighter cursor (ng-override.css).
+    this.element.classList.add('nge-3d-panel');
     this.registerDisposer(viewer.orthographicProjection.changed.add(() => {
       this.projectionParameters.update();
       this.scheduleRedraw();
