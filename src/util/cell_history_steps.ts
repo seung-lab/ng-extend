@@ -14,6 +14,9 @@ export interface HistoryEdit {
   at: number;
   userId: string;
   isMerge: boolean;
+  /** The cell's versions just before and just after the edit. */
+  beforeRoots: string[];
+  afterRoots: string[];
 }
 
 export interface HistoryStep {
@@ -31,8 +34,18 @@ function stampMs(value: unknown): number {
   if (typeof value !== 'string') return NaN;
   if (/^\d+(\.\d+)?$/.test(value)) return stampMs(Number(value));
   const iso = value.replace(' ', 'T');
-  return Date.parse(iso + (/[zZ]$|[+-]\d\d:?\d\d$/.test(iso) ? '' : 'Z'));
+  const t = Date.parse(iso + (/[zZ]$|[+-]\d\d:?\d\d$/.test(iso) ? '' : 'Z'));
+  // Also the web's own date form, "Wed, 22 Jan 2026 19:33:00 GMT".
+  return Number.isFinite(t) ? t : Date.parse(value);
 }
+
+/** JSON with every long number turned into text first: the ids are 18
+ *  digits and JSON numbers would round them. */
+export function parseBigJson(text: string): any {
+  return JSON.parse(text.replace(/([:[,]\s*)(\d{16,})(?=\s*[,\]}])/g, '$1"$2"'));
+}
+
+const idList = (v: any): string[] => (Array.isArray(v) ? v : v == null ? [] : [v]).map(String).filter(x => /^\d+$/.test(x));
 
 /** The edits in a tabular_change_log answer, oldest first. Takes the shapes
  *  the server has been seen to send: a list of rows, or columns (as lists or
@@ -47,6 +60,7 @@ export function parseChangeLog(data: any, rootId: string): HistoryEdit[] {
     rows = keys.map((k: any) => ({
       operation_id: col('operation_id')[k], timestamp: col('timestamp')[k],
       user_id: col('user_id')[k], is_merge: col('is_merge')[k],
+      before_root_ids: col('before_root_ids')[k], after_root_ids: col('after_root_ids')[k],
     }));
   }
   const edits: HistoryEdit[] = [];
@@ -58,6 +72,8 @@ export function parseChangeLog(data: any, rootId: string): HistoryEdit[] {
       operationId, at,
       userId: r?.user_id == null ? '' : String(r.user_id),
       isMerge: r?.is_merge === true || r?.is_merge === 'true' || r?.is_merge === 1,
+      beforeRoots: idList(r?.before_root_ids),
+      afterRoots: idList(r?.after_root_ids),
     });
   }
   return edits.sort((a, b) => a.at - b.at || a.operationId - b.operationId);
@@ -92,6 +108,8 @@ export function historySteps(edits: HistoryEdit[], max = MAX_HISTORY_STEPS): His
 /** Every past version of a cell, from the graph's lineage_graph answer:
  *  when each was made, and what each turned into. */
 export interface Lineage {
+  /** Older versions of each version. */
+  prev: Map<string, string[]>;
   /** Milliseconds; -Infinity for a version with no time given (the
    *  original segmentation). */
   bornAt: Map<string, number>;
@@ -100,13 +118,14 @@ export interface Lineage {
 
 /** Ids are 18 digits and JSON numbers would round them, so every long
  *  number is read as text before parsing. Links go from older to newer. */
-export function parseLineage(text: string, root?: string): Lineage {
-  const safe = text.replace(/([:[,]\s*)(\d{16,})(?=\s*[,\]}])/g, '$1"$2"');
-  const graph = JSON.parse(safe);
+export function parseLineage(text: string, root?: string, editAt?: Map<number, number>): Lineage {
+  const graph = parseBigJson(text);
   const bornAt = new Map<string, number>();
   const next = new Map<string, string[]>();
   for (const n of graph?.nodes ?? []) {
-    const at = stampMs(n?.timestamp);
+    let at = stampMs(n?.timestamp);
+    // No readable time: the time of the edit that made it, from the edit list.
+    if (!Number.isFinite(at) && n?.operation_id != null) at = editAt?.get(Number(n.operation_id)) ?? NaN;
     bornAt.set(String(n?.id), Number.isFinite(at) ? at : -Infinity);
   }
   for (const e of graph?.links ?? graph?.edges ?? []) {
@@ -114,16 +133,17 @@ export function parseLineage(text: string, root?: string): Lineage {
     for (const id of [from, to]) if (!bornAt.has(id)) bornAt.set(id, -Infinity);
     (next.get(from) ?? next.set(from, []).get(from)!).push(to);
   }
-  if (root === undefined || !bornAt.has(root)) return { bornAt, next };
-  // Only versions that lead to today's cell: a piece cut off and dropped is
-  // part of the cell until the cut, never after it.
   const prev = new Map<string, string[]>();
   for (const [from, tos] of next) for (const to of tos) (prev.get(to) ?? prev.set(to, []).get(to)!).push(from);
+  if (root === undefined || !bornAt.has(root)) return { bornAt, next, prev };
+  // Only versions that lead to today's cell: a piece cut off and dropped is
+  // part of the cell until the cut, never after it.
   const keep = new Set([root]), todo = [root];
   while (todo.length) for (const p of prev.get(todo.pop()!) ?? []) if (!keep.has(p)) { keep.add(p); todo.push(p); }
   for (const id of [...bornAt.keys()]) if (!keep.has(id)) { bornAt.delete(id); next.delete(id); }
   for (const [id, tos] of next) next.set(id, tos.filter(t => keep.has(t)));
-  return { bornAt, next };
+  for (const id of [...prev.keys()]) if (!keep.has(id)) prev.delete(id);
+  return { bornAt, next, prev };
 }
 
 /** The pieces that made up the cell's past at a moment: every version made
@@ -137,6 +157,42 @@ export function piecesAt(lineage: Lineage, at: number): string[] {
     out.push(id);
   }
   return out.sort();
+}
+
+/** How many older versions led to a version: a rough size of its history,
+ *  used to tell the cell's main body from the piece joined onto it. */
+function historySize(lineage: Lineage, id: string): number {
+  const seen = new Set([id]), todo = [id];
+  while (todo.length) for (const p of lineage.prev.get(todo.pop()!) ?? []) if (!seen.has(p)) { seen.add(p); todo.push(p); }
+  return seen.size;
+}
+
+export interface StepView {
+  /** Everything to draw. */
+  ids: string[];
+  /** Drawn in the "joined at this edit" colour. */
+  added: string[];
+  /** Drawn in the "cut off at this edit" colour: pieces this edit removed. */
+  cut: string[];
+}
+
+/** What a step shows. For a join, the two pieces just before it, so the one
+ *  joined on (the one with the shorter history) can be coloured apart; for a
+ *  cut, the cell after it plus the piece cut away, coloured apart. Plain
+ *  pieces when the edit list does not say which versions it touched. */
+export function stepView(lineage: Lineage, edit: HistoryEdit | undefined, pieces: string[]): StepView {
+  const plain = { ids: pieces, added: [], cut: [] };
+  if (!edit) return plain;
+  if (edit.isMerge) {
+    const made = edit.afterRoots.find(r => pieces.includes(r));
+    const joined = edit.beforeRoots.filter(r => lineage.bornAt.has(r) && !pieces.includes(r));
+    if (!made || joined.length < 2) return plain;
+    const smaller = [...joined].sort((a, b) => historySize(lineage, a) - historySize(lineage, b));
+    return { ids: [...pieces.filter(p => p !== made), ...joined].sort(), added: smaller.slice(0, joined.length - 1), cut: [] };
+  }
+  if (!edit.afterRoots.some(r => pieces.includes(r))) return plain;
+  const cut = edit.afterRoots.filter(r => !lineage.bornAt.has(r));
+  return { ids: [...pieces, ...cut].sort(), added: [], cut };
 }
 
 /** "unknown" unless the lab login belongs to a Pyr player with a name. */

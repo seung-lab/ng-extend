@@ -25,7 +25,8 @@ import { getBaseObjectColor } from 'neuroglancer/segmentation_display_state/fron
 import { currentSegLayer } from '../datasets';
 import { authHeaders, getPcgInfo } from '../widgets/pcg_service';
 import { supabase } from '../supabase';
-import { parseChangeLog, parseLineage, piecesAt, historySteps, editorName, type HistoryEdit, type HistoryStep, type Lineage } from './cell_history_steps';
+import { setStatedColor } from '../widgets/widget_utils';
+import { parseBigJson, parseChangeLog, parseLineage, piecesAt, stepView, historySteps, editorName, type HistoryEdit, type HistoryStep, type Lineage, type StepView } from './cell_history_steps';
 import './cell_history.css';
 
 const SHOW_LAYER = 'Cell history (temporary)';
@@ -35,6 +36,9 @@ const LOOK_AHEAD = 3;
 /** Most pieces loaded ahead at once, so a cell built from hundreds of
  *  fragments does not ask for all their meshes in one go. */
 const MAX_AHEAD = 40;
+/** The piece joined at a step, and the piece cut off at one. */
+const JOINED_COLOR = '#ffd84d';
+const CUT_COLOR = '#ff5d73';
 const SPEEDS = [
   { label: 'Slow', ms: 2000 },
   { label: 'Normal', ms: 1000 },
@@ -56,7 +60,7 @@ function groupOf(ml: any): any {
 // A root id names one version of a cell that never changes, so its history
 // never does either: asked once a visit, however often the panel opens.
 const editsMem = new Map<string, Promise<HistoryEdit[]>>();
-const lineageMem = new Map<string, Promise<Lineage>>();
+const lineageMem = new Map<string, Promise<string>>();
 function remembered<T>(mem: Map<string, Promise<T>>, root: string, get: () => Promise<T>): Promise<T> {
   const key = `${getPcgInfo()?.server}|${getPcgInfo()?.table}|${root}`;
   let p = mem.get(key);
@@ -74,18 +78,18 @@ async function fetchEdits(root: string): Promise<HistoryEdit[]> {
   const res = await fetch(`${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/tabular_change_log`,
     { headers: authHeaders(pcg.server) });
   if (!res.ok) throw Error(`change log ${res.status}`);
-  return parseChangeLog(await res.json(), root);
+  return parseChangeLog(parseBigJson(await res.text()), root);
 }
 
-/** Every past version of the cell (lineage_graph, read as text inside
- *  parseLineage so 18 digit ids are not rounded). */
-async function fetchLineage(root: string): Promise<Lineage> {
+/** Every past version of the cell (lineage_graph). Kept as text: it is
+ *  read once the edit list is in, whose times fill any it lacks. */
+async function fetchLineage(root: string): Promise<string> {
   const pcg = getPcgInfo();
   if (!pcg) throw Error('no graph');
   const res = await fetch(`${pcg.server}/segmentation/api/v1/table/${pcg.table}/root/${root}/lineage_graph`,
     { headers: authHeaders(pcg.server) });
   if (!res.ok) throw Error(`lineage ${res.status}`);
-  return parseLineage(await res.text(), root);
+  return res.text();
 }
 
 /** Pyr names for lab logins, where the login is a Pyr player's. */
@@ -178,6 +182,7 @@ export function openCellHistory(root: string) {
     </div>
     <div class="nge-ch-step" hidden><span class="nge-ch-count"></span><span class="nge-ch-kind"></span></div>
     <div class="nge-ch-who" hidden></div>
+    <div class="nge-ch-legend" hidden></div>
     <div class="nge-ch-status" role="status" aria-live="polite"></div>
     <input class="nge-ch-slider" type="range" min="0" max="0" value="0" hidden aria-label="Step through the cell's history">
     <div class="nge-ch-controls" hidden>
@@ -189,7 +194,7 @@ export function openCellHistory(root: string) {
     <div class="nge-ch-note" hidden></div>`;
   const $ = (s: string) => panel.querySelector(s) as HTMLElement;
   const idEl = $('.nge-ch-id'), stepEl = $('.nge-ch-step'), countEl = $('.nge-ch-count'), kindEl = $('.nge-ch-kind');
-  const whoEl = $('.nge-ch-who'), statusEl = $('.nge-ch-status'), noteEl = $('.nge-ch-note');
+  const whoEl = $('.nge-ch-who'), statusEl = $('.nge-ch-status'), noteEl = $('.nge-ch-note'), legendEl = $('.nge-ch-legend');
   const slider = $('.nge-ch-slider') as HTMLInputElement;
   const controls = $('.nge-ch-controls');
   const playBtn = $('.nge-ch-play') as HTMLButtonElement;
@@ -259,7 +264,8 @@ export function openCellHistory(root: string) {
   const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
 
   // ── The temporary layers ──
-  function setLayerCells(name: string, ids: string[], color: string, alpha: number) {
+  const packed = (hex: string) => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) & 255) | (((n >> 8) & 255) << 8) | ((n & 255) << 16); };
+  function setLayerCells(name: string, ids: string[], color: string, alpha: number, colors: Record<string, string> = {}) {
     let ml = managedByName(name);
     if (!ml) {
       let src: any = main.layer.toJSON?.()?.source;
@@ -270,7 +276,7 @@ export function openCellHistory(root: string) {
       const source = { ...src, enableDefaultSubsources: false, subsources: { mesh: true } };
       ml = makeLayer(viewer.layerSpecification, name, {
         type: 'segmentation', source, segments: ids, objectAlpha: alpha,
-        segmentDefaultColor: color, hideSegmentZero: true,
+        segmentDefaultColor: color, segmentColors: colors, hideSegmentZero: true,
       });
       viewer.layerSpecification.add(ml);
       return;
@@ -286,6 +292,11 @@ export function openCellHistory(root: string) {
       if (!group.selectedSegments.has(u)) group.selectedSegments.add(u);
       if (!group.visibleSegments.has(u)) group.visibleSegments.add(u);
     }
+    try {
+      const stated = ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors;
+      stated.clear();
+      for (const [id, hex] of Object.entries(colors)) setStatedColor(stated, Uint64.parseString(id), packed(hex));
+    } catch { /* plain colour */ }
   }
 
   let color = '#7cffb2';
@@ -294,7 +305,8 @@ export function openCellHistory(root: string) {
     color = '#' + Array.from(c.slice(0, 3)).map(v => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
   } catch { /* the default green */ }
 
-  function showPieces(ids: string[]) {
+  function showPieces(view: StepView) {
+    const ids = view.ids;
     if (closed) return;
     if (!hidMain) {
       const group = groupOf(main);
@@ -303,7 +315,14 @@ export function openCellHistory(root: string) {
       try { localStorage.setItem(OPEN_KEY, JSON.stringify({ root: hidMain ? root : undefined })); } catch { /* */ }
     }
     shown = ids;
-    setLayerCells(SHOW_LAYER, ids, color, 1);
+    const colors: Record<string, string> = {};
+    for (const id of view.added) colors[id] = JOINED_COLOR;
+    for (const id of view.cut) colors[id] = CUT_COLOR;
+    setLayerCells(SHOW_LAYER, ids, color, 1, colors);
+    legendEl.hidden = !view.added.length && !view.cut.length;
+    legendEl.innerHTML = view.added.length
+      ? `<span class="nge-ch-swatch" style="background:${JOINED_COLOR}"></span>The piece joined on at this edit`
+      : `<span class="nge-ch-swatch" style="background:${CUT_COLOR}"></span>The piece cut off at this edit`;
   }
 
   function lookAhead(from: number) {
@@ -366,9 +385,9 @@ export function openCellHistory(root: string) {
     slider.value = String(i);
     describe(i);
     const seq = ++showSeq;
-    const ids = piecesOf(i);
-    const same = sameSet(ids, shown);
-    showPieces(ids);
+    const view = stepView(lineage!, steps[i].edit >= 0 ? edits[steps[i].edit] : undefined, piecesOf(i));
+    const same = sameSet(view.ids, shown);
+    showPieces(view);
     lookAhead(i);
     const note = quietAt(i) ? 'Nothing that ends up in this cell changes at this edit.' : piecesLine(i);
     if (same) { say(note); return; }
@@ -413,10 +432,12 @@ export function openCellHistory(root: string) {
   void (async () => {
     say("Getting this cell's edits from the lab's server…");
     try {
-      [edits, lineage] = await Promise.all([
+      const [e, text] = await Promise.all([
         remembered(editsMem, root, () => fetchEdits(root)),
         remembered(lineageMem, root, () => fetchLineage(root)),
       ]);
+      edits = e;
+      lineage = parseLineage(text, root, new Map(e.map(x => [x.operationId, x.at])));
     } catch {
       if (!closed) say("Couldn't get this cell's history from the lab's server. Check you are signed in, then try again.");
       return;
@@ -429,12 +450,21 @@ export function openCellHistory(root: string) {
     steps = historySteps(edits);
     const namesReady = playerNames(edits.map(e => e.userId)).then(n => { names = n; if (!closed && current >= 0) describe(current); });
 
+    const versions = lineage.bornAt.size;
+    const dated = [...lineage.bornAt.values()].filter(Number.isFinite).length;
+    console.info(`[cell history] ${root}: ${edits.length} edits, ${versions} past versions (${dated} with a time), ` +
+      `${piecesOf(0).length} piece(s) before the first edit`);
+    const flat = versions <= 1 || dated === 0;
+
     slider.max = String(steps.length - 1);
     slider.hidden = false;
     controls.hidden = false;
     const sampled = steps.length - 1 < edits.length;
-    noteEl.hidden = !sampled;
-    if (sampled) noteEl.textContent = `This cell has ${edits.length} edits. The slider shows ${steps.length - 1} of them, spread evenly from first to last.`;
+    const notes: string[] = [];
+    if (flat) notes.push("The lab's server did not send this cell's past shapes, so every step shows it as it is today. Who made each edit and when is still right.");
+    if (sampled) notes.push(`This cell has ${edits.length} edits. The slider shows ${steps.length - 1} of them, spread evenly from first to last.`);
+    noteEl.hidden = !notes.length;
+    noteEl.textContent = notes.join(' ');
     await namesReady.catch(() => {});
     void go(0);
   })();

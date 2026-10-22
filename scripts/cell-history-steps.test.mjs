@@ -9,7 +9,7 @@ import module from 'node:module';
 const strip = module.stripTypeScriptTypes;
 const load = () => {
   const js = strip(fs.readFileSync(new URL('../src/util/cell_history_steps.ts', import.meta.url), 'utf8')).replace(/^export /gm, '');
-  return new Function(js + ';return {parseChangeLog, sampleEdits, historySteps, editorName, parseLineage, piecesAt, MAX_HISTORY_STEPS};')();
+  return new Function(js + ';return {parseChangeLog, parseBigJson, sampleEdits, historySteps, editorName, parseLineage, piecesAt, stepView, MAX_HISTORY_STEPS};')();
 };
 const H = load();
 
@@ -100,4 +100,42 @@ test('lineage: a piece cut off and dropped is never shown after the cut', () => 
   assert.deepEqual(H.piecesAt(L, 150_000), [C]);
   assert.deepEqual(H.piecesAt(L, 250_000), [D]);
   assert.equal(L.bornAt.has(E), false);
+});
+
+test('dates in the web form, and lineage times taken from the edit list', () => {
+  const A = '864691135000000011', B = '864691135000000022', C = '864691135000000033';
+  // Times written as "Wed, 22 Jan 2026 19:33:00 GMT".
+  const rfc = `{"nodes":[{"id":${A},"timestamp":"Thu, 01 Jan 1970 00:00:10 GMT"},{"id":${B},"timestamp":"Thu, 01 Jan 1970 00:00:20 GMT"},{"id":${C},"timestamp":"Thu, 01 Jan 1970 00:01:40 GMT"}],"links":[{"source":${A},"target":${C}},{"source":${B},"target":${C}}]}`;
+  assert.deepEqual(H.piecesAt(H.parseLineage(rfc, C), 50_000), [A, B]);
+  // No time at all: the operation id's time from the edit list.
+  const bare = `{"nodes":[{"id":${A}},{"id":${B}},{"id":${C},"operation_id":7}],"links":[{"source":${A},"target":${C}},{"source":${B},"target":${C}}]}`;
+  const L = H.parseLineage(bare, C, new Map([[7, 100_000]]));
+  assert.deepEqual(H.piecesAt(L, 50_000), [A, B]);
+  assert.deepEqual(H.piecesAt(L, 150_000), [C]);
+});
+
+test('change log: the versions each edit touched, 18 digits intact', () => {
+  const text = '{"operation_id":{"0":5},"timestamp":{"0":1700000000000},"user_id":{"0":"1"},"is_merge":{"0":true},"before_root_ids":{"0":[864691135000000011,864691135000000022]},"after_root_ids":{"0":[864691135000000033]}}';
+  const [e] = H.parseChangeLog(H.parseBigJson(text), 'x');
+  assert.deepEqual(e.beforeRoots, ['864691135000000011', '864691135000000022']);
+  assert.deepEqual(e.afterRoots, ['864691135000000033']);
+});
+
+test('step view: the piece joined on, and the piece cut off, coloured apart', () => {
+  // Body: A0 -> A1 -> A2 (long history). Twig T joins at edit J making M.
+  // Then edit K cuts M into N (kept) and X (dropped).
+  const id = n => String(864691135000000000n + BigInt(n));
+  const [A0, A1, A2, T, M, N, X] = [1, 2, 3, 4, 5, 6, 7].map(id);
+  const text = `{"nodes":[{"id":${A0}},{"id":${A1},"timestamp":10},{"id":${A2},"timestamp":20},{"id":${T}},{"id":${M},"timestamp":30},{"id":${N},"timestamp":40},{"id":${X},"timestamp":40}],"links":[{"source":${A0},"target":${A1}},{"source":${A1},"target":${A2}},{"source":${A2},"target":${M}},{"source":${T},"target":${M}},{"source":${M},"target":${N}},{"source":${M},"target":${X}}]}`;
+  const L = H.parseLineage(text, N);
+  const join = { isMerge: true, beforeRoots: [A2, T], afterRoots: [M] };
+  const v = H.stepView(L, join, H.piecesAt(L, 35_000));
+  assert.deepEqual(v.ids, [A2, T].sort());
+  assert.deepEqual(v.added, [T]);
+  const cut = { isMerge: false, beforeRoots: [M], afterRoots: [N, X] };
+  const w = H.stepView(L, cut, H.piecesAt(L, 45_000));
+  assert.deepEqual(w.ids, [N, X].sort());
+  assert.deepEqual(w.cut, [X]);
+  // Without the edit's versions: just the pieces.
+  assert.deepEqual(H.stepView(L, { isMerge: true, beforeRoots: [], afterRoots: [] }, [N]).ids, [N]);
 });
