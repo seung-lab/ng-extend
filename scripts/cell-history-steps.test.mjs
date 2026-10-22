@@ -9,7 +9,7 @@ import module from 'node:module';
 const strip = module.stripTypeScriptTypes;
 const load = () => {
   const js = strip(fs.readFileSync(new URL('../src/util/cell_history_steps.ts', import.meta.url), 'utf8')).replace(/^export /gm, '');
-  return new Function(js + ';return {parseChangeLog, parseBigJson, sampleEdits, historySteps, editorName, parseLineage, piecesAt, stepView, MAX_HISTORY_STEPS};')();
+  return new Function(js + ';return {parseChangeLog, parseBigJson, sampleEdits, historySteps, editorName, parseLineage, piecesAt, stepView, evenSample, piecesFromRoots, blockCounts, MAX_HISTORY_STEPS};')();
 };
 const H = load();
 
@@ -138,4 +138,25 @@ test('step view: the piece joined on, and the piece cut off, coloured apart', ()
   assert.deepEqual(w.cut, [X]);
   // Without the edit's versions: just the pieces.
   assert.deepEqual(H.stepView(L, { isMerge: true, beforeRoots: [], afterRoots: [] }, [N]).ids, [N]);
+});
+
+test('pieces from a sample of building blocks: only cells, each once', () => {
+  const root = '864691135000000099';            // level 12 (top 8 bits)
+  const a = '864691135000000011', b = '864691135000000022';
+  const l2 = '144115188075855001';              // level 2: a block that had no cell yet
+  assert.deepEqual(H.piecesFromRoots([a, b, a, '0', l2], root), [a, b]);
+  assert.deepEqual(H.evenSample([1, 2, 3], 5), [1, 2, 3]);
+  const s = H.evenSample(Array.from({ length: 10000 }, (_, i) => i), 2000);
+  assert.equal(s.length, 2000);
+  assert.equal(new Set(s).size, 2000);
+});
+
+test('the piece joined on is the one holding less of the cell today', () => {
+  const id = n => String(864691135000000000n + BigInt(n));
+  const [A0, T, A1] = [1, 2, 3].map(id);
+  const L = H.parseLineage(`{"nodes":[{"id":${A0}},{"id":${T}},{"id":${A1},"timestamp":10}],"links":[{"source":${A0},"target":${A1}},{"source":${T},"target":${A1}}]}`, A1);
+  const counts = H.blockCounts([A0, A0, A0, T, '0'], A1);
+  assert.equal(counts.get(A0), 3);
+  const v = H.stepView(L, { isMerge: true, beforeRoots: [A0, T], afterRoots: [A1] }, [A1], x => counts.get(x) ?? 0);
+  assert.deepEqual(v.added, [T]);
 });

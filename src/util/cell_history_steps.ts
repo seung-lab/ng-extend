@@ -4,8 +4,9 @@
  * (scripts/cell-history-steps.test.mjs) can load it as it is.
  *
  * One step before any edit, then one after each edit, oldest first. The last
- * step is the cell as it is today. Each step has a moment; the cell's
- * lineage says which past versions (pieces) existed at that moment.
+ * step is the cell as it is today. Each step has a moment; the cells that a
+ * sample of today's building blocks belonged to at that moment are the
+ * pieces shown. The lineage tells joins and cuts apart for colouring.
  */
 
 export interface HistoryEdit {
@@ -180,19 +181,49 @@ export interface StepView {
  *  joined on (the one with the shorter history) can be coloured apart; for a
  *  cut, the cell after it plus the piece cut away, coloured apart. Plain
  *  pieces when the edit list does not say which versions it touched. */
-export function stepView(lineage: Lineage, edit: HistoryEdit | undefined, pieces: string[]): StepView {
+export function stepView(lineage: Lineage, edit: HistoryEdit | undefined, pieces: string[],
+                         size?: (id: string) => number): StepView {
   const plain = { ids: pieces, added: [], cut: [] };
   if (!edit) return plain;
   if (edit.isMerge) {
     const made = edit.afterRoots.find(r => pieces.includes(r));
     const joined = edit.beforeRoots.filter(r => lineage.bornAt.has(r) && !pieces.includes(r));
     if (!made || joined.length < 2) return plain;
-    const smaller = [...joined].sort((a, b) => historySize(lineage, a) - historySize(lineage, b));
+    // The one joined on: the one with less of today's cell in it, then the
+    // one with the shorter history.
+    const bySize = (id: string) => size ? size(id) : 0;
+    const smaller = [...joined].sort((a, b) => bySize(a) - bySize(b) || historySize(lineage, a) - historySize(lineage, b));
     return { ids: [...pieces.filter(p => p !== made), ...joined].sort(), added: smaller.slice(0, joined.length - 1), cut: [] };
   }
   if (!edit.afterRoots.some(r => pieces.includes(r))) return plain;
   const cut = edit.afterRoots.filter(r => !lineage.bornAt.has(r));
   return { ids: [...pieces, ...cut].sort(), added: [], cut };
+}
+
+/** Up to `max` of `ids`, spread evenly through the list. */
+export function evenSample<T>(ids: T[], max: number): T[] {
+  if (ids.length <= max) return ids.slice();
+  return Array.from({ length: max }, (_, i) => ids[Math.floor(i * ids.length / max)]);
+}
+
+/** The cells a sample of today's building blocks belonged to at a moment:
+ *  each distinct answer once, leaving out 0 (a block that did not exist
+ *  yet) and anything not on the same level of the graph as today's cell
+ *  (the top 8 bits of an id are its level). */
+export function piecesFromRoots(answers: string[], root: string): string[] {
+  return [...blockCounts(answers, root).keys()].sort();
+}
+
+/** How many of the sampled blocks each of those cells held. */
+export function blockCounts(answers: string[], root: string): Map<string, number> {
+  const level = (id: string) => Math.floor(Number(id) / 2 ** 56);
+  const want = level(root);
+  const counts = new Map<string, number>();
+  for (const id of answers) {
+    if (!/^\d+$/.test(id) || id === '0' || level(id) !== want) continue;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /** "unknown" unless the lab login belongs to a Pyr player with a name. */

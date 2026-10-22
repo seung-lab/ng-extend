@@ -26,7 +26,7 @@ import { currentSegLayer } from '../datasets';
 import { authHeaders, getPcgInfo } from '../widgets/pcg_service';
 import { supabase } from '../supabase';
 import { setStatedColor } from '../widgets/widget_utils';
-import { parseBigJson, parseChangeLog, parseLineage, piecesAt, stepView, historySteps, editorName, type HistoryEdit, type HistoryStep, type Lineage, type StepView } from './cell_history_steps';
+import { parseBigJson, parseChangeLog, parseLineage, piecesAt, blockCounts, evenSample, stepView, historySteps, editorName, type HistoryEdit, type HistoryStep, type Lineage, type StepView } from './cell_history_steps';
 import './cell_history.css';
 
 const SHOW_LAYER = 'Cell history (temporary)';
@@ -36,6 +36,10 @@ const LOOK_AHEAD = 3;
 /** Most pieces loaded ahead at once, so a cell built from hundreds of
  *  fragments does not ask for all their meshes in one go. */
 const MAX_AHEAD = 40;
+/** Building blocks of today's cell asked about at each step, and how many
+ *  steps are asked about at once. */
+const MAX_SAMPLE = 2000;
+const MAX_LOOKUPS = 2;
 /** The piece joined at a step, and the piece cut off at one. */
 const JOINED_COLOR = '#ffd84d';
 const CUT_COLOR = '#ff5d73';
@@ -61,6 +65,7 @@ function groupOf(ml: any): any {
 // never does either: asked once a visit, however often the panel opens.
 const editsMem = new Map<string, Promise<HistoryEdit[]>>();
 const lineageMem = new Map<string, Promise<string>>();
+const sampleMem = new Map<string, Promise<string[]>>();
 function remembered<T>(mem: Map<string, Promise<T>>, root: string, get: () => Promise<T>): Promise<T> {
   const key = `${getPcgInfo()?.server}|${getPcgInfo()?.table}|${root}`;
   let p = mem.get(key);
@@ -90,6 +95,38 @@ async function fetchLineage(root: string): Promise<string> {
     { headers: authHeaders(pcg.server) });
   if (!res.ok) throw Error(`lineage ${res.status}`);
   return res.text();
+}
+
+/** A sample of today's cell's building blocks (its level 2 pieces, spread
+ *  evenly), the same for every step. */
+async function fetchSample(root: string): Promise<string[]> {
+  const pcg = getPcgInfo();
+  if (!pcg) throw Error('no graph');
+  const base = `${pcg.server}/segmentation/api/v1/table/${pcg.table}/node/${root}`;
+  const get = async (url: string) => {
+    const res = await fetch(url, { headers: authHeaders(pcg.server) });
+    if (!res.ok) throw Error(`${res.status}`);
+    return parseBigJson(await res.text());
+  };
+  const ids = new Set<string>();
+  for (const e of (await get(`${base}/lvl2_graph?int64_as_str=1`))?.edge_graph ?? []) { ids.add(String(e[0])); ids.add(String(e[1])); }
+  // A cell of one piece has no links between pieces to list.
+  if (!ids.size) for (const id of (await get(`${base}/leaves?int64_as_str=1&stop_layer=2`))?.leaf_ids ?? []) ids.add(String(id));
+  return evenSample([...ids].filter(isNumericId).sort(), MAX_SAMPLE);
+}
+
+/** The cell each block belonged to at a moment, in one request. Sent and
+ *  read as raw 64 bit numbers, so 18 digit ids are never rounded. */
+async function rootsAt(ids: string[], at: number): Promise<string[]> {
+  const pcg = getPcgInfo();
+  if (!pcg) throw Error('no graph');
+  const body = new BigUint64Array(ids.map(id => BigInt(id)));
+  const headers: Record<string, string> = { ...(authHeaders(pcg.server) as Record<string, string>), 'Content-Type': 'application/octet-stream' };
+  const res = await fetch(
+    `${pcg.server}/segmentation/api/v1/table/${pcg.table}/roots_binary?timestamp=${(at / 1000).toFixed(3)}`,
+    { method: 'POST', headers, body: body.buffer });
+  if (!res.ok) throw Error(`roots ${res.status}`);
+  return Array.from(new BigUint64Array(await res.arrayBuffer()), v => v.toString());
 }
 
 /** Pyr names for lab logins, where the login is a Pyr player's. */
@@ -163,6 +200,7 @@ export function openCellHistory(root: string) {
   let edits: HistoryEdit[] = [];
   let names = new Map<string, string>();
   let lineage: Lineage | null = null;
+  let sample: string[] = [];
   let current = -1;
   let shown: string[] = [];
   let hidMain = false;
@@ -249,16 +287,52 @@ export function openCellHistory(root: string) {
   closeOpen = close;
   $('.nge-ch-close').addEventListener('click', close);
 
-  // ── The pieces of each step, worked out from the lineage ──
+  // ── The pieces of each step ──
+  // Which cells, at the step's moment, held a sample of today's building
+  // blocks: only what ends up in this cell, never a whole other cell that
+  // was wrongly joined on and cut away again (Nseraf, Ames 2026-10-22).
+  // Asked a couple of steps at a time, the step on screen first.
   const piecesMem = new Map<number, string[]>();
-  function piecesOf(i: number): string[] {
-    let p = piecesMem.get(i);
-    if (!p) {
-      const step = steps[i];
-      p = step.askAt === null || !lineage ? [root] : piecesAt(lineage, step.askAt);
-      if (!p.length) p = [root];
-      piecesMem.set(i, p);
+  const countsMem = new Map<number, Map<string, number>>();
+  const pending = new Map<number, Promise<string[] | null>>();
+  const queue: number[] = [];
+  const runners = new Map<number, () => Promise<void>>();
+  let active = 0;
+  const pump = () => {
+    while (active < MAX_LOOKUPS && queue.length && !closed) {
+      const run = runners.get(queue.shift()!);
+      if (!run) continue;
+      active++;
+      run().finally(() => { active--; pump(); });
     }
+  };
+  function known(i: number): string[] | undefined { return piecesMem.get(i); }
+  function piecesOf(i: number, urgent = false): Promise<string[] | null> {
+    const have = piecesMem.get(i);
+    if (have) return Promise.resolve(have);
+    const step = steps[i];
+    const done = (p: string[]) => { const v = p.length ? p : [root]; piecesMem.set(i, v); return v; };
+    if (step.askAt === null) return Promise.resolve(done([root]));
+    // No sample (the server would not list the cell's blocks): the lineage alone.
+    if (!sample.length) return Promise.resolve(done(lineage ? piecesAt(lineage, step.askAt) : [root]));
+    let p = pending.get(i);
+    if (!p) {
+      p = new Promise<string[] | null>(resolve => {
+        runners.set(i, async () => {
+          const answers = await rootsAt(sample, step.askAt!).catch(() => null);
+          pending.delete(i);
+          // A failed lookup is not remembered, so the step can be tried again.
+          if (!answers) { resolve(null); return; }
+          const counts = blockCounts(answers, root);
+          countsMem.set(i, counts);
+          resolve(done([...counts.keys()].sort()));
+        });
+      });
+      pending.set(i, p);
+      queue.push(i);
+    }
+    if (urgent) { const k = queue.indexOf(i); if (k > 0) { queue.splice(k, 1); queue.unshift(i); } }
+    pump();
     return p;
   }
   const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
@@ -325,12 +399,14 @@ export function openCellHistory(root: string) {
       : `<span class="nge-ch-swatch" style="background:${CUT_COLOR}"></span>The piece cut off at this edit`;
   }
 
-  function lookAhead(from: number) {
-    const now = new Set(shown);
+  async function lookAhead(from: number) {
     const next: string[] = [];
     for (let i = from + 1; i < steps.length && i <= from + LOOK_AHEAD; i++) {
-      for (const id of piecesOf(i)) if (!now.has(id) && !next.includes(id)) next.push(id);
+      const p = await piecesOf(i);
+      if (closed || current !== from) return;
+      for (const id of p ?? []) if (!shown.includes(id) && !next.includes(id)) next.push(id);
     }
+    for (let i = Math.max(0, from - 2); i < from; i++) void piecesOf(i);
     // Fetched but never drawn: alpha 0 skips drawing, not loading.
     setLayerCells(AHEAD_LAYER, next.slice(0, MAX_AHEAD), color, 0);
   }
@@ -371,9 +447,12 @@ export function openCellHistory(root: string) {
     whoEl.textContent = `${e.isMerge ? 'Pieces joined' : 'A piece cut off'} by ${editorName(e.userId, names)}, ${when(e.at)}`;
   }
 
-  const quietAt = (i: number) => i > 0 && steps[i].edit >= 0 && sameSet(piecesOf(i), piecesOf(i - 1));
+  const quietAt = (i: number) => {
+    const a = known(i), b = i > 0 ? known(i - 1) : undefined;
+    return !!a && !!b && steps[i].edit >= 0 && sameSet(a, b);
+  };
   function piecesLine(i: number): string {
-    const n = piecesOf(i).length;
+    const n = known(i)?.length ?? 1;
     return n > 1 ? `${n} separate pieces at this point, which are joined into the cell later.` : '';
   }
 
@@ -385,10 +464,18 @@ export function openCellHistory(root: string) {
     slider.value = String(i);
     describe(i);
     const seq = ++showSeq;
-    const view = stepView(lineage!, steps[i].edit >= 0 ? edits[steps[i].edit] : undefined, piecesOf(i));
+    if (!known(i)) say('Loading this step…');
+    const pieces = await piecesOf(i, true);
+    if (closed || seq !== showSeq) return;
+    if (!pieces) { say("Couldn't load this step from the lab's server. Move the slider to try again."); return; }
+    if (i > 0) await piecesOf(i - 1);
+    if (closed || seq !== showSeq) return;
+    const before = countsMem.get(i - 1);
+    const view = stepView(lineage!, steps[i].edit >= 0 ? edits[steps[i].edit] : undefined, pieces,
+      before ? (id => before.get(id) ?? 0) : undefined);
     const same = sameSet(view.ids, shown);
     showPieces(view);
-    lookAhead(i);
+    void lookAhead(i);
     const note = quietAt(i) ? 'Nothing that ends up in this cell changes at this edit.' : piecesLine(i);
     if (same) { say(note); return; }
     say('Loading this step in 3D…');
@@ -432,10 +519,12 @@ export function openCellHistory(root: string) {
   void (async () => {
     say("Getting this cell's edits from the lab's server…");
     try {
-      const [e, text] = await Promise.all([
+      const [e, text, blocks] = await Promise.all([
         remembered(editsMem, root, () => fetchEdits(root)),
         remembered(lineageMem, root, () => fetchLineage(root)),
+        remembered(sampleMem, root, () => fetchSample(root)).catch(() => [] as string[]),
       ]);
+      sample = blocks;
       edits = e;
       lineage = parseLineage(text, root, new Map(e.map(x => [x.operationId, x.at])));
     } catch {
@@ -453,8 +542,8 @@ export function openCellHistory(root: string) {
     const versions = lineage.bornAt.size;
     const dated = [...lineage.bornAt.values()].filter(Number.isFinite).length;
     console.info(`[cell history] ${root}: ${edits.length} edits, ${versions} past versions (${dated} with a time), ` +
-      `${piecesOf(0).length} piece(s) before the first edit`);
-    const flat = versions <= 1 || dated === 0;
+      `${sample.length} building blocks followed`);
+    const flat = !sample.length && (versions <= 1 || dated === 0);
 
     slider.max = String(steps.length - 1);
     slider.hidden = false;
