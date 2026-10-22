@@ -1412,18 +1412,8 @@ onUnmounted(() => clearTimeout(stageTimer));
   >
     <div ref="shellEl" class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--dstats': activeTab === 'datasetStats', 'nge-profile-shell--settings': activeTab === 'settings' }">
 
-      <!-- ── Topbar ─────────────────────────────────────────── -->
-      <div class="nge-profile-topbar">
-        <span class="nge-profile-topbar-label">◈ RESEARCHER PROFILE
-          <!-- Which dataset the Overview's numbers belong to (Ames 2026-10-01:
-               up here, in the bar's own style, instead of a box in the column
-               and the username, which is already shown below). Clicking opens
-               the Datasets tab, where every dataset's totals sit side by side. -->
-          <!-- the dataset scope button went with the per dataset Overview (Ames 2026-10-11) -->
-        </span>
-        <button class="nge-profile-exit" @click="handleClose">×</button>
-      </div>
-
+      <!-- The "Researcher profile" bar went (Ames 2026-10-22: "the top bar can go, put X on same line
+           as Overview"): the × closes from the end of the tab row. -->
       <!-- ── Tab bar ─────────────────────────────────────────── -->
       <div class="nge-profile-tabbar">
         <button
@@ -1481,6 +1471,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           :class="{ 'nge-profile-tab--active': activeTab === 'blog' }"
           @click="activeTab = 'blog'"
         >✍️ Blog</button>
+        <button class="nge-profile-exit nge-profile-exit--tabs" title="Close" aria-label="Close the profile" @click="handleClose">×</button>
       </div>
 
       <!-- ── Three-column body (Overview tab) ────────────────── -->
@@ -1554,9 +1545,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                  building Pyr to the top row"). -->
             <div class="nge-profile-header-side">
           <!-- Special Awards (admin-awarded badges) -->
-          <template v-if="plainSpecialBadges.length > 0">
+          <template v-if="plainSpecialBadges.length > 0 || competitionMedals.length > 0">
             <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
-              <div class="nge-profile-section-label">★ Special Awards</div>
+              <div v-if="plainSpecialBadges.length > 0" class="nge-profile-section-label">★ Special Awards</div>
               <div class="nge-profile-badges-grid">
                 <div
                   v-for="award in displayedSpecialBadges"
@@ -1570,6 +1561,22 @@ onUnmounted(() => clearTimeout(stageTimer));
                     <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
+                </div>
+                <!-- The Hunt medals, each once with how many times it was won (Ames 2026-10-21) -->
+                <span v-if="plainSpecialBadges.length > 0 && competitionMedals.length > 0" class="nge-profile-medal-gap" aria-hidden="true"></span>
+                <div
+                  v-for="m in competitionMedals"
+                  :key="m.tier"
+                  class="nge-profile-badge nge-profile-badge--medal"
+                  :class="{ 'nge-profile-badge--selected': medalSelected(m) }"
+                  :title="medalTooltip(m)"
+                  @click="onMedalClick(m)"
+                >
+                  <div class="nge-profile-badge-img">
+                    <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
+                    <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
+                  </div>
+                  <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
                 </div>
                 <!-- View All tile when overflow -->
                 <div
@@ -1586,26 +1593,6 @@ onUnmounted(() => clearTimeout(stageTimer));
               </div>
             </div>
           </template>
-          <!-- Competitions: one tile per Hunt medal, with how many times it was won (Ames 2026-10-21). -->
-          <div v-if="competitionMedals.length" class="nge-profile-section nge-profile-section--badges nge-profile-section--special nge-profile-section--competitions">
-            <div class="nge-profile-section-label">◆ Competitions</div>
-            <div class="nge-profile-badges-grid">
-              <div
-                v-for="m in competitionMedals"
-                :key="m.tier"
-                class="nge-profile-badge nge-profile-badge--medal"
-                :class="{ 'nge-profile-badge--selected': medalSelected(m) }"
-                :title="medalTooltip(m)"
-                @click="onMedalClick(m)"
-              >
-                <div class="nge-profile-badge-img">
-                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
-                  <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
-                </div>
-                <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
-              </div>
-            </div>
-          </div>
           <!-- Cells identified: cells whose type this player set, each once.
                Beside the name until the Identification track has a row of
                its own (Ames 2026-10-12: "put cells identified where Building
@@ -3040,6 +3027,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-topbar-scope:hover .nge-profile-topbar-scope-name { color: #fff; border-bottom-color: #fff; }
 .nge-profile-topbar-scope--fallback .nge-profile-topbar-scope-name { color: #f5a623; }
 
+.nge-profile-exit--tabs { margin-left: auto; padding: 4px 2px 4px 12px; }
 .nge-profile-exit {
   background: none; border: none;
   color: #666; font-size: 1.5em; cursor: pointer; line-height: 1; padding: 0;
@@ -3697,6 +3685,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-trophy-medal-img .nge-medal-count { right: -8px; bottom: 4px; font-size: 11.5px; line-height: 18px; min-width: 24px; }
 .nge-trophy-medal-place { margin-top: 1px; font-size: 0.72em; color: rgba(196, 228, 255, 0.55); }
 .nge-medal-wins { color: #f8e08a; }
+.nge-profile-medal-gap { align-self: center; width: 1px; height: 30px; margin: 0 4px; background: rgba(100, 180, 255, 0.25); }
 
 .nge-profile-badges-empty {
   font-size: 0.75em;
@@ -4072,6 +4061,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-tabbar {
   display: flex;
+  align-items: center;
   /* Wrap rather than crop: in the narrower Settings / Datasets shells the
      tabs are wider than the box and "Admin Hub" was cut off (fit audit). */
   flex-wrap: wrap;

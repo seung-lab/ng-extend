@@ -108,6 +108,12 @@ function local(iso: string | null | undefined): string {
   const t = Date.parse(iso || ''); if (!Number.isFinite(t)) return '';
   return new Intl.DateTimeFormat('en-US', { timeZone: ET_ZONE, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(t)) + ' ET';
 }
+/** "Now" beside a time (Ames 2026-10-22): this minute, in ET. Starting now brings a later announcement to now too. */
+function setNow(k: 'announce' | 'start') {
+  const v = utcIsoToEtNaive(new Date().toISOString());
+  form.value[k] = v;
+  if (k === 'start' && form.value.announce && form.value.announce > v) form.value.announce = v;
+}
 /** A day from now at a time, as an Eastern datetime-local value. */
 function etDay(days: number, hhmm: string): string { return utcIsoToEtNaive(new Date(Date.now() + days * 86400000).toISOString()).slice(0, 11) + hhmm; }
 /** Under each time: "Wed, Oct 21, 11:56 PM ET, in 11 h 58 m", so a slip between AM and PM shows at once. */
@@ -502,8 +508,8 @@ async function duplicate() {
         <label class="nge-hunts-check"><input :checked="form.admins_only || ON_TEST_SITE" :disabled="ON_TEST_SITE" type="checkbox" @change="setAdminsOnly" /> <span><b>Only admins</b>: players never see it, and nothing posts in chat.</span></label>
         <p v-if="!form.admins_only && !ON_TEST_SITE" class="nge-hunts-warnline">Scheduled, the notes go to every player's bell and post in chat.</p>
         <div class="nge-hunts-grid">
-          <label>Announce (ET) <input v-model="form.announce" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.announce) || 'no announcement' }}</span></label>
-          <label>Start (ET) <input v-model="form.start" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.start) }}</span></label>
+          <label>Announce (ET) <span class="nge-hunts-timerow"><input v-model="form.announce" type="datetime-local" class="nge-hunts-input" /><button type="button" class="nge-hunts-btn nge-hunts-btn--small" title="Announce it this minute" @click.prevent="setNow('announce')">Now</button></span><span class="nge-hunts-when">{{ whenLine(form.announce) || 'no announcement' }}</span></label>
+          <label>Start (ET) <span class="nge-hunts-timerow"><input v-model="form.start" type="datetime-local" class="nge-hunts-input" /><button type="button" class="nge-hunts-btn nge-hunts-btn--small" title="Start it this minute" @click.prevent="setNow('start')">Now</button></span><span class="nge-hunts-when">{{ whenLine(form.start) }}</span></label>
           <label>End (ET) <input v-model="form.end" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.end) }}</span></label>
         </div>
       </fieldset>
@@ -718,6 +724,9 @@ async function duplicate() {
 .nge-hunts-tierbox { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(90, 170, 255, 0.04); border: 1px solid rgba(90, 170, 255, 0.15); }
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
+.nge-hunts-timerow { display: flex; align-items: center; gap: 6px; }
+.nge-hunts-timerow .nge-hunts-input { flex: 1; min-width: 0; }
+.nge-hunts-timerow .nge-hunts-btn { flex: none; }
 .nge-hunts-warnline { margin: 0; color: #f8e08a; font-size: 12.5px; }
 .nge-hunts-chip--admins { background: rgba(90, 170, 255, 0.18); color: #9fd0ff; }
 .nge-hunts-prize { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid rgba(90, 170, 255, 0.12); }

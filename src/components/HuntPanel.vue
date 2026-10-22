@@ -10,7 +10,7 @@
  * main things (found, gems left, the gem switch, Submit). Logic in src/hunt.ts; rules on the
  * server (functions/hunts.js).
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, submitWaiting,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
@@ -18,6 +18,7 @@ import {
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { useDragBox } from '../util/drag_box';
 import EditableText from './EditableText.vue';
+import { snapshotPanel, morphIntoSlim, revealWithBeam } from '../util/panel_collapse';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 
 const props = defineProps<{ huntId?: number | null; test?: boolean }>();
@@ -176,7 +177,26 @@ const HUNT_STEPS = [
 const PLACE: Record<HuntTier, string> = { gold: '1st place', silver: '2nd place', bronze: '3rd place' };
 /** Folded to a slim strip: found, gems left, the gem switch, Submit, the last answer (kept in this browser). */
 const mini = ref((() => { try { return localStorage.getItem('nge-hunt-mini') === '1'; } catch { return false; } })());
-function toggleMini() { mini.value = !mini.value; try { localStorage.setItem('nge-hunt-mini', mini.value ? '1' : '0'); } catch { /* private window */ } }
+function setMini(on: boolean) { mini.value = on; try { localStorage.setItem('nge-hunt-mini', on ? '1' : '0'); } catch { /* private window */ } }
+/** The caret: the box zips up under a light bar into its slim form, and beams back open
+ *  (Ames 2026-10-22: "use the cool minimize/expand animation light bar from cell library"). */
+async function toggleMini() {
+  const el = boxEl.value;
+  if (!mini.value) {
+    const ghost = el ? snapshotPanel(el) : null;
+    setMini(true);
+    await nextTick();
+    if (ghost && el) morphIntoSlim(ghost, el, []);
+  } else {
+    const still = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (el && still) el.style.clipPath = 'inset(0 0 100% 0)';
+    setMini(false);
+    await nextTick();
+    if (el) revealWithBeam(el);
+  }
+}
+/** The check switch. */
+function onAutoChange(e: Event) { setAutoJudge(!!(e.target as HTMLInputElement | null)?.checked); }
 /** "5 mergers · 5 extensions · 2 cells · 15 gems" (Ames 2026-10-21: "too much text!"). */
 const briefShort = computed(() => {
   const h = hunt.value; if (!h) return '';
@@ -214,14 +234,20 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
     <span class="nge-hunt-scan" aria-hidden="true"></span>
 
     <header class="nge-hunt-head" title="Drag to move" @pointerdown="startDrag">
+      <button class="nge-hunt-caret" :class="{ 'nge-hunt-caret--down': mini }" :title="mini ? 'Show everything' : 'Make it small'" :aria-label="mini ? 'Show everything' : 'Make it small'" :aria-expanded="!mini" @pointerdown.stop @click="toggleMini">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <span class="nge-hunt-eyebrow">
         <svg class="nge-hunt-eyegem" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
         The Hunt
       </span>
-      <button class="nge-hunt-min" :title="mini ? 'Show everything' : 'Make it small'" :aria-label="mini ? 'Show everything' : 'Make it small'" :aria-pressed="mini" @click="toggleMini">
-        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path v-if="mini" d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path v-else d="M3 12h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span v-if="mini && clock" class="nge-hunt-headclock"><span>{{ clock.label }}</span><b>{{ clock.value }}</b></span>
+      <button v-if="opened && phase === 'live' && !mini" class="nge-hunt-panelsbtn" :class="{ 'nge-hunt-panelsbtn--on': huntPrefs.panels }" :aria-pressed="huntPrefs.panels"
+              :title="huntPrefs.panels ? 'Hide the Annotations and Selection panels while hunting' : 'Show the Annotations and Selection panels (your gems in Found and Missed)'"
+              :aria-label="huntPrefs.panels ? 'Hide the side panels' : 'Show the side panels'" @pointerdown.stop @click="setHuntPanels(!huntPrefs.panels)">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.4"/><path v-if="huntPrefs.panels" d="M11.2 5.5h1.8M11.2 8h1.8M11.2 10.5h1.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
       </button>
-      <button class="nge-hunt-x" title="Close" aria-label="Close" @click="emit('hide')">×</button>
+      <button class="nge-hunt-x" title="Close" aria-label="Close" @pointerdown.stop @click="emit('hide')">×</button>
     </header>
 
     <div v-if="otherHunts.length > 1 && !mini" class="nge-hunt-tabs" role="tablist" aria-label="Hunts">
@@ -239,19 +265,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
     </div>
 
     <div v-else class="nge-hunt-body">
-      <div class="nge-hunt-titlerow">
+      <div v-if="!mini" class="nge-hunt-titlerow">
         <h2 class="nge-hunt-title">{{ hunt.title }}</h2>
         <div v-if="clock" class="nge-hunt-clock"><span class="nge-hunt-clock-label">{{ clock.label }}</span><span class="nge-hunt-clock-time">{{ clock.value }}</span></div>
       </div>
-      <div v-if="!mini" class="nge-hunt-briefrow">
-        <p class="nge-hunt-brief">{{ briefShort }}</p>
-        <span v-if="phase !== 'ended'" class="nge-hunt-links">
-          <a v-if="opened && phase === 'live'" class="nge-hunt-howlink" :class="{ 'nge-hunt-howlink--open': huntPrefs.panels }" href="#" :aria-pressed="huntPrefs.panels"
-             :title="huntPrefs.panels ? 'Hide the Annotations and Selection panels while hunting' : 'Show the Annotations and Selection panels (your gems in Found and Missed)'"
-             @click.prevent="setHuntPanels(!huntPrefs.panels)">{{ huntPrefs.panels ? 'hide panels' : 'show panels' }}</a>
-          <a class="nge-hunt-howlink" :class="{ 'nge-hunt-howlink--open': howOpen }" href="#" :aria-expanded="howOpen" @click.prevent="toggleHow">instructions</a>
-        </span>
-      </div>
+      <p v-if="!mini" class="nge-hunt-brief">{{ briefShort }}</p>
       <p v-if="phase === 'announced' && !mini" class="nge-hunt-when">{{ localTime(hunt.start_at) }} until {{ localTime(hunt.end_at) }}</p>
 
       <!-- While it runs -->
@@ -262,18 +280,17 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <div v-if="mini && run" class="nge-hunt-slim">
           <div class="nge-hunt-slim-row">
             <span class="nge-hunt-slim-read" :title="`${run.found} of ${run.of} found`"><b :key="'f' + run.found" class="nge-hunt-pop">{{ run.found }}</b><i>/{{ run.of }}</i><small>found</small></span>
-            <span class="nge-hunt-slim-read" :title="`${run.gems_left} of ${run.budget} gems left`"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i>/{{ run.budget }}</i><small>gems left</small></span>
-            <span v-if="yourTime" class="nge-hunt-slim-time" title="Your clock, from your first open of the Hunt">{{ yourTime }}</span>
+            <span class="nge-hunt-slim-read" :title="`${run.gems_left} of ${run.budget} gems left`"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i>/{{ run.budget }}</i><small>gems</small></span>
           </div>
           <div v-if="opened && !run.done && (kinds.length > 1 || !huntPrefs.auto)" class="nge-hunt-slim-row">
-            <div v-if="kinds.length > 1" class="nge-hunt-seg nge-hunt-seg--slim" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
-              <button v-for="k in kinds" :key="k" class="nge-hunt-seg-btn" :class="[`nge-hunt-seg-btn--${k}`, { 'nge-hunt-seg-btn--on': huntState.kind === k }]"
+            <div v-if="kinds.length > 1" class="nge-hunt-kinds nge-hunt-kinds--slim" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
+              <button v-for="k in kinds" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': huntState.kind === k }]"
                       role="radio" :aria-checked="huntState.kind === k" :title="`Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}`" @click="choose(k)">
                 <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
                 <span>{{ KIND[k].word }}</span>
               </button>
             </div>
-            <button v-if="!huntPrefs.auto" class="nge-hunt-submit nge-hunt-submit--slim" :disabled="!huntState.waiting" :title="huntState.waiting ? '' : 'Drop gems, then submit'" @click="submitWaiting">
+            <button v-if="!huntPrefs.auto" class="nge-hunt-submit nge-hunt-submit--slim" :class="{ 'nge-hunt-submit--alone': kinds.length < 2 }" :disabled="!huntState.waiting" :title="huntState.waiting ? '' : 'Drop gems, then submit'" @click="submitWaiting">
               {{ huntState.waiting ? `Submit ${huntState.waiting}` : 'Submit' }}
             </button>
           </div>
@@ -294,7 +311,6 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <div class="nge-hunt-read">
               <span class="nge-hunt-read-label">Found</span>
               <span class="nge-hunt-read-val"><b :key="'f' + run.found" class="nge-hunt-pop">{{ run.found }}</b><i>/{{ run.of }}</i></span>
-              <span v-if="run.of_by && run.of_by.cut && run.of_by.merge" class="nge-hunt-read-sub nge-hunt-read-sub--wrap">cut {{ run.found_by?.cut ?? 0 }}/{{ run.of_by.cut }}, ext {{ run.found_by?.merge ?? 0 }}/{{ run.of_by.merge }}</span>
             </div>
             <div class="nge-hunt-read">
               <span class="nge-hunt-read-label">Gems</span>
@@ -310,22 +326,24 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             </div>
           </div>
           <!-- One gem per chance: gold while left, dark once dropped -->
-          <div v-if="pips.length && !mini" class="nge-hunt-pips" :title="`${run.gems_left} of ${run.budget} gems left`" aria-hidden="true">
+          <div v-if="pips.length && !mini" class="nge-hunt-pips" :style="{ '--pips': pips.length }" :title="`${run.gems_left} of ${run.budget} gems left`" aria-hidden="true">
             <span v-for="(used, i) in pips" :key="i" class="nge-hunt-pip" :class="{ 'nge-hunt-pip--used': used }"></span>
           </div>
 
           <div v-if="!run.done" class="nge-hunt-controls">
-            <div class="nge-hunt-seg" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
-              <button v-for="k in kinds" :key="k" class="nge-hunt-seg-btn" :class="[`nge-hunt-seg-btn--${k}`, { 'nge-hunt-seg-btn--on': huntState.kind === k }]"
+            <div v-if="kinds.length > 1" class="nge-hunt-kinds" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
+              <button v-for="k in kinds" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': huntState.kind === k }]"
                       role="radio" :aria-checked="huntState.kind === k" :title="`Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}`" @click="choose(k)">
-                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
-                <span>{{ KIND[k].word }}</span><small>{{ KIND[k].finds }}</small>
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
+                <span class="nge-hunt-kind-word">{{ KIND[k].word }}</span>
+                <span class="nge-hunt-kind-count">{{ run.found_by?.[k] ?? 0 }}<i>/{{ run.of_by?.[k] ?? 0 }}</i></span>
               </button>
             </div>
-            <div v-if="!mini" class="nge-hunt-seg nge-hunt-seg--mode" role="radiogroup" aria-label="When gems are checked">
-              <button class="nge-hunt-seg-btn" :class="{ 'nge-hunt-seg-btn--on': huntPrefs.auto }" role="radio" :aria-checked="huntPrefs.auto" @click="setAutoJudge(true)">Check each gem</button>
-              <button class="nge-hunt-seg-btn" :class="{ 'nge-hunt-seg-btn--on': !huntPrefs.auto }" role="radio" :aria-checked="!huntPrefs.auto" @click="setAutoJudge(false)">I'll submit</button>
-            </div>
+            <label class="nge-hunt-switch" title="On: each gem is checked as it lands. Off: gems wait until you press Submit.">
+              <input type="checkbox" role="switch" :checked="huntPrefs.auto" @change="onAutoChange" />
+              <span class="nge-hunt-switch-track" aria-hidden="true"><span class="nge-hunt-switch-knob"></span></span>
+              <span class="nge-hunt-switch-text">Check each gem as it lands</span>
+            </label>
             <button v-if="!huntPrefs.auto" class="nge-hunt-submit" :disabled="!huntState.waiting" @click="submitWaiting">
               {{ huntState.waiting ? `Submit ${huntState.waiting} ${huntState.waiting === 1 ? 'gem' : 'gems'}` : 'Drop gems, then submit' }}
             </button>
@@ -362,7 +380,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
       <!-- The end: a celebration (Ames 2026-10-21: "this shouldn't say awards ceremony, make it more congratulatory") -->
       <template v-else-if="phase === 'ended'">
         <div class="nge-hunt-congrats">
-          <div class="nge-hunt-congrats-head">Congratulations, hunters!</div>
+          <!-- Two set lines, not a wrap (Ames 2026-10-22: "no comma after congratulations", "better type design on the title") -->
+          <div class="nge-hunt-congrats-head"><span class="nge-hunt-congrats-big">Congratulations</span> <span class="nge-hunt-congrats-small">hunters!</span></div>
           <p>{{ hunt.players ? `${hunt.players === 1 ? '1 hunter' : `${hunt.players} hunters`} took part` : 'The Hunt is over' }}</p>
         </div>
         <p v-if="!hunt.awarded" class="nge-hunt-muted">The medals are being given…</p>
@@ -384,11 +403,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
            Hunt's description, Ames's five lines (admins can change them in the game, EditableText), and the
            medals in one slim row at the bottom ("we can put tiers at bottom of instructions"). Open before the
            Hunt is opened, folded while hunting. -->
+      <button v-if="phase !== 'ended' && !mini" class="nge-hunt-howtoggle" :class="{ 'nge-hunt-howtoggle--open': howOpen }" :aria-expanded="howOpen" @click="toggleHow">
+        <span>Instructions</span>
+        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <div v-if="howOpen && phase !== 'ended' && !mini" class="nge-hunt-howpanel">
-        <div class="nge-hunt-howpanel-head">
-          <span>How to hunt</span>
-          <button class="nge-hunt-howclose" title="Close" aria-label="Close the instructions" @click="toggleHow">×</button>
-        </div>
         <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
         <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" />
         <div class="nge-hunt-medalrow" aria-label="Medals">
@@ -473,10 +492,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt--dragging .nge-hunt-head { cursor: grabbing; }
 .nge-hunt-eyebrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-eyegem { filter: drop-shadow(0 0 4px rgb(var(--hn-gold) / 0.7)); }
-.nge-hunt-min { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border-radius: 6px; cursor: pointer; background: none; border: 1px solid transparent; color: rgb(var(--hn-line) / 0.6); }
-.nge-hunt-min:hover, .nge-hunt-min:focus-visible { color: #fff; border-color: rgb(var(--hn-accent) / 0.4); }
-.nge-hunt-min + .nge-hunt-x { margin-left: 2px; }
-.nge-hunt--mini { width: min(260px, calc(100vw - 24px)); }
+.nge-hunt--mini { width: min(280px, calc(100vw - 24px)); }
+.nge-hunt-headclock { margin-left: auto; display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.nge-hunt-headclock span { font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
+.nge-hunt-headclock b { font: 700 13px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); }
+.nge-hunt-headclock + .nge-hunt-x { margin-left: 10px; }
 .nge-hunt--mini .nge-hunt-head { padding: 8px 10px 6px 14px; }
 .nge-hunt--mini .nge-hunt-body { padding: 8px 12px 12px 14px; gap: 6px; }
 .nge-hunt--mini .nge-hunt-title { font-size: 13px; }
@@ -488,7 +508,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-slim { display: flex; flex-direction: column; gap: 6px; }
 .nge-hunt-slim-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .nge-hunt-slim-read {
-  display: flex; align-items: baseline; padding: 3px 8px; border-radius: 8px; white-space: nowrap;
+  flex: 1 1 0; min-width: 0; display: flex; align-items: baseline; justify-content: center; padding: 3px 6px; border-radius: 8px; white-space: nowrap;
   border: 1px solid rgb(var(--hn-accent) / 0.22); background: rgb(var(--hn-accent) / 0.05);
   font: 700 15px 'Orbitron', 'Inter', sans-serif; color: #fff; font-variant-numeric: tabular-nums;
 }
@@ -496,10 +516,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-slim-read i { font-style: normal; font-size: 11px; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-slim-read small { margin-left: 5px; font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
 .nge-hunt-slim-time { margin-left: auto; font: 600 11px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.7); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nge-hunt-seg--slim { flex: 1; min-width: 0; border-radius: 8px; }
-.nge-hunt-seg--slim .nge-hunt-seg-btn { padding: 4px 6px; font-size: 11.5px; }
 .nge-hunt-submit--slim { flex: 1 0 auto; padding: 5px 10px; font-size: 11px; }
-.nge-hunt-seg--slim + .nge-hunt-submit--slim { flex: none; }
 .nge-hunt-btn--slim { flex: none; padding: 6px 10px; font-size: 11.5px; }
 .nge-hunt-slim-done { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-slim-done span { font: 500 11px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; color: rgb(var(--hn-line) / 0.7); }
@@ -549,7 +566,6 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-read-time { font-size: 15px; line-height: 1.6; }
 .nge-hunt-read-medal { font-size: 13px; line-height: 1.9; text-transform: uppercase; letter-spacing: 0.06em; color: rgb(var(--hn-line) / 0.45); }
 .nge-hunt-read-sub { font-size: 10.5px; color: rgb(var(--hn-line) / 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nge-hunt-read-sub--wrap { white-space: normal; }
 .nge-hunt-pop { display: inline-block; animation: ngeHuntPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
 @keyframes ngeHuntPop { 0% { transform: scale(1.8); } 100% { transform: scale(1); } }
 .nge-hunt-tierword--gold { color: #f5d142 !important; text-shadow: 0 0 8px rgba(245, 209, 66, 0.4); }
@@ -557,7 +573,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-tierword--bronze { color: #d9a77c !important; text-shadow: 0 0 8px rgba(217, 167, 124, 0.3); }
 
 /* ── Chances: one gem a pip ── */
-.nge-hunt-pips { display: flex; flex-wrap: wrap; gap: 3px 4px; padding: 0 2px; }
+.nge-hunt-pips { display: grid; grid-template-columns: repeat(var(--pips, 10), minmax(0, 1fr)); justify-items: center; align-items: center; gap: 3px 0; padding: 0 2px; }
 .nge-hunt-pip {
   width: 9px; height: 11px; background: rgb(var(--hn-gold)); clip-path: polygon(15% 32%, 35% 0, 65% 0, 85% 32%, 50% 100%);
   filter: drop-shadow(0 0 3px rgb(var(--hn-gold) / 0.8)); transition: background 0.4s, transform 0.4s, filter 0.4s;
@@ -580,7 +596,6 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-seg-btn--cut.nge-hunt-seg-btn--on { background: rgba(224, 96, 96, 0.16); box-shadow: inset 0 -2px 0 #e06060; }
 .nge-hunt-seg-btn--merge.nge-hunt-seg-btn--on { background: rgba(90, 170, 255, 0.16); box-shadow: inset 0 -2px 0 #5aaaff; }
 .nge-hunt-seg-btn--on small { color: rgb(var(--hn-line) / 0.7); }
-.nge-hunt-seg--mode .nge-hunt-seg-btn { font-size: 11.5px; padding: 4px 8px; }
 .nge-hunt-submit {
   padding: 7px 10px; border-radius: 9px; cursor: pointer; font: 700 12px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase;
   background: rgb(var(--hn-gold) / 0.16); border: 1px solid rgb(var(--hn-gold) / 0.7); color: #fff3c4;
@@ -621,29 +636,67 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-cellbtn:hover, .nge-hunt-cellbtn:focus-visible { background: rgb(var(--hn-accent) / 0.22); }
 
 /* ── Instructions, as Cell Library shows them (CellLibraryPanel .nge-cl-howto, .nge-cl-howto-panel, .nge-cl-howto-steps) ── */
-.nge-hunt-briefrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-.nge-hunt-briefrow .nge-hunt-brief { flex: 1 1 auto; min-width: 0; }
-.nge-hunt-links { margin-left: auto; display: inline-flex; gap: 12px; }
-.nge-hunt-howlink {
-  position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px;
-  padding: 2px 0; font-size: 9.5px; font-weight: 600; letter-spacing: 0.16em;
-  text-transform: uppercase; color: rgba(126, 202, 255, 0.78); text-decoration: none;
-  transition: color 0.15s, text-shadow 0.15s;
+/* The caret, as Cell Library's (on the left, Ames 2026-10-20: "the shrink/expand arrow should be consistently left") */
+.nge-hunt-caret {
+  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; flex: none;
+  border-radius: 999px; cursor: pointer; color: #9fdcff; background: rgba(100, 200, 255, 0.12); border: 1px solid rgba(100, 200, 255, 0.4);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.nge-hunt-howlink::before { content: ''; width: 5px; height: 5px; flex: none; transform: rotate(45deg); background: currentColor; opacity: 0.8; }
-.nge-hunt-howlink:hover, .nge-hunt-howlink:focus-visible, .nge-hunt-howlink--open { color: #fff; text-shadow: 0 0 8px rgba(126, 202, 255, 0.5); }
+.nge-hunt-caret:hover, .nge-hunt-caret:focus-visible { background: rgba(100, 200, 255, 0.22); border-color: rgba(100, 200, 255, 0.75); color: #d4f0ff; box-shadow: 0 0 10px rgba(79, 207, 255, 0.35); }
+.nge-hunt-caret svg { transition: transform 0.2s ease; }
+.nge-hunt-caret--down svg { transform: rotate(180deg); }
+.nge-hunt-panelsbtn { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0; border-radius: 6px; cursor: pointer; background: none; border: 1px solid transparent; color: rgb(var(--hn-line) / 0.6); }
+.nge-hunt-panelsbtn:hover, .nge-hunt-panelsbtn:focus-visible { color: #fff; border-color: rgb(var(--hn-accent) / 0.4); }
+.nge-hunt-panelsbtn--on { color: #9fdcff; border-color: rgba(100, 200, 255, 0.45); background: rgba(100, 200, 255, 0.12); }
+.nge-hunt-panelsbtn + .nge-hunt-x { margin-left: 4px; }
+/* Instructions: a centered dropdown (Ames 2026-10-22: "dropdown, not X", not left aligned) */
+.nge-hunt-howtoggle {
+  display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 6px 10px; cursor: pointer;
+  border-radius: 10px; background: rgba(66, 213, 236, 0.04); border: 1px solid rgba(66, 213, 236, 0.22);
+  color: rgba(126, 202, 255, 0.85); font: 600 9.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.nge-hunt-howtoggle::before { content: ''; width: 5px; height: 5px; transform: rotate(45deg); background: currentColor; opacity: 0.8; }
+.nge-hunt-howtoggle svg { transition: transform 0.2s ease; }
+.nge-hunt-howtoggle:hover, .nge-hunt-howtoggle:focus-visible { color: #fff; background: rgba(66, 213, 236, 0.08); border-color: rgba(66, 213, 236, 0.4); }
+.nge-hunt-howtoggle--open { color: #7ee8ff; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; background: rgba(66, 213, 236, 0.06); }
+.nge-hunt-howtoggle--open svg { transform: rotate(180deg); }
+.nge-hunt-howtoggle--open + .nge-hunt-howpanel { margin-top: -10px; border-top-left-radius: 0; border-top-right-radius: 0; border-top: none; }
+/* Cut and Extend: two gem buttons, each lit in its layer's color, with its count (Ames 2026-10-22) */
+.nge-hunt-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.nge-hunt-kind {
+  --k: 125 135 153; display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px 10px; cursor: pointer;
+  border-radius: 10px; background: rgba(4, 8, 18, 0.55); border: 1px solid rgb(var(--k) / 0.35);
+  color: rgb(var(--hn-line) / 0.7); font: 600 12.5px 'Inter', sans-serif;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+.nge-hunt-kind--cut { --k: 224 96 96; }
+.nge-hunt-kind--merge { --k: 90 170 255; }
+.nge-hunt-kind svg { color: rgb(var(--k)); flex: none; filter: drop-shadow(0 0 3px rgb(var(--k) / 0.6)); }
+.nge-hunt-kind-word { flex: 1; min-width: 0; text-align: left; }
+.nge-hunt-kind-count { font: 700 12px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.8); font-variant-numeric: tabular-nums; }
+.nge-hunt-kind-count i { font-style: normal; font-size: 10px; color: rgb(var(--hn-line) / 0.5); }
+.nge-hunt-kind:hover, .nge-hunt-kind:focus-visible { color: #fff; border-color: rgb(var(--k) / 0.7); }
+.nge-hunt-kind--on { color: #fff; background: rgb(var(--k) / 0.16); border-color: rgb(var(--k) / 0.9); box-shadow: 0 0 14px rgb(var(--k) / 0.28), inset 0 0 10px rgb(var(--k) / 0.12); }
+.nge-hunt-kind--on .nge-hunt-kind-count { color: #fff; }
+.nge-hunt-kinds--slim { flex: 1; min-width: 0; gap: 4px; }
+.nge-hunt-kinds--slim .nge-hunt-kind { padding: 4px 7px; font-size: 11.5px; border-radius: 8px; }
+.nge-hunt-submit--alone { flex: 1 1 auto; }
+/* The check switch */
+.nge-hunt-switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: rgb(var(--hn-line) / 0.8); font-size: 12px; padding: 1px 2px; }
+.nge-hunt-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.nge-hunt-switch-track { position: relative; flex: none; width: 30px; height: 16px; border-radius: 999px; background: rgba(4, 8, 18, 0.8); border: 1px solid rgb(var(--hn-accent) / 0.45); transition: background 0.15s, border-color 0.15s; }
+.nge-hunt-switch-knob { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: rgb(var(--hn-line) / 0.6); transition: transform 0.18s ease, background 0.15s, box-shadow 0.15s; }
+.nge-hunt-switch input:checked + .nge-hunt-switch-track { background: rgb(var(--hn-accent) / 0.3); border-color: rgb(var(--hn-cyan) / 0.8); }
+.nge-hunt-switch input:checked + .nge-hunt-switch-track .nge-hunt-switch-knob { transform: translateX(14px); background: #e6f7ff; box-shadow: 0 0 8px rgb(var(--hn-cyan) / 0.8); }
+.nge-hunt-switch input:focus-visible + .nge-hunt-switch-track { box-shadow: 0 0 0 2px rgb(var(--hn-cyan) / 0.5); }
+.nge-hunt-switch:hover { color: #fff; }
 .nge-hunt-howpanel {
   padding: 10px 12px 8px; border-radius: 10px;
   background: rgba(66, 213, 236, 0.06); border: 1px solid rgba(66, 213, 236, 0.28);
   animation: ngeHuntHowIn 0.2s ease-out both;
 }
 @keyframes ngeHuntHowIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-.nge-hunt-howpanel-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #7ee8ff; margin-bottom: 6px;
-}
-.nge-hunt-howclose { background: none; border: none; color: #8aa; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
-.nge-hunt-howclose:hover { color: #fff; }
 :deep(.nge-hunt-howto-steps) { margin: 0; padding-left: 20px; font-size: 12.5px; line-height: 1.5; color: #cfdcef; }
 :deep(.nge-hunt-howto-steps li) { margin: 3px 0; padding-left: 2px; }
 :deep(.nge-hunt-howto-steps li::marker) { color: #42d5ec; font-weight: 700; }
@@ -686,7 +739,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-log--already b { color: #9fd0ff; }
 .nge-hunt-log--refused b { color: #ffb3b3; }
 .nge-hunt-congrats { padding: 10px 12px; border-radius: 10px; text-align: center; background: radial-gradient(120% 120% at 50% 0%, rgb(var(--hn-gold) / 0.16), rgb(var(--hn-accent) / 0.05) 70%); border: 1px solid rgb(var(--hn-gold) / 0.55); animation: ngeHuntHit 0.7s cubic-bezier(0.2, 1.5, 0.4, 1); }
-.nge-hunt-congrats-head { font: 800 17px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(var(--hn-gold)); text-shadow: 0 0 14px rgb(var(--hn-gold) / 0.45); }
+.nge-hunt-congrats-head { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px 0 2px; }
+.nge-hunt-congrats-big { font: 700 19px/1.1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; color: rgb(var(--hn-gold)); text-shadow: 0 0 14px rgb(var(--hn-gold) / 0.45); }
+.nge-hunt-congrats-small { display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; font: 600 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.42em; text-transform: uppercase; color: #d4ecff; text-shadow: 0 0 10px rgb(var(--hn-cyan) / 0.45); }
+.nge-hunt-congrats-small::before, .nge-hunt-congrats-small::after { content: ''; flex: 0 1 46px; height: 1px; background: linear-gradient(90deg, transparent, rgb(var(--hn-gold) / 0.7)); }
+.nge-hunt-congrats-small::after { background: linear-gradient(90deg, rgb(var(--hn-gold) / 0.7), transparent); }
 .nge-hunt-congrats p { margin: 4px 0 0; color: rgb(var(--hn-ink) / 0.85); }
 .nge-hunt-mymedal { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(4, 8, 18, 0.5); border: 1px solid rgb(var(--hn-accent) / 0.25); }
 .nge-hunt-mymedal img { width: 56px; height: 56px; object-fit: contain; flex: none; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6)); }

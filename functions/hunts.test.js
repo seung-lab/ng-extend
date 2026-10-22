@@ -715,3 +715,36 @@ test('before The Hunt is launched, a Hunt set for everyone stays admins only: hi
   assert.ok(results.length === 2 && results.every((n) => n.target_type === 'user' && n.post_to_chat === false), JSON.stringify(results.map((n) => [n.target_type, n.post_to_chat])));
   assert.ok(!h.db._s.notes.some((n) => n.target_type === 'all' || n.post_to_chat), 'nothing to all players or chat');
 });
+
+test('the same gem sent twice (a slow answer) gets its first answer: nothing new kept, never "found already", and the last gem is never refused', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const send = (p, id, t) => H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...p, id }]), dims: DIMS }, h.ctx(P1, at(t)));
+  const first = await send(pt(1000, 1000, 100), 'gold1', 60);
+  assert.equal(first.drop.hit, true);
+  const again = await send(pt(1000, 1000, 100), 'gold1', 60.01);
+  assert.deepEqual([again.drop.hit, again.drop.repeat, !!again.drop.already], [true, true, false]);
+  assert.equal(h.db._s.subs[0].points.length, 1);
+  assert.equal(again.run.gems_used, 1);
+  // The last two finds; then the last one again, after the run is complete: its answer, not "all found".
+  await send(pt(5000, 5000, 100), 'gold2', 61);
+  const last = await send(pt(9000, 1000, 200), 'gold3', 62);
+  assert.equal(last.run.done, true);
+  const lastAgain = await send(pt(9000, 1000, 200), 'gold3', 62.01);
+  assert.deepEqual([lastAgain.drop.hit, lastAgain.drop.repeat], [true, true]);
+  assert.equal(h.db._s.subs[0].points.length, 3);
+});
+
+test('a gem on a place found already is answered even with no gems left, so it stays (Ames: "leave ALL my gems")', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled', fields: { max_points: 2 } }, h.ctx(ADMIN, at(1), true));
+  const send = (p, id, t) => H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...p, id }]), dims: DIMS }, h.ctx(P1, at(t)));
+  await send(pt(1000, 1000, 100), 'a', 60);
+  await send(pt(1, 1, 1), 'b', 61);   // a miss: both gems used
+  const near = await send(pt(1010, 1000, 100), 'c', 62);
+  assert.equal(near.drop.already, true);
+  await assert.rejects(send(pt(30000, 30000, 100), 'd', 63), /used all your gems/);
+  assert.equal(h.db._s.subs[0].points.length, 2);
+});

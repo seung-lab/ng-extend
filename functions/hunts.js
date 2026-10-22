@@ -438,14 +438,20 @@ function speedWinner(runs, n) {
 /** Judge one gem against a run, and keep it (save) unless it lands on a problem found already. */
 async function dropInto(h, targets, drops, args, ctx, save) {
   const before = runView(h, drops, targets);
-  if (targets.length && before.found >= targets.length) fail(409, 'You found them all. Your Hunt is done.');
-  if (drops.length >= before.budget) fail(409, 'You have used all your gems. Your Hunt is done.');
+  // The same gem sent again (a slow answer, a retry): its first answer, nothing new kept. Before the
+  // checks below, so the last gem of a run sent twice is never refused (and taken off the screen).
+  const again = Array.isArray(args.layer && args.layer.annotations) && args.layer.annotations.length === 1
+    ? drops.find((x) => x.id === String(args.layer.annotations[0].id || '')) : null;
+  if (again) return { drop: { id: again.id, hit: again.hit >= 0, kind: again.hit >= 0 ? kindOf(targets[again.hit]) : null, repeat: true }, run: before, nm: again.nm };
   const pts = layerPoints(args.layer, args.dims);
   if (pts.length !== 1) fail(400, 'Drop one gem at a time.');
   const g = pts[0];
   const kind = args.kind === 'cut' || args.kind === 'merge' ? args.kind : null;
   const j = judgeDrop(targets, drops, g.nm, tolOf(h), kind);
+  // A gem on a place found already uses no gem, so it is answered even with none left (and stays gold).
   if (j.already) return { drop: { id: g.id, already: true }, run: before, nearest_um: j.nearest_um };
+  if (targets.length && before.found >= targets.length) fail(409, 'You found them all. Your Hunt is done.');
+  if (drops.length >= before.budget) fail(409, 'You have used all your gems. Your Hunt is done.');
   const d = { id: g.id, nm: g.nm, at: g.at, hit: j.hit, k: kind, t: (ctx.now || new Date()).toISOString() };
   const next = [...drops, d];
   if (save) await save(next, next.filter((x) => x.hit >= 0).length);

@@ -290,21 +290,38 @@ function foldersFor(drops: HuntDrop[]) {
 /** The kind of a gem already judged: the layer it was dropped from (older gems: what it found, else cut). */
 const dropKind = (d: HuntDrop): GemKind => (d.k === 'merge' || d.k === 'cut' ? d.k : d.kind === 'merge' ? 'merge' : 'cut');
 
+/** A gem on screen the server does not keep (a second gem on a place found already): it stays through a redraw. */
+interface KeptGem { kind: GemKind; id: string; point: number[]; judged: boolean }
+function keptOnScreen(h: HuntInfo): KeptGem[] {
+  const known = new Set((h.you?.drops ?? []).map(d => d.id));
+  const out: KeptGem[] = [];
+  for (const k of gemKinds(h)) {
+    const src = managed(huntLayerName(h, k))?.layer?.localAnnotations;
+    if (!src) continue;
+    // Every gem the server does not keep: a judged one stays gold; one not judged yet is judged after the redraw.
+    for (const a of src) if (a && a.type === 0 && a.point && !known.has(a.id)) out.push({ kind: k, id: a.id, point: Array.from(a.point as Float32Array), judged: judged.has(a.id) });
+  }
+  return out;
+}
+
 /** The hunt's gem layers, the player's judged gems back in their folders, one layer picked for Ctrl + Click. */
-function ensureGemLayers(h: HuntInfo) {
+function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
   const v = viewer();
   if (!v?.layerSpecification) return;
   for (const k of gemKinds(h)) {
     const name = huntLayerName(h, k);
     if (managed(name)) continue;
     const drops = (h.you?.drops ?? []).filter(d => dropKind(d) === k && Array.isArray(d.at) && d.at.length >= 3);
+    const more = extra.filter(g => g.kind === k);
+    const folders = foldersFor(drops);
+    folders[0].ids.push(...more.filter(g => g.judged).map(g => g.id));
     const ml = makeLayer(v.layerSpecification, name, {
       type: 'annotation', source: { url: 'local://annotations' },
-      annotations: drops.map(d => ({ type: 'point', id: d.id, point: d.at })),
+      annotations: [...drops.map(d => ({ type: 'point', id: d.id, point: d.at })), ...more.map(g => ({ type: 'point', id: g.id, point: g.point }))],
       // Drawn over the cells in 3D ("Show through cells in 3D"): a gem dropped inside a branch
       // stays in sight (Ames 2026-10-21: "needs to retain marks otherwise I can't tell where I have been").
       annotationColor: KIND_COLOR[k], pointMarker: 'pyr', pointSize: 2, tool: 'annotatePoint', onTop: true,
-      ngeAnnFolders: foldersFor(drops),
+      ngeAnnFolders: folders,
     });
     v.layerSpecification.add(ml);
   }
@@ -368,6 +385,7 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   }
   const v = viewer();
   if (!v?.state) throw new Error('The viewer is not ready yet. Try again in a moment.');
+  const kept = active && active.id === h.id && !!active.test === !!h.test ? keptOnScreen(h) : [];
   active = null;   // the old layers go with the restore; nothing in them is judged meanwhile
   queue.length = 0;
   waiting.length = 0;
@@ -383,11 +401,12 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
     await new Promise(r => setTimeout(r, 250));
     if (names.every(n => layerJson(n))) { steady++; continue; }
     steady = 0;
-    ensureGemLayers(h);
+    ensureGemLayers(h, kept);
   }
-  ensureGemLayers(h);
+  ensureGemLayers(h, kept);
   judged.clear();
   for (const d of h.you?.drops ?? []) judged.add(d.id);
+  for (const g of kept) if (g.judged) judged.add(g.id);
   active = h;
   quietPanels();
   startDropWatch();
@@ -522,6 +541,7 @@ async function judgeNext() {
   const next = queue.shift();
   if (!h || !next) return;
   const { id, kind, x, y } = next;
+  if (judged.has(id)) { if (queue.length) void judgeNext(); return; }   // answered already: never sent twice
   busy = true;
   huntState.pending = { id, gem: kind, x, y, at: Date.now() };
   try {
@@ -551,8 +571,12 @@ async function judgeNext() {
       return;
     }
     judged.add(id);
-    if (r.drop?.already) {
-      removeGem(h, kind, id);
+    if (r.drop?.repeat) {
+      // The server had this gem already: its first answer stands, the gem stays where it is.
+      fileGem(h, kind, id, !!r.drop.hit);
+    } else if (r.drop?.already) {
+      // A second gem on a place found already: it stays, gold, and uses no gem.
+      fileGem(h, kind, id, true);
       tell({ id, gem: kind, result: 'already', at: Date.now(), x, y });
     } else {
       const hit = !!r.drop?.hit;
@@ -592,6 +616,7 @@ export function startDropWatch() {
       if (!src) continue;
       for (const a of src) {
         if (!a || a.type !== 0 /* point */ || judged.has(a.id) || queue.some(q => q.id === a.id) || src.pending?.has?.(a.id)) continue;
+        if (huntState.pending?.id === a.id) continue;   // on its way to the server (a slow answer)
         // The click that made it, if it was just now.
         const click = lastClick && Date.now() - lastClick.at < 3000 ? lastClick : null;
         lastClick = null;
