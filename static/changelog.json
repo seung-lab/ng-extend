@@ -2,14 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-22T00:00:00Z",
+      "at": "2026-10-22T16:04:41Z",
       "title": "The 2D EM tab shows and hides 2D",
       "items": [
         "Clicking the 2D EM tab at the top now switches the 2D view on and off: split screen or 3D only. Right click still turns the layer on and off. Its side panel is under Settings, Advanced."
       ]
     },
     {
-      "at": "2026-10-22T00:00:00Z",
+      "at": "2026-10-22T16:04:41Z",
       "title": "Right clicks stay inside the data",
       "items": [
         "A right click in the 2D view on the box around a dataset, or out past it, no longer moves you there. Inside the data, a right click still moves the view to that spot."
