@@ -3904,23 +3904,25 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
   }
 
-  /** Mark a task as completed with final segment/soma data. */
-  async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string) {
+  /** Mark a task as completed with final segment/soma data. counts false: the
+   *  claim ends (so the sheet can be written) but it is logged as a release,
+   *  which does not count as a completed cell (Can't Complete, Ames 2026-10-22). */
+  async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string, counts = true) {
     if (!userId.value) return;
     try {
       await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
       tellScripts('complete', taskId, finalSegId);
 
       await logEdit({
-        operation: 'complete_task',
+        operation: counts ? 'complete_task' : 'release_task',
         task_id: taskId,
-        metadata: { final_segment_id: finalSegId, soma_coords: somaCoords },
+        metadata: { final_segment_id: finalSegId, soma_coords: somaCoords, ...(counts ? {} : { cant_complete: true }) },
       });
 
       // Find segment_id for the feed
       const task = tasks.value.find(t => t.id === taskId);
       const segLabel = task?.segment_id ? `...${task.segment_id.slice(-4)}` : `#${taskId}`;
-      await postActivity(`completed ${segLabel}`);
+      await postActivity(counts ? `completed ${segLabel}` : `marked ${segLabel} Can't Complete`);
 
       if (activeTaskId.value === taskId) {
         activeTaskId.value = null;

@@ -27,7 +27,7 @@ import {
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
-import { syncCellToSheet, completeStatusesFor } from '../sheet_sync';
+import { syncCellToSheet, completeStatusesFor, marksProofread } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
@@ -1041,13 +1041,16 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
   // the claim: the server only syncs a completed claim.
-  const cavePromise = writeCaveCompletion(cell, done);
-  await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  // Can't Complete: the claim ends and the sheet says so, but the cell is
+  // not marked proofread and does not count (sheet_sync.ts marksProofread).
+  const proofread = marksProofread(done.status);
+  const cavePromise = proofread ? writeCaveCompletion(cell, done) : Promise.resolve(true);
+  await backend.completeTask(cell.taskId, done.finalSegId, done.coords, proofread);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
   syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;
-  if (!loggedViaCave) {
+  if (!loggedViaCave && proofread) {
     // Log as mark_complete for stats (CAVE write didn't record it)
     await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
   }
@@ -1055,7 +1058,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   void backend.loadTasks();  // incremental, in the background
   // Celebration!
-  triggerCellCelebration(done.finalSegId);
+  if (proofread) triggerCellCelebration(done.finalSegId);
 }
 
 async function writeCaveCompletion(cell: CellRow, done: { finalSegId: string; coords: string }): Promise<boolean> {

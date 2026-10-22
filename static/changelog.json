@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-22T00:00:00Z",
+      "title": "Can't Complete no longer marks a cell proofread",
+      "items": [
+        "Can't Complete is now only for cells that can't be finished: it ends your claim and records Can't Complete with your note in the cell sheet, but the cell is not marked proofread and does not count as a completed cell."
+      ]
+    },
+    {
       "at": "2026-10-22T14:40:34Z",
       "title": "Can't complete in the Δ menu",
       "items": [
