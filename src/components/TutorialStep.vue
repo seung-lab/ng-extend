@@ -2,6 +2,7 @@
 import { isNextToElementPostition, useTutorialStore, type Step } from '../store-pyr';
 import { useLayersStore, setStateRewriter } from 'src/store';
 import { marked } from 'marked';
+import { RESOURCES_MENU_SVG } from '../data/toolbar-icons';
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 
 const layerStore = useLayersStore();
@@ -653,7 +654,7 @@ async function onHtmlClick(e: MouseEvent) {
             <div v-if="inExitConfirm" class="chip exitConfirm" :class="{ modal: computedStep.modal }"
                 :style="chipBounds">
                 <div class="nge-exit-ask">Exit the tutorial?</div>
-                <div class="nge-exit-sub">You can start it again any time.</div>
+                <div class="nge-exit-sub">You can start it again any time: the tutorials live in the <span class="nge-tut-burger" v-html="RESOURCES_MENU_SVG"></span> hamburger menu, top right.</div>
                 <div class="buttonContainer">
                     <button @click="inExitConfirm = false" class="nge-hud-btn nge-hud-btn--quiet">Keep going</button>
                     <button @click="$emit('exitIntro')" class="nge-hud-btn">Exit</button>
