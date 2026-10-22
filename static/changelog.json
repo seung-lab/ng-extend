@@ -5,7 +5,8 @@
       "at": "2026-10-22T00:00:00Z",
       "title": "Can't Complete no longer marks a cell proofread",
       "items": [
-        "Can't Complete no longer marks the cell proofread for the lab. It still ends your claim, counts as your completed cell, and records Can't Complete with your note in the cell sheet."
+        "Can't Complete no longer marks the cell proofread for the lab. It still ends your claim, counts as your completed cell, and records Can't Complete with your note in the cell sheet.",
+        "The Can't complete button in the Δ menu shows only on cells that are in the Cell Library's sheet."
       ]
     },
     {

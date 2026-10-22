@@ -611,10 +611,20 @@ export class ButtonService {
     cantBtn.classList.add('nge-lb-section-button', 'nge-lb-cant-btn');
     cantBtn.textContent = "Can't complete";
     cantBtn.title = "This cell can't be finished: say why in the next step. It is recorded as Can't Complete in the cell sheet and counts as your completed cell, but the cell is not marked proofread.";
+    // Only for a cell in the Cell Library's sheet (Ames 2026-10-22: "only
+    // available on cells in the sheet"), found the way Mark as Proofread
+    // finds it, including by an older ID after edits. Hidden until known.
+    let inSheet = false;
     const showCant = () => {
-      const can = !cachedStatus?.isComplete && completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT) && toggleBtn.style.display !== 'none';
+      const can = inSheet && !cachedStatus?.isComplete && completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT) && toggleBtn.style.display !== 'none';
       cantBtn.style.display = can ? '' : 'none';
     };
+    if (completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT)) {
+      planMenuCompletion(segmentIDString).then(p => {
+        inSheet = !p.blocked && !!p.row && needsCompletionDetails(p);
+        if (cantBtn.isConnected) showCant();
+      }).catch(() => { /* stays hidden */ });
+    }
     let forcedStatus = '';
     cantBtn.addEventListener('click', () => {
       if (toggleBtn.disabled || cachedStatus?.isComplete) return;
