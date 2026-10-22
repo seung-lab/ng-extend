@@ -38,7 +38,7 @@ const sparks = Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * 360, d: 46 
     <div v-if="pending && !shown" class="nge-gemfx-spot" :style="{ left: pending.x + 'px', top: pending.y + 'px' }">
       <svg class="nge-gemfx-spin" :class="`nge-gemfx-spin--${pending.gem}`" viewBox="0 0 24 24" width="26" height="26"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
     </div>
-    <div v-if="shown" :key="shown.key" class="nge-gemfx-spot" :class="`nge-gemfx--${shown.result}`" :style="{ left: shown.x + 'px', top: shown.y + 'px' }">
+    <div v-if="shown" :key="shown.key" class="nge-gemfx-spot" :class="[`nge-gemfx--${shown.result}`, { 'nge-gemfx--ext': shown.result === 'hit' && shown.kind === 'merge' }]" :style="{ left: shown.x + 'px', top: shown.y + 'px' }">
       <span v-if="shown.result === 'hit'" class="nge-gemfx-ring"></span>
       <template v-if="shown.result === 'hit'">
         <span v-for="(s, i) in sparks" :key="i" class="nge-gemfx-spark" :style="{ '--a': s.a + 'deg', '--d': s.d + 'px' }"></span>
@@ -67,13 +67,15 @@ const sparks = Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * 360, d: 46 
 }
 .nge-gemfx-word small { display: block; font: 600 12px 'Inter', sans-serif; letter-spacing: 0; opacity: 0.9; }
 
-.nge-gemfx--hit .nge-gemfx-gem { color: #f5d142; filter: drop-shadow(0 0 10px rgba(245, 209, 66, 0.9)); animation: nge-gemfx-pop 0.55s cubic-bezier(0.2, 1.7, 0.4, 1); }
-.nge-gemfx--hit .nge-gemfx-word { color: #f5d142; animation: nge-gemfx-rise 1.9s ease-out forwards; }
-.nge-gemfx-ring { left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%; border: 3px solid #f5d142; animation: nge-gemfx-ring 0.8s ease-out forwards; }
+.nge-gemfx-spot { --fx: 245 209 66; }            /* a merger found: gold */
+.nge-gemfx--ext { --fx: 200 164 255; }            /* a missing extension found: violet */
+.nge-gemfx--hit .nge-gemfx-gem { color: rgb(var(--fx)); filter: drop-shadow(0 0 10px rgb(var(--fx) / 0.9)); animation: nge-gemfx-pop 0.55s cubic-bezier(0.2, 1.7, 0.4, 1); }
+.nge-gemfx--hit .nge-gemfx-word { color: rgb(var(--fx)); animation: nge-gemfx-rise 1.9s ease-out forwards; }
+.nge-gemfx-ring { left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%; border: 3px solid rgb(var(--fx)); animation: nge-gemfx-ring 0.8s ease-out forwards; }
 .nge-gemfx-ring--blue { border-color: #5aaaff; }
 .nge-gemfx-spark {
-  left: -3px; top: -3px; width: 6px; height: 6px; background: #f5d142; border-radius: 1px;
-  transform: rotate(var(--a)) translateX(0) rotate(45deg); box-shadow: 0 0 6px rgba(245, 209, 66, 0.9);
+  left: -3px; top: -3px; width: 6px; height: 6px; background: rgb(var(--fx)); border-radius: 1px;
+  transform: rotate(var(--a)) translateX(0) rotate(45deg); box-shadow: 0 0 6px rgb(var(--fx) / 0.9);
   animation: nge-gemfx-spark 0.9s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
 }
 .nge-gemfx--miss .nge-gemfx-gem { color: #7d8799; animation: nge-gemfx-crack 1.5s ease-in forwards; }

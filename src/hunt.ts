@@ -241,7 +241,8 @@ const viewer = (): any => (window as any)['viewer'];
 export type GemKind = 'cut' | 'merge';
 const KIND_WORD: Record<GemKind, string> = { cut: 'cut', merge: 'extend' };
 const KIND_COLOR: Record<GemKind, string> = { cut: '#e06060', merge: '#5aaaff' };   // the color key's red; a blue
-const FOUND = { id: 'hunt-found', name: 'Found', color: '#f5d142' };    // a found gem shines gold
+const FOUND = { id: 'hunt-found', name: 'Found', color: '#f5d142' };    // a found gem shines: gold for a merger,
+const FOUND_COLOR: Record<GemKind, string> = { cut: '#f5d142', merge: '#c8a4ff' };   // violet for a missing extension
 const MISSED = { id: 'hunt-missed', name: 'Missed', color: '#7d8799' }; // a missed one goes gray
 
 /** The layer for one kind of gem; a test run has layers of its own, so trying a hunt never mixes with playing it. */
@@ -280,9 +281,9 @@ export function gemsOnScreen(h: Pick<HuntInfo, 'title' | 'test' | 'spots'>): num
   return n;
 }
 
-function foldersFor(drops: HuntDrop[]) {
+function foldersFor(drops: HuntDrop[], kind: GemKind) {
   return [
-    { id: FOUND.id, name: FOUND.name, ids: drops.filter(d => d.hit).map(d => d.id), color: FOUND.color, paint: true },
+    { id: FOUND.id, name: FOUND.name, ids: drops.filter(d => d.hit).map(d => d.id), color: FOUND_COLOR[kind], paint: true },
     { id: MISSED.id, name: MISSED.name, ids: drops.filter(d => !d.hit).map(d => d.id), color: MISSED.color, paint: true },
   ];
 }
@@ -313,7 +314,7 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
     if (managed(name)) continue;
     const drops = (h.you?.drops ?? []).filter(d => dropKind(d) === k && Array.isArray(d.at) && d.at.length >= 3);
     const more = extra.filter(g => g.kind === k);
-    const folders = foldersFor(drops);
+    const folders = foldersFor(drops, k);
     folders[0].ids.push(...more.filter(g => g.judged).map(g => g.id));
     const ml = makeLayer(v.layerSpecification, name, {
       type: 'annotation', source: { url: 'local://annotations' },
@@ -340,10 +341,10 @@ export function pickKind(h: HuntInfo, kind: GemKind) {
 function fileGem(h: HuntInfo, kind: GemKind, id: string, hit: boolean) {
   const folders = managed(huntLayerName(h, kind))?.layer?.ngeAnnFolders;
   if (!folders) return;
-  const want = hit ? FOUND : MISSED;
+  const want = hit ? { ...FOUND, color: FOUND_COLOR[kind] } : MISSED;
   let value = (folders.value as any[]).map(f => ({ ...f, ids: f.ids.filter((x: string) => x !== id) }));
   if (!value.some(f => f.id === want.id)) value = [...value, { id: want.id, name: want.name, ids: [], color: want.color, paint: true }];
-  folders.value = value.map(f => (f.id === want.id ? { ...f, ids: [...f.ids, id] } : f));
+  folders.value = value.map(f => (f.id === want.id ? { ...f, ids: [...f.ids, id], color: want.color } : f));
   folders.changed.dispatch();
 }
 

@@ -1066,7 +1066,9 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
-  <hunt-panel v-if="showHunt" :hunt-id="huntPanelId" :test="huntPanelTest" @hide="showHunt = false; huntPanelTest = false" @pick="pickHunt" />
+  <!-- Out of the way while the profile is open, as it was when the profile closes (Ames 2026-10-22:
+       "the hunt box overlapping profile when I click achievement") -->
+  <hunt-panel v-if="showHunt" v-show="!showProfile" :hunt-id="huntPanelId" :test="huntPanelTest" @hide="showHunt = false; huntPanelTest = false" @pick="pickHunt" />
   <!-- Each gem's answer on the spot; the start of a Hunt (Ames 2026-10-21) -->
   <hunt-gem-fx />
   <hunt-begins @open="openHunt" />

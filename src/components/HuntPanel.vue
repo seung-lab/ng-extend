@@ -107,7 +107,7 @@ const news = computed(() => {
 });
 /** One answer in words (the big card for the newest, short lines for the ones before). */
 function wordsFor(n: any) {
-  if (n.result === 'hit') return { cls: 'hit', head: 'Got it!', text: n.kind === 'merge' ? 'A missing extension.' : 'A merger.' };
+  if (n.result === 'hit') return { cls: 'hit', head: 'Got it!', text: n.kind === 'merge' ? 'A missing extension.' : 'A merger.', ext: n.kind === 'merge' };
   if (n.result === 'already') return { cls: 'already', head: 'Found already', text: 'You found that one before. No gem used.' };
   if (n.result === 'refused') return { cls: 'refused', head: 'No gem dropped', text: n.text || '' };
   if (n.other) return { cls: 'miss', head: 'Wrong gem', text: `Something is there, but it needs ${n.other === 'merge' ? 'an extension' : 'a cut'}.` };
@@ -129,7 +129,7 @@ const yourTime = computed(() => {
 });
 const newsLine = computed(() => {
   const n = news.value; if (!n) return null;
-  if (n.result === 'hit') return { cls: 'hit', head: 'Got it!', text: n.kind === 'merge' ? 'A missing extension.' : 'A merger.' };
+  if (n.result === 'hit') return { cls: 'hit', head: 'Got it!', text: n.kind === 'merge' ? 'A missing extension.' : 'A merger.', ext: n.kind === 'merge' };
   if (n.result === 'already') return { cls: 'already', head: 'Found already', text: 'You found that one before. No gem used.' };
   if (n.result === 'refused') return { cls: 'refused', head: 'No gem dropped', text: n.text || '' };
   const w = wordsFor(n);
@@ -303,7 +303,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           </button>
           <p v-if="run.done" class="nge-hunt-slim-done">{{ doneWhy.head }}<span>{{ doneWhy.short }}</span></p>
           <div v-if="huntState.pending" class="nge-hunt-slim-news nge-hunt-news--pending" role="status"><b>Checking…</b></div>
-          <div v-else-if="newsLine" :key="news?.at" class="nge-hunt-slim-news" :class="`nge-hunt-news--${newsLine.cls}`" role="status">
+          <div v-else-if="newsLine" :key="news?.at" class="nge-hunt-slim-news" :class="[`nge-hunt-news--${newsLine.cls}`, { 'nge-hunt-news--ext': newsLine.ext }]" role="status">
             <b>{{ newsLine.head }}</b><span>{{ newsLine.text }}</span>
             <button v-if="newsLine.other && kinds.includes(newsLine.other)" class="nge-hunt-news-switch" @click="choose(newsLine.other)">Switch to {{ KIND[newsLine.other].word }}</button>
           </div>
@@ -355,13 +355,13 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 
           <!-- The last gem's answer -->
           <div v-if="huntState.pending" class="nge-hunt-news nge-hunt-news--pending" role="status"><span class="nge-hunt-news-head">Checking…</span></div>
-          <div v-else-if="newsLine" :key="news?.at" class="nge-hunt-news" :class="`nge-hunt-news--${newsLine.cls}`" role="status">
+          <div v-else-if="newsLine" :key="news?.at" class="nge-hunt-news" :class="[`nge-hunt-news--${newsLine.cls}`, { 'nge-hunt-news--ext': newsLine.ext }]" role="status">
             <span class="nge-hunt-news-head">{{ newsLine.head }}</span>
             <span class="nge-hunt-news-text">{{ newsLine.text }}</span>
             <button v-if="newsLine.other && kinds.includes(newsLine.other)" class="nge-hunt-news-switch" @click="choose(newsLine.other)">Switch to {{ KIND[newsLine.other].word }}</button>
           </div>
           <ul v-if="earlier.length && !mini" class="nge-hunt-log" aria-label="Your answers before">
-            <li v-for="e in earlier" :key="e.at" :class="`nge-hunt-log--${e.cls}`"><b>{{ e.head }}</b> {{ e.text }}</li>
+            <li v-for="e in earlier" :key="e.at" :class="[`nge-hunt-log--${e.cls}`, { 'nge-hunt-log--ext': e.ext }]"><b>{{ e.head }}</b> {{ e.text }}</li>
           </ul>
 
           <!-- Done -->
@@ -626,6 +626,9 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-news--pending { background: rgb(var(--hn-accent) / 0.07); border: 1px dashed rgb(var(--hn-accent) / 0.5); color: #cfe4ff; animation: ngeHuntBreathe 1s ease-in-out infinite; }
 .nge-hunt-news--hit { background: rgb(var(--hn-gold) / 0.12); border: 1px solid rgb(var(--hn-gold) / 0.75); color: #fff3c4; box-shadow: 0 0 18px rgb(var(--hn-gold) / 0.2); animation: ngeHuntHit 0.6s cubic-bezier(0.2, 1.5, 0.4, 1); }
 .nge-hunt-news--hit .nge-hunt-news-head { color: rgb(var(--hn-gold)); text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.5); }
+/* A missing extension found: violet (Ames 2026-10-22) */
+.nge-hunt-news--hit.nge-hunt-news--ext { background: rgba(200, 164, 255, 0.12); border-color: rgba(200, 164, 255, 0.75); color: #efe6ff; box-shadow: 0 0 18px rgba(200, 164, 255, 0.2); }
+.nge-hunt-news--ext .nge-hunt-news-head, .nge-hunt-slim-news.nge-hunt-news--ext b, .nge-hunt-log--ext b { color: #c8a4ff; text-shadow: 0 0 10px rgba(200, 164, 255, 0.5); }
 .nge-hunt-news--miss { background: rgba(125, 135, 153, 0.1); border: 1px solid rgba(125, 135, 153, 0.55); color: #dfe6f1; animation: ngeHuntShake 0.45s; }
 .nge-hunt-news--already { background: rgb(var(--hn-accent) / 0.08); border: 1px solid rgb(var(--hn-accent) / 0.5); color: #cfe4ff; animation: ngeHuntRise 0.3s; }
 .nge-hunt-news--refused { background: rgba(224, 96, 96, 0.08); border: 1px solid rgba(224, 96, 96, 0.5); color: #ffd2d2; animation: ngeHuntRise 0.3s; }
