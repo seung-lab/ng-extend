@@ -578,7 +578,13 @@ Hit next to reveal the answer.`,
 Questions? Email <a href="mailto:support@eyewire.org">support@eyewire.org</a>.
 
 
-Thanks for being a part of the neuroscience community. For Science!`,
+Thanks for being a part of the neuroscience community. For Science!
+
+<strong>Next up: the Merge tutorial.</strong>`,
+    // The button finishes Get Started (its Achievement counts) and Merge
+    // starts by itself (toolbar_staging getStartedFinished). Ames 2026-10-21:
+    // "there should be a button to start Merge".
+    nextLabel: 'Start Merge',
     position: MIDDLE,
     image:
       imgTutorialFinal,
