@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
@@ -907,45 +908,6 @@ function onIconDrop(e: DragEvent, id: string) {
   prefsStore.save({ toolbarIcons: saved, toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected) });
 }
 
-function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
-  const viewer: any = (window as any)['viewer'];
-  if (!viewer) return;
-
-  // 1. Select the segmentation layer (required for tool keybindings)
-  try {
-    const segLayer = viewer.layerManager?.managedLayers?.find(
-      (x: any) => String(x.layer?.type || '').startsWith('segmentation'),   // by the layer's own type: class names are renamed in the production build
-    );
-    if (segLayer) {
-      viewer.selectedLayer.layer = segLayer;
-      viewer.selectedLayer.visible = true;
-    }
-  } catch { /* non-critical */ }
-
-  // 2. Dispatch keyboard shortcut to the viewer element where ng binds handlers.
-  // CUSTOM_BINDINGS map (in dev-server / build-prod): keyc → grapheneMulticutSegments,
-  // keym → grapheneMergeSegments, keyf → grapheneFindPath.
-  const keyMap = { multicut: 'c', merge: 'm', findPath: 'f' } as const;
-  const codeMap = { multicut: 'KeyC', merge: 'KeyM', findPath: 'KeyF' } as const;
-  const key = keyMap[toolType];
-  const eventInit: KeyboardEventInit = {
-    key, code: codeMap[toolType],
-    bubbles: true, cancelable: true,
-  };
-  // Try viewer.element first (where global inputEventBindings live), then fallback
-  const targets = [
-    viewer.element,
-    viewer.display?.container,
-    document.getElementById('neuroglancer-container'),
-  ].filter(Boolean);
-  // preventScroll: on a touch screen the page is taller than what shows (the
-  // browser bar), and a plain focus() slid it up, so the top bar went off
-  // screen for good (Nseraf, report 135, on a Galaxy Tab).
-  for (const el of targets) {
-    if (el instanceof HTMLElement) el.focus({ preventScroll: true });
-    el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
-  }
-}
 
 </script>
 
