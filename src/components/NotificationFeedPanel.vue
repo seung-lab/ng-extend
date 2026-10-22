@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
+import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore } from '../store';
 import { secureWrite } from '../secure_write';
@@ -848,7 +849,7 @@ function padRank(rank: number): string {
                   <div class="nge-notif-detail-rule" aria-hidden="true"></div>
                   <div
                     class="nge-notif-detail-body"
-                    v-html="renderMarkdown(cleanCopy(openNotif.body))"
+                    v-html="withVideoEmbeds(renderMarkdown(cleanCopy(openNotif.body)))"
                     @click="onDetailBodyClick"
                   ></div>
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
@@ -1625,6 +1626,14 @@ span.nge-notif-reply-part { cursor: default; }
 }
 /* Rendered-markdown block spacing. */
 .nge-notif-detail-body :deep(p) { margin: 0 0 0.7em; }
+/* A video link plays in place (util/video_embeds.ts), 16:9, full width. */
+.nge-notif-detail-body :deep(.nge-notif-video) {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; margin: 4px 0 6px;
+  border-radius: 8px; overflow: hidden; background: #000;
+  border: 1px solid rgba(120, 170, 255, 0.22);
+}
+.nge-notif-detail-body :deep(.nge-notif-video iframe),
+.nge-notif-detail-body :deep(.nge-notif-video video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .nge-notif-detail-body :deep(p:last-child) { margin-bottom: 0; }
 .nge-notif-detail-body :deep(strong) { color: #eef4fb; font-weight: 650; }
 /* No thin italic on a dark background: emphasis reads as colour instead. */

@@ -5,6 +5,7 @@ import {useProofreadingBackendStore} from '../store';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {renderSafeMarkdown} from '../util/safe_markdown';
+import {withVideoEmbeds} from '../util/video_embeds';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
 import RollUp from 'components/RollUp.vue';
@@ -1261,7 +1262,8 @@ const notifBody = ref('');
 // lists and links; a few buttons wrap the selection; a preview shows the
 // result as players will see it.
 const notifBodyEl = ref<HTMLTextAreaElement | null>(null);
-const notifPreview = computed(() => renderSafeMarkdown(notifBody.value, true));
+// Video links play in the preview as they will in the bell (util/video_embeds.ts).
+const notifPreview = computed(() => withVideoEmbeds(renderSafeMarkdown(notifBody.value, true)));
 /** A text box the format buttons act on: the Notifications body, or a
  *  card's "Update submitter" box (Ames 2026-10-16: her numbered list to
  *  Nseraf lost its numbers, so that box got the same buttons and preview). */
@@ -3217,6 +3219,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
    #vueMain > * ul { list-style: none; padding: 0 }, outranks these and
    stripped the bullets here, though not in the real notification. */
 .nge-admin-fmtpreview-body :deep(p) { margin: 0 0 0.7em; }
+.nge-admin-fmtpreview-body :deep(.nge-notif-video) { position: relative; width: 100%; max-width: 420px; aspect-ratio: 16 / 9; margin: 4px 0 6px; border-radius: 8px; overflow: hidden; background: #000; }
+.nge-admin-fmtpreview-body :deep(.nge-notif-video iframe), .nge-admin-fmtpreview-body :deep(.nge-notif-video video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .nge-admin-fmtpreview-body :deep(p:last-child) { margin-bottom: 0; }
 .nge-admin-fmtpreview-body :deep(strong) { color: #eef4fb; font-weight: 650; }
 .nge-admin-fmtpreview-body :deep(em) { font-style: normal; font-weight: 500; color: rgba(110, 220, 255, 0.9); }
