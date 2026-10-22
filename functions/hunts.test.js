@@ -145,8 +145,12 @@ function fakeDb() {
     patchHunt: async (id, row) => { const h = s.hunts.find((x) => x.id === id); Object.assign(h, clone(row)); return clone(h); },
     deleteHunt: async (id) => { s.hunts = s.hunts.filter((h) => h.id !== id); },
     claimAward: async (id, at) => { const h = s.hunts.find((x) => x.id === id); if (!h || h.awarded_at) return null; h.awarded_at = at; return clone(h); },
-    key: async (id) => clone(s.keys[id] || []),
-    setKey: async (id, t) => { s.keys[id] = clone(t); },
+    key: async (id) => clone(H.splitKey(s.keys[id] || []).targets),
+    keyExtras: async (id) => { const k = H.splitKey(s.keys[id] || []); return clone({ edges: k.edges, bounds: k.bounds }); },
+    setKey: async (id, t, extras) => {
+      const keep = extras || (({ edges, bounds }) => ({ edges, bounds }))(H.splitKey(s.keys[id] || []));
+      s.keys[id] = clone(H.joinKey(t, keep));
+    },
     submissions: async (id) => clone(s.subs.filter((x) => x.hunt_id === id).map(({ user_id, found, close, created_at }) => ({ user_id, found, close, created_at }))),
     allSubmissions: async (id) => clone(s.subs.filter((x) => x.hunt_id === id)),
     myRun: async (id, uid) => clone([...s.subs].reverse().find((x) => x.hunt_id === id && x.user_id === uid) || null),
@@ -747,4 +751,33 @@ test('a gem on a place found already is answered even with no gems left, so it s
   assert.equal(near.drop.already, true);
   await assert.rejects(send(pt(30000, 30000, 100), 'd', 63), /used all your gems/);
   assert.equal(h.db._s.subs[0].points.length, 2);
+});
+
+test('edges of the dataset: an Extend gem where a branch leaves the data uses no gem; marked edges and the volume bounds both count, and neither is a problem', async () => {
+  const h = harness();
+  const admin = h.ctx(ADMIN, at(0), true);
+  // One missing extension; one edge spot marked; the volume 200 x 200 x 20 µm.
+  const d = await H.huntAction('hunt.save', { fields: { title: 'Edge Hunt', dataset: 'pinky_nf_v2', cells: [{ root: '648518346350533705' }], tolerance_nm: 2000,
+    announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)) },
+    key: { layers: [{ layer: layer([pt(1000, 1000, 100)]), kind: 'merge' }, { layer: layer([pt(20000, 20000, 100)]), kind: 'edge' }], dims: DIMS, bounds_nm: [[0, 0, 0], [200000, 200000, 20000]] },
+    view: VIEW, status: 'draft' }, admin);
+  assert.equal(d.target_count, 1);
+  assert.deepEqual([d.edge_count, d.has_bounds], [1, true]);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const send = (p, id, kind, t) => H.huntAction('hunt.drop', { id: d.id, kind, layer: layer([{ ...p, id }]), dims: DIMS }, h.ctx(P1, at(t)));
+  const marked = await send(pt(20000, 20000, 100), 'e1', 'merge', 60);
+  assert.deepEqual([marked.drop.edge, marked.run.gems_used], [true, 0]);
+  const cutThere = await send(pt(20000, 20000, 100), 'c1', 'cut', 61);   // a Cut gem at an edge is judged as a cut: a miss
+  assert.deepEqual([!!cutThere.drop.edge, cutThere.drop.hit, cutThere.run.gems_used], [false, false, 1]);
+  const bound = await send(pt(100, 30000, 100), 'e2', 'merge', 62);        // 400 nm from the volume's side
+  assert.deepEqual([bound.drop.edge, bound.run.gems_used], [true, 1]);
+  const inside = await send(pt(30000, 30000, 250), 'm1', 'merge', 63);     // far from any edge: a miss
+  assert.deepEqual([!!inside.drop.edge, inside.drop.hit], [false, false]);
+  const real = await send(pt(1000, 1000, 100), 'x1', 'merge', 64);         // the real extension still counts
+  assert.equal(real.drop.hit, true);
+  assert.equal(h.db._s.subs[0].points.length, 3);                          // the edge gems are not kept as gems
+  // Count it on the miss keeps the edges and the bounds.
+  await H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'm1' }, h.ctx(ADMIN, at(65), true));
+  const ex = await h.db.keyExtras(d.id);
+  assert.deepEqual([(await h.db.key(d.id)).length, ex.edges.length, !!ex.bounds], [2, 1, true]);
 });

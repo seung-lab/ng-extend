@@ -244,6 +244,8 @@ const KIND_COLOR: Record<GemKind, string> = { cut: '#e06060', merge: '#5aaaff' }
 const FOUND = { id: 'hunt-found', name: 'Found', color: '#f5d142' };    // a found gem shines: gold for a merger,
 const FOUND_COLOR: Record<GemKind, string> = { cut: '#f5d142', merge: '#c8a4ff' };   // violet for a missing extension
 const MISSED = { id: 'hunt-missed', name: 'Missed', color: '#7d8799' }; // a missed one goes gray
+const EDGE = { id: 'hunt-edge', name: 'Edge of the dataset', color: '#9fb7d9' };   // a pale steel blue: no gem used, neither found nor missed
+const edgeIds = new Set<string>();
 
 /** The layer for one kind of gem; a test run has layers of its own, so trying a hunt never mixes with playing it. */
 export function huntLayerName(h: Pick<HuntInfo, 'title' | 'test'>, kind: GemKind = 'cut'): string {
@@ -292,7 +294,7 @@ function foldersFor(drops: HuntDrop[], kind: GemKind) {
 const dropKind = (d: HuntDrop): GemKind => (d.k === 'merge' || d.k === 'cut' ? d.k : d.kind === 'merge' ? 'merge' : 'cut');
 
 /** A gem on screen the server does not keep (a second gem on a place found already): it stays through a redraw. */
-interface KeptGem { kind: GemKind; id: string; point: number[]; judged: boolean }
+interface KeptGem { kind: GemKind; id: string; point: number[]; judged: boolean; edge: boolean }
 function keptOnScreen(h: HuntInfo): KeptGem[] {
   const known = new Set((h.you?.drops ?? []).map(d => d.id));
   const out: KeptGem[] = [];
@@ -300,7 +302,7 @@ function keptOnScreen(h: HuntInfo): KeptGem[] {
     const src = managed(huntLayerName(h, k))?.layer?.localAnnotations;
     if (!src) continue;
     // Every gem the server does not keep: a judged one stays gold; one not judged yet is judged after the redraw.
-    for (const a of src) if (a && a.type === 0 && a.point && !known.has(a.id)) out.push({ kind: k, id: a.id, point: Array.from(a.point as Float32Array), judged: judged.has(a.id) });
+    for (const a of src) if (a && a.type === 0 && a.point && !known.has(a.id)) out.push({ kind: k, id: a.id, point: Array.from(a.point as Float32Array), judged: judged.has(a.id), edge: edgeIds.has(a.id) });
   }
   return out;
 }
@@ -315,7 +317,9 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
     const drops = (h.you?.drops ?? []).filter(d => dropKind(d) === k && Array.isArray(d.at) && d.at.length >= 3);
     const more = extra.filter(g => g.kind === k);
     const folders = foldersFor(drops, k);
-    folders[0].ids.push(...more.filter(g => g.judged).map(g => g.id));
+    folders[0].ids.push(...more.filter(g => g.judged && !g.edge).map(g => g.id));
+    const edges = more.filter(g => g.judged && g.edge).map(g => g.id);
+    if (edges.length) folders.push({ id: EDGE.id, name: EDGE.name, ids: edges, color: EDGE.color, paint: true });
     const ml = makeLayer(v.layerSpecification, name, {
       type: 'annotation', source: { url: 'local://annotations' },
       annotations: [...drops.map(d => ({ type: 'point', id: d.id, point: d.at })), ...more.map(g => ({ type: 'point', id: g.id, point: g.point }))],
@@ -338,10 +342,10 @@ export function pickKind(h: HuntInfo, kind: GemKind) {
 }
 
 /** Put a judged gem in its folder (and the folder back, if the player removed it). */
-function fileGem(h: HuntInfo, kind: GemKind, id: string, hit: boolean) {
+function fileGem(h: HuntInfo, kind: GemKind, id: string, hit: boolean | 'edge') {
   const folders = managed(huntLayerName(h, kind))?.layer?.ngeAnnFolders;
   if (!folders) return;
-  const want = hit ? { ...FOUND, color: FOUND_COLOR[kind] } : MISSED;
+  const want = hit === 'edge' ? EDGE : hit ? { ...FOUND, color: FOUND_COLOR[kind] } : MISSED;
   let value = (folders.value as any[]).map(f => ({ ...f, ids: f.ids.filter((x: string) => x !== id) }));
   if (!value.some(f => f.id === want.id)) value = [...value, { id: want.id, name: want.name, ids: [], color: want.color, paint: true }];
   folders.value = value.map(f => (f.id === want.id ? { ...f, ids: [...f.ids, id], color: want.color } : f));
@@ -446,7 +450,7 @@ export async function openTestHunt(id: number): Promise<HuntInfo> {
 
 /** What the last gem did, for the Hunt box. */
 export interface DropNews {
-  id: string; result: 'hit' | 'miss' | 'already' | 'refused'; kind?: GemKind | null; gem: GemKind;
+  id: string; result: 'hit' | 'miss' | 'already' | 'refused' | 'edge'; kind?: GemKind | null; gem: GemKind;
   other?: GemKind | null; text?: string; nearest_um?: number | null; at: number;
   /** Where on screen the gem was dropped (the Ctrl + Click), for the burst there. */
   x?: number; y?: number;
@@ -572,7 +576,12 @@ async function judgeNext() {
       return;
     }
     judged.add(id);
-    if (r.drop?.repeat) {
+    if (r.drop?.edge) {
+      // Where the branch leaves the data: no gem used, and the gem stays in its own folder.
+      edgeIds.add(id);
+      fileGem(h, kind, id, 'edge');
+      tell({ id, gem: kind, result: 'edge', at: Date.now(), x, y });
+    } else if (r.drop?.repeat) {
       // The server had this gem already: its first answer stands, the gem stays where it is.
       fileGem(h, kind, id, !!r.drop.hit);
     } else if (r.drop?.already) {
@@ -700,11 +709,28 @@ export function cellsOnScreen(): { root: string; label: string }[] {
 
 /** What the Admin Hub sends to make a hunt from the screen: the key layer, the view, the cells, the dataset. */
 /** A layer's places are cuts (mergers) or merges (pieces left off); a guess from its name, which the admin can change. */
-export type KeyKind = 'cut' | 'merge';
+/** A key layer marks mergers (cut), extensions (merge), or edges of the dataset (edge: not problems). */
+export type KeyKind = 'cut' | 'merge' | 'edge';
 export function guessKind(name: string): KeyKind {
+  if (/edge|boundary|border|out of (the )?data/i.test(name)) return 'edge';
   if (/merger|cut|split\b/i.test(name)) return 'cut';
   if (/merge|extension|extend|join|missing|attach/i.test(name)) return 'merge';
   return 'cut';
+}
+
+/** The volume's outer bounds in nanometres, [[x, y, z] low, [x, y, z] high], from the viewer's coordinate
+ *  space: an Extend gem this near them is the edge of the dataset (Ames 2026-10-22). Null if unknown. */
+export function datasetBoundsNm(): number[][] | null {
+  try {
+    const cs = viewer()?.coordinateSpace?.value;
+    const names: string[] = cs?.names ?? [];
+    const lo = cs?.bounds?.lowerBounds, hi = cs?.bounds?.upperBounds, sc = cs?.scales;
+    if (!lo || !hi || !sc) return null;
+    const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+    if (ix.some(i => i < 0)) return null;
+    const L = ix.map(i => Number(lo[i]) * Number(sc[i]) * 1e9), H = ix.map(i => Number(hi[i]) * Number(sc[i]) * 1e9);
+    return L.every((v, k) => Number.isFinite(v) && Number.isFinite(H[k]) && H[k] > v) ? [L, H] : null;
+  } catch { return null; }
 }
 
 /** Ames 2026-10-21: the key can come from two layers (or more), one for merges and one for cuts. */
@@ -718,7 +744,7 @@ export function readHuntFromScreen(keyLayers: { name: string; kind: KeyKind }[])
     return { layer: { source: layer.source, annotations: layer.annotations }, kind: k.kind };
   });
   return {
-    key: { layers, dims: state.dimensions },
+    key: { layers, dims: state.dimensions, bounds_nm: datasetBoundsNm() },
     view: state,
     cells: cellsOnScreen(),
     dataset: canonicalDataset(currentDatasetTag()),

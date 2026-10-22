@@ -2312,7 +2312,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-22-hunt-7";
+const EW_HUNT_CODE_VERSION = "2026-10-22-hunt-8";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {

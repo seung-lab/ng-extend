@@ -108,17 +108,61 @@ function kindCounts(targets) {
   return c;
 }
 
-/** The answer key from one or more annotation layers, each marked as cuts or merges. */
+/** The answer key from one or more annotation layers, each marked as cuts or merges (edge layers are not problems). */
 function keyTargets(key) {
   if (!key || typeof key !== 'object') fail(400, 'No answer key was sent.');
   const parts = Array.isArray(key.layers) ? key.layers : [{ layer: key.layer, kind: key.kind }];
   if (!parts.length) fail(400, 'Pick at least one layer with the places marked.');
   const out = [];
   for (const part of parts) {
+    if (part && part.kind === 'edge') continue;
     const kind = part && part.kind === 'merge' ? 'merge' : 'cut';
     for (const pt of layerPointsNm(part && part.layer, key.dims)) out.push([pt[0], pt[1], pt[2], kind]);
   }
   return out;
+}
+
+/**
+ * Edges of the dataset: where a branch runs out of the data, which is no missing extension.
+ * The key can mark them (a layer of kind "edge"), and the volume's own bounds (read from the
+ * admin's screen with the key) catch the ones nobody marked. Neither counts as a problem: an
+ * Extend gem there is answered "Edge of the dataset", with no gem used.
+ */
+const EDGE_NM = 2000;   // this close to the volume's outer bounds is the edge (Ames chose about 2 µm)
+function keyEdges(key) {
+  const parts = key && Array.isArray(key.layers) ? key.layers : [];
+  const out = [];
+  for (const part of parts) {
+    if (!part || part.kind !== 'edge') continue;
+    for (const pt of layerPointsNm(part.layer, key.dims)) out.push([pt[0], pt[1], pt[2], 'edge']);
+  }
+  return out.slice(0, MAX_TARGETS * 4);
+}
+function cleanBounds(b) {
+  if (!Array.isArray(b) || b.length !== 2) return null;
+  const lo = b[0], hi = b[1];
+  const ok = (v) => Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(Number(x)));
+  if (!ok(lo) || !ok(hi)) return null;
+  const L = lo.map(Number), H = hi.map(Number);
+  return L.every((x, i) => H[i] > x) ? [L, H] : null;
+}
+/** The key row holds the problems, then any edge spots, then the bounds: stored together, read apart. */
+function splitKey(raw) {
+  const all = Array.isArray(raw) ? raw : [];
+  const targets = all.filter((t) => Array.isArray(t) && t[3] !== 'edge');
+  const edges = all.filter((t) => Array.isArray(t) && t[3] === 'edge');
+  const b = all.find((t) => t && !Array.isArray(t) && typeof t === 'object' && t.bounds_nm);
+  return { targets, edges, bounds: b ? cleanBounds(b.bounds_nm) : null };
+}
+function joinKey(targets, extras) {
+  const e = extras || {};
+  return [...(targets || []), ...(e.edges || []), ...(e.bounds ? [{ bounds_nm: e.bounds }] : [])];
+}
+function atEdge(nm, extras, tol) {
+  const e = extras || {};
+  if ((e.edges || []).some((t) => dist(t, nm) <= tol)) return true;
+  const b = e.bounds;
+  return !!b && [0, 1, 2].some((i) => nm[i] - b[0][i] <= EDGE_NM || b[1][i] - nm[i] <= EDGE_NM);
 }
 
 /**
@@ -436,7 +480,7 @@ function speedWinner(runs, n) {
 }
 
 /** Judge one gem against a run, and keep it (save) unless it lands on a problem found already. */
-async function dropInto(h, targets, drops, args, ctx, save) {
+async function dropInto(h, targets, drops, args, ctx, save, extras) {
   const before = runView(h, drops, targets);
   // The same gem sent again (a slow answer, a retry): its first answer, nothing new kept. Before the
   // checks below, so the last gem of a run sent twice is never refused (and taken off the screen).
@@ -450,6 +494,8 @@ async function dropInto(h, targets, drops, args, ctx, save) {
   const j = judgeDrop(targets, drops, g.nm, tolOf(h), kind);
   // A gem on a place found already uses no gem, so it is answered even with none left (and stays gold).
   if (j.already) return { drop: { id: g.id, already: true }, run: before, nearest_um: j.nearest_um };
+  // An Extend gem where the branch leaves the data: the edge of the dataset, no gem used (it stays, in its own color).
+  if (j.hit < 0 && !j.other && kind === 'merge' && atEdge(g.nm, extras, tolOf(h))) return { drop: { id: g.id, edge: true }, run: before, nearest_um: j.nearest_um };
   if (targets.length && before.found >= targets.length) fail(409, 'You found them all. Your Hunt is done.');
   if (drops.length >= before.budget) fail(409, 'You have used all your gems. Your Hunt is done.');
   const d = { id: g.id, nm: g.nm, at: g.at, hit: j.hit, k: kind, t: (ctx.now || new Date()).toISOString() };
@@ -762,6 +808,7 @@ async function drop(args, ctx) {
   if (p === 'announced') fail(409, 'The Hunt has not started yet.');
   if (p !== 'live') fail(409, 'This Hunt is over.');
   const targets = await db.key(h.id);
+  const extras = db.keyExtras ? await db.keyExtras(h.id) : null;
   const run = await db.myRun(h.id, me.id);
   const fresh = !run || !Array.isArray(run.points) || run.points.some((x) => Array.isArray(x));   // an answer from before is not a run
   const drops = fresh ? [] : normalizeDrops(run.points);
@@ -770,7 +817,7 @@ async function drop(args, ctx) {
     kept = next;
     if (fresh) row = await db.addSubmission({ hunt_id: h.id, user_id: me.id, points: next, found, close: next.length, created_at: (ctx.now || new Date()).toISOString() });
     else await db.patchSubmission(run.id, { points: next, found, close: next.length });
-  });
+  }, extras);
   // A player hears right or wrong, and what is left; never how near a miss was.
   return { drop: r.drop, run: row ? runView(h, kept, targets, row) : r.run };
 }
@@ -820,7 +867,7 @@ async function duplicate(args, ctx) {
   const canFlag = db.hasAdminsOnly ? await db.hasAdminsOnly() : true;
   if (canFlag) row.admins_only = ctx.testSite ? true : !!h.admins_only;
   const copy = await db.insertHunt(row);
-  await db.setKey(copy.id, await db.key(h.id));
+  await db.setKey(copy.id, await db.key(h.id), db.keyExtras ? await db.keyExtras(h.id) : undefined);
   return adminView(copy, ctx);
 }
 
@@ -860,9 +907,10 @@ async function testOpen(args, ctx) {
 async function testDrop(args, ctx) {
   const h = await getHunt(ctx.db, args.id);
   const targets = await ctx.db.key(h.id);
+  const extras = ctx.db.keyExtras ? await ctx.db.keyExtras(h.id) : null;
   // The earlier gems are judged again from where they are, not taken on the game's word.
   const drops = replay(targets, normalizeDrops(args.prev).slice(0, 1000), tolOf(h));
-  const r = await dropInto(h, targets, drops, args, ctx, null);
+  const r = await dropInto(h, targets, drops, args, ctx, null, extras);
   return { ...r, test: true, tolerance_um: Math.round(tolOf(h) / 100) / 10 };
 }
 
@@ -1037,9 +1085,10 @@ async function save(args, ctx) {
   // saves drafts and tries them, but cannot schedule: a scheduled test would reach every player.
   const canFlag = db.hasAdminsOnly ? await db.hasAdminsOnly() : true;
   if (!canFlag) delete fields.admins_only;
-  let targets = null;
+  let targets = null, extras = null;
   if (args.key) {
     targets = keyTargets(args.key);
+    extras = { edges: keyEdges(args.key), bounds: cleanBounds(args.key.bounds_nm) };
     if (!targets.length) fail(400, 'Those layers have no points. Mark each place with a point.');
     if (targets.length > MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} mergers per Hunt.`);
     fields.target_count = targets.length;
@@ -1067,7 +1116,7 @@ async function save(args, ctx) {
   if (status) fields.status = status;
   if (!h) h = await db.insertHunt({ title: next.title, dataset: next.dataset, status: next.status || 'draft', created_by: me.id, ...fields });
   else h = await db.patchHunt(h.id, fields);
-  if (targets) await db.setKey(h.id, targets);
+  if (targets) await db.setKey(h.id, targets, extras);
   if (h.status === 'scheduled' || (h.notif_ids && Object.keys(h.notif_ids).length)) {
     const ids = await syncNotifications(h, ctx);
     h = await db.patchHunt(h.id, { notif_ids: ids });
@@ -1159,8 +1208,10 @@ async function adminView(h, ctx) {
   // A start this close to a place gives it away: the Admin Hub warns (twice the tolerance).
   const gap = startGapUm(h, await db.key(h.id));
   const tolUm = (Number(h.tolerance_nm) || DEFAULT_TOLERANCE_NM) / 1000;
+  const extras = db.keyExtras ? await db.keyExtras(h.id) : null;
   return { ...rest, has_view: !!view, phase: phase(h, now), thresholds: thresholds(h), max_points_used: maxPoints(h),
-    players: board.length, notes, start_gap_um: gap, start_on_answer: gap != null && gap <= 2 * tolUm };
+    players: board.length, notes, start_gap_um: gap, start_on_answer: gap != null && gap <= 2 * tolUm,
+    edge_count: extras ? extras.edges.length : 0, has_bounds: !!(extras && extras.bounds) };
 }
 
 async function adminList(ctx) {
@@ -1196,6 +1247,7 @@ function restDb(sb) {
   const enc = encodeURIComponent;
   const merge = { Prefer: 'resolution=merge-duplicates,return=representation' };
   const one = async (p) => (await p)[0] || null;
+  const rawKey = async (id) => { const r = await one(sb(`hunt_keys?hunt_id=eq.${id}&select=targets&limit=1`)); return (r && r.targets) || []; };
   return {
     hunts: () => sb('hunts?select=*&order=start_at.desc.nullslast&limit=200'),
     visibleHunts: (since) => sb(`hunts?status=eq.scheduled&end_at=gte.${enc(since)}&select=*&order=start_at.asc&limit=20`),
@@ -1204,9 +1256,13 @@ function restDb(sb) {
     patchHunt: (id, row) => one(sb(`hunts?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) })),
     deleteHunt: (id) => sb(`hunts?id=eq.${id}`, { method: 'DELETE' }),
     claimAward: (id, at) => one(sb(`hunts?id=eq.${id}&awarded_at=is.null`, { method: 'PATCH', body: JSON.stringify({ awarded_at: at }) })),
-    key: async (id) => { const r = await one(sb(`hunt_keys?hunt_id=eq.${id}&select=targets&limit=1`)); return (r && r.targets) || []; },
-    setKey: (id, targets) => sb('hunt_keys?on_conflict=hunt_id', { method: 'POST', headers: merge,
-      body: JSON.stringify({ hunt_id: id, targets, updated_at: new Date().toISOString() }) }),
+    key: async (id) => splitKey(await rawKey(id)).targets,
+    keyExtras: async (id) => { const k = splitKey(await rawKey(id)); return { edges: k.edges, bounds: k.bounds }; },
+    setKey: async (id, targets, extras) => {
+      const keep = extras || (({ edges, bounds }) => ({ edges, bounds }))(splitKey(await rawKey(id)));
+      return sb('hunt_keys?on_conflict=hunt_id', { method: 'POST', headers: merge,
+        body: JSON.stringify({ hunt_id: id, targets: joinKey(targets, keep), updated_at: new Date().toISOString() }) });
+    },
     submissions: (id) => sb(`hunt_submissions?hunt_id=eq.${id}&select=user_id,found,close,created_at&order=created_at.asc&limit=10000`),
     myRun: (id, uid) => one(sb(`hunt_submissions?hunt_id=eq.${id}&user_id=eq.${encodeURIComponent(uid)}&select=id,points,found,close,created_at&order=id.desc&limit=1`)),
     allSubmissions: (id) => sb(`hunt_submissions?hunt_id=eq.${id}&select=id,user_id,points,found,close,created_at&limit=10000`),
@@ -1275,4 +1331,5 @@ module.exports = {
   huntAction, restDb, placeRuns, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM,
+  keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM,
 };

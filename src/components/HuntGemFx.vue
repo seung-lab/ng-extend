@@ -22,7 +22,7 @@ const pending = computed(() => {
 watch(() => huntState.news?.at, () => {
   const n = huntState.news;
   if (!n || n.x == null || n.y == null) return;
-  const head = n.result === 'hit' ? 'Got it!' : n.result === 'miss' ? 'Not there' : n.result === 'already' ? 'Found already' : 'No gem';
+  const head = n.result === 'hit' ? 'Got it!' : n.result === 'miss' ? 'Not there' : n.result === 'already' ? 'Found already' : n.result === 'edge' ? 'Edge of the dataset' : 'No gem';
   const sub = n.result === 'hit' ? (n.kind === 'merge' ? 'Missing extension' : 'Merger') : n.result === 'miss' && n.other ? (n.other === 'merge' ? 'Needs an extension' : 'Needs a cut') : '';
   shown.value = { key: n.at, x: n.x, y: n.y, result: n.result, head, sub };
   if (hideTimer) clearTimeout(hideTimer);
@@ -78,6 +78,8 @@ const sparks = Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * 360, d: 46 
   transform: rotate(var(--a)) translateX(0) rotate(45deg); box-shadow: 0 0 6px rgb(var(--fx) / 0.9);
   animation: nge-gemfx-spark 0.9s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
 }
+.nge-gemfx--edge .nge-gemfx-gem { color: #9fb7d9; filter: drop-shadow(0 0 8px rgba(159, 183, 217, 0.7)); }
+.nge-gemfx--edge .nge-gemfx-word { color: #b9cde8; animation: nge-gemfx-rise 1.5s ease-out forwards; }
 .nge-gemfx--miss .nge-gemfx-gem { color: #7d8799; animation: nge-gemfx-crack 1.5s ease-in forwards; }
 .nge-gemfx--miss .nge-gemfx-word { color: #c9d2e0; animation: nge-gemfx-rise 1.5s ease-out forwards; }
 .nge-gemfx--already .nge-gemfx-gem { color: #5aaaff; animation: nge-gemfx-fade 1.5s ease-in forwards; }

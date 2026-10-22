@@ -26,6 +26,7 @@ interface NoteInfo { id: number; send_at: string; sent: boolean; title: string; 
 type PrizeArt = string | { badge_id?: number; image_url?: string; thumbnail_url?: string };
 interface Prize { mode: 'own' | 'badge'; badge_id: number | ''; image: Picture | null }
 interface AdminHunt {
+  edge_count?: number; has_bounds?: boolean;
   id: number; title: string; description: string; dataset: string; cells: { root: string; label: string; soma?: number[] }[];
   start_gap_um?: number | null; start_on_answer?: boolean;
   target_count: number; tolerance_nm: number; max_points: number; max_submissions: number;
@@ -97,7 +98,7 @@ const descPreview = computed(() => (form.value.description.trim() ? renderSafeMa
 
 function setAdminsOnly(e: Event) { form.value.admins_only = (e.target as HTMLInputElement).checked; }
 const somaMissing = computed(() => cellRows.value.length > 0 && !cellRows.value[0].soma.every(v => v !== '' && Number.isFinite(Number(v))));
-const read = ref<null | { key: any; view: any; cells: { root: string; label: string }[]; dataset: string; count: number; kinds: { cut: number; merge: number } }>(null);
+const read = ref<null | { key: any; view: any; cells: { root: string; label: string }[]; dataset: string; count: number; kinds: { cut: number; merge: number }; edges?: number }>(null);
 
 /** 'YYYY-MM-DDTHH:mm' in this computer's time zone. */
 // Times are Eastern, as in the Notifications tab (Ames 2026-10-21: "double check date, ET"),
@@ -193,12 +194,12 @@ function scan() {
   candidates.value = keyCandidates();
   const next: Record<string, { on: boolean; kind: KeyKind }> = {};
   // One layer of cuts and one of merges (Ames 2026-10-21): layers named so are ticked at once.
-  for (const c of candidates.value) next[c.name] = keyPick.value[c.name] ?? { on: candidates.value.length === 1 || /cut|merge|extension/i.test(c.name), kind: guessKind(c.name) };
+  for (const c of candidates.value) next[c.name] = keyPick.value[c.name] ?? { on: candidates.value.length === 1 || /cut|merge|extension|edge/i.test(c.name), kind: guessKind(c.name) };
   keyPick.value = next;
 }
 const picked = computed(() => candidates.value.filter(c => keyPick.value[c.name]?.on).map(c => ({ name: c.name, kind: keyPick.value[c.name].kind, points: c.points })));
 watch(() => (autoRead.value && editing.value ? JSON.stringify(picked.value) : ''), (now) => { if (now && picked.value.length) useScreen(); });
-const placesWord = (n: number, kind: KeyKind) => kind === 'merge' ? (n === 1 ? '1 extension' : `${n} extensions`) : (n === 1 ? '1 merger' : `${n} mergers`);
+const placesWord = (n: number, kind: KeyKind) => kind === 'edge' ? (n === 1 ? '1 edge spot' : `${n} edge spots`) : kind === 'merge' ? (n === 1 ? '1 extension' : `${n} extensions`) : (n === 1 ? '1 merger' : `${n} mergers`);
 
 function openLink() {
   error.value = ''; message.value = '';
@@ -216,11 +217,14 @@ function useScreen() {
     const r = readHuntFromScreen(layers.map(l => ({ name: l.name, kind: l.kind })));
     if (!r.cells.length) throw new Error('No cell is shown. Show the cell (or cells) the places are on, then read again.');
     const kinds = { cut: 0, merge: 0 };
-    for (const l of layers) kinds[l.kind] += l.points;
-    read.value = { ...r, count: kinds.cut + kinds.merge, kinds };
+    let edges = 0;
+    for (const l of layers) { if (l.kind === 'edge') edges += l.points; else kinds[l.kind] += l.points; }
+    if (!kinds.cut && !kinds.merge) throw new Error('Tick a layer of mergers or extensions too: edge spots are not problems to find.');
+    read.value = { ...r, count: kinds.cut + kinds.merge, kinds, edges };
     setCells(r.cells);
     const parts = layers.map(l => `${placesWord(l.points, l.kind)} from "${l.name}"`).join(' and ');
-    message.value = `Read ${parts}, ${r.cells.length === 1 ? '1 cell' : `${r.cells.length} cells`}, on ${datasetName(r.dataset)}. Save to keep them.`;
+    const edgeNote = r.key.bounds_nm ? ' The volume\'s edges were read too: an Extend gem within 2 µm of them is the edge of the dataset.' : '';
+    message.value = `Read ${parts}, ${r.cells.length === 1 ? '1 cell' : `${r.cells.length} cells`}, on ${datasetName(r.dataset)}.${edgeNote} Save to keep them.`;
   } catch (e: any) { error.value = e?.message || String(e); }
 }
 
@@ -455,7 +459,7 @@ async function duplicate() {
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
-        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find.</p>
+        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find. Branches that run out of the data are no missing extensions: mark those ends in a layer of <b>edges of the dataset</b> (the volume's own edges count by themselves), and an Extend gem there is answered "Edge of the dataset", with no gem used.</p>
         <div class="nge-hunts-row">
           <input v-model="form.link" class="nge-hunts-input" placeholder="https://… #!…" aria-label="View link" />
           <button class="nge-hunts-btn" :disabled="!form.link.trim()" @click="openLink">Open the link</button>
@@ -467,13 +471,14 @@ async function duplicate() {
             <select v-model="keyPick[c.name].kind" class="nge-hunts-input nge-hunts-keylayer-kind" :aria-label="`What the points in ${c.name} mark`" :disabled="!keyPick[c.name]?.on">
               <option value="cut">mergers (to cut)</option>
               <option value="merge">extensions (to merge)</option>
+              <option value="edge">edges of the dataset (not problems)</option>
             </select>
           </li>
         </ul>
         <div class="nge-hunts-row">
           <button class="nge-hunts-btn nge-hunts-btn--quiet" :disabled="!picked.length" title="Read the ticked layers from the screen again" @click="autoRead = true; scan(); useScreen()">↻ Read again</button>
         </div>
-        <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'place' : 'places' }} on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
+        <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'place' : 'places' }}<template v-if="editing.edge_count">, {{ editing.edge_count }} edge {{ editing.edge_count === 1 ? 'spot' : 'spots' }}</template> on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
         <div v-if="cellRows.length" class="nge-hunts-cells">
           <p class="nge-hunts-help"><b>Where players start.</b> A link is often centered on a merger, which would give it away. Give each cell's soma: x, y and z as the coordinate bar shows them. Players start at the first; with several cells they get a button for each.</p>
           <div v-for="(c, i) in cellRows" :key="c.root" class="nge-hunts-cellrow">
