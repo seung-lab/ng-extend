@@ -78,12 +78,26 @@ async function loadPilot() {
   pilotRows.value = data || [];
   void loadPilotNames(pilotRows.value.map(m => m.email)).catch(() => { /* the emails still show */ });
 }
+const pilotNote = ref('');
+/** Several emails at once, separated by commas, spaces or new lines (Ames
+ *  2026-10-22). Anything that is not an email address is left in the box,
+ *  and said so, and the rest are added. */
 async function invitePilot() {
-  pilotBusy.value = true; pilotError.value = '';
-  const {error} = await supabase.from('pilot_members').upsert({email:pilotEmail.value.trim().toLowerCase(),enabled:true},{onConflict:'email'});
-  if(error) pilotError.value=error.message;
-  else {pilotEmail.value='';await loadPilot();}
-  pilotBusy.value=false;
+  pilotError.value = ''; pilotNote.value = '';
+  const words = pilotEmail.value.split(/[\s,;]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+  const good = [...new Set(words.filter(w => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(w)))];
+  const bad = words.filter(w => !good.includes(w));
+  if (!good.length) { pilotError.value = bad.length ? `Not an email address: ${bad.join(', ')}` : 'Type at least one email address.'; return; }
+  pilotBusy.value = true;
+  const {error} = await supabase.from('pilot_members').upsert(good.map(email => ({email, enabled: true})), {onConflict:'email'});
+  if (error) pilotError.value = error.message;
+  else {
+    pilotEmail.value = bad.join(', ');
+    pilotNote.value = `Added ${good.length} tester${good.length === 1 ? '' : 's'}.`;
+    if (bad.length) pilotError.value = `Not added, not an email address: ${bad.join(', ')}`;
+    await loadPilot();
+  }
+  pilotBusy.value = false;
 }
 async function setPilot(email:string,enabled:boolean) {
   const {error} = await supabase.from('pilot_members').update({enabled}).eq('email',email);
@@ -2259,10 +2273,11 @@ function practiceWhen(iso: string | null) {
       <h2>Pilot testers</h2>
       <p>Invited testers can claim cells, use practice cells, sync Sheets, and contribute to the site. Existing administrators already have access.</p>
       <form @submit.prevent="invitePilot">
-        <label for="nge-pilot-email">Tester’s sign-in email</label>
-        <input id="nge-pilot-email" v-model="pilotEmail" type="email" required autocomplete="off" placeholder="tester@example.com" />
-        <button type="submit" :disabled="pilotBusy">{{ pilotBusy ? 'Saving…' : 'Add tester' }}</button>
+        <label for="nge-pilot-email">Testers’ sign-in emails, separated by commas</label>
+        <input id="nge-pilot-email" v-model="pilotEmail" type="text" required autocomplete="off" spellcheck="false" placeholder="tester@example.com, another@example.com" />
+        <button type="submit" :disabled="pilotBusy">{{ pilotBusy ? 'Saving…' : 'Add testers' }}</button>
       </form>
+      <p v-if="pilotNote" role="status">{{ pilotNote }}</p>
       <p v-if="pilotError" role="alert">{{ pilotError }}</p>
       <p v-if="!pilotRows.length">No additional testers invited yet.</p>
       <div v-else class="nge-pilot-find">
