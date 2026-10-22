@@ -260,11 +260,16 @@ async function writeSummary(entries) {
   }
 }
 
-const LIST_ALL_MAX = 12;
-/** The day's updates by name, oldest first, on one line; '' on a big day. */
+// Every update is listed by title, one per line, under the highlights (Ames
+// 2026-10-22: "THIS SHOULD LIST THEM ALL I NEED A PLACE WE CAN SEE ALL 17
+// UPDATES"). Titles only, so a big day is a list, not an essay; the cap only
+// guards against a runaway day.
+const LIST_ALL_MAX = 60;
+/** The day's updates by name, oldest first, one per line as a list; '' on a
+ *  runaway day. Rendered as bullets in the bell (util/safe_markdown.ts). */
 function allTitles(entries) {
   if (entries.length > LIST_ALL_MAX) return '';
-  return entries.map(e => String(e.title || '').trim()).filter(Boolean).join(' · ');
+  return entries.map(e => String(e.title || '').trim()).filter(Boolean).map(t => `- ${t}`).join('\n');
 }
 
 function joinNaturally(items) {
@@ -288,18 +293,20 @@ function buildBody(entries, sinceMs, nowMs, summary) {
     // No note to be had: one line, never the whole list. Headlines first, then the newest.
     const newestFirst = [...told].reverse();
     const some = [...newestFirst.filter(isHeadline), ...newestFirst.filter(e => !isHeadline(e))].slice(0, 3).map(e => e.title);
-    parts.push(n <= 3
-      ? `**TLDR:** ${joinNaturally(told.map(e => e.title))}.`
-      : allTitles(entries)
-        ? `**TLDR:** ${n} updates went live in Pyr today: ${allTitles(entries)}.`
-        : `**TLDR:** ${n} updates went live in Pyr today. Among them: ${some.join('; ')}.`);
+    if (n <= 3) {
+      parts.push(`**TLDR:** ${joinNaturally(told.map(e => e.title))}.`);
+    } else {
+      parts.push(`**TLDR:** ${n} updates went live in Pyr today. Among them: ${some.join('; ')}.`);
+      const list = allTitles(entries);
+      if (list) parts.push(`**All ${n} updates:**\n${list}`);
+    }
     return parts.join('\n\n');
   }
   parts.push(`**TLDR:** ${summary.tldr}`);
   for (const h of summary.highlights) parts.push(`**${h.title}:** ${h.text}`);
   if (n > Math.max(3, summary.highlights.length)) {
     const names = allTitles(entries);
-    parts.push(names ? `**All ${n} updates:** ${names}` : `${n} updates went live in all.`);
+    parts.push(names ? `**All ${n} updates:**\n${names}` : `${n} updates went live in all.`);
   }
   return parts.join('\n\n');
 }
