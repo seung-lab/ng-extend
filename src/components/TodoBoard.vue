@@ -101,7 +101,17 @@ const ago = (iso: string) => {
 // A tag is "@" and the person's Pyr name, picked from a list as you type.
 // Only names newly added to a text tag anyone, so editing old notes never
 // pings people twice.
-const tagsIn = (text: string) => people.value.filter(p => text.includes('@' + p.name)).map(p => p.id);
+// An @ tag is the person's full Pyr name (the picker writes that) or just
+// their first name, typed by hand, any case (Ames 2026-10-22: "@Marissa" and
+// "@Celia" typed in the notes tagged nobody).
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const tagsIn = (text: string) => people.value.filter(p => {
+  const full = String(p.name || '').trim();
+  const first = full.split(/\s+/)[0];
+  if (!full) return false;
+  const re = new RegExp(`(^|[^\\w@])@(${escapeRe(full)}|${escapeRe(first)})(?![\\w])`, 'i');
+  return re.test(text);
+}).map(p => p.id);
 const newTags = (before: string, after: string) => { const old = new Set(tagsIn(before)); return tagsIn(after).filter(id => !old.has(id)); };
 const mention = shallowRef<{ el: HTMLTextAreaElement | HTMLInputElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
 const mentionMatches = computed(() => {
