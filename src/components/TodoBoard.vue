@@ -982,7 +982,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-size--on { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
 .nge-todo-sizepick { display: inline-flex; gap: 4px; }
 .nge-todo-panel {
-  flex: 0 0 360px; max-width: 42%; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  /* Wide enough for long notes (Ames 2026-10-22: cards opened "squished to
+     the right"); the lists shrink to make room. */
+  flex: 0 0 clamp(480px, 40vw, 760px); max-width: 60%; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
   padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); scrollbar-width: thin;
 }
 .nge-todo-panel-top { display: flex; justify-content: space-between; align-items: center; }
