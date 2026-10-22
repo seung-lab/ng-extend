@@ -205,6 +205,7 @@ let ngePulseRunning = false;
  *  many pixels a 1 um branch covers: full from about 12 px up. */
 let ngeHaloZoom = 1;
 let ngeHaloFade = 1;
+let ngeHoloStepNm = 64;
 function ngeUpdateHaloZoom(projectionParameters: any) {
   const viewer: any = (window as any).viewer;
   const info = projectionParameters.displayDimensionRenderInfo;
@@ -218,6 +219,8 @@ function ngeUpdateHaloZoom(projectionParameters: any) {
   // Gone when a branch is about 3 px across, where Saturate's colour takes over.
   ngeHaloFade = Math.max(0, Math.min(1, (branchPx - 3) / 14));
   ngeHaloFar.value = 1 - ngeHaloFade;
+  // The hologram's dots: about 9 px apart, in power of two steps of nm.
+  ngeHoloStepNm = Math.pow(2, Math.round(Math.log2(Math.max(1, 9 * viewNm / Math.max(1, projectionParameters.height)))));
 }
 /** The main pass's hover mode for the cell under the mouse: 1 the pulse,
  *  2 the halo's rim of light on the cell's own edges (colour in uNgeRim). */
@@ -357,6 +360,7 @@ export class MeshShaderManager {
     ngeRimGl = {gl, shader};
     const {projectionParameters} = renderContext;
     ngeUpdateHaloZoom(projectionParameters);
+    gl.uniform1f(shader.uniform('uNgeHoloStep'), ngeHoloStepNm);
     gl.uniform2f(shader.uniform('uNgeViewport'), projectionParameters.width, projectionParameters.height);
     ngePulsePrepare(projectionParameters);
     gl.uniform3fv(shader.uniform('uNgePulseScale'), ngePulseScale);
@@ -516,6 +520,18 @@ export class MeshShaderManager {
         builder.addUniform('highp vec4', 'uNgePulseColor');
         builder.addUniform('highp vec4', 'uNgeRim');
         builder.addVarying('highp vec4', 'vNgeHolo');
+        builder.addVarying('highp vec3', 'vNgeHoloPos');
+        builder.addVarying('highp vec3', 'vNgeHoloN');
+        builder.addUniform('highp float', 'uNgeHoloStep');
+        // One soft dot per grid cell, smoothed by its own size on screen.
+        builder.addFragmentCode(`
+highp float ngeHoloDot(highp vec2 p) {
+  highp vec2 c = fract(p) - 0.5;
+  highp float d = length(c);
+  highp float aa = fwidth(d) * 1.2;
+  return 1.0 - smoothstep(0.16 - aa, 0.16 + aa, d);
+}
+`);
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
@@ -558,6 +574,8 @@ float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
 vNgeHolo = vec4(0.0);
+vNgeHoloPos = vec3(0.0);
+vNgeHoloN = vec3(0.0, 0.0, 1.0);
 if (uNgeGlow > 4.5) {
   // EyeWire II hover hologram (Ames 2026-10-21: the real wireframe was too
   // slow; "a hologram effect ... or an inner glow?"): a dark body glowing from
@@ -567,6 +585,10 @@ if (uNgeGlow > 4.5) {
   highp float holoFacing = holoLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / holoLen)) : 1.0;
   // .z: 1 Metallic (uNgeGlow 6), 0 Hologram (5).
   vNgeHolo = vec4(1.0 - holoFacing, lightingFactor, uNgeGlow > 5.5 ? 1.0 : 0.0, 1.0);
+  // The dots' grid: positions in nm, in steps that keep the dots about 9 px
+  // apart (uNgeHoloStep, a power of two, so they do not crawl as you zoom).
+  vNgeHoloPos = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale / uNgeHoloStep;
+  vNgeHoloN = normalMultiplier * origNormal;
 } else if (uNgeGlow > 3.5) {
   // EyeWire II hover 'saturate', lit from within (Ames 2026-10-20: a colour
   // already at full strength cannot get richer): the shading flattens toward
@@ -665,13 +687,18 @@ if (vNgeHolo.w > 0.5) {
     highp vec3 metalBody = uColor.rgb * (0.18 + 0.18 * vNgeHolo.y);
     emit(vec4(min(metalBody + uNgeRim.rgb * uColor.a * (0.12 + 1.3 * metalRim), vec3(1.0)), uColor.a), uPickID);
   } else {
-    // Hologram: the first one (2026-10-20), which read as a hologram, with its
-    // scanlines standing still and half as many (Ames 2026-10-21: "you had it
-    // better before the one with the bars ... maybe with fewer scan lines").
+    // Hologram (Ames 2026-10-22: the bars were "too stripey ... maybe dots"):
+    // a dark body glowing from its edges in its own colour, covered in small
+    // glowing dots fixed to its surface, as in Ames's scifi-ui hologram
+    // (goldDots: dots on the three planes, blended by the normal).
     highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 2.0);
-    highp float holoScan = smoothstep(0.7, 1.0, 0.5 + 0.5 * sin(gl_FragCoord.y * 0.45));
+    highp vec3 holoW = abs(normalize(vNgeHoloN));
+    holoW = holoW * holoW;
+    holoW /= max(holoW.x + holoW.y + holoW.z, 1e-6);
+    highp float holoDots = ngeHoloDot(vNgeHoloPos.yz) * holoW.x + ngeHoloDot(vNgeHoloPos.xz) * holoW.y + ngeHoloDot(vNgeHoloPos.xy) * holoW.z;
     highp vec3 holoBody = uColor.rgb * (0.2 + 0.2 * vNgeHolo.y);
-    emit(vec4(min(holoBody + uNgeRim.rgb * uColor.a * (0.95 * holoRim + 0.22 * holoScan), vec3(1.0)), uColor.a), uPickID);
+    highp vec3 holoGlow = uNgeRim.rgb * uColor.a;
+    emit(vec4(min(holoBody + holoGlow * (0.95 * holoRim + 1.05 * holoDots * (0.45 + 0.55 * vNgeHolo.x)), vec3(1.0)), uColor.a), uPickID);
   }
 } else {
   emit(vColor, uPickID);
