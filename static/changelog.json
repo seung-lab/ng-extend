@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-22T00:00:00Z",
+      "title": "The 2D EM tab shows and hides 2D",
+      "items": [
+        "Clicking the 2D EM tab at the top now switches the 2D view on and off: split screen or 3D only. Right click still turns the layer on and off. Its side panel is under Settings, Advanced."
+      ]
+    },
+    {
+      "at": "2026-10-22T00:00:00Z",
       "title": "Right clicks stay inside the data",
       "items": [
         "A right click in the 2D view on the box around a dataset, or out past it, no longer moves you there. Inside the data, a right click still moves the view to that spot."
