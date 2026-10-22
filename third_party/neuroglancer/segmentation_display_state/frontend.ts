@@ -779,7 +779,7 @@ export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'hologram'|'metallic'|'satu
  *  already is an existing player's, and keeps the classic fade. The settings
  *  store (store.ts) settles it, and corrects it from the account copy. */
 export function ngeDefaultHoverStyle(prefs: any): NgeHoverStyle {
-  return prefs && Object.keys(prefs).length || ngeBrowserUsedBefore() ? 'fade' : 'halo';
+  return prefs && Object.keys(prefs).length || ngeBrowserUsedBefore() ? 'fade' : 'spotlight';  // new players: Spotlight (Ames 2026-10-22)
 }
 /** Pyr was used in this browser before, even by a player who never saved a
  *  setting: they signed in here (the sign in token) or played a tutorial or

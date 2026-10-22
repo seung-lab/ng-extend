@@ -1030,9 +1030,9 @@ export interface UserPreferences {
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
-  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse', 'hologram' ('wireframe' before), 'saturate', 'spotlight' or 'none'. */
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'spotlight' (new players), 'fade' (the classic look, existing players), 'pulse', 'hologram' ('wireframe' before), 'saturate', 'spotlight' or 'none'. */
   hoverStyle?: 'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'wireframe' | 'saturate' | 'spotlight' | 'fade' | 'none';
-  /** Set when hoverStyle was given (a new player's halo), not chosen; the
+  /** Set when hoverStyle was given (a new player's spotlight), not chosen; the
    *  account copy can still say they were here before. Local only. */
   hoverStyleAuto?: boolean;
   /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
@@ -1120,7 +1120,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
       // setting later does not make a new player look like an old one.
       if (!prefs.value.hoverStyle) {
         prefs.value.hoverStyle = ngeDefaultHoverStyle(stored);
-        if (prefs.value.hoverStyle === 'halo') prefs.value.hoverStyleAuto = true;
+        if (prefs.value.hoverStyle === 'spotlight') prefs.value.hoverStyleAuto = true;
         localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
       }
     } catch { /* ignore parse errors */ }
