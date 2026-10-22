@@ -105,18 +105,40 @@ const ago = (iso: string) => {
 // their first name, typed by hand, any case (Ames 2026-10-22: "@Marissa" and
 // "@Celia" typed in the notes tagged nobody).
 const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const tagsIn = (text: string) => people.value.filter(p => {
+// What the admins call each other, beside their Pyr names (Ames
+// 2026-10-22: Marissa's Pyr name is "M Sorek", so "@Mar" found no one).
+// The same people functions/todos.js pings in Slack.
+const NICKNAMES: [RegExp, string[]][] = [
+  [/^(amy|ames)\b|^amy/i, ['Amy', 'Ames']],
+  [/^celia/i, ['Celia']],
+  [/^(marissa|m sorek|sorek)/i, ['Marissa', 'Sorek']],
+];
+function namesOf(p: Person): string[] {
   const full = String(p.name || '').trim();
-  const first = full.split(/\s+/)[0];
-  if (!full) return false;
-  const re = new RegExp(`(^|[^\\w@])@(${escapeRe(full)}|${escapeRe(first)})(?![\\w])`, 'i');
+  if (!full) return [];
+  const out = [full, full.split(/\s+/)[0]];
+  for (const [re, nick] of NICKNAMES) if (re.test(full)) out.push(...nick);
+  // A one letter first name ("M Sorek") is too easy to type by chance.
+  return [...new Set(out)].filter(n => n.length > 1);
+}
+const tagsIn = (text: string) => people.value.filter(p => {
+  const names = namesOf(p);
+  if (!names.length) return false;
+  const re = new RegExp(`(^|[^\\w@])@(${names.map(escapeRe).join('|')})(?![\\w])`, 'i');
   return re.test(text);
 }).map(p => p.id);
 const newTags = (before: string, after: string) => { const old = new Set(tagsIn(before)); return tagsIn(after).filter(id => !old.has(id)); };
+/** This board's own address, to keep or share (Ames 2026-10-22). */
+const boardLink = `${window.location.origin}${window.location.pathname}?triage=board&todo`;
+const linkCopied = ref(false);
+async function copyBoardLink() {
+  try { await navigator.clipboard.writeText(boardLink); linkCopied.value = true; setTimeout(() => { linkCopied.value = false; }, 1600); }
+  catch { window.prompt('The To do board link:', boardLink); }
+}
 const mention = shallowRef<{ el: HTMLTextAreaElement | HTMLInputElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
 const mentionMatches = computed(() => {
   const q = (mention.value?.query || '').toLowerCase();
-  return people.value.filter(p => p.name.toLowerCase().includes(q)).slice(0, 6);
+  return people.value.filter(p => namesOf(p).some(n => n.toLowerCase().includes(q))).slice(0, 6);
 });
 function onMentionInput(e: Event, set: (v: string) => void) {
   const el = e.target as HTMLTextAreaElement;
@@ -578,7 +600,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
   <div class="nge-todo" :class="{ 'nge-todo--light': light }">
     <div class="nge-todo-head">
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">← Triage</button>
-      <span class="nge-todo-heading">📋 To do board</span>
+      <span class="nge-todo-heading"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
+      <button class="nge-todo-btn" @click="copyBoardLink" :title="boardLink">{{ linkCopied ? '✓ Link copied' : '🔗 Copy link to this board' }}</button>
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack.</span>
       <button class="nge-todo-btn" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
@@ -1084,4 +1107,7 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-mention li { padding: 5px 9px; border-radius: 5px; cursor: pointer; }
 .nge-todo-mention--pick, .nge-todo-mention li:hover { background: #5b7cf0; color: #fff; }
 .nge-todo-mention--light { background: #fff; border-color: #c9d2f2; color: #18212f; }
+/* The To do board's own mark: a blue checked box, apart from the clipboard
+   that means Copy everywhere else (Ames 2026-10-22). */
+.nge-todo-icon { color: #7c9cff; vertical-align: -2px; margin-right: 4px; }
 </style>

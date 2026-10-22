@@ -324,6 +324,9 @@ function applyTriageFocus() {
 // you click one. "?triage=board" in the address opens straight into it, which
 // is what the "New tab" link uses.
 const triageBoard = ref(!!props.standalone);
+/** The To do board's mark (TodoBoard.vue has the same), apart from the
+ *  clipboard that means Copy. */
+const TODO_ICON = '<svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const boardUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
 /** The game itself, on this same site. */
 const gameUrl = `${window.location.origin}${window.location.pathname}`;
@@ -368,7 +371,7 @@ const triageGroups = computed(() => {
   const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
     { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Triage zero. Nicely done.', closed: false },
     { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
-    { key: 'todo', icon: '📋', title: 'On the To do board', hint: 'Reports planned there', empty: 'No reports on the To do board.', closed: true },
+    { key: 'todo', icon: '☑', title: 'On the To do board', hint: 'Reports planned there', empty: 'No reports on the To do board.', closed: true },
     { key: 'later', icon: '💡', title: 'Ideas for later', hint: 'Good ideas, not now', empty: 'No ideas put by.', closed: true },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
@@ -2658,7 +2661,7 @@ function practiceWhen(iso: string | null) {
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <button class="nge-admin-action-btn nge-triage-todo-open" @click="openTodoBoard"
-                  title="The admins' own planning board: To do, Doing, Done">📋 To do board</button>
+                  title="The admins' own planning board: To do, Doing, Done"><span v-html="TODO_ICON"></span>To do board</button>
           <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
             <!-- Level: one for every 25 reports closed. The ring fills toward the next. -->
             <div class="nge-hud-level" :class="{ 'nge-hud-level--up': triageCheer?.levelUp }"
@@ -2901,7 +2904,7 @@ function practiceWhen(iso: string | null) {
                     @click="markInProgress(row)">▶ In progress</button>
             <button v-if="row.status === 'proposed' || isByHand(row) || isLater(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
                     title="A bigger job to plan. Puts a card for it on the To do board and moves this report under On the To do board. The robot does not build it and nothing is sent to the reporter."
-                    @click="sendToTodoBoard(row)">📋 To do</button>
+                    @click="sendToTodoBoard(row)"><span v-html="TODO_ICON"></span>To do</button>
             <button v-if="row.status === 'proposed' || isByHand(row) || isTodo(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
                     title="A good idea, but not now. Moves the card to Ideas for later. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row, true)">💡 Later</button>
@@ -4391,4 +4394,5 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-view-btn { text-decoration: none; display: inline-flex; align-items: center; margin-right: 6px; }
 .nge-triage-preview-toggle { margin-left: auto; }
 .nge-triage-preview-toggle[aria-pressed="true"] { border-color: rgba(79, 207, 255, 0.7); }
+.nge-todo-icon { color: #7c9cff; vertical-align: -2px; margin-right: 5px; }
 </style>
