@@ -2,13 +2,27 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-22T21:02:00Z",
+      "at": "2026-10-22T21:03:00Z",
       "title": "Watch a cell grow",
       "items": [
         "The Δ menu has a Watch it grow button. It opens a slider through every edit of the cell, oldest first, and shows the cell as it was at each one in the 3D view, including branches that were still separate pieces before they were joined on.",
         "Each step says whether pieces were joined or cut off, who did it and when. The piece joined on shows in yellow and a piece cut off in red, so small edits stand out. Edits by lab members who are not Pyr players show as unknown.",
         "Press Play to step through on its own, at the speed you choose, for screen recordings. Closing the panel shows today's cell again.",
         "A cell with hundreds of edits shows 150 of them, spread evenly from first to last."
+      ]
+    },
+    {
+      "at": "2026-10-22T21:00:39Z",
+      "title": "Merge and cut mode carry on to your next cell",
+      "items": [
+        "With merge or cut mode on, moving to your next cell (after completing one, claiming one, or a jump) used to leave the mode on screen but not working until you switched it off and on. It now works straight away in the new cell."
+      ]
+    },
+    {
+      "at": "2026-10-22T20:56:14Z",
+      "title": "A clearer middle for the cursor",
+      "items": [
+        "The target cursor's lines now stay outside its circle, so only a small dot sits over what you are looking at."
       ]
     },
     {
