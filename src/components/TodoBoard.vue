@@ -57,6 +57,11 @@ async function load() {
     if (data?.installed === false) { notInstalled.value = true; return; }
     cards.value = data.cards || [];
     people.value = data.people || [];
+    if (pendingFocus) {
+      const c = cards.value.find(x => x.id === pendingFocus);
+      pendingFocus = null;
+      if (c) openUp(c);
+    }
     if (openId.value && !cards.value.some(c => c.id === openId.value)) openId.value = null;
   } catch (e: any) {
     error.value = e?.message ?? String(e);
@@ -239,13 +244,8 @@ function openUp(c: Card) {
   editStatus.value = c.status || '';
   linkDraft.value = null;
 }
-if (props.focusId) {
-  const stop = setInterval(() => {
-    const c = cards.value.find(x => x.id === props.focusId);
-    if (c) { openUp(c); clearInterval(stop); }
-    else if (!loading.value) clearInterval(stop);
-  }, 200);
-}
+// The card a link names opens as soon as the cards are in.
+let pendingFocus = props.focusId || null;
 async function saveTitle(c: Card) {
   const t = editTitle.value.trim();
   if (!t || t === c.title) { editTitle.value = c.title; return; }
@@ -577,7 +577,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
-      <div class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
+      <div v-if="!openCard" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
         <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': col.key === 'done' && doneFolded }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
           <button v-if="col.key === 'done' && doneFolded" type="button" class="nge-todo-rail" title="Open Done" @click="toggleDoneFold">
@@ -725,13 +725,33 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </ol>
       </aside>
 
-      <!-- The open card: a narrow panel at the side, the lists stay in view. -->
-      <aside v-if="openCard" class="nge-todo-panel" :key="openCard.id" aria-label="Card">
+      <!-- Focus view (Ames 2026-10-22: "why not have the card I clicked expand
+           and the work there?"): the open card takes the middle of the
+           screen, and the lists shrink to a strip of titles on the left, so
+           another card is still one click away. Esc or Board goes back. -->
+      <nav v-if="openCard" class="nge-todo-strip" aria-label="All cards">
+        <section v-for="col in columns" :key="col.key" class="nge-todo-strip-list">
+          <div class="nge-todo-strip-head">{{ col.title }} <span class="nge-todo-count">{{ col.rows.length }}</span></div>
+          <button v-for="c in col.rows" :key="c.id" type="button" class="nge-todo-strip-card" :class="{ 'nge-todo-strip-card--on': c.id === openId }"
+                  :aria-current="c.id === openId ? 'true' : undefined" @click="openUp(c)">
+            <span class="nge-todo-strip-title">{{ c.title }}</span>
+            <span class="nge-todo-strip-meta">
+              <span v-if="c.size" class="nge-todo-size nge-todo-size--on">{{ c.size }}</span>
+              <span v-if="c.checklist.length">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
+              <span v-if="c.due_on" :class="{ 'nge-todo-strip-late': isOverdue(c) }">{{ dueWords(c.due_on) }}</span>
+              <span v-if="c.owner_id" class="nge-todo-avatar nge-todo-avatar--small">{{ initialOf(c.owner_id) }}</span>
+            </span>
+          </button>
+          <div v-if="!col.rows.length" class="nge-todo-strip-empty">{{ col.empty }}</div>
+        </section>
+      </nav>
+      <div v-if="openCard" class="nge-todo-focus">
+      <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card">
         <div class="nge-todo-panel-top">
+          <button type="button" class="nge-todo-btn" title="Back to the board (Esc)" @click="openId = null">← Board</button>
           <select class="nge-todo-select" :value="openCard.list" aria-label="List" @change="onListChange(openCard, $event)">
             <option v-for="l in LISTS" :key="l.key" :value="l.key">{{ l.title }}</option>
           </select>
-          <button class="nge-todo-x" @click="openId = null" aria-label="Close" title="Close (Esc)">×</button>
         </div>
         <input ref="titleEl" v-model="editTitle" class="nge-todo-input nge-todo-title-edit" maxlength="200" aria-label="Title" title="Click to edit the title"
                @input="onMentionInput($event, v => editTitle = v)" @keydown="onTitleKey"
@@ -837,6 +857,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button class="nge-todo-btn nge-todo-delete" @click="deleteCard(openCard)">Delete card</button>
         </div>
       </aside>
+      </div>
     </div>
 
     <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden @change="onPicked" />
@@ -905,6 +926,30 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-rail .nge-todo-list-title { writing-mode: vertical-rl; }
 .nge-todo-fold, .nge-todo-sort { font-size: 12px; }
 .nge-todo-sort { margin-left: auto; }
+/* Focus view: a strip of titles, and the open card in the middle. */
+.nge-todo-strip {
+  flex: 0 0 clamp(200px, 15vw, 280px); min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
+}
+.nge-todo-strip-list { display: flex; flex-direction: column; gap: 3px; }
+.nge-todo-strip-head { font-size: 11.5px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 4px; display: flex; gap: 6px; align-items: center; }
+.nge-todo-strip-card {
+  text-align: left; font: inherit; cursor: pointer; padding: 6px 8px; border-radius: 6px;
+  background: transparent; border: 1px solid transparent; color: var(--text); display: flex; flex-direction: column; gap: 3px;
+}
+.nge-todo-strip-card:hover { background: var(--card); border-color: var(--line); }
+.nge-todo-strip-card--on { background: var(--card-hi); border-color: var(--accent); }
+.nge-todo-strip-title { font-size: 12.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.nge-todo-strip-meta { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
+.nge-todo-strip-meta:empty { display: none; }
+.nge-todo-strip-late { color: #ff8b8b; }
+.nge-todo--light .nge-todo-strip-late { color: #b4231a; }
+.nge-todo-strip-empty { font-size: 11.5px; color: var(--dim); padding: 2px 8px; }
+.nge-todo-avatar--small { width: 16px; height: 16px; font-size: 9.5px; margin-left: 0; }
+.nge-todo-focus { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; justify-content: center; }
+.nge-todo-panel.nge-todo-panel--focus { flex: 1 1 auto; max-width: 920px; width: 100%; padding: 18px 22px; }
+.nge-todo-panel--focus .nge-todo-panel-top { justify-content: flex-start; gap: 10px; }
+.nge-todo-panel--focus .nge-todo-title-edit { font-size: 18px; }
 .nge-todo-key {
   font: 12px/1.45 'Consolas', 'SF Mono', monospace; word-break: break-all; user-select: all;
   padding: 8px 10px; border-radius: 6px; border: 1px solid var(--accent); background: var(--card-hi);
@@ -1014,6 +1059,8 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
   .nge-todo-body { flex-direction: column; }
   .nge-todo-lists { grid-template-columns: 1fr; }
   .nge-todo-panel { flex-basis: auto; max-width: none; }
+  /* A narrow screen gives the card all of it. */
+  .nge-todo-strip { display: none; }
 }
 </style>
 

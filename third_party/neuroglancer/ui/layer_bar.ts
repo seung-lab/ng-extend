@@ -36,6 +36,16 @@ import {PositionWidget} from 'neuroglancer/widget/position_widget';
 
 /** EyeWire II: the "Classic layer tabs" setting (profile > Settings), read
  *  from the saved preferences each time so a change applies at once. */
+/** Settings > Advanced > "Clicking the 2D image layer opens its side panel".
+ *  Off (the default), a click on an image layer's tab shows or hides the 2D
+ *  view instead (Ames 2026-10-22): players have no use for its Source,
+ *  Rendering and Annotations tabs. */
+function imageLayerPanel(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').imageLayerPanel === true; } catch { return false; }
+}
+const isImageLayer = (layer: any) => (layer?.layer?.constructor as any)?.type === 'image';
+const toggles2D = (layer: any) => isImageLayer(layer) && !imageLayerPanel() && typeof (window as any).ngeToggle2D === 'function';
+
 function classicLayerClicks(): boolean {
   try {
     return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true;
@@ -151,6 +161,8 @@ class LayerWidget extends RefCounted {
         layer.pickEnabled = !layer.pickEnabled;
       } else if (classicLayerClicks()) {
         toggle();
+      } else if (toggles2D(layer)) {
+        (window as any).ngeToggle2D();
       } else {
         select();
       }
@@ -191,6 +203,7 @@ class LayerWidget extends RefCounted {
     element.dataset.pick = layer.pickEnabled.toString();
     element.title = classicLayerClicks()
         ? 'Left click to toggle on/off, right click to activate'
+        : toggles2D(layer) ? 'Click to show or hide the 2D view, right click to toggle the layer on/off'
         : 'Left click to activate, right click to toggle on/off';
   }
 

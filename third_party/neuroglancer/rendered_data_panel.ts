@@ -47,9 +47,30 @@ const NGE_TOUCH_PX_PER_SLICE = 6;
 function ngeOnDataBounds(mouseState: any): boolean {
   try {
     const layer = mouseState.pickedAnnotationLayer, id = mouseState.pickedAnnotationId;
-    if (!layer || id === undefined) return false;
-    const ref = layer.source.getReference(id);
-    try { return ref.value?.description === DATA_BOUNDS_DESCRIPTION; } finally { ref.dispose(); }
+    if (layer && id !== undefined) {
+      const ref = layer.source.getReference(id);
+      try { if (ref.value?.description === DATA_BOUNDS_DESCRIPTION) return true; } finally { ref.dispose(); }
+    }
+    // In 2D a right click goes to the spot under the mouse, picked or not: on
+    // the box's line or out past it there is nothing to go to (Ames
+    // 2026-10-22, it still jumped there). The edge counts as on the box: the
+    // outer 1% of each side, or 2 voxels, whichever is more.
+    const bounds = (window as any).viewer?.coordinateSpace?.value?.bounds;
+    const pos = mouseState.position as Float32Array | undefined;
+    if (!bounds || !pos) return false;
+    const {lowerBounds, upperBounds} = bounds;
+    // Only along the directions the click moves the view (in an xy view, x
+    // and y): the slice you are on is not where you clicked, and near the
+    // first or last slice every right click would otherwise be refused.
+    const here = (window as any).viewer?.navigationState?.position?.value as Float32Array | undefined;
+    for (let i = 0; i < Math.min(3, pos.length, lowerBounds.length); ++i) {
+      const lo = lowerBounds[i], hi = upperBounds[i];
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) continue;
+      if (here && Math.abs(pos[i] - here[i]) < 1) continue;
+      const edge = Math.max(2, (hi - lo) * 0.01);
+      if (pos[i] < lo + edge || pos[i] > hi - edge) return true;
+    }
+    return false;
   } catch { return false; }
 }
 

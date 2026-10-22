@@ -12,6 +12,51 @@
       ]
     },
     {
+      "at": "2026-10-22T16:12:13Z",
+      "title": "Tutorials mention the 2D EM tab",
+      "items": [
+        "Get Started and Advanced Interface now say you can click the 2D EM tab, as well as press SPACE, to open the split screen."
+      ]
+    },
+    {
+      "at": "2026-10-22T16:04:41Z",
+      "title": "The 2D EM tab shows and hides 2D",
+      "items": [
+        "Clicking the 2D EM tab at the top now switches the 2D view on and off: split screen or 3D only. Right click still turns the layer on and off. Its side panel is under Settings, Advanced."
+      ]
+    },
+    {
+      "at": "2026-10-22T16:04:41Z",
+      "title": "Right clicks stay inside the data",
+      "items": [
+        "A right click in the 2D view on the box around a dataset, or out past it, no longer moves you there. Inside the data, a right click still moves the view to that spot."
+      ]
+    },
+    {
+      "at": "2026-10-22T15:58:50Z",
+      "title": "The hovered cell in 2D keeps your opacity",
+      "items": [
+        "With the new 3D Hover looks, the cell under your mouse in 2D no longer turns almost solid: it keeps the opacity set in the Render tab."
+      ]
+    },
+    {
+      "at": "2026-10-22T15:50:00Z",
+      "title": "2D images from Asia",
+      "items": [
+        "Players in Asia can load the 2D images for EyeWire II, MEC and the Sandbox from a copy hosted in Asia, which is much faster there.",
+        "Settings has a new choice, 2D images load from: Automatic, Americas or Asia. Automatic checks once which copy is faster for you and uses it.",
+        "If your 2D images keep loading slowly and the Asia copy would be faster, Pyr offers to switch."
+      ]
+    },
+    {
+      "at": "2026-10-22T15:20:10Z",
+      "title": "Can't Complete no longer marks a cell proofread",
+      "items": [
+        "Can't Complete no longer marks the cell proofread for the lab. It still ends your claim, counts as your completed cell, and records Can't Complete with your note in the cell sheet.",
+        "The Can't complete button in the Δ menu shows only on cells that are in the Cell Library's sheet."
+      ]
+    },
+    {
       "at": "2026-10-22T14:40:34Z",
       "title": "Can't complete in the Δ menu",
       "items": [

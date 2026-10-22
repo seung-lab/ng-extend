@@ -11,7 +11,7 @@ import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes, cellTypeLabel} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
-import {completeStatusesFor} from '../sheet_sync';
+import {completeStatusesFor, CANT_COMPLETE, marksProofread} from '../sheet_sync';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
 
 /** The name Pyr shows for a cell: its type, with its classification. */
@@ -606,16 +606,26 @@ export class ButtonService {
     // The Δ menu's own Can't complete (Ames 2026-10-22): the same completion
     // as Mark as Proofread, with "Can't Complete" already chosen in its form.
     // Only where the cell's sheet has that status, and only while unfinished.
-    const CANT = "Can't Complete";
+    const CANT = CANT_COMPLETE;
     const cantBtn = document.createElement('button');
     cantBtn.type = 'button';
     cantBtn.classList.add('nge-lb-section-button', 'nge-lb-cant-btn');
     cantBtn.textContent = "Can't complete";
-    cantBtn.title = "This cell can't be finished: choose why in the next step. It is recorded as Can't Complete in the cell sheet.";
+    cantBtn.title = "This cell can't be finished: say why in the next step. It is recorded as Can't Complete in the cell sheet and counts as your completed cell, but the cell is not marked proofread.";
+    // Only for a cell in the Cell Library's sheet (Ames 2026-10-22: "only
+    // available on cells in the sheet"), found the way Mark as Proofread
+    // finds it, including by an older ID after edits. Hidden until known.
+    let inSheet = false;
     const showCant = () => {
-      const can = !cachedStatus?.isComplete && completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT) && toggleBtn.style.display !== 'none';
+      const can = inSheet && !cachedStatus?.isComplete && completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT) && toggleBtn.style.display !== 'none';
       cantBtn.style.display = can ? '' : 'none';
     };
+    if (completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT)) {
+      planMenuCompletion(segmentIDString).then(p => {
+        inSheet = !p.blocked && !!p.row && needsCompletionDetails(p);
+        if (cantBtn.isConnected) showCant();
+      }).catch(() => { /* stays hidden */ });
+    }
     let forcedStatus = '';
     cantBtn.addEventListener('click', () => {
       if (toggleBtn.disabled || cachedStatus?.isComplete) return;
@@ -659,6 +669,21 @@ export class ButtonService {
           return;
         }
         details = asked;
+      }
+      // Can't Complete: no proofread mark in CAVE (sheet_sync.ts); the claim
+      // ends, counts as completed, and the sheet records it with the note.
+      if (willBeComplete && plan?.row && !marksProofread(details.status)) {
+        statusLine.textContent = "Writing Can't Complete to the sheet…";
+        try {
+          statusLine.textContent = "Can't Complete, not marked proofread. " + await finishMenuCompletion(plan, details);
+        } catch (e: any) {
+          statusLine.textContent = e?.message || 'The sheet could not be updated.';
+        }
+        document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'released' } }));
+        toggleBtn.textContent = 'Mark as Proofread';
+        toggleBtn.disabled = false;
+        showCant();
+        return;
       }
       // plan.cellRoot: opened on a MEC nucleus, so the cell around it is marked.
       const ok = await setCellComplete(

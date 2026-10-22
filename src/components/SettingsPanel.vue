@@ -7,6 +7,7 @@ import {COUNTRIES, EYEWIRE_FLAG, findCountryByCode} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
 import { startViewHash } from '../util/start_view';
+import { automaticRegion, imageRegionLabel } from '../util/image_source';
 import { ngePointScale, ngePointGem } from 'neuroglancer/annotation/point';
 import { ngeHoverStyle } from 'neuroglancer/segmentation_display_state/frontend';
 
@@ -65,12 +66,16 @@ function onPulseColorPick(e: Event) {
   draftPulseColor.value = (e.target as HTMLInputElement).value;
 }
 const draftImageDetail = ref<1 | 2 | 4>(1);
+const draftImageSource = ref<'auto' | 'americas' | 'asia'>('auto');
+/** What Automatic means on this computer right now, shown in its option. */
+const autoImageRegion = computed(() => imageRegionLabel(automaticRegion()));
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftCursorXL = ref(false);
+const draftImageLayerPanel = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
 const draftOfferRestore = ref(true);
@@ -143,12 +148,14 @@ onMounted(() => {
   draftHoverStyle.value = ngeHoverStyle.value;
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
+  draftImageSource.value = prefsStore.prefs.imageSource === 'americas' || prefsStore.prefs.imageSource === 'asia' ? prefsStore.prefs.imageSource : 'auto';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftCursorXL.value = prefsStore.prefs.cursorXL === true;
+  draftImageLayerPanel.value = prefsStore.prefs.imageLayerPanel === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
@@ -221,7 +228,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -515,7 +522,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCursorXL" />
               <span class="nge-settings-toggle-label">Extra large cursor</span>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Spotlight: the cell turns a little richer and the other cells in 3D dim, so it stands out gently. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Hologram: the cell turns into cyan light (or your pulse colour), glowing brightest at its edges, with a soft glow around it. Metallic: a dark, shiny cell with bright edges. None: nothing marks it. In 2D the cell turns more solid. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
+            <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Spotlight: the cell turns a little richer and the other cells in 3D dim, so it stands out gently. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Hologram: the cell turns into cyan light (or your pulse colour), glowing brightest at its edges, with a soft glow around it. Metallic: a dark, shiny cell with bright edges. None: nothing marks it. In 2D the cell keeps its own colour, at your Render opacity. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
                 <option value="halo">Halo</option>
@@ -556,6 +563,14 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option :value="1">Full (sharpest)</option>
                 <option :value="2">Half (faster loading)</option>
                 <option :value="4">Quarter (fastest, blurry)</option>
+              </select>
+            </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="Where the 2D images come from. Copies hosted in Asia exist for EyeWire II Retina, MEC and the Sandbox; other datasets always load from the Americas. Automatic times both copies once and uses the faster one for you. Shared links and saved views open on your choice.">
+              <span class="nge-settings-toggle-label">2D images load from</span>
+              <select v-model="draftImageSource" class="nge-sv-select">
+                <option value="auto">Automatic ({{ autoImageRegion }})</option>
+                <option value="americas">Americas</option>
+                <option value="asia">Asia</option>
               </select>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
@@ -648,7 +663,11 @@ const props = defineProps<{ embedded?: boolean }>();
               <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
               <button class="nge-settings-advanced-btn" @click="toggleSelectionDetails">◫ Selection Details</button>
             </div>
-            <label class="nge-settings-toggle" style="margin-top: 10px;" title="Segmentation layers open on Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
+            <label class="nge-settings-toggle" style="margin-top: 10px;" title="Off: clicking the 2D EM layer's tab shows or hides the 2D view. On: it opens the layer's side panel (Source, Rendering, Annotations), as in neuroglancer.">
+              <input type="checkbox" v-model="draftImageLayerPanel" />
+              <span class="nge-settings-toggle-label">Clicking the 2D image layer opens its side panel</span>
+            </label>
+            <label class="nge-settings-toggle" title="Segmentation layers open on Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
               <input type="checkbox" v-model="draftSegSetupTabs" />
               <span class="nge-settings-toggle-label">Show Source and Graph tabs on segmentation layers</span>
             </label>
