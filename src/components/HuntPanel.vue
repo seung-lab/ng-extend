@@ -176,8 +176,10 @@ const HUNT_STEPS = [
 /** A medal is a place (Ames 2026-10-21: "it's not one per person"): 1st, 2nd, 3rd. */
 const PLACE: Record<HuntTier, string> = { gold: '1st place', silver: '2nd place', bronze: '3rd place' };
 /** Folded to a slim strip: found, gems left, the gem switch, Submit, the last answer (kept in this browser). */
-const mini = ref((() => { try { return localStorage.getItem('nge-hunt-mini') === '1'; } catch { return false; } })());
-function setMini(on: boolean) { mini.value = on; try { localStorage.setItem('nge-hunt-mini', on ? '1' : '0'); } catch { /* private window */ } }
+const miniPref = ref((() => { try { return localStorage.getItem('nge-hunt-mini') === '1'; } catch { return false; } })());
+/** The results always show in full (Ames 2026-10-22: "no slim view option on results"). */
+const mini = computed(() => miniPref.value && phase.value !== 'ended');
+function setMini(on: boolean) { miniPref.value = on; try { localStorage.setItem('nge-hunt-mini', on ? '1' : '0'); } catch { /* private window */ } }
 /** The caret: the box zips up under a light bar into its slim form, and beams back open
  *  (Ames 2026-10-22: "use the cool minimize/expand animation light bar from cell library"). */
 async function toggleMini() {
@@ -244,7 +246,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               :aria-label="huntPrefs.panels ? 'Hide the side panels' : 'Show the side panels'" @pointerdown.stop @click="setHuntPanels(!huntPrefs.panels)">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.4"/><path v-if="huntPrefs.panels" d="M11.2 5.5h1.8M11.2 8h1.8M11.2 10.5h1.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
       </button>
-      <button class="nge-hunt-caret" :class="{ 'nge-hunt-caret--down': mini }" :title="mini ? 'Show everything' : 'Make it small'" :aria-label="mini ? 'Show everything' : 'Make it small'" :aria-expanded="!mini" @pointerdown.stop @click="toggleMini">
+      <button v-if="phase !== 'ended'" class="nge-hunt-caret" :class="{ 'nge-hunt-caret--down': mini }" :title="mini ? 'Show everything' : 'Make it small'" :aria-label="mini ? 'Show everything' : 'Make it small'" :aria-expanded="!mini" @pointerdown.stop @click="toggleMini">
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button class="nge-hunt-x" title="Close" aria-label="Close" @pointerdown.stop @click="emit('hide')">×</button>
@@ -281,7 +283,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <div v-if="mini && run" class="nge-hunt-slim">
           <div class="nge-hunt-slim-row">
             <span class="nge-hunt-slim-read" :title="`${run.found} of ${run.of} found`"><b :key="'f' + run.found" class="nge-hunt-pop">{{ run.found }}</b><i>/{{ run.of }}</i><small>found</small></span>
-            <span class="nge-hunt-slim-read" :title="`${run.gems_left} of ${run.budget} gems left`"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i>/{{ run.budget }}</i><small>gems</small></span>
+            <!-- Gems left as a count, no fraction, so only the finds read as one (Ames 2026-10-22: "kind of confusing to see the 7/10 and 8/15") -->
+            <span class="nge-hunt-slim-read" :title="`${run.gems_left} of ${run.budget} gems left`"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><small>{{ run.gems_left === 1 ? 'gem left' : 'gems left' }}</small></span>
           </div>
           <div v-if="opened && !run.done && (kinds.length > 1 || !huntPrefs.auto)" class="nge-hunt-slim-row">
             <div v-if="kinds.length > 1" class="nge-hunt-kinds nge-hunt-kinds--slim" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
@@ -484,9 +487,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-scan {   /* one band, one pass, then gone */
   left: 0; right: 0; top: 0; height: 12%; z-index: 2; pointer-events: none; opacity: 0;
   background: linear-gradient(180deg, transparent, rgb(var(--hn-cyan) / 0.11) 70%, rgb(var(--hn-cyan) / 0.22) 98%, transparent);
-  animation: ngeHuntScanPass 1600ms cubic-bezier(0.22, 0.9, 0.28, 1) 240ms 1 both;
+  animation: ngeHuntScanPass 1600ms cubic-bezier(0.22, 0.9, 0.28, 1) 240ms 1 backwards;
 }
-@keyframes ngeHuntScanPass { from { transform: translateY(-100%); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } to { transform: translateY(950%); opacity: 0; } }
+/* The band ends at the bottom edge (733% of its 12% height) and then goes: one that ended past the
+   edge stayed there, unseen, and gave the box a scroll bar (Ames 2026-10-22: "why is there a scroll bar here?"). */
+@keyframes ngeHuntScanPass { from { transform: translateY(-100%); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } to { transform: translateY(733%); opacity: 0; } }
 
 /* ── Head ── */
 .nge-hunt-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px 18px; cursor: grab; touch-action: none; user-select: none; border-bottom: 1px solid rgb(var(--hn-accent) / 0.14); }
@@ -543,7 +548,15 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 /* ── Body ── */
 .nge-hunt-body { padding: 10px 16px 16px 18px; display: flex; flex-direction: column; gap: 8px; }
 .nge-hunt-titlerow { display: flex; align-items: flex-start; gap: 10px; }
-.nge-hunt-title { flex: 1; min-width: 0; margin: 0; font: 600 16px 'Inter', system-ui, sans-serif; color: #fff; overflow-wrap: anywhere; }
+.nge-hunt-title {
+  flex: 1; min-width: 0; margin: 0; padding-left: 9px; position: relative;
+  font: 700 14px/1.28 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #eef6ff; text-shadow: 0 0 12px rgb(var(--hn-cyan) / 0.35); overflow-wrap: anywhere;
+}
+.nge-hunt-title::before {   /* a lit gold bar, as the profile's section labels carry */
+  content: ''; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px;
+  background: rgb(var(--hn-gold)); box-shadow: 0 0 8px rgb(var(--hn-gold) / 0.6);
+}
 .nge-hunt-clock { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
 .nge-hunt-clock-label { font: 600 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
 .nge-hunt-clock-time { font: 700 17px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); }
