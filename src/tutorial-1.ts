@@ -160,6 +160,29 @@ function advanceWhenSegmentAdded() {
   }, 2500);
 }
 
+/** Move on once the view goes from 3D only to split screen, whichever way:
+ *  SPACE, or a click on the 2D EM tab (Ames 2026-10-22: the tab now shows
+ *  and hides the 2D view). SPACE already moves on by itself (spaceAdvances). */
+function advanceWhenSplit() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const layout = () => { try { const j = getViewer()?.layout?.toJSON?.(); return typeof j === 'string' ? j : (j?.type ?? ''); } catch { return ''; } };
+  // Let the step's own view load first (it opens in 3D only).
+  setTimeout(() => {
+    let was = layout();
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      const now = layout();
+      if (was === '3d' && now !== '3d' && now) {
+        clearInterval(timer);
+        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 600);
+      }
+      was = now;
+    }, 300);
+  }, 2000);
+}
+
 /** Close the viewer's side panels through neuroglancer's own state, so they
  *  can be reopened normally. (These steps used to set display:none on every
  *  side panel element, which left the panels unopenable until a reload.) */
@@ -417,11 +440,12 @@ It missed a branch. Let's see if we can find it.`,
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
   {
-    text: `Hit SPACE to bring up a split screen view that reveals the electron microscope image data from which these neurons were reconstructed.`,
+    text: `Hit SPACE, or click the <strong>2D EM</strong> tab at the top, to bring up a split screen view that reveals the electron microscope image data from which these neurons were reconstructed.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     spaceAdvances: true,
+    onEnter: () => { advanceWhenSplit(); },
   },
   //12 - over 2D - EM cross section view
   {

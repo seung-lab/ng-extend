@@ -922,7 +922,7 @@ For a big cell, <strong>Lantern</strong> lights the part around where you are an
 <ol class="nge-tut-checklist">
 <li data-check="spot">Go to this location: ${copyButton('82190, 58009, 381')}&nbsp;${hint('Copy it, then press CTRL+V anywhere in the viewer. The coordinates box shows where you are', '#extensionBar .neuroglancer-position-widget')}</li>
 <li data-check="layer">Add a new annotation layer and name it <strong>Secret Hideout</strong>&nbsp;${hint('The + at the end of the layer bar adds one. Then click the ✎ pencil to name it', '.neuroglancer-layer-add-button, .nge-title-rename')}</li>
-<li data-check="layout">Open the 2 panel view (2D + 3D)&nbsp;${hint('Press SPACE')}</li>
+<li data-check="layout">Open the 2 panel view (2D + 3D)&nbsp;${hint('Press SPACE, or click the 2D EM tab at the top', ".neuroglancer-layer-item[title*='2D view']")}</li>
 <li data-check="point">There is a merger here! CTRL+CLICK to place annotation points around where the merger starts&nbsp;${hint('Scroll the mouse wheel over the 2D view to move through the slices. Find Path from the soma to the odd branch shows where it joins')}</li>
 </ol>`,
     position: OVER_3D,
