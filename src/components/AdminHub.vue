@@ -2815,6 +2815,9 @@ function practiceWhen(iso: string | null) {
             <button class="nge-triage-console-btn" @click="toggleIssueConsole(row)">
               {{ issueConsole[row.id] === undefined ? '🖥 Console messages' : issueConsoleOpen[row.id] ? '▾ Console messages' : '▸ Console messages' }}
             </button>
+            <!-- Copy the whole log (Ames 2026-10-21: "we need a copy button for console logs"). -->
+            <button v-if="issueConsoleOpen[row.id] && issueConsole[row.id]" class="nge-triage-console-btn" title="Copy all the console messages"
+                    @click.stop="copyText(issueConsole[row.id] || '')">{{ copied === issueConsole[row.id] ? '✓ Copied' : '📋 Copy' }}</button>
             <pre v-if="issueConsoleOpen[row.id]" class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
@@ -2959,6 +2962,8 @@ function practiceWhen(iso: string | null) {
                   <button v-if="u.console_lines" type="button" class="nge-triage-chip" @click="toggleReplyConsole(u.notification_id)">
                     {{ replyConsoleOpen[u.notification_id] ? '▾' : '▸' }} Console messages ({{ u.console_lines }})
                   </button>
+                  <button v-if="u.console_lines && replyConsoleOpen[u.notification_id] && replyConsole[u.notification_id]" type="button" class="nge-triage-chip" title="Copy all the console messages"
+                          @click="copyText(replyConsole[u.notification_id] || '')">{{ copied === replyConsole[u.notification_id] ? '✓ Copied' : '📋 Copy' }}</button>
                   <span v-if="u.dataset" class="nge-triage-chip nge-triage-chip--plain">{{ u.dataset }}{{ u.build ? ' · ' + u.build : '' }}</span>
                 </div>
                 <pre v-if="u.console_lines && replyConsoleOpen[u.notification_id]" class="nge-triage-reply-console">{{ replyConsole[u.notification_id] === undefined ? 'Loading…' : (replyConsole[u.notification_id] ?? 'These messages are no longer stored.') }}</pre>
