@@ -256,6 +256,18 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
+  // The Proofreading Test (Ames 2026-10-21): an admin's note of a result
+  // opens Admin Hub > Test tries; "Your turn" opens the test itself.
+  if (accessTitle.startsWith('Proofreading Test: ') && backend.isAdmin) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tests' } }));
+    emit('hide');
+    return;
+  }
+  if (accessTitle === 'Your turn: the Proofreading Test') {
+    document.dispatchEvent(new CustomEvent('nge:test-start'));
+    emit('hide');
+    return;
+  }
   // Triage alerts open the triage board on its own page, in a new tab
   // (Ames 2026-10-05), so the game stays where it is.
   if ((notif.title || '').startsWith('🗂')) {

@@ -81,9 +81,20 @@ function graphResults(checks, roots, when) {
   const idx = when === 'start' ? 0 : 1;
   return checks.filter(c => EXPECT[c.kind]).map(c => {
     const state = relationOf(c, roots);
+    const ok = state === EXPECT[c.kind][idx];
     return {id: c.id, ordinal: c.ordinal, kind: c.kind, label: c.label || '', weight: c.weight ?? 1,
-      state, ok: state === EXPECT[c.kind][idx], point_a: c.point_a || null, point_b: c.point_b || null};
+      state, ok, point_a: c.point_a || null, point_b: c.point_b || null, seg: segmentOf(c, roots, ok)};
   });
+}
+
+/** What the admins' heat map colors for a check (Ames, 2026-10-21): a
+ *  mistake's piece as a segment of its own (piece_root, from the key), and
+ *  for a real branch cut off, the part that came off, as it was when scored.
+ *  Kept with the try; never sent to the player. */
+function segmentOf(c, roots, ok) {
+  if (ERROR_KINDS.includes(c.kind)) return c.piece_root && SV.test(String(c.piece_root)) ? String(c.piece_root) : null;
+  if (c.kind === 'keep' && !ok) return roots[c.supervoxel_a] || null;
+  return null;
 }
 
 /** The checks that are not in their start state. */
@@ -376,7 +387,10 @@ async function oneTry(io, args) {
     username: (a.player && a.player.username) || null, cave_user_id: a.player ? a.player.cave_user_id ?? null : null,
     end_root: a.end_root || null, dataset: test.dataset, state_url: test.state_url,
     checks: (Array.isArray(a.checks) ? a.checks : []).map(c => ({kind: c.kind, label: c.label || '', ok: !!c.ok, weight: c.weight ?? 1,
-      point: c.kind === 'endpoint' ? (c.point_a || null) : (c.point_b || c.point_a || null)})),
+      point: c.kind === 'endpoint' ? (c.point_a || null) : (c.point_b || c.point_a || null),
+      // The heat map: the piece to color, and how near an end a point must be.
+      seg: c.seg && SV.test(String(c.seg)) ? String(c.seg) : null,
+      ...(c.kind === 'endpoint' ? {radius: Number(c.radius) > 0 ? Number(c.radius) : 1500} : {})})),
     given: Array.isArray(ends.given) ? ends.given.slice(0, 500) : [],
     stray: typeof ends.stray === 'number' ? ends.stray : null,
   };

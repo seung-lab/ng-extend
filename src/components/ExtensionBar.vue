@@ -123,7 +123,7 @@ import { testStatus } from '../proofreading-test';
 function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
-import { myAccess, loadMyAccess, accessStatusLabel } from '../access_request';
+import { myAccess, loadMyAccess, accessStatusLabel, resumeReview } from '../access_request';
 import { datasetAccess } from '../util/dataset_access';
 const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
 // Where the player's request stands, for the menu line: asked once a session
@@ -691,6 +691,8 @@ function handleAssistantAction(e: Event) {
 onMounted(() => document.addEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 onUnmounted(() => document.removeEventListener('nge:assistant-action', handleAssistantAction as EventListener));
 const backendStore = useProofreadingBackendStore();
+// A reviewer who refreshed mid review goes back into review mode (Celia #195).
+watch(() => backendStore.isAdmin, (admin) => { if (admin) void resumeReview(); }, { immediate: true });
 // Signed in: give the page a moment to settle, then greet with the leaderboard.
 watch(() => backendStore.userId, id => { if (id) setTimeout(maybeOpenLeaderboardOnArrival, 1800); }, { immediate: true });
 // A dataset switch made from the Cell Library reloads the page: open the

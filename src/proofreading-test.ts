@@ -365,11 +365,13 @@ export function endLayerSpec(): Record<string, any> {
  * (even hidden) shows as a second copy of the cell and the cut tool will
  * not work on it (Ames, 2026-10-13), so the list is emptied first.
  */
-export function showExactly(dataset: string, root: string) {
+export function showExactly(dataset: string, root: string, onlyLayer?: string) {
   try {
     for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
       const url: string = ml.layer?.dataSources?.[0]?.spec?.url ?? '';
       if (!(ml.name === dataset || url.includes(`/table/${dataset}`))) continue;
+      // The admins' heat map has a second layer on the same table (its pieces).
+      if (onlyLayer && ml.name !== onlyLayer) continue;
       const g = ml.layer?.displayState?.segmentationGroupState?.value;
       if (!g?.visibleSegments) continue;
       const ids: string[] = [];

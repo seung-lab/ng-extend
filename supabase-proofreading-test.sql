@@ -95,6 +95,9 @@ CREATE INDEX IF NOT EXISTS proofreading_test_checks_test_idx ON public.proofread
 -- Weights are piece sizes in supervoxels since 2026-10-19; the first cap was 100.
 ALTER TABLE public.proofreading_test_checks DROP CONSTRAINT IF EXISTS proofreading_test_checks_weight_check;
 ALTER TABLE public.proofreading_test_checks ADD CONSTRAINT proofreading_test_checks_weight_check CHECK (weight BETWEEN 0 AND 1000000);
+-- The admins' heat map (2026-10-21): a cut or merge check's piece as a
+-- segment of its own (scripts/proofreading-test-piece-roots.py fills it).
+ALTER TABLE public.proofreading_test_checks ADD COLUMN IF NOT EXISTS piece_root text CHECK (piece_root IS NULL OR piece_root ~ '^[0-9]{1,20}$');
 
 CREATE TABLE IF NOT EXISTS public.proofreading_test_attempts (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
