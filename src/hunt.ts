@@ -33,6 +33,8 @@ export interface HuntInfo {
   results_hours?: number;
   /** The edge spots the key marks, in nanometres: shown to players once the Hunt is open. */
   edges_nm?: number[][];
+  /** The segmentation volume's bounds in nanometres, drawn as a teal box: where the data ends. */
+  bounds_nm?: number[][] | null;
   view: any | null;
   you: HuntRun & { best: number; submissions: number; rank: number };
   /** An admin's test run (hunt.test): open as if running, for that admin only; answers are never kept. */
@@ -344,17 +346,21 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
 export const huntEdgeLayerName = (h: HuntInfo) => `${h.test ? 'Hunt test edges' : 'Hunt edges'}: ${h.title}`;
 function ensureEdgeLayer(h: HuntInfo) {
   const v = viewer();
-  const edges = h.edges_nm ?? [];
-  if (!v?.layerSpecification || !edges.length || managed(huntEdgeLayerName(h))) return;
+  const edges = h.edges_nm ?? [], box = h.bounds_nm ?? null;
+  if (!v?.layerSpecification || (!edges.length && !box) || managed(huntEdgeLayerName(h))) return;
   const cs = v.coordinateSpace?.value;
   const names: string[] = cs?.names ?? [], scales = cs?.scales;
   const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
   if (!scales || ix.some(i => i < 0)) return;
   const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
-  const points = edges.map(e => { const p = here.slice(); ix.forEach((i, k) => { p[i] = e[k] / (Number(scales[i]) * 1e9); }); return p; });
+  const toVox = (e: number[]) => { const p = here.slice(); ix.forEach((i, k) => { p[i] = e[k] / (Number(scales[i]) * 1e9); }); return p; };
   const ml = makeLayer(v.layerSpecification, huntEdgeLayerName(h), {
     type: 'annotation', source: { url: 'local://annotations' },
-    annotations: points.map((p, i) => ({ type: 'point', id: `edge-${i}`, point: p })),
+    annotations: [
+      ...edges.map((e, i) => ({ type: 'point', id: `edge-${i}`, point: toVox(e) })),
+      // The segmentation volume: a branch that runs into this box leaves the data there (Ames 2026-10-23: "we want the edges shown").
+      ...(box ? [{ type: 'axis_aligned_bounding_box', id: 'edge-box', pointA: toVox(box[0]), pointB: toVox(box[1]) }] : []),
+    ],
     annotationColor: EDGE.color, pointSize: 5, onTop: false,
   });
   v.layerSpecification.add(ml);
@@ -447,7 +453,7 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   restoreDisplayAfterLoad(snap);
   // The restore and the display keeper settle over a moment and can drop a
   // layer added too early, so add the gem layers until they have stayed put.
-  const names = [...gemKinds(h).map(k => huntLayerName(h, k)), ...((h.edges_nm ?? []).length ? [huntEdgeLayerName(h)] : [])];
+  const names = [...gemKinds(h).map(k => huntLayerName(h, k)), ...((h.edges_nm ?? []).length || h.bounds_nm ? [huntEdgeLayerName(h)] : [])];
   let steady = 0;
   for (let i = 0; i < 16 && steady < 3; i++) {
     await new Promise(r => setTimeout(r, 250));
@@ -784,25 +790,17 @@ export function datasetBoundsNm(): number[][] | null {
   }
   return viewerBoundsNm();
 }
-/** A layer's data bounds in nanometres, through its source's transform into the viewer's x, y and z. */
+/** A layer's data bounds in nanometres: its source's own voxel bounds times the source's own scales
+ *  (the sandbox's 8 nm source in a 4 nm view came out half size through the transform, Ames 2026-10-23). */
 export function layerBoundsNm(ml: any): number[][] | null {
   for (const ds of ml?.layer?.dataSources ?? []) {
     const ls = ds?.loadState;
-    const t = ls?.transform?.value ?? ls?.dataSource?.modelTransform;
-    const R = t?.rank, inS = t?.inputSpace, outS = t?.outputSpace, M = t?.transform;
-    const lo = inS?.bounds?.lowerBounds, hi = inS?.bounds?.upperBounds;
-    if (!R || !lo || !hi || !M || !outS?.scales || !outS?.names) continue;
-    const inR = Math.min(inS.rank ?? lo.length, R);
-    const apply = (p: ArrayLike<number>) => Array.from({ length: R }, (_, row) => {
-      let v = Number(M[R * (R + 1) + row]) || 0;
-      for (let c = 0; c < inR; c++) v += Number(M[c * (R + 1) + row]) * Number(p[c]);
-      return v;
-    });
-    const a = apply(lo), b = apply(hi);
-    const ix = ['x', 'y', 'z'].map(n => (outS.names as string[]).indexOf(n));
+    const inS = (ls?.dataSource?.modelTransform ?? ls?.transform?.value)?.inputSpace;
+    const lo = inS?.bounds?.lowerBounds, hi = inS?.bounds?.upperBounds, sc = inS?.scales, names: string[] = inS?.names ?? [];
+    if (!lo || !hi || !sc) continue;
+    const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
     if (ix.some(i => i < 0)) continue;
-    const L = ix.map(i => Math.min(a[i], b[i]) * Number(outS.scales[i]) * 1e9);
-    const H = ix.map(i => Math.max(a[i], b[i]) * Number(outS.scales[i]) * 1e9);
+    const L = ix.map(i => Number(lo[i]) * Number(sc[i]) * 1e9), H = ix.map(i => Number(hi[i]) * Number(sc[i]) * 1e9);
     if (L.every((v, k) => Number.isFinite(v) && Number.isFinite(H[k]) && H[k] > v)) return [L, H];
   }
   return null;

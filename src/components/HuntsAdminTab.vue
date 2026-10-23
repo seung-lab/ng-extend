@@ -161,7 +161,7 @@ async function open(h: AdminHunt) {
   try {
     const full = await huntCall<AdminHunt & { board: BoardRow[] }>('hunt.read', { id: h.id });
     editing.value = full; board.value = full.board || [];
-    form.value = { title: full.title, description: full.description || '', link: '', tolerance_um: Math.round(full.tolerance_nm / 100) / 10,
+    form.value = { title: full.title, description: full.description || '', link: keyLink(full), tolerance_um: Math.round(full.tolerance_nm / 100) / 10,
       max_points: full.max_points || '', max_submissions: full.max_submissions || 10, results_hours: (full.tiers as any)?.results_hours || '',
       tiers: { gold: full.tiers?.gold || '', silver: full.tiers?.silver || '', bronze: full.tiers?.bronze || '' },
       tierGems: { gold: (full.tiers as any)?.gold_gems || '', silver: (full.tiers as any)?.silver_gems || '', bronze: (full.tiers as any)?.bronze_gems || '' },
@@ -200,6 +200,27 @@ function scan() {
 const picked = computed(() => candidates.value.filter(c => keyPick.value[c.name]?.on).map(c => ({ name: c.name, kind: keyPick.value[c.name].kind, points: c.points })));
 watch(() => (autoRead.value && editing.value ? JSON.stringify(picked.value) : ''), (now) => { if (now && picked.value.length) useScreen(); });
 const placesWord = (n: number, kind: KeyKind) => kind === 'edge' ? (n === 1 ? '1 edge spot' : `${n} edge spots`) : kind === 'merge' ? (n === 1 ? '1 extension' : `${n} extensions`) : (n === 1 ? '1 merger' : `${n} mergers`);
+
+/**
+ * A saved Hunt's key as a link (Ames 2026-10-23: "in duplicated hunts let's also show the link /
+ * annotations"): its view with the places back as layers, named so the editor ticks and types them
+ * by itself: Mergers (cut), Extensions (merge), edge. Opening it puts the key on screen to check or change.
+ */
+function keyLink(full: any): string {
+  const view = full?.view, targets: any[] = Array.isArray(full?.targets) ? full.targets : [];
+  if (!view || !targets.length) return '';
+  const dims = view.dimensions || {};
+  const axes = Object.keys(dims);
+  const xyz = ['x', 'y', 'z'];
+  if (!xyz.every(a => Array.isArray(dims[a]) && Number(dims[a][0]) > 0)) return '';
+  const toVox = (p: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(p[i]) / (Number(dims[a][0]) * 1e9); });
+  const layerOf = (name: string, pts: number[][]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
+    annotations: pts.map((p, i) => ({ type: 'point', id: `${name.toLowerCase()}-${i}`, point: toVox(p) })) });
+  const cuts = targets.filter(t => t[3] !== 'merge'), merges = targets.filter(t => t[3] === 'merge'), edges: number[][] = full.edges || [];
+  const layers = [...(view.layers || []),
+    ...(cuts.length ? [layerOf('Mergers', cuts)] : []), ...(merges.length ? [layerOf('Extensions', merges)] : []), ...(edges.length ? [layerOf('edge', edges)] : [])];
+  return `${location.origin}${location.pathname}#!${encodeURIComponent(JSON.stringify({ ...view, layers }))}`;
+}
 
 function openLink() {
   error.value = ''; message.value = '';
@@ -500,6 +521,7 @@ async function duplicate() {
         <div class="nge-hunts-row">
           <button class="nge-hunts-btn nge-hunts-btn--quiet" :disabled="!picked.length" title="Read the ticked layers from the screen again" @click="autoRead = true; scan(); useScreen()">↻ Read again</button>
         </div>
+        <p v-if="!isNew && !read && form.link" class="nge-hunts-help">The saved key is in the link: <b>Open the link</b> to see its places on screen as layers (Mergers, Extensions, edge), change them, and save.</p>
         <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'place' : 'places' }}<template v-if="editing.edge_count">, {{ editing.edge_count }} edge {{ editing.edge_count === 1 ? 'spot' : 'spots' }}</template> on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
         <div v-if="cellRows.length" class="nge-hunts-cells">
           <p class="nge-hunts-help"><b>Where players start.</b> A link is often centered on a merger, which would give it away. Move the crosshair to where players should start (the soma is a good place) and press <b>Use the crosshair</b>, or paste x, y, z as the coordinate bar shows them.</p>

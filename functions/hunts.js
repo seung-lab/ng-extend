@@ -334,6 +334,7 @@ function publicHunt(h, now) {
   return {
     id: h.id, title: h.title, description: h.description || '', dataset: h.dataset, admins_only: !!h.admins_only,
     edges_nm: open ? (h._edges || []).map((e) => [e[0], e[1], e[2]]) : [],
+    bounds_nm: open ? h._bounds || null : null,
     // The cells, like the view, only once the hunt starts: nobody hunts early.
     cells: open ? cells : [], cell_count: cells.length,
     announce_at: h.announce_at, start_at: h.start_at, end_at: h.end_at, phase: p,
@@ -741,7 +742,7 @@ async function current(ctx) {
     }
     const key = await db.key(h.id);
     h._kinds = kindCounts(key);
-    if (phase(h, now) !== 'announced' && db.keyExtras) h._edges = (await db.keyExtras(h.id)).edges;
+    if (phase(h, now) !== 'announced' && db.keyExtras) { const ex = await db.keyExtras(h.id); h._edges = ex.edges; h._bounds = ex.bounds; }
     const subs = await db.submissions(h.id);
     const board = leaderboard(subs);
     const th = thresholds(h), gl = gemLimits(h);
@@ -895,8 +896,8 @@ async function testOpen(args, ctx) {
   if (!h.view || !key.length) fail(409, 'Read the answer key and save the Hunt before trying it.');
   h._kinds = kindCounts(key);
   const cells = cleanCells(h.cells);
-  const edges = db.keyExtras ? (await db.keyExtras(h.id)).edges : [];
-  return { ...publicHunt(h, now), edges_nm: edges.map((e) => [e[0], e[1], e[2]]), prizes: await prizesFor(h, db, ctx.site), phase: 'live', test: true, cells, cell_count: cells.length, view: startView(h),
+  const ex = db.keyExtras ? await db.keyExtras(h.id) : { edges: [], bounds: null };
+  return { ...publicHunt(h, now), edges_nm: (ex.edges || []).map((e) => [e[0], e[1], e[2]]), bounds_nm: ex.bounds || null, prizes: await prizesFor(h, db, ctx.site), phase: 'live', test: true, cells, cell_count: cells.length, view: startView(h),
     you: { ...runView(h, [], key), best: 0, submissions: 0, rank: 0 }, board: [], players: 0, winners: { gold: 0, silver: 0, bronze: 0 } };
 }
 
@@ -1230,7 +1231,8 @@ async function adminRead(args, ctx) {
   const board = leaderboard(subs);
   const names = await db.names(board.map((b) => b.user_id));
   const th = thresholds(h), gl = gemLimits(h);
-  return { ...(await adminView(h, ctx)), view: h.view || null, targets,
+  const extras = db.keyExtras ? await db.keyExtras(h.id) : { edges: [] };
+  return { ...(await adminView(h, ctx)), view: h.view || null, targets, edges: extras.edges || [],
     board: board.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', user_id: b.user_id, found: b.found, at: b.at,
       gems: b.gems, tier: tierFor(b.found, th, b.gems, gl) })) };
 }
