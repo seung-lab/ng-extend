@@ -71,7 +71,10 @@ const isRedActive = computed(() => store.activeGroup === 'red');
 // colour (Ames, 2026-10-07). The G key and the hint keep pulsing until the
 // colour is switched.
 const needsSwap = computed(() => isMulticut.value && !store.pendingClose
-  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red');
+  && store.redPointCount >= redNeeded.value && store.bluePointCount === 0 && store.activeGroup === 'red');
+/** Red points to place before G: what the tutorial step on screen asks for
+ *  (the Cut tutorial asks for 2, annkri report 217), else 1. */
+const redNeeded = computed(() => inPracticeTutorial.value ? Math.max(1, store.redWanted) : 1);
 // The large "Press G" prompt is for learners only: it shows while a step of
 // the Merge, Cut or Merger Sandbox tutorial is up (Ames, 2026-10-08). Outside
 // a tutorial the lit G key on the bar is the only nudge, and it holds still.
@@ -127,6 +130,10 @@ const contextHint = computed(() => {
   const touch = isTouchRef.value;
   if (isMulticut.value && !store.pendingClose) {
     if (totalPoints.value === 0) return touch ? 'Tap supervoxels to mark them' : 'Ctrl+Click on supervoxels to mark them';
+    if (store.redPointCount > 0 && store.redPointCount < redNeeded.value && store.bluePointCount === 0 && store.activeGroup === 'red') {
+      const left = redNeeded.value - store.redPointCount;
+      return `${touch ? 'Tap' : 'Ctrl+Click'} ${left} more red point${left === 1 ? '' : 's'}`;
+    }
     if (store.redPointCount > 0 && store.bluePointCount === 0) return touch ? 'Tap Blue, then tap the other side' : 'Press G to swap to Blue group, then Ctrl+Click';
     if (store.redPointCount > 0 && store.bluePointCount > 0) return touch ? 'Ready to submit' : 'Ready to submit. Press Enter';
     return touch ? 'Tap to add more points' : 'Ctrl+Click to add more points';

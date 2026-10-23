@@ -624,11 +624,16 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string, need = 1) {
   waitingFor = null;
   helpWanted = true;
   const bar = useSplitMergeOverlayStore();
+  // The bar's "press G" waits for as many red points as this step asks for.
+  if (want === 'red') bar.redWanted = need;
   const tick = () => {
     if (token !== practiceWatch) return;
     const done = want === 'red' ? bar.redPointCount >= need : bar.activeGroup === 'blue';
     if (done) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
-    practiceStatus(waiting);
+    const left = need - bar.redPointCount;
+    practiceStatus(want === 'red' && bar.redPointCount > 0 && left > 0
+      ? `${bar.redPointCount} of ${need} red points placed. Ctrl+click by the next red gem.`
+      : waiting);
     setTimeout(tick, 300);
   };
   setTimeout(tick, 500);
@@ -716,9 +721,14 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     if (!wantMerged && !failed) {
       const bar = useSplitMergeOverlayStore();
       if (bar.redPointCount > 0 && bar.bluePointCount === 0) {
-        cutStage = bar.activeGroup === 'red'
-          ? 'Red point placed. Now press G to switch to blue, then Ctrl+click the other side.'
-          : 'Blue is on. Ctrl+click a blue point on the other side of the join.';
+        // Not "press G" yet when the step asks for more red points than are
+        // down (annkri, report 217: the box asked for two, this said G after one).
+        const left = bar.redWanted - bar.redPointCount;
+        cutStage = bar.activeGroup !== 'red'
+          ? 'Blue is on. Ctrl+click a blue point on the other side of the join.'
+          : left > 0
+            ? `${bar.redPointCount} red point${bar.redPointCount === 1 ? '' : 's'} placed. Add ${left} more on the same side, then press G.`
+            : 'Red points placed. Now press G to switch to blue, then Ctrl+click the other side.';
       } else if (bar.redPointCount > 0 && bar.bluePointCount > 0) {
         cutStage = 'Both colors placed. Press Submit cut, or Enter.';
       }
@@ -737,7 +747,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   setTimeout(tick, 600);
 }
 
-export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); clearHelp(); helpWanted = true; }
+export function stopWatching() { pointAtNext(false); practiceWatch++; leaveWaitlist(); hidePyrMarkers(); clearHelp(); helpWanted = true; useSplitMergeOverlayStore().redWanted = 1; }
 
 function toolIsOn(): boolean {
   const viewer = getViewer();

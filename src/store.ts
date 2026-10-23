@@ -3302,6 +3302,10 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   const activeGroup = ref<'red' | 'blue'>('red');
   const redPointCount = ref(0);
   const bluePointCount = ref(0);
+  /** Red points a tutorial step asks for before G (the Cut tutorial asks for
+   *  2, then 3 or 4 in 2D). The bar's "press G" waits for this many while a
+   *  tutorial is on screen; 1 everywhere else (annkri, report 217). */
+  const redWanted = ref(1);
   const mergeSubmissionCount = ref(0);
   /** Scraped merge pairs: each entry is [sinkId, sourceId] or [sinkId] if incomplete */
   const mergeSegments = ref<string[][]>([]);
@@ -3458,7 +3462,7 @@ export const useSplitMergeOverlayStore = defineStore('splitMergeOverlay', () => 
   }
 
   return {
-    toolActive, activeGroup, redPointCount, bluePointCount,
+    toolActive, activeGroup, redPointCount, bluePointCount, redWanted,
     mergeSubmissionCount, mergeSegments, mergeRows, autoSubmit, submitting, statusMessage, resultFlash, resultText,
     pendingClose, closingTool, clearedAt, keepCutOpen, staleCutCleared,
     setToolState, setActiveGroup, updatePointCounts, setStatusMessage,

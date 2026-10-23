@@ -8,6 +8,7 @@ import imgCutAfter from './images/cut-after.jpg';
 // The second cut's cell, fused and after the cut (Ames, 2026-10-06).
 import { beginPractice, endPractice, ensureTool, hasCutPreview, holdsSlot, openSplitView } from './practice';
 import { useTutorialStore } from './store-pyr';
+import { useSplitMergeOverlayStore } from './store';
 import { startTutorialButton, BLACK_BOX_NOTE, CHEAT_SHEET_URL, practiceStatus, MIDDLE, OVER_2D, OVER_3D, beforeAfter, celebrateStep, closeSidePanel, finishPracticeTutorial, getViewer, showWhereToCut, movingToSandbox, stopWatching, watchCutStep, watchPractice, watchTool } from './tutorial-3';
 
 /**
@@ -225,6 +226,8 @@ The red and blue dots on the images show where the points go.`,
       // saw the first cell, already cut, and jumped straight to "done" while
       // this cell was still loading (Ames, 2026-10-06).
       stopWatching();
+      // "3 or 4 red points": the bar says press G once 3 are down.
+      useSplitMergeOverlayStore().redWanted = 3;
       await beginPractice('cut', 'start', { slot: 'b' });
       watchPractice(false, 'Waiting for your cut: red on one side of the join, G, blue on the other, Submit cut.', '', { advance: true });
       setTimeout(() => { show2D(); showSections(); }, 900);
