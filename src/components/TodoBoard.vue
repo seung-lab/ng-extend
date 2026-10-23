@@ -747,12 +747,34 @@ async function cardToChecklist(c: Card) {
 }
 /** Notes with formatting and lit @tags; renderSafeMarkdown escapes the rest. */
 function notesHtml(text: string) {
-  let html = renderSafeMarkdown(text, true);
-  for (const p of [...people.value].sort((a, b) => b.name.length - a.name.length)) {
-    const esc = ('@' + p.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    html = html.split(esc).join(`<b class="nge-todo-tag">${esc}</b>`);
+  const html = renderSafeMarkdown(text, true);
+  const tags = [...people.value].map(p => '@' + p.name).filter(t => t.length > 1).sort((a, b) => b.length - a.length);
+  if (!tags.length || !tags.some(t => text.includes(t))) return html;
+  // Mark the @names in the text only, never inside a link's address or title.
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  const walker = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  for (const node of nodes) {
+    const s = node.data;
+    if (!tags.some(tag => s.includes(tag))) continue;
+    const frag = document.createDocumentFragment();
+    let i = 0, from = 0;
+    while (i < s.length) {
+      const tag = tags.find(x => s.startsWith(x, i));
+      if (!tag) { i++; continue; }
+      if (i > from) frag.append(s.slice(from, i));
+      const b = document.createElement('b');
+      b.className = 'nge-todo-tag';
+      b.textContent = tag;
+      frag.append(b);
+      i += tag.length; from = i;
+    }
+    if (from < s.length) frag.append(s.slice(from));
+    node.replaceWith(frag);
   }
-  return html;
+  return t.innerHTML;
 }
 
 // Images on a card: added with the button, pasted, or dropped on the notes.

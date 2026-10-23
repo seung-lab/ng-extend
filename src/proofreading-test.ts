@@ -205,7 +205,7 @@ function statusLine(text: string) {
 // the instructions, how many things there are to fix, how long the cell
 // stays yours (the quiet time left; any move resets it), and Submit.
 function helpHtml(): string {
-  const n = session.checks, e = session.endpoints;
+  const n = num(session.checks), e = num(session.endpoints);
   const what = n ? `There are <strong>${n} things to fix</strong>` : 'Fix everything you find';
   const ends = e ? ` and <strong>${e} branch end${e === 1 ? '' : 's'}</strong> to mark` : '';
   return `
@@ -631,7 +631,13 @@ function showMisses(checks: NonNullable<TestResult['checks']>) {
   showPyrMarkers(missed.map(c => c.point as number[]), missed.map(c => c.label || c.kind), 120);
 }
 
-const percentWord = (r: TestResult) => `${r.percent ?? 0} percent`;
+/** The step text is markdown drawn as HTML (TutorialStep.vue), and these
+ *  boxes put the server's words and numbers in it: escape the words, and
+ *  keep only real numbers, so nothing from the server becomes markup. */
+const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const num = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0);
+
+const percentWord = (r: TestResult) => `${num(r.percent)} percent`;
 
 export function ordinal(n: number): string {
   const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] || 'th';
@@ -656,7 +662,7 @@ function resultText(): string {
   if (session.phase === 'scoring') return 'Reading the cell from the server. This takes a moment: every piece is checked, then the cell is put back for the next person.';
   if (!r) {
     return session.error
-      ? `${session.error}\n\nNothing was scored. Press back to return to the cell if it is still yours, or Exit and start again.`
+      ? `${esc(session.error)}\n\nNothing was scored. Press back to return to the cell if it is still yours, or Exit and start again.`
       : 'There was no test in progress to score. Start the test from the menu.';
   }
   const parts: string[] = [];
@@ -675,10 +681,10 @@ function resultText(): string {
   }
   if (r.feedback !== 'none') {
     const bits: string[] = [];
-    if (typeof r.errors === 'number') bits.push(`${r.found} of ${r.errors} mistake${r.errors === 1 ? '' : 's'} fixed`);
-    if (r.endpoints) bits.push(`${r.endpointsFound} of ${r.endpoints} branch end${r.endpoints === 1 ? '' : 's'} marked`);
-    if (r.damaged) bits.push(`<strong style="color:#e06060">${r.damaged} part${r.damaged === 1 ? '' : 's'} of the real cell cut off or wrongly joined</strong>`);
-    if (r.stray && r.endpoints) bits.push(`${r.stray} point${r.stray === 1 ? '' : 's'} placed where no branch ends`);
+    if (typeof r.errors === 'number') bits.push(`${num(r.found)} of ${num(r.errors)} mistake${r.errors === 1 ? '' : 's'} fixed`);
+    if (r.endpoints) bits.push(`${num(r.endpointsFound)} of ${num(r.endpoints)} branch end${r.endpoints === 1 ? '' : 's'} marked`);
+    if (r.damaged) bits.push(`<strong style="color:#e06060">${num(r.damaged)} part${r.damaged === 1 ? '' : 's'} of the real cell cut off or wrongly joined</strong>`);
+    if (r.stray && r.endpoints) bits.push(`${num(r.stray)} point${r.stray === 1 ? '' : 's'} placed where no branch ends`);
     if (!r.endpoints) bits.push('branch ends are not scored yet');
     parts.push(`**Score: ${percentWord(r)}.** ${bits.join('; ')}.`);
     if (!r.passed && r.damaged) parts.push('Damage to the real cell fails the test on its own, however many mistakes you found. Cut only where two different cells touch, and look at the 2D images before you place a point.');
@@ -688,8 +694,8 @@ function resultText(): string {
       const pieces = missed.filter(c => c.kind === 'merge' || c.kind === 'cut');
       const ends = missed.filter(c => c.kind === 'endpoint');
       const lines: string[] = [];
-      if (broken.length) lines.push(`Cut off from the real cell: ${broken.slice(0, 5).map(c => c.label).join(', ')}${broken.length > 5 ? ` and ${broken.length - 5} more` : ''}.`);
-      if (pieces.length) lines.push(`Biggest misses: ${pieces.slice(0, 5).map(c => c.label).join('; ')}${pieces.length > 5 ? `; and ${pieces.length - 5} smaller` : ''}.`);
+      if (broken.length) lines.push(`Cut off from the real cell: ${broken.slice(0, 5).map(c => esc(c.label)).join(', ')}${broken.length > 5 ? ` and ${broken.length - 5} more` : ''}.`);
+      if (pieces.length) lines.push(`Biggest misses: ${pieces.slice(0, 5).map(c => esc(c.label)).join('; ')}${pieces.length > 5 ? `; and ${pieces.length - 5} smaller` : ''}.`);
       if (ends.length) lines.push(`${ends.length} branch end${ends.length === 1 ? '' : 's'} not marked.`);
       if (lines.length) parts.push(lines.join(' ') + ' Pins mark them on the cell for two minutes, the most important first.');
     }
@@ -698,7 +704,7 @@ function resultText(): string {
     const st = testStatus.value;
     if (st?.wait_until) parts.push(`You can try again after ${new Date(st.wait_until).toLocaleString()}.`);
     else if (st?.test?.attempts_allowed && typeof st.attempts === 'number') {
-      const left = st.test.attempts_allowed - st.attempts;
+      const left = num(st.test.attempts_allowed) - num(st.attempts);
       parts.push(left > 0 ? `You have ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'That was your last try on this test. Ask in chat if you would like another.');
     } else parts.push('You can try again whenever you like. The cell goes back to its starting state between tries.');
   }
@@ -716,8 +722,8 @@ export const steps: Step[] = [
     get text() {
       const st = testStatus.value;
       const t = st?.test;
-      const hold = t?.hold_minutes ?? 60;
-      const limit = t?.time_limit_minutes ?? null;
+      const hold = num(t?.hold_minutes ?? 60);
+      const limit = t?.time_limit_minutes ? num(t.time_limit_minutes) : null;
       const grants = t ? t.grants !== false : true;
       const lines = [
         'This is the real thing: one cell from the Sandbox with **several mistakes** on it, and nothing marked. Find and fix every one. Cut off what belongs to another cell, merge on what is missing, and mark the end of every branch with a point annotation.',
@@ -732,17 +738,17 @@ export const steps: Step[] = [
       else if (!t) lines.push('There is no test open right now. Check back later.');
       else {
         if (st.passed) lines.push('**You have already passed.** Production is open to you; you can take the test again for practice only if an admin resets your pass.');
-        else if (st.wait_until) lines.push(`Your last try scored ${st.last?.percent ?? 0} percent. You can try again after ${new Date(st.wait_until).toLocaleString()}.`);
-        else if (st.attempts && t.attempts_allowed) lines.push(`Tries used: ${st.attempts} of ${t.attempts_allowed}. Last score: ${st.last?.percent ?? 0} percent.`);
-        else if (st.attempts) lines.push(`Tries so far: ${st.attempts}. Last score: ${st.last?.percent ?? 0} percent.`);
+        else if (st.wait_until) lines.push(`Your last try scored ${num(st.last?.percent)} percent. You can try again after ${new Date(st.wait_until).toLocaleString()}.`);
+        else if (st.attempts && t.attempts_allowed) lines.push(`Tries used: ${num(st.attempts)} of ${num(t.attempts_allowed)}. Last score: ${num(st.last?.percent)} percent.`);
+        else if (st.attempts) lines.push(`Tries so far: ${num(st.attempts)}. Last score: ${num(st.last?.percent)} percent.`);
         const q = st.queue;
         if (q?.called_until) lines.push(`**It is your turn.** The cell is held for you until ${new Date(q.called_until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`);
-        else if (q?.position) lines.push(`**You are ${ordinal(q.position)} in line.** ${waitWords(q)} Pyr calls you when it is your turn: a notification, and the card at the top left, with 10 minutes to start.`);
+        else if (q?.position) lines.push(`**You are ${ordinal(num(q.position))} in line.** ${waitWords(q)} Pyr calls you when it is your turn: a notification, and the card at the top left, with 10 minutes to start.`);
         else if (cellBusyForMe(st)) {
           lines.push(q?.other_turn && !q.holder_until
             ? 'It is the turn of the next player in line right now. It is one player at a time.'
             : 'Someone is taking the test right now, and it is one player at a time.');
-          if (st.can_start && q) lines.push(`**Join the line** and Pyr calls you when it is your turn: you get a notification and 10 minutes to start.${q && q.length ? ` ${q.length === 1 ? '1 player is' : `${q.length} players are`} waiting.` : ''}`);
+          if (st.can_start && q) lines.push(`**Join the line** and Pyr calls you when it is your turn: you get a notification and 10 minutes to start.${q && q.length ? ` ${q.length === 1 ? '1 player is' : `${num(q.length)} players are`} waiting.` : ''}`);
         }
       }
       return lines.join('\n\n');
@@ -783,8 +789,8 @@ Once you have the cell, the bar at the top left has an **i** for these instructi
   {
     get title() { return session.phase === 'busy' ? 'Not right now' : 'Getting your cell'; },
     get text() {
-      if (session.phase === 'busy') return `${session.error || 'The test is not available right now.'}\n\nPress **Try again** in a moment, or Exit and come back later.`;
-      if (session.phase === 'none' && session.error) return session.error;
+      if (session.phase === 'busy') return `${esc(session.error) || 'The test is not available right now.'}\n\nPress **Try again** in a moment, or Exit and come back later.`;
+      if (session.phase === 'none' && session.error) return esc(session.error);
       return 'Holding the cell for you and putting it back to its start. This can take a minute.';
     },
     position: OVER_3D,
