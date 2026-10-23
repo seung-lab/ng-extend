@@ -1460,8 +1460,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-head { padding: 8px 12px; border-radius: 12px;
   background: linear-gradient(90deg, rgba(79, 140, 255, 0.14), rgba(46, 196, 182, 0.12) 45%, rgba(245, 197, 66, 0.1) 75%, rgba(255, 111, 174, 0.12)); }
 .nge-todo-heading { font-size: 19px; }
-.nge-todo-nurro { width: 52px; height: 52px; animation: nge-todo-bob 3.2s ease-in-out infinite; }
-@keyframes nge-todo-bob { 50% { transform: translateY(-4px) rotate(-3deg); } }
+.nge-todo-nurro { width: 52px; height: 52px; animation: nge-todo-bob 6s ease-in-out infinite; }
+/* A gentle breath, no tilt (Ames 2026-10-23: "more subtle animation"). */
+@keyframes nge-todo-bob { 50% { transform: translateY(-1.5px); } }
 @media (prefers-reduced-motion: reduce) { .nge-todo-nurro { animation: none; } .nge-todo-card:hover { transform: none; } }
 /* Round 4 (Ames 2026-10-23). */
 .nge-todo-list-head--fold { cursor: pointer; }
