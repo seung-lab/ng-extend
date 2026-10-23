@@ -2839,7 +2839,12 @@ function practiceWhen(iso: string | null) {
             <!-- Copy the whole log (Ames 2026-10-21: "we need a copy button for console logs"). -->
             <button v-if="issueConsoleOpen[row.id] && issueConsole[row.id]" class="nge-triage-console-btn" title="Copy all the console messages"
                     @click.stop="copyText(issueConsole[row.id] || '')">{{ copied === issueConsole[row.id] ? '✓ Copied' : '📋 Copy' }}</button>
-            <pre v-if="issueConsoleOpen[row.id]" class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
+            <div v-if="issueConsoleOpen[row.id]" class="nge-triage-console-wrap">
+              <!-- Also on the log itself, where the eye is (Ames 2026-10-23: "I need a copy console logs button"). -->
+              <button v-if="issueConsole[row.id]" class="nge-triage-console-copy" title="Copy all the console messages"
+                      @click.stop="copyText(issueConsole[row.id] || '')">{{ copied === issueConsole[row.id] ? '✓ Copied' : '📋 Copy logs' }}</button>
+              <pre class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
+            </div>
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
           <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale"><template v-for="(pt, pi) in linkParts(row.rationale)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
@@ -4429,4 +4434,8 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-zero-nurro { display: block; width: 300px; height: 300px; object-fit: contain; margin: 10px auto 6px; animation: nge-zero-bob 8s ease-in-out infinite; }
 @keyframes nge-zero-bob { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-14px) rotate(-2deg); } }
 @media (prefers-reduced-motion: reduce) { .nge-triage-zero-nurro { animation: none; } }
+.nge-triage-console-wrap { position: relative; flex-basis: 100%; }
+.nge-triage-console-copy { position: sticky; float: right; top: 6px; margin: 6px 8px -34px 0; z-index: 1; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  font: 600 12px Inter, system-ui, sans-serif; color: #fff; background: #4f8cff; border: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+.nge-triage-console-copy:hover { background: #3a74e8; }
 </style>
