@@ -51,10 +51,11 @@ function ngeOnDataBounds(mouseState: any): boolean {
       const ref = layer.source.getReference(id);
       try { if (ref.value?.description === DATA_BOUNDS_DESCRIPTION) return true; } finally { ref.dispose(); }
     }
-    // In 2D a right click goes to the spot under the mouse, picked or not: on
-    // the box's line or out past it there is nothing to go to (Ames
-    // 2026-10-22, it still jumped there). The edge counts as on the box: the
-    // outer 1% of each side, or 2 voxels, whichever is more.
+    // In 2D a right click goes to the spot under the mouse, picked or not:
+    // out past the data's edge there is nothing to go to (Ames 2026-10-22,
+    // it jumped far outside). Only outside counts: an earlier margin of 1% of
+    // each side kept players from right clicking cells near the edge
+    // (Ames 2026-10-23).
     const bounds = (window as any).viewer?.coordinateSpace?.value?.bounds;
     const pos = mouseState.position as Float32Array | undefined;
     if (!bounds || !pos) return false;
@@ -67,8 +68,7 @@ function ngeOnDataBounds(mouseState: any): boolean {
       const lo = lowerBounds[i], hi = upperBounds[i];
       if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) continue;
       if (here && Math.abs(pos[i] - here[i]) < 1) continue;
-      const edge = Math.max(2, (hi - lo) * 0.01);
-      if (pos[i] < lo + edge || pos[i] > hi - edge) return true;
+      if (pos[i] < lo || pos[i] > hi) return true;
     }
     return false;
   } catch { return false; }
