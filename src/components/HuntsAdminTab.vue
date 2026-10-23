@@ -13,7 +13,7 @@ import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { useProofreadingBackendStore } from '../store';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
-import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
+import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, meshEdgeSpots, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
 import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
@@ -98,7 +98,7 @@ const descPreview = computed(() => (form.value.description.trim() ? renderSafeMa
 
 function setAdminsOnly(e: Event) { form.value.admins_only = (e.target as HTMLInputElement).checked; }
 const somaMissing = computed(() => cellRows.value.length > 0 && !cellRows.value[0].soma.every(v => v !== '' && Number.isFinite(Number(v))));
-const read = ref<null | { key: any; view: any; cells: { root: string; label: string }[]; dataset: string; count: number; kinds: { cut: number; merge: number }; edges?: number }>(null);
+const read = ref<null | { key: any; view: any; cells: { root: string; label: string }[]; dataset: string; count: number; kinds: { cut: number; merge: number }; edges?: number; autoEdges?: { spots: number[][]; pieces: number; loaded: number } }>(null);
 
 /** 'YYYY-MM-DDTHH:mm' in this computer's time zone. */
 // Times are Eastern, as in the Notifications tab (Ames 2026-10-21: "double check date, ET"),
@@ -244,7 +244,9 @@ function useScreen() {
     read.value = { ...r, count: kinds.cut + kinds.merge, kinds, edges };
     setCells(r.cells);
     const parts = layers.map(l => `${placesWord(l.points, l.kind)} from "${l.name}"`).join(' and ');
-    const edgeNote = r.key.bounds_nm ? ' The volume\'s edges were read too: an Extend gem within 5 µm of them is the edge of the dataset.' : '';
+    const edgeNote = (r.key.bounds_nm ? ' The volume\'s edges were read too: an Extend gem within 5 µm of them is the edge of the dataset.' : '')
+      + (r.autoEdges?.spots?.length ? ` Found ${r.autoEdges.spots.length} ${r.autoEdges.spots.length === 1 ? 'place' : 'places'} where the cells run out of the data; players see each as a teal ring.`
+        : r.autoEdges?.pieces && r.autoEdges.loaded < r.autoEdges.pieces ? ' The cells\' meshes are still loading: where they run out of the data is found again when you save.' : '');
     message.value = `Read ${parts}, ${r.cells.length === 1 ? '1 cell' : `${r.cells.length} cells`}, on ${datasetName(r.dataset)}.${edgeNote} Save to keep them.`;
   } catch (e: any) { error.value = e?.message || String(e); }
 }
@@ -276,7 +278,12 @@ async function save(status?: 'draft' | 'scheduled') {
     };
     const args: Record<string, any> = { fields };
     if (editing.value?.id) args.id = editing.value.id;
-    if (read.value) { args.key = read.value.key; args.view = read.value.view; fields.dataset = read.value.dataset; }
+    if (read.value) {
+      // Where the cells run out of the data, again now: their meshes have had time to load since the read.
+      const again = meshEdgeSpots((read.value.cells || []).map(c => c.root), read.value.key?.bounds_nm ?? null);
+      if (again.spots.length >= (read.value.key?.auto_edges_nm?.length ?? 0)) read.value.key = { ...read.value.key, auto_edges_nm: again.spots };
+      args.key = read.value.key; args.view = read.value.view; fields.dataset = read.value.dataset;
+    }
     if (cellRows.value.length) fields.cells = cellFields();
     if (status) args.status = status;
     const h = await huntCall<AdminHunt>('hunt.save', args);

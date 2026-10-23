@@ -13,6 +13,7 @@
  */
 import { reactive } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
+import { Uint64 } from 'neuroglancer/util/uint64';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, findDatasetByCanonical, switchToDataset } from './datasets';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from './util/keep_display';
@@ -823,6 +824,70 @@ export function layerBoundsNm(ml: any): number[][] | null {
   return null;
 }
 try { (window as any).__ngeHuntBounds = layerBoundsNm; } catch { /* no window */ }
+
+/**
+ * Where the Hunt's cells run out of the data (Ames 2026-10-23: "I think we wanted to try highlighting
+ * the actual neurons"): their meshes near the volume's outside, one spot per place. Read from the
+ * meshes on screen (vertex positions in nanometres), within marginNm of a face, grouped on a grid and
+ * joined where they touch. `meshes`/`loaded`: the cells' mesh pieces in all, and on hand now.
+ */
+export function meshEdgeSpots(roots: string[], bounds: number[][] | null, marginNm = 5000, binNm = 3000): { spots: number[][]; pieces: number; loaded: number } {
+  const out = { spots: [] as number[][], pieces: 0, loaded: 0 };
+  if (!bounds || !roots.length) return out;
+  const [lo, hi] = bounds;
+  const bins = new Map<string, { n: number; x: number; y: number; z: number; i: number; j: number; k: number }>();
+  // The mesh layer keys a cell by its id's low and high words (getObjectKey).
+  const keyOf = (root: string) => { const u = new Uint64(); return u.tryParseString(root) ? `${u.low},${u.high}` : ''; };
+  for (const ml of viewer()?.layerManager?.managedLayers ?? []) {
+    if (ml?.layer?.type !== 'segmentation') continue;
+    for (const rl of ml.layer.renderLayers ?? []) {
+      const src = rl?.source;
+      if (!src?.fragmentSource?.chunks || !src?.chunks || typeof src.getFragmentKey !== 'function') continue;
+      for (const root of roots) {
+        const key = keyOf(root);
+        const manifest = key ? src.chunks.get(key) : undefined;
+        if (!manifest?.fragmentIds) continue;
+        for (const fid of manifest.fragmentIds) {
+          out.pieces++;
+          const frag = src.fragmentSource.chunks.get(src.getFragmentKey(key, fid).key);
+          const vp: Float32Array | undefined = frag?.meshData?.vertexPositions;
+          if (!vp) continue;
+          out.loaded++;
+          for (let p = 0; p + 2 < vp.length; p += 3) {
+            const x = vp[p], y = vp[p + 1], z = vp[p + 2];
+            const d = Math.min(x - lo[0], hi[0] - x, y - lo[1], hi[1] - y, z - lo[2], hi[2] - z);
+            if (!(d <= marginNm)) continue;
+            const i = Math.floor(x / binNm), j = Math.floor(y / binNm), k = Math.floor(z / binNm);
+            const bk = `${i},${j},${k}`;
+            const b = bins.get(bk);
+            if (b) { b.n++; b.x += x; b.y += y; b.z += z; } else bins.set(bk, { n: 1, x, y, z, i, j, k });
+          }
+        }
+      }
+    }
+  }
+  // Touching bins are one place: its spot is the middle of their vertices.
+  const seen = new Set<string>();
+  for (const [bk, b0] of bins) {
+    if (seen.has(bk)) continue;
+    seen.add(bk);
+    let n = 0, sx = 0, sy = 0, sz = 0;
+    const queue = [b0];
+    while (queue.length) {
+      const b = queue.pop()!;
+      n += b.n; sx += b.x; sy += b.y; sz += b.z;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dk = -1; dk <= 1; dk++) {
+        const nk = `${b.i + di},${b.j + dj},${b.k + dk}`;
+        const nb = bins.get(nk);
+        if (nb && !seen.has(nk)) { seen.add(nk); queue.push(nb); }
+      }
+    }
+    if (n >= 8) out.spots.push([Math.round(sx / n), Math.round(sy / n), Math.round(sz / n)]);
+  }
+  out.spots = out.spots.slice(0, 200);
+  return out;
+}
+try { (window as any).__ngeHuntEdges = meshEdgeSpots; } catch { /* no window */ }
 function viewerBoundsNm(): number[][] | null {
   try {
     const cs = viewer()?.coordinateSpace?.value;
@@ -846,10 +911,14 @@ export function readHuntFromScreen(keyLayers: { name: string; kind: KeyKind }[])
     if (!layer) throw new Error(`No annotation layer called "${k.name}" on screen.`);
     return { layer: { source: layer.source, annotations: layer.annotations }, kind: k.kind };
   });
+  const bounds = datasetBoundsNm();
+  const cells = cellsOnScreen();
+  const auto = meshEdgeSpots(cells.map(c => c.root), bounds);
   return {
-    key: { layers, dims: state.dimensions, bounds_nm: datasetBoundsNm() },
+    key: { layers, dims: state.dimensions, bounds_nm: bounds, auto_edges_nm: auto.spots },
     view: state,
-    cells: cellsOnScreen(),
+    cells,
     dataset: canonicalDataset(currentDatasetTag()),
+    autoEdges: auto,
   };
 }

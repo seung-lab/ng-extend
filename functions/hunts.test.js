@@ -756,14 +756,15 @@ test('edges of the dataset: an Extend gem where a branch leaves the data uses no
   // One missing extension; one edge spot marked; the volume 200 x 200 x 20 µm.
   const d = await H.huntAction('hunt.save', { fields: { title: 'Edge Hunt', dataset: 'pinky_nf_v2', cells: [{ root: '648518346350533705' }], tolerance_nm: 2000,
     announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)) },
-    key: { layers: [{ layer: layer([pt(1000, 1000, 100)]), kind: 'merge' }, { layer: layer([pt(20000, 20000, 100)]), kind: 'edge' }], dims: DIMS, bounds_nm: [[0, 0, 0], [200000, 200000, 20000]] },
+    key: { layers: [{ layer: layer([pt(1000, 1000, 100)]), kind: 'merge' }, { layer: layer([pt(20000, 20000, 100)]), kind: 'edge' }], dims: DIMS, bounds_nm: [[0, 0, 0], [200000, 200000, 20000]],
+      auto_edges_nm: [[150000, 150000, 19500]] },   // where a cell runs out of the data, found by the editor from its mesh
     view: VIEW, status: 'draft' }, admin);
   assert.equal(d.target_count, 1);
-  assert.deepEqual([d.edge_count, d.has_bounds], [1, true]);
+  assert.deepEqual([d.edge_count, d.has_bounds], [2, true]);   // the marked spot and the one found from the mesh
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
   // Players see the marked edges once the Hunt is open, never before (Ames: "show where the edges [are]").
   assert.deepEqual((await H.huntAction('hunt.current', {}, h.ctx(P1, at(30)))).hunts[0].edges_nm, []);
-  assert.deepEqual((await H.huntAction('hunt.current', {}, h.ctx(P1, at(50)))).hunts[0].edges_nm, [[80000, 80000, 4000]]);
+  assert.deepEqual((await H.huntAction('hunt.current', {}, h.ctx(P1, at(50)))).hunts[0].edges_nm, [[80000, 80000, 4000], [150000, 150000, 19500]]);
   const send = (p, id, kind, t) => H.huntAction('hunt.drop', { id: d.id, kind, layer: layer([{ ...p, id }]), dims: DIMS }, h.ctx(P1, at(t)));
   const marked = await send(pt(20000, 20000, 100), 'e1', 'merge', 60);
   assert.deepEqual([marked.drop.edge, marked.run.gems_used], [true, 0]);
@@ -779,7 +780,7 @@ test('edges of the dataset: an Extend gem where a branch leaves the data uses no
   // Count it on the miss keeps the edges and the bounds.
   await H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'm1' }, h.ctx(ADMIN, at(65), true));
   const ex = await h.db.keyExtras(d.id);
-  assert.deepEqual([(await h.db.key(d.id)).length, ex.edges.length, !!ex.bounds], [2, 1, true]);
+  assert.deepEqual([(await h.db.key(d.id)).length, ex.edges.length, !!ex.bounds], [2, 2, true]);
 });
 
 test('"Hunt results" stays in the top bar 24 hours after the end unless the Hunt says (Ames 2026-10-23)', async () => {

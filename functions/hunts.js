@@ -139,7 +139,11 @@ function keyEdges(key) {
     if (!part || part.kind !== 'edge') continue;
     for (const pt of layerPointsNm(part.layer, key.dims)) out.push([pt[0], pt[1], pt[2], 'edge']);
   }
-  return out.slice(0, MAX_TARGETS * 4);
+  // Where the cells run out of the data, found by the editor from their meshes (Ames 2026-10-23).
+  for (const p of Array.isArray(key && key.auto_edges_nm) ? key.auto_edges_nm.slice(0, 200) : []) {
+    if (Array.isArray(p) && p.length >= 3 && p.slice(0, 3).every((v) => Number.isFinite(Number(v)))) out.push([Number(p[0]), Number(p[1]), Number(p[2]), 'edge']);
+  }
+  return out.slice(0, MAX_TARGETS * 4 + 200);
 }
 function cleanBounds(b) {
   if (!Array.isArray(b) || b.length !== 2) return null;
