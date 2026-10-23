@@ -5168,7 +5168,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .from('notifications')
       .select('*')
       .lte('send_at', now)
-      .order('created_at', { ascending: false })
+      .order('send_at', { ascending: false })
       .limit(newOnly ? 50 : notifLimit.value);
     if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
@@ -5218,7 +5218,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // New ones join the feed in front of what is already there.
     const current = newOnly
       ? [...due.filter(n => !notifications.value.some(o => o.id === n.id)), ...notifications.value]
-          .sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)))
+          .sort((a: any, b: any) => String(b.send_at || b.created_at).localeCompare(String(a.send_at || a.created_at)))
       : due;
 
     // Delivered ones that have since stopped: the server leaves those out of
@@ -5230,7 +5230,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (kept.length && !newOnly) {
       const { data: older } = await supabase.from('notifications').select('*').in('id', kept).lte('send_at', now);
       for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
-      current.sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)));
+      current.sort((a: any, b: any) => String(b.send_at || b.created_at).localeCompare(String(a.send_at || a.created_at)));
     }
     notifications.value = current;
 

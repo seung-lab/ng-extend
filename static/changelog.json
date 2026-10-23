@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-23T00:00:00Z",
+      "title": "Scheduled notifications show up",
+      "items": [
+        "A notification the team wrote ahead of time now appears at the top of your bell when it goes out, with its picture in chat, instead of being lost further down."
+      ]
+    },
+    {
+      "at": "2026-10-23T00:00:00Z",
       "title": "Hide announcements in chat",
       "items": [
         "Announcements in chat, like Today in Pyr, have an \u00d7 to hide them from your chat. They stay in your notifications."
