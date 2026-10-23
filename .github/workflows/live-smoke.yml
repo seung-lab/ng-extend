@@ -1,0 +1,75 @@
+name: Live Smoke
+
+# Hourly, and after each deploy of eyewire-ii-community: does the live Pyr
+# site load and draw for players? Headless Chromium opens it, checks the app
+# mounts, the 3D view draws meshes and nothing throws in the first minute,
+# and that build-commit.txt answers. Posts to Slack only when it breaks (once,
+# repeated at most every 6 hours) and once when it recovers, like
+# health-watch.yml. See scripts/live-smoke.mjs.
+#
+# Lives on main: cron and workflow_run only fire from the default branch.
+# The script runs from the same commit as this file.
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  # After a deploy: waits for App Engine to serve the new build-commit.txt.
+  workflow_run:
+    workflows: [BuildAndDeployDevBranch]
+    types: [completed]
+    branches: [eyewire-ii-community]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print the result and any alert instead of posting
+        type: boolean
+        default: true
+      url:
+        description: Site to check (default the live site)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    # After a deploy, only when the deploy itself went through.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install headless Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-save --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps --only-shell chromium
+      - name: Check and alert
+        env:
+          SMOKE_URL: ${{ inputs.url }}
+          EXPECT_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/pw/node_modules/playwright/index.mjs
+          SHOT_DIR: ${{ runner.temp }}/smoke-shots
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID || 'C0BG5CN71C3' }}
+          ALERT_SLACK_ID: U02FH1DRC
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node scripts/live-smoke.mjs
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: smoke-shots-${{ github.run_id }}
+          path: ${{ runner.temp }}/smoke-shots/
+          if-no-files-found: ignore
+          retention-days: 7
