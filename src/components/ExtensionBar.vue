@@ -225,6 +225,13 @@ onMounted(() => {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    // ?: the dock opens on the list of every key (util/key_list.ts).
+    if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      showAssistant.value = true;
+      document.dispatchEvent(new CustomEvent('nge:show-keys'));
+    }
     if (!typing && e.shiftKey && (e.key === 'T' || e.key === 't')) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -571,6 +578,9 @@ function searchCommands(q: string, limit = 6) {
 }
 function runCommandById(id: string): boolean {
   return (cmdPalette.value as any)?.runCommandById?.(id) ?? false;
+}
+function listKeys() {
+  return (cmdPalette.value as any)?.listKeys?.() ?? [];
 }
 
 /**
@@ -973,6 +983,7 @@ function onIconDrop(e: DragEvent, id: string) {
     :ui-state="assistantUiState"
     :search-commands="searchCommands"
     :run-command-by-id="runCommandById"
+    :list-keys="listKeys"
     @hide="showAssistant = false"
   />
   <div id="extensionBar">

@@ -16,6 +16,7 @@ import { useProofreadingBackendStore, useSplitMergeOverlayStore } from "../store
 import { shortcutLabel } from "../util/platform";
 import nurroAvatar from "../images/inspector-nurro-2.png";
 import { CONNECTOME_QUEST_RESOURCES } from "../data/connectome-quest";
+import { isKeysQuery } from "../util/key_list";
 
 const backend = useProofreadingBackendStore();
 const splitMerge = useSplitMergeOverlayStore();
@@ -31,6 +32,9 @@ export interface CommandMatch {
   score: number;
 }
 
+/** The Keys list: Moving around, Editing, Tools, Panels. */
+export type KeyGroupList = { group: string; rows: { id: string; label: string; keys: string; description?: string }[] }[];
+
 const props = defineProps<{
   show: boolean;
   // Panel/tool state owned by ExtensionBar, read fresh on each send.
@@ -39,6 +43,8 @@ const props = defineProps<{
    *  Lets this dock answer navigation instantly instead of asking the model. */
   searchCommands?: (q: string, limit?: number) => CommandMatch[];
   runCommandById?: (id: string) => boolean;
+  /** Every key, grouped (CommandPalette.listKeys), for "keys" or "?". */
+  listKeys?: () => KeyGroupList;
 }>();
 const emit = defineEmits<{ (e: "hide"): void }>();
 
@@ -326,8 +332,13 @@ const MATCH_THRESHOLD = 40;
 const inputPlaceholder = computed(
   () => `Ask, or type a command… (${shortcutLabel("K")})`);
 
+/** Typing "keys" or "?" (or pressing ? anywhere) lists every key here. */
+const keyGroups = ref<KeyGroupList>([]);
+
 function refreshCommandMatches() {
   const q = input.value.trim();
+  keyGroups.value = isKeysQuery(q) ? (props.listKeys?.() ?? []) : [];
+  if (keyGroups.value.length) { commandMatches.value = []; return; }
   if (!q || q.length < 2) { commandMatches.value = []; return; }
   // A trailing "?" or a leading question word reads as a question, not a
   // command — don't shove those at the palette.
@@ -348,7 +359,26 @@ function runCommand(m: CommandMatch) {
   props.runCommandById?.(m.id);
 }
 
+function runKey(id: string) {
+  props.runCommandById?.(id);
+}
+
+// The ? key (ExtensionBar) opens the dock straight into the Keys list.
+function onShowKeys() {
+  input.value = "?";
+  refreshCommandMatches();
+  void nextTick(() => inputEl.value?.focus());
+}
+onMounted(() => document.addEventListener("nge:show-keys", onShowKeys));
+onBeforeUnmount(() => document.removeEventListener("nge:show-keys", onShowKeys));
+
 function onKeydown(e: KeyboardEvent) {
+  if (keyGroups.value.length && (e.key === "Enter" || e.key === "Escape")) {
+    // A list, not a question: Enter keeps it, Esc clears it.
+    e.preventDefault();
+    if (e.key === "Escape") input.value = "";
+    return;
+  }
   const hasMatches = commandMatches.value.length > 0;
   if (hasMatches && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
     e.preventDefault();
@@ -385,7 +415,23 @@ function onKeydown(e: KeyboardEvent) {
       <button class="nge-guide-close" title="Close" @click="emit('hide')">✕</button>
     </div>
 
-    <div ref="scrollEl" class="nge-guide-scroll">
+    <div v-if="keyGroups.length" class="nge-guide-scroll nge-guide-keys">
+      <div class="nge-guide-cmds-hint">Every key in Pyr · click one to try it · Esc to close</div>
+      <section v-for="g in keyGroups" :key="g.group" class="nge-guide-keygroup">
+        <h3 class="nge-guide-keyhead">{{ g.group }}</h3>
+        <button
+          v-for="r in g.rows"
+          :key="r.id"
+          class="nge-guide-cmd nge-guide-keyrow"
+          :title="r.description"
+          @click="runKey(r.id)"
+        >
+          <span class="nge-guide-cmd-label">{{ r.label }}<span v-if="r.description && r.description.includes(',')" class="nge-guide-keywhere">{{ r.description.split(', ').slice(1).join(', ') }}</span></span>
+          <span class="nge-guide-cmd-key">{{ r.keys }}</span>
+        </button>
+      </section>
+    </div>
+    <div v-else ref="scrollEl" class="nge-guide-scroll">
       <div v-if="messages.length === 0" class="nge-guide-empty">
         <p class="nge-guide-hi">Hi! Ask me anything about proofreading, or tell me where you want to go.</p>
         <button
@@ -723,6 +769,17 @@ function onKeydown(e: KeyboardEvent) {
   text-align: left;
   cursor: pointer;
 }
+.nge-guide-keys { gap: 2px; }
+.nge-guide-keygroup { display: flex; flex-direction: column; }
+.nge-guide-keyhead {
+  margin: 8px 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(120, 180, 255, 0.85);
+}
+.nge-guide-keyrow { padding: 4px 8px; flex-shrink: 0; }
+.nge-guide-keyrow:hover { background: rgba(74, 158, 255, 0.12); }
+.nge-guide-keywhere { margin-left: 6px; font-size: 11px; color: rgba(160, 175, 200, 0.6); }
 .nge-guide-cmd--sel { background: rgba(74, 158, 255, 0.16); color: #e6f0ff; }
 .nge-guide-cmd-icon { flex: 0 0 auto; font-size: 13px; }
 .nge-guide-cmd-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

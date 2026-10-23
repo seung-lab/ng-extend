@@ -2,11 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+<<<<<<< HEAD
       "at": "2026-10-23T18:04:39Z",
       "title": "Videos in notifications: Watch on YouTube",
       "digest": "minor",
       "items": [
         "Under a video in a notification, the link now says Watch on YouTube (or Vimeo, or Google Drive) instead of the web address, and opens in a new tab."
+=======
+      "at": "2026-10-23T14:55:39Z",
+      "title": "Every key in one list",
+      "items": [
+        "Press ? (or type keys in the Ctrl+K box) to see every key in Pyr, grouped as Moving around, Editing, Tools and Panels. Click one to try it.",
+        "Commands found with Ctrl+K show their key on the right."
+>>>>>>> e7755859 (Every key in one list: press ? or type keys in the Ctrl+K box)
       ]
     },
     {
