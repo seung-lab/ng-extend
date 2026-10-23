@@ -459,7 +459,7 @@ async function duplicate() {
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
-        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find. Branches that run out of the data are no missing extensions: mark those ends in a layer of <b>edges of the dataset</b> (the volume's own edges count by themselves), and an Extend gem there is answered "Edge of the dataset", with no gem used.</p>
+        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find. Branches that run out of the data are no missing extensions: mark those ends in a layer named <b>edge</b> (it is picked up as edges by itself; the volume's own edges count without marking), and an Extend gem there is answered "Edge of the dataset", with no gem used.</p>
         <div class="nge-hunts-row">
           <input v-model="form.link" class="nge-hunts-input" placeholder="https://… #!…" aria-label="View link" />
           <button class="nge-hunts-btn" :disabled="!form.link.trim()" @click="openLink">Open the link</button>
@@ -471,7 +471,7 @@ async function duplicate() {
             <select v-model="keyPick[c.name].kind" class="nge-hunts-input nge-hunts-keylayer-kind" :aria-label="`What the points in ${c.name} mark`" :disabled="!keyPick[c.name]?.on">
               <option value="cut">mergers (to cut)</option>
               <option value="merge">extensions (to merge)</option>
-              <option value="edge">edges of the dataset (not problems)</option>
+              <option value="edge">edge (of the dataset, not a problem)</option>
             </select>
           </li>
         </ul>
