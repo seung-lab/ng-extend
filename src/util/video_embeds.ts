@@ -51,6 +51,15 @@ function playerFor(href: string): HTMLElement | null {
   return null;
 }
 
+/** What a bare video link says under its player (Ames 2026-10-22: the raw
+ *  address under the video looked odd). */
+function watchLabel(href: string): string {
+  if (YT.test(href)) return 'Watch on YouTube';
+  if (VIMEO.test(href)) return 'Watch on Vimeo';
+  if (DRIVE.test(href)) return 'Open in Google Drive';
+  return 'Open the video';
+}
+
 /** Already-sanitised notification HTML, with a player before each video link's
  *  paragraph. Safe to run on renderSafeMarkdown's output. */
 export function withVideoEmbeds(html: string): string {
@@ -64,6 +73,17 @@ export function withVideoEmbeds(html: string): string {
     const player = playerFor(href);
     if (!player) continue;
     seen.add(href);
+    // The link under the player opens the video in a new tab. A link written
+    // as the bare address says "Watch on YouTube" (or the like) instead; a
+    // link with words of its own keeps them.
+    const text = (a.textContent || '').trim();
+    if (!text || text === href || text === href.replace(/^https:\/\//, '')) {
+      a.textContent = watchLabel(href) + ' \u2197';
+      a.classList.add('nge-notif-video-link');
+    }
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+    a.setAttribute('title', 'Opens in a new tab');
     // Before the link's own line, so the link stays as a way to open it big.
     const block = a.closest('p, li') || a;
     block.parentNode?.insertBefore(player, block);
