@@ -4425,7 +4425,8 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-preview-toggle[aria-pressed="true"] { border-color: rgba(79, 207, 255, 0.7); }
 .nge-todo-icon { color: #7c9cff; vertical-align: -2px; margin-right: 5px; }
 /* Triage zero: Nurro cheers (Ames 2026-10-23: "use nurro on triage zero"). */
-.nge-triage-zero-nurro { display: block; width: 150px; height: 150px; object-fit: contain; margin: 6px auto 4px; animation: nge-zero-bob 3s ease-in-out infinite; }
-@keyframes nge-zero-bob { 50% { transform: translateY(-6px) rotate(-3deg); } }
+/* Bigger, and a slow float up and back (Ames 2026-10-23: "bigger, slower"). */
+.nge-triage-zero-nurro { display: block; width: 300px; height: 300px; object-fit: contain; margin: 10px auto 6px; animation: nge-zero-bob 8s ease-in-out infinite; }
+@keyframes nge-zero-bob { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-14px) rotate(-2deg); } }
 @media (prefers-reduced-motion: reduce) { .nge-triage-zero-nurro { animation: none; } }
 </style>
