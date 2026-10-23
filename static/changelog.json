@@ -12,7 +12,7 @@
       "at": "2026-10-23T14:55:39Z",
       "title": "Every key in one list",
       "items": [
-        "Press ? (or type keys in the Ctrl+K box) to see every key in Pyr, grouped as Moving around, Editing, Tools and Panels. Click one to try it.",
+        "Press ? (or type keys in the Ctrl+K box) to see every key in Pyr, grouped as Moving around, Editing, Tools and Panels. Click one to try it. The menu has it too, under Keyboard shortcuts.",
         "Commands found with Ctrl+K show their key on the right."
 >>>>>>> e7755859 (Every key in one list: press ? or type keys in the Ctrl+K box)
       ]

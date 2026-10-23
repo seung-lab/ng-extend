@@ -229,8 +229,7 @@ onMounted(() => {
     if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      showAssistant.value = true;
-      document.dispatchEvent(new CustomEvent('nge:show-keys'));
+      openKeyList();
     }
     if (!typing && e.shiftKey && (e.key === 'T' || e.key === 't')) {
       e.preventDefault();
@@ -581,6 +580,11 @@ function runCommandById(id: string): boolean {
 }
 function listKeys() {
   return (cmdPalette.value as any)?.listKeys?.() ?? [];
+}
+/** The Ask dock, open on the list of every key (the ? key and the menu). */
+function openKeyList() {
+  showAssistant.value = true;
+  document.dispatchEvent(new CustomEvent('nge:show-keys'));
 }
 
 /**
@@ -1238,6 +1242,12 @@ function onIconDrop(e: DragEvent, id: string) {
         <li>
           <div class="logoutButton button">
             <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
+          </div>
+        </li>
+        <!-- The same list of every key that ? opens (util/key_list.ts). -->
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
           </div>
         </li>
         <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
