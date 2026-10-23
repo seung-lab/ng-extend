@@ -5244,20 +5244,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
     if (!newOnly) {
       // Load read + dismissed status together (both live on notification_reads).
-      // The server sends at most 1000 rows a request, so newest first, a page
+      // Our gateway (functions/community-data.js) refuses a page over 500 rows: asking for 1000 failed every time and showed everything as unread (2026-10-23). Newest first, a page
       // at a time.
       const reads: any[] = [];
       let readsFailed = false;
-      for (let from = 0; from < 20000; from += 1000) {
+      for (let from = 0; from < 20000; from += 500) {
         const { data: page, error } = await supabase
           .from('notification_reads')
           .select('notification_id, dismissed')
           .eq('user_id', userId.value)
           .order('notification_id', { ascending: false })
-          .range(from, from + 999);
+          .range(from, from + 499);
         if (error || !page) { readsFailed = true; break; }
         reads.push(...page);
-        if (page.length < 1000) break;
+        if (page.length < 500) break;
       }
       // A read that failed (the server busy for a moment) used to empty the
       // list, and everything already read came back as unread (toknow,
