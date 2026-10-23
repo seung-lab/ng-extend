@@ -793,6 +793,35 @@ function onKey(e: KeyboardEvent) {
   else connectOpen.value = false;
 }
 onMounted(() => document.addEventListener('keydown', onKey));
+// A pasted image goes wherever you are (Ames 2026-10-23: "I want to be able
+// to paste an image as well"): the card that is open (from its comment box,
+// checklist or anywhere on it), the card being added, or, on the board
+// itself, a new card in To do holding the picture, opened so you can name it.
+// The notes boxes handle their own paste (onNotesPaste), so they are skipped.
+async function onPagePaste(e: ClipboardEvent) {
+  if ((e.target as HTMLElement | null)?.closest?.('[data-nge-notes-paste]')) return;
+  const files = imageFiles(e);
+  if (!files.length) return;
+  e.preventDefault();
+  if (openCard.value) { await addImages(files, openCard.value); return; }
+  if (adding.value) { await addImages(files, 'new'); return; }
+  if (busy.value) return;
+  busy.value = true;
+  try {
+    const day = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const { card } = await secureWrite<any>('todo.save', { fields: { title: `Pasted picture, ${day}`, notes: '', list: 'todo' } });
+    if (!card) return;
+    put(card);
+    const c = cards.value.find(x => x.id === card.id);
+    if (c) { await addImages(files, c); openUp(c); }
+  } catch (err: any) {
+    error.value = err?.message ?? String(err);
+  } finally {
+    busy.value = false;
+  }
+}
+onMounted(() => document.addEventListener('paste', onPagePaste));
+onUnmounted(() => document.removeEventListener('paste', onPagePaste));
 onUnmounted(() => document.removeEventListener('keydown', onKey));
 </script>
 
@@ -802,7 +831,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">← Triage</button>
       <span class="nge-todo-heading"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
       <button class="nge-todo-btn" @click="copyBoardLink" :title="boardLink">{{ linkCopied ? '✓ Link copied' : '🔗 Copy link to this board' }}</button>
-      <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs.</span>
+      <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★ Mine' : '☆ Mine' }}</button>
       <button class="nge-todo-btn" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
@@ -865,7 +894,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               </div>
               <textarea :ref="setDraftNotesEl" v-model="draft.notes" class="nge-todo-input" rows="4" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                         @input="onMentionInput($event, v => draft.notes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
-                        @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
+                        data-nge-notes-paste @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
               <ul v-if="draft.checklist.length" class="nge-todo-check">
                 <li v-for="(it, i) in draft.checklist" :key="i"><label><input type="checkbox" disabled /> <span>{{ it.text }}</span></label>
                   <button type="button" class="nge-todo-mini" aria-label="Remove" @click="draft.checklist.splice(i, 1)">×</button></li>
@@ -1075,7 +1104,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </div>
           <textarea ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                     @input="onMentionInput($event, v => editNotes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
-                    @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
+                    data-nge-notes-paste @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
           <div class="nge-todo-row">
             <button class="nge-todo-btn nge-todo-btn--primary" @click="saveNotes(openCard); notesEditing = false">Save notes</button>
             <button class="nge-todo-btn" @click="editNotes = openCard.notes; notesEditing = false">Cancel</button>
