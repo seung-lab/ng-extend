@@ -144,6 +144,12 @@ function removeHovered(): boolean {
   const hover = ml?.layer?.displayState?.segmentSelectionState;
   const { selected, visible } = setsOf(ml);
   if (!hover?.hasSelectedSegment || !selected) return false;
+  // Only while the mouse is on a view or a segment row now: neuroglancer
+  // keeps the last cell pointed at after the mouse leaves the views, and that
+  // cell must not go because the mouse is somewhere else (Ames 2026-10-23).
+  const overRow = !!document.querySelector('.neuroglancer-segment-list-entry:hover');
+  const overView = !!(window as any).viewer?.mouseState?.active && !!document.querySelector('.neuroglancer-rendered-data-panel:hover');
+  if (!overRow && !overView) return false;
   const id = hover.selectedSegment.clone ? hover.selectedSegment.clone() : hover.selectedSegment;
   if (!selected.has(id)) return false;
   attach();
