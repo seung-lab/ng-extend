@@ -504,7 +504,11 @@ async function duplicate() {
       <button class="nge-hunts-back" @click="close">← All Hunts</button>
       <div class="nge-hunts-title-row">
         <span class="nge-hunts-chip" :class="`nge-hunts-chip--${phase}`">{{ PHASE_WORD[phase] || phase }}</span>
-        <strong>{{ editing.title || 'New Hunt' }}</strong>
+        <!-- The title, changed right here (Ames 2026-10-23: "let me edit here to adjust the title"): the same as Title in 2. The words -->
+        <label class="nge-hunts-title-edit" title="Click to change the title">
+          <input v-model="form.title" class="nge-hunts-title-input" maxlength="80" placeholder="New Hunt" aria-label="The Hunt's title" />
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.2 2.3l2.5 2.5-7.9 7.9-3.1.6.6-3.1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </label>
       </div>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
@@ -745,6 +749,12 @@ async function duplicate() {
 .nge-hunts-chip--cancelled { background: rgba(255, 120, 120, 0.14); color: #ffb3b3; }
 .nge-hunts-back { align-self: flex-start; background: none; border: none; color: #9fd0ff; cursor: pointer; padding: 0; font-size: 13px; }
 .nge-hunts-title-row { display: flex; gap: 10px; align-items: center; color: #fff; font-size: 16px; }
+.nge-hunts-title-edit { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: rgba(159, 208, 255, 0.45); cursor: text; }
+.nge-hunts-title-input { flex: 0 1 auto; field-sizing: content; min-width: 6ch; max-width: 100%; padding: 2px 4px; margin-left: -4px; border: none; border-bottom: 1px dashed transparent; border-radius: 4px 4px 0 0; background: transparent; color: #fff; font: 700 16px 'Inter', sans-serif; outline: none; transition: border-color 0.15s, background 0.15s; }
+.nge-hunts-title-edit:hover .nge-hunts-title-input { border-bottom-color: rgba(90, 170, 255, 0.45); }
+.nge-hunts-title-edit:hover, .nge-hunts-title-edit:focus-within { color: #9fd0ff; }
+.nge-hunts-title-input:focus { border-bottom: 1px solid #9fd0ff; background: rgba(90, 170, 255, 0.08); }
+.nge-hunts-title-input::placeholder { color: rgba(230, 240, 255, 0.4); }
 .nge-hunts-group { min-width: 0; max-width: 100%; box-sizing: border-box; border: 1px solid rgba(90, 170, 255, 0.2); border-radius: 10px; padding: 10px 12px 12px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .nge-hunts-group legend { padding: 0 6px; color: #9fd0ff; font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em; }
 .nge-hunts-group label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: #a9bbd3; }
