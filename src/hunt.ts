@@ -29,6 +29,8 @@ export interface HuntInfo {
   tiers: { gold: number; silver: number; bronze: number }; awarded: boolean;
   /** Gems each player has, and the most gems each medal allows (0: no limit). */
   budget: number; gem_limits: { gold: number; silver: number; bronze: number };
+  /** Hours "Hunt results" stays in the top bar after the end (24 unless the Hunt says). */
+  results_hours?: number;
   view: any | null;
   you: HuntRun & { best: number; submissions: number; rank: number };
   /** An admin's test run (hunt.test): open as if running, for that admin only; answers are never kept. */
@@ -173,7 +175,8 @@ export function featuredHunt(): HuntInfo | null {
   const onScreen = active && !active.test ? live.find(h => h.id === active!.id) : undefined;
   return onScreen ?? live[0]
     ?? [...list].filter(h => h.phase === 'announced').sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at))[0]
-    ?? [...list].filter(h => h.phase === 'ended').sort((a, b) => Date.parse(b.end_at) - Date.parse(a.end_at))[0]
+    ?? [...list].filter(h => h.phase === 'ended' && Date.parse(h.end_at) + (h.results_hours || 24) * 3600_000 > huntState.now)
+      .sort((a, b) => Date.parse(b.end_at) - Date.parse(a.end_at))[0]
     ?? null;
 }
 

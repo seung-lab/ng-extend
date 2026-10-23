@@ -515,7 +515,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-headclock span { font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
 .nge-hunt-headclock b { font: 700 13px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); }
 
-.nge-hunt--mini .nge-hunt-head { padding: 8px 10px 6px 14px; }
+.nge-hunt--mini .nge-hunt-head { padding: 8px 14px 6px 14px; }
 .nge-hunt--mini .nge-hunt-body { padding: 8px 12px 12px 14px; gap: 6px; }
 .nge-hunt--mini .nge-hunt-title { font-size: 13px; }
 .nge-hunt--mini .nge-hunt-titlerow { align-items: baseline; }
@@ -681,7 +681,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-panelsbtn:hover, .nge-hunt-panelsbtn:focus-visible { color: #fff; border-color: rgb(var(--hn-accent) / 0.4); }
 .nge-hunt-panelsbtn--on { color: #9fdcff; border-color: rgba(100, 200, 255, 0.45); background: rgba(100, 200, 255, 0.12); }
 .nge-hunt-panelsbtn + .nge-hunt-caret, .nge-hunt-headclock + .nge-hunt-caret { margin-left: 8px; }
-.nge-hunt-caret + .nge-hunt-x { margin-left: 6px; }
+.nge-hunt-caret + .nge-hunt-x { margin-left: 10px; }
 /* Instructions: a centered dropdown (Ames 2026-10-22: "dropdown, not X", not left aligned) */
 .nge-hunt-howtoggle {
   display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 6px 10px; cursor: pointer;

@@ -29,6 +29,9 @@ const MIN_POINTS = 10;
 const MAX_TARGETS = 200;
 const MAX_CELLS = 20;
 const SHOW_ENDED_DAYS = 7;
+const DEFAULT_RESULTS_HOURS = 24;   // "Hunt results" in the top bar this long after the end
+const resultsHours = (h) => { const v = posIntOf(h && h.tiers && h.tiers.results_hours); return v ? Math.min(v, SHOW_ENDED_DAYS * 24) : DEFAULT_RESULTS_HOURS; };
+function posIntOf(v) { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; }
 const MAX_VIEW_BYTES = 150000;
 const TITLE_PREFIX = '🔎 The Hunt';
 
@@ -335,7 +338,7 @@ function publicHunt(h, now) {
     target_count: posInt(h.target_count), spots: { cut: kinds.cut, merge: kinds.merge },
     tolerance_um: Math.round((Number(h.tolerance_nm) || DEFAULT_TOLERANCE_NM) / 100) / 10,
     max_points: maxPoints(h), max_submissions: posInt(h.max_submissions) || DEFAULT_MAX_SUBMISSIONS,
-    tiers: thresholds(h), gem_limits: gemLimits(h), budget: maxPoints(h), awarded: !!h.awarded_at,
+    tiers: thresholds(h), gem_limits: gemLimits(h), budget: maxPoints(h), awarded: !!h.awarded_at, results_hours: resultsHours(h),
     view: open ? startView(h) : null,
   };
 }
@@ -644,7 +647,8 @@ function cleanFields(f) {
   if ('tiers' in f) {
     const t = f.tiers || {};
     out.tiers = { gold: posInt(t.gold), silver: posInt(t.silver), bronze: posInt(t.bronze),
-      gold_gems: posInt(t.gold_gems), silver_gems: posInt(t.silver_gems), bronze_gems: posInt(t.bronze_gems) };
+      gold_gems: posInt(t.gold_gems), silver_gems: posInt(t.silver_gems), bronze_gems: posInt(t.bronze_gems),
+      results_hours: Math.min(posInt(t.results_hours), SHOW_ENDED_DAYS * 24) };
   }
   if ('art' in f) {
     // Per tier: { badge_id } (a special Achievement already made), { image_url, thumbnail_url } (the hunt's own,
@@ -1310,6 +1314,6 @@ function restDb(sb) {
 module.exports = {
   huntAction, restDb, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
-  syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM,
+  syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM, resultsHours,
   keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM,
 };

@@ -59,7 +59,7 @@ const notInstalled = ref(false);
 // The form
 // Empty number fields mean "automatic" and show what that is (0 read as a real zero, Ames 2026-10-21).
 const blankPrize = (): Prize => ({ mode: 'own', badge_id: '', image: null });
-const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: '' as number | '', max_submissions: 10,
+const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: '' as number | '', max_submissions: 10, results_hours: '' as number | '',
   tiers: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
   /** The most gems each medal allows (empty: Gold auto, the others no limit). */
   tierGems: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
@@ -162,7 +162,7 @@ async function open(h: AdminHunt) {
     const full = await huntCall<AdminHunt & { board: BoardRow[] }>('hunt.read', { id: h.id });
     editing.value = full; board.value = full.board || [];
     form.value = { title: full.title, description: full.description || '', link: '', tolerance_um: Math.round(full.tolerance_nm / 100) / 10,
-      max_points: full.max_points || '', max_submissions: full.max_submissions || 10,
+      max_points: full.max_points || '', max_submissions: full.max_submissions || 10, results_hours: (full.tiers as any)?.results_hours || '',
       tiers: { gold: full.tiers?.gold || '', silver: full.tiers?.silver || '', bronze: full.tiers?.bronze || '' },
       tierGems: { gold: (full.tiers as any)?.gold_gems || '', silver: (full.tiers as any)?.silver_gems || '', bronze: (full.tiers as any)?.bronze_gems || '' },
       prize: { gold: prizeFrom(full.art?.gold), silver: prizeFrom(full.art?.silver), bronze: prizeFrom(full.art?.bronze) },
@@ -247,7 +247,8 @@ async function save(status?: 'draft' | 'scheduled') {
       title: f.title, description: f.description, tolerance_nm: Math.round(Number(f.tolerance_um) * 1000),
       max_points: Number(f.max_points) || 0, max_submissions: Number(f.max_submissions) || 10,
       tiers: { gold: Number(f.tiers.gold) || 0, silver: Number(f.tiers.silver) || 0, bronze: Number(f.tiers.bronze) || 0,
-        gold_gems: Number(f.tierGems.gold) || 0, silver_gems: Number(f.tierGems.silver) || 0, bronze_gems: Number(f.tierGems.bronze) || 0 },
+        gold_gems: Number(f.tierGems.gold) || 0, silver_gems: Number(f.tierGems.silver) || 0, bronze_gems: Number(f.tierGems.bronze) || 0,
+        results_hours: Number(f.results_hours) || 0 },
       art: artFields(),
       announce_at: fromLocalInput(f.announce), start_at: fromLocalInput(f.start), end_at: fromLocalInput(f.end),
       notif_images: pictureFields(), admins_only: !!f.admins_only,
@@ -501,15 +502,15 @@ async function duplicate() {
         </div>
         <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'place' : 'places' }}<template v-if="editing.edge_count">, {{ editing.edge_count }} edge {{ editing.edge_count === 1 ? 'spot' : 'spots' }}</template> on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
         <div v-if="cellRows.length" class="nge-hunts-cells">
-          <p class="nge-hunts-help"><b>Where players start.</b> A link is often centered on a merger, which would give it away. Give each cell's soma: x, y and z as the coordinate bar shows them. Players start at the first; with several cells they get a button for each.</p>
-          <div v-for="(c, i) in cellRows" :key="c.root" class="nge-hunts-cellrow">
-            <span class="nge-hunts-cellid" :title="c.root">Cell {{ i + 1 }} <span class="nge-hunts-muted">{{ c.root }}</span></span>
-            <input v-for="(axis, k) in ['x', 'y', 'z']" :key="axis" v-model.number="c.soma[k]" type="number" class="nge-hunts-input nge-hunts-xyz" :placeholder="k === 0 ? 'x (or paste x, y, z)' : axis" :aria-label="`Cell ${i + 1} soma ${axis}`" @paste="pasteSoma(i, $event)" />
-            <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="useCrosshair(i)">Use the crosshair</button>
+          <p class="nge-hunts-help"><b>Where players start.</b> A link is often centered on a merger, which would give it away. Move the crosshair to where players should start (the soma is a good place) and press <b>Use the crosshair</b>, or paste x, y, z as the coordinate bar shows them.</p>
+          <div class="nge-hunts-cellrow nge-hunts-startrow">
+            <span class="nge-hunts-cellid">Start</span>
+            <input v-for="(axis, k) in ['x', 'y', 'z']" :key="axis" v-model.number="cellRows[0].soma[k]" type="number" class="nge-hunts-input nge-hunts-xyz" :placeholder="k === 0 ? 'x (or paste x, y, z)' : axis" :aria-label="`Start ${axis}`" @paste="pasteSoma(0, $event)" />
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="useCrosshair(0)">Use the crosshair</button>
           </div>
         </div>
-        <p v-if="somaMissing" class="nge-hunts-warnline">No soma yet: players would start where the link is centered.</p>
-        <p v-else-if="!read && editing.start_on_answer" class="nge-hunts-warnline">The saved start is {{ editing.start_gap_um }} µm from a merger or extension, close enough to give it away. Set the soma and save.</p>
+        <p v-if="somaMissing" class="nge-hunts-warnline">No start yet: players would start where the link is centered.</p>
+        <p v-else-if="!read && editing.start_on_answer" class="nge-hunts-warnline">The saved start is {{ editing.start_gap_um }} µm from a merger or extension, close enough to give it away. Move the crosshair, use it, and save.</p>
       </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
@@ -538,6 +539,7 @@ async function duplicate() {
           <label><span class="nge-hunts-timehead">Start (ET) <button type="button" class="nge-hunts-nowlink" title="Start it this minute" @click.prevent="setNow('start')">Now</button></span><input v-model="form.start" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.start) }}</span></label>
           <label>End (ET) <input v-model="form.end" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.end) }}</span></label>
         </div>
+        <label class="nge-hunts-resultshours">Results in the top bar for <input v-model.number="form.results_hours" type="number" min="1" max="168" class="nge-hunts-input" placeholder="24" /> hours after the end <span class="nge-hunts-muted">(24 if empty; at most a week)</span></label>
       </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
@@ -757,6 +759,11 @@ async function duplicate() {
 .nge-hunts-tierbox { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(90, 170, 255, 0.04); border: 1px solid rgba(90, 170, 255, 0.15); }
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
+.nge-hunts-resultshours { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nge-hunts-resultshours .nge-hunts-input { width: 72px; }
+.nge-hunts-startrow { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; }
+.nge-hunts-startrow .nge-hunts-xyz { flex: 1 1 0; min-width: 0; }
+.nge-hunts-startrow .nge-hunts-btn { flex: none; white-space: nowrap; }
 .nge-hunts-msg-times { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
 .nge-hunts-msg-times b { display: inline-block; min-width: 76px; }
 .nge-hunts-timehead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }

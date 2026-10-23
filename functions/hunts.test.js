@@ -777,3 +777,14 @@ test('edges of the dataset: an Extend gem where a branch leaves the data uses no
   const ex = await h.db.keyExtras(d.id);
   assert.deepEqual([(await h.db.key(d.id)).length, ex.edges.length, !!ex.bounds], [2, 1, true]);
 });
+
+test('"Hunt results" stays in the top bar 24 hours after the end unless the Hunt says (Ames 2026-10-23)', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const cur = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(121)))).hunts[0];
+  assert.equal(cur.results_hours, 24);
+  await H.huntAction('hunt.save', { id: d.id, fields: { tiers: { results_hours: 6 } } }, h.ctx(ADMIN, at(122), true));
+  assert.equal(H.resultsHours(h.db._s.hunts[0]), 6);
+  assert.equal(H.resultsHours({ tiers: { results_hours: 999 } }), 168);
+});
