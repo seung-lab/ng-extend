@@ -815,7 +815,8 @@ const HUNT_MEDAL = /^hunt-(\d+)-(gold|silver|bronze|fastest)$/;
 type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest';
 const MEDAL_ORDER: HuntMedal[] = ['gold', 'silver', 'bronze', 'fastest'];
 const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed' };
-const MEDAL_PLACE: Record<HuntMedal, string> = { gold: '1st place', silver: '2nd place', bronze: '3rd place', fastest: 'the fastest' };
+/** Under a medal in the Trophy Case: only the Speed award says what it is for. */
+const MEDAL_SUB: Record<HuntMedal, string> = { gold: '', silver: '', bronze: '', fastest: 'the fastest' };
 function huntMedalOf(a: any): HuntMedal | null {
   const m = HUNT_MEDAL.exec(String(a?.badge?.slug || ''));
   return m ? (m[2] as HuntMedal) : null;
@@ -833,7 +834,7 @@ function huntTitleOf(a: any): string {
   return String(a?.badge?.name || '').replace(/:\s*(Gold|Silver|Bronze|Fastest)\s*$/i, '').trim() || 'a Hunt';
 }
 function medalTooltip(m: MedalTile): string {
-  const head = `${MEDAL_WORD[m.tier]}, ${MEDAL_PLACE[m.tier]}: won ${m.count === 1 ? 'once' : `${m.count} times`}`;
+  const head = `${MEDAL_WORD[m.tier]}${MEDAL_SUB[m.tier] ? `, ${MEDAL_SUB[m.tier]}` : ''}: won ${m.count === 1 ? 'once' : `${m.count} times`}`;
   const lines = m.awards.slice(0, 12).map((a: any) => `${huntTitleOf(a)}, ${formatDate(a.awarded_at)}`);
   const more = m.awards.length > 12 ? [`and ${m.awards.length - 12} more`] : [];
   return [head, ...lines, ...more].join('\n');
@@ -2518,7 +2519,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                   <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
                 </span>
                 <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
-                <div class="nge-trophy-medal-place">{{ MEDAL_PLACE[m.tier] }}</div>
+                <div v-if="MEDAL_SUB[m.tier]" class="nge-trophy-medal-place">{{ MEDAL_SUB[m.tier] }}</div>
               </div>
             </div>
           </div>

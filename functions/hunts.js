@@ -128,7 +128,7 @@ function keyTargets(key) {
  * admin's screen with the key) catch the ones nobody marked. Neither counts as a problem: an
  * Extend gem there is answered "Edge of the dataset", with no gem used.
  */
-const EDGE_NM = 2000;   // this close to the volume's outer bounds is the edge (Ames chose about 2 µm)
+const EDGE_NM = 5000;   // this close to the volume's outer bounds is the edge (2 µm was too tight: Ames's gems at cut off ends landed 1.3 to 4.4 µm from the face)
 function keyEdges(key) {
   const parts = key && Array.isArray(key.layers) ? key.layers : [];
   const out = [];
@@ -444,26 +444,6 @@ function clockWords(msTime) {
   return `${x}s`;
 }
 
-/**
- * The places (Ames 2026-10-21: "This isn't really gold/silver/bronze bc it's not one per person"):
- * Gold, Silver and Bronze go to 1st, 2nd and 3rd, ranked by her rule, most problems found, then
- * fewest gems, then the quicker clock, then the earlier start. Only runs that found something place.
- */
-function placeRuns(runs) {
-  const best = new Map();
-  for (const r of runs) {
-    const x = { ...r, gems: r.drops.length, ms: runClock(r, r.drops), startMs: ms(r.created_at) };
-    const was = best.get(r.user_id);
-    if (!was || x.found > was.found || (x.found === was.found && x.gems < was.gems)) best.set(r.user_id, x);
-  }
-  const key = (x) => [-x.found, x.gems, x.ms == null ? Infinity : x.ms, Number.isFinite(x.startMs) ? x.startMs : Infinity];
-  return [...best.values()].filter((x) => x.found > 0).sort((a, b) => {
-    const ka = key(a), kb = key(b);
-    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
-    return 0;
-  });
-}
-const PLACE_WORD = { gold: 'first place', silver: 'second place', bronze: 'third place' };
 
 /**
  * The speed award (Ames 2026-10-21): "for the fastest player to get all points (or fastest
@@ -552,7 +532,9 @@ const LINES = {
 
 /** The special Achievement for one tier of one hunt. */
 function badgeRow(h, tier, th, site) {
-  const count = PLACE_WORD[tier] || 'a medal';
+  const n = posInt(h.target_count);
+  const k = th[tier], g = gemLimits(h)[tier];
+  const count = `${k >= n ? `all ${n} found` : `${k} or more of the ${n} found`}${g ? ` with ${g} gems or fewer` : ''}`;
   const a = h.art && h.art[tier];
   const own = typeof a === 'string' ? a : a && a.image_url;
   // Ames's medals (2026-10-21: "the badges that we will use consistently for hunt"), unless a picture was set.
@@ -926,11 +908,12 @@ async function finalize(h, ctx, { force = false } = {}) {
   const board = leaderboard(await db.submissions(row.id));
   const th = thresholds(row);
   const counts = { gold: 0, silver: 0, bronze: 0, fastest: 0 };
-  // Every run, read once here: the places and the speed award come from their gems and clocks.
+  // Each hunter's medal by the thresholds (finds, within the medal's gems); the speed award from every run's clock.
+  const gl = gemLimits(row);
+  const winners = board.map((b) => ({ ...b, tier: tierFor(b.found, th, b.gems, gl) })).filter((b) => b.tier);
   const n = posInt(row.target_count);
   const runs = (await db.allSubmissions(row.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)))
     .map((x) => ({ user_id: x.user_id, created_at: x.created_at, found: x.found, drops: normalizeDrops(x.points) }));
-  const winners = placeRuns(runs).slice(0, 3).map((r, i) => ({ user_id: r.user_id, found: r.found, gems: r.gems, tier: TIERS[i] }));
   const speed = speedWinner(runs, n);
   if (speed) winners.push({ user_id: speed.user_id, found: speed.found, gems: speed.drops.length, tier: 'fastest', time: clockWords(speed.ms), all: speed.all });
   await postResults(row, board, winners, speed, ctx);
@@ -947,7 +930,7 @@ async function finalize(h, ctx, { force = false } = {}) {
   const fresh = winners.filter((w) => !held.has(`${badges[w.tier].id}:${w.user_id}`));
   await db.award(winners.map((w) => ({ badge_id: badges[w.tier].id, user_id: w.user_id, awarded_by: row.created_by || null,
     reason: w.tier === 'fastest' ? `${w.all ? `All ${row.target_count}` : `${w.found} of ${row.target_count}`} found in ${w.time}, the fastest in ${row.title}`
-      : `${TIER_NAME[w.tier]}, ${PLACE_WORD[w.tier]} in ${row.title}: ${w.found} of ${row.target_count} found with ${w.gems} gems` })));
+      : `${TIER_NAME[w.tier]} in ${row.title}: ${w.found} of ${row.target_count} found with ${w.gems} gems` })));
   for (const w of winners) counts[w.tier]++;
   if (fresh.length && notify) {
     await notify(fresh.map((w) => ({ user_id: w.user_id, title: `🏅 New Achievement: ${badges[w.tier].name}`,
@@ -1231,13 +1214,10 @@ async function adminRead(args, ctx) {
   const subs = await db.submissions(h.id);
   const board = leaderboard(subs);
   const names = await db.names(board.map((b) => b.user_id));
-  const th = thresholds(h);
-  const runs = (await db.allSubmissions(h.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)))
-    .map((x) => ({ user_id: x.user_id, created_at: x.created_at, found: x.found, drops: normalizeDrops(x.points) }));
-  const placed = placeRuns(runs).slice(0, 3).map((r) => r.user_id);
+  const th = thresholds(h), gl = gemLimits(h);
   return { ...(await adminView(h, ctx)), view: h.view || null, targets,
     board: board.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', user_id: b.user_id, found: b.found, at: b.at,
-      gems: b.gems, tier: placed.includes(b.user_id) ? TIERS[placed.indexOf(b.user_id)] : null })) };
+      gems: b.gems, tier: tierFor(b.found, th, b.gems, gl) })) };
 }
 
 // ── The database ──────────────────────────────────────────────────────────
@@ -1328,7 +1308,7 @@ function restDb(sb) {
 }
 
 module.exports = {
-  huntAction, restDb, placeRuns, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
+  huntAction, restDb, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM,
   keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM,

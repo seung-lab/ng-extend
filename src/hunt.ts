@@ -242,9 +242,9 @@ export type GemKind = 'cut' | 'merge';
 const KIND_WORD: Record<GemKind, string> = { cut: 'cut', merge: 'extend' };
 const KIND_COLOR: Record<GemKind, string> = { cut: '#e06060', merge: '#5aaaff' };   // the color key's red; a blue
 const FOUND = { id: 'hunt-found', name: 'Found', color: '#f5d142' };    // a found gem shines: gold for a merger,
-const FOUND_COLOR: Record<GemKind, string> = { cut: '#f5d142', merge: '#c8a4ff' };   // violet for a missing extension
+const FOUND_COLOR: Record<GemKind, string> = { cut: '#f5d142', merge: '#9b5cff' };   // purple for a missing extension
 const MISSED = { id: 'hunt-missed', name: 'Missed', color: '#7d8799' }; // a missed one goes gray
-const EDGE = { id: 'hunt-edge', name: 'Edge of the dataset', color: '#9fb7d9' };   // a pale steel blue: no gem used, neither found nor missed
+const EDGE = { id: 'hunt-edge', name: 'Edge of the dataset', color: '#42d5ec' };   // teal: no gem used, neither found nor missed
 const edgeIds = new Set<string>();
 
 /** The layer for one kind of gem; a test run has layers of its own, so trying a hunt never mixes with playing it. */
@@ -323,14 +323,23 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
     const ml = makeLayer(v.layerSpecification, name, {
       type: 'annotation', source: { url: 'local://annotations' },
       annotations: [...drops.map(d => ({ type: 'point', id: d.id, point: d.at })), ...more.map(g => ({ type: 'point', id: g.id, point: g.point }))],
-      // Drawn over the cells in 3D ("Show through cells in 3D"): a gem dropped inside a branch
-      // stays in sight (Ames 2026-10-21: "needs to retain marks otherwise I can't tell where I have been").
-      annotationColor: KIND_COLOR[k], pointMarker: 'pyr', pointSize: 2, tool: 'annotatePoint', onTop: true,
+      // Behind the cells in 3D, as real marks sit (Ames 2026-10-23: "can we make the gems not show
+      // through the neuron?"); her marks stay on screen by the judging that never removes them.
+      annotationColor: KIND_COLOR[k], pointMarker: 'pyr', pointSize: 2, tool: 'annotatePoint', onTop: false,
       ngeAnnFolders: folders,
     });
     v.layerSpecification.add(ml);
   }
   pickKind(h, gemKinds(h).includes(huntState.kind) ? huntState.kind : gemKinds(h)[0]);
+}
+
+/** The gems sit behind the cells: also on Hunt layers made before (the game keeps Show through by layer name). */
+function gemsBehindCells(h: HuntInfo) {
+  for (const k of gemKinds(h)) {
+    const ml = managed(huntLayerName(h, k));
+    const onTop = ml?.layer?.constructor?.type === 'annotation' ? ml.layer.annotationDisplayState?.ngeOnTop : null;
+    try { if (onTop && onTop.value) onTop.value = false; } catch { /* the setting is optional */ }
+  }
 }
 
 /** Which layer Ctrl + Click drops into: the Hunt box's Cut and Extend buttons. */
@@ -414,6 +423,8 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   for (const g of kept) if (g.judged) judged.add(g.id);
   active = h;
   quietPanels();
+  gemsBehindCells(h);
+  setTimeout(() => gemsBehindCells(h), 1500);   // after the display keeper has put back what it kept
   startDropWatch();
   // The run's clock starts at the first open (the server keeps the first time; a second open changes nothing).
   if (!h.test && h.phase === 'live' && !h.you?.started_at) {
@@ -673,6 +684,7 @@ function resumeOnScreen() {
       if (kinds.includes(dropKind(d))) fileGem(h, dropKind(d), d.id, d.hit);
     }
     active = h;
+    gemsBehindCells(h);
     startDropWatch();
     return;
   }
@@ -718,9 +730,47 @@ export function guessKind(name: string): KeyKind {
   return 'cut';
 }
 
-/** The volume's outer bounds in nanometres, [[x, y, z] low, [x, y, z] high], from the viewer's coordinate
- *  space: an Extend gem this near them is the edge of the dataset (Ames 2026-10-22). Null if unknown. */
+/**
+ * The volume's outer bounds in nanometres, [[x, y, z] low, [x, y, z] high]: an Extend gem this near
+ * them is the edge of the dataset (Ames 2026-10-22). The segmentation's own volume, where the cells
+ * are cut off (Ames 2026-10-23: the viewer space can be far larger, so nothing counted); else the
+ * whole viewer space. Null if unknown.
+ */
 export function datasetBoundsNm(): number[][] | null {
+  for (const ml of viewer()?.layerManager?.managedLayers ?? []) {
+    try {
+      if (ml?.layer?.type !== 'segmentation') continue;
+      const b = layerBoundsNm(ml);
+      if (b) return b;
+    } catch { /* the next layer */ }
+  }
+  return viewerBoundsNm();
+}
+/** A layer's data bounds in nanometres, through its source's transform into the viewer's x, y and z. */
+export function layerBoundsNm(ml: any): number[][] | null {
+  for (const ds of ml?.layer?.dataSources ?? []) {
+    const ls = ds?.loadState;
+    const t = ls?.transform?.value ?? ls?.dataSource?.modelTransform;
+    const R = t?.rank, inS = t?.inputSpace, outS = t?.outputSpace, M = t?.transform;
+    const lo = inS?.bounds?.lowerBounds, hi = inS?.bounds?.upperBounds;
+    if (!R || !lo || !hi || !M || !outS?.scales || !outS?.names) continue;
+    const inR = Math.min(inS.rank ?? lo.length, R);
+    const apply = (p: ArrayLike<number>) => Array.from({ length: R }, (_, row) => {
+      let v = Number(M[R * (R + 1) + row]) || 0;
+      for (let c = 0; c < inR; c++) v += Number(M[c * (R + 1) + row]) * Number(p[c]);
+      return v;
+    });
+    const a = apply(lo), b = apply(hi);
+    const ix = ['x', 'y', 'z'].map(n => (outS.names as string[]).indexOf(n));
+    if (ix.some(i => i < 0)) continue;
+    const L = ix.map(i => Math.min(a[i], b[i]) * Number(outS.scales[i]) * 1e9);
+    const H = ix.map(i => Math.max(a[i], b[i]) * Number(outS.scales[i]) * 1e9);
+    if (L.every((v, k) => Number.isFinite(v) && Number.isFinite(H[k]) && H[k] > v)) return [L, H];
+  }
+  return null;
+}
+try { (window as any).__ngeHuntBounds = layerBoundsNm; } catch { /* no window */ }
+function viewerBoundsNm(): number[][] | null {
   try {
     const cs = viewer()?.coordinateSpace?.value;
     const names: string[] = cs?.names ?? [];

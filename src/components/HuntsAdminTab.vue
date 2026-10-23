@@ -8,7 +8,7 @@
  * the gold, silver and bronze Achievements are given by themselves.
  * Rules on the server: functions/hunts.js.
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { useProofreadingBackendStore } from '../store';
 import { renderSafeMarkdown } from '../util/safe_markdown';
@@ -223,7 +223,7 @@ function useScreen() {
     read.value = { ...r, count: kinds.cut + kinds.merge, kinds, edges };
     setCells(r.cells);
     const parts = layers.map(l => `${placesWord(l.points, l.kind)} from "${l.name}"`).join(' and ');
-    const edgeNote = r.key.bounds_nm ? ' The volume\'s edges were read too: an Extend gem within 2 µm of them is the edge of the dataset.' : '';
+    const edgeNote = r.key.bounds_nm ? ' The volume\'s edges were read too: an Extend gem within 5 µm of them is the edge of the dataset.' : '';
     message.value = `Read ${parts}, ${r.cells.length === 1 ? '1 cell' : `${r.cells.length} cells`}, on ${datasetName(r.dataset)}.${edgeNote} Save to keep them.`;
   } catch (e: any) { error.value = e?.message || String(e); }
 }
@@ -259,10 +259,24 @@ async function save(status?: 'draft' | 'scheduled') {
     if (status) args.status = status;
     const h = await huntCall<AdminHunt>('hunt.save', args);
     editing.value = { ...h }; read.value = null; setCells(h.cells || []);
-    message.value = status === 'scheduled' ? 'Scheduled. The notes go out at their times.' : 'Saved.';
+    const sched = (h as any).status === 'scheduled';
+    message.value = status === 'scheduled' ? 'Scheduled. The notes go out at their times.' : sched ? 'Saved. It stays scheduled.' : 'Saved as a draft.';
+    savedTimes.value = h.start_at && h.end_at ? { announce: h.announce_at || null, start: h.start_at, end: h.end_at } : null;
     void refresh();
-  } catch (e: any) { error.value = e?.message || String(e); }
-  finally { busy.value = ''; }
+  } catch (e: any) { error.value = e?.message || String(e); savedTimes.value = null; }
+  finally { busy.value = ''; void showTop(); }
+}
+/** The saved times, confirmed under the message. */
+const savedTimes = ref<null | { announce: string | null; start: string; end: string }>(null);
+watch(message, (m) => { if (!m) savedTimes.value = null; });
+function whenIso(iso: string | null): string { return iso ? whenLine(toLocalInput(iso)) : ''; }
+const msgEl = ref<HTMLElement | null>(null);
+const errEl = ref<HTMLElement | null>(null);
+/** Up to the message (or the error), where the result of a save shows. */
+async function showTop() {
+  await nextTick();
+  const el = errEl.value || msgEl.value;
+  try { el?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* old browser */ }
 }
 
 async function act(action: 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.award' | 'hunt.rescore', extra: Record<string, any> = {}) {
@@ -431,8 +445,15 @@ async function duplicate() {
     </header>
 
     <p v-if="notInstalled" class="nge-hunts-warn">The Hunt is not set up on the server yet: run <code>supabase-hunts.sql</code> in Supabase, then deploy the <code>ewHunt</code> function.</p>
-    <p v-if="error && !notInstalled" class="nge-hunts-error" role="alert">{{ error }}</p>
-    <p v-if="message" class="nge-hunts-msg" role="status">{{ message }}</p>
+    <p v-if="error && !notInstalled" ref="errEl" class="nge-hunts-error" role="alert">{{ error }}</p>
+    <div v-if="message" ref="msgEl" class="nge-hunts-msg" role="status">
+      <span>{{ message }}</span>
+      <ul v-if="savedTimes" class="nge-hunts-msg-times">
+        <li v-if="savedTimes.announce"><b>Announced</b> {{ whenIso(savedTimes.announce) }}</li>
+        <li><b>Starts</b> {{ whenIso(savedTimes.start) }}</li>
+        <li><b>Ends</b> {{ whenIso(savedTimes.end) }}</li>
+      </ul>
+    </div>
 
     <!-- The list -->
     <template v-if="!editing">
@@ -513,8 +534,8 @@ async function duplicate() {
         <label class="nge-hunts-check"><input :checked="form.admins_only || ON_TEST_SITE" :disabled="ON_TEST_SITE" type="checkbox" @change="setAdminsOnly" /> <span><b>Only admins</b>: players never see it, and nothing posts in chat.</span></label>
         <p v-if="!form.admins_only && !ON_TEST_SITE" class="nge-hunts-warnline">Scheduled, the notes go to every player's bell and post in chat.</p>
         <div class="nge-hunts-grid">
-          <label>Announce (ET) <span class="nge-hunts-timerow"><input v-model="form.announce" type="datetime-local" class="nge-hunts-input" /><button type="button" class="nge-hunts-btn nge-hunts-btn--small" title="Announce it this minute" @click.prevent="setNow('announce')">Now</button></span><span class="nge-hunts-when">{{ whenLine(form.announce) || 'no announcement' }}</span></label>
-          <label>Start (ET) <span class="nge-hunts-timerow"><input v-model="form.start" type="datetime-local" class="nge-hunts-input" /><button type="button" class="nge-hunts-btn nge-hunts-btn--small" title="Start it this minute" @click.prevent="setNow('start')">Now</button></span><span class="nge-hunts-when">{{ whenLine(form.start) }}</span></label>
+          <label><span class="nge-hunts-timehead">Announce (ET) <button type="button" class="nge-hunts-nowlink" title="Announce it this minute" @click.prevent="setNow('announce')">Now</button></span><input v-model="form.announce" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.announce) || 'no announcement' }}</span></label>
+          <label><span class="nge-hunts-timehead">Start (ET) <button type="button" class="nge-hunts-nowlink" title="Start it this minute" @click.prevent="setNow('start')">Now</button></span><input v-model="form.start" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.start) }}</span></label>
           <label>End (ET) <input v-model="form.end" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.end) }}</span></label>
         </div>
       </fieldset>
@@ -526,7 +547,14 @@ async function duplicate() {
           <label>Gems per player <input v-model.number="form.max_points" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor.points}` : 'auto'" /></label>
         </div>
         <p class="nge-hunts-help">A gem finds a problem of its kind within the tolerance. Each player has <b>Gems per player</b> gems, one run: their Hunt ends when they find them all or the gems run out. Left empty: twice the problems.</p>
-        <p class="nge-hunts-help"><b>The medals are places:</b> Gold for 1st, Silver for 2nd, Bronze for 3rd, ranked by most problems found, then fewest gems, then the quicker clock (from each hunter's first open of the Hunt). The Speed award goes to the fastest to find them all, or, if nobody does, the fastest of those who found the most. Medals are revealed at the end.</p>
+        <p class="nge-hunts-help"><b>The medals:</b> for each, the problems to find and the most gems used. Every hunter who reaches a medal wins it, so several can win Gold. Left empty: Gold for all of them, using the problems and a third more in gems; Silver two thirds and Bronze one third, with no gem limit. The Speed award goes to the fastest to find them all, or, if nobody does, the fastest of those who found the most. Medals are revealed at the end.</p>
+        <div class="nge-hunts-grid">
+          <div v-for="t in TIERS" :key="t" class="nge-hunts-tierbox">
+            <span class="nge-hunts-tierword">{{ TIER_WORD[t] }}</span>
+            <label>find at least <input v-model.number="form.tiers[t]" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor[t]}` : 'auto'" /></label>
+            <label>using at most <input v-model.number="form.tierGems[t]" type="number" min="1" class="nge-hunts-input" :placeholder="t === 'gold' && defaultsFor ? `auto: ${defaultsFor.goldGems} gems` : 'any gems'" /></label>
+          </div>
+        </div>
       </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
@@ -633,7 +661,7 @@ async function duplicate() {
         <legend>Hunters ({{ board.length }})</legend>
         <p class="nge-hunts-help">Click a hunter to see their gems. A miss on a real error the key missed: <b>Count it</b> adds that spot to the key and judges everyone again. After the end, Give the awards again.</p>
         <table class="nge-hunts-board">
-          <thead><tr><th>#</th><th>Player</th><th>Found</th><th>Gems</th><th>{{ phase === 'ended' ? 'Medal' : 'Place so far' }}</th></tr></thead>
+          <thead><tr><th>#</th><th>Player</th><th>Found</th><th>Gems</th><th>{{ phase === 'ended' ? 'Medal' : 'Medal so far' }}</th></tr></thead>
           <tbody>
             <template v-for="b in board" :key="b.rank">
               <tr class="nge-hunts-hunter" :class="{ 'nge-hunts-hunter--open': runOf?.user_id === b.user_id }" tabindex="0" @click="showRun(b)" @keydown.enter="showRun(b)">
@@ -729,9 +757,11 @@ async function duplicate() {
 .nge-hunts-tierbox { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(90, 170, 255, 0.04); border: 1px solid rgba(90, 170, 255, 0.15); }
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
-.nge-hunts-timerow { display: flex; align-items: center; gap: 6px; }
-.nge-hunts-timerow .nge-hunts-input { flex: 1; min-width: 0; }
-.nge-hunts-timerow .nge-hunts-btn { flex: none; }
+.nge-hunts-msg-times { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.nge-hunts-msg-times b { display: inline-block; min-width: 76px; }
+.nge-hunts-timehead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.nge-hunts-nowlink { padding: 0 2px; background: none; border: none; cursor: pointer; color: #9fd0ff; font: 600 11.5px 'Inter', sans-serif; text-decoration: underline; text-underline-offset: 2px; }
+.nge-hunts-nowlink:hover, .nge-hunts-nowlink:focus-visible { color: #fff; }
 .nge-hunts-warnline { margin: 0; color: #f8e08a; font-size: 12.5px; }
 .nge-hunts-chip--admins { background: rgba(90, 170, 255, 0.18); color: #9fd0ff; }
 .nge-hunts-prize { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid rgba(90, 170, 255, 0.12); }

@@ -176,7 +176,14 @@ const HUNT_STEPS = [
   'Happy Hunting!',
 ];
 /** A medal is a place (Ames 2026-10-21: "it's not one per person"): 1st, 2nd, 3rd. */
-const PLACE: Record<HuntTier, string> = { gold: '1st place', silver: '2nd place', bronze: '3rd place' };
+/** A medal's ask, short: "all 10 · ≤13 gems", "7+ found". */
+function needShort(t: HuntTier): string {
+  const h = hunt.value; if (!h) return '';
+  const k = h.tiers?.[t] ?? 0;
+  const finds = k >= h.target_count ? (h.target_count === 1 ? 'find it' : `all ${h.target_count}`) : `${k}+ found`;
+  const g = h.gem_limits?.[t];
+  return g ? `${finds} · ≤${g} gems` : finds;
+}
 /** Folded to a slim strip: found, gems left, the gem switch, Submit, the last answer (kept in this browser). */
 const miniPref = ref((() => { try { return localStorage.getItem('nge-hunt-mini') === '1'; } catch { return false; } })());
 /** The results always show in full (Ames 2026-10-22: "no slim view option on results"). */
@@ -377,7 +384,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 
         <div v-if="!mini" class="nge-hunt-actions">
           <button class="nge-hunt-btn" :class="{ 'nge-hunt-btn--primary': !opened }" :disabled="!!busy" @click="go">
-            {{ busy === 'go' ? 'Opening…' : onDataset ? (opened ? 'Back to the start view' : 'Open the Hunt') : `Switch to ${datasetName} and open the Hunt` }}
+            {{ busy === 'go' ? 'Opening…' : onDataset && opened ? 'Back to the start view' : 'Open the Hunt' }}
+            <small v-if="!onDataset && busy !== 'go'" class="nge-hunt-btn-sub">switches to {{ datasetName }}</small>
           </button>
           <button v-for="(c, i) in (opened && somaCells.length > 1 ? somaCells : [])" :key="c.root" class="nge-hunt-cellbtn" :title="c.label || `Cell ${i + 1}`" @click="goToSoma(c.soma || [])">Cell {{ i + 1 }}</button>
         </div>
@@ -417,8 +425,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
         <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" />
         <div class="nge-hunt-medalrow" aria-label="Medals">
-          <span v-for="t in TIERS" :key="t" class="nge-hunt-medalmini" :title="`${TIER_WORD[t]}: ${PLACE[t]}`">
-            <img :src="medalArt(t)" alt="" /><b :class="`nge-hunt-tierword--${t}`">{{ TIER_WORD[t] }}</b><small>{{ PLACE[t] }}</small>
+          <span v-for="t in TIERS" :key="t" class="nge-hunt-medalmini" :title="`${TIER_WORD[t]}: ${needShort(t)}`">
+            <img :src="medalArt(t)" alt="" /><b :class="`nge-hunt-tierword--${t}`">{{ TIER_WORD[t] }}</b><small>{{ needShort(t) }}</small>
           </span>
           <span class="nge-hunt-medalmini" title="Speed: the fastest to find them all (or the most, if nobody finds all), from your first open of the Hunt. One try.">
             <img src="hunt/fastest-128.png" alt="" /><b class="nge-hunt-tierword--speed">Speed</b><small>fastest</small>
@@ -629,10 +637,10 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-news--hit { background: rgb(var(--hn-gold) / 0.12); border: 1px solid rgb(var(--hn-gold) / 0.75); color: #fff3c4; box-shadow: 0 0 18px rgb(var(--hn-gold) / 0.2); animation: ngeHuntHit 0.6s cubic-bezier(0.2, 1.5, 0.4, 1); }
 .nge-hunt-news--hit .nge-hunt-news-head { color: rgb(var(--hn-gold)); text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.5); }
 /* A missing extension found: violet (Ames 2026-10-22) */
-.nge-hunt-news--edge { background: rgba(159, 183, 217, 0.1); border: 1px solid rgba(159, 183, 217, 0.55); color: #e3ecf8; animation: ngeHuntRise 0.3s; }
-.nge-hunt-news--edge .nge-hunt-news-head, .nge-hunt-slim-news.nge-hunt-news--edge b, .nge-hunt-log--edge b { color: #b9cde8; }
-.nge-hunt-news--hit.nge-hunt-news--ext { background: rgba(200, 164, 255, 0.12); border-color: rgba(200, 164, 255, 0.75); color: #efe6ff; box-shadow: 0 0 18px rgba(200, 164, 255, 0.2); }
-.nge-hunt-news--ext .nge-hunt-news-head, .nge-hunt-slim-news.nge-hunt-news--ext b, .nge-hunt-log--ext b { color: #c8a4ff; text-shadow: 0 0 10px rgba(200, 164, 255, 0.5); }
+.nge-hunt-news--edge { background: rgba(66, 213, 236, 0.1); border: 1px solid rgba(66, 213, 236, 0.6); color: #e2f8fc; animation: ngeHuntRise 0.3s; }
+.nge-hunt-news--edge .nge-hunt-news-head, .nge-hunt-slim-news.nge-hunt-news--edge b, .nge-hunt-log--edge b { color: #42d5ec; text-shadow: 0 0 10px rgba(66, 213, 236, 0.45); }
+.nge-hunt-news--hit.nge-hunt-news--ext { background: rgba(155, 92, 255, 0.16); border-color: rgba(155, 92, 255, 0.85); color: #efe6ff; box-shadow: 0 0 18px rgba(155, 92, 255, 0.28); }
+.nge-hunt-news--ext .nge-hunt-news-head, .nge-hunt-slim-news.nge-hunt-news--ext b, .nge-hunt-log--ext b { color: #b98cff; text-shadow: 0 0 10px rgba(155, 92, 255, 0.6); }
 .nge-hunt-news--miss { background: rgba(125, 135, 153, 0.1); border: 1px solid rgba(125, 135, 153, 0.55); color: #dfe6f1; animation: ngeHuntShake 0.45s; }
 .nge-hunt-news--already { background: rgb(var(--hn-accent) / 0.08); border: 1px solid rgb(var(--hn-accent) / 0.5); color: #cfe4ff; animation: ngeHuntRise 0.3s; }
 .nge-hunt-news--refused { background: rgba(224, 96, 96, 0.08); border: 1px solid rgba(224, 96, 96, 0.5); color: #ffd2d2; animation: ngeHuntRise 0.3s; }
@@ -651,6 +659,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
   flex: 1 1 100%; padding: 7px 10px; border-radius: 9px; cursor: pointer; font: 600 12.5px 'Inter', sans-serif;
   background: rgb(var(--hn-accent) / 0.1); border: 1px solid rgb(var(--hn-accent) / 0.45); color: #e6f0ff;
 }
+.nge-hunt-btn-sub { display: block; margin-top: 2px; font: 500 10.5px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; opacity: 0.75; }
 .nge-hunt-btn--primary { padding: 9px 10px; font: 700 13px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; background: rgb(var(--hn-gold) / 0.16); border-color: rgb(var(--hn-gold) / 0.75); color: #fff3c4; box-shadow: 0 0 18px rgb(var(--hn-gold) / 0.15); }
 .nge-hunt-btn:hover:not(:disabled), .nge-hunt-btn:focus-visible { background: rgb(var(--hn-accent) / 0.2); }
 .nge-hunt-btn--primary:hover:not(:disabled), .nge-hunt-btn--primary:focus-visible { background: rgb(var(--hn-gold) / 0.28); }

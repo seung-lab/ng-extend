@@ -429,10 +429,10 @@ test('the Achievement lines are jokes with counts, and use the art set for the h
   const th = H.thresholds(hunt);
   const g = H.badgeRow(hunt, 'gold', th, 'https://pyr.example');
   assert.equal(g.image_url, 'https://art.example/g.png');
-  assert.match(g.description, /^Gold in Pinky Hunt: first place\. /);
+  assert.match(g.description, /^Gold in Pinky Hunt: all 5 found with 7 gems or fewer\. /);
   const s = H.badgeRow(hunt, 'silver', th, 'https://pyr.example');
   assert.equal(s.image_url, 'https://pyr.example/hunt/silver.png');
-  assert.match(s.description, /^Silver in Pinky Hunt: second place\. /);
+  assert.match(s.description, /^Silver in Pinky Hunt: 4 or more of the 5 found\. /);
   for (const r of [g, s]) assert.doesNotMatch(r.name + r.description, /[—–]|badge/i);
 });
 
@@ -657,27 +657,23 @@ test('an admins only hunt sends each note to every admin, never to chat; turned 
   assert.ok(h.db._s.notes.every((n) => n.target_type === 'all' && n.post_to_chat === true));
 });
 
-test('Gold, Silver and Bronze are 1st, 2nd and 3rd: most found, then fewest gems, then the quicker clock; one each', async () => {
+test('medals by thresholds (Ames 2026-10-23): everyone who finds them all within the gold gems wins Gold, several can; none shows before the end', async () => {
   const h = harness();
-  const d = await makeHunt(h);
+  const d = await makeHunt(h);   // 3 mergers: Gold all 3 within 4 gems; Silver 2; Bronze 1
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
-  // All three find everything; P2 with fewest gems; P1 and P3 tie on gems, P3 quicker.
-  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P1, at(60)));
-  await dropAll(d.id, [pt(1, 1, 1), pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P1, at(62)));
-  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P2, at(60)));
-  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P2, at(64)));
-  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P3, at(60)));
-  await dropAll(d.id, [pt(2, 2, 2), pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P3, at(61)));
-  // While it runs nobody sees a medal.
+  const P4 = { id: '55555555-5555-4555-8555-555555555555', username: 'p4' };
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P2, at(60)));            // all, 3 gems: Gold
+  await dropAll(d.id, [pt(2, 2, 2), pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P4, at(61))); // all, 4 gems: Gold too
+  await dropAll(d.id, [pt(1, 1, 1), pt(3, 3, 3), pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)], h.ctx(P1, at(62)));   // all, 5 gems: over Gold's 4, Silver
+  await dropAll(d.id, [pt(1000, 1000, 100), pt(5000, 5000, 100)], h.ctx(P3, at(63)));   // 2 of 3: Silver
   const live = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(70)))).hunts[0];
   assert.ok(live.board.every((b) => b.tier === null) && live.you.tier === null);
   const end = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(121)))).hunts[0];
-  const medal = (uid) => h.db._s.badges.find((b) => b.id === h.db._s.awards.find((a) => a.user_id === uid && !/fastest/.test(h.db._s.badges.find((x) => x.id === a.badge_id).slug)).badge_id).slug.split('-').pop();
-  assert.deepEqual([medal(P2.id), medal(P3.id), medal(P1.id)], ['gold', 'silver', 'bronze']);
-  assert.deepEqual(end.winners, { gold: 1, silver: 1, bronze: 1 });
-  assert.deepEqual(end.board.map((b) => b.tier), ['gold', 'silver', 'bronze']);
-  assert.equal(end.you.tier, 'bronze');
-  assert.match(h.db._s.awards.find((a) => a.user_id === P2.id).reason, /^Gold, first place in Pinky Hunt: 3 of 3 found with 3 gems/);
+  const medal = (uid) => { const a = h.db._s.awards.find((x) => x.user_id === uid && !/fastest/.test(h.db._s.badges.find((b) => b.id === x.badge_id).slug)); return a ? h.db._s.badges.find((b) => b.id === a.badge_id).slug.split('-').pop() : null; };
+  assert.deepEqual([medal(P2.id), medal(P4.id), medal(P1.id), medal(P3.id)], ['gold', 'gold', 'silver', 'silver']);
+  assert.deepEqual(end.winners, { gold: 2, silver: 2, bronze: 0 });
+  assert.equal(end.you.tier, 'silver');
+  assert.match(h.db._s.awards.find((a) => a.user_id === P2.id && !/fastest/.test(h.db._s.badges.find((b) => b.id === a.badge_id).slug)).reason, /^Gold in Pinky Hunt: 3 of 3 found with 3 gems/);
 });
 
 test('Count it: an admin turns a hunter\'s miss on a real error into a place in the key, and everyone is judged again', async () => {
