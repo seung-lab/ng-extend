@@ -937,8 +937,15 @@ function togglePicker(id: string, e?: MouseEvent) {
 const inlinePickerPlace = ref<Record<string, string>>({});
 const PICK_W = 196, PICK_H = 32;
 function placeInlinePicker(e: MouseEvent) {
-  const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const left = Math.max(6, Math.min(window.innerWidth - PICK_W - 6, at.right - PICK_W));
+  const btn = e.currentTarget as HTMLElement;
+  const at = btn.getBoundingClientRect();
+  // Kept inside the chat itself, so on a narrow chat the first emoji are not
+  // past its left edge (Nseraf, 2026-10-23); every message, not only
+  // announcements.
+  const box = btn.closest('.nge-chat-float')?.getBoundingClientRect();
+  const lo = Math.max(6, (box?.left ?? 0) + 4);
+  const hi = Math.min(window.innerWidth - 6, (box?.right ?? window.innerWidth) - 4) - PICK_W;
+  const left = Math.max(lo, Math.min(hi, at.right - PICK_W));
   const above = at.top - PICK_H - 6;
   const top = above >= 6 ? above : Math.min(window.innerHeight - PICK_H - 6, at.bottom + 6);
   inlinePickerPlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` };
@@ -1528,8 +1535,8 @@ function toggleCollapse() {
                       <button v-if="backendStore.isAdmin && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
                               @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></button>
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
-                              @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
-                      <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
+                              @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
+                      <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
                         <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
                         <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                       </span>
