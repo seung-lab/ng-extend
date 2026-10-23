@@ -134,10 +134,13 @@ const tagsIn = (text: string) => people.value.filter(p => {
 const newTags = (before: string, after: string) => { const old = new Set(tagsIn(before)); return tagsIn(after).filter(id => !old.has(id)); };
 /** This board's own address, to keep or share (Ames 2026-10-22). */
 const boardLink = `${window.location.origin}${window.location.pathname}?triage=board&todo`;
-const linkCopied = ref(false);
-async function copyBoardLink() {
-  try { await navigator.clipboard.writeText(boardLink); linkCopied.value = true; setTimeout(() => { linkCopied.value = false; }, 1600); }
-  catch { window.prompt('The To do board link:', boardLink); }
+/** One card's own address: opens the board on that card (Ames 2026-10-23). */
+const cardLink = (c: Card) => `${boardLink}=${c.id}`;
+const linkCopied = ref<string | null>(null);
+async function copyCardLink(c: Card) {
+  const url = cardLink(c);
+  try { await navigator.clipboard.writeText(url); linkCopied.value = c.id; setTimeout(() => { linkCopied.value = null; }, 1600); }
+  catch { window.prompt('The link to this card:', url); }
 }
 // ── People: colors, checklist owners, waiting on, Mine (Ames 2026-10-22) ──
 const PERSON_COLORS = ['#4f8cff', '#2ec4b6', '#f5c542', '#ff6fae', '#38bdf8', '#7c9cff', '#14b8a6'];
@@ -311,6 +314,18 @@ async function markLive(c: Card) {
   await save(c, { status: `✓ Live ${day}` });
 }
 
+/** A click on a list's header folds it, unless it was on one of its buttons. */
+function onHeadClick(e: MouseEvent, key: string) {
+  if ((e.target as HTMLElement | null)?.closest?.('button, a, input, select')) return;
+  toggleFold(key);
+}
+// A comment about one checklist item starts with that item, quoted.
+const commentEl = ref<HTMLTextAreaElement | null>(null);
+function commentOn(text: string) {
+  const quote = `Re: "${text.length > 80 ? text.slice(0, 79) + '…' : text}" `;
+  comment.value = quote + comment.value.replace(/^Re: "[^"]*" /, '');
+  void nextTick(() => { const el = commentEl.value; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); el.scrollIntoView({ block: 'center' }); } });
+}
 const mention = shallowRef<{ el: HTMLTextAreaElement | HTMLInputElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
 const mentionMatches = computed(() => {
   const q = (mention.value?.query || '').toLowerCase();
@@ -830,7 +845,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     <div class="nge-todo-head">
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">← Triage</button>
       <span class="nge-todo-heading"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
-      <button class="nge-todo-btn" @click="copyBoardLink" :title="boardLink">{{ linkCopied ? '✓ Link copied' : '🔗 Copy link to this board' }}</button>
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★ Mine' : '☆ Mine' }}</button>
@@ -861,7 +875,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <span class="nge-todo-list-icon">{{ LIST_ICONS[col.key] }}</span><span class="nge-todo-list-title">{{ col.title }}</span><span class="nge-todo-count">{{ col.rows.length }}</span>
           </button>
           <template v-else>
-          <header class="nge-todo-list-head">
+          <header class="nge-todo-list-head nge-todo-list-head--fold" :title="'Click to fold ' + col.title + ' away'"
+                  @click="onHeadClick($event, col.key)">
             <button type="button" class="nge-todo-mini nge-todo-fold" :title="'Fold ' + col.title + ' away'" @click="toggleFold(col.key)">◂</button>
             <span class="nge-todo-list-icon">{{ LIST_ICONS[col.key] }}</span>
             <span class="nge-todo-list-title">{{ col.title }}</span>
@@ -1040,6 +1055,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card">
         <div class="nge-todo-panel-top">
           <button type="button" class="nge-todo-btn" title="Back to the board (Esc)" @click="openId = null">← Board</button>
+          <button type="button" class="nge-todo-btn nge-todo-cardlink" :title="cardLink(openCard)" @click="copyCardLink(openCard)">{{ linkCopied === openCard.id ? '✓ Link copied' : '🔗 Copy link to this card' }}</button>
           <select class="nge-todo-select" :value="openCard.list" aria-label="List" @change="onListChange(openCard, $event)">
             <option v-for="l in LISTS" :key="l.key" :value="l.key">{{ l.title }}</option>
           </select>
@@ -1126,7 +1142,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <ul class="nge-todo-check">
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done }">
             <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it.text)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it.text) }" :title="'For ' + itemName(it.text)">{{ itemName(it.text).slice(0, 1).toUpperCase() }}</span> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
-            <button class="nge-todo-mini" title="Make this its own card in To do" @click="itemToCard(openCard, i)">↗ Card</button>
+            <button class="nge-todo-mini" title="Comment on this item" @click="commentOn(it.text)">💬 Comment</button>
             <button class="nge-todo-mini" title="Remove this item" aria-label="Remove" @click="removeItem(openCard, i)">×</button>
           </li>
         </ul>
@@ -1141,7 +1157,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}</div>
           <div class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
         </div>
-        <textarea v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
+        <textarea ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
                   @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
         <div class="nge-todo-row">
           <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
@@ -1447,4 +1463,18 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-nurro { width: 52px; height: 52px; animation: nge-todo-bob 3.2s ease-in-out infinite; }
 @keyframes nge-todo-bob { 50% { transform: translateY(-4px) rotate(-3deg); } }
 @media (prefers-reduced-motion: reduce) { .nge-todo-nurro { animation: none; } .nge-todo-card:hover { transform: none; } }
+/* Round 4 (Ames 2026-10-23). */
+.nge-todo-list-head--fold { cursor: pointer; }
+.nge-todo-list-head--fold:hover .nge-todo-list-title { text-decoration: underline; text-underline-offset: 3px; }
+.nge-todo-nurro-empty { width: 110px; height: 110px; }
+.nge-todo-nurro { width: 64px; height: 64px; }
+/* An open card reads at a comfortable size: it was 13px and below. */
+.nge-todo-panel--focus { font-size: 16px; }
+.nge-todo-panel--focus .nge-todo-title-edit { font-size: 22px; font-weight: 700; }
+.nge-todo-panel--focus .nge-todo-notes, .nge-todo-panel--focus .nge-todo-md { font-size: 16px; line-height: 1.55; }
+.nge-todo-panel--focus .nge-todo-label { font-size: 13px; }
+.nge-todo-panel--focus .nge-todo-check li, .nge-todo-panel--focus .nge-todo-check label { font-size: 15.5px; }
+.nge-todo-panel--focus .nge-todo-input, .nge-todo-panel--focus .nge-todo-select, .nge-todo-panel--focus .nge-todo-btn { font-size: 14.5px; }
+.nge-todo-panel--focus .nge-todo-comment-by { font-size: 13px; }
+.nge-todo-panel.nge-todo-panel--focus { max-width: 1040px; }
 </style>

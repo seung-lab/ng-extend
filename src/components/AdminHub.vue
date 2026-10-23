@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import imgNurroBravo from '../images/bravo-nurro.png';
 import { secureWrite } from '../secure_write';
 import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
@@ -3066,7 +3067,10 @@ function practiceWhen(iso: string | null) {
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
           </div>
         </div>
-        <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">{{ g.empty }}</div>
+        <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
+          <img v-if="g.key === 'decide'" :src="imgNurroBravo" alt="" class="nge-triage-zero-nurro" />
+          <div>{{ g.empty }}</div>
+        </div>
         </template>
         </div>
         </div>
@@ -4420,4 +4424,8 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-preview-toggle { margin-left: auto; }
 .nge-triage-preview-toggle[aria-pressed="true"] { border-color: rgba(79, 207, 255, 0.7); }
 .nge-todo-icon { color: #7c9cff; vertical-align: -2px; margin-right: 5px; }
+/* Triage zero: Nurro cheers (Ames 2026-10-23: "use nurro on triage zero"). */
+.nge-triage-zero-nurro { display: block; width: 150px; height: 150px; object-fit: contain; margin: 6px auto 4px; animation: nge-zero-bob 3s ease-in-out infinite; }
+@keyframes nge-zero-bob { 50% { transform: translateY(-6px) rotate(-3deg); } }
+@media (prefers-reduced-motion: reduce) { .nge-triage-zero-nurro { animation: none; } }
 </style>
