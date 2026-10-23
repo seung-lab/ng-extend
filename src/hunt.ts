@@ -483,6 +483,8 @@ async function openHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   judged.clear();
   for (const d of h.you?.drops ?? []) judged.add(d.id);
   for (const g of kept) if (g.judged) judged.add(g.id);
+  onScreenBefore.clear();
+  for (const g of kept) onScreenBefore.add(g.id);
   active = h;
   quietPanels();
   gemsBehindCells(h);
@@ -539,6 +541,8 @@ try {
 } catch { /* no window */ }
 
 const judged = new Set<string>();   // gems the server has answered for (or put back from the run)
+/** Gems already on screen when the Hunt came back (a reload, Back to the start view): never taken off as new ones. */
+const onScreenBefore = new Set<string>();
 
 /**
  * Check each gem as it lands, or keep them until Submit (Ames 2026-10-21: "want option to
@@ -705,6 +709,17 @@ export function startDropWatch() {
         lastClick = null;
         if (waiting.some(w => w.id === a.id)) continue;
         const item = { id: a.id, kind, ...(click ? { x: click.x, y: click.y } : {}) };
+        // Never more gems down than the run has (Celia 2026-10-23: "able to lay down one more gem than she
+        // had"): once the run is done, or the gems waiting for Submit use every gem left, a new one comes
+        // off at once. (A gem on a place found already, or at an edge, uses none and stays.)
+        const you = liveCopy(h)?.you;
+        if (you && !onScreenBefore.has(a.id) && (you.done || (!huntPrefs.auto && waiting.length >= you.gems_left))) {
+          removeGem(h, kind, a.id);
+          tell({ id: a.id, gem: kind, result: 'refused', at: Date.now(), ...(click ? { x: click.x, y: click.y } : {}),
+            text: you.done ? (you.of && you.found >= you.of ? 'You found them all. Your Hunt is done.' : 'You have used all your gems. Your Hunt is done.')
+              : `No gem left for this one: ${waiting.length === 1 ? 'the gem waiting uses your last one' : `the ${waiting.length} gems waiting use them all`}. Submit, or take one back.` });
+          continue;
+        }
         if (huntPrefs.auto) queue.push(item);
         else { waiting.push(item); huntState.waiting = waiting.length; }
       }
@@ -745,6 +760,9 @@ function resumeOnScreen() {
       judged.add(d.id);
       if (kinds.includes(dropKind(d))) fileGem(h, dropKind(d), d.id, d.hit);
     }
+    // The gems already down when the Hunt comes back are the player's: checked again, never taken off as new.
+    onScreenBefore.clear();
+    for (const k of kinds) for (const a of managed(huntLayerName(h, k))?.layer?.localAnnotations ?? []) if (a?.id) onScreenBefore.add(a.id);
     active = h;
     gemsBehindCells(h);
     startDropWatch();
