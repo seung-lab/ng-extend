@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-23T00:00:00Z",
+      "title": "Claim the next 3 Quest cells at once",
+      "items": [
+        "Quests: a Claim next 3 button in the Open list claims the next open cells in one press, up to the 3 you can hold, and opens the first."
+      ]
+    },
+    {
       "at": "2026-10-23T18:21:33Z",
       "title": "Clearer layer tabs, and four fixes",
       "items": [
