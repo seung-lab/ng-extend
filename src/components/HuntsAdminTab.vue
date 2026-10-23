@@ -528,6 +528,7 @@ async function duplicate() {
         <div class="nge-hunts-row">
           <button class="nge-hunts-btn nge-hunts-btn--quiet" :disabled="!picked.length" title="Read the ticked layers from the screen again" @click="autoRead = true; scan(); useScreen()">↻ Read again</button>
         </div>
+        <p v-if="!isNew && !read && !editing.edge_count" class="nge-hunts-warnline">No places where the cells run out of the data are saved yet (a copy keeps the key as it was). <b>Open the link</b>, let the cells load in 3D, and save: they are found then.</p>
         <p v-if="!isNew && !read && form.link" class="nge-hunts-help">The saved key is in the link: <b>Open the link</b> to see its places on screen as layers (Mergers, Extensions, edge), change them, and save.</p>
         <p v-if="!isNew && !read" class="nge-hunts-muted">Saved key: {{ editing.target_count }} {{ editing.target_count === 1 ? 'place' : 'places' }}<template v-if="editing.edge_count">, {{ editing.edge_count }} edge {{ editing.edge_count === 1 ? 'spot' : 'spots' }}</template> on {{ editing.cells?.length || 0 }} {{ (editing.cells?.length || 0) === 1 ? 'cell' : 'cells' }}, {{ datasetName(editing.dataset) }}. Read again to replace it<template v-if="editing.players"> (every answer is scored again)</template>.</p>
         <div v-if="cellRows.length" class="nge-hunts-cells">
