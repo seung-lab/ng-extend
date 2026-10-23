@@ -5244,10 +5244,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
     if (!newOnly) {
       // Load read + dismissed status together (both live on notification_reads).
-      // The server sends at most 1000 rows a request, oldest first, so a
-      // player with more than 1000 reads saw their newest ones come back as
-      // unread (toknow, report 212). Newest first, a page at a time.
+      // The server sends at most 1000 rows a request, so newest first, a page
+      // at a time.
       const reads: any[] = [];
+      let readsFailed = false;
       for (let from = 0; from < 20000; from += 1000) {
         const { data: page, error } = await supabase
           .from('notification_reads')
@@ -5255,13 +5255,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .eq('user_id', userId.value)
           .order('notification_id', { ascending: false })
           .range(from, from + 999);
-        if (error || !page) break;
+        if (error || !page) { readsFailed = true; break; }
         reads.push(...page);
         if (page.length < 1000) break;
       }
-      notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
-      notificationDismissals.value = new Set(
-        (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));
+      // A read that failed (the server busy for a moment) used to empty the
+      // list, and everything already read came back as unread (toknow,
+      // report 212: the reads were all saved on the server). Keep what this
+      // tab knows and add what did come back.
+      const ids = reads.map((r: any) => r.notification_id);
+      const gone = reads.filter((r: any) => r.dismissed).map((r: any) => r.notification_id);
+      notificationReads.value = readsFailed ? new Set([...notificationReads.value, ...ids]) : new Set(ids);
+      notificationDismissals.value = readsFailed ? new Set([...notificationDismissals.value, ...gone]) : new Set(gone);
     }
 
     // "Stop sending at" is a deadline for DELIVERY, not for the notification
@@ -5370,9 +5375,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     patch(notifications.value);
   }
 
+  // Read in one tab is read in the others (report 212: with two Pyr tabs
+  // open, the other tab kept showing what had been read as unread).
+  const readsChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('pyr-notif-reads') : null;
+  if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
+    const m = e.data || {};
+    if (m.user !== userId.value || !Array.isArray(m.ids)) return;
+    const set = m.dismissed ? notificationDismissals : notificationReads;
+    for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
+    if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
+  };
+  function tellOtherTabs(ids: number[], dismissed = false) {
+    if (ids.length) try { readsChannel?.postMessage({ user: userId.value, ids, dismissed }); } catch { /* closed */ }
+  }
+
   async function markNotificationRead(notifId: number) {
     if (!userId.value) return;
     notificationReads.value.add(notifId);
+    tellOtherTabs([notifId]);
     await supabase.from('notification_reads').insert({
       notification_id: notifId,
       user_id: userId.value,
@@ -5387,6 +5407,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     for (const n of unread) {
       notificationReads.value.add(n.id);
     }
+    tellOtherTabs(unread.map(n => n.id));
     // Batch insert (ignore conflicts)
     const rows = unread.map(n => ({ notification_id: n.id, user_id: userId.value }));
     if (rows.length > 0) {
@@ -5605,6 +5626,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notificationDismissals.value.add(notifId);
     notifications.value = notifications.value.filter(n => n.id !== notifId);
     if (!userId.value) return;
+    tellOtherTabs([notifId], true);
     const { error } = await supabase.from('notification_reads').upsert({
       notification_id: notifId,
       user_id: userId.value,
@@ -5630,6 +5652,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!visible.length) return;
     for (const n of visible) notificationDismissals.value.add(n.id);
     notifications.value = pick ? notifications.value.filter(n => !pick.has(n.id)) : [];
+    tellOtherTabs(visible.map(n => n.id), true);
     const rows = visible.map(n => ({
       notification_id: n.id,
       user_id: userId.value,
