@@ -358,9 +358,12 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   /* reaches the shape's very top, so the trace is the only top edge */
   inset: 3px 1px 1px 1px;
   clip-path: polygon(4px 0, calc(100% - 9px) 0, 100% 10px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 5.2px);
-  background: linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
+  /* a stronger fill, so the selected tab reads at a glance (player request,
+     Ames 2026-10-23); it was close to the others' */
+  background: linear-gradient(180deg, #3a72c0, #1f4580 80%);
 }
-.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #f2f8ff; }
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #ffffff; font-weight: 700 !important; text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8); }
+body.nge-friendly-layers .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label[data-nge-label]::after { font-weight: 700 !important; }
 .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number { background: #7ee0ff !important; color: #04101f !important; }
 /* a layer that answers clicks: no box inside the box, the name carries a small lit point */
 .neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label {
@@ -385,7 +388,7 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 .neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number { background: var(--nge-layer-color) !important; color: #05080f !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true] { background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 0%, var(--nge-layer-color) 34%, transparent 96%) !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true]::before {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 70%, #101c34), color-mix(in srgb, var(--nge-layer-color) 44%, #0a1326) 80%);
 }
 /* ── The selected tab's edge is a circuit trace (Ames 2026-10-06, after her
       own chip drawings) ────────────────────────────────────────────────────

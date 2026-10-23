@@ -5244,10 +5244,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
     if (!newOnly) {
       // Load read + dismissed status together (both live on notification_reads).
-      const { data: reads } = await supabase
-        .from('notification_reads')
-        .select('notification_id, dismissed')
-        .eq('user_id', userId.value);
+      // The server sends at most 1000 rows a request, oldest first, so a
+      // player with more than 1000 reads saw their newest ones come back as
+      // unread (toknow, report 212). Newest first, a page at a time.
+      const reads: any[] = [];
+      for (let from = 0; from < 20000; from += 1000) {
+        const { data: page, error } = await supabase
+          .from('notification_reads')
+          .select('notification_id, dismissed')
+          .eq('user_id', userId.value)
+          .order('notification_id', { ascending: false })
+          .range(from, from + 999);
+        if (error || !page) break;
+        reads.push(...page);
+        if (page.length < 1000) break;
+      }
       notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
       notificationDismissals.value = new Set(
         (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));

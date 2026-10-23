@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-23T00:00:00Z",
+      "title": "Clearer layer tabs, and four fixes",
+      "items": [
+        "The selected layer tab is filled in more strongly, with its name in bold, so you can tell at a glance which one you are on.",
+        "Ask for Edit Access is now number 5 in the menu, straight after Advanced Interface.",
+        "Reacting to an announcement in chat: the row of emoji no longer runs off the left edge of the chat.",
+        "Notifications you had read no longer come back as unread.",
+        "Screenshot, whole screen: when drawing the page takes too long, the window now asks you to press Capture screen instead of failing with an error."
+      ]
+    },
+    {
       "at": "2026-10-23T14:58:00Z",
       "title": "Saves that fail are tried again",
       "items": [

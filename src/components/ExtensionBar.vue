@@ -1205,12 +1205,20 @@ function onIconDrop(e: DragEvent, id: string) {
             <span class="nge-menu-num">4</span><span>Advanced Interface</span>
           </div>
         </li>
+        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
+             game. Number 5, straight after Advanced Interface (Ames
+             2026-10-23), the next step once the tutorials are done. -->
+        <li>
+          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
+            <span class="nge-menu-num">5</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+          </div>
+        </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
              mistakes, scored by the server; a pass opens production. Shown
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
             <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
@@ -1248,14 +1256,6 @@ function onIconDrop(e: DragEvent, id: string) {
         <li>
           <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
             <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
-          </div>
-        </li>
-        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
-             game. Last in the menu, where a player looks for what comes next. -->
-        <li class="nge-menu-heading" @click.stop>Edit access</li>
-        <li>
-          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">✦</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
           </div>
         </li>
       </template>
