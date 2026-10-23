@@ -1066,11 +1066,24 @@ export async function saveCellType(
       }
       // A waiting type removes the old one itself, once CAVE has the new one.
       if (res?.ok && existingAnnotationId !== undefined && existingAnnotationId >= 0) {
-        await fetch(baseUrl, {
+        // A failed removal used to be ignored, which left both types in CAVE
+        // and the old one could show again later. Tried again in the
+        // background; removing an id twice is harmless.
+        const oldId = existingAnnotationId;
+        const removeOld = () => fetch(baseUrl, {
           method: 'DELETE',
           headers: authHeaders(caveServer),
-          body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
-        }).catch(() => {});
+          body: JSON.stringify({ annotation_ids: [oldId] }),
+        }).then(r => r.ok || r.status === 404, () => false);
+        if (!await removeOld()) {
+          void (async () => {
+            for (const ms of [5_000, 20_000, 60_000]) {
+              await new Promise(r => setTimeout(r, ms));
+              if (await removeOld()) return;
+            }
+            console.warn('[lightbulb] the old cell type row could not be removed:', oldId);
+          })();
+        }
       }
       // Mirror to localStorage so the lightbulb shows the write immediately,
       // before the next materialization cron run.

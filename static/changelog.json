@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-23T14:58:00Z",
+      "title": "Saves that fail are tried again",
+      "items": [
+        "When the server does not answer, your splits, merges, completions and cell types now wait in your browser and are sent again until they go through, even after a reload. A small note at the bottom of the screen says Couldn't save, retrying, and then Saved.",
+        "Release Claim in the cell menu now says so when the release did not go through, instead of saying Released."
+      ]
+    },
+    {
       "at": "2026-10-23T14:28:17Z",
       "title": "Q and W step through slices",
       "items": [
