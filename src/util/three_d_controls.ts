@@ -32,9 +32,19 @@ function startZoom(): number {
   return 30000;
 }
 
+/** Z and X step back and forward one slice, as comma and period do, so a
+ *  player on a trackpad can step through slices with the left hand
+ *  (annkri #209, like W and S in EyeWire 1; Ames chose Z and X). Z was
+ *  neuroglancer's "snap" (square the view to the axes), still in the command
+ *  palette; X was already off in Pyr. */
+const SLICE_KEYS: [string, string][] = [['keyz', 'z-'], ['keyx', 'z+']];
+
 export function startThreeDControls(viewer: any) {
   const map = viewer?.inputEventBindings?.perspectiveView;
   if (map) for (const [key, action] of BINDINGS) map.set(key, action);
+  for (const m of [viewer?.inputEventBindings?.sliceView, map]) {
+    if (m) for (const [key, action] of SLICE_KEYS) m.set(key, action);
+  }
   // Keep the 3D zoom in range, however it got there: the wheel, a pinch, or
   // a saved view or link from before this limit.
   const scale = viewer?.projectionScale;
