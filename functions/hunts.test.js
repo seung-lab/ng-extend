@@ -764,7 +764,10 @@ test('edges of the dataset: an Extend gem where a branch leaves the data uses no
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
   // Players see the marked edges once the Hunt is open, never before (Ames: "show where the edges [are]").
   assert.deepEqual((await H.huntAction('hunt.current', {}, h.ctx(P1, at(30)))).hunts[0].edges_nm, []);
-  assert.deepEqual((await H.huntAction('hunt.current', {}, h.ctx(P1, at(50)))).hunts[0].edges_nm, [[80000, 80000, 4000], [150000, 150000, 19500]]);
+  const open = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(50)))).hunts[0];
+  assert.deepEqual(open.edges_nm, [[80000, 80000, 4000], [150000, 150000, 19500]]);
+  // The cells glow within edge_nm of the bounds, the margin that judges an edge (one rule for both).
+  assert.deepEqual([open.bounds_nm, open.edge_nm], [[[0, 0, 0], [200000, 200000, 20000]], H.EDGE_NM]);
   const send = (p, id, kind, t) => H.huntAction('hunt.drop', { id: d.id, kind, layer: layer([{ ...p, id }]), dims: DIMS }, h.ctx(P1, at(t)));
   const marked = await send(pt(20000, 20000, 100), 'e1', 'merge', 60);
   assert.deepEqual([marked.drop.edge, marked.run.gems_used], [true, 0]);

@@ -339,6 +339,7 @@ function publicHunt(h, now) {
     id: h.id, title: h.title, description: h.description || '', dataset: h.dataset, admins_only: !!h.admins_only,
     edges_nm: open ? (h._edges || []).map((e) => [e[0], e[1], e[2]]) : [],
     bounds_nm: open ? h._bounds || null : null,
+    edge_nm: EDGE_NM,   // the cells glow within this of the bounds: the same rule that judges an edge
     // The cells, like the view, only once the hunt starts: nobody hunts early.
     cells: open ? cells : [], cell_count: cells.length,
     announce_at: h.announce_at, start_at: h.start_at, end_at: h.end_at, phase: p,

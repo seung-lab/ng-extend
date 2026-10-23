@@ -14,6 +14,7 @@
 import { reactive } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
 import { Uint64 } from 'neuroglancer/util/uint64';
+import { setNgeMeshEdge, getNgeMeshEdge } from 'neuroglancer/mesh/nge_edge';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, findDatasetByCanonical, switchToDataset } from './datasets';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from './util/keep_display';
@@ -34,8 +35,10 @@ export interface HuntInfo {
   results_hours?: number;
   /** The edge spots the key marks, in nanometres: shown to players once the Hunt is open. */
   edges_nm?: number[][];
-  /** The segmentation volume's bounds in nanometres, drawn as a teal box: where the data ends. */
+  /** The segmentation volume's bounds in nanometres: where the data ends. The cells glow teal within edge_nm of them. */
   bounds_nm?: number[][] | null;
+  /** This close to the bounds is the edge of the dataset, nm (the server's judging rule, EDGE_NM). */
+  edge_nm?: number;
   view: any | null;
   you: HuntRun & { best: number; submissions: number; rank: number };
   /** An admin's test run (hunt.test): open as if running, for that admin only; answers are never kept. */
@@ -352,9 +355,17 @@ export const huntEdgeLayerName = (h: HuntInfo) => `${h.test ? 'Hunt test edges' 
 function ensureEdgeLayer(h: HuntInfo) {
   const v = viewer();
   // The marked spots only: the volume drawn as a box was not it (Ames 2026-10-23: "I think we wanted to
-  // try highlighting the actual neurons"); the spots where the cells meet the volume's edge come from the key.
-  const edges = h.edges_nm ?? [];
-  if (!v?.layerSpecification || !edges.length || managed(huntEdgeLayerName(h))) return;
+  // try highlighting the actual neurons"). Where the cells meet the volume's sides they glow (edgeGlow),
+  // so a ring is only for a spot marked away from the sides.
+  const edges = ringEdges(h);
+  const old = managed(huntEdgeLayerName(h));
+  if (old && v?.layerManager) {
+    // A layer from before the glow (it kept every spot) is drawn again with the rings that are left.
+    const had = layerJson(huntEdgeLayerName(h))?.annotations?.length ?? 0;
+    if (had === edges.length) { setRingsVisible(h); return; }
+    try { v.layerManager.removeManagedLayer(old); } catch { /* already gone */ }
+  }
+  if (!v?.layerSpecification || !edges.length) return;
   const cs = v.coordinateSpace?.value;
   const names: string[] = cs?.names ?? [], scales = cs?.scales;
   const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
@@ -369,7 +380,42 @@ function ensureEdgeLayer(h: HuntInfo) {
     annotationColor: EDGE.color, pointSize: 5, onTop: false,
   });
   v.layerSpecification.add(ml);
+  setRingsVisible(h);
 }
+/** The spots the glow does not show: marked away from the volume's sides. */
+function ringEdges(h: HuntInfo): number[][] {
+  const b = h.bounds_nm, m = edgeMarginNm(h) * 1.2;
+  return (h.edges_nm ?? []).filter(e => !b || ![0, 1, 2].some(i => e[i] - b[0][i] <= m || b[1][i] - e[i] <= m));
+}
+const edgeMarginNm = (h: HuntInfo) => Number(h.edge_nm) > 0 ? Number(h.edge_nm) : 5000;
+function setRingsVisible(h: HuntInfo) {
+  const ml = managed(huntEdgeLayerName(h));
+  try { if (ml && ml.visible !== huntPrefs.edges) ml.setVisible(huntPrefs.edges); } catch { /* optional */ }
+}
+
+/**
+ * The cells glow teal where they run out of the data (Ames 2026-10-23: "Can you actually highlight the 3D
+ * mesh tho?"): within the Hunt's edge margin of the segmentation volume's sides, the same rule that judges
+ * an Extend gem there as the edge of the dataset. While a Hunt with bounds is open on its dataset, and the
+ * player has not switched it off ("it might be distracting in a hunt").
+ */
+let glowKey = '';
+const EDGE_RGB: [number, number, number] = [0x42 / 255, 0xd5 / 255, 0xec / 255];
+function edgeGlow(h: HuntInfo | null) {
+  const v = viewer();
+  const b = h?.bounds_nm;
+  const scales = v?.coordinateSpace?.value?.scales;
+  const on = !!(h && b && huntPrefs.edges && scales && scales.length >= 3
+    && gemKinds(h).some(k => managed(huntLayerName(h, k)))
+    && canonicalDataset(currentDatasetTag()) === canonicalDataset(h.dataset));
+  const scaleNm = on ? Float32Array.from([0, 1, 2], i => (Number(scales[i]) || 1e-9) / 1e-9) : null;
+  const key = on ? JSON.stringify([b, edgeMarginNm(h!), Array.from(scaleNm!)]) : '';
+  if (key === glowKey) return;
+  glowKey = key;
+  setNgeMeshEdge(on ? { lo: b![0], hi: b![1], marginNm: edgeMarginNm(h!), scaleNm: scaleNm!, color: EDGE_RGB } : null);
+  try { v?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+}
+try { (window as any).__ngeHuntGlow = { get: getNgeMeshEdge, set: setNgeMeshEdge }; } catch { /* no window */ }
 
 /** The gems sit behind the cells: also on Hunt layers made before (the game keeps Show through by layer name).
  *  And they shrink as the 3D view zooms out past the Hunt's starting zoom (Ames 2026-10-23: "gems too big when I zoom out"). */
@@ -470,7 +516,7 @@ async function openHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   restoreDisplayAfterLoad(snap);
   // The restore and the display keeper settle over a moment and can drop a
   // layer added too early, so add the gem layers until they have stayed put.
-  const names = [...gemKinds(h).map(k => huntLayerName(h, k)), ...((h.edges_nm ?? []).length ? [huntEdgeLayerName(h)] : [])];
+  const names = [...gemKinds(h).map(k => huntLayerName(h, k)), ...(ringEdges(h).length ? [huntEdgeLayerName(h)] : [])];
   let steady = 0;
   for (let i = 0; i < 16 && steady < 3; i++) {
     await new Promise(r => setTimeout(r, 250));
@@ -488,6 +534,7 @@ async function openHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   active = h;
   quietPanels();
   gemsBehindCells(h);
+  edgeGlow(h);
   setTimeout(() => gemsBehindCells(h), 1500);   // after the display keeper has put back what it kept
   startDropWatch();
   // The run's clock starts at the first open (the server keeps the first time; a second open changes nothing).
@@ -553,7 +600,16 @@ export const huntPrefs = reactive({
   /** The Annotations and Selection panels while hunting (Ames 2026-10-21: "an option to hide Annotations
    *  side panel during hunt"): closed unless the player opens them here. Kept in this browser. */
   panels: (() => { try { return localStorage.getItem('nge-hunt-panels') === '1'; } catch { return false; } })(),
+  /** The cells glow where they run out of the data (Ames 2026-10-23: "a way to toggle that on/off bc it
+   *  might be distracting in a hunt"). On unless the player turns it off. Kept in this browser. */
+  edges: (() => { try { return localStorage.getItem('nge-hunt-edges') !== '0'; } catch { return true; } })(),
 });
+export function setHuntEdges(on: boolean) {
+  huntPrefs.edges = on;
+  try { localStorage.setItem('nge-hunt-edges', on ? '1' : '0'); } catch { /* private window */ }
+  edgeGlow(active);
+  if (active) setRingsVisible(active);
+}
 export function setHuntPanels(on: boolean) {
   huntPrefs.panels = on;
   try { localStorage.setItem('nge-hunt-panels', on ? '1' : '0'); } catch { /* private window */ }
@@ -696,6 +752,7 @@ export function startDropWatch() {
   dropTimer = setInterval(() => {
     if (!active) resumeOnScreen();   // layers that came back with the link load after the list
     const h = active;
+    edgeGlow(h);
     if (!h) return;
     hookPanels();
     for (const kind of gemKinds(h)) {
@@ -765,6 +822,7 @@ function resumeOnScreen() {
     for (const k of kinds) for (const a of managed(huntLayerName(h, k))?.layer?.localAnnotations ?? []) if (a?.id) onScreenBefore.add(a.id);
     active = h;
     gemsBehindCells(h);
+    ensureEdgeLayer(h);   // a ring layer from before the glow comes back with the link: drawn again with the rings left
     startDropWatch();
     return;
   }

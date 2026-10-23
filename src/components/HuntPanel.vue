@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, submitWaiting,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -208,6 +208,7 @@ async function toggleMini() {
 }
 /** The check switch. */
 function onAutoChange(e: Event) { setAutoJudge(!!(e.target as HTMLInputElement | null)?.checked); }
+function onEdgesChange(e: Event) { setHuntEdges(!!(e.target as HTMLInputElement | null)?.checked); }
 /** "5 mergers · 5 extensions · 2 cells · 15 gems" (Ames 2026-10-21: "too much text!"). */
 const briefShort = computed(() => {
   const h = hunt.value; if (!h) return '';
@@ -361,6 +362,12 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               {{ huntState.waiting ? `Submit ${huntState.waiting} ${huntState.waiting === 1 ? 'gem' : 'gems'}` : 'Drop gems, then submit' }}
             </button>
           </div>
+          <!-- The cells glow teal where they run out of the data; off if it distracts (Ames 2026-10-23) -->
+          <label v-if="opened && hunt?.bounds_nm" class="nge-hunt-switch nge-hunt-switch--edge" title="On: the cells glow teal where they run out of the data. An Extend gem there is the edge of the dataset and uses no gem.">
+            <input type="checkbox" role="switch" :checked="huntPrefs.edges" @change="onEdgesChange" />
+            <span class="nge-hunt-switch-track" aria-hidden="true"><span class="nge-hunt-switch-knob"></span></span>
+            <span class="nge-hunt-switch-text">Show the edge of the dataset</span>
+          </label>
 
           <!-- The last gem's answer -->
           <div v-if="huntState.pending" class="nge-hunt-news nge-hunt-news--pending" role="status"><span class="nge-hunt-news-head">Checking…</span></div>
@@ -724,6 +731,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-switch input:checked + .nge-hunt-switch-track .nge-hunt-switch-knob { transform: translateX(14px); background: #e6f7ff; box-shadow: 0 0 8px rgb(var(--hn-cyan) / 0.8); }
 .nge-hunt-switch input:focus-visible + .nge-hunt-switch-track { box-shadow: 0 0 0 2px rgb(var(--hn-cyan) / 0.5); }
 .nge-hunt-switch:hover { color: #fff; }
+.nge-hunt-switch--edge input:checked + .nge-hunt-switch-track { background: rgba(66, 213, 236, 0.22); border-color: rgba(66, 213, 236, 0.85); }
+.nge-hunt-switch--edge input:checked + .nge-hunt-switch-track .nge-hunt-switch-knob { background: #dffaff; box-shadow: 0 0 8px rgba(66, 213, 236, 0.9); }
 .nge-hunt-howpanel {
   padding: 10px 12px 8px; border-radius: 10px;
   background: rgba(66, 213, 236, 0.06); border: 1px solid rgba(66, 213, 236, 0.28);

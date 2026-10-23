@@ -17,6 +17,7 @@
 import {NgeShell} from 'neuroglancer/mesh/nge_hover';
 import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine} from 'neuroglancer/mesh/nge_tint';
 import {getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
+import {getNgeMeshEdge} from 'neuroglancer/mesh/nge_edge';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
 import {VisibleLayerInfo} from 'neuroglancer/layer';
@@ -170,6 +171,8 @@ const ngeFineMat = mat4.create();
 // EyeWire II Lantern mode: the cell is lit around where you are, and left in
 // shadow elsewhere (mesh/nge_lantern.ts).
 const ngeLanternMat = mat4.create();
+// The edge of the dataset in the Hunt (mesh/nge_edge.ts): model to nanometres.
+const ngeEdgeMat = mat4.create();
 
 // ── EyeWire II hover effects (ngeHoverStyle, wolfryder101 #181) ─────────────
 /** How far behind the cell its outline and halo shells sit, in clip space
@@ -445,6 +448,16 @@ export class MeshShaderManager {
     } else {
       gl.uniform3f(shader.uniform('uNgeLanternLight'), 0, 1, 1);
     }
+    // The edge of the dataset (the Hunt): only where colour is drawn.
+    const edge = renderContext.emitColor ? getNgeMeshEdge() : null;
+    if (edge !== null) {
+      gl.uniformMatrix4fv(shader.uniform('uNgeEdgeModel'), false, ngeLanternNmFromModel(ngeEdgeMat, edge, modelMat));
+      gl.uniform4f(shader.uniform('uNgeEdgeLo'), edge.lo[0], edge.lo[1], edge.lo[2], edge.marginNm);
+      gl.uniform4f(shader.uniform('uNgeEdgeHi'), edge.hi[0], edge.hi[1], edge.hi[2], 1);
+      gl.uniform3f(shader.uniform('uNgeEdgeColor'), edge.color[0], edge.color[1], edge.color[2]);
+    } else {
+      gl.uniform4f(shader.uniform('uNgeEdgeHi'), 0, 0, 0, 0);
+    }
   }
 
   drawFragmentHelper(
@@ -530,6 +543,12 @@ export class MeshShaderManager {
         // A second, coloured light (the reaper's red lantern): xyz nm, w reach.
         builder.addUniform('highp vec4', 'uNgeLantern2');
         builder.addUniform('highp vec3', 'uNgeLantern2Color');
+        // The edge of the dataset: model to nanometres; the volume's low corner
+        // (xyz, nm) and the margin (w, nm); its high corner (xyz) and on (w).
+        builder.addUniform('highp mat4', 'uNgeEdgeModel');
+        builder.addUniform('highp vec4', 'uNgeEdgeLo');
+        builder.addUniform('highp vec4', 'uNgeEdgeHi');
+        builder.addUniform('highp vec3', 'uNgeEdgeColor');
         if (silhouetteRenderingEnabled) {
           builder.addUniform('highp float', 'uSilhouettePower');
         }
@@ -618,6 +637,17 @@ if (uNgeFineOn > 0.5) {
     highp vec4 fineTint = texture(uNgeFine, fineCoord);
     if (fineTint.a > 0.5) vColor.rgb = lightingFactor * fineTint.rgb;
   }
+}
+if (uNgeEdgeHi.w > 0.5) {
+  // EyeWire II Hunt: where the cell runs out of the data, within the margin of
+  // the volume's sides, it takes the edge colour, lit a little from within so
+  // it shows on the far side too (Ames 2026-10-23: "highlight the 3D mesh").
+  highp vec3 edgeAt = (uNgeEdgeModel * vec4(vertexPosition, 1.0)).xyz;
+  highp vec3 edgeFromLo = edgeAt - uNgeEdgeLo.xyz;
+  highp vec3 edgeFromHi = uNgeEdgeHi.xyz - edgeAt;
+  highp float edgeDist = min(min(min(edgeFromLo.x, edgeFromLo.y), edgeFromLo.z), min(min(edgeFromHi.x, edgeFromHi.y), edgeFromHi.z));
+  highp float edgeAmount = 1.0 - smoothstep(0.95 * uNgeEdgeLo.w, uNgeEdgeLo.w, edgeDist);
+  vColor.rgb = mix(vColor.rgb, min(uNgeEdgeColor * (0.45 + 0.6 * lightingFactor), vec3(1.0)) * uColor.a, edgeAmount);
 }
 if (uNgeLanternLight.x > 0.5) {
   highp vec3 lanternFrom = (uNgeLanternModel * vec4(vertexPosition, 1.0)).xyz - uNgeLantern.xyz;

@@ -85,7 +85,7 @@ export function ngeLanternPositionNm(out: Float32Array, lantern: NgeLantern, inv
 }
 
 /** Global coordinates to nanometres, as a matrix, times the model matrix. */
-export function ngeLanternNmFromModel(out: mat4, lantern: NgeLantern, modelMat: mat4) {
+export function ngeLanternNmFromModel(out: mat4, lantern: {scaleNm: Float32Array}, modelMat: mat4) {
   const s = lantern.scaleNm;
   // scale each ROW i of modelMat by s[i] (column major: element [col*4 + row])
   for (let col = 0; col < 4; col++) {
