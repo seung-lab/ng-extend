@@ -245,7 +245,7 @@ function useScreen() {
     setCells(r.cells);
     const parts = layers.map(l => `${placesWord(l.points, l.kind)} from "${l.name}"`).join(' and ');
     const edgeNote = (r.key.bounds_nm ? ' The volume\'s edges were read too: an Extend gem within 5 µm of them is the edge of the dataset.' : '')
-      + (r.autoEdges?.spots?.length ? ` Found ${r.autoEdges.spots.length} ${r.autoEdges.spots.length === 1 ? 'place' : 'places'} where the cells run out of the data; players see each as a teal ring.`
+      + (r.autoEdges?.spots?.length ? ` Found ${r.autoEdges.spots.length} ${r.autoEdges.spots.length === 1 ? 'place' : 'places'} where the cells run out of the data; players see the cells glow teal there.`
         : r.autoEdges?.pieces && r.autoEdges.loaded < r.autoEdges.pieces ? ' The cells\' meshes are still loading: where they run out of the data is found again when you save.' : '');
     message.value = `Read ${parts}, ${r.cells.length === 1 ? '1 cell' : `${r.cells.length} cells`}, on ${datasetName(r.dataset)}.${edgeNote} Save to keep them.`;
   } catch (e: any) { error.value = e?.message || String(e); }
@@ -509,7 +509,7 @@ async function duplicate() {
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
-        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find. Branches that run out of the data are no missing extensions: mark those ends in a layer named <b>edge</b> (it is picked up as edges by itself; the volume's own edges count without marking), and an Extend gem there is answered "Edge of the dataset", with no gem used.</p>
+        <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find. Branches that run out of the data are no missing extensions: mark those ends in a layer named <b>edge</b> (it is picked up as edges by itself; the volume's own edges count without marking, and players see the cells glow teal there), and an Extend gem there is answered "Edge of the dataset", with no gem used.</p>
         <div class="nge-hunts-row">
           <input v-model="form.link" class="nge-hunts-input" placeholder="https://… #!…" aria-label="View link" />
           <button class="nge-hunts-btn" :disabled="!form.link.trim()" @click="openLink">Open the link</button>
