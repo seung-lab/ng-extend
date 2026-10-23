@@ -11,7 +11,8 @@
  */
 export type NotifKind = 'main' | 'triage' | 'admin';
 
-const ADMIN_STARTS = ['🔬 Retina access request', 'Proofreading Test:', '💬 Reply to your question from'];
+// To do board tags and hand overs start with 📋 (functions/todos.js makeTagger; Ames 2026-10-23).
+const ADMIN_STARTS = ['🔬 Retina access request', 'Proofreading Test:', '💬 Reply to your question from', '📋 '];
 const TRIAGE_STARTS = ['🗂', '🎉 Fixed'];
 
 export function notifKind(title: string | null | undefined, isAdmin: boolean): NotifKind {

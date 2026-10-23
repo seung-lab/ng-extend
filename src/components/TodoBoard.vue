@@ -844,7 +844,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
   <div class="nge-todo" :class="{ 'nge-todo--light': light }">
     <div class="nge-todo-head">
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">← Triage</button>
-      <span class="nge-todo-heading"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
+      <span class="nge-todo-heading nge-todo-heading--home" title="Back to the board" @click="openId = null"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★ Mine' : '☆ Mine' }}</button>
@@ -970,7 +970,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url" draggable="false">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
             </div>
             <div class="nge-todo-card-meta">
-              <span v-if="c.size" class="nge-todo-size nge-todo-size--on" :title="SIZE_WORDS[c.size]">{{ c.size }}</span>
+              
               <span v-if="c.due_on" class="nge-todo-chip" :class="{ 'nge-todo-chip--late': isOverdue(c) }" :title="'Due ' + c.due_on">{{ dueWords(c.due_on) }}</span>
               <span v-if="c.checklist.length && !perPerson(c).length" class="nge-todo-chip" :class="{ 'nge-todo-chip--all': checkCount(c).done === checkCount(c).all }" title="Checklist">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
               <span v-for="pp in perPerson(c)" :key="pp.id" class="nge-todo-chip nge-todo-chip--person" :class="{ 'nge-todo-chip--all': pp.done === pp.all }"
@@ -1037,12 +1037,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
            another card is still one click away. Esc or Board goes back. -->
       <nav v-if="openCard" class="nge-todo-strip" aria-label="All cards">
         <section v-for="col in columns" :key="col.key" class="nge-todo-strip-list">
-          <div class="nge-todo-strip-head">{{ col.title }} <span class="nge-todo-count">{{ col.rows.length }}</span></div>
+          <div class="nge-todo-strip-head nge-todo-heading--home" title="Back to the board" @click="openId = null">{{ col.title }} <span class="nge-todo-count">{{ col.rows.length }}</span></div>
           <button v-for="c in col.rows" :key="c.id" type="button" class="nge-todo-strip-card" :class="{ 'nge-todo-strip-card--on': c.id === openId }"
                   :aria-current="c.id === openId ? 'true' : undefined" @click="openUp(c)">
             <span class="nge-todo-strip-title">{{ c.title }}</span>
             <span class="nge-todo-strip-meta">
-              <span v-if="c.size" class="nge-todo-size nge-todo-size--on">{{ c.size }}</span>
+              
               <span v-if="c.checklist.length">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
               <span v-if="c.due_on" :class="{ 'nge-todo-strip-late': isOverdue(c) }">{{ dueWords(c.due_on) }}</span>
               <span v-if="c.owner_id" class="nge-todo-avatar nge-todo-avatar--small">{{ initialOf(c.owner_id) }}</span>
@@ -1478,4 +1478,6 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-panel--focus .nge-todo-input, .nge-todo-panel--focus .nge-todo-select, .nge-todo-panel--focus .nge-todo-btn { font-size: 14.5px; }
 .nge-todo-panel--focus .nge-todo-comment-by { font-size: 13px; }
 .nge-todo-panel.nge-todo-panel--focus { max-width: 1040px; }
+.nge-todo-heading--home { cursor: pointer; }
+.nge-todo-heading--home:hover { text-decoration: underline; text-underline-offset: 4px; }
 </style>
