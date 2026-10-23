@@ -50,6 +50,8 @@ export async function secureWrite<T = any>(action: SecureAction, args: Record<st
   });
   let json: any = null;
   try { json = await res.json(); } catch { /* non JSON error page */ }
-  if (!res.ok || !json?.ok) throw new Error(json?.error || `Save failed (${res.status})`);
+  // The status rides along, so a caller can tell a server that is down (5xx)
+  // from one that said no (4xx).
+  if (!res.ok || !json?.ok) throw Object.assign(new Error(json?.error || `Save failed (${res.status})`), { status: res.status });
   return json.data as T;
 }

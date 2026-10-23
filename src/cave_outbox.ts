@@ -79,10 +79,11 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 let started = false;
 let paused = false; // CAVE said the sign in is not valid: wait for a new one
+let nextAt = 0; // when the next round is, for the save status chip
 
 function changed() {
   writeLocal(items);
-  document.dispatchEvent(new CustomEvent('nge:cave-outbox', { detail: { waiting: items.length } }));
+  document.dispatchEvent(new CustomEvent('nge:cave-outbox', { detail: { waiting: items.length, nextAt: timer ? nextAt : 0 } }));
 }
 
 /** How many saves wait for CAVE in this browser. */
@@ -237,7 +238,9 @@ async function run() {
 function schedule(ms: number) {
   if (!items.length || paused) return;
   if (timer) clearTimeout(timer);
+  nextAt = Date.now() + ms;
   timer = setTimeout(() => { void run(); }, ms);
+  changed();
 }
 
 /** Bring in the saves this player left waiting on another computer. */
@@ -279,6 +282,10 @@ export function startCaveOutbox() {
   // Back online, or back to the tab: try now rather than at the next round.
   const soon = () => { if (items.length && !running) { wait = FIRST_WAIT; paused = false; schedule(2_000); } };
   window.addEventListener('online', soon);
+  // The save status chip's "try now".
+  window.addEventListener('nge:save-retry-now', soon);
+  // Saves left waiting before a reload show in the chip at once.
+  setTimeout(changed, 0);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) soon(); });
   // A new sign in after CAVE said the old one was not valid.
   window.addEventListener('storage', e => { if (e.key && e.key.startsWith('auth_token_v2_')) soon(); });
