@@ -256,11 +256,12 @@ function tierFor(found, th, gems, gl) {
 /** The most points one answer may carry: set per hunt, else three per merger (at least ten). */
 /**
  * The gems each player has (Ames 2026-10-21: "The Hunt finishes when you find all the
- * problems or run out of gems"): set per hunt, else twice the problems, at least two spare.
+ * problems or run out of gems"): set per hunt, else the problems and half again, at least two
+ * spare (Ames 2026-10-23: twice the problems, 40 for 20, was "a little high").
  */
 function maxPoints(h) {
   const n = posInt(h && h.target_count);
-  return posInt(h && h.max_points) || Math.max(n + 2, 2 * n, 1);
+  return posInt(h && h.max_points) || Math.max(n + 2, Math.ceil(1.5 * n), 1);
 }
 
 /** The most gems each medal allows (0: no limit). Gold by default: the problems and a third more. */
@@ -332,6 +333,7 @@ function publicHunt(h, now) {
   const cells = (Array.isArray(h.cells) ? h.cells : []).map((c) => ({ root: String(c.root), label: String(c.label || ''), ...(Array.isArray(c.soma) ? { soma: c.soma } : {}) }));
   return {
     id: h.id, title: h.title, description: h.description || '', dataset: h.dataset, admins_only: !!h.admins_only,
+    edges_nm: open ? (h._edges || []).map((e) => [e[0], e[1], e[2]]) : [],
     // The cells, like the view, only once the hunt starts: nobody hunts early.
     cells: open ? cells : [], cell_count: cells.length,
     announce_at: h.announce_at, start_at: h.start_at, end_at: h.end_at, phase: p,
@@ -739,6 +741,7 @@ async function current(ctx) {
     }
     const key = await db.key(h.id);
     h._kinds = kindCounts(key);
+    if (phase(h, now) !== 'announced' && db.keyExtras) h._edges = (await db.keyExtras(h.id)).edges;
     const subs = await db.submissions(h.id);
     const board = leaderboard(subs);
     const th = thresholds(h), gl = gemLimits(h);
@@ -755,7 +758,14 @@ async function current(ctx) {
     const medalOf = new Map(medals.filter((m) => m.tier !== 'fastest').map((m) => [m.user_id, m.tier]));
     const speed = medals.find((m) => m.tier === 'fastest') || null;
     const order = { gold: 0, silver: 1, bronze: 2 };
-    const ranked = ended ? [...board].sort((a, b) => (order[medalOf.get(a.user_id)] ?? 9) - (order[medalOf.get(b.user_id)] ?? 9)) : board;
+    let clockOf = new Map();
+    if (ended && board.length && db.allSubmissions) {
+      const runs = (await db.allSubmissions(h.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)));
+      clockOf = new Map(runs.map((x) => [x.user_id, runClock(x, normalizeDrops(x.points))]));
+    }
+    const clock = (b) => { const v = clockOf.get(b.user_id); return v == null ? Infinity : v; };
+    const ranked = ended ? [...board].sort((a, b) => ((order[medalOf.get(a.user_id)] ?? 9) - (order[medalOf.get(b.user_id)] ?? 9))
+      || (clock(a) - clock(b)) || (b.found - a.found) || (a.gems - b.gems)) : board;
     const shown = ended ? ranked.slice(0, 200) : top;
     if (ended) { const more = await db.names([...new Set([...shown.map((b) => b.user_id), ...(speed ? [speed.user_id] : [])])]); Object.assign(names, more); }
     hunts.push({
@@ -885,7 +895,8 @@ async function testOpen(args, ctx) {
   if (!h.view || !key.length) fail(409, 'Read the answer key and save the Hunt before trying it.');
   h._kinds = kindCounts(key);
   const cells = cleanCells(h.cells);
-  return { ...publicHunt(h, now), prizes: await prizesFor(h, db, ctx.site), phase: 'live', test: true, cells, cell_count: cells.length, view: startView(h),
+  const edges = db.keyExtras ? (await db.keyExtras(h.id)).edges : [];
+  return { ...publicHunt(h, now), edges_nm: edges.map((e) => [e[0], e[1], e[2]]), prizes: await prizesFor(h, db, ctx.site), phase: 'live', test: true, cells, cell_count: cells.length, view: startView(h),
     you: { ...runView(h, [], key), best: 0, submissions: 0, rank: 0 }, board: [], players: 0, winners: { gold: 0, silver: 0, bronze: 0 } };
 }
 
@@ -938,7 +949,7 @@ async function finalize(h, ctx, { force = false } = {}) {
   for (const w of winners) counts[w.tier]++;
   if (fresh.length && notify) {
     await notify(fresh.map((w) => ({ user_id: w.user_id, title: `🏅 New Achievement: ${badges[w.tier].name}`,
-      body: w.tier === 'fastest' ? `${badges[w.tier].description}` : `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`,
+      body: `You earned the "${badges[w.tier].name}" award! ${w.tier === 'fastest' ? badges[w.tier].description : `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`}`,
       image: badges[w.tier].image_url })));
   }
   // Chat hears the results once, in the results post (postResults), not a line per winner.

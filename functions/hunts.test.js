@@ -73,13 +73,14 @@ test('tiers default to all, two thirds and one third; gems count too; each playe
   assert.deepEqual(H.thresholds({ target_count: 4, tiers: { gold: 9, silver: 9, bronze: 0 } }), { gold: 4, silver: 4, bronze: 2 });
   const th = H.thresholds({ target_count: 5 });
   assert.deepEqual([5, 4, 3, 2, 1, 0].map((f) => H.tierFor(f, th)), ['gold', 'silver', 'bronze', 'bronze', null, null]);
-  // Gems: twice the problems, at least two spare; the admin can set it.
-  assert.equal(H.maxPoints({ target_count: 3 }), 6);
+  // Gems: the problems and half again, at least two spare; the admin can set it.
+  assert.equal(H.maxPoints({ target_count: 3 }), 5);     // the problems and half again, at least 2 spare
+  assert.equal(H.maxPoints({ target_count: 20 }), 30);   // was 40 (Ames 2026-10-23: "a little high")
   assert.equal(H.maxPoints({ target_count: 1 }), 3);
   assert.equal(H.maxPoints({ target_count: 7, max_points: 12 }), 12);
   // Gold allows the problems and a third more gems by default; the other medals no limit unless set.
   assert.deepEqual(H.gemLimits({ target_count: 3 }), { gold: 4, silver: 0, bronze: 0 });
-  assert.deepEqual(H.gemLimits({ target_count: 3, tiers: { gold_gems: 3, silver_gems: 5, bronze_gems: 99 } }), { gold: 3, silver: 5, bronze: 6 });
+  assert.deepEqual(H.gemLimits({ target_count: 3, tiers: { gold_gems: 3, silver_gems: 5, bronze_gems: 99 } }), { gold: 3, silver: 5, bronze: 5 });   // capped at the 5 gems
   const t3 = H.thresholds({ target_count: 3 }), g3 = H.gemLimits({ target_count: 3 });
   assert.equal(H.tierFor(3, t3, 4, g3), 'gold');
   assert.equal(H.tierFor(3, t3, 5, g3), 'silver');   // all found, but too many gems for gold
@@ -256,17 +257,17 @@ test('each gem is judged as it lands: right, wrong, or found already; a run ends
   const one = (p, id, c = p1) => H.huntAction('hunt.drop', { id: d.id, layer: layer([{ ...p, id }]), dims: DIMS }, c);
   const r1 = await one(pt(1010, 1000, 100), 'a');      // right: the first merger
   assert.deepEqual(r1.drop, { id: 'a', hit: true, kind: 'cut' });
-  assert.deepEqual([r1.run.found, r1.run.of, r1.run.gems_used, r1.run.gems_left, r1.run.done], [1, 3, 1, 5, false]);
+  assert.deepEqual([r1.run.found, r1.run.of, r1.run.gems_used, r1.run.gems_left, r1.run.done], [1, 3, 1, 4, false]);
   assert.equal(r1.nearest_um, undefined);               // a player never hears how near a miss was
   const r2 = await one(pt(1, 1, 1), 'b');               // wrong
   assert.equal(r2.drop.hit, false);
-  assert.equal(r2.run.gems_left, 4);
+  assert.equal(r2.run.gems_left, 3);
   const r3 = await one(pt(1020, 1000, 100), 'c');       // the first merger again: no gem used
   assert.equal(r3.drop.already, true);
   assert.equal(r3.run.gems_used, 2);
   await one(pt(5000, 5050, 100), 'd');
   const r5 = await one(pt(9000, 1000, 200), 'e');
-  assert.deepEqual([r5.run.found, r5.run.gems_used, r5.run.done, r5.run.tier], [3, 4, true, null]);   // the medal is a place, given at the end
+  assert.deepEqual([r5.run.found, r5.run.gems_used, r5.run.done, r5.run.tier], [3, 4, true, null]);   // the medal is given at the end
   await assert.rejects(one(pt(2, 2, 2), 'f'), /found them all/);
   // The run is one row, every gem in order.
   const rows = h.db._s.subs.filter((x) => x.user_id === P1.id);
@@ -274,9 +275,9 @@ test('each gem is judged as it lands: right, wrong, or found already; a run ends
   assert.equal(rows[0].found, 3);
   assert.equal(rows[0].close, 4);
   assert.deepEqual(rows[0].points.map((x) => x.id), ['a', 'b', 'd', 'e']);
-  // Out of gems: six misses end a run.
+  // Out of gems: five misses end a run.
   const p2 = h.ctx(P2, at(61));
-  for (let i = 0; i < 6; i++) await one(pt(1, i + 1, 1), 'm' + i, p2);
+  for (let i = 0; i < 5; i++) await one(pt(1, i + 1, 1), 'm' + i, p2);
   await assert.rejects(one(pt(1000, 1000, 100), 'late', p2), /used all your gems/);
   // One gem at a time.
   await assert.rejects(H.huntAction('hunt.drop', { id: d.id, layer: layer([pt(1, 1, 1), pt(2, 2, 2)]), dims: DIMS }, h.ctx(P3, at(61))), /one gem at a time/);
@@ -285,9 +286,9 @@ test('each gem is judged as it lands: right, wrong, or found already; a run ends
   assert.deepEqual([cur.you.found, cur.you.gems_used, cur.you.done, cur.you.tier, cur.you.rank], [3, 4, true, null, 1]);
   assert.deepEqual(cur.you.drops.map((x) => [x.id, x.hit]), [['a', true], ['b', false], ['d', true], ['e', true]]);
   assert.deepEqual(cur.you.drops[0].at, [1010, 1000, 100]);
-  assert.deepEqual(cur.board.map((b) => [b.found, b.gems]), [[3, 4], [0, 6]]);
+  assert.deepEqual(cur.board.map((b) => [b.found, b.gems]), [[3, 4], [0, 5]]);
   assert.equal(cur.board[0].name, 'nseraf');
-  assert.equal(cur.budget, 6);
+  assert.equal(cur.budget, 5);
   // The old answer button is gone.
   await assert.rejects(H.huntAction('hunt.submit', { id: d.id, layer: KEY, dims: DIMS }, p1), /judges each gem/);
 });
@@ -474,7 +475,7 @@ test('an admin can try any hunt: it opens as running, each gem is judged against
   assert.equal(t.phase, 'live');
   assert.ok(t.view && Array.isArray(t.view.layers) && !JSON.stringify(t.view).includes('Mergers'));
   assert.deepEqual(t.cells.map((c) => c.root), ['648518346350533705']);
-  assert.deepEqual([t.you.found, t.you.gems_left, t.you.done], [0, 6, false]);
+  assert.deepEqual([t.you.found, t.you.gems_left, t.you.done], [0, 5, false]);
   // A right gem, then one 2.5 µm off the third merger (tolerance 2 µm): the admin hears how near.
   const a = await H.huntAction('hunt.test_drop', { id: d.id, layer: layer([{ ...pt(1000, 1000, 100), id: 't1' }]), dims: DIMS, prev: [] }, admin);
   assert.equal(a.drop.hit, true);
@@ -760,6 +761,9 @@ test('edges of the dataset: an Extend gem where a branch leaves the data uses no
   assert.equal(d.target_count, 1);
   assert.deepEqual([d.edge_count, d.has_bounds], [1, true]);
   await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  // Players see the marked edges once the Hunt is open, never before (Ames: "show where the edges [are]").
+  assert.deepEqual((await H.huntAction('hunt.current', {}, h.ctx(P1, at(30)))).hunts[0].edges_nm, []);
+  assert.deepEqual((await H.huntAction('hunt.current', {}, h.ctx(P1, at(50)))).hunts[0].edges_nm, [[80000, 80000, 4000]]);
   const send = (p, id, kind, t) => H.huntAction('hunt.drop', { id: d.id, kind, layer: layer([{ ...p, id }]), dims: DIMS }, h.ctx(P1, at(t)));
   const marked = await send(pt(20000, 20000, 100), 'e1', 'merge', 60);
   assert.deepEqual([marked.drop.edge, marked.run.gems_used], [true, 0]);
@@ -787,4 +791,19 @@ test('"Hunt results" stays in the top bar 24 hours after the end unless the Hunt
   await H.huntAction('hunt.save', { id: d.id, fields: { tiers: { results_hours: 6 } } }, h.ctx(ADMIN, at(122), true));
   assert.equal(H.resultsHours(h.db._s.hunts[0]), 6);
   assert.equal(H.resultsHours({ tiers: { results_hours: 999 } }), 168);
+});
+
+test('at the end the board goes by medal, then the quicker clock within each medal; the Achievement note names the award (Ames 2026-10-23)', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const all = [pt(1000, 1000, 100), pt(5000, 5000, 100), pt(9000, 1000, 200)];
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P2, at(50)));      // opens early, finds all at 60: 10 hours
+  await dropAll(d.id, all, h.ctx(P2, at(60)));
+  await H.huntAction('hunt.start', { id: d.id }, h.ctx(P3, at(58)));      // opens at 58, finds all at 59: 1 hour
+  await dropAll(d.id, all, h.ctx(P3, at(59)));
+  await dropAll(d.id, all.slice(0, 2), h.ctx(P1, at(61)));                // 2 of 3: Silver
+  const end = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(121)))).hunts[0];
+  assert.deepEqual(end.board.map((b) => [b.name, b.tier]), [['krzysztof', 'gold'], ['annkri', 'gold'], ['nseraf', 'silver']]);
+  assert.ok(h.bell.every((n) => /^You earned the ".+" award! /.test(n.body)), JSON.stringify(h.bell.map((n) => n.body)));
 });

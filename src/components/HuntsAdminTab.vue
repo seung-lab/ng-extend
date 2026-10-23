@@ -234,8 +234,8 @@ const scheduled = computed(() => phase.value === 'announced' || phase.value === 
 const keyNeeded = computed(() => isNew.value && !read.value);
 const defaultsFor = computed(() => {
   const n = read.value?.count ?? editing.value?.target_count ?? 0;
-  // As the server: twice the problems (at least two spare); Gold allows a third more gems than problems.
-  return n ? { gold: n, silver: Math.ceil((2 * n) / 3), bronze: Math.ceil(n / 3), points: Math.max(n + 2, 2 * n), goldGems: n + Math.ceil(n / 3) } : null;
+  // As the server: the problems and half again (at least two spare); Gold allows a third more gems than problems.
+  return n ? { gold: n, silver: Math.ceil((2 * n) / 3), bronze: Math.ceil(n / 3), points: Math.max(n + 2, Math.ceil(1.5 * n)), goldGems: n + Math.ceil(n / 3) } : null;
 });
 
 async function save(status?: 'draft' | 'scheduled') {
@@ -548,7 +548,7 @@ async function duplicate() {
           <label>Tolerance (µm) <input v-model.number="form.tolerance_um" type="number" min="0.1" max="100" step="0.5" class="nge-hunts-input" /></label>
           <label>Gems per player <input v-model.number="form.max_points" type="number" min="1" class="nge-hunts-input" :placeholder="defaultsFor ? `auto: ${defaultsFor.points}` : 'auto'" /></label>
         </div>
-        <p class="nge-hunts-help">A gem finds a problem of its kind within the tolerance. Each player has <b>Gems per player</b> gems, one run: their Hunt ends when they find them all or the gems run out. Left empty: twice the problems.</p>
+        <p class="nge-hunts-help">A gem finds a problem of its kind within the tolerance. Each player has <b>Gems per player</b> gems, one run: their Hunt ends when they find them all or the gems run out. Left empty: the problems and half again (at least 2 spare), so 30 for 20 problems.</p>
         <p class="nge-hunts-help"><b>The medals:</b> for each, the problems to find and the most gems used. Every hunter who reaches a medal wins it, so several can win Gold. Left empty: Gold for all of them, using the problems and a third more in gems; Silver two thirds and Bronze one third, with no gem limit. The Speed award goes to the fastest to find them all, or, if nobody does, the fastest of those who found the most. Medals are revealed at the end.</p>
         <div class="nge-hunts-grid">
           <div v-for="t in TIERS" :key="t" class="nge-hunts-tierbox">

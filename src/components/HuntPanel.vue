@@ -443,7 +443,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span class="nge-hunt-who">{{ b.name }}</span>
             <img v-if="b.fastest" src="hunt/fastest-128.png" class="nge-hunt-speedmark" title="Fastest" alt="Fastest" />
             <span v-if="b.tier && phase === 'ended'" class="nge-hunt-tierdot" :class="`nge-hunt-tierdot--${b.tier}`" :title="TIER_WORD[b.tier]"></span>
-            <span class="nge-hunt-found">{{ b.found }}/{{ hunt.target_count }}<span class="nge-hunt-gemcount"> · {{ b.gems }}◆</span></span>
+            <span class="nge-hunt-found">{{ b.found }}/{{ hunt.target_count }}<span class="nge-hunt-gemcount"> · {{ b.gems }} {{ b.gems === 1 ? 'gem' : 'gems' }}</span></span>
           </li>
         </ol>
       </section>

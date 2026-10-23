@@ -1088,6 +1088,7 @@ function playBatchChime() {
   margin-top: 20px;
 }
 .nge-hero-label {
+  font-family: 'Orbitron', 'Inter', system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.35em;
@@ -1112,6 +1113,7 @@ function playBatchChime() {
   animation: nge-hero-glitch-in 0.6s 0.5s ease-out both;
 }
 .nge-hero-subtitle {
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 15px;
   color: rgba(180, 200, 220, 0.7);
   text-align: center;
@@ -1121,6 +1123,7 @@ function playBatchChime() {
   animation: nge-hero-glitch-in 0.6s 0.7s ease-out both;
 }
 .nge-hero-hint {
+  font-family: 'Orbitron', 'Inter', system-ui, sans-serif;
   font-size: 11px;
   color: rgba(0, 200, 255, 0.3);
   margin-top: 8px;

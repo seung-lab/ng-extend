@@ -31,6 +31,8 @@ export interface HuntInfo {
   budget: number; gem_limits: { gold: number; silver: number; bronze: number };
   /** Hours "Hunt results" stays in the top bar after the end (24 unless the Hunt says). */
   results_hours?: number;
+  /** The edge spots the key marks, in nanometres: shown to players once the Hunt is open. */
+  edges_nm?: number[][];
   view: any | null;
   you: HuntRun & { best: number; submissions: number; rank: number };
   /** An admin's test run (hunt.test): open as if running, for that admin only; answers are never kept. */
@@ -333,15 +335,41 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
     });
     v.layerSpecification.add(ml);
   }
+  ensureEdgeLayer(h);
   pickKind(h, gemKinds(h).includes(huntState.kind) ? huntState.kind : gemKinds(h)[0]);
 }
 
-/** The gems sit behind the cells: also on Hunt layers made before (the game keeps Show through by layer name). */
+/** Where the edges of the dataset are, shown to players: teal rings, read only, so nobody spends a
+ *  gem finding them (Ames 2026-10-23: "we should just highlight/show where the edges [are]"). */
+export const huntEdgeLayerName = (h: HuntInfo) => `${h.test ? 'Hunt test edges' : 'Hunt edges'}: ${h.title}`;
+function ensureEdgeLayer(h: HuntInfo) {
+  const v = viewer();
+  const edges = h.edges_nm ?? [];
+  if (!v?.layerSpecification || !edges.length || managed(huntEdgeLayerName(h))) return;
+  const cs = v.coordinateSpace?.value;
+  const names: string[] = cs?.names ?? [], scales = cs?.scales;
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (!scales || ix.some(i => i < 0)) return;
+  const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
+  const points = edges.map(e => { const p = here.slice(); ix.forEach((i, k) => { p[i] = e[k] / (Number(scales[i]) * 1e9); }); return p; });
+  const ml = makeLayer(v.layerSpecification, huntEdgeLayerName(h), {
+    type: 'annotation', source: { url: 'local://annotations' },
+    annotations: points.map((p, i) => ({ type: 'point', id: `edge-${i}`, point: p })),
+    annotationColor: EDGE.color, pointSize: 5, onTop: false,
+  });
+  v.layerSpecification.add(ml);
+}
+
+/** The gems sit behind the cells: also on Hunt layers made before (the game keeps Show through by layer name).
+ *  And they shrink as the 3D view zooms out past the Hunt's starting zoom (Ames 2026-10-23: "gems too big when I zoom out"). */
 function gemsBehindCells(h: HuntInfo) {
-  for (const k of gemKinds(h)) {
-    const ml = managed(huntLayerName(h, k));
-    const onTop = ml?.layer?.constructor?.type === 'annotation' ? ml.layer.annotationDisplayState?.ngeOnTop : null;
-    try { if (onTop && onTop.value) onTop.value = false; } catch { /* the setting is optional */ }
+  const ref = Number((h.view as any)?.projectionScale) || Number(viewer()?.projectionScale?.value) || 0;
+  for (const name of [...gemKinds(h).map(k => huntLayerName(h, k)), huntEdgeLayerName(h)]) {
+    const ml = managed(name);
+    const ds = ml?.layer?.constructor?.type === 'annotation' ? ml.layer.annotationDisplayState : null;
+    if (!ds) continue;
+    try { if (ds.ngeOnTop && ds.ngeOnTop.value) ds.ngeOnTop.value = false; } catch { /* the setting is optional */ }
+    try { if (ds.ngeShrinkRef && ref > 0) ds.ngeShrinkRef.value = ref; } catch { /* the setting is optional */ }
   }
 }
 
@@ -398,7 +426,14 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
     try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ id: h.id, test: !!h.test, at: Date.now() })); } catch { /* private window */ }
     const ok = await switchToDataset(ds, { forJump: true });
     if (!ok) throw new Error('Could not switch dataset.');
-    return 'switching';
+    // The switch happens in place (no reload): wait for it, then carry on into the Hunt (Ames 2026-10-23:
+    // "switched me but didn't take me to the hunt"). If the page reloads instead, takeHuntAfterSwitch carries on.
+    const want = canonicalDataset(h.dataset);
+    for (let i = 0; i < 40 && canonicalDataset(currentDatasetTag()) !== want; i++) await new Promise(r => setTimeout(r, 250));
+    if (canonicalDataset(currentDatasetTag()) !== want) return 'switching';
+    try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* private window */ }
+    for (let i = 0; i < 40 && !viewer()?.state; i++) await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 800));   // the new dataset's layers settle before the Hunt's view replaces them
   }
   const v = viewer();
   if (!v?.state) throw new Error('The viewer is not ready yet. Try again in a moment.');
@@ -412,7 +447,7 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   restoreDisplayAfterLoad(snap);
   // The restore and the display keeper settle over a moment and can drop a
   // layer added too early, so add the gem layers until they have stayed put.
-  const names = gemKinds(h).map(k => huntLayerName(h, k));
+  const names = [...gemKinds(h).map(k => huntLayerName(h, k)), ...((h.edges_nm ?? []).length ? [huntEdgeLayerName(h)] : [])];
   let steady = 0;
   for (let i = 0; i < 16 && steady < 3; i++) {
     await new Promise(r => setTimeout(r, 250));

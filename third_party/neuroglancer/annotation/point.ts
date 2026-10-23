@@ -90,6 +90,7 @@ class RenderHelper extends AnnotationRenderHelper {
     const {rank} = this;
     builder.addUniform('highp float', 'uNgePointScale');
     builder.addUniform('highp float', 'uNgeGem');
+    builder.addUniform('highp float', 'uNgeShrink');
     builder.addUniform('highp float', 'uNgeBig');
     // Position of point in model coordinates.
     defineVectorArrayVertexShaderInput(
@@ -127,6 +128,7 @@ ng_markerDiameter *= uNgePointScale * uNgeBig;
 // The gem fills the upper half of its quad, so the quad is big: a gem about
 // 22 px tall at 1x (it read as a small dot at the dot's own size).
 if (uNgeGem > 0.5) ng_markerDiameter = max(ng_markerDiameter * 4.0, 44.0 * uNgePointScale);
+ng_markerDiameter *= uNgeShrink;
 ng_markerBorderWidth *= uNgePointScale;
 vColor.a *= clipCoefficient;
 vBorderColor.a *= clipCoefficient;
@@ -214,6 +216,14 @@ emitAnnotation(vec4(color.rgb, color.a * ${this.getCrossSectionFadeFactor()}));
       this.gl.uniform1f(shader.uniform('uNgeGem'), ngePointGem.value && marker === 'pyr' && !this.targetIsSliceView ? 1 : 0);
       // The layer's own point size (Annotations tab slider), in every view.
       this.gl.uniform1f(shader.uniform('uNgeBig'), ngeSize.value);
+      // Smaller as the 3D view zooms out past the layer's reference zoom (the Hunt's gems).
+      const ref = context.annotationLayer.state.displayState.ngeShrinkRef?.value || 0;
+      let shrink = 1;
+      if (ref > 0 && !this.targetIsSliceView) {
+        const zoom = Number((window as any).viewer?.projectionScale?.value) || 0;
+        if (zoom > ref) shrink = Math.max(1 / 3, ref / zoom);
+      }
+      this.gl.uniform1f(shader.uniform('uNgeShrink'), shrink);
       const binder = shader.vertexShaderInputBinders['VertexPosition'];
       binder.enable(1);
       this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, context.buffer.buffer);
