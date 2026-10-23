@@ -4378,8 +4378,14 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 /* ── The To do board's column and button (Ames 2026-10-19) ── */
 .nge-triage-board .nge-triage-col--todo { border-top: 3px solid #7c9cff; }
 .nge-triage-light .nge-triage-col--todo { border-top-color: #4a63d6; }
-.nge-triage-todo-open { color: #b3c4ff; border-color: rgba(124, 156, 255, 0.45); }
-.nge-triage-light .nge-triage-todo-open { color: #2c3f9e; border-color: #b8c4f2; }
+/* The way to the To do board: a bright pill (Ames 2026-10-23: "more fun"). */
+.nge-triage-todo-open, .nge-triage-light .nge-triage-todo-open {
+  color: #fff !important; font-weight: 700; border: none !important;
+  background: linear-gradient(90deg, #4f8cff, #2ec4b6 60%, #f5c542) !important;
+  box-shadow: 0 2px 10px rgba(46, 140, 220, 0.35); transition: transform 0.15s, box-shadow 0.15s;
+}
+.nge-triage-todo-open:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(46, 140, 220, 0.45); }
+.nge-triage-todo-open .nge-todo-icon { color: #fff; }
 /* The To do board fills the board's window. */
 .nge-triage-board > .nge-todo { flex: 1 1 auto; }
 </style>

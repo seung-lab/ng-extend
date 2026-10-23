@@ -645,14 +645,37 @@ function toggleTodoSort() {
   todoByDue.value = !todoByDue.value;
   try { localStorage.setItem(SORT_KEY, todoByDue.value ? 'due' : 'order'); } catch { /* not remembered */ }
 }
-// Done folds to a narrow strip (Ames 2026-10-21: "a way to collapse Done").
+// Any list folds to a narrow strip (Ames 2026-10-21: "a way to collapse
+// Done"; 2026-10-23: "why can't I collapse To Do").
 const FOLD_KEY = 'nge_todo_done_folded_v1';
-const doneFolded = ref((() => { try { return localStorage.getItem(FOLD_KEY) === '1'; } catch { return false; } })());
-function toggleDoneFold() {
-  doneFolded.value = !doneFolded.value;
-  try { localStorage.setItem(FOLD_KEY, doneFolded.value ? '1' : '0'); } catch { /* not remembered */ }
+const FOLDS_KEY = 'nge_todo_folded_v2';
+const folded = ref<Record<string, boolean>>((() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FOLDS_KEY) || 'null');
+    if (saved && typeof saved === 'object') return saved;
+    return { done: localStorage.getItem(FOLD_KEY) === '1' };
+  } catch { return {}; }
+})());
+const isFolded = (key: string) => !!folded.value[key];
+function toggleFold(key: string) {
+  // Never all three: the last open list stays open.
+  if (!folded.value[key] && LISTS.filter(l => !folded.value[l.key]).length <= 1) return;
+  folded.value = { ...folded.value, [key]: !folded.value[key] };
+  try { localStorage.setItem(FOLDS_KEY, JSON.stringify(folded.value)); } catch { /* not remembered */ }
 }
-const listColumns = computed(() => (doneFolded.value ? 'minmax(0, 1fr) minmax(0, 1fr) 44px' : 'repeat(3, minmax(0, 1fr))'));
+const listColumns = computed(() => LISTS.map(l => (folded.value[l.key] ? '44px' : 'minmax(0, 1fr)')).join(' '));
+const LIST_ICONS: Record<string, string> = { todo: '🎯', doing: '⚡', done: '🏆' };
+/** The start of a card's notes, as plain words, for its face. */
+function excerpt(notes: string): string {
+  return String(notes || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`>#]+/g, '')
+    .replace(/^\s*(?:[-•]|\d+\.)\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^(.{0,260})(\s.*)?$/, (m, head, rest) => head + (rest ? '…' : ''));
+}
 
 // Formatting in notes, as in the reply box: bold, bullets, numbers. Notes
 // show through renderSafeMarkdown, never as raw HTML.
@@ -803,14 +826,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 
     <div v-else class="nge-todo-body">
       <div v-if="!openCard" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
-        <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': col.key === 'done' && doneFolded }]"
+        <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
-          <button v-if="col.key === 'done' && doneFolded" type="button" class="nge-todo-rail" title="Open Done" @click="toggleDoneFold">
-            <span class="nge-todo-list-title">{{ col.title }}</span><span class="nge-todo-count">{{ col.rows.length }}</span>
+          <button v-if="isFolded(col.key)" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
+            <span class="nge-todo-list-icon">{{ LIST_ICONS[col.key] }}</span><span class="nge-todo-list-title">{{ col.title }}</span><span class="nge-todo-count">{{ col.rows.length }}</span>
           </button>
           <template v-else>
           <header class="nge-todo-list-head">
-            <button v-if="col.key === 'done'" type="button" class="nge-todo-mini nge-todo-fold" title="Fold Done away" @click="toggleDoneFold">◂</button>
+            <button type="button" class="nge-todo-mini nge-todo-fold" :title="'Fold ' + col.title + ' away'" @click="toggleFold(col.key)">◂</button>
+            <span class="nge-todo-list-icon">{{ LIST_ICONS[col.key] }}</span>
             <span class="nge-todo-list-title">{{ col.title }}</span>
             <span class="nge-todo-count">{{ col.rows.length }}</span>
             <span v-if="col.key === 'todo' && sizeSummary.length" class="nge-todo-sizes" title="Sizes waiting in To do">
@@ -897,6 +921,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span v-for="b in buildBadges(c)" :key="b.url" class="nge-todo-badge" :class="'nge-todo-badge--' + b.state" :title="b.title">{{ b.word }}</span>
             </div>
             <div v-if="c.status" class="nge-todo-card-status">{{ c.status }}</div>
+            <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt">{{ excerpt(c.notes) }}</div>
             <div v-if="(c.links || []).length" class="nge-todo-links" @click.stop>
               <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url" draggable="false">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
             </div>
@@ -911,6 +936,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span v-if="c.triage_id" class="nge-todo-chip" title="Made from a player report">{{ reportLabel(c.triage_id) }}</span>
               <span v-if="c.owner_id" class="nge-todo-avatar" :style="{ background: colorOf(c.owner_id) }" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
             </div>
+            <div class="nge-todo-card-by">{{ c.owner_id ? nameOf(c.owner_id) : (c.created_by || '') }}<template v-if="c.updated_at"> · {{ ago(c.updated_at) }}</template></div>
             <div v-if="waitingOn(c).length" class="nge-todo-waiting">Waiting on {{ waitingOn(c).map(p => firstName(p.name)).join(', ') }}</div>
           </article>
           <div v-if="dropAt?.list === col.key && !dropAt.id" class="nge-todo-drop-end"></div>
@@ -1368,4 +1394,28 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 @keyframes nge-todo-cheer-in { from { transform: translateY(20px) scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
 .nge-todo-list-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .nge-todo-nurro-empty { width: 54px; height: 54px; object-fit: contain; opacity: 0.85; }
+/* Round 3 (Ames 2026-10-23): cards like the triage board's, and more fun. */
+/* Wide lists show their cards two across, as the triage board does. */
+.nge-todo-list:not(.nge-todo-list--folded) { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: 10px; align-content: start; }
+.nge-todo-list:not(.nge-todo-list--folded) > :not(.nge-todo-card) { grid-column: 1 / -1; }
+.nge-todo-card { padding: 12px 14px; border-radius: 12px; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; }
+.nge-todo-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(46, 90, 200, 0.18); }
+.nge-todo-card-title { font-size: 16.5px; font-weight: 700; line-height: 1.3; margin-right: 44px; }
+.nge-todo-card-excerpt {
+  margin-top: 6px; font-size: 13.5px; line-height: 1.45; color: var(--text); opacity: 0.85;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nge-todo-card-by { margin-top: 8px; font-size: 12px; color: var(--dim); }
+.nge-todo-list-icon { font-size: 15px; }
+.nge-todo-list-title { font-size: 16px; }
+.nge-todo-rail { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.nge-todo-list--doing { background: linear-gradient(180deg, rgba(46, 196, 182, 0.07), var(--col) 140px); }
+.nge-todo-list--todo { background: linear-gradient(180deg, rgba(79, 140, 255, 0.07), var(--col) 140px); }
+.nge-todo-list--done { background: linear-gradient(180deg, rgba(245, 197, 66, 0.08), var(--col) 140px); }
+.nge-todo-head { padding: 8px 12px; border-radius: 12px;
+  background: linear-gradient(90deg, rgba(79, 140, 255, 0.14), rgba(46, 196, 182, 0.12) 45%, rgba(245, 197, 66, 0.1) 75%, rgba(255, 111, 174, 0.12)); }
+.nge-todo-heading { font-size: 19px; }
+.nge-todo-nurro { width: 52px; height: 52px; animation: nge-todo-bob 3.2s ease-in-out infinite; }
+@keyframes nge-todo-bob { 50% { transform: translateY(-4px) rotate(-3deg); } }
+@media (prefers-reduced-motion: reduce) { .nge-todo-nurro { animation: none; } .nge-todo-card:hover { transform: none; } }
 </style>
