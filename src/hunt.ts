@@ -543,6 +543,8 @@ async function openHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
       const r = await huntCall<{ run: HuntRun }>('hunt.start', { id: h.id });
       const copy = liveCopy(h);
       if (copy && r?.run) copy.you = { ...copy.you, ...r.run };
+      // The board read before the run began has no row for you; the page asks again only at the end.
+      if (r?.run) void loadHunts();
     } catch (e) { console.warn('[hunt] could not start the clock:', e); }
   }
   return 'ok';
@@ -736,7 +738,7 @@ async function judgeNext() {
       if (mine) {
         mine.found = r.run.found; mine.gems = r.run.gems_used;
         copy.board.sort((a, b) => b.found - a.found || a.gems - b.gems).forEach((b, i) => { b.rank = i + 1; });
-      }
+      } else if (!h.test) void loadHunts();   // no row for you yet (the board was read before your run): ask once
     }
   } finally {
     busy = false;
