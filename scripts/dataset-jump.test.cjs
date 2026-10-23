@@ -36,6 +36,18 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
     for (const host of ['https://global.daf-apis.com', 'https://global.brain-wire-test.org', 'https://minnie.microns-daf.com']) apps.push(host, host + '/', host + '/nglstate', host + '/nglstate/', host + '/nglstate/api/v1', host + '/segmentation', host + '/segmentation/');
     const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: apps };
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
+    // A sign in screen after the switch, as a player meets one: up for 6 s
+    // once the page has loaded. Inline !important beats the test's hiding rule.
+    if (sessionStorage.getItem('test_fake_signin')) {
+      sessionStorage.removeItem('test_fake_signin');
+      window.addEventListener('load', () => {
+        const d = document.createElement('div');
+        d.className = 'nge-login-blocker';
+        d.setAttribute('style', 'display:block !important; position:fixed; left:0; top:0; width:20px; height:20px;');
+        document.body.appendChild(d);
+        setTimeout(() => { d.remove(); window.__signinGone = Date.now(); }, 6000);
+      });
+    }
   });
   await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org/, r => r.fulfill(json({})));
   await context.route(/\/auth_info$/, r => r.fulfill(json({ login_url: 'https://global.daf-apis.com/sticky_auth' })));
@@ -134,13 +146,17 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
     // A chip on another dataset: the switch reloads into Retina's start view,
     // and the library comes back open on Available.
     await openSwitcher();
+    await page.evaluate(() => sessionStorage.setItem('test_fake_signin', '1'));
     const reloaded = page.waitForEvent('load', { timeout: 40000 }).then(() => true, () => false);
     await page.click('.nge-ds-card:has(.nge-ds-card-label:text-is("EyeWire II: Retina")) .nge-ds-task >> nth=0');
     check('Retina Available cells: the switch reloads the page', await reloaded);
     await ready();
     await page.waitForFunction(() => window.viewer.layerManager.managedLayers.some(l => l.name === 'stroeh_mouse_retina'), null, { timeout: 40000 }).catch(() => {});
     check('Retina is on screen', (await layers()).includes('stroeh_mouse_retina') && await dataLabel() === 'Data: Retina', { layers: await layers(), label: await dataLabel(), stateReads });
-    const back = await page.waitForSelector('.nge-cl-panel', { timeout: 20000 }).then(() => true, () => false);
+    const back = await page.waitForSelector('.nge-cl-panel', { timeout: 30000 }).then(() => true, () => false);
+    const order = await page.evaluate(() => ({ gone: window.__signinGone || 0, now: Date.now(), entering: !!document.querySelector('.nge-dst') }));
+    check('the library waits until the sign in screen is gone', back && order.gone > 0 && order.now >= order.gone, order);
+    check('the library opens after Now entering has finished, not over it', back && !order.entering, order);
     await page.waitForTimeout(800);
     check('the Cell Library comes back open on Available', back && /^Available/.test(await activeTab() || ''), await activeTab());
     check('the note left for the next page is used up', await page.evaluate(() => sessionStorage.getItem('nge_cl_after_switch')) === null);
