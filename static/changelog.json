@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-23T00:00:00Z",
+      "at": "2026-10-23T20:30:24Z",
       "title": "Split screen opens without a flash",
       "items": [
         "Opening split screen from the 2D tab no longer flashes a grey panel, and the layer tabs keep their names instead of blinking to img for a moment. The 2D view's background is black now, like the 3D view's."
