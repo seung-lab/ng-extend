@@ -52,7 +52,7 @@ jobs:
       - name: Install headless Chromium
         run: |
           npm install --prefix "$RUNNER_TEMP/pw" --no-save --no-audit --no-fund playwright@1.56.1
-          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps --only-shell chromium
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --only-shell chromium
       - name: Check and alert
         env:
           SMOKE_URL: ${{ inputs.url }}

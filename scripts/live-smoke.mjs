@@ -42,8 +42,9 @@ const REPEAT_MS = 6 * 3600 * 1000;
 const WATCH_MS = 60000;
 const DEPLOY_WAIT_MS = 15 * 60 * 1000;
 // Pixels the test meshes must draw in the 3D panel. FIB-25 at this zoom
-// draws a few thousand; with no meshes the count is 0.
-const MIN_LIT = 300;
+// draws a few thousand once loaded, a few hundred while loading on a slow
+// runner; with no meshes the count is 0.
+const MIN_LIT = 100;
 
 // A public dataset with meshes, so the check needs no sign in.
 const PUBLIC_VIEW = {
