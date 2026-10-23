@@ -544,7 +544,23 @@ watch([chatQuery, () => chatMessages.value.length, () => chatStore.loadingHistor
 });
 const searchingBack = computed(() => !!chatQuery.value && chatQuery.value.fromTime != null && chatStore.loadingHistory);
 /** What the list draws: everything, or only the matches while searching. */
-const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value));
+/** Announcements this player closed with their × (Ames 2026-10-23: "I want
+ *  to be able to X to delete these and the Today in Pyr update"). Hidden in
+ *  this browser for this player only: others still see them, and the
+ *  notification stays in the bell. Kept to the latest 200. */
+const HIDDEN_ANNOUNCE_KEY = 'nge-chat-hidden-announcements';
+const hiddenAnnouncements = ref<Set<number>>((() => {
+  try { return new Set<number>((JSON.parse(localStorage.getItem(HIDDEN_ANNOUNCE_KEY) || '[]') as unknown[]).map(Number).filter(Number.isFinite)); } catch { return new Set<number>(); }
+})());
+function hideAnnouncement(id: number | string | null | undefined) {
+  const n = Number(id);
+  if (!Number.isFinite(n)) return;
+  const next = new Set(hiddenAnnouncements.value); next.add(n);
+  hiddenAnnouncements.value = next;
+  try { localStorage.setItem(HIDDEN_ANNOUNCE_KEY, JSON.stringify([...next].slice(-200))); } catch { /* private window */ }
+}
+const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value)
+  .filter(m => !(m.type === 'message' && m.notificationId && hiddenAnnouncements.value.has(Number(m.notificationId)))));
 function openSearch() {
   searchOpen.value = true;
   if (collapsed.value) toggleCollapse();
@@ -1388,6 +1404,8 @@ function toggleCollapse() {
                     </span>
                   </span>
                   <span class="nge-chat-announce-cta">Open →</span>
+                  <button class="nge-chat-announce-hide" title="Hide this from your chat (it stays in your notifications)" aria-label="Hide this announcement"
+                          @click.stop="hideAnnouncement(msg.notificationId)" @keydown.enter.stop>×</button>
                   <div v-if="msg.id != null && Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row nge-chat-react-row--announce" @click.stop>
                     <button v-for="(list, emo) in reactionsOf(msg)" :key="emo" class="nge-chat-react"
                             :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
@@ -2116,6 +2134,11 @@ function toggleCollapse() {
 .nge-chat-react-add.nge-chat-react-add--inline { position: relative; top: auto; right: auto; flex: 0 0 auto; }
 .nge-chat-react-row--announce { flex: 1 0 100%; margin-top: 3px; }
 .nge-chat-announce-text { flex: 1; color: #d6e6ff; }
+.nge-chat-announce-hide {
+  flex: none; background: none; border: none; padding: 0 2px; margin-left: 2px;
+  color: rgba(214, 230, 255, 0.45); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.nge-chat-announce-hide:hover { color: #fff; }
 .nge-chat-announce-thumb {
   flex: 0 0 auto; width: 46px; height: 46px; object-fit: cover; border-radius: 6px;
   background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(120, 170, 255, 0.3);

@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-23T00:00:00Z",
+      "title": "Hide announcements in chat",
+      "items": [
+        "Announcements in chat, like Today in Pyr, have an \u00d7 to hide them from your chat. They stay in your notifications."
+      ]
+    },
+    {
+      "at": "2026-10-23T00:00:00Z",
       "title": "Z and X step through slices",
       "items": [
         "Press Z and X to step back and forward one slice at a time, as COMMA and PERIOD do, so you can keep your other hand on the trackpad or mouse."
