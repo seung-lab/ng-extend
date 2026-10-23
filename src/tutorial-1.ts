@@ -458,7 +458,7 @@ It missed a branch. Let's see if we can find it.`,
   // offers a 4 panel view, see no_four_panel.ts, so the step is gone.)
   //13 - gif
   {
-    text: `Press COMMA and PERIOD, or Z and X, to step through the EM slices. You can also hover your mouse over EM and scroll through images.
+    text: `Press COMMA and PERIOD, or Q and W, to step through the EM slices. You can also hover your mouse over EM and scroll through images.
 
 Don't worry if you lose the neuron. The Next button in this section resets this view.`,
     position: OVER_2D,

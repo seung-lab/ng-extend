@@ -32,12 +32,12 @@ function startZoom(): number {
   return 30000;
 }
 
-/** Z and X step back and forward one slice, as comma and period do, so a
+/** Q and W step back and forward one slice, as comma and period do, so a
  *  player on a trackpad can step through slices with the left hand
- *  (annkri #209, like W and S in EyeWire 1; Ames chose Z and X). Z was
- *  neuroglancer's "snap" (square the view to the axes), still in the command
- *  palette; X was already off in Pyr. */
-const SLICE_KEYS: [string, string][] = [['keyz', 'z-'], ['keyx', 'z+']];
+ *  (annkri #209, like W and S in EyeWire 1). First Z and X, but Z is
+ *  neuroglancer's snap, which players use (Ames 2026-10-23); Q and W were
+ *  the free keys on the left. */
+const SLICE_KEYS: [string, string][] = [['keyq', 'z-'], ['keyw', 'z+']];
 
 export function startThreeDControls(viewer: any) {
   const map = viewer?.inputEventBindings?.perspectiveView;
