@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-23T00:00:00Z",
+      "title": "EyeWire Radio plays in one tab at a time",
+      "items": [
+        "With Pyr open in several tabs, only one plays EyeWire Radio. A new tab stays quiet while another is playing, and turning the radio on in a tab moves the music there."
+      ]
+    },
+    {
       "at": "2026-10-23T13:52:35Z",
       "title": "Right click works right up to the edge of the data",
       "items": [
