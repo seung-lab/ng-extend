@@ -1291,9 +1291,11 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 /* Only the newest plain message shows (Nseraf: in cut and merge mode the
    errors stacked up line after line, and the bar, the cut bar and the
    TODO / PROOFREAD legend all rose with them; "They should stay
-   stationary"). A line with a newer plain line after it is hidden. */
-#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status):has(~ li:not(.neuroglancer-tool-status):not(.nge-fp-status)) {
-  display: none;
+   stationary"). A line with a newer shown plain line after it is hidden.
+   !important: neuroglancer shows each line with an inline display: block,
+   which beat this rule (Ames 2026-10-23: still four lines). */
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status):has(~ li:not(.neuroglancer-tool-status):not(.nge-fp-status):not([style*="display: none"])) {
+  display: none !important;
 }
 #statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status)::before {
   content: '';
