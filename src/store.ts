@@ -5243,21 +5243,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
 
     if (!newOnly) {
-      // Load read + dismissed status together (both live on notification_reads).
-      // Our gateway (functions/community-data.js) refuses a page over 500 rows: asking for 1000 failed every time and showed everything as unread (2026-10-23). Newest first, a page
-      // at a time.
+      // Read + dismissed status together (both live on notification_reads),
+      // for just the notifications this feed can show: the page just read,
+      // and the ones delivered before (kept below). It used to read every
+      // row a player had, and the gateway sends at most 500, so a player with
+      // more lost the rest to "unread" (report 212).
+      const wanted = [...new Set([...(allNotifs as any[]).map(n => Number(n.id)),
+        ...(useUserPreferencesStore().prefs.notifDelivered || [])])].filter(Number.isInteger).slice(0, 450);
       const reads: any[] = [];
       let readsFailed = false;
-      for (let from = 0; from < 20000; from += 500) {
-        const { data: page, error } = await supabase
+      if (wanted.length) {
+        const { data, error } = await supabase
           .from('notification_reads')
           .select('notification_id, dismissed')
           .eq('user_id', userId.value)
-          .order('notification_id', { ascending: false })
-          .range(from, from + 499);
-        if (error || !page) { readsFailed = true; break; }
-        reads.push(...page);
-        if (page.length < 500) break;
+          .in('notification_id', wanted);
+        if (error || !data) readsFailed = true;
+        else reads.push(...data);
       }
       // A read that failed (the server busy for a moment) used to empty the
       // list, and everything already read came back as unread (toknow,
