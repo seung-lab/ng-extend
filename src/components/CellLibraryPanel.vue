@@ -1681,6 +1681,14 @@ function rememberAfterSwitch(reqId?: string, tab: string = 'help') {
   try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab, reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
 }
 function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ } }
+/** Asked for a tab while already open (the Switch Dataset window's chips on
+ *  the dataset on screen): go to it. */
+function onOpenAsked(e: Event) {
+  const tab = (e as CustomEvent).detail?.tab;
+  if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+}
+onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
+onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
 function isOnDataset(raw: string | undefined | null): boolean {
   return !raw || canonicalDataset(raw) === canonicalDataset(getCurrentDatasetName() || activeDataset.value);
 }
