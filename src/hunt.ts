@@ -84,7 +84,11 @@ export const huntState = reactive({
   /** Server time minus this browser's, so a wrong clock never opens a hunt early. */
   offset: 0,
   now: Date.now(),
+  /** The Hunt opening now, and the step it is on, for the Entering the Hunt animation (HuntOpening.vue). */
+  opening: null as null | { title: string; step: string; token: number },
 });
+/** The step the opening Hunt is on (shown under Entering the Hunt). */
+function openingStep(step: string) { if (huntState.opening) huntState.opening = { ...huntState.opening, step }; }
 
 /**
  * A branch test site or a local build (not the live game or the Princeton site). The server
@@ -346,8 +350,10 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
 export const huntEdgeLayerName = (h: HuntInfo) => `${h.test ? 'Hunt test edges' : 'Hunt edges'}: ${h.title}`;
 function ensureEdgeLayer(h: HuntInfo) {
   const v = viewer();
-  const edges = h.edges_nm ?? [], box = h.bounds_nm ?? null;
-  if (!v?.layerSpecification || (!edges.length && !box) || managed(huntEdgeLayerName(h))) return;
+  // The marked spots only: the volume drawn as a box was not it (Ames 2026-10-23: "I think we wanted to
+  // try highlighting the actual neurons"); the spots where the cells meet the volume's edge come from the key.
+  const edges = h.edges_nm ?? [];
+  if (!v?.layerSpecification || !edges.length || managed(huntEdgeLayerName(h))) return;
   const cs = v.coordinateSpace?.value;
   const names: string[] = cs?.names ?? [], scales = cs?.scales;
   const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
@@ -358,8 +364,6 @@ function ensureEdgeLayer(h: HuntInfo) {
     type: 'annotation', source: { url: 'local://annotations' },
     annotations: [
       ...edges.map((e, i) => ({ type: 'point', id: `edge-${i}`, point: toVox(e) })),
-      // The segmentation volume: a branch that runs into this box leaves the data there (Ames 2026-10-23: "we want the edges shown").
-      ...(box ? [{ type: 'axis_aligned_bounding_box', id: 'edge-box', pointA: toVox(box[0]), pointB: toVox(box[1]) }] : []),
     ],
     annotationColor: EDGE.color, pointSize: 5, onTop: false,
   });
@@ -416,6 +420,16 @@ let active: HuntInfo | null = null;
  * 'switching' when the page is about to reload.
  */
 export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
+  // Entering the Hunt, shown while it opens and for a moment after, so a quick open does not flash.
+  const token = Date.now();
+  huntState.opening = { title: given.title, step: 'Opening the Hunt', token };
+  try { return await openHunt(given); }
+  finally {
+    const left = 1300 - (Date.now() - token);
+    setTimeout(() => { if (huntState.opening?.token === token) huntState.opening = null; }, Math.max(0, left));
+  }
+}
+async function openHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   let h = given;
   // Before the start the server keeps the view back (nobody peeks), and the page asks again a few
   // seconds after the start. A click in between asks now, and again for a moment while the server's
@@ -430,6 +444,7 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
     const ds = findDatasetByCanonical(canonicalDataset(h.dataset));
     if (!ds) throw new Error('This Hunt is on a dataset this version of Pyr does not have. Reload the page to update.');
     try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ id: h.id, test: !!h.test, at: Date.now() })); } catch { /* private window */ }
+    openingStep(`Switching to ${(ds as any).name || 'its dataset'}`);
     const ok = await switchToDataset(ds, { forJump: true });
     if (!ok) throw new Error('Could not switch dataset.');
     // The switch happens in place (no reload): wait for it, then carry on into the Hunt (Ames 2026-10-23:
@@ -449,11 +464,12 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   waiting.length = 0;
   huntState.waiting = 0;
   const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
+  openingStep('Opening the view');
   v.state.restoreState(h.view);
   restoreDisplayAfterLoad(snap);
   // The restore and the display keeper settle over a moment and can drop a
   // layer added too early, so add the gem layers until they have stayed put.
-  const names = [...gemKinds(h).map(k => huntLayerName(h, k)), ...((h.edges_nm ?? []).length || h.bounds_nm ? [huntEdgeLayerName(h)] : [])];
+  const names = [...gemKinds(h).map(k => huntLayerName(h, k)), ...((h.edges_nm ?? []).length ? [huntEdgeLayerName(h)] : [])];
   let steady = 0;
   for (let i = 0; i < 16 && steady < 3; i++) {
     await new Promise(r => setTimeout(r, 250));
@@ -461,6 +477,7 @@ export async function goToHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
     steady = 0;
     ensureGemLayers(h, kept);
   }
+  openingStep('Placing your gems');
   ensureGemLayers(h, kept);
   judged.clear();
   for (const d of h.you?.drops ?? []) judged.add(d.id);

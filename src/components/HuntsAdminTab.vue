@@ -737,7 +737,7 @@ async function duplicate() {
 .nge-hunts-chip--cancelled { background: rgba(255, 120, 120, 0.14); color: #ffb3b3; }
 .nge-hunts-back { align-self: flex-start; background: none; border: none; color: #9fd0ff; cursor: pointer; padding: 0; font-size: 13px; }
 .nge-hunts-title-row { display: flex; gap: 10px; align-items: center; color: #fff; font-size: 16px; }
-.nge-hunts-group { border: 1px solid rgba(90, 170, 255, 0.2); border-radius: 10px; padding: 10px 12px 12px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.nge-hunts-group { min-width: 0; max-width: 100%; box-sizing: border-box; border: 1px solid rgba(90, 170, 255, 0.2); border-radius: 10px; padding: 10px 12px 12px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .nge-hunts-group legend { padding: 0 6px; color: #9fd0ff; font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em; }
 .nge-hunts-group label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: #a9bbd3; }
 .nge-hunts-row { display: flex; gap: 8px; align-items: center; }
