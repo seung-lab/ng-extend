@@ -989,6 +989,22 @@ function friendlyLayerNames() {
 }
 setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
 
+// Opening split screen redraws the layer tabs, and until the next tick they
+// showed the raw names ("img") for up to a second (Ames 2026-10-23). A
+// redrawn tab is renamed as it appears: mutation callbacks run before the
+// next paint, so the raw name is never seen.
+let renaming = false;
+new MutationObserver(records => {
+  if (renaming) return;
+  const tab = (n: Node) => n instanceof HTMLElement && (n.matches('.neuroglancer-layer-item, .neuroglancer-layer-item-label') || !!n.querySelector('.neuroglancer-layer-item'));
+  const touched = records.some(r => r.type === 'characterData'
+    ? !!r.target.parentElement?.closest('.neuroglancer-layer-item-label')
+    : Array.from(r.addedNodes).some(tab) || (r.target instanceof HTMLElement && r.target.matches('.neuroglancer-layer-item-label')));
+  if (!touched) return;
+  renaming = true;
+  try { friendlyLayerNames(); } catch { /* store not ready yet */ } finally { renaming = false; }
+}).observe(document.body, { childList: true, subtree: true, characterData: true });
+
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   const chip = segLayerChip();
   if (!chip) { console.warn('[tutorial] no layer chip to flash'); return; }
