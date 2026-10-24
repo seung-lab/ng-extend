@@ -82,6 +82,10 @@ export interface DatasetEntry {
    *  long stretches (502, taking the segmentation service down for a minute)
    *  and it has no L2 cache, 2026-10-02. Remove the line when that is fixed. */
   highlightOff?: string;
+  /** Highlight opens here, but never asks the server to trace: no paths and
+   *  no branch map, only marks that need no server (MEC's lab marks, Ames
+   *  2026-10-24). The text says why, in the box. */
+  highlightNoTrace?: string;
   /** The dataset has cells to claim in the Cell Library, so its card in the
    *  switcher offers Available cells and My cells (2026-10-23). Set it when a
    *  dataset gets proofreading tasks; FlyWire production has none yet. */
@@ -538,7 +542,9 @@ export const DATASETS: DatasetEntry[] = [
     origin: 'Princeton',
     section: 'production',
     cellTasks: true,
-    highlightOff: 'Highlight is not available on this dataset yet: its server cannot trace paths along a cell.',
+    // Highlight's lab marks need no server; tracing stays off, for the
+    // reason highlightOff gives (2026-10-02).
+    highlightNoTrace: "MEC's server can't trace along a cell yet, so here Highlight places the lab marks only.",
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',

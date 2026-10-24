@@ -10,7 +10,7 @@ import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
 import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
-import { currentSegLayer } from '../datasets';
+import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
@@ -122,6 +122,16 @@ const BALL_SCALE = 1.4;
 
 const viewerOf = (): any => (window as any).viewer;
 
+/** Why Highlight must not ask this dataset's server to trace, if it must
+ *  not (MEC: its path server fails on long stretches and has no L2 cache). */
+export function traceOffReason(): string {
+  try {
+    const name = currentSegLayerName();
+    return findDatasetBySegName(name)?.highlightNoTrace ?? findDatasetByCanonical(canonicalDataset(name))?.highlightNoTrace ?? '';
+  } catch { return ''; }
+}
+function refuseTrace() { const why = traceOffReason(); if (why) throw new Error(why); }
+
 export interface Pick { selection: SegmentSelection; root: string; /** Viewer (global) coordinates of the click. */ global: number[]; }
 
 /** The cell under the cursor right now, or a reason there is none. */
@@ -222,6 +232,7 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
   const viewer = viewerOf();
   const layer = currentSegLayer()?.layer;
   if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
+  refuseTrace();
   if (a.root !== b.root) throw new Error('Those two points are on different cells. Pick both on the same cell.');
   // MEC's server takes minutes over a precise path (Ames 2026-10-24: "1m 34
   // seconds for a short path"). There the cell's branch map comes first: one
@@ -382,6 +393,7 @@ export async function addBranchHighlight(a: Pick, way: BranchWay, style: Highlig
   const viewer = viewerOf();
   const layer = currentSegLayer()?.layer;
   if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
+  refuseTrace();
   if (somaSide && somaSide.root !== a.root) throw new Error('Those two points are on different cells. Pick both on the same cell.');
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
   const toNm = (g: ArrayLike<number>) => [0, 1, 2].map(i => g[i] * (scalesNm[i] || 1));
@@ -557,6 +569,7 @@ export async function addAxonHighlight(root: string, stillWanted: () => boolean 
   const layer = currentSegLayer()?.layer;
   if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
+  refuseTrace();
   const graph = await branchGraphOf(layer, root);
   if (!stillWanted()) return 0;
   const { from, ref, aisNm } = axonOf(root, graph, scalesNm);
@@ -597,7 +610,9 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
   // on screen that touch the edge (no server call, but the whole cell, and a
   // branch running along the edge counts too).
   let graph: BranchGraph | null = null;
-  try { graph = await branchGraphOf(layer, root); } catch (e) { console.warn('[highlight] no branch map, using the meshes:', e); }
+  if (!traceOffReason()) {
+    try { graph = await branchGraphOf(layer, root); } catch (e) { console.warn('[highlight] no branch map, using the meshes:', e); }
+  }
   if (!stillWanted()) return { added: 0, already: 0, axonOnly: false };
   let only: Set<string> | undefined;
   let ends: number[][];

@@ -13,7 +13,7 @@ import { claimTouchTaps } from '../util/touch_tap';
 import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, addLabMark, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
 import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
@@ -60,7 +60,9 @@ function removeStyle(s: HighlightStyle) {
 // the AIS, color the axon, then mark its ends (Hits Edge can be found).
 const mec = ref(isMec());
 const labStyles = computed(() => (mec.value ? mecStyles() : []));
-const allStyles = computed(() => [...labStyles.value, ...styles.value]);
+/** Set where the server must not trace (MEC): the lab marks only, as points. */
+const noTrace = ref(traceOffReason());
+const allStyles = computed(() => (noTrace.value ? labStyles.value : [...labStyles.value, ...styles.value]));
 const labCounts = ref<Record<string, number>>(mecCounts());
 const hintOf = (key: string) => MEC_KINDS.find(k => k.key === key)?.hint ?? '';
 /** The cell clicked last: the one Color the axon and Find ends work on. */
@@ -237,6 +239,7 @@ function refresh() {
   markCount.value = listHighlights().length;
   shown.value = highlightsShown();
   mec.value = isMec();
+  noTrace.value = traceOffReason();
   if (mec.value) { labCounts.value = mecCounts(); somaAt.value = somaXyz(); startAt.value = startXyz(); }
 }
 // A lab mark is dropped as a point (one click), or highlighted as a stretch
@@ -252,13 +255,13 @@ function setLabAs(v: 'point' | 'stretch') {
 }
 const picked = () => allStyles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
 /** The lab mark picked, when its marks are stretches. */
-const stretchKind = () => { const s = picked(); return s.lab && labAs.value === 'stretch' ? s : null; };
+const stretchKind = () => { const s = picked(); return s.lab && labAs.value === 'stretch' && !noTrace.value ? s : null; };
 const styleOf = (): HighlightStyle => {
   const k = stretchKind();
   return k ? { key: `${k.key}:hl`, label: k.label, layer: `${k.label} highlight`, color: k.color } : picked();
 };
 /** One click drops a lab point. */
-const labOn = computed(() => !!allStyles.value.find(s => s.key === styleKey.value)?.lab && labAs.value === 'point');
+const labOn = computed(() => !!allStyles.value.find(s => s.key === styleKey.value)?.lab && (labAs.value === 'point' || !!noTrace.value));
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
 const TRACE_LIMIT_MS = 60000;
@@ -348,7 +351,7 @@ async function findEdges() {
   if (busy.value) return;
   await trace(async wanted => {
     const r = await addEdgeMarks(workingRoot(lastRoot.value), wanted);
-    const where = r.axonOnly ? 'along the axon' : r.fromMesh ? 'on this cell (read from its 3D mesh: the server has no branch map for it)' : 'on this cell';
+    const where = r.axonOnly ? 'along the axon' : r.fromMesh ? 'on this cell, from its 3D mesh,' : 'on this cell';
     const had = r.already ? ` ${r.already} already marked.` : '';
     doneText.value = r.added
       ? `Added ${r.added} Hits Edge ${r.added === 1 ? 'mark' : 'marks'} ${where}.${had} Check each one.`
@@ -579,7 +582,8 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="mec" class="nge-hl-how">
         Pick a lab mark, then {{ isTouchRef ? 'tap' : 'Ctrl + click' }} the cell to drop it.
-        Or pick a highlight color and mark a checked stretch.
+        <template v-if="noTrace"><br><span class="nge-hl-dim">{{ noTrace }}</span></template>
+        <template v-else>Or pick a highlight color and mark a checked stretch.</template>
       </p>
       <p v-else class="nge-hl-how">
         <template v-if="isTouchRef">
@@ -594,7 +598,7 @@ onBeforeUnmount(() => {
       <div v-if="mec" class="nge-hl-mec">
         <div class="nge-hl-mec-head">
           <span>Lab marks</span><span class="nge-hl-mec-sub">axon first</span>
-          <div class="nge-hl-switch nge-hl-mec-as" role="radiogroup" aria-label="Lab marks as" :data-on="labAs === 'point' ? 'show' : 'hide'"
+          <div v-if="!noTrace" class="nge-hl-switch nge-hl-mec-as" role="radiogroup" aria-label="Lab marks as" :data-on="labAs === 'point' ? 'show' : 'hide'"
                title="Point: one click drops the lab's mark. Stretch: highlight a stretch in the mark's color, and its end gets the mark.">
             <button type="button" role="radio" :aria-checked="labAs === 'point' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('point')">Point</button>
             <button type="button" role="radio" :aria-checked="labAs === 'stretch' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('stretch')">Stretch</button>
@@ -617,10 +621,10 @@ onBeforeUnmount(() => {
           <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark on the starting point: the nucleus, inside the soma." @click="confirmSoma">{{ somaAt ? 'Back to the starting point' : 'Confirm soma here' }}</button>
         </div>
         <div v-else class="nge-hl-mec-actions">
-          <button class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
+          <button v-if="!noTrace" class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
                   :title="labCounts['mec:ais'] ? 'Color everything beyond the AIS, away from the soma: the axon.' : 'Mark the AIS first: the axon is everything beyond it.'">Color the axon</button>
           <button class="nge-hl-btn" type="button" :disabled="busy" @click="findEdges"
-                  title="Find the branch ends that reach the edge of the data, and mark each Hits Edge. Along the axon once the AIS is marked.">{{ labCounts['mec:ais'] ? 'Find axon ends at the edge' : 'Find ends at the edge' }}</button>
+                  title="Find where the cell reaches the edge of the data, and mark each Hits Edge.">{{ labCounts['mec:ais'] && !noTrace ? 'Find axon ends at the edge' : 'Find ends at the edge' }}</button>
         </div>
       </div>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
