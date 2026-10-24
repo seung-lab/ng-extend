@@ -37,7 +37,7 @@ export const CAST_CLASSES: { key: string; name: string; plural: string; group: s
   { key: 'AC', name: 'Amacrine cell', plural: 'Amacrine', group: 'amacrine cells', color: '#ff5fb0',
     about: 'Amacrine cells shape the signal on its way from bipolar cells to ganglion cells, mostly by inhibiting it. They do jobs like telling which way something moves, and they are the most varied class of all.' },
   { key: 'RGC', name: 'Ganglion cell', plural: 'Ganglion', group: 'ganglion cells', color: '#3e96f0',
-    about: 'Ganglion cells are the output of the retina. Each type picks out one feature of the scene, such as edges, motion or brightness, and sends it to the brain through the optic nerve.' },
+    about: 'Ganglion cells are the output of the retina. Each type detects one feature of the scene, such as edges, motion or brightness, and sends it to the brain through the optic nerve.' },
 ];
 export const castClass = (key: string) => CAST_CLASSES.find(c => c.key === key) ?? CAST_CLASSES[0];
 
