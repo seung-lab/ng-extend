@@ -4554,8 +4554,10 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 6px;
   background: rgba(10, 10, 30, 0.6);
-  color: #ccd;
-  font-size: 0.76em;
+  color: #dde4f0;
+  /* readable in a narrow panel (Ames 2026-10-24: "this text is way too small") */
+  font-size: 14px;
+  line-height: 1.45;
   font-family: inherit;
   resize: vertical;
   outline: none;
@@ -4570,8 +4572,8 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.12);
   border-radius: 5px;
   background: rgba(10, 10, 30, 0.5);
-  color: #ccd;
-  font-size: 0.72em;
+  color: #dde4f0;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -4589,7 +4591,7 @@ const panelStyle = computed(() => ({
   min-width: 0;
 }
 .nge-cl-btn--copy-state {
-  font-size: 0.68em;
+  font-size: 12.5px;
   padding: 4px 8px;
   white-space: nowrap;
   flex-shrink: 0;
