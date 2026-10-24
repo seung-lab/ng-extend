@@ -1,5 +1,5 @@
-// Help notifications open on their request, and the Help tab's All / Mine
-// switch, headless (2026-10-24).
+// Help notifications open on their request, the Help tab's All / Mine
+// switch, and Assists on a profile, headless (2026-10-24).
 // Build:  DATASET=pinky_sandbox node scripts/build-prod.js
 // Serve:  python -m http.server 3558 --directory dist/min
 // Run:    node scripts/help-focus.test.cjs [shots dir]
@@ -7,7 +7,8 @@
 // the player's own request that reply was on, highlighted and scrolled into
 // view, also when it sits under another dataset's folded group; Mine shows
 // only the player's requests and All everyone's; the Help tab's number stays
-// everyone's open requests.
+// everyone's open requests. Assists on a profile: other players' requests
+// that player replied to, one each, on their profile and on yours.
 // Every server call is answered here; nothing reaches production.
 const path = require('path');
 const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
@@ -56,8 +57,15 @@ const RESPONSES = [
   });
   await context.route(/supabase\.co/, r => {
     const u = r.request().url();
-    if (/\/rest\/v1\/help_requests/.test(u) && r.request().method() === 'GET') return r.fulfill(json(REQS));
-    if (/\/rest\/v1\/help_responses/.test(u) && r.request().method() === 'GET') return r.fulfill(json(RESPONSES));
+    const q = decodeURIComponent(u);
+    if (/\/rest\/v1\/help_requests/.test(u) && r.request().method() === 'GET') {
+      const ids = (q.match(/id=in\.\(([^)]*)\)/) || [])[1];
+      return r.fulfill(json(ids ? REQS.filter(x => ids.split(',').map(v => v.replace(/"/g, '')).includes(x.id)) : REQS));
+    }
+    if (/\/rest\/v1\/help_responses/.test(u) && r.request().method() === 'GET') {
+      const who = (q.match(/user_id=eq\.([^&]+)/) || [])[1];
+      return r.fulfill(json(who ? RESPONSES.filter(x => x.user_id === who) : RESPONSES));
+    }
     return r.fulfill(json([]));
   });
 
@@ -86,7 +94,14 @@ const RESPONSES = [
     await page.waitForSelector('.nge-notif-open-help', { timeout: 10000 });
     await page.click('.nge-notif-open-help');
     await page.waitForSelector('.nge-cl-panel', { timeout: 10000 });
-    await page.waitForTimeout(1800);
+    // The scroll is smooth: wait until the highlighted request has settled in view.
+    await page.waitForFunction(() => {
+      const p = document.querySelector('.nge-cl-panel'), a = document.querySelector('.nge-cl-panel .nge-cl-help-item--active');
+      if (!p || !a) return false;
+      const ar = a.getBoundingClientRect(), pr = p.getBoundingClientRect();
+      return ar.top >= pr.top && ar.bottom <= pr.bottom;
+    }, null, { timeout: 6000 }).catch(() => {});
+    await page.waitForTimeout(400);
   };
   try {
     await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
@@ -128,6 +143,26 @@ const RESPONSES = [
     await page.waitForTimeout(500);
     s = await state();
     check('All lists everyone again', s.items.some(id => !mine.includes(id)), s.items.length);
+
+    // Assists. Nseraf replied to two requests, both of other players: 2.
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:close-cell-library')));
+    const assists = async () => {
+      await page.waitForSelector('.nge-profile-body--overview', { timeout: 15000 });
+      await page.waitForTimeout(2500);
+      return page.evaluate(() => {
+        const col = [...document.querySelectorAll('.nge-profile-stat-col')].find(c => /^Assists$/i.test((c.querySelector('.nge-profile-stat-label') || {}).innerText || ''));
+        return col ? col.querySelector('.nge-profile-stat-val').innerText.trim() : null;
+      });
+    };
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: 'nseraf' } })));
+    const theirs = await assists();
+    check('another player\'s profile shows Assists: 2 for Nseraf', theirs === '2', theirs);
+    await page.screenshot({ path: path.join(OUT, 'assists-other.png') });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(800);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: {} })));
+    const own = await assists();
+    check('your own profile shows Assists: 0 (you replied to none)', own === '0', own);
   } catch (e) {
     check('the test ran to the end', false, String(e).slice(0, 400));
     try { await page.screenshot({ path: path.join(OUT, 'help-focus-failed.png') }); } catch (e2) { /* no picture */ }
