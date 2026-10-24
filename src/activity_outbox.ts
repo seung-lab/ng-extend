@@ -31,7 +31,12 @@ export interface ActivityOutboxHooks {
 const STORE_KEY = 'nge_activity_outbox_v1';
 const FIRST_WAIT = 5_000;
 const LONGEST_WAIT = 5 * 60_000;
-const MOST_KEPT = 300;
+// A long outage can hold many edits; each row is small.
+const MOST_KEPT = 1500;
+/** The server counts a player's own split or merge up to this old (keep in
+ *  step with LATE_OPERATION_AGE_MS in functions/activity-policy.js). Older
+ *  saves are let go rather than sent to be refused. */
+const LONGEST_KEPT = 3 * 24 * 60 * 60_000;
 
 /** A key for one row, made once, kept across retries. */
 export function newOpKey(): string {
@@ -103,6 +108,12 @@ async function run() {
     for (;;) {
       const it = mine()[0];
       if (!it) { wait = FIRST_WAIT; break; }
+      if (Date.now() - it.at > LONGEST_KEPT) {
+        console.warn('[activityOutbox] a save waited too long and was let go:', it.row.operation);
+        items = items.filter(x => x !== it);
+        changed();
+        continue;
+      }
       try {
         const result = await hooks.send(it.row);
         items = items.filter(x => x !== it);

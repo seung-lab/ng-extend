@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T16:44:00Z",
+      "title": "Edits count after an outage",
+      "items": [
+        "If the Pyr server is down for a while, your splits and merges from that time still count once it is back, for up to three days."
+      ]
+    },
+    {
       "at": "2026-10-24T15:26:51Z",
       "title": "Help replies take you to the request, and Assists",
       "digest": "minor",
