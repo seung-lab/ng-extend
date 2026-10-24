@@ -1125,7 +1125,15 @@ async function rateLimit(req, loggedIn, prefix = "a") {
   const QUEST_READS = prefix === "read:quests";
   const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
-  const refs = [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
+  // Signed in writes count per person only (Ames 2026-10-24: "Please wait
+  // before sending another change" on the triage board and the Cell
+  // Library). Every signed in write used to bump one shared "global" counter
+  // too, in the same transaction: one Firestore document written by every
+  // player's every save, far past the one write a second a document takes,
+  // so busy moments made transactions fail, and a failure read as "slow down".
+  const perPersonOnly = loggedIn && prefix.startsWith("write:");
+  const refs = perPersonOnly ? [db.collection("guide_ratelimit").doc(prefix+":"+id)]
+    : [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
   try {
     return await db.runTransaction(async tx => {
       const snapshots = await Promise.all(refs.map(ref=>tx.get(ref)));
@@ -1135,14 +1143,20 @@ async function rateLimit(req, loggedIn, prefix = "a") {
         const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : {perMin:60,perDay:1500}) : tier;
         const minute=now-(d.minStart||0)>=60000, day=now-(d.dayStart||0)>=86400000;
         const minCount=minute?0:(d.minCount||0), dayCount=day?0:(d.dayCount||0);
-        if(minCount>=limits.perMin || dayCount>=limits.perDay) return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
+        if(minCount>=limits.perMin || dayCount>=limits.perDay) {
+          console.warn("[rateLimit] limited", prefix, i ? "global" : "person", dayCount>=limits.perDay ? "day" : "minute", minCount, dayCount);
+          return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
+        }
         next.push({minStart:minute?now:d.minStart,minCount:minCount+1,dayStart:day?now:d.dayStart,dayCount:dayCount+1});
       }
       refs.forEach((ref,i)=>tx.set(ref,next[i]));
       return {ok:true};
     });
   } catch(e) {
-    console.error("[rateLimit] unavailable");
+    // The counter could not be read or written. A signed in write goes
+    // through rather than telling a player to wait for nothing.
+    console.error("[rateLimit] unavailable", prefix, e && e.message);
+    if (perPersonOnly) return {ok:true,scope:"unchecked"};
     return {ok:false,scope:"unavailable"};
   }
 }
