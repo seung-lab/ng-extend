@@ -117,14 +117,18 @@ document.addEventListener('animationend', (e) => {
 }, true);
 
 // Merger Sandbox examples (src/merger-sandbox.ts).
-import { SANDBOX_CELLS } from '../practice_pools';
+import { SANDBOX_CELLS, EXTENSION_CELLS } from '../practice_pools';
 import { sandboxDone } from '../merger-sandbox';
+import { extensionDone } from '../extension-sandbox';
 // The Proofreading Test (src/proofreading-test.ts): listed once the server
 // says a test is open; its line says passed or in use.
 import { testStatus } from '../proofreading-test';
 function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
+// Extension Sandbox (extension-sandbox.ts), the same way.
+const extensionFinished = computed(() => EXTENSION_CELLS.filter(c => extensionDone.value.includes(c.id)).length);
+function startNextExtension() { document.dispatchEvent(new CustomEvent('nge:extsandbox-next')); }
 import { myAccess, loadMyAccess, accessStatusLabel, resumeReview } from '../access_request';
 import { datasetAccess } from '../util/dataset_access';
 const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
@@ -1251,6 +1255,14 @@ function onIconDrop(e: DragEvent, id: string) {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
             <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
+          </div>
+        </li>
+        <!-- Cells that stop too soon: merge the missing pieces back on
+             (Ames, 2026-10-24). -->
+        <li class="nge-menu-heading" @click.stop>Extension Sandbox</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startNextExtension(); closeHamburger()">
+            <span class="nge-menu-num">{{ extensionFinished >= EXTENSION_CELLS.length ? '✓' : extensionFinished }}</span><span>Find the missing pieces ({{ extensionFinished }} of {{ EXTENSION_CELLS.length }})</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>

@@ -94,7 +94,7 @@ setInterval(() => {
 const moreRedWanted = computed(() => tutorialOnScreen.value && store.redPointCount < cutRedNeed.value);
 const inPracticeTutorial = computed(() => {
   const step = tutorialStore.getTutorialStep();
-  return tutorialOnScreen.value && [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
+  return tutorialOnScreen.value && [3, 5, 9, 13].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
 });
 const groupPulse = ref(false);
 let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;

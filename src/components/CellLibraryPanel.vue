@@ -1210,9 +1210,46 @@ onMounted(() => watch([pendingCompleteRequest, datasetScopedCells, () => backend
 }, { immediate: true }));
 // ── Help request helpers ────────────────────────────────────────────
 const showResolved = ref(false);
+/** Open on one request and bring it into view: a help notification's "Open
+ *  in Help tab" names it (helpStore.focusId, Ames 2026-10-24). */
+async function focusHelpRequest(id: string) {
+  filter.value = 'help';
+  if (!helpStore.requests.some(r => r.id === id)) { try { await helpStore.load(); } catch { /* said below */ } }
+  const req = helpStore.requests.find(r => r.id === id);
+  if (!req) { flashJumpError('That help request is no longer there.'); return; }
+  if (helpScope.value === 'mine' && !isMineReq(req)) helpScope.value = 'all';
+  if (req.resolved) showResolved.value = true;
+  else {
+    // Its group stays open, also when the dataset on screen is learned a
+    // moment later and the other groups fold for the first time.
+    const key = canonicalDataset(req.dataset || '') || req.dataset || '';
+    if (key) { autoFolded.add(key); collapsedDatasets.value.delete(key); }
+  }
+  activeHelpId.value = id;
+  for (let i = 0; i < 30; i++) {
+    await nextTick();
+    const el = document.querySelector(`.nge-cl-panel [data-help-id="${id}"]`);
+    if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    await new Promise(r => setTimeout(r, 150));
+  }
+}
+onMounted(() => watch(() => helpStore.focusId, id => {
+  if (!id) return;
+  helpStore.focusId = null;
+  void focusHelpRequest(id);
+}, { immediate: true }));
 const activeHelpId = ref<string | null>(null);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
-const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
+/** Everyone's requests or only yours (Ames 2026-10-24: "a way to see my help
+ *  requests vs all"). Remembered in this browser. The Help tab's number
+ *  stays everyone's open requests. */
+const HELP_SCOPE_KEY = 'nge_cl_help_scope';
+const helpScope = ref<'all' | 'mine'>((() => { try { return localStorage.getItem(HELP_SCOPE_KEY) === 'mine' ? 'mine' : 'all'; } catch { return 'all'; } })());
+watch(helpScope, v => { try { localStorage.setItem(HELP_SCOPE_KEY, v); } catch { /* private window */ } });
+const isMineReq = (r: HelpRequest) => !!backend.userId && r.userId === backend.userId;
+const myOpenHelpCount = computed(() => pendingHelp.value.filter(isMineReq).length);
+const scopedPendingHelp = computed(() => helpScope.value === 'mine' ? pendingHelp.value.filter(isMineReq) : pendingHelp.value);
+const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved && (helpScope.value === 'all' || isMineReq(r))));
 
 // ── Dataset grouping for pending help requests ──────────────────────
 // `activeDataset` holds the segmentation-layer name currently in the viewer.
@@ -1221,6 +1258,10 @@ const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 // requests are tucked under a collapsible header so they don't disappear.
 const activeDataset = ref('');
 const collapsedDatasets = ref<Set<string>>(new Set());
+/** Groups already folded once. Another dataset's group starts folded, but
+ *  only the first time: refolding on every recompute undid opening it (the
+ *  header's own toggle, and a notification's jump to a request in it). */
+const autoFolded = new Set<string>();
 
 interface HelpDatasetGroup {
   dataset: string;
@@ -1236,7 +1277,7 @@ const pendingHelpByDataset = computed<HelpDatasetGroup[]>(() => {
   const currentRaw = activeDataset.value;
   const currentKey = canonicalDataset(currentRaw);
 
-  for (const req of pendingHelp.value) {
+  for (const req of scopedPendingHelp.value) {
     // Treat empty/missing dataset as belonging to the current viewer dataset.
     const raw = req.dataset || currentRaw || 'Unknown';
     const key = canonicalDataset(raw) || raw;
@@ -1262,7 +1303,8 @@ const pendingHelpByDataset = computed<HelpDatasetGroup[]>(() => {
     const isCurr = !currentKey && firstFallback;
     firstFallback = false;
     result.push({ dataset: key, label: g.label, isCurrent: isCurr, requests: g.requests });
-    if (currentKey && key !== currentKey && !collapsedDatasets.value.has(key)) {
+    if (currentKey && key !== currentKey && !autoFolded.has(key)) {
+      autoFolded.add(key);
       collapsedDatasets.value.add(key);
     }
   }
@@ -2946,11 +2988,17 @@ const panelStyle = computed(() => ({
             <div v-if="newHelpError" class="nge-cl-help-create-err">{{ newHelpError }}</div>
           </div>
 
-          <!-- Pending help requests -->
-          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
-            No help requests yet. Use the box above to submit one.
+          <!-- Everyone's requests or only yours -->
+          <div v-if="isLoggedIn" class="nge-cl-help-scope" role="group" aria-label="Which help requests to show">
+            <button type="button" :class="{ active: helpScope === 'all' }" :aria-pressed="helpScope === 'all' ? 'true' : 'false'" @click="helpScope = 'all'">All requests <b>{{ pendingHelp.length }}</b></button>
+            <button type="button" :class="{ active: helpScope === 'mine' }" :aria-pressed="helpScope === 'mine' ? 'true' : 'false'" @click="helpScope = 'mine'">Mine <b>{{ myOpenHelpCount }}</b></button>
           </div>
-          <div v-else-if="pendingHelp.length === 0" class="nge-cl-no-results">No pending requests</div>
+
+          <!-- Pending help requests -->
+          <div v-if="scopedPendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
+            {{ helpScope === 'mine' ? 'You have no help requests. Use the box above to ask for help.' : 'No help requests yet. Use the box above to submit one.' }}
+          </div>
+          <div v-else-if="scopedPendingHelp.length === 0" class="nge-cl-no-results">{{ helpScope === 'mine' ? 'None of your requests are open' : 'No pending requests' }}</div>
 
           <div
             v-for="group in pendingHelpByDataset"
@@ -2984,6 +3032,7 @@ const panelStyle = computed(() => ({
               <div
                 v-for="req in group.requests"
                 :key="req.id"
+                :data-help-id="req.id"
                 class="nge-cl-help-item"
                 :class="{
                   'nge-cl-help-item--active': activeHelpId === req.id,
@@ -3118,7 +3167,9 @@ const panelStyle = computed(() => ({
             <div
               v-for="req in resolvedHelp"
               :key="req.id"
+              :data-help-id="req.id"
               class="nge-cl-help-item"
+              :class="{ 'nge-cl-help-item--active': activeHelpId === req.id }"
             >
               <div class="nge-cl-row nge-cl-row--done">
                 <div class="nge-cl-row-left">
@@ -4536,8 +4587,10 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 6px;
   background: rgba(10, 10, 30, 0.6);
-  color: #ccd;
-  font-size: 0.76em;
+  color: #dde4f0;
+  /* readable in a narrow panel (Ames 2026-10-24: "this text is way too small") */
+  font-size: 14px;
+  line-height: 1.45;
   font-family: inherit;
   resize: vertical;
   outline: none;
@@ -4552,8 +4605,8 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.12);
   border-radius: 5px;
   background: rgba(10, 10, 30, 0.5);
-  color: #ccd;
-  font-size: 0.72em;
+  color: #dde4f0;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -4571,7 +4624,7 @@ const panelStyle = computed(() => ({
   min-width: 0;
 }
 .nge-cl-btn--copy-state {
-  font-size: 0.68em;
+  font-size: 13px;
   padding: 4px 8px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -4580,7 +4633,8 @@ const panelStyle = computed(() => ({
   align-self: flex-end;
   border-color: rgba(68, 170, 102, 0.25);
   color: #4a6;
-  padding: 5px 12px;
+  padding: 6px 14px;
+  font-size: 14px;
 }
 .nge-cl-btn--submit-response:hover { background: rgba(68, 170, 102, 0.12); }
 .nge-cl-btn--submit-response:disabled {
@@ -4944,6 +4998,17 @@ select.nge-cl-complete-type:hover {
 .nge-cl-tabgroup--cells { flex: 1 1 100%; }
 .nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }
 .nge-cl-tabgroup-row { display: flex; gap: 4px; flex-wrap: wrap; }
+/* Help: All requests or Mine, a small two way switch above the list. */
+.nge-cl-help-scope { display: inline-flex; margin: 10px 12px 2px; border: 1px solid rgba(100, 200, 255, 0.28); border-radius: 7px; overflow: hidden; }
+.nge-cl-help-scope button {
+  background: transparent; border: 0; padding: 5px 12px; cursor: pointer;
+  font: 600 12.5px 'Inter', 'Segoe UI', sans-serif; color: rgba(200, 225, 255, 0.7);
+  transition: background 0.15s, color 0.15s;
+}
+.nge-cl-help-scope button + button { border-left: 1px solid rgba(100, 200, 255, 0.28); }
+.nge-cl-help-scope button b { margin-left: 4px; color: #64c8ff; font-weight: 600; }
+.nge-cl-help-scope button:hover { color: #e6f4ff; background: rgba(100, 200, 255, 0.08); }
+.nge-cl-help-scope button.active { color: #fff; background: rgba(100, 200, 255, 0.18); }
 .nge-cl-tabgroup-head { display: flex; align-items: center; gap: 10px; }
 /* Dataset links (MEC): small HUD labels, a diamond marker each, a thin
    divider between, glow and a sweeping underline on hover (Ames: "not very
