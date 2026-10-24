@@ -504,7 +504,7 @@ const props = defineProps<{ embedded?: boolean }>();
             </label>
             <label class="nge-settings-toggle" title="Off: left click selects a layer, right click hides or shows it. On: the other way round, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
-              <span class="nge-settings-toggle-label">Classic layer tabs: left click hides a layer, right click selects it</span>
+              <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
             </label>
             <label class="nge-settings-toggle" title="Off: a number key (1 to 9) makes that layer the active one, and Shift + the number shows or hides it. On: the number shows or hides it, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicNumbers" />
