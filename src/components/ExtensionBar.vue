@@ -38,6 +38,7 @@ import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
+import BetaGate from "components/BetaGate.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
 import { undelete, undeleteCount } from "../util/undelete";
@@ -990,6 +991,8 @@ function onIconDrop(e: DragEvent, id: string) {
   <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
+  <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
+  <beta-gate />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
