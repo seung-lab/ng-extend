@@ -100,6 +100,12 @@ export function startXyz(): number[] | null {
   } catch { return null; }
 }
 const samePoint = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
+/** The soma mark: on the starting point, moved off it, or not placed. */
+export function somaState(): { state: 'start' | 'moved' | 'none'; xyz: number[] | null } {
+  const soma = somaXyz(), start = startXyz();
+  if (!soma) return { state: 'none', xyz: null };
+  return { state: start && samePoint(soma, start) ? 'start' : 'moved', xyz: soma };
+}
 
 /**
  * The marks on the cell, as a line for the lab's sheet when the cell is

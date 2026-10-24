@@ -41,6 +41,7 @@ import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annota
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { ensureMecLayers } from '../util/mec_layers';
+import MecMarkStatus from './MecMarkStatus.vue';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
@@ -569,6 +570,8 @@ async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
 // dataset switch or opening a link would lose anything unsaved (Ames).
 const savingView = ref<number | null>(null);
 const savedViewAt = ref<Record<number, number>>({});
+/** The MEC claim in view: its lab marks show under its row (MecMarkStatus). */
+const showsMecMarks = (cell: CellRow) => canonicalDataset(cell.dataset) === 'pni_mec' && isWorkingClaim(cell) && cell.status !== 'completed';
 const isWorkingClaim = (cell: CellRow) =>
   !!cell.taskId && isMyClaim(cell) && (cell.taskId === workingTaskId || cell.segId === jumpedSegId.value);
 async function saveClaimView(cell: CellRow) {
@@ -3732,10 +3735,15 @@ const panelStyle = computed(() => ({
             </div>
           </div>
 
+          <!-- MEC: the lab marks on the cell in view, one line that opens
+               into a checklist (Ames 2026-10-24). In the Complete form
+               instead while that is open. -->
+          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" />
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell</div>
+            <MecMarkStatus v-if="showsMecMarks(cell)" start-open class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
               <div class="nge-cl-complete-statuses" role="radiogroup" aria-label="How did it end?">
@@ -4349,6 +4357,8 @@ const panelStyle = computed(() => ({
 .nge-cl-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* Complete form: link + crosshairs check (Amy 2026-09-28) */
+/* The marks checklist sits flush in the Complete form. */
+.nge-cl-complete-marks { padding: 0 0 6px; }
 .nge-cl-complete {
   margin: 2px 6px 8px;
   padding: 10px 12px;
