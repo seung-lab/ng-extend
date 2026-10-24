@@ -71,7 +71,6 @@ const draftImageSource = ref<'auto' | 'americas' | 'asia'>('auto');
 const autoImageRegion = computed(() => imageRegionLabel(automaticRegion()));
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
-const draftClassicNumbers = ref(false);
 const draftShowRadio = ref(true);
 const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
@@ -153,7 +152,6 @@ onMounted(() => {
   draftImageSource.value = prefsStore.prefs.imageSource === 'americas' || prefsStore.prefs.imageSource === 'asia' ? prefsStore.prefs.imageSource : 'auto';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
-  draftClassicNumbers.value = prefsStore.prefs.classicNumberKeys === true;
   draftShowRadio.value = prefsStore.prefs.hideRadio !== true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
@@ -232,7 +230,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, classicNumberKeys: draftClassicNumbers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -502,13 +500,9 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: left click selects a layer, right click hides or shows it. On: the other way round, as in neuroglancer.">
+            <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
-            </label>
-            <label class="nge-settings-toggle" title="Off: a number key (1 to 9) makes that layer the active one, and Shift + the number shows or hides it. On: the number shows or hides it, as in neuroglancer.">
-              <input type="checkbox" v-model="draftClassicNumbers" />
-              <span class="nge-settings-toggle-label">Classic number keys: 1 to 9 hide and show layers</span>
             </label>
             <label class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
               <input type="checkbox" v-model="draftShowRadio" />

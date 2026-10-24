@@ -13,7 +13,7 @@ import { claimTouchTaps } from '../util/touch_tap';
 import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
 import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
@@ -62,7 +62,7 @@ const mec = ref(isMec());
 const labStyles = computed(() => (mec.value ? mecStyles() : []));
 /** Set where the server must not trace (MEC): the lab marks only, as points. */
 const noTrace = ref(traceOffReason());
-const allStyles = computed(() => (noTrace.value ? labStyles.value : [...labStyles.value, ...styles.value]));
+const allStyles = computed(() => [...labStyles.value, ...styles.value]);
 const labCounts = ref<Record<string, number>>(mecCounts());
 const hintOf = (key: string) => MEC_KINDS.find(k => k.key === key)?.hint ?? '';
 /** The cell clicked last: the one Color the axon and Find ends work on. */
@@ -260,8 +260,9 @@ const styleOf = (): HighlightStyle => {
   const k = stretchKind();
   return k ? { key: `${k.key}:hl`, label: k.label, layer: `${k.label} highlight`, color: k.color } : picked();
 };
-/** One click drops a lab point. */
-const labOn = computed(() => !!allStyles.value.find(s => s.key === styleKey.value)?.lab && (labAs.value === 'point' || !!noTrace.value));
+/** One click drops a mark: a lab point, or anywhere the server can't trace
+ *  (MEC), a highlight spot. */
+const labOn = computed(() => !!noTrace.value || (!!allStyles.value.find(s => s.key === styleKey.value)?.lab && labAs.value === 'point'));
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
 const TRACE_LIMIT_MS = 60000;
@@ -275,6 +276,11 @@ async function place(x: number, y: number) {
   runParticleBurst(x, y, rgbOf(styleOf().color));
   lastRoot.value = pick.root;
   const style = styleOf();
+  if (!style.lab && noTrace.value) {
+    try { await addHighlightSpot(pick, style); refresh(); say(`${style.label} spot placed.`); }
+    catch (e: any) { say(e?.message || 'Could not place that spot.', true); }
+    return;
+  }
   if (style.lab) {
     try {
       await addLabMark(pick, style);
@@ -582,7 +588,7 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="mec" class="nge-hl-how">
         Pick a lab mark, then {{ isTouchRef ? 'tap' : 'Ctrl + click' }} the cell to drop it.
-        <template v-if="noTrace"><br><span class="nge-hl-dim">{{ noTrace }}</span></template>
+        <template v-if="noTrace">Or pick a highlight color to mark a spot.<br><span class="nge-hl-dim">{{ noTrace }}</span></template>
         <template v-else>Or pick a highlight color and mark a checked stretch.</template>
       </p>
       <p v-else class="nge-hl-how">
@@ -615,7 +621,7 @@ onBeforeUnmount(() => {
             <span class="nge-hl-mec-n" :aria-label="`${labCounts[s.key] ?? 0} placed`">{{ labCounts[s.key] ?? 0 }}</span>
           </span>
         </div>
-        <p class="nge-hl-mec-hint">{{ labOn && styleKey === 'mec:soma' && somaAt ? `Soma at ${somaAt.join(', ')}. Click again to move it.` : labOn ? hintOf(styleKey) : stretchKind() ? `${hintOf(styleKey)} Click where the stretch starts, then its end: the end gets the mark.` : 'A highlight color is picked: clicks mark a stretch.' }}</p>
+        <p class="nge-hl-mec-hint">{{ noTrace && !picked().lab ? 'A highlight color is picked: one click marks a spot.' : labOn && styleKey === 'mec:soma' && somaAt ? `Soma at ${somaAt.join(', ')}. Click again to move it.` : labOn ? hintOf(styleKey) : stretchKind() ? `${hintOf(styleKey)} Click where the stretch starts, then its end: the end gets the mark.` : 'A highlight color is picked: clicks mark a stretch.' }}</p>
         <div v-if="styleKey === 'mec:soma' && startAt" class="nge-hl-mec-actions">
           <button class="nge-hl-btn" type="button" title="Move the view to the cell's starting point, to see it is in the soma." @click="lookAtStart">Go to the starting point</button>
           <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark on the starting point: the nucleus, inside the soma." @click="confirmSoma">{{ somaAt ? 'Back to the starting point' : 'Confirm soma here' }}</button>
@@ -627,7 +633,7 @@ onBeforeUnmount(() => {
                   title="Find where the cell reaches the edge of the data, and mark each Hits Edge.">{{ labCounts['mec:ais'] && !noTrace ? 'Find axon ends at the edge' : 'Find ends at the edge' }}</button>
         </div>
       </div>
-      <div v-if="!noTrace" class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
+      <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
         <span
           v-for="s in styles" :key="s.key" role="radio" tabindex="0" :aria-checked="styleKey === s.key ? 'true' : 'false'"
           class="nge-hl-style" :class="{ 'nge-hl-style--on': styleKey === s.key }" :style="{ '--hl': s.color }"
@@ -661,7 +667,7 @@ onBeforeUnmount(() => {
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
         <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
-        <button v-if="!noTrace" class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
+        <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>
       <label class="nge-hl-width" title="How far out from the middle of the branch the color reaches. Wider covers thick branches and their spines; narrower keeps the color off neighboring branches.">
         <span>Color reach</span>
@@ -671,7 +677,7 @@ onBeforeUnmount(() => {
       <!-- Show / Hide for every highlight at once, in 2D and 3D (Ames
            2026-10-07: "keep the hide/show highlight slider in highlight").
            The side that is lit is how things are now. -->
-      <div v-if="!noTrace" class="nge-hl-show3d" title="Hide takes your highlights out of view, in 2D and in 3D. Nothing is deleted. You can also hide one highlight from its own layer tab.">
+      <div class="nge-hl-show3d" title="Hide takes your highlights out of view, in 2D and in 3D. Nothing is deleted. You can also hide one highlight from its own layer tab.">
         <span id="nge-hl-show3d-label">Highlight</span>
         <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label" :data-on="shown ? 'show' : 'hide'">
           <button type="button" role="radio" :aria-checked="shown ? 'true' : 'false'" :tabindex="shown ? 0 : -1"

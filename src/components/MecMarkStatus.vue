@@ -11,7 +11,7 @@
  * Counts every point in the lab's layers, placed here, in Highlight or by hand.
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
-import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz } from '../util/mec_marks';
+import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer } from '../util/mec_marks';
 import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, addEdgeMarks, workingRoot, autoEdgeNews } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
@@ -51,6 +51,31 @@ function arm(key: string) {
   say(armed.value ? `Ctrl + click the cell to place ${labelOf(armed.value)}.` : '');
 }
 watch(open, o => { if (!o) armed.value = null; });
+
+// ── The number keys pick a mark too (Ames 2026-10-24: "I want to be able to
+// use the numbers to switch between these highlight points as well"). The
+// lab's marks live in layers, and a number makes its layer the active one
+// (viewer.ts), as a click on its tab does: when that layer is one of the
+// lab's, its mark is picked here. Each row shows its key.
+const keyOf = ref<Record<string, number>>({});
+function readKeys() {
+  const out: Record<string, number> = {};
+  let n = 0;
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    if (ml.archived) continue;
+    ++n;
+    const k = mecKindOfLayer(ml.name);
+    if (k && n <= 9 && out[k.key] === undefined) out[k.key] = n;
+  }
+  keyOf.value = out;
+}
+function onSelectedLayer() {
+  const name = (window as any).viewer?.selectedLayer?.layer?.name;
+  const k = name ? mecKindOfLayer(name) : undefined;
+  if (!k) return;
+  open.value = true;
+  if (armed.value !== k.key) arm(k.key);
+}
 
 // ── Ctrl + click drops the picked mark (as Highlight does). Merge, Cut and
 // Find Path keep their own Ctrl + click; with the Highlight box open, it
@@ -97,18 +122,30 @@ async function findEdges() {
     read();
     const had = r.already ? ` ${r.already} already marked.` : '';
     say(r.added ? `Added ${r.added} Hits Edge ${r.added === 1 ? 'mark' : 'marks'}.${had} Check each one: a branch that only runs along the edge is not an end.`
-      : `Nothing new reaches the edge of the data.${had}`);
+      : `Nothing new reaches the edge of the data.${had}${r.closestNm !== undefined && Number.isFinite(r.closestNm) ? ` The cell comes within ${(Math.max(0, r.closestNm) / 1000).toFixed(1)} µm of it at its closest.` : ''}`);
   } catch (e: any) { say(e?.message || 'Could not look for the edge.', true); }
   finally { busy.value = false; }
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;
+let stopSelected = () => { /* set on mount */ };
+let stopLayers = () => { /* set on mount */ };
 onMounted(() => {
+  readKeys();
+  try {
+    const v = (window as any).viewer;
+    const sel = v.selectedLayer.changed, lc = v.layerManager.layersChanged;
+    sel.add(onSelectedLayer); lc.add(readKeys);
+    stopSelected = () => sel.remove(onSelectedLayer);
+    stopLayers = () => lc.remove(readKeys);
+  } catch { /* no viewer yet */ }
   timer = setInterval(read, 1500);
   window.addEventListener('pointerdown', onPointer, true);
   window.addEventListener('contextmenu', onContextMenu, true);
 });
 onBeforeUnmount(() => {
+  stopSelected();
+  stopLayers();
   if (timer) clearInterval(timer);
   window.removeEventListener('pointerdown', onPointer, true);
   window.removeEventListener('contextmenu', onContextMenu, true);
@@ -129,11 +166,11 @@ onBeforeUnmount(() => {
       </span>
     </button>
     <div v-if="open" class="nge-mms-body">
-      <p class="nge-mms-how">Pick a mark, then Ctrl + click the cell to place it.</p>
+      <p class="nge-mms-how">Pick a mark (or press its number), then Ctrl + click the cell to place it.</p>
       <div class="nge-mms-list" role="radiogroup" aria-label="Mark to place">
         <button type="button" role="radio" class="nge-mms-row" :class="{ 'nge-mms-row--on': armed === MEC_SOMA.key }"
                 :aria-checked="armed === MEC_SOMA.key ? 'true' : 'false'" :style="{ '--k': MEC_SOMA.color }" @click="arm(MEC_SOMA.key)">
-          <i></i><b>Soma</b><span>{{ somaLine() }}</span>
+          <i></i><b>Soma<kbd v-if="keyOf[MEC_SOMA.key]" class="nge-mms-key" :title="`Key ${keyOf[MEC_SOMA.key]}`">{{ keyOf[MEC_SOMA.key] }}</kbd></b><span>{{ somaLine() }}</span>
         </button>
         <div v-if="armed === MEC_SOMA.key" class="nge-mms-sub">
           <template v-if="hasStart">
@@ -147,7 +184,7 @@ onBeforeUnmount(() => {
         </div>
         <button v-for="k in marks" :key="k.key" type="button" role="radio" class="nge-mms-row" :class="{ 'nge-mms-row--on': armed === k.key }"
                 :aria-checked="armed === k.key ? 'true' : 'false'" :style="{ '--k': k.color }" :title="k.hint" @click="arm(k.key)">
-          <i></i><b>{{ k.label }}</b><span>{{ markLine(k.key, counts[k.key] ?? 0) }}</span>
+          <i></i><b>{{ k.label }}<kbd v-if="keyOf[k.key]" class="nge-mms-key" :title="`Key ${keyOf[k.key]}`">{{ keyOf[k.key] }}</kbd></b><span>{{ markLine(k.key, counts[k.key] ?? 0) }}</span>
         </button>
         <div v-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
       </div>
@@ -176,10 +213,11 @@ onBeforeUnmount(() => {
 .nge-mms-chip--none { color: rgba(200, 212, 228, 0.42); }
 .nge-mms-chip--none i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--k); }
 .nge-mms-body { margin: 4px 0 2px; padding: 7px 8px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); }
+.nge-mms-key { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.22); font: 600 9.5px 'JetBrains Mono', 'Consolas', monospace; color: rgba(230, 238, 250, 0.75); }
 .nge-mms-how { margin: 0 0 5px; color: rgba(200, 212, 228, 0.6); }
 .nge-mms-list { display: flex; flex-direction: column; gap: 1px; }
 .nge-mms-row {
-  display: grid; grid-template-columns: 10px 72px 1fr; align-items: baseline; gap: 6px; width: 100%;
+  display: grid; grid-template-columns: 10px 96px 1fr; align-items: baseline; gap: 6px; width: 100%;
   padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer;
   text-align: left; font: inherit; color: inherit;
 }

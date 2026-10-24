@@ -32,8 +32,8 @@ export function getDefaultGlobalBindings() {
 
     for (let i = 1; i <= 9; ++i) {
       // EyeWire II (Ames 2026-10-24): a number makes that layer the active
-      // one, Shift + the number shows or hides it. Settings > "Classic number
-      // keys" puts the number back to showing and hiding (viewer.ts).
+      // one, Shift + the number shows or hides it. Settings > "Classic Layers"
+      // puts the number back to showing and hiding (viewer.ts).
       map.set('digit' + i, 'nge-number-layer-' + i);
       map.set('shift+digit' + i, 'toggle-layer-' + i);
       map.set('control+digit' + i, 'select-layer-' + i);

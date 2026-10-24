@@ -142,6 +142,37 @@ export function segBoundsNm(ml: any): number[][] | null {
   }
   return null;
 }
+/**
+ * Where the data ends: the part of space that every image and segmentation
+ * layer covers (the tightest of their bounds). The segmentation's bounds
+ * alone can be larger than the imaged volume (Ames 2026-10-24: "Find edge
+ * isn't working" on MEC), and a cell is cut off where the imaging stops.
+ */
+export function dataBoundsNm(): number[][] | null {
+  let lo: number[] | null = null, hi: number[] | null = null;
+  const each: { name: string; bounds: number[][] }[] = [];
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    const type = ml?.layer?.type ?? ml?.layer?.constructor?.type;
+    if (ml?.archived || (type !== 'image' && type !== 'segmentation')) continue;
+    let b: number[][] | null = null;
+    try { b = segBoundsNm(ml); } catch { /* not loaded */ }
+    if (!b) continue;
+    each.push({ name: ml.name, bounds: b });
+    lo = lo ? lo.map((v, i) => Math.max(v, b![0][i])) : b[0].slice();
+    hi = hi ? hi.map((v, i) => Math.min(v, b![1][i])) : b[1].slice();
+  }
+  lastBounds = { layers: each, used: lo && hi ? [lo, hi] : null };
+  return lo && hi && lo.every((v, i) => hi![i] > v) ? [lo, hi] : null;
+}
+let lastBounds: { layers: { name: string; bounds: number[][] }[]; used: number[][] | null } | null = null;
+// For checking from the console: what Pyr reads as the edge of the data.
+try {
+  (window as any).__ngeMecEdge = () => {
+    const used = dataBoundsNm();
+    return { used, layers: lastBounds?.layers ?? [], um: used ? used[0].map((v, i) => `${(v / 1000).toFixed(1)} to ${(used[1][i] / 1000).toFixed(1)} um`) : null };
+  };
+} catch { /* no window */ }
+
 /** The Hunt's rule: this close to the bounds is the edge of the dataset. */
 export const EDGE_NM = 5000;
 
@@ -152,8 +183,9 @@ export const EDGE_NM = 5000;
  * grid and joined where they touch, one spot per place, in nanometres.
  * `pieces`/`loaded`: the cells' mesh pieces in all, and on hand now.
  */
-export function meshEdgeSpots(roots: string[], bounds: number[][] | null, marginNm = EDGE_NM, binNm = 3000, countOnly = false): { spots: number[][]; pieces: number; loaded: number } {
-  const out = { spots: [] as number[][], pieces: 0, loaded: 0 };
+export function meshEdgeSpots(roots: string[], bounds: number[][] | null, marginNm = EDGE_NM, binNm = 3000, countOnly = false): { spots: number[][]; pieces: number; loaded: number; closestNm: number } {
+  /** closestNm: how near the cell comes to the edge anywhere, to say so. */
+  const out = { spots: [] as number[][], pieces: 0, loaded: 0, closestNm: Infinity };
   if (!bounds || !roots.length) return out;
   const [lo, hi] = bounds;
   const bins = new Map<string, { n: number; x: number; y: number; z: number; i: number; j: number; k: number }>();
@@ -178,6 +210,7 @@ export function meshEdgeSpots(roots: string[], bounds: number[][] | null, margin
           for (let p = 0; p + 2 < vp.length; p += 3) {
             const x = vp[p], y = vp[p + 1], z = vp[p + 2];
             const d = Math.min(x - lo[0], hi[0] - x, y - lo[1], hi[1] - y, z - lo[2], hi[2] - z);
+            if (d < out.closestNm) out.closestNm = d;
             if (!(d <= marginNm)) continue;
             const i = Math.floor(x / binNm), j = Math.floor(y / binNm), k = Math.floor(z / binNm);
             const bk = `${i},${j},${k}`;

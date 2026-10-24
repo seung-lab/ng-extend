@@ -544,7 +544,7 @@ export const DATASETS: DatasetEntry[] = [
     cellTasks: true,
     // Highlight's lab marks need no server; tracing stays off, for the
     // reason highlightOff gives (2026-10-02).
-    highlightNoTrace: "MEC's server can't trace along a cell yet, so here Highlight places the lab marks only.",
+    highlightNoTrace: "MEC's server can't trace along a cell yet, so here marks are spots, not stretches.",
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',

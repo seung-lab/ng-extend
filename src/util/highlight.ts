@@ -9,7 +9,7 @@ import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
-import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
+import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
@@ -487,6 +487,16 @@ async function labSource(kind: MecKind): Promise<any> {
 const kindOf = (style: HighlightStyle) => MEC_KINDS.find(k => k.key === style.key);
 
 /** Drop one MEC mark where the player clicked. */
+/** A highlight spot: one click, a point in the color's own layer that glows
+ *  on the cell, for where the server can't trace a stretch (Ames 2026-10-24:
+ *  "We should at least be able to add more highlight points"). */
+export async function addHighlightSpot(pick: Pick, style: HighlightStyle): Promise<void> {
+  const src = await strokeSource(style);
+  const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
+  src.add({ id: `${mark}_0`, type: POINT, point: Float32Array.from(pick.global), properties: [], description: `${style.label}: cell ${pick.root}` }, true).dispose();
+  setLatestMark(mark);
+}
+
 export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<void> {
   const kind = kindOf(style);
   if (!kind) throw new Error("That is not one of the lab's marks.");
@@ -598,12 +608,12 @@ export async function addAxonHighlight(root: string, stillWanted: () => boolean 
  * for Undo. Returns what was added and what was there already.
  */
 export async function addEdgeMarks(root: string, stillWanted: () => boolean = () => true):
-    Promise<{ added: number; already: number; axonOnly: boolean; fromMesh?: boolean }> {
+    Promise<{ added: number; already: number; axonOnly: boolean; fromMesh?: boolean; closestNm?: number }> {
   const viewer = viewerOf();
   const managedSeg = currentSegLayer();
   const layer = managedSeg?.layer;
   if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
-  const bounds = segBoundsNm(managedSeg);
+  const bounds = dataBoundsNm() ?? segBoundsNm(managedSeg);
   if (!bounds) throw new Error("Pyr couldn't read where this dataset ends.");
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
   // The branch map gives the tips of the branches. Where the server has no
@@ -617,6 +627,7 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
   if (!stillWanted()) return { added: 0, already: 0, axonOnly: false };
   let only: Set<string> | undefined;
   let ends: number[][];
+  let closestNm: number | undefined;
   if (graph) {
     if (aisPointNm(scalesNm)) {
       const { from, ref } = axonOf(root, graph, scalesNm);
@@ -625,8 +636,9 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
     ends = edgeEnds(graph, bounds, EDGE_NM, 3000, only);
   } else {
     const spots = meshEdgeSpots([root], bounds, EDGE_NM);
-    if (!spots.loaded) throw new Error("The server has no branch map for this cell, and its 3D mesh isn't loaded. Show the cell in 3D and try again.");
+    if (!spots.loaded) throw new Error("This cell's 3D mesh isn't loaded yet. Show the cell in 3D and try again.");
     ends = spots.spots;
+    closestNm = spots.closestNm;
   }
   // Ends someone already marked Hits Edge, by hand or before.
   const marked: number[][] = [];
@@ -636,7 +648,7 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
     }
   } catch { /* none */ }
   const fresh = ends.filter(e => !marked.some(m => Math.hypot(m[0] - e[0], m[1] - e[1], m[2] - e[2]) < 4000));
-  const result = { added: fresh.length, already: ends.length - fresh.length, axonOnly: !!only, fromMesh: !graph };
+  const result = { added: fresh.length, already: ends.length - fresh.length, axonOnly: !!only, fromMesh: !graph, closestNm };
   if (!fresh.length || !stillWanted()) return result;
   const src = await labSource(MEC_EDGE);
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
@@ -834,8 +846,15 @@ function buildTint(): NgeMeshTint | null {
         segs.push({ a: p, b: p, rgb, ball: true });
         continue;
       }
-      if (ann.type !== LINE || !String(ann.id).startsWith(ID_PREFIX)) continue;
+      if (!String(ann.id).startsWith(ID_PREFIX)) continue;
       const isLatest = latestPrefix !== null && String(ann.id).startsWith(latestPrefix);
+      // A highlight spot (where the server can't trace, MEC): a glow there.
+      if (ann.type === POINT && ann.point) {
+        const p = [0, 1, 2].map(i => ann.point[i] * scalesNm[i]);
+        segs.push({ a: p, b: p, rgb: isLatest ? rgbLatest : rgb, latest: isLatest, ball: true });
+        continue;
+      }
+      if (ann.type !== LINE) continue;
       segs.push({
         a: [0, 1, 2].map(i => ann.pointA[i] * scalesNm[i]),
         b: [0, 1, 2].map(i => ann.pointB[i] * scalesNm[i]), rgb: isLatest ? rgbLatest : rgb, latest: isLatest,
@@ -992,7 +1011,7 @@ async function autoEdgeTick() {
   let root: string;
   try { root = workingRoot(); } catch { return; }
   if (edgeLooked.has(root)) return;
-  const bounds = segBoundsNm(currentSegLayer());
+  const bounds = dataBoundsNm() ?? segBoundsNm(currentSegLayer());
   if (!bounds) return;
   const { pieces, loaded } = meshEdgeSpots([root], bounds, EDGE_NM, 3000, true);
   // Loaded, and no more pieces came in since the last look.

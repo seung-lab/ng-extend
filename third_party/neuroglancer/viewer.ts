@@ -742,7 +742,8 @@ export class Viewer extends RefCounted implements ViewerState {
         const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
         if (layer === undefined) return;
         let classic = false;
-        try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicNumberKeys === true; } catch { /* default */ }
+        // Classic Layers in Settings: the number keys go back with the clicks.
+        try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true; } catch { /* default */ }
         if (classic) {
           layer.setVisible(!layer.visible);
         } else {

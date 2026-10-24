@@ -46,14 +46,6 @@ function imageLayerPanel(): boolean {
 const isImageLayer = (layer: any) => (layer?.layer?.constructor as any)?.type === 'image';
 const toggles2D = (layer: any) => isImageLayer(layer) && !imageLayerPanel() && typeof (window as any).ngeToggle2D === 'function';
 
-/** Settings > "Classic number keys": a number shows or hides its layer. */
-function classicNumberKeys(): boolean {
-  try {
-    return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicNumberKeys === true;
-  } catch {
-    return false;
-  }
-}
 function classicLayerClicks(): boolean {
   try {
     return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true;
@@ -218,7 +210,7 @@ class LayerWidget extends RefCounted {
       if (l === layer) break;
     }
     const keys = n >= 1 && n <= 9 && !layer.archived
-        ? (classicNumberKeys() ? `. Key ${n}: on/off` : `. Key ${n}: activate. Shift+${n}: on/off`) : '';
+        ? (classicLayerClicks() ? `. Key ${n}: on/off` : `. Key ${n}: activate. Shift+${n}: on/off`) : '';
     element.title = (classicLayerClicks()
         ? 'Left click to toggle on/off, right click to activate'
         : toggles2D(layer) ? 'Click to show or hide the 2D view, right click to toggle the layer on/off'
