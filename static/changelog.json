@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T22:22:00Z",
+      "title": "Open a help request in its own window",
+      "digest": "minor",
+      "items": [
+        "In the Cell Library, the new pop out button on a help request opens it in its own window, so the question is easy to read.",
+        "The window shows who asked, the cell, the question, their picture and every reply, with buttons to reply, jump to the cell and mark it solved.",
+        "Drag the window by its top bar and resize it from its corner. It remembers where you put it.",
+        "Thanks to annkri for the idea."
+      ]
+    },
+    {
       "at": "2026-10-24T20:38:54Z",
       "title": "Annotation folders you can place into and hide",
       "digest": "minor",
@@ -266,7 +277,7 @@
       "at": "2026-10-23T14:07:03Z",
       "title": "Hide announcements in chat",
       "items": [
-        "Announcements in chat, like Today in Pyr, have an \u00d7 to hide them from your chat. They stay in your notifications."
+        "Announcements in chat, like Today in Pyr, have an × to hide them from your chat. They stay in your notifications."
       ]
     },
     {
