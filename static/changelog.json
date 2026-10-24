@@ -2,13 +2,21 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-24T16:45:00Z",
+      "at": "2026-10-24T16:46:00Z",
       "title": "Meet the cells of the retina",
       "digest": "headline",
       "items": [
         "New in the Cell Library on Retina: Meet the cells, one example of each of the 117 cell types identified in the Eyewire II dataset, most common first.",
         "Click a type to see its cell alone in 3D and turn it, or show a whole class, or all 117, together in their places in the retina, each type in its own color.",
         "Each class comes with a short note on what it does, and Back to my view puts your own view back."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:45:00Z",
+      "title": "Claim buttons only where you can claim",
+      "digest": "minor",
+      "items": [
+        "In Switch Dataset, the Available cells, Quests and My cells buttons now show only on datasets where you can claim cells."
       ]
     },
     {

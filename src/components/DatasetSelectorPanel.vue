@@ -141,7 +141,13 @@ async function switchTo(ds: DatasetEntry): Promise<boolean> {
 // instead of switching, opening the library and finding the tab.
 type TaskTab = 'available' | 'mine' | 'quests';
 const hasQuests = (ds: DatasetEntry) => canonicalDataset(segLayerName(ds)) === QUEST_DATASET;
-const showTasks = (ds: DatasetEntry) => accessOf(ds) !== 'none' && (!!ds.cellTasks || hasQuests(ds));
+/** Claiming needs edit access (Ames 2026-10-24: "It should not show their
+ *  options for Claiming cells if they don't have edit access"). Read from
+ *  CAVE as it is, not accessOf, which calls the dataset on screen "edit"
+ *  whatever CAVE says. Signed out, or before CAVE answers: no chips yet.
+ *  Admins always. Sandbox gives every signed in account edit. */
+const canClaim = (ds: DatasetEntry) => !!backend.isAdmin || datasetAccess(ds.caveDataset) === 'edit';
+const showTasks = (ds: DatasetEntry) => canClaim(ds) && (!!ds.cellTasks || hasQuests(ds));
 
 // Your claims per dataset: one small read when the window opens (a player
 // holds at most a few), so My cells shows only where you have cells.
@@ -628,7 +634,10 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
 
 /* Straight to the work: chips in the Dataset Stats button's own
    voice (angular edge, title lettering), quieter so the card stays calm. */
-.nge-ds-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.nge-ds-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; animation: nge-ds-tasks-in 0.35s ease backwards; }
+/* The chips wait for CAVE's answer on access: they fade in, never pop. */
+@keyframes nge-ds-tasks-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nge-ds-tasks { animation: none; } }
 .nge-ds-task {
   display: inline-flex; align-items: center; gap: 5px;
   height: 30px; padding: 0 9px 0 10px;
