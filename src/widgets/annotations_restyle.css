@@ -687,3 +687,18 @@ textarea.neuroglancer-annotation-details-description:focus {
 .nge-ann-pick-bar { margin: 4px 6px; }
 /* the whole row drags, so a drag never selects its text */
 .neuroglancer-annotation-list-entry[data-nge-pickable] { user-select: none; -webkit-user-select: none; }
+
+/* A folder's eye hides its annotations in the views, and its target makes it
+   the folder new annotations go into (annkri, report 225). */
+.nge-ann-folder-eye, .nge-ann-folder-target {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px;
+  background: none; color: rgba(190, 210, 240, 0.75); cursor: pointer;
+}
+.nge-ann-folder-eye:hover, .nge-ann-folder-target:hover { color: #fff; background: rgba(74, 158, 255, 0.15); }
+.nge-ann-folder-eye--off { color: rgba(190, 210, 240, 0.4); }
+.nge-ann-folder-target { color: rgba(190, 210, 240, 0.45); margin-left: 2px; }
+.nge-ann-folder-target--on { color: #87ceeb; background: rgba(135, 206, 235, 0.16); box-shadow: inset 0 0 0 1px rgba(135, 206, 235, 0.55); }
+.nge-ann-folder--active { background: rgba(135, 206, 235, 0.07); }
+.nge-ann-folder--hidden .nge-seg-folder-name { opacity: 0.55; }
+.neuroglancer-annotation-list-entry.nge-ann-hidden { opacity: 0.45; }
