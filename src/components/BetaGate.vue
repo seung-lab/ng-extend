@@ -21,6 +21,10 @@ const login = useLoginStore();
 
 const show = ref(false);
 const requested = ref(false);
+// Name and email (Ames 2026-10-24: "It should just ask for their name and
+// email", "and we can have an optional note"), filled in from the sign in.
+const name = ref('');
+const email = ref('');
 const note = ref('');
 const sending = ref(false);
 const error = ref('');
@@ -35,6 +39,8 @@ async function check(userId: string) {
     // Only a plain "no" from the server shows the popup.
     if (s && s.invited === false) {
       requested.value = !!s.requested;
+      if (!name.value) name.value = backend.userName || login.sessions[0]?.name || '';
+      if (!email.value) email.value = login.sessions[0]?.email || '';
       show.value = true;
       setTimeout(() => { if (panelEl.value) runPanelTrace(panelEl.value); }, 80);
     } else {
@@ -44,12 +50,26 @@ async function check(userId: string) {
 }
 watch(() => backend.userId, id => { if (id) void check(id); else { show.value = false; askedFor = ''; } }, { immediate: true });
 
+// The same checks as the server (functions/access-request.js), so a typo is
+// caught here; the server checks again and is the one that counts.
+const NAME_OK = /^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u;
+const EMAIL_OK = /^[^\s@<>()\[\],;:"]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+function problem(): string {
+  const n = name.value.trim(), e = email.value.trim();
+  if (!n) return 'Please add your name.';
+  if (!NAME_OK.test(n)) return 'Your name can have letters, spaces, periods, apostrophes and hyphens only.';
+  if (!e) return 'Please add your email.';
+  if (!EMAIL_OK.test(e)) return 'That email does not look right.';
+  return '';
+}
 async function request() {
   if (sending.value) return;
+  error.value = problem();
+  if (error.value) return;
   sending.value = true;
-  error.value = '';
   try {
-    const r = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.beta', { note: note.value.trim() || undefined });
+    const r = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.beta', {
+      name: name.value.trim(), email: email.value.trim(), note: note.value.trim() || undefined });
     if (r?.invited) { show.value = false; return; }
     requested.value = true;
   } catch (e: any) {
@@ -82,8 +102,12 @@ onUnmounted(() => window.removeEventListener('keydown', swallow, true));
         <h2 id="nge-beta-title" class="nge-beta-title">Pyr is invite only for now</h2>
         <template v-if="!requested">
           <p class="nge-beta-text">Thanks for signing in! Pyr is in a closed beta while we get it ready. Ask to join and we'll add you as soon as we can.</p>
+          <label class="nge-beta-label" for="nge-beta-name">Your name</label>
+          <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
+          <label class="nge-beta-label" for="nge-beta-email">Your email</label>
+          <input id="nge-beta-email" v-model="email" class="nge-beta-field" type="email" maxlength="254" autocomplete="email" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-note">Anything you'd like us to know? <span>(optional)</span></label>
-          <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="3" maxlength="1000"
+          <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="2" maxlength="500"
                     placeholder="Where you heard about Pyr, or your EyeWire username"></textarea>
           <button class="nge-beta-btn" :disabled="sending" @click="request">{{ sending ? 'Sending...' : 'Request beta access' }}</button>
           <p v-if="error" class="nge-beta-error" role="alert">{{ error }}</p>
@@ -158,14 +182,15 @@ onUnmounted(() => window.removeEventListener('keydown', swallow, true));
 .nge-beta-check { color: #7ee0ff; font-weight: 700; }
 .nge-beta-label { display: block; margin-bottom: 6px; font-size: 13px; color: rgba(200, 220, 245, 0.85); }
 .nge-beta-label span { color: rgba(200, 220, 245, 0.5); }
-.nge-beta-note {
-  width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px;
+.nge-beta-note, .nge-beta-field {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 52px;
   padding: 9px 11px; margin-bottom: 16px;
   font: 14px/1.45 'Inter', sans-serif; color: #e6f0ff;
   background: rgba(10, 20, 40, 0.9);
   border: 1px solid rgba(100, 200, 255, 0.28); border-radius: 6px;
 }
-.nge-beta-note:focus { outline: none; border-color: rgba(100, 200, 255, 0.7); box-shadow: 0 0 0 2px rgba(79, 207, 255, 0.15); }
+.nge-beta-field { min-height: 0; height: 38px; resize: none; margin-bottom: 12px; }
+.nge-beta-note:focus, .nge-beta-field:focus { outline: none; border-color: rgba(100, 200, 255, 0.7); box-shadow: 0 0 0 2px rgba(79, 207, 255, 0.15); }
 .nge-beta-note::placeholder { color: rgba(190, 210, 240, 0.4); }
 /* The one action, in the Dataset Stats button's voice, filled. */
 .nge-beta-btn {

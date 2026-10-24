@@ -1449,7 +1449,12 @@ const ISSUE_EMOJI = {
   "Bug": ":beetle:", "Idea": ":bulb:", "Data problem": ":warning:", "Other": ":speech_balloon:", "Beta access": ":key:",
 };
 
-async function postIssueToSlack(token, issue) {
+// Slack reads <...> as a mention or a link and & as an entity: a report's
+// own words must never ping a channel or hide a link (Ames 2026-10-24).
+const slackText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+async function postIssueToSlack(token, raw) {
+  const issue = { ...raw, title: raw.title && slackText(raw.title), message: raw.message && slackText(raw.message),
+    user: raw.user && slackText(raw.user), dataset: raw.dataset && slackText(raw.dataset), url: raw.url && slackText(raw.url) };
   try {
     const channel = await resolveReviewChannel(token);
     if (!channel) { console.error("[issue] review channel not found"); return; }
@@ -2283,6 +2288,13 @@ exports.ewAccessRequest = onRequest(
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
           // A reviewer testing with their own request is told too (Ames 2026-10-16).
+          await note(people.map((p) => p.id), title, body, image);
+        },
+        // Beta access requests reach every admin (Ames 2026-10-24).
+        notifyAdmins: async ({ title, body, image }) => {
+          const emails = (await sb("admins?select=email")).map((r) => String(r.email || "").replace(/[",()]/g, "")).filter(Boolean);
+          if (!emails.length) return;
+          const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(emails.map((e) => `"${e}"`).join(",")) + ")");
           await note(people.map((p) => p.id), title, body, image);
         },
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),

@@ -3,7 +3,8 @@
 // Serve:  python -m http.server 3561 --directory dist/min
 // Run:    node scripts/beta-gate.test.cjs [shots dir]
 // Checks: a signed in player the server calls not invited gets the popup,
-// can send the request once (with a note), and then sees "Your request is
+// sees its name and email filled in, is stopped on a bad email or an
+// empty name, can send the request once (name, email, optional note), and then sees "Your request is
 // in"; the popup cannot be closed by Escape or a click outside. Controls: a
 // tester gets no popup, and neither does anyone when the server cannot be
 // asked (it fails open; the server still refuses their writes).
@@ -64,19 +65,36 @@ async function player(browser, status) {
     const text = shown ? (await p.page.innerText('.nge-beta-panel')).replace(/\s+/g, ' ') : '';
     check('it says invite only and names support@eyewire.ai', /Pyr is invite only for now/i.test(text) && /support@eyewire\.ai/.test(text), text.slice(0, 200));
     check('no dashes in its words', !/[\u2013\u2014]/.test(text));
-    const box = await p.page.locator('.nge-beta-panel').boundingBox();
-    await p.page.screenshot({ path: path.join(OUT, 'beta-gate.png'), clip: { x: box.x - 30, y: box.y - 30, width: box.width + 60, height: box.height + 60 } });
+    const box0 = await p.page.locator('.nge-beta-panel').boundingBox();
+    await p.page.screenshot({ path: path.join(OUT, 'beta-gate.png'), clip: { x: box0.x - 30, y: box0.y - 30, width: box0.width + 60, height: box0.height + 60 } });
     await p.page.keyboard.press('Escape');
     await p.page.mouse.click(20, 450);
     await p.page.waitForTimeout(400);
     check('Escape and a click outside leave it up', !!(await p.page.$('.nge-beta-panel')));
+    // Filled in from the sign in.
+    const pre = await p.page.evaluate(() => ({ name: document.querySelector('#nge-beta-name').value, email: document.querySelector('#nge-beta-email').value }));
+    check('name and email are filled in from the sign in', pre.name === 'New Player' && pre.email === 'new@example.org', pre);
+    // A bad email is caught here, and nothing is sent.
+    await p.page.fill('#nge-beta-email', 'not an email');
+    await p.page.click('.nge-beta-btn');
+    await p.page.waitForTimeout(300);
+    const err = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
+    check('a bad email says so, and nothing is sent', /email does not look right/.test(err) && !p.calls.some(c => c.action === 'access.beta'), err);
+    await p.page.fill('#nge-beta-name', '');
+    await p.page.fill('#nge-beta-email', 'new@example.org');
+    await p.page.click('.nge-beta-btn');
+    await p.page.waitForTimeout(300);
+    const err2 = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
+    check('an empty name says so, and nothing is sent', /add your name/.test(err2) && !p.calls.some(c => c.action === 'access.beta'), err2);
+    await p.page.fill('#nge-beta-name', "Zoë O'Brien");
     await p.page.fill('#nge-beta-note', 'My EyeWire name is tester1');
     await p.page.click('.nge-beta-btn');
     await p.page.waitForSelector('.nge-beta-text--done', { timeout: 5000 }).catch(() => {});
     const sent = p.calls.filter(c => c.action === 'access.beta');
-    check('Request beta access sends one request, with the note', sent.length === 1 && sent[0].note === 'My EyeWire name is tester1', sent);
+    check('Request beta access sends one request: name, email and note', sent.length === 1 && sent[0].name === "Zoë O'Brien" && sent[0].email === 'new@example.org' && sent[0].note === 'My EyeWire name is tester1', sent);
     const done = (await p.page.innerText('.nge-beta-panel')).replace(/\s+/g, ' ');
     check('then it says the request is in, and offers no button', /Your request is in/.test(done) && !(await p.page.$('.nge-beta-btn')), done.slice(0, 160));
+    const box = await p.page.locator('.nge-beta-panel').boundingBox();
     await p.page.screenshot({ path: path.join(OUT, 'beta-gate-sent.png'), clip: { x: box.x - 30, y: box.y - 30, width: box.width + 60, height: box.height + 60 } });
     check('no page errors', p.errors.filter(e => !/Failed to fetch/.test(e)).length === 0, p.errors.slice(0, 3));
     await p.context.close();

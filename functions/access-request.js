@@ -390,7 +390,7 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
 // should receive a popup". The popup offers Request beta access, once per
 // account. A request becomes a report on the triage board (site_issues,
 // category Beta access, so the Slack bridge files its card), a bell in the
-// reviewers' Admin tab and a Slack post. An admin lets the player in by
+// Admin tab of every admin and a Slack post. An admin lets the player in by
 // adding their email under Admin Hub, Pilot testers.
 //   access.betaStatus  anyone signed in: {invited, requested}.
 //   access.beta        a player not on the list: send the request.
@@ -405,19 +405,48 @@ async function betaStatus(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
   return {invited: false, requested: await betaRequested(io.sb, io.me)};
 }
+// What a player types is checked hard (Ames 2026-10-24: "Make sure it's
+// secure like players can't inject anything"): a name is letters, spaces and
+// . ' and hyphens only; an email is one plain address; the note is plain text and goes
+// only on the triage card, which shows text as text. The bell, which draws
+// markdown, gets the name and emails only, with markdown characters escaped.
+// Slack escapes every report's text itself (postIssueToSlack).
+const BETA_NAME_MAX = 80, BETA_EMAIL_MAX = 254, BETA_NOTE_MAX = 500;
+function betaName(value) {
+  const name = cleanText(value, BETA_NAME_MAX, 'Your name', true).replace(/\s+/g, ' ');
+  if (!/^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u.test(name)) fail(400, 'Your name can have letters, spaces, periods, apostrophes and hyphens only.');
+  return name;
+}
+function betaEmail(value) {
+  const email = cleanText(value, BETA_EMAIL_MAX, 'Your email', true).toLowerCase();
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(email)) fail(400, 'That email does not look right.');
+  return email;
+}
+/** Text for a markdown note: every markdown character escaped. */
+const mdText = s => String(s).replace(/[\\`*_{}\[\]()#+\-.!|<>~&:@]/g, c => '\\' + c);
 async function beta(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
   if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  const name = betaName(a.name);
+  const email = betaEmail(a.email);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
   if (await betaRequested(io.sb, io.me)) return {invited: false, requested: true, already: true};
-  const note = cleanText(a.note, NOTE_MAX, 'Your note') || '';
-  const name = String(io.me.display_name || io.me.username || 'A player').slice(0, 80);
-  const email = String((io.who && io.who.email) || '').slice(0, 200);
-  const message = `${name} (${email}) asks to join the Pyr beta.` + (note ? ` Their note: ${note}` : '')
-    + ' To let them in, add their email under Admin Hub, Pilot testers.';
+  // The sign in email is the one Pilot testers needs; it comes from the
+  // server's own check of their sign in, never from the form.
+  const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  const message = [
+    `${name} asks to join the Pyr beta.`,
+    `Email they gave: ${email}`,
+    `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    note ? `Their note: ${note}` : '',
+  ].filter(Boolean).join('\n');
   const title = `Beta access request from ${name}`.slice(0, 120);
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
-  try { await io.notifyReviewers({title: `${BETA_BELL} from ${name}`, body: message}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  const bell = `${mdText(name)} asks to join the Pyr beta.\n\nEmail they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}\n\nTo let them in, add the sign in email under Admin Hub, Pilot testers.`
+    + (note ? ' Their note is on the triage board.' : '');
+  // Every admin's Admin tab (Ames 2026-10-24: "yes to all admins").
+  try { await (io.notifyAdmins || io.notifyReviewers)({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
   return {invited: false, requested: true};
 }
