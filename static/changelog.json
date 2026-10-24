@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T23:07:00Z",
+      "title": "The Cell Library comes back after a refresh, and tidier Find Path boxes",
+      "items": [
+        "Refresh the page with the Cell Library open and it opens again on the same tab, still slimmed to the cell you were on.",
+        "In Find Path, the start and end points each sit on one short line, labelled source and target."
+      ]
+    },
+    {
       "at": "2026-10-24T23:01:05Z",
       "title": "The merge and cut bar no longer covers the Segments list",
       "items": [
