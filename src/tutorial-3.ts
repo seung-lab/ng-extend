@@ -9,7 +9,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, groupProgress, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
@@ -64,6 +64,8 @@ async function pointsInState(stateUrl: string): Promise<number[][]> {
 const MERGE_HINT_STATES: Record<string, string> = {
   // First merge (dendrite): one point on the yellow piece, one on the purple.
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5193945751486464',
+  // Extension Sandbox, cell 1 (Ames, 2026-10-24).
+  '63a057ed-ce08-4a6f-915d-eca29214e48c': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960',
 };
 
 /** Or the two spots themselves, in viewer voxels, where Ames gave them
@@ -727,6 +729,16 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       }
     }
     if (cutStage) { practiceStatus(cutStage, false, true); setTimeout(tick, 700); return; }
+    // A cell missing several pieces: say how many are back on.
+    if (wantMerged && !failed) {
+      const pr = await groupProgress();
+      if (token !== practiceWatch) return;
+      if (pr && pr.joined > 0 && pr.joined < pr.total) {
+        practiceStatus(`Good merge! ${pr.joined} of the ${pr.total} missing pieces ${pr.joined === 1 ? 'is' : 'are'} back on. Find the ${pr.total - pr.joined === 1 ? 'last one' : 'rest'}.`);
+        setTimeout(tick, 3000);
+        return;
+      }
+    }
     practiceStatus(failed
       ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
         + (wantMerged
@@ -935,7 +947,7 @@ const FRIENDLY_TIPS: Record<string, string> = {
   '3D neurons': 'The 3D reconstruction of every cell in the images',
 };
 function friendlyLayerNames() {
-  const inTutorial = [3, 5, 9].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  const inTutorial = [3, 5, 9, 13].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
   // Which dataset is on screen decides the shown names. The Sandbox and the
   // tutorials say "2D EM" and "3D segmentation", the Retina "2D EM" and
   // "3D Retina Cells" (Ames 2026-10-06). Every other dataset says

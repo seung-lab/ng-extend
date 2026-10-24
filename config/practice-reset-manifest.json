@@ -118,5 +118,25 @@
     "baseline_at": "2026-10-06T16:00:00+00:00",
     "root_a": "648518346351593708",
     "root_b": "648518346356157002"
+  },
+  "63a057ed-ce08-4a6f-915d-eca29214e48c": {
+    "kind": "merge_then_cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73535750519863797",
+    "supervoxel_b": "74873580823075327",
+    "baseline_at": "2026-10-24T00:00:00+00:00",
+    "root_a": "648518346353836607",
+    "root_b": "648518346351941295"
+  },
+  "2f8c4066-202e-44f7-88b1-5dbd0335adde": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73817775453600544",
+    "supervoxel_b": "73817706734177384",
+    "baseline_at": "2026-10-24T15:39:00+00:00",
+    "root_a": "648518346353830447",
+    "root_b": "648518346353830447"
   }
 }
