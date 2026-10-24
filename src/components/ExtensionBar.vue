@@ -1282,10 +1282,11 @@ function onIconDrop(e: DragEvent, id: string) {
         <li class="nge-menu-heading" @click.stop>Learn more</li>
         <!-- The Proofreading Guide link was taken out (Ames 2026-10-16): the old
              guide no longer matches Pyr. -->
+        <!-- Laid out like the other rows, so it lines up on the left (Ames 2026-10-24). -->
         <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
-          </div>
+          <a class="logoutButton button nge-menu-item" target="_blank" rel="noopener" href="https://forum.eyewire.org" @click="closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">💬</span><span>Forum ↗</span>
+          </a>
         </li>
         <!-- The same list of every key that ? opens (util/key_list.ts). -->
         <li>
