@@ -2169,6 +2169,8 @@ function toggleCollapse() {
 }
 .nge-chat-announce-hide:hover { color: #fff; }
 .nge-chat-announce-thumb {
+  /* a little more room before the words (Ames 2026-10-24) */
+  margin-right: 6px;
   flex: 0 0 auto; width: 46px; height: 46px; object-fit: cover; border-radius: 6px;
   background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(120, 170, 255, 0.3);
 }
