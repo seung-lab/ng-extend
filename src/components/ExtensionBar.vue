@@ -2357,6 +2357,12 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 /* Numbered rows start at the left edge, so the numbers form one column
    (Ames, 2026-10-13). */
 #hamburger li:has(> .nge-menu-item) { justify-content: start; }
+/* Tighter rows (Ames 2026-10-24: "too spaced out"): the row and the button
+   inside it both had padding, 57px a row. And the menu scrolls when it is
+   taller than the window: a player could not reach the bottom items. */
+#hamburger li:has(> .logoutButton) { padding-top: 1px; padding-bottom: 1px; }
+#hamburger li .logoutButton { padding-top: 6px; padding-bottom: 6px; }
+#hamburger .dropdownMenu { max-height: calc(100vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
 .nge-menu-num {
   display: inline-flex;
   align-items: center;

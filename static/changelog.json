@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T00:00:00Z",
+      "title": "A tighter menu that scrolls",
+      "items": [
+        "The menu is tighter, and it scrolls when your window is too short to show all of it.",
+        "MEC's Cell Library no longer starts with an empty entry.",
+        "Announcements in chat no longer start with a megaphone; they have their picture."
+      ]
+    },
+    {
       "at": "2026-10-24T17:04:00Z",
       "title": "A ninth merger, a harder one",
       "items": [

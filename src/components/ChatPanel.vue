@@ -1048,6 +1048,11 @@ function isSelfMention(token: string): boolean {
   return isSelfMentionToken(token, backendStore.username, backendStore.userName);
 }
 
+/** An announcement's line, without the 📢 the older ones start with: the
+ *  card has its picture now (Ames 2026-10-24). */
+function announceText(msg: ChatMessage): string {
+  return msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('').replace(/^\s*📢\s*/u, '');
+}
 /** Open the notification an announcement message refers to. */
 /** The 🗑 on chat messages is hidden for now (Ames 2026-09-28). Deleting still
  *  works server side; flip this to bring the button back. */
@@ -1415,7 +1420,7 @@ function toggleCollapse() {
                        sits at the left edge (Ames 2026-10-11). -->
                   <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <img v-if="announcePicture(msg.notificationId)" class="nge-chat-announce-thumb" :src="announcePicture(msg.notificationId)" alt="" loading="lazy" />
-                  <span class="nge-chat-announce-text">{{ msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('') }}</span>
+                  <span class="nge-chat-announce-text">{{ announceText(msg) }}</span>
                   <!-- Announcements take reactions like any message (Ames
                        2026-10-07). The picker sits in the row, beside Open,
                        and a click on it never opens the notification. -->
