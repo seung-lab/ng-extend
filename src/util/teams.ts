@@ -32,7 +32,11 @@ export interface SavedTeam {
  * buttons and the Teams tab do not appear. Null opens it on every dataset.
  */
 export const TEAMS_TESTING_ON: string | null = 'pni_mec';
+/** Team up is put away for now, on MEC too (Ames 2026-10-24: "let's remove
+ *  Team Up in MEC for now"). False brings it back where TEAMS_TESTING_ON says. */
+export const TEAMS_PAUSED = true;
 export function teamsOnDataset(raw: string | null | undefined): boolean {
+  if (TEAMS_PAUSED) return false;
   return TEAMS_TESTING_ON == null || canonicalDataset(raw || currentDatasetTag()) === TEAMS_TESTING_ON;
 }
 
