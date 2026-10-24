@@ -11,7 +11,7 @@
  * Counts every point in the lab's layers, placed here, in Highlight or by hand.
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
-import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz } from '../util/mec_marks';
+import { MEC_KINDS, MEC_SOMA, mecCounts, mecLayers, somaState, startXyz } from '../util/mec_marks';
 import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, addEdgeMarks, workingRoot, autoEdgeNews } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
@@ -45,6 +45,49 @@ function markLine(key: string, n: number): string {
 }
 const hintOf = (key: string) => MEC_KINDS.find(k => k.key === key)?.hint ?? '';
 const labelOf = (key: string) => MEC_KINDS.find(k => k.key === key)?.label ?? '';
+
+// ── Going from mark to mark (Ames 2026-10-24: "how do I jump between the
+// annotation layers? like to easily go from one to the next without having to
+// click"). ] and [ (or Next and Previous) fly the view to the next or the
+// previous mark of the kind picked, or of every kind when none is. Those keys
+// step through time in neuroglancer, which these cells do not have.
+const navAt = ref('');
+let navIndex = -1;
+let navKind: string | null = null;
+function marksToVisit(): { key: string; label: string; point: number[] }[] {
+  const out: { key: string; label: string; point: number[] }[] = [];
+  const layers = mecLayers();
+  for (const k of MEC_KINDS) {
+    if (armed.value && k.key !== armed.value) continue;
+    try {
+      for (const ann of layers.get(k)?.layer?.localAnnotations ?? []) {
+        if (ann.type === 0 && ann.point) out.push({ key: k.key, label: k.label, point: Array.from(ann.point as ArrayLike<number>).slice(0, 3) });
+      }
+    } catch { /* not loaded */ }
+  }
+  return out;
+}
+function step(dir: 1 | -1) {
+  const list = marksToVisit();
+  if (navKind !== armed.value) { navKind = armed.value; navIndex = -1; }
+  if (!list.length) { navAt.value = armed.value ? `No ${labelOf(armed.value)} marks yet.` : 'No marks yet.'; return; }
+  navIndex = navIndex < 0 && dir < 0 ? list.length - 1 : (navIndex + dir + list.length) % list.length;
+  const m = list[navIndex];
+  try { (window as any).viewer.navigationState.position.value = Float32Array.from(m.point); } catch { return; }
+  const same = list.filter(x => x.key === m.key);
+  navAt.value = `${m.label} ${same.indexOf(m) + 1} of ${same.length}` + (armed.value ? '' : `, mark ${navIndex + 1} of ${list.length}`);
+}
+const typing = (t: EventTarget | null) => {
+  const el = t as HTMLElement | null;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+};
+function onKey(e: KeyboardEvent) {
+  if (!open.value || typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== ']' && e.key !== '[') return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  step(e.key === ']' ? 1 : -1);
+}
 
 function arm(key: string) {
   armed.value = armed.value === key ? null : key;
@@ -107,11 +150,13 @@ onMounted(() => {
   timer = setInterval(read, 1500);
   window.addEventListener('pointerdown', onPointer, true);
   window.addEventListener('contextmenu', onContextMenu, true);
+  window.addEventListener('keydown', onKey, true);
 });
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer);
   window.removeEventListener('pointerdown', onPointer, true);
   window.removeEventListener('contextmenu', onContextMenu, true);
+  window.removeEventListener('keydown', onKey, true);
 });
 </script>
 
@@ -150,6 +195,11 @@ onBeforeUnmount(() => {
           <i></i><b>{{ k.label }}</b><span>{{ markLine(k.key, counts[k.key] ?? 0) }}</span>
         </button>
         <div v-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
+      </div>
+      <div class="nge-mms-nav">
+        <button type="button" class="nge-mms-btn" title="Go to the previous mark ([)" @click="step(-1)">‹ Previous</button>
+        <button type="button" class="nge-mms-btn" title="Go to the next mark (])" @click="step(1)">Next ›</button>
+        <span class="nge-mms-msg">{{ navAt || (armed ? `Go through the ${labelOf(armed)} marks. Keys: [ and ]` : 'Go through every mark. Keys: [ and ]') }}</span>
       </div>
       <div class="nge-mms-foot">
         <button type="button" class="nge-mms-btn" :disabled="busy" @click="findEdges"
@@ -196,6 +246,7 @@ onBeforeUnmount(() => {
 .nge-mms-btn:disabled { opacity: 0.45; cursor: default; }
 .nge-mms-btn--ok { color: #2a2205; background: #ffd24d; border-color: #ffd24d; }
 .nge-mms-btn--ok:hover:not(:disabled) { background: #ffe07f; }
+.nge-mms-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 7px; }
 .nge-mms-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 7px; }
 .nge-mms-msg { flex: 1; min-width: 140px; font-size: 11px; color: rgba(200, 212, 228, 0.55); }
 .nge-mms-msg--bad { color: #ff9aa8; }
