@@ -162,7 +162,41 @@ export function makeFolderHeading(
         folders.remove(f.id);
       }, 'nge-seg-folder-ungroup'));
 
-  heading.append(caret, swatch, name, countEl, actions);
+  // annkri, report 225: hide a section you are done with, and choose the
+  // folder new annotations go into.
+  const svg = (paths: string) =>
+    `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  const EYE = '<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>';
+  const EYE_OFF = EYE + '<path d="M2.5 2.5l11 11"/>';
+  const TARGET = '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/>';
+  const eye = document.createElement('button');
+  eye.className = 'nge-ann-folder-eye' + (folder.hidden ? ' nge-ann-folder-eye--off' : '');
+  eye.innerHTML = svg(folder.hidden ? EYE_OFF : EYE);
+  eye.title = folder.hidden ? 'Show these annotations' : 'Hide these annotations';
+  eye.setAttribute('aria-label', eye.title);
+  eye.setAttribute('aria-pressed', folder.hidden ? 'true' : 'false');
+  eye.addEventListener('mousedown', event => event.stopPropagation());
+  eye.addEventListener('click', event => {
+    event.stopPropagation();
+    const f = current();
+    if (f) folders.setHidden(f.id, !f.hidden);
+  });
+  const isActive = folders.activeFolder === folder.id;
+  const target = document.createElement('button');
+  target.className = 'nge-ann-folder-target' + (isActive ? ' nge-ann-folder-target--on' : '');
+  target.innerHTML = svg(TARGET);
+  target.title = isActive ? 'New annotations go into this folder. Click to stop.' : 'New annotations go here';
+  target.setAttribute('aria-label', target.title);
+  target.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  target.addEventListener('mousedown', event => event.stopPropagation());
+  target.addEventListener('click', event => {
+    event.stopPropagation();
+    folders.setActive(folders.activeFolder === folder.id ? undefined : folder.id);
+  });
+  if (isActive) heading.classList.add('nge-ann-folder--active');
+  if (folder.hidden) heading.classList.add('nge-ann-folder--hidden');
+
+  heading.append(caret, eye, swatch, name, countEl, target, actions);
   if (startRename) setTimeout(() => { if (name.isConnected) rename(); }, 0);
   return heading;
 }

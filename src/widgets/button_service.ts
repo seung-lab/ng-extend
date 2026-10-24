@@ -35,11 +35,23 @@ setPlaceCellLoader(async (group: any) => {
   const direct = place.length ? await supervoxelAtPlace(place) : null;
   if (mine !== placeLoad) return;
   if (direct) found = { position: place.slice(0, 3).map(Math.round) as [number, number, number], supervoxel: direct, root: direct === '0' ? null : await getRootFromSupervoxel(direct) };
-  for (let i = 0; !found && i < 30; ++i) {
-    await new Promise(r => setTimeout(r, 500));
-    if (mine !== placeLoad) return;  // a newer paste took over
-    const f = await cellAtCrosshair();
-    if (f.supervoxel) found = f;
+  // Otherwise the 2D view has to load that spot. In 3D only there was none,
+  // so nothing ever loaded and the paste did nothing (Ames 2026-10-24, MEC,
+  // whose stored segmentation can not be read directly). Open split screen
+  // for the look, and go back to 3D only after.
+  const viewer: any = (window as any).viewer;
+  const layoutOf = () => { try { const j = viewer?.layout?.toJSON?.(); return typeof j === 'string' ? j : (j?.type ?? ''); } catch { return ''; } };
+  const opened2D = !found && layoutOf() === '3d' && typeof (window as any).ngeToggle2D === 'function';
+  if (opened2D) (window as any).ngeToggle2D();
+  try {
+    for (let i = 0; !found && i < 30; ++i) {
+      await new Promise(r => setTimeout(r, 500));
+      if (mine !== placeLoad) return;  // a newer paste took over
+      const f = await cellAtCrosshair();
+      if (f.supervoxel) found = f;
+    }
+  } finally {
+    if (opened2D && layoutOf() !== '3d') (window as any).ngeToggle2D();
   }
   if (!found || !found.supervoxel) {
     StatusMessage.showTemporaryMessage('Nothing has loaded at that place yet. Look at the 2D view, then paste again.', 4000);

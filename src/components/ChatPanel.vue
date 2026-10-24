@@ -1048,8 +1048,9 @@ function isSelfMention(token: string): boolean {
   return isSelfMentionToken(token, backendStore.username, backendStore.userName);
 }
 
-/** An announcement's line, without the 📢 the older ones start with: the
- *  card has its picture now (Ames 2026-10-24). */
+/** An announcement's line, without the 📢 older ones carry in their text.
+ *  The card draws its own: the picture, or 📢 when there is none (Ames
+ *  2026-10-24). */
 function announceText(msg: ChatMessage): string {
   return msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('').replace(/^\s*📢\s*/u, '');
 }
@@ -1420,6 +1421,8 @@ function toggleCollapse() {
                        sits at the left edge (Ames 2026-10-11). -->
                   <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <img v-if="announcePicture(msg.notificationId)" class="nge-chat-announce-thumb" :src="announcePicture(msg.notificationId)" alt="" loading="lazy" />
+                  <!-- 📢 only where there is no picture to mark it (Ames 2026-10-24). -->
+                  <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-announce-icon" aria-hidden="true">📢</span>
                   <span class="nge-chat-announce-text">{{ announceText(msg) }}</span>
                   <!-- Announcements take reactions like any message (Ames
                        2026-10-07). The picker sits in the row, beside Open,
@@ -2169,6 +2172,8 @@ function toggleCollapse() {
 }
 .nge-chat-announce-hide:hover { color: #fff; }
 .nge-chat-announce-thumb {
+  /* a little more room before the words (Ames 2026-10-24) */
+  margin-right: 6px;
   flex: 0 0 auto; width: 46px; height: 46px; object-fit: cover; border-radius: 6px;
   background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(120, 170, 255, 0.3);
 }

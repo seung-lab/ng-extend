@@ -169,7 +169,31 @@ let lastBounds: { layers: { name: string; bounds: number[][] }[]; used: number[]
 try {
   (window as any).__ngeMecEdge = () => {
     const used = dataBoundsNm();
-    return { used, layers: lastBounds?.layers ?? [], um: used ? used[0].map((v, i) => `${(v / 1000).toFixed(1)} to ${(used[1][i] / 1000).toFixed(1)} um`) : null };
+    const um = (b: number[][] | null) => b ? b[0].map((v, i) => `${'xyz'[i]} ${(v / 1000).toFixed(1)} to ${(b[1][i] / 1000).toFixed(1)} um`) : null;
+    // The cells on screen, from their loaded meshes: where they actually reach.
+    const cells: Record<string, string[] | null> = {};
+    try {
+      const seg = (window as any).viewer.layerManager.managedLayers.find((l: any) => !l.archived && l.layer?.type === 'segmentation');
+      for (const id of seg?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? []) {
+        const root = id.toString();
+        const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+        for (const rl of seg.layer.renderLayers ?? []) {
+          const src = rl?.source;
+          if (!src?.fragmentSource?.chunks || !src?.chunks) continue;
+          const u = new Uint64(); if (!u.tryParseString(root)) continue;
+          const key = `${u.low},${u.high}`;
+          for (const fid of src.chunks.get(key)?.fragmentIds ?? []) {
+            const vp: Float32Array | undefined = src.fragmentSource.chunks.get(src.getFragmentKey(key, fid).key)?.meshData?.vertexPositions;
+            if (!vp) continue;
+            for (let p = 0; p + 2 < vp.length; p += 3) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], vp[p + i]); hi[i] = Math.max(hi[i], vp[p + i]); }
+          }
+        }
+        cells[root] = Number.isFinite(lo[0]) ? um([lo, hi]) : null;
+      }
+    } catch (e) { cells.error = [String(e)]; }
+    let scales: number[] | null = null;
+    try { scales = Array.from((window as any).viewer.coordinateSpace.value.scales as ArrayLike<number>).map(x => x / 1e-9); } catch { /* none */ }
+    return { edge: um(used), layers: (lastBounds?.layers ?? []).map(l => ({ name: l.name, bounds: um(l.bounds) })), cells, viewerScalesNm: scales };
   };
 } catch { /* no window */ }
 
