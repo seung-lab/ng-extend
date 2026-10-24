@@ -9,7 +9,7 @@ import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
-import { MEC_KINDS, MEC_AIS, MEC_EDGE, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
+import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
@@ -464,6 +464,12 @@ export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<voi
   const kind = kindOf(style);
   if (!kind) throw new Error("That is not one of the lab's marks.");
   const src = await labSource(kind);
+  // A cell has one soma: a soma marked here again moves it.
+  if (kind === MEC_SOMA) {
+    const old: string[] = [];
+    for (const ann of src) if (String(ann.id).startsWith(ID_PREFIX)) old.push(String(ann.id));
+    for (const id of old) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }
+  }
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
   src.add({
     id: `${mark}_0`, type: POINT, point: Float32Array.from(pick.global), properties: [],

@@ -149,3 +149,11 @@ drops a point in that layer, and the cell glows in that color around it.
 - Code: src/util/mec_marks.ts (the kinds, counts, bounds), highlight.ts
   (addLabMark, addAxonHighlight, addEdgeMarks), branch_tree.ts (piecesBeyond,
   edgeEnds, tested in scripts/branch-tree.test.mjs).
+- **Soma** (added the same day): a fifth lab mark, first in the list. One
+  point in the view's Soma layer (a second click moves it). Color the axon
+  uses it, and the completion note starts "Soma x, y, z." in view
+  coordinates, the same units as the sheet's Starting XYZ Coords.
+- **Point or Stretch**: a switch on the Lab marks header. Stretch makes the
+  usual highlight marks (two clicks, To soma, Beyond) in the mark's color, in
+  a layer of their own ("Can't Fix highlight"), and a two click stretch also
+  drops the lab's point at its second click.

@@ -23,9 +23,17 @@ const KIND_INFO: { key: string; label: string; hint: string }[] = [
   { key: 'mec:edge', label: 'Hits Edge', hint: 'A branch that reaches the end of the dataset.' },
 ];
 /** The layer names and colours come from MEC_LAYERS, in the same order. */
-export const MEC_KINDS: MecKind[] = KIND_INFO.map((k, i) => ({ ...k, layer: MEC_LAYERS[i].name, color: MEC_LAYERS[i].color }));
-export const MEC_AIS = MEC_KINDS[0];
-export const MEC_EDGE = MEC_KINDS[3];
+const LAB_KINDS: MecKind[] = KIND_INFO.map((k, i) => ({ ...k, layer: MEC_LAYERS[i].name, color: MEC_LAYERS[i].color }));
+/** The soma, with its coordinates (Ames 2026-10-24: "They also need a way to
+ *  mark Soma with coordinates"). A point in the view's Soma layer, where
+ *  Highlight already keeps a soma clicked for To soma and Beyond, so Color the
+ *  axon finds it too. Its coordinates go in the sheet's Notes on completion. */
+export const MEC_SOMA: MecKind = { key: 'mec:soma', label: 'Soma', layer: 'Soma', color: '#ffd24d',
+  hint: 'One mark on the cell body, in a colored part of it. Its coordinates go in the sheet when you complete the cell.' };
+/** In the order a cell is marked: soma, AIS, then the branch ends. */
+export const MEC_KINDS: MecKind[] = [MEC_SOMA, ...LAB_KINDS];
+export const MEC_AIS = LAB_KINDS[0];
+export const MEC_EDGE = LAB_KINDS[3];
 /** The axon, coloured beyond the AIS: a highlight layer of its own, so the
  *  lab's AIS layer holds only the AIS points it expects. */
 export const AXON_LAYER = 'Axon';
@@ -58,16 +66,30 @@ export function mecCounts(): Record<string, number> {
   return counts;
 }
 
+/** The newest soma point in the view, in the view's own coordinates (the
+ *  same units as the sheet's Starting XYZ Coords), rounded. */
+export function somaXyz(): number[] | null {
+  let last: number[] | null = null;
+  try {
+    for (const ann of mecLayers().get(MEC_SOMA)?.layer?.localAnnotations ?? []) {
+      if (ann.type === 0 && ann.point) last = [0, 1, 2].map(i => Math.round(ann.point[i]));
+    }
+  } catch { /* not loaded */ }
+  return last && last.every(Number.isFinite) ? last : null;
+}
+
 /**
  * The marks on the cell, as a line for the lab's sheet when the cell is
- * completed: "Marks: AIS 1, True End 12, Can't Fix 2, Hits Edge 5". Empty
- * off MEC, or when the view has none of the four layers. The marks themselves
- * travel in the Final Link; this is the count, readable in the sheet.
+ * completed: "Soma 129296, 128864, 6565. Marks: AIS 1, True End 12, Can't
+ * Fix 2, Hits Edge 5". Empty off MEC, or when the view has none of the
+ * layers. The marks themselves travel in the Final Link; this is the soma's
+ * place and the count, readable in the sheet.
  */
 export function mecMarkSummary(): string {
   if (!isMec() || !mecLayers().size) return '';
   const c = mecCounts();
-  return 'Marks: ' + MEC_KINDS.map(k => `${k.label} ${c[k.key]}`).join(', ');
+  const soma = somaXyz();
+  return (soma ? `Soma ${soma.join(', ')}. ` : '') + 'Marks: ' + LAB_KINDS.map(k => `${k.label} ${c[k.key]}`).join(', ');
 }
 
 /**

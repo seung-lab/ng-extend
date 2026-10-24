@@ -30,13 +30,13 @@ const RETINA_HOWTO: string[] = [
 const MEC_HOWTO: string[] = [
   `Click <b>Available</b> and choose a cell.`,
   `<b>Claim</b> it. Its view opens with four annotation layers ready: <b>AIS 🐬</b>, <b>True End 🟢</b>, <b>Can't Fix 🔴</b> and <b>Hits Edge 🟠</b>.`,
-  `Go to the soma (the cell body) and center your crosshairs in a colored part of it. The Cell Library records the soma's position in the spreadsheet for you.`,
+  `Go to the soma (the cell body). Open <b>Highlight</b> (Shift+H), pick <b>Soma</b> and Ctrl+click a colored part of it. Its coordinates go in the spreadsheet when you complete the cell.`,
   `If the nucleus is a separate segment, <b>merge</b> it with the soma.`,
-  `Proofread the cell, <b>axon first</b>, as the lab does, and mark it as you go. Open <b>Highlight</b> (Shift+H), pick a lab mark and Ctrl+click the cell to drop it. <b>AIS 🐬</b>: where the axon leaves the cell (skip it if the cell has no distinct axon). <b>True End 🟢</b>: every branch end where the branch naturally stops. <b>Can't Fix 🔴</b>: a branch that should go on, but you can't find the next piece. <b>Hits Edge 🟠</b>: a branch that reaches the end of the dataset.`,
+  `Proofread the cell, <b>axon first</b>, as the lab does, and mark it as you go. In Highlight, pick a lab mark and Ctrl+click the cell to drop it, or switch to <b>Stretch</b> to color a stretch in its color with the mark at its end. <b>AIS 🐬</b>: where the axon leaves the cell (skip it if the cell has no distinct axon). <b>True End 🟢</b>: every branch end where the branch naturally stops. <b>Can't Fix 🔴</b>: a branch that should go on, but you can't find the next piece. <b>Hits Edge 🟠</b>: a branch that reaches the end of the dataset.`,
   `Once the AIS is marked, <b>Color the axon</b> in Highlight shows the whole axon, and <b>Find axon ends at the edge</b> puts a Hits Edge mark on each axon end that reaches the end of the dataset. Check each one. Then do the rest of the cell the same way.`,
   `Want a layer of your own, for notes or spots to come back to? Ctrl+click (or right click) the <b>+</b> beside the layer tabs, and give it a name.`,
   `<b>Reminder: do NOT merge mitochondria.</b>`,
-  `When the cell is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID. That records it in the spreadsheet, with how many of each mark you placed.`,
+  `When the cell is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID. That records it in the spreadsheet, with the soma's coordinates and how many of each mark you placed.`,
 ];
 
 export interface DatasetCaveConfig {

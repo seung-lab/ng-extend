@@ -14,7 +14,7 @@ import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
 import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, addLabMark, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
-import { MEC_KINDS, isMec, mecCounts } from '../util/mec_marks';
+import { MEC_KINDS, isMec, mecCounts, somaXyz } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -65,7 +65,9 @@ const labCounts = ref<Record<string, number>>(mecCounts());
 const hintOf = (key: string) => MEC_KINDS.find(k => k.key === key)?.hint ?? '';
 /** The cell clicked last: the one Color the axon and Find ends work on. */
 const lastRoot = ref<string | null>(null);
-if (mec.value) styleKey.value = labCounts.value['mec:ais'] ? 'mec:end' : 'mec:ais';
+if (mec.value) styleKey.value = !labCounts.value['mec:soma'] ? 'mec:soma' : !labCounts.value['mec:ais'] ? 'mec:ais' : 'mec:end';
+/** Where the soma mark is, for the hint under the chips. */
+const somaAt = ref<number[] | null>(somaXyz());
 const first = ref<Pick | null>(null);
 /** Set while one more click is awaited, to say which side the soma is on. */
 const branchWay = ref<BranchWay | null>(null);
@@ -224,10 +226,28 @@ function refresh() {
   markCount.value = listHighlights().length;
   shown.value = highlightsShown();
   mec.value = isMec();
-  if (mec.value) labCounts.value = mecCounts();
+  if (mec.value) { labCounts.value = mecCounts(); somaAt.value = somaXyz(); }
 }
-const styleOf = () => allStyles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
-const labOn = computed(() => !!allStyles.value.find(s => s.key === styleKey.value)?.lab);
+// A lab mark is dropped as a point (one click), or highlighted as a stretch
+// in its color (Ames 2026-10-24: "an option to do this with highlight mode in
+// addition to annotation layers"). A stretch goes in a highlight layer of its
+// own, "True End highlight", so the lab's layer keeps only its points; a
+// stretch made with two clicks also drops the point at the second click.
+const LAB_AS_KEY = 'nge_highlight_lab_as';
+const labAs = ref<'point' | 'stretch'>((() => { try { return localStorage.getItem(LAB_AS_KEY) === 'stretch' ? 'stretch' : 'point'; } catch { return 'point'; } })());
+function setLabAs(v: 'point' | 'stretch') {
+  labAs.value = v;
+  try { localStorage.setItem(LAB_AS_KEY, v); } catch { /* private mode */ }
+}
+const picked = () => allStyles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
+/** The lab mark picked, when its marks are stretches. */
+const stretchKind = () => { const s = picked(); return s.lab && labAs.value === 'stretch' ? s : null; };
+const styleOf = (): HighlightStyle => {
+  const k = stretchKind();
+  return k ? { key: `${k.key}:hl`, label: k.label, layer: `${k.label} highlight`, color: k.color } : picked();
+};
+/** One click drops a lab point. */
+const labOn = computed(() => !!allStyles.value.find(s => s.key === styleKey.value)?.lab && labAs.value === 'point');
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
 const TRACE_LIMIT_MS = 60000;
@@ -246,7 +266,10 @@ async function place(x: number, y: number) {
       await addLabMark(pick, style);
       const wasAis = style.key === 'mec:ais';
       refresh();
-      if (wasAis && labCounts.value['mec:ais'] === 1) {
+      if (style.key === 'mec:soma') {
+        say(`Soma marked at ${somaAt.value?.join(', ') ?? 'this point'}. Next: the AIS.`);
+        if (!labCounts.value['mec:ais']) styleKey.value = 'mec:ais';
+      } else if (wasAis && labCounts.value['mec:ais'] === 1) {
         say('AIS marked. Next: Color the axon, then mark each of its ends.');
         styleKey.value = 'mec:end';
       } else say(`${style.label} marked.`);
@@ -271,7 +294,12 @@ async function place(x: number, y: number) {
   }
   first.value = null;
   try { showEndMarker(pick); } catch (e) { console.warn('[highlight] end marker failed:', e); }
-  await trace(wanted => addHighlight(a, pick, styleOf(), wanted), 'points');
+  const kind = stretchKind();
+  const ok = await trace(wanted => addHighlight(a, pick, styleOf(), wanted), 'points');
+  // A lab stretch ends at its mark: the point goes where the stretch ends.
+  if (ok && kind) {
+    try { await addLabMark(pick, kind); refresh(); } catch (e) { console.warn('[highlight] lab point failed:', e); }
+  }
 }
 
 // ── To soma, and Beyond ───────────────────────────────────────────────────
@@ -342,7 +370,7 @@ watch(branchWay, async way => {
  * 2026-10-02): give up after TRACE_LIMIT_MS, or when the player presses
  * Stop. `passSomaAsk` lets the "soma not known" answer through to the caller.
  */
-async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit: string, passSomaAsk = false) {
+async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit: string, passSomaAsk = false): Promise<boolean> {
   busy.value = true;
   say('');   // the band at the foot of the box says it is tracing
   let wanted = true;
@@ -380,6 +408,7 @@ async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit:
     refresh();
   }
   if (asked) throw asked;
+  return ok;
 }
 
 function isTypingTarget(e: Event): boolean {
@@ -552,7 +581,14 @@ onBeforeUnmount(() => {
         </template>
       </p>
       <div v-if="mec" class="nge-hl-mec">
-        <div class="nge-hl-mec-head"><span>Lab marks</span><span class="nge-hl-mec-sub">axon first</span></div>
+        <div class="nge-hl-mec-head">
+          <span>Lab marks</span><span class="nge-hl-mec-sub">axon first</span>
+          <div class="nge-hl-switch nge-hl-mec-as" role="radiogroup" aria-label="Lab marks as" :data-on="labAs === 'point' ? 'show' : 'hide'"
+               title="Point: one click drops the lab's mark. Stretch: highlight a stretch in the mark's color, and its end gets the mark.">
+            <button type="button" role="radio" :aria-checked="labAs === 'point' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('point')">Point</button>
+            <button type="button" role="radio" :aria-checked="labAs === 'stretch' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('stretch')">Stretch</button>
+          </div>
+        </div>
         <div class="nge-hl-styles" role="radiogroup" aria-label="Lab mark">
           <span
             v-for="s in labStyles" :key="s.key" role="radio" tabindex="0" :aria-checked="styleKey === s.key ? 'true' : 'false'"
@@ -564,7 +600,7 @@ onBeforeUnmount(() => {
             <span class="nge-hl-mec-n" :aria-label="`${labCounts[s.key] ?? 0} placed`">{{ labCounts[s.key] ?? 0 }}</span>
           </span>
         </div>
-        <p class="nge-hl-mec-hint">{{ labOn ? hintOf(styleKey) : 'A highlight color is picked: clicks mark a stretch.' }}</p>
+        <p class="nge-hl-mec-hint">{{ labOn && styleKey === 'mec:soma' && somaAt ? `Soma at ${somaAt.join(', ')}. Click again to move it.` : labOn ? hintOf(styleKey) : stretchKind() ? `${hintOf(styleKey)} Click where the stretch starts, then its end: the end gets the mark.` : 'A highlight color is picked: clicks mark a stretch.' }}</p>
         <div class="nge-hl-mec-actions">
           <button class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
                   :title="labCounts['mec:ais'] ? 'Color everything beyond the AIS, away from the soma: the axon.' : 'Mark the AIS first: the axon is everything beyond it.'">Color the axon</button>
@@ -770,6 +806,7 @@ onBeforeUnmount(() => {
 /* The lab's MEC marks: a section of its own above the highlight colors. */
 .nge-hl-mec { margin: 0 0 10px; padding: 8px 9px 9px; border-radius: 8px; background: rgba(77, 216, 240, 0.05); border: 1px solid rgba(77, 216, 240, 0.22); }
 .nge-hl-mec-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #a8eefa; }
+.nge-hl-mec-as { margin-left: auto; }
 .nge-hl-mec-sub { font: 500 11px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; color: rgba(200, 212, 228, 0.55); }
 .nge-hl-mec-n { min-width: 14px; text-align: right; font-variant-numeric: tabular-nums; color: rgba(220, 230, 245, 0.6); }
 .nge-hl-style--on .nge-hl-mec-n { color: #fff; }
