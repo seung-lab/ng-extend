@@ -1446,7 +1446,7 @@ async function postCorrectionReview(token, entry) {
 // (#citsci_feedback) and keeps a durable Firestore record in `site_issues`.
 const ISSUE_CATEGORIES = ["Bug", "Idea", "Data problem", "Other"];
 const ISSUE_EMOJI = {
-  "Bug": ":beetle:", "Idea": ":bulb:", "Data problem": ":warning:", "Other": ":speech_balloon:",
+  "Bug": ":beetle:", "Idea": ":bulb:", "Data problem": ":warning:", "Other": ":speech_balloon:", "Beta access": ":key:",
 };
 
 async function postIssueToSlack(token, issue) {
@@ -2222,7 +2222,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-11";
+const EW_ACCESS_CODE_VERSION = "2026-10-24-beta-access-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2269,14 +2269,16 @@ exports.ewAccessRequest = onRequest(
     if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
-      const { me, isAdmin } = await pilotContext(sb, who);
+      const { me, isAdmin, isPilot } = await pilotContext(sb, who);
       const note = (userIds, title, body, image) => {
         const rows = userIds.map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500), target_type: "user",
           ...(image ? { image_url: image, thumbnail_url: image } : {}),
           target_id: id, send_at: new Date().toISOString(), created_by: (me && me.id) || null }));
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
-      const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin,
+      const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
+        // Beta access requests post like any report (Ames 2026-10-24).
+        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");

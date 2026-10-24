@@ -385,8 +385,47 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
   return {...done[0], redos, pilot_added: pilotAdded, cave_granted: caveGranted};
 }
 
+// ── Beta access (Ames 2026-10-24) ────────────────────────────────────────
+// Pyr is invite only for now: "If they are not on the pilot tester list they
+// should receive a popup". The popup offers Request beta access, once per
+// account. A request becomes a report on the triage board (site_issues,
+// category Beta access, so the Slack bridge files its card), a bell in the
+// reviewers' Admin tab and a Slack post. An admin lets the player in by
+// adding their email under Admin Hub, Pilot testers.
+//   access.betaStatus  anyone signed in: {invited, requested}.
+//   access.beta        a player not on the list: send the request.
+const BETA_CATEGORY = 'Beta access';
+const BETA_BELL = '🔑 Beta access request';
+async function betaRequested(sb, me) {
+  if (!me) return false;
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id) + '&select=id&limit=1');
+  return Array.isArray(rows) && rows.length > 0;
+}
+async function betaStatus(a, io) {
+  if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
+  return {invited: false, requested: await betaRequested(io.sb, io.me)};
+}
+async function beta(a, io) {
+  if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
+  if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  if (await betaRequested(io.sb, io.me)) return {invited: false, requested: true, already: true};
+  const note = cleanText(a.note, NOTE_MAX, 'Your note') || '';
+  const name = String(io.me.display_name || io.me.username || 'A player').slice(0, 80);
+  const email = String((io.who && io.who.email) || '').slice(0, 200);
+  const message = `${name} (${email}) asks to join the Pyr beta.` + (note ? ` Their note: ${note}` : '')
+    + ' To let them in, add their email under Admin Hub, Pilot testers.';
+  const title = `Beta access request from ${name}`.slice(0, 120);
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
+  // The report is the record; the bell and the post only tell people.
+  try { await io.notifyReviewers({title: `${BETA_BELL} from ${name}`, body: message}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
+  return {invited: false, requested: true};
+}
+
 async function handle(action, args, io) {
   const a = args || {};
+  if (action === 'access.betaStatus') return betaStatus(a, io);
+  if (action === 'access.beta') return beta(a, io);
   if (action === 'access.mine') return mine(a, io);
   if (action === 'access.save') return save(a, io);
   if (action === 'access.remove') return remove(a, io);
@@ -399,4 +438,4 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanExample, KINDS, IMAGE, GRANTED_TITLE};
+module.exports = {handle, cleanExample, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
