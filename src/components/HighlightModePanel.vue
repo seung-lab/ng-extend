@@ -627,7 +627,7 @@ onBeforeUnmount(() => {
                   title="Find where the cell reaches the edge of the data, and mark each Hits Edge.">{{ labCounts['mec:ais'] && !noTrace ? 'Find axon ends at the edge' : 'Find ends at the edge' }}</button>
         </div>
       </div>
-      <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
+      <div v-if="!noTrace" class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
         <span
           v-for="s in styles" :key="s.key" role="radio" tabindex="0" :aria-checked="styleKey === s.key ? 'true' : 'false'"
           class="nge-hl-style" :class="{ 'nge-hl-style--on': styleKey === s.key }" :style="{ '--hl': s.color }"
@@ -661,7 +661,7 @@ onBeforeUnmount(() => {
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
         <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
-        <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
+        <button v-if="!noTrace" class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>
       <label class="nge-hl-width" title="How far out from the middle of the branch the color reaches. Wider covers thick branches and their spines; narrower keeps the color off neighboring branches.">
         <span>Color reach</span>
@@ -671,7 +671,7 @@ onBeforeUnmount(() => {
       <!-- Show / Hide for every highlight at once, in 2D and 3D (Ames
            2026-10-07: "keep the hide/show highlight slider in highlight").
            The side that is lit is how things are now. -->
-      <div class="nge-hl-show3d" title="Hide takes your highlights out of view, in 2D and in 3D. Nothing is deleted. You can also hide one highlight from its own layer tab.">
+      <div v-if="!noTrace" class="nge-hl-show3d" title="Hide takes your highlights out of view, in 2D and in 3D. Nothing is deleted. You can also hide one highlight from its own layer tab.">
         <span id="nge-hl-show3d-label">Highlight</span>
         <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-show3d-label" :data-on="shown ? 'show' : 'hide'">
           <button type="button" role="radio" :aria-checked="shown ? 'true' : 'false'" :tabindex="shown ? 0 : -1"

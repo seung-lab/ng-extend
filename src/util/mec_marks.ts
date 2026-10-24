@@ -152,7 +152,7 @@ export const EDGE_NM = 5000;
  * grid and joined where they touch, one spot per place, in nanometres.
  * `pieces`/`loaded`: the cells' mesh pieces in all, and on hand now.
  */
-export function meshEdgeSpots(roots: string[], bounds: number[][] | null, marginNm = EDGE_NM, binNm = 3000): { spots: number[][]; pieces: number; loaded: number } {
+export function meshEdgeSpots(roots: string[], bounds: number[][] | null, marginNm = EDGE_NM, binNm = 3000, countOnly = false): { spots: number[][]; pieces: number; loaded: number } {
   const out = { spots: [] as number[][], pieces: 0, loaded: 0 };
   if (!bounds || !roots.length) return out;
   const [lo, hi] = bounds;
@@ -174,6 +174,7 @@ export function meshEdgeSpots(roots: string[], bounds: number[][] | null, margin
           const vp: Float32Array | undefined = frag?.meshData?.vertexPositions;
           if (!vp) continue;
           out.loaded++;
+          if (countOnly) continue;   // how much has loaded, not where
           for (let p = 0; p + 2 < vp.length; p += 3) {
             const x = vp[p], y = vp[p + 1], z = vp[p + 2];
             const d = Math.min(x - lo[0], hi[0] - x, y - lo[1], hi[1] - y, z - lo[2], hi[2] - z);
