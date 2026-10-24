@@ -2,6 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+<<<<<<< HEAD
       "at": "2026-10-24T11:52:00Z",
       "title": "Straight to the work from Switch Dataset",
       "digest": "minor",
@@ -15,6 +16,12 @@
       "digest": "minor",
       "items": [
         "A notification with just a title and a picture now shows the title on top and the picture across the whole window, like a video note."
+=======
+      "at": "2026-10-24T13:34:42Z",
+      "title": "No empty help requests",
+      "items": [
+        "A help request needs a few words or a screenshot before it is sent, so a stray Enter in the help box no longer posts an empty request to chat."
+>>>>>>> 36d74e58 (Help requests need a note or a screenshot; an empty one sent on a stray Enter (Nseraf))
       ]
     },
     {

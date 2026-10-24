@@ -1522,6 +1522,13 @@ function getCurrentDatasetName(): string {
 }
 
 async function submitNewHelp() {
+  // A request says what is wrong, in words or a picture. An empty note sent
+  // on a stray Enter put "New help request from Nseraf (Unsure)" in chat
+  // while he was replying to someone else (2026-10-24).
+  if (!newHelpNote.value.trim() && !newHelpScreenshotUrl.value) {
+    newHelpError.value = 'Say what looks wrong first, or attach a screenshot.';
+    return;
+  }
   // The cell is whatever is selected in the viewer; the link is the view.
   // Either one is enough to find the problem (Amy 2026-09-29).
   const selected = (newHelpSegId.value.trim() || getActiveSegId()).trim();
