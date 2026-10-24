@@ -1614,8 +1614,14 @@ const hasDraft = computed(() =>
 watch([notifTitle, notifBody, notifTargetType, notifTargetId,
        notifPostToChat, notifSendAt, notifExpiresAt], saveDraft);
 
+/** A title is always needed; words only when there is no picture. A title
+ *  and a picture is a note of its own, shown big (Ames 2026-10-24: the
+ *  button stayed grey with no body text). */
+const notifHasPicture = computed(() => !!notifImageFile.value || (editingId.value != null && !!editingImageUrl.value));
+const notifReady = computed(() => !!notifTitle.value.trim() && (!!notifBody.value.trim() || notifHasPicture.value));
+
 async function sendNotification() {
-  if (!notifTitle.value.trim() || !notifBody.value.trim()) return;
+  if (!notifReady.value) return;
   const editing = editingId.value != null;
   notifSteps.value = [
     ...(notifImageFile.value ? [{ key: 'image' as NotifStep, label: 'Uploading the image' }] : []),
@@ -2414,7 +2420,7 @@ function practiceWhen(iso: string | null) {
           <button type="button" class="nge-admin-action-btn" @click="notifImageFile = null">Remove</button>
         </div>
         <div class="nge-admin-row">
-          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
+          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifReady" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>
             <span v-else-if="notifSending">{{ notifSteps.find(x => x.key === notifSendStage)?.label || 'Sending' }}…</span>
             <span v-else-if="editingId != null">Save Changes</span>
