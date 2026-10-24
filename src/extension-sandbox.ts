@@ -28,7 +28,9 @@ const sandbox = makeSandbox({
     one: 'cell',
     title: (total) => total === 1 ? 'Can you finish this cell?' : `Can you finish all ${total} cells?`,
     allSolvedTitle: (total) => total === 1 ? 'Cell finished' : `All ${total} cells finished`,
-    intro: (cell) => `This cell stops too soon. The rest of it was left behind as ${pieces(cell.pieces ?? 1)}. Find where it ends early and merge ${(cell.pieces ?? 1) === 1 ? 'the missing piece' : 'each missing piece'} back on.`,
+    intro: (cell) => `This cell stops too soon. The rest of it was left behind as ${pieces(cell.pieces ?? 1)}. Find where it ends early and merge ${(cell.pieces ?? 1) === 1 ? 'the missing piece' : 'each missing piece'} back on.${cell.note ? `
+
+${cell.note}` : ''}`,
     hint: 'Press M, Ctrl+click the cell, Ctrl+click the missing piece, then Submit merge.',
     checking: 'Checking your merges.',
     notDoneTitle: (n) => `Cell ${n} is still missing a piece`,

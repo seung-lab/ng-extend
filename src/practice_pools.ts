@@ -8,7 +8,7 @@
  * standalone exercise: they must not be handed out as stand-ins by the Cut
  * tutorial, and someone on one of them does not hold the Cut tutorial.
  */
-export interface SandboxCell { id: string; title: string; hintState: string; /** Extension Sandbox: how many pieces are missing. */ pieces?: number; }
+export interface SandboxCell { id: string; title: string; hintState: string; /** Extension Sandbox: how many pieces are missing. */ pieces?: number; /** A line added to its first box. */ note?: string; }
 
 export const SANDBOX_CELLS: SandboxCell[] = [
   { id: 'da3819dc-84b0-43df-a77c-55e46049a124', title: 'Merger 1', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5758135507615744' },
@@ -47,6 +47,12 @@ export const EXTENSION_CELLS: SandboxCell[] = [
   // Ames, 2026-10-24: a cell with two branches left behind, at
   // (77321, 49937, 213) and (87334, 52032, 994); the cell at (58256, 36905, 1161).
   { id: '63a057ed-ce08-4a6f-915d-eca29214e48c', title: 'Cell 1', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960', pieces: 2 },
+  // Ames, 2026-10-24, medium: extending through a black spill. The cell at
+  // (62612, 39202, 558); pieces at (62448, 39130, 537) and (61025, 38968, 394).
+  // Two more small ones further on, (59871, 38215, 136) and (59810, 38060,
+  // 129), are a bonus and not checked.
+  { id: 'f3dfed18-9592-46ed-8ca7-90310aea0d60', title: 'Cell 2', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600', pieces: 2,
+    note: 'There are a few more small pieces at the very end of this branch. Add them if you like, but they are not needed to finish.' },
 ];
 
 /** Every sandbox cell, kept out of the Merge and Cut tutorials' pools. */

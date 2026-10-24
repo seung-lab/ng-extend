@@ -1105,6 +1105,9 @@ const CHECK_GROUPS: Record<string, string[]> = {
   // The cell (58256, 36905, 1161), its pieces (77321, 49937, 213) and
   // (87334, 52032, 994).
   '63a057ed-ce08-4a6f-915d-eca29214e48c': ['73535750519863797', '74873580823075327', '75507037362320389'],
+  // Extension Sandbox cell 2: the cell (62612, 39202, 558), its pieces
+  // (62448, 39130, 537) and (61025, 38968, 394).
+  'f3dfed18-9592-46ed-8ca7-90310aea0d60': ['73817362666812872', '73817362666662242', '73746993788759465'],
 };
 
 /** For a cell with a group: how many of its missing pieces are back on. */

@@ -64,7 +64,8 @@ async function pointsInState(stateUrl: string): Promise<number[][]> {
 const MERGE_HINT_STATES: Record<string, string> = {
   // First merge (dendrite): one point on the yellow piece, one on the purple.
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5193945751486464',
-  // Extension Sandbox, cell 1 (Ames, 2026-10-24).
+  // Extension Sandbox, cells 1 and 2 (Ames, 2026-10-24).
+  'f3dfed18-9592-46ed-8ca7-90310aea0d60': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600',
   '63a057ed-ce08-4a6f-915d-eca29214e48c': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960',
 };
 
