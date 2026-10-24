@@ -9,7 +9,7 @@ import module from 'node:module';
 const strip = module.stripTypeScriptTypes;
 const load = () => {
   const js = strip(fs.readFileSync(new URL('../src/util/branch_tree.ts', import.meta.url), 'utf8')).replace(/^export /gm, '');
-  return new Function(js + ';return {branchSegments, nearestPiece};')();
+  return new Function(js + ';return {branchSegments, nearestPiece, piecesBeyond, edgeEnds};')();
 };
 
 // A small cell. S is the soma.
@@ -115,4 +115,20 @@ test('where there are two ways back, the shorter one in distance is taken', { sk
   // A piece with no position does not block the way or stop the walk.
   g.points.delete('q');
   assert.ok(branchSegments(g, 'q', 'S', 'toward', [15, 20, 0]).pieces >= 3);
+});
+
+test('beyond the AIS is the axon, and its ends at the edge of the data are found', { skip: typeof strip !== 'function' }, () => {
+  const { piecesBeyond, edgeEnds } = load();
+  // Beyond a: b, c, x, d, e (and a). Not the soma, not f's branch.
+  assert.deepEqual([...piecesBeyond(graph(), 'a', 'S')].sort(), ['a', 'b', 'c', 'd', 'e', 'x']);
+  assert.equal(piecesBeyond(graph(), 'S', 'S').size, 0);
+  // The volume ends at x = 22: tips e (x 20) is within 3 of it; g and h are far.
+  const bounds = [[-100, -100, -100], [22, 100, 100]];
+  assert.deepEqual(edgeEnds(graph(), bounds, 3, 1), [[20, 10, 0]]);
+  // A wider margin finds nothing more here: c is in a loop (two neighbours), not a tip.
+  assert.deepEqual(edgeEnds(graph(), bounds, 25, 1).map(p => p.join()), ['20,10,0', '5,15,0', '0,20,0']);
+  // Only along the axon: g and h are on the other branch.
+  assert.deepEqual(edgeEnds(graph(), bounds, 25, 1, piecesBeyond(graph(), 'a', 'S')), [[20, 10, 0]]);
+  // Two tips close together are one place.
+  assert.equal(edgeEnds(graph(), [[-100, -100, -100], [100, 100, 100]], 1000, 50).length, 1);
 });

@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T19:16:58Z",
+      "title": "Highlight marks MEC cells for the lab",
+      "items": [
+        "On MEC, the Highlight box has the lab marks: AIS, True End, Can't Fix and Hits Edge. Pick one and Ctrl + click the cell to drop it, and that end of the cell glows in its color.",
+        "Start with the axon, as the lab does: mark the AIS, then Color the axon colors everything beyond it.",
+        "Find ends at the edge marks Hits Edge on every branch end that reaches the edge of the data for you, along the axon once the AIS is marked.",
+        "When you complete an MEC cell, the lab's sheet gets how many of each mark you placed."
+      ]
+    },
+    {
       "at": "2026-10-24T17:11:00Z",
       "title": "Edits count after an outage",
       "items": [
@@ -228,7 +238,7 @@
       "at": "2026-10-23T14:07:03Z",
       "title": "Hide announcements in chat",
       "items": [
-        "Announcements in chat, like Today in Pyr, have an \u00d7 to hide them from your chat. They stay in your notifications."
+        "Announcements in chat, like Today in Pyr, have an × to hide them from your chat. They stay in your notifications."
       ]
     },
     {

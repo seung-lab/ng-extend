@@ -125,3 +125,27 @@ About a week, with the most risk.
 
 Build Stage 1 now and try it with players. It is cheap, uses a server call we
 already rely on, and tells us whether Stages 2 and 3 are worth the week.
+
+## MEC lab marks (built 2026-10-24)
+
+On MEC (dataset pni_mec) the Highlight box has a **Lab marks** section above
+the colors: AIS, True End, Can't Fix and Hits Edge, in the lab's colors and
+layer names ("AIS 🐬", "True End 🟢", "Can't Fix 🔴", "Hits Edge 🟠", the
+same layers a claimed MEC cell opens with). Pick one, and one Ctrl + click
+drops a point in that layer, and the cell glows in that color around it.
+
+- **Axon first**, as the lab proofreaders work. Once an AIS is marked,
+  **Color the axon** colors everything beyond the AIS, away from the soma
+  (the soma comes from the Cell Library row), in its own "Axon" layer.
+- **Find ends at the edge** marks Hits Edge for the player: the tips of the
+  cell's branch map within 5 µm of the segmentation volume's outside (the
+  Hunt's rule and its way of reading the volume's bounds). Along the axon
+  only once the AIS is marked. Ends already marked are skipped; the new ones
+  are one Undo.
+- **Recording.** The marks are points in the view, so they save with it and
+  travel in the Final Link the lab gets on completion. On top of that, an MEC
+  completion adds the counts to the sheet's Notes, e.g. "Marks: AIS 1, True
+  End 12, Can't Fix 2, Hits Edge 5". Clear all leaves lab marks alone.
+- Code: src/util/mec_marks.ts (the kinds, counts, bounds), highlight.ts
+  (addLabMark, addAxonHighlight, addEdgeMarks), branch_tree.ts (piecesBeyond,
+  edgeEnds, tested in scripts/branch-tree.test.mjs).

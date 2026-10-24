@@ -8,14 +8,22 @@
 import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
-import { branchSegments, nearestPiece, type BranchGraph, type BranchWay } from './branch_tree';
+import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
+import { MEC_KINDS, MEC_AIS, MEC_EDGE, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 import { isTouchRef } from './mobile';
 
-export interface HighlightStyle { key: string; label: string; layer: string; color: string; }
+export interface HighlightStyle {
+  key: string; label: string; layer: string; color: string;
+  /** One of the lab's MEC marks (mec_marks.ts): a point in the lab's own
+   *  layer, placed with one click, not a stretch. */
+  lab?: boolean;
+}
+/** The MEC marks as styles, for the panel's chips. */
+export const mecStyles = (): HighlightStyle[] => MEC_KINDS.map(k => ({ key: k.key, label: k.label, layer: k.layer, color: k.color, lab: true }));
 export const DEFAULT_HIGHLIGHT_STYLES: HighlightStyle[] = [
   { key: 'checked', label: 'Checked', layer: 'Checked ✓', color: '#3dff9a' },
   { key: 'look', label: 'Needs a look', layer: 'Needs a look', color: '#ffd24d' },
@@ -83,6 +91,12 @@ function highlightLayers(): { managed: any; src: any; style: HighlightStyle }[] 
     if (managed.archived || managed.name === START_LAYER) continue;
     const src = managed.layer?.localAnnotations;
     if (!src) continue;
+    // The lab's MEC layers, however the player's copy spells them.
+    const kind = mecKindOfLayer(managed.name);
+    if (kind) {
+      out.push({ managed, src, style: { key: kind.key, label: kind.label, layer: managed.name, color: kind.color, lab: true } });
+      continue;
+    }
     const mine = styles.find(s => s.layer === managed.name);
     let holds = false;
     for (const ann of src) { if (String(ann.id).startsWith(ID_PREFIX)) { holds = true; } break; }
@@ -103,6 +117,8 @@ const STROKE_SHADER = 'void main() {\n' +
 
 const ID_PREFIX = 'hl_';
 const LINE = 1; // AnnotationType.LINE
+const POINT = 0; // AnnotationType.POINT
+const BALL_SCALE = 1.4;
 
 const viewerOf = (): any => (window as any).viewer;
 
@@ -414,6 +430,161 @@ export async function addBranchHighlight(a: Pick, way: BranchWay, style: Highlig
   return pieces;
 }
 
+// ── The lab's MEC marks (Ames 2026-10-24) ────────────────────────────────
+// On an MEC cell the lab asks for an AIS, and a True End, Can't Fix or Hits
+// Edge on every branch end (mec_marks.ts). One click drops the mark: a point
+// in the lab's own layer (what the lab reads), and the end of the branch
+// glows in the mark's colour (buildTint). The lab proofreaders start with
+// the axons: once the AIS is marked, the axon (everything beyond it) can be
+// coloured, and its ends at the edge of the data found for the player.
+
+/** The lab's layer for this kind, made as a claimed MEC cell makes it
+ *  (mec_layers.ts) when the view lacks it. */
+async function labSource(kind: MecKind): Promise<any> {
+  const viewer = viewerOf();
+  let managed = mecLayers().get(kind);
+  if (!managed) {
+    managed = makeLayer(viewer.layerSpecification, kind.layer, {
+      type: 'annotation', source: { url: 'local://annotations' }, annotationColor: kind.color, annotations: [],
+    });
+    viewer.layerSpecification.add(managed);
+  }
+  if (managed.visible === false) managed.setVisible(true);
+  for (let i = 0; i < 60; i++) {
+    const src = managed.layer?.localAnnotations;
+    if (src) return src;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  throw new Error(`The ${kind.label} layer did not load.`);
+}
+const kindOf = (style: HighlightStyle) => MEC_KINDS.find(k => k.key === style.key);
+
+/** Drop one MEC mark where the player clicked. */
+export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<void> {
+  const kind = kindOf(style);
+  if (!kind) throw new Error("That is not one of the lab's marks.");
+  const src = await labSource(kind);
+  const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
+  src.add({
+    id: `${mark}_0`, type: POINT, point: Float32Array.from(pick.global), properties: [],
+    description: `${kind.label}: cell ${pick.root}`,
+  }, true).dispose();
+  setLatestMark(mark);
+}
+
+/** The newest AIS point in the view, in nanometres, placed here or by hand. */
+function aisPointNm(scalesNm: number[]): number[] | null {
+  const managed = mecLayers().get(MEC_AIS);
+  let last: number[] | null = null;
+  try {
+    for (const ann of managed?.layer?.localAnnotations ?? []) {
+      if (ann.type === POINT && ann.point) last = [0, 1, 2].map(i => ann.point[i] * (scalesNm[i] || 1));
+    }
+  } catch { /* not loaded */ }
+  return last;
+}
+/** The cell being proofread: the only one showing, else the one clicked last
+ *  while it still shows (an edit gives a cell a new id). */
+export function workingRoot(lastRoot?: string | null): string {
+  const visible = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+  const ids: string[] = [];
+  try { for (const id of visible ?? []) ids.push(id.toString()); } catch { /* none */ }
+  if (ids.length === 1) return ids[0];
+  if (lastRoot && ids.includes(lastRoot)) return lastRoot;
+  throw new Error(ids.length ? 'Several cells are showing. Click once on the cell you are working on first.' : 'Show the cell you are working on first.');
+}
+
+const AIS_REACH_NM = 15000;
+/** The axon of a cell: the pieces beyond its AIS, away from the soma. */
+function axonOf(root: string, graph: BranchGraph, scalesNm: number[]) {
+  const ais = aisPointNm(scalesNm);
+  if (!ais) throw new Error('Mark the AIS first: the axon is everything beyond it.');
+  const at = nearestPiece(graph, ais);
+  if (!at || at.distNm > AIS_REACH_NM) throw new Error('The AIS mark is not on this cell. Mark the AIS on the cell you are working on.');
+  let soma: { id: string; distNm: number } | undefined;
+  for (const p of knownSomas(root)) {
+    const near = nearestPiece(graph, p);
+    if (near && (!soma || near.distNm < soma.distNm)) soma = near;
+  }
+  if (!soma || soma.distNm > SOMA_REACH_NM) {
+    throw new Error("Pyr doesn't know where this cell's soma is. Open the cell from the Cell Library, or mark the axon with a highlight colour and Beyond.");
+  }
+  if (soma.id === at.id) throw new Error('The AIS mark is on the soma itself. Put it where the axon leaves the cell.');
+  return { from: at.id, ref: soma.id, aisNm: ais };
+}
+
+/** Colour the axon: everything beyond the AIS, in the AIS colour, in a
+ *  highlight layer of its own. Returns how many pieces were marked. */
+export async function addAxonHighlight(root: string, stillWanted: () => boolean = () => true): Promise<number> {
+  const viewer = viewerOf();
+  const layer = currentSegLayer()?.layer;
+  if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
+  const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
+  const graph = await branchGraphOf(layer, root);
+  if (!stillWanted()) return 0;
+  const { from, ref, aisNm } = axonOf(root, graph, scalesNm);
+  const { segments, pieces } = branchSegments(graph, from, ref, 'away', aisNm);
+  if (segments.length > MAX_BRANCH_STROKES) throw new Error(`That is ${pieces.toLocaleString()} pieces, too much to colour at once.`);
+  const src = await strokeSource({ key: 'axon', label: AXON_LAYER, layer: AXON_LAYER, color: MEC_AIS.color });
+  const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
+  const fromNm = (p: number[]) => Float32Array.from(p.map((v, i) => v / (scalesNm[i] || 1)));
+  segments.forEach(([p, q], i) => {
+    src.add({
+      id: `${mark}_${i}`, type: LINE, pointA: fromNm(p), pointB: fromNm(q), properties: [],
+      description: i === 0 ? `Axon, beyond the AIS: cell ${root}` : undefined, relatedSegments: undefined,
+    }, true).dispose();
+  });
+  setLatestMark(mark);
+  return pieces;
+}
+
+/**
+ * Hits Edge, found for the player: the branch ends that run into the edge of
+ * the data, by the rule the Hunt uses for "edge of the dataset" (within
+ * 5 um of the segmentation volume's outside). Along the axon only once the
+ * AIS is marked (the lab starts with the axons), else the whole cell. Ends
+ * already marked Hits Edge are left alone. All the new marks are one mark
+ * for Undo. Returns what was added and what was there already.
+ */
+export async function addEdgeMarks(root: string, stillWanted: () => boolean = () => true):
+    Promise<{ added: number; already: number; axonOnly: boolean }> {
+  const viewer = viewerOf();
+  const managedSeg = currentSegLayer();
+  const layer = managedSeg?.layer;
+  if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
+  const bounds = segBoundsNm(managedSeg);
+  if (!bounds) throw new Error("Pyr couldn't read where this dataset ends.");
+  const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
+  const graph = await branchGraphOf(layer, root);
+  if (!stillWanted()) return { added: 0, already: 0, axonOnly: false };
+  let only: Set<string> | undefined;
+  if (aisPointNm(scalesNm)) {
+    const { from, ref } = axonOf(root, graph, scalesNm);
+    only = piecesBeyond(graph, from, ref);
+  }
+  const ends = edgeEnds(graph, bounds, EDGE_NM, 3000, only);
+  // Ends someone already marked Hits Edge, by hand or before.
+  const marked: number[][] = [];
+  try {
+    for (const ann of mecLayers().get(MEC_EDGE)?.layer?.localAnnotations ?? []) {
+      if (ann.type === POINT && ann.point) marked.push([0, 1, 2].map(i => ann.point[i] * (scalesNm[i] || 1)));
+    }
+  } catch { /* none */ }
+  const fresh = ends.filter(e => !marked.some(m => Math.hypot(m[0] - e[0], m[1] - e[1], m[2] - e[2]) < 4000));
+  const result = { added: fresh.length, already: ends.length - fresh.length, axonOnly: !!only };
+  if (!fresh.length || !stillWanted()) return result;
+  const src = await labSource(MEC_EDGE);
+  const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
+  fresh.forEach((p, i) => {
+    src.add({
+      id: `${mark}_${i}`, type: POINT, point: Float32Array.from(p.map((v, k) => v / (scalesNm[k] || 1))), properties: [],
+      description: `Hits Edge, found by Pyr: cell ${root}`,
+    }, true).dispose();
+  });
+  setLatestMark(mark);
+  return result;
+}
+
 // ── The newest mark stands out (Annkri 2026-10-04) ──────────────────────
 // "Another colour on the latest highlight you made, might make it easier to
 // catch mistakes, if you clicked too far apart." The mark made last in this
@@ -508,8 +679,10 @@ export function removeHighlightsOfCells(roots: string[]): number {
   return gone;
 }
 
+/** Every highlight goes. The lab's MEC marks stay: they are the cell's
+ *  record (Undo or the annotation list removes one). */
 export function clearHighlights() {
-  for (const m of listHighlights()) removeIds(m.style, m.ids);
+  for (const m of listHighlights()) if (!m.style.lab) removeIds(m.style, m.ids);
   setLatestMark(null);
 }
 
@@ -535,7 +708,8 @@ export function setTintRadiusNm(nm: number) {
  *  on each layer's tab, for all of them at once. Off hides the strokes in 2D
  *  and the colour on the cell in 3D, and nothing is deleted. */
 export function highlightsShown(): boolean {
-  const layers = highlightLayers();
+  // The lab's MEC layers are switched from their own tabs, not from here.
+  const layers = highlightLayers().filter(l => !l.style.lab);
   return !layers.length || layers.some(l => l.managed.visible !== false);
 }
 /** Calls back whenever a layer is added, removed, shown or hidden. */
@@ -546,7 +720,8 @@ export function onLayersChanged(cb: () => void): () => void {
   return () => { signal.remove(cb); };
 }
 export function setHighlightsShown(on: boolean) {
-  for (const { managed } of highlightLayers()) {
+  for (const { managed, style } of highlightLayers()) {
+    if (style.lab) continue;
     if ((managed.visible !== false) !== on) managed.setVisible(on);
   }
   scheduleTint();
@@ -579,7 +754,7 @@ function buildTint(): NgeMeshTint | null {
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).slice(0, 3).map(x => x / 1e-9);
   if (scalesNm.length < 3) return null;
   // Every stroke segment, in nanometres.
-  const segs: { a: number[]; b: number[]; rgb: number[]; latest?: boolean }[] = [];
+  const segs: { a: number[]; b: number[]; rgb: number[]; latest?: boolean; ball?: boolean }[] = [];
   for (const { managed, src, style } of highlightLayers()) {
     if (managed.visible === false) continue;
     const rgb = hexRgb(style.color);
@@ -587,6 +762,13 @@ function buildTint(): NgeMeshTint | null {
     const rgbLatest = rgb.map(c => Math.round(c + (255 - c) * LATEST_LIFT));
     const latestPrefix = latestMark ? `${latestMark}_` : null;
     for (const ann of src) {
+      // Every point in an MEC layer glows on the cell, placed here or by hand.
+      if (style.lab) {
+        if (ann.type !== POINT || !ann.point) continue;
+        const p = [0, 1, 2].map(i => ann.point[i] * scalesNm[i]);
+        segs.push({ a: p, b: p, rgb, ball: true });
+        continue;
+      }
       if (ann.type !== LINE || !String(ann.id).startsWith(ID_PREFIX)) continue;
       const isLatest = latestPrefix !== null && String(ann.id).startsWith(latestPrefix);
       segs.push({
@@ -599,9 +781,13 @@ function buildTint(): NgeMeshTint | null {
   for (const l of extraTintLines) segs.push({ a: l.a, b: l.b, rgb: l.rgb });
   if (!segs.length && !extraTintBoxes.length) return null;
   const r = tintRadiusNm();
+  // A mark at a branch end glows a little wider than a stroke, so the end
+  // reads as marked from a distance.
+  const rBall = r * BALL_SCALE;
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const s of segs) for (const p of [s.a, s.b]) for (let i = 0; i < 3; i++) {
-    lo[i] = Math.min(lo[i], p[i] - r); hi[i] = Math.max(hi[i], p[i] + r);
+    const rr = s.ball ? rBall : r;
+    lo[i] = Math.min(lo[i], p[i] - rr); hi[i] = Math.max(hi[i], p[i] + rr);
   }
   for (const b of extraTintBoxes) for (let i = 0; i < 3; i++) {
     lo[i] = Math.min(lo[i], b.box[i]); hi[i] = Math.max(hi[i], b.box[i + 3]);
@@ -614,6 +800,7 @@ function buildTint(): NgeMeshTint | null {
   const [nx, ny, nz] = dims;
   const data = new Uint8Array(nx * ny * nz * 4);
   const soft = Math.max(cell, r * 0.3);   // feathered edge
+  const rLine = r;
   // Blocks first, at full strength; a highlight stroke painted after still
   // shows on top where it is the stronger mark.
   for (const b of extraTintBoxes) {
@@ -631,6 +818,7 @@ function buildTint(): NgeMeshTint | null {
   segs.sort((x, y) => Number(!!x.latest) - Number(!!y.latest));
   for (const s of segs) {
     const { a, b, rgb } = s;
+    const r = s.ball ? rBall : rLine;
     const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const len2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] || 1;
     const i0 = [0, 1, 2].map(i => Math.max(0, Math.floor((Math.min(a[i], b[i]) - r - lo[i]) / cell)));
@@ -703,8 +891,9 @@ export function startHighlightTint(viewer: any) {
         try { managed.layer.annotationDisplayState.color.changed.add(scheduleTint); } catch { /* */ }
       }
     }
-    for (const { managed, src } of highlightLayers()) {
-      if (styled.has(src)) continue;
+    for (const { managed, src, style } of highlightLayers()) {
+      // The lab's points stay in sight in 3D, as the lab placed them.
+      if (style.lab || styled.has(src)) continue;
       styled.add(src);
       // With the surface tinted, the stroke itself is not drawn in 3D; it
       // still marks the path in the 2D views.
