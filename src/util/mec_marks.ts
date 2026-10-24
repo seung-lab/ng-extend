@@ -14,6 +14,8 @@
  */
 import { currentDatasetTag } from '../datasets';
 import { MEC_LAYERS } from './mec_layers';
+import { useProofreadingBackendStore } from '../store';
+import { Uint64 } from 'neuroglancer/util/uint64';
 
 export interface MecKind { key: string; label: string; layer: string; color: string; hint: string; }
 const KIND_INFO: { key: string; label: string; hint: string }[] = [
@@ -29,7 +31,7 @@ const LAB_KINDS: MecKind[] = KIND_INFO.map((k, i) => ({ ...k, layer: MEC_LAYERS[
  *  Highlight already keeps a soma clicked for To soma and Beyond, so Color the
  *  axon finds it too. Its coordinates go in the sheet's Notes on completion. */
 export const MEC_SOMA: MecKind = { key: 'mec:soma', label: 'Soma', layer: 'Soma', color: '#ffd24d',
-  hint: 'One mark on the cell body, in a colored part of it. Its coordinates go in the sheet when you complete the cell.' };
+  hint: 'The starting point is the nucleus, inside the soma. Confirm it, or Ctrl + click the soma to put the mark somewhere else.' };
 /** In the order a cell is marked: soma, AIS, then the branch ends. */
 export const MEC_KINDS: MecKind[] = [MEC_SOMA, ...LAB_KINDS];
 export const MEC_AIS = LAB_KINDS[0];
@@ -79,17 +81,39 @@ export function somaXyz(): number[] | null {
 }
 
 /**
+ * The working cell's starting point: the sheet's Starting XYZ Coords, which
+ * the Cell Library keeps as the claim's point. On MEC it is always the
+ * nucleus, so always inside the soma (Ames 2026-10-24): the soma mark is a
+ * confirmation of it, not a search. The working cell is the one the Cell
+ * Library is on, else the player's one open MEC claim. Null if unknown.
+ */
+export function startXyz(): number[] | null {
+  try {
+    const backend = useProofreadingBackendStore();
+    let id: number | null = null;
+    try { id = Number(sessionStorage.getItem('nge_cl_working_task') || localStorage.getItem('nge_cl_working_task')) || null; } catch { /* private mode */ }
+    const mine = backend.tasks.filter((t: any) => t.assigned_to === backend.userId && (t.status === 'assigned' || t.status === 'in_progress')
+      && t.claim_point_x != null && String(t.dataset ?? 'pni_mec').startsWith('pni_mec'));
+    const task: any = (id && backend.tasks.find((t: any) => t.id === id)) || (mine.length === 1 ? mine[0] : null);
+    const p = task ? [task.claim_point_x, task.claim_point_y, task.claim_point_z].map(Number) : null;
+    return p && p.every(Number.isFinite) ? p : null;
+  } catch { return null; }
+}
+const samePoint = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
+
+/**
  * The marks on the cell, as a line for the lab's sheet when the cell is
- * completed: "Soma 129296, 128864, 6565. Marks: AIS 1, True End 12, Can't
- * Fix 2, Hits Edge 5". Empty off MEC, or when the view has none of the
- * layers. The marks themselves travel in the Final Link; this is the soma's
- * place and the count, readable in the sheet.
+ * completed: "Soma at the starting point. Marks: AIS 1, True End 12, Can't
+ * Fix 2, Hits Edge 5". A soma moved off the starting point gives its own
+ * coordinates instead. Empty off MEC, or when the view has none of the
+ * layers. The marks themselves travel in the Final Link.
  */
 export function mecMarkSummary(): string {
   if (!isMec() || !mecLayers().size) return '';
   const c = mecCounts();
-  const soma = somaXyz();
-  return (soma ? `Soma ${soma.join(', ')}. ` : '') + 'Marks: ' + LAB_KINDS.map(k => `${k.label} ${c[k.key]}`).join(', ');
+  const soma = somaXyz(), start = startXyz();
+  const somaLine = !soma ? '' : start && samePoint(soma, start) ? 'Soma at the starting point. ' : `Soma ${soma.join(', ')}. `;
+  return somaLine + 'Marks: ' + LAB_KINDS.map(k => `${k.label} ${c[k.key]}`).join(', ');
 }
 
 /**
@@ -114,3 +138,67 @@ export function segBoundsNm(ml: any): number[][] | null {
 }
 /** The Hunt's rule: this close to the bounds is the edge of the dataset. */
 export const EDGE_NM = 5000;
+
+/**
+ * Where a cell runs out of the data, read from its meshes on screen: the
+ * Hunt's meshEdgeSpots (src/hunt.ts on the claude/hunt branch), for when the
+ * server has no branch map. Vertices within marginNm of a face, grouped on a
+ * grid and joined where they touch, one spot per place, in nanometres.
+ * `pieces`/`loaded`: the cells' mesh pieces in all, and on hand now.
+ */
+export function meshEdgeSpots(roots: string[], bounds: number[][] | null, marginNm = EDGE_NM, binNm = 3000): { spots: number[][]; pieces: number; loaded: number } {
+  const out = { spots: [] as number[][], pieces: 0, loaded: 0 };
+  if (!bounds || !roots.length) return out;
+  const [lo, hi] = bounds;
+  const bins = new Map<string, { n: number; x: number; y: number; z: number; i: number; j: number; k: number }>();
+  // The mesh layer keys a cell by its id's low and high words (getObjectKey).
+  const keyOf = (root: string) => { const u = new Uint64(); return u.tryParseString(root) ? `${u.low},${u.high}` : ''; };
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    if (ml?.layer?.type !== 'segmentation') continue;
+    for (const rl of ml.layer.renderLayers ?? []) {
+      const src = rl?.source;
+      if (!src?.fragmentSource?.chunks || !src?.chunks || typeof src.getFragmentKey !== 'function') continue;
+      for (const root of roots) {
+        const key = keyOf(root);
+        const manifest = key ? src.chunks.get(key) : undefined;
+        if (!manifest?.fragmentIds) continue;
+        for (const fid of manifest.fragmentIds) {
+          out.pieces++;
+          const frag = src.fragmentSource.chunks.get(src.getFragmentKey(key, fid).key);
+          const vp: Float32Array | undefined = frag?.meshData?.vertexPositions;
+          if (!vp) continue;
+          out.loaded++;
+          for (let p = 0; p + 2 < vp.length; p += 3) {
+            const x = vp[p], y = vp[p + 1], z = vp[p + 2];
+            const d = Math.min(x - lo[0], hi[0] - x, y - lo[1], hi[1] - y, z - lo[2], hi[2] - z);
+            if (!(d <= marginNm)) continue;
+            const i = Math.floor(x / binNm), j = Math.floor(y / binNm), k = Math.floor(z / binNm);
+            const bk = `${i},${j},${k}`;
+            const b = bins.get(bk);
+            if (b) { b.n++; b.x += x; b.y += y; b.z += z; } else bins.set(bk, { n: 1, x, y, z, i, j, k });
+          }
+        }
+      }
+    }
+  }
+  // Touching bins are one place: its spot is the middle of their vertices.
+  const seen = new Set<string>();
+  for (const [bk, b0] of bins) {
+    if (seen.has(bk)) continue;
+    seen.add(bk);
+    let n = 0, sx = 0, sy = 0, sz = 0;
+    const queue = [b0];
+    while (queue.length) {
+      const b = queue.pop()!;
+      n += b.n; sx += b.x; sy += b.y; sz += b.z;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dk = -1; dk <= 1; dk++) {
+        const nk = `${b.i + di},${b.j + dj},${b.k + dk}`;
+        const nb = bins.get(nk);
+        if (nb && !seen.has(nk)) { seen.add(nk); queue.push(nb); }
+      }
+    }
+    if (n >= 8) out.spots.push([Math.round(sx / n), Math.round(sy / n), Math.round(sz / n)]);
+  }
+  out.spots = out.spots.slice(0, 200);
+  return out;
+}

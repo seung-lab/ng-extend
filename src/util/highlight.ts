@@ -9,7 +9,7 @@ import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
-import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
+import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
@@ -304,6 +304,8 @@ function knownSomas(root: string): number[][] {
     const nums = String(task?.soma_coords || task?.nucleus_coords || '').match(/-?\d+(?:\.\d+)?/g)?.map(Number);
     if (nums && nums.length === 3 && nums.every(Number.isFinite)) out.push(nums);
   } catch { /* no library */ }
+  // On MEC the starting point is the nucleus, inside the soma.
+  if (isMec()) { const start = startXyz(); if (start) out.push(start); }
   return out;
 }
 
@@ -463,6 +465,26 @@ const kindOf = (style: HighlightStyle) => MEC_KINDS.find(k => k.key === style.ke
 export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<void> {
   const kind = kindOf(style);
   if (!kind) throw new Error("That is not one of the lab's marks.");
+  await addLabPoint(kind, pick.global, `${kind.label}: cell ${pick.root}`);
+}
+
+/** The soma, confirmed at the cell's starting point (its nucleus). */
+export async function confirmSomaAtStart(): Promise<number[]> {
+  const start = startXyz();
+  if (!start) throw new Error("Pyr doesn't know this cell's starting point. Ctrl + click the soma instead.");
+  let root = '';
+  try { root = workingRoot(); } catch { /* several cells, or none: no cell id in the note */ }
+  await addLabPoint(MEC_SOMA, start, `Soma, at the starting point (nucleus)${root ? `: cell ${root}` : ''}`);
+  return start;
+}
+/** Look at the starting point, to check it is in the soma. */
+export function goToStart(): boolean {
+  const start = startXyz();
+  if (!start) return false;
+  try { viewerOf().navigationState.position.value = Float32Array.from(start); return true; } catch { return false; }
+}
+
+async function addLabPoint(kind: MecKind, point: ArrayLike<number>, description: string): Promise<void> {
   const src = await labSource(kind);
   // A cell has one soma: a soma marked here again moves it.
   if (kind === MEC_SOMA) {
@@ -471,10 +493,7 @@ export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<voi
     for (const id of old) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }
   }
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
-  src.add({
-    id: `${mark}_0`, type: POINT, point: Float32Array.from(pick.global), properties: [],
-    description: `${kind.label}: cell ${pick.root}`,
-  }, true).dispose();
+  src.add({ id: `${mark}_0`, type: POINT, point: Float32Array.from(point), properties: [], description }, true).dispose();
   setLatestMark(mark);
 }
 
@@ -553,7 +572,7 @@ export async function addAxonHighlight(root: string, stillWanted: () => boolean 
  * for Undo. Returns what was added and what was there already.
  */
 export async function addEdgeMarks(root: string, stillWanted: () => boolean = () => true):
-    Promise<{ added: number; already: number; axonOnly: boolean }> {
+    Promise<{ added: number; already: number; axonOnly: boolean; fromMesh?: boolean }> {
   const viewer = viewerOf();
   const managedSeg = currentSegLayer();
   const layer = managedSeg?.layer;
@@ -561,14 +580,26 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
   const bounds = segBoundsNm(managedSeg);
   if (!bounds) throw new Error("Pyr couldn't read where this dataset ends.");
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
-  const graph = await branchGraphOf(layer, root);
+  // The branch map gives the tips of the branches. Where the server has no
+  // branch map for the cell, the Hunt's own way: the parts of the cell's mesh
+  // on screen that touch the edge (no server call, but the whole cell, and a
+  // branch running along the edge counts too).
+  let graph: BranchGraph | null = null;
+  try { graph = await branchGraphOf(layer, root); } catch (e) { console.warn('[highlight] no branch map, using the meshes:', e); }
   if (!stillWanted()) return { added: 0, already: 0, axonOnly: false };
   let only: Set<string> | undefined;
-  if (aisPointNm(scalesNm)) {
-    const { from, ref } = axonOf(root, graph, scalesNm);
-    only = piecesBeyond(graph, from, ref);
+  let ends: number[][];
+  if (graph) {
+    if (aisPointNm(scalesNm)) {
+      const { from, ref } = axonOf(root, graph, scalesNm);
+      only = piecesBeyond(graph, from, ref);
+    }
+    ends = edgeEnds(graph, bounds, EDGE_NM, 3000, only);
+  } else {
+    const spots = meshEdgeSpots([root], bounds, EDGE_NM);
+    if (!spots.loaded) throw new Error("The server has no branch map for this cell, and its 3D mesh isn't loaded. Show the cell in 3D and try again.");
+    ends = spots.spots;
   }
-  const ends = edgeEnds(graph, bounds, EDGE_NM, 3000, only);
   // Ends someone already marked Hits Edge, by hand or before.
   const marked: number[][] = [];
   try {
@@ -577,7 +608,7 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
     }
   } catch { /* none */ }
   const fresh = ends.filter(e => !marked.some(m => Math.hypot(m[0] - e[0], m[1] - e[1], m[2] - e[2]) < 4000));
-  const result = { added: fresh.length, already: ends.length - fresh.length, axonOnly: !!only };
+  const result = { added: fresh.length, already: ends.length - fresh.length, axonOnly: !!only, fromMesh: !graph };
   if (!fresh.length || !stillWanted()) return result;
   const src = await labSource(MEC_EDGE);
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;

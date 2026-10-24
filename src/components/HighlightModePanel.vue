@@ -13,8 +13,8 @@ import { claimTouchTaps } from '../util/touch_tap';
 import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, addLabMark, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
-import { MEC_KINDS, isMec, mecCounts, somaXyz } from '../util/mec_marks';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, addLabMark, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -68,6 +68,17 @@ const lastRoot = ref<string | null>(null);
 if (mec.value) styleKey.value = !labCounts.value['mec:soma'] ? 'mec:soma' : !labCounts.value['mec:ais'] ? 'mec:ais' : 'mec:end';
 /** Where the soma mark is, for the hint under the chips. */
 const somaAt = ref<number[] | null>(somaXyz());
+/** The cell's starting point (the nucleus), when the Cell Library knows it. */
+const startAt = ref<number[] | null>(startXyz());
+async function confirmSoma() {
+  try {
+    const p = await confirmSomaAtStart();
+    refresh();
+    say(`Soma confirmed at the starting point, ${p.join(', ')}. Next: the AIS.`);
+    if (!labCounts.value['mec:ais']) styleKey.value = 'mec:ais';
+  } catch (e: any) { say(e?.message || 'Could not mark the soma.', true); }
+}
+function lookAtStart() { if (!goToStart()) say("Pyr doesn't know this cell's starting point.", true); }
 const first = ref<Pick | null>(null);
 /** Set while one more click is awaited, to say which side the soma is on. */
 const branchWay = ref<BranchWay | null>(null);
@@ -226,7 +237,7 @@ function refresh() {
   markCount.value = listHighlights().length;
   shown.value = highlightsShown();
   mec.value = isMec();
-  if (mec.value) { labCounts.value = mecCounts(); somaAt.value = somaXyz(); }
+  if (mec.value) { labCounts.value = mecCounts(); somaAt.value = somaXyz(); startAt.value = startXyz(); }
 }
 // A lab mark is dropped as a point (one click), or highlighted as a stretch
 // in its color (Ames 2026-10-24: "an option to do this with highlight mode in
@@ -337,7 +348,7 @@ async function findEdges() {
   if (busy.value) return;
   await trace(async wanted => {
     const r = await addEdgeMarks(workingRoot(lastRoot.value), wanted);
-    const where = r.axonOnly ? 'along the axon' : 'on this cell';
+    const where = r.axonOnly ? 'along the axon' : r.fromMesh ? 'on this cell (read from its 3D mesh: the server has no branch map for it)' : 'on this cell';
     const had = r.already ? ` ${r.already} already marked.` : '';
     doneText.value = r.added
       ? `Added ${r.added} Hits Edge ${r.added === 1 ? 'mark' : 'marks'} ${where}.${had} Check each one.`
@@ -601,7 +612,11 @@ onBeforeUnmount(() => {
           </span>
         </div>
         <p class="nge-hl-mec-hint">{{ labOn && styleKey === 'mec:soma' && somaAt ? `Soma at ${somaAt.join(', ')}. Click again to move it.` : labOn ? hintOf(styleKey) : stretchKind() ? `${hintOf(styleKey)} Click where the stretch starts, then its end: the end gets the mark.` : 'A highlight color is picked: clicks mark a stretch.' }}</p>
-        <div class="nge-hl-mec-actions">
+        <div v-if="styleKey === 'mec:soma' && startAt" class="nge-hl-mec-actions">
+          <button class="nge-hl-btn" type="button" title="Move the view to the cell's starting point, to see it is in the soma." @click="lookAtStart">Go to the starting point</button>
+          <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark on the starting point: the nucleus, inside the soma." @click="confirmSoma">{{ somaAt ? 'Back to the starting point' : 'Confirm soma here' }}</button>
+        </div>
+        <div v-else class="nge-hl-mec-actions">
           <button class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
                   :title="labCounts['mec:ais'] ? 'Color everything beyond the AIS, away from the soma: the axon.' : 'Mark the AIS first: the axon is everything beyond it.'">Color the axon</button>
           <button class="nge-hl-btn" type="button" :disabled="busy" @click="findEdges"
@@ -807,6 +822,8 @@ onBeforeUnmount(() => {
 .nge-hl-mec { margin: 0 0 10px; padding: 8px 9px 9px; border-radius: 8px; background: rgba(77, 216, 240, 0.05); border: 1px solid rgba(77, 216, 240, 0.22); }
 .nge-hl-mec-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #a8eefa; }
 .nge-hl-mec-as { margin-left: auto; }
+.nge-hl-btn--ok { color: #2a2205; background: #ffd24d; border-color: #ffd24d; }
+.nge-hl-btn--ok:hover:not(:disabled) { background: #ffe07f; }
 .nge-hl-mec-sub { font: 500 11px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; color: rgba(200, 212, 228, 0.55); }
 .nge-hl-mec-n { min-width: 14px; text-align: right; font-variant-numeric: tabular-nums; color: rgba(220, 230, 245, 0.6); }
 .nge-hl-style--on .nge-hl-mec-n { color: #fff; }
