@@ -4591,7 +4591,7 @@ const panelStyle = computed(() => ({
   min-width: 0;
 }
 .nge-cl-btn--copy-state {
-  font-size: 12.5px;
+  font-size: 13px;
   padding: 4px 8px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -4600,7 +4600,8 @@ const panelStyle = computed(() => ({
   align-self: flex-end;
   border-color: rgba(68, 170, 102, 0.25);
   color: #4a6;
-  padding: 5px 12px;
+  padding: 6px 14px;
+  font-size: 14px;
 }
 .nge-cl-btn--submit-response:hover { background: rgba(68, 170, 102, 0.12); }
 .nge-cl-btn--submit-response:disabled {
