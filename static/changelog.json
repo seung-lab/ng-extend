@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T16:04:39Z",
+      "title": "Bigger text when replying to a help request",
+      "digest": "minor",
+      "items": [
+        "In the Cell Library's Help tab, the box where you write a reply, the view link box and their buttons now use larger, easier to read text."
+      ]
+    },
+    {
       "at": "2026-10-24T16:01:00Z",
       "title": "A clearer Get Started tutorial",
       "items": [
