@@ -1493,7 +1493,11 @@ function categoryCount(key: string): number {
   return backend.adminNotifications.filter((n: any) => notifCategory(n) === key).length;
 }
 
-const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n)));
+/** The automatic "Was your help request answered?" a day after a reply
+ *  (functions/help-reminder.js): Ames trusts them and does not need them in
+ *  Scheduled (2026-10-24). They still send, and show once sent. */
+const isHelpReminder = (n: any) => n?.target_type === 'user' && String(n?.body ?? '').includes('#nge-help-solved=');
+const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n) && !isHelpReminder(n)));
 const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'   && isCategoryVisible(n)));
 const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'  && isCategoryVisible(n)));
 
