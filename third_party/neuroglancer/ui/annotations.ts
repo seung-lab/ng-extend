@@ -355,7 +355,8 @@ export class AnnotationLayerView extends Tab {
           const count = folders!.cellsIn(entry.folder.id).filter(id => present!.has(id)).length;
           items.push({
             kind: 'folder', state, folder: entry.folder, depth: entry.depth, count,
-            key: `f:${entry.folder.id}:${ngeObjectId(entry.folder)}:${entry.depth}:${count}`,
+            key: `f:${entry.folder.id}:${ngeObjectId(entry.folder)}:${entry.depth}:${count}:` +
+                `${folders!.activeFolder === entry.folder.id ? 1 : 0}:${folders!.isHidden(entry.folder.id) ? 1 : 0}`,
           });
           continue;
         }
@@ -364,7 +365,8 @@ export class AnnotationLayerView extends Tab {
         const item: NgeListItem = {
           kind: 'annotation', state, annotation: entry.annotation, number, depth: entry.depth, folder,
           key: `a:${ngeObjectId(state)}:${entry.annotation.id}:${ngeObjectId(entry.annotation)}:${number}:` +
-              `${entry.depth}:${folder ? ngeObjectId(folder) : ''}:${picked.has(entry.annotation.id) ? 1 : 0}`,
+              `${entry.depth}:${folder ? ngeObjectId(folder) : ''}:${picked.has(entry.annotation.id) ? 1 : 0}:` +
+              `${(state.source as AnnotationSource).ngeHidden?.has(entry.annotation.id) ? 1 : 0}`,
         };
         all.push(item);
         if (entry.hidden) continue;
@@ -877,6 +879,8 @@ export class AnnotationLayerView extends Tab {
       num.title = `Annotation ${item.number}`;
     }
     element.classList.toggle('nge-ann-picked', pickedAnnotations.ids.has(annotation.id));
+    // in a hidden folder: still listed, dimmed (report 225)
+    element.classList.toggle('nge-ann-hidden', !!(state.source as AnnotationSource).ngeHidden?.has(annotation.id));
     if (item.depth > 0) {
       element.classList.add('nge-ann-in-folder');
       element.style.setProperty('--nge-ann-depth', String(item.depth));
