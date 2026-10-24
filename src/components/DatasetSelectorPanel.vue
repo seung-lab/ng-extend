@@ -12,6 +12,7 @@ import { queueDatasetTour, runPendingDatasetTour } from '../dataset_tour';
 import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
 import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests';
 import { useProofreadingBackendStore } from '../store';
+import { skipNextViewRestoreOffer } from '../util/view_autosave';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -175,6 +176,8 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
     return;
   }
   try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab, reqId: null, at: Date.now() })); } catch { /* private window */ }
+  // Going straight to the work: no "Pick up where you left off?" on arrival.
+  skipNextViewRestoreOffer();
   let leaving = false;
   const onLeave = () => { leaving = true; };
   window.addEventListener('beforeunload', onLeave);
@@ -184,7 +187,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
   window.removeEventListener('beforeunload', onLeave);
   if (leaving) return;
   try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ }
-  if (!ok) return;
+  if (!ok) { skipNextViewRestoreOffer(false); return; }
   // After "Now entering" has played, never on top of it.
   await transitionDone();
   openLibrary(tab);

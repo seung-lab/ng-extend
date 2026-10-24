@@ -38,6 +38,13 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
     for (const u of ['https://global.daf-apis.com/sticky_auth', 'https://global.brain-wire-test.org/sticky_auth']) { try { localStorage.setItem('auth_token_v2_' + u, JSON.stringify(token)); } catch (e) {} }
     // A sign in screen after the switch, as a player meets one: up for 6 s
     // once the page has loaded. Inline !important beats the test's hiding rule.
+    // Note whether "Pick up where you left off?" shows on this page at all
+    // (it leaves by itself after 8 s).
+    window.__restoreBarSeen = false;
+    document.addEventListener('DOMContentLoaded', () => {
+      new MutationObserver(() => { if (document.querySelector('.nge-view-restore')) window.__restoreBarSeen = true; })
+        .observe(document.body, { childList: true, subtree: true });
+    });
     if (sessionStorage.getItem('test_fake_signin')) {
       sessionStorage.removeItem('test_fake_signin');
       window.addEventListener('load', () => {
@@ -58,7 +65,10 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
   await context.route(/cloudfunctions\.net|run\.app/, r => {
     let input = {}; try { input = r.request().postDataJSON() || {}; } catch (e) {}
     if (/ewSheetSync/.test(r.request().url())) return r.fulfill(json({ ok: true, you: 'Test Player', rows: [] }));
-    const rows = input.table === 'users' ? [{ id: 'test-user', display_name: 'Test Player', username: 'testplayer', middleauth_email: 't@example.org' }] : [];
+    // A saved view on every dataset, unlike the one on screen, so the offer has something to offer.
+    const rows = input.table === 'users' ? [{ id: 'test-user', display_name: 'Test Player', username: 'testplayer', middleauth_email: 't@example.org' }]
+      : input.table === 'user_views' && r.request().method() === 'POST' && (input.method || 'GET') === 'GET'
+        ? [{ state: { layers: RETINA_LAYERS, position: [100, 200, 300], layout: '3d' }, updated_at: new Date(Date.now() - 3600e3).toISOString() }] : [];
     return r.fulfill(json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(/pgrst\.object/.test(String(input.accept || '')) ? (rows[0] || null) : rows) }));
   });
   const claimReads = [];
@@ -171,6 +181,18 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
     await page.waitForTimeout(800);
     check('My cells moves it to My Cells', /^My Cells/.test(await activeTab() || ''), await activeTab());
     await page.screenshot({ path: path.join(OUT, 'dataset-jump-after.png') });
+    await page.waitForTimeout(3000);
+    check('no "Pick up where you left off?" after a chip switch', !(await page.evaluate(() => window.__restoreBarSeen)));
+
+    // Control: a plain card switch still offers it, so the check above can see the bar.
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:close-cell-library')));
+    await openSwitcher();
+    const reloaded2 = page.waitForEvent('load', { timeout: 40000 }).then(() => true, () => false);
+    await page.click('.nge-ds-card:has(.nge-ds-card-label:text-is("Medial Entorhinal Cortex"))');
+    await reloaded2;
+    await ready();
+    const offered = await page.waitForFunction(() => window.__restoreBarSeen, null, { timeout: 30000 }).then(() => true, () => false);
+    check('control: a plain card switch still offers "Pick up where you left off?"', offered);
   } catch (e) {
     check('the test ran to the end', false, String(e).slice(0, 400));
     try { await page.screenshot({ path: path.join(OUT, 'dataset-jump-failed.png') }); } catch (e2) { /* no picture */ }
