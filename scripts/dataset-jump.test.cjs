@@ -128,15 +128,16 @@ const check = (name, ok, detail) => { results.push({ name, ok: !!ok }); console.
     const list = await cards();
     console.log(JSON.stringify(list.map(c => [c.name, c.chips, c.h])));
     check('Retina: Available cells, Quests, My cells 2', JSON.stringify(card(list, 'EyeWire II: Retina').chips) === JSON.stringify(['Available cells', 'Quests', 'My cells2']), card(list, 'EyeWire II: Retina').chips);
-    check('MEC: Available cells and My cells 1', JSON.stringify(card(list, 'Medial Entorhinal Cortex').chips) === JSON.stringify(['Available cells', 'My cells1']), card(list, 'Medial Entorhinal Cortex').chips);
+    // View only on MEC: no claim chips, even with a claim there (Ames 2026-10-24).
+    check('MEC, view only: no chips', card(list, 'Medial Entorhinal Cortex').chips.length === 0, card(list, 'Medial Entorhinal Cortex').chips);
     check('Sandbox: Available cells only (no claims there)', JSON.stringify(card(list, 'Pinky Sandbox').chips) === JSON.stringify(['Available cells']), card(list, 'Pinky Sandbox').chips);
     check('FlyWire and every View Only card have no chips', list.filter(c => !['EyeWire II: Retina', 'Medial Entorhinal Cortex', 'Pinky Sandbox'].includes(c.name)).every(c => c.chips.length === 0));
     check('your claims were read once', claimReads.length === 1, claimReads.length);
     check('every chip sits inside its card', list.every(c => c.inside));
     // The words and chips fit in the room beside the picture, so the card
     // is exactly as tall as before.
-    check('the production cards with chips stay as tall as their picture', ['EyeWire II: Retina', 'Medial Entorhinal Cortex'].every(n => card(list, n).textH <= card(list, n).thumbH),
-      ['EyeWire II: Retina', 'Medial Entorhinal Cortex'].map(n => [card(list, n).textH, card(list, n).thumbH]));
+    check('the production cards with chips stay as tall as their picture', ['EyeWire II: Retina'].every(n => card(list, n).textH <= card(list, n).thumbH),
+      ['EyeWire II: Retina'].map(n => [card(list, n).textH, card(list, n).thumbH]));
     check('all three Retina chips fit on one row', card(list, 'EyeWire II: Retina').rows === 1, card(list, 'EyeWire II: Retina').rows);
     const panel = await page.locator('.nge-dataset-panel').boundingBox();
     await page.screenshot({ path: path.join(OUT, 'dataset-jump-window.png'), clip: { x: panel.x - 2, y: panel.y - 2, width: panel.width + 4, height: panel.height + 4 } });
