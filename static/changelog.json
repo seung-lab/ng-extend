@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T20:38:54Z",
+      "title": "Annotation folders you can place into and hide",
+      "digest": "minor",
+      "items": [
+        "Click the target on an annotation folder and every annotation you place goes into that folder. Click it again to stop.",
+        "Click a folder's eye to hide its annotations in the 2D and 3D views, handy for a part of a big cell you are finished with. They stay in the list, dimmed.",
+        "Thanks to annkri for the idea."
+      ]
+    },
+    {
       "at": "2026-10-24T20:06:48Z",
       "title": "Find Path stops when you close it",
       "items": [
