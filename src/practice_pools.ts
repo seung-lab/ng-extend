@@ -23,6 +23,12 @@ export const SANDBOX_CELLS: SandboxCell[] = [
   // Ames, 2026-10-24: the cell at (61906, 44918, 1492), the piece fused to it
   // at (61795, 44659, 1506). Her own cut, operation 2499, is the reference.
   { id: '2f8c4066-202e-44f7-88b1-5dbd0335adde', title: 'Merger 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6209159015956480' },
+  // Ames, 2026-10-24, harder: two branches crossing in an X with no clear
+  // border (Andrearwen's example). Spots either side at (61010, 43273, 1557)
+  // and (60986, 43313, 1566). A player cut it on 2026-10-13 (operation 2018,
+  // which parts the two spots); Ames merged it again (operation 2502), and
+  // the baseline is just after.
+  { id: 'b5656b45-bd19-4b39-ac9d-65902b1a1b94', title: 'Merger 9', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4924675628990464' },
 ];
 
 /** How many mergers the sandbox holds. Every "all N mergers" a player reads

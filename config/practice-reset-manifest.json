@@ -158,5 +158,15 @@
     "baseline_at": "2026-10-24T16:00:00+00:00",
     "root_a": "648518346353339873",
     "root_b": "648518346356596015"
+  },
+  "b5656b45-bd19-4b39-ac9d-65902b1a1b94": {
+    "kind": "cut",
+    "pcg_server": "https://minnie.microns-daf.com",
+    "pcg_table": "pinky_nf_v2",
+    "supervoxel_a": "73747269337282876",
+    "supervoxel_b": "73747269337466483",
+    "baseline_at": "2026-10-24T17:02:00+00:00",
+    "root_a": "648518346352077426",
+    "root_b": "648518346352077426"
   }
 }
