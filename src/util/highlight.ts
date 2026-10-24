@@ -223,9 +223,21 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
   const layer = currentSegLayer()?.layer;
   if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
   if (a.root !== b.root) throw new Error('Those two points are on different cells. Pick both on the same cell.');
+  // MEC's server takes minutes over a precise path (Ames 2026-10-24: "1m 34
+  // seconds for a short path"). There the cell's branch map comes first: one
+  // fetch per cell, then every stretch is worked out here. Without one, the
+  // quick path, whose staircase the color reach covers.
+  if (isMec()) {
+    try {
+      return await addBranchHighlight(a, 'toward', style, b, stillWanted, '');
+    } catch (e) {
+      if (!stillWanted()) return 0;
+      console.warn('[highlight] MEC branch map failed, trying the quick path:', e);
+    }
+  }
   let nm: number[][] | null = null;
   let pathError: any = null;
-  try { nm = await ngeGrapheneFindPath(layer, a.selection, b.selection); } catch (e) { pathError = e; }
+  try { nm = await ngeGrapheneFindPath(layer, a.selection, b.selection, !isMec()); } catch (e) { pathError = e; }
   // The panel gave up waiting (timed out or cancelled): draw nothing late.
   if (!stillWanted()) return 0;
   if (!nm || nm.length < 2) {
