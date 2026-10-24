@@ -117,9 +117,9 @@ function frame() {
 }
 
 // ── Colors ──────────────────────────────────────────────────────────────
-// One type alone, or every class together: the class color. One class
-// together: each type its own shade of the class color, so the types can be
-// told apart (Ames 2026-10-24: "color coded by type, ish").
+// One type alone: the class color. A group together, one class or all of
+// them: each type its own shade of its class color, so the types can be told
+// apart and each family still reads as its family (Ames 2026-10-24).
 function hexToHsl(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
   const r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
@@ -242,7 +242,10 @@ export function showCastType(t: CastType) {
 export function showCastGroup(key: string) {
   const types = key === 'all' ? CAST : CAST.filter(t => t.cls === key);
   const shadeOf = new Map<CastType, string>();
-  if (key !== 'all') shades(key, types.length).forEach((c, i) => shadeOf.set(types[i], c));
+  for (const c of CAST_CLASSES) {
+    const mine = types.filter(t => t.cls === c.key);
+    shades(c.key, mine.length).forEach((hex, i) => shadeOf.set(mine[i], hex));
+  }
   return display(types, t => shadeOf.get(t) ?? castClass(t.cls).color, () => {
     castState.current = null;
     castState.group = key;

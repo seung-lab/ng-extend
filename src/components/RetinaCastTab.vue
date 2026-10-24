@@ -55,14 +55,12 @@ const groupSize = computed(() => castState.group === 'all' ? CAST.length : castS
   <div class="nge-cast">
     <div class="nge-cast-head">
       <div class="nge-cast-title">Meet the cells</div>
-      <div class="nge-cast-lead">One proofread cell of each of the {{ CAST.length }} retinal cell types, most common first. The type names are the labels people gave these cells.</div>
+      <div class="nge-cast-lead">{{ CAST.length }} retinal cell types that have been identified in the Eyewire II dataset.</div>
     </div>
 
     <div v-if="castState.current || castState.group || castState.saved || castState.loading || castState.error" class="nge-cast-now">
       <template v-if="castState.group">
         <div class="nge-cast-now-name">{{ groupClass ? `All ${groupSize} ${groupClass.group}` : `All ${groupSize} types` }} together</div>
-        <div class="nge-cast-now-count">Each in its own place in the retina.
-          {{ groupClass ? 'Each type has its own shade; the dot by each name in the list shows it.' : 'Colored by class.' }}</div>
         <div v-if="groupClass" class="nge-cast-about">{{ groupClass.about }}</div>
         <div v-else class="nge-cast-classes">
           <div v-for="c in CAST_CLASSES" :key="c.key" class="nge-cast-about">
