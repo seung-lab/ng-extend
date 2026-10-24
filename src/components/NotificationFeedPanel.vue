@@ -470,6 +470,15 @@ const pictureWide = ref(false);
 // point, so the picture keeps its ordinary column and the text gets the room.
 const LONG_READ_CHARS = 600;
 const longRead = computed(() => String(openNotif.value?.body ?? '').length > LONG_READ_CHARS);
+/** Just a title and a picture (Ames 2026-10-24): laid out like a video note,
+ *  the title on top and the picture across the card below it, with no empty
+ *  text column beside the picture. */
+const pictureOnly = computed(() => {
+  const n = openNotif.value;
+  if (!n || !(n.image_url || n.thumbnail_url)) return false;
+  if (champions.value || replyAsked.value || isHelpNotification(n)) return false;
+  return !cleanCopy(String(n.body ?? '')).trim();
+});
 /** Today in Pyr ends with what players did, "Players made 1,234 edits and
  *  completed 12 cells." (scripts/daily-deploy-digest.mjs). That line is shown
  *  as two numbers under the picture, to the left of the text (Ames
@@ -772,7 +781,7 @@ function padRank(rank: number): string {
             <button class="nge-notif-detail-close" @click="closeDetail" aria-label="Close">×</button>
           </div>
           <div class="nge-notif-detail-scroll">
-            <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': openNotif.image_url || openNotif.thumbnail_url }">
+            <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': (openNotif.image_url || openNotif.thumbnail_url) && !pictureOnly, 'nge-notif-detail-layout--picture-only': pictureOnly }">
               <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
                 <img
                   :src="openNotif.image_url || openNotif.thumbnail_url"
@@ -1768,6 +1777,14 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-text {
   flex: 1;
   min-width: 0;
+}
+/* Title and picture only: the title first, the picture across the card. */
+.nge-notif-detail-layout--picture-only .nge-notif-detail-text { order: -1; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-body:empty { display: none; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-image { width: 100%; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-img {
+  width: auto; max-width: 100%; margin: 0 auto; box-sizing: border-box;
+  max-height: min(900px, calc(88vh - 150px));
 }
 
 .nge-notif-detail-img {
