@@ -624,10 +624,13 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string, need = 1) {
   waitingFor = null;
   helpWanted = true;
   const bar = useSplitMergeOverlayStore();
+  // The cut bar holds back "Now press G" until this many red points are in
+  // (SplitMergeOverlay.vue, moreRedWanted).
+  (window as any).__ngeCutRedNeed = want === 'red' ? need : 0;
   const tick = () => {
-    if (token !== practiceWatch) return;
+    if (token !== practiceWatch) { if (want === 'red') (window as any).__ngeCutRedNeed = 0; return; }
     const done = want === 'red' ? bar.redPointCount >= need : bar.activeGroup === 'blue';
-    if (done) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
+    if (done) { (window as any).__ngeCutRedNeed = 0; practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
     practiceStatus(waiting);
     setTimeout(tick, 300);
   };
