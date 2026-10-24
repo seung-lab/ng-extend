@@ -15,6 +15,7 @@ import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startTabs } from './util/tabs';
+import { startPanelFront } from './util/panel_front';
 import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
@@ -183,6 +184,7 @@ window.addEventListener('DOMContentLoaded', () => {
   startCalm();
   // Other Pyr tabs in this browser, and a notice if the views stop drawing.
   startTabs();
+  startPanelFront();
   startContextLostNotice();
   // P over a cell in 3D: it sends a ring of light along itself.
   startPulseKey();

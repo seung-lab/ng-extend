@@ -2,10 +2,94 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-24T16:44:00Z",
+      "at": "2026-10-24T17:11:00Z",
       "title": "Edits count after an outage",
       "items": [
         "If the Pyr server is down for a while, your splits and merges from that time still count once it is back, for up to three days."
+      ]
+    },
+    {
+      "at": "2026-10-24T17:09:28Z",
+      "title": "A tighter menu that scrolls",
+      "items": [
+        "The menu is tighter, and it scrolls when your window is too short to show all of it.",
+        "MEC's Cell Library no longer starts with an empty entry.",
+        "Announcements in chat no longer start with a megaphone; they have their picture."
+      ]
+    },
+    {
+      "at": "2026-10-24T17:04:00Z",
+      "title": "A ninth merger, a harder one",
+      "items": [
+        "The Merger Sandbox has a ninth merger: two branches crossing in an X, with no clear border between them."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:46:00Z",
+      "title": "Meet the cells of the retina",
+      "digest": "headline",
+      "items": [
+        "New in the Cell Library on Retina: Meet the cells, one example of each of the 117 cell types identified in the Eyewire II dataset, most common first.",
+        "Click a type to see its cell alone in 3D and turn it, or show a whole class, or all 117, together in their places in the retina, each type in its own color.",
+        "Each class comes with a short note on what it does, and Back to my view puts your own view back."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:45:00Z",
+      "title": "Claim buttons only where you can claim",
+      "digest": "minor",
+      "items": [
+        "In Switch Dataset, the Available cells, Quests and My cells buttons now show only on datasets where you can claim cells."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:41:52Z",
+      "title": "The window you click comes to the front",
+      "items": [
+        "Click into chat and it comes in front of the Cell Library; click the Cell Library and it comes back in front. The same goes for the other floating windows."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:18:00Z",
+      "title": "Pyr is invite only for now",
+      "digest": "minor",
+      "items": [
+        "Players who are not in the beta yet see a short form after signing in, where they can ask to join with their name, email and an optional note."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:17:00Z",
+      "title": "A third cell in the Extension Sandbox",
+      "items": [
+        "The Extension Sandbox has a new easy cell: an axon to extend by one piece. The black spill cell is now third."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:04:39Z",
+      "title": "Bigger text when replying to a help request",
+      "digest": "minor",
+      "items": [
+        "In the Cell Library's Help tab, the box where you write a reply, the view link box and their buttons now use larger, easier to read text."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:01:00Z",
+      "title": "A clearer Get Started tutorial",
+      "items": [
+        "Get Started has new wording, the key and mouse actions in bold, and a small mouse picture showing which button to use.",
+        "The 2D EM tab glows when the tutorial asks you to open it, and the hint points no longer show twice.",
+        "Merge and Cut are switched off during Get Started, so the lesson stays the same for everyone. It now ends with a clear finish and the Merge tutorial.",
+        "The burger menu opens in front of the tutorial box.",
+        "The Extension Sandbox has a second cell: extending a branch through a black spill."
+      ]
+    },
+    {
+      "at": "2026-10-24T15:45:00Z",
+      "title": "The Extension Sandbox, and an eighth merger",
+      "digest": "headline",
+      "items": [
+        "New in the burger menu: the Extension Sandbox. Each cell stops too soon, with the rest of it left behind as separate pieces. Find where it ends early and merge the missing pieces back on.",
+        "The Merger Sandbox has an eighth merger to cut."
       ]
     },
     {

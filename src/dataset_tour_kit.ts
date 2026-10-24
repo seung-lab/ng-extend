@@ -15,7 +15,7 @@ import { setStatedColor } from "./widgets/widget_utils";
 
 /** projectionScale per micrometre of a cell's largest on-screen extent: fills
  *  the view with a little margin. */
-const SCALE_PER_UM = 95;
+export const SCALE_PER_UM = 95;
 
 /** Low and to the right, clear of the cell in the middle of the view and of
  *  chat on the left. */

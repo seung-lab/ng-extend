@@ -38,6 +38,7 @@ import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
+import BetaGate from "components/BetaGate.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
 import { undelete, undeleteCount } from "../util/undelete";
@@ -117,14 +118,18 @@ document.addEventListener('animationend', (e) => {
 }, true);
 
 // Merger Sandbox examples (src/merger-sandbox.ts).
-import { SANDBOX_CELLS } from '../practice_pools';
+import { SANDBOX_CELLS, EXTENSION_CELLS } from '../practice_pools';
 import { sandboxDone } from '../merger-sandbox';
+import { extensionDone } from '../extension-sandbox';
 // The Proofreading Test (src/proofreading-test.ts): listed once the server
 // says a test is open; its line says passed or in use.
 import { testStatus } from '../proofreading-test';
 function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
+// Extension Sandbox (extension-sandbox.ts), the same way.
+const extensionFinished = computed(() => EXTENSION_CELLS.filter(c => extensionDone.value.includes(c.id)).length);
+function startNextExtension() { document.dispatchEvent(new CustomEvent('nge:extsandbox-next')); }
 import { myAccess, loadMyAccess, accessStatusLabel, resumeReview } from '../access_request';
 import { datasetAccess } from '../util/dataset_access';
 const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
@@ -986,6 +991,8 @@ function onIconDrop(e: DragEvent, id: string) {
   <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
+  <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
+  <beta-gate />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
@@ -1251,6 +1258,14 @@ function onIconDrop(e: DragEvent, id: string) {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
             <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
+          </div>
+        </li>
+        <!-- Cells that stop too soon: merge the missing pieces back on
+             (Ames, 2026-10-24). -->
+        <li class="nge-menu-heading" @click.stop>Extension Sandbox</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startNextExtension(); closeHamburger()">
+            <span class="nge-menu-num">{{ extensionFinished >= EXTENSION_CELLS.length ? '✓' : extensionFinished }}</span><span>Find the missing pieces ({{ extensionFinished }} of {{ EXTENSION_CELLS.length }})</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
@@ -2342,6 +2357,12 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 /* Numbered rows start at the left edge, so the numbers form one column
    (Ames, 2026-10-13). */
 #hamburger li:has(> .nge-menu-item) { justify-content: start; }
+/* Tighter rows (Ames 2026-10-24: "too spaced out"): the row and the button
+   inside it both had padding, 57px a row. And the menu scrolls when it is
+   taller than the window: a player could not reach the bottom items. */
+#hamburger li:has(> .logoutButton) { padding-top: 1px; padding-bottom: 1px; }
+#hamburger li .logoutButton { padding-top: 6px; padding-bottom: 6px; }
+#hamburger .dropdownMenu { max-height: calc(100vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
 .nge-menu-num {
   display: inline-flex;
   align-items: center;

@@ -3764,6 +3764,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let tasksSyncedDataset = '';
   let tasksSyncedAt = '';
 
+  /** A task row names a cell. One with a blank id showed as an empty first
+   *  entry in MEC's Cell Library (Krzysztof Kruk, report 223), and Claim a
+   *  new cell could pick it. */
+  const hasCellId = (t: ProofreadingTask) => /^[1-9]\d*$/.test(String(t.segment_id ?? '').trim());
   async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string, opts: { full?: boolean } = {}) {
     if (!statusFilter && !opts.full && dataset === tasksSyncedDataset && tasksSyncedAt) {
       try {
@@ -3775,8 +3779,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .order('updated_at', { ascending: true })
           .limit(1000);
         if (fetchErr) throw fetchErr;
-        const rows = (data ?? []) as ProofreadingTask[];
-        if (rows.length < 1000) {
+        const fetched = (data ?? []) as ProofreadingTask[];
+        const rows = fetched.filter(hasCellId);
+        if (fetched.length < 1000) {
           const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
           const next = tasks.value.slice();
           let added = false;
@@ -3816,7 +3821,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .order('created_at', { ascending: true })
           .order('id', { ascending: true })
           .limit(PAGE);
-        if (mine) tasks.value = mine as ProofreadingTask[];
+        if (mine) tasks.value = (mine as ProofreadingTask[]).filter(hasCellId);
       }
       const page = async (from: number) => {
         let query = supabase
@@ -3839,7 +3844,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         for (const g of got) all.push(...g);
         if (got.some(g => g.length < PAGE)) break;
       }
-      tasks.value = all;
+      tasks.value = all.filter(hasCellId);
       if (!statusFilter) {
         tasksSyncedDataset = dataset;
         tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
@@ -5479,7 +5484,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try {
         const chatStore = useChatStore();
         if (chatStore.connected || chatStore.polling) {
-          chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
+          chatStore.sendMessage(data.title, newNotifId);
           // Record that the announcement already went out, so the every-10-min
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
           // Only mark it when we actually sent: if chat was offline we couldn't
@@ -5532,7 +5537,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: n.id })).claimed; }
       catch (claimErr: any) { console.warn('[admin] claim chat announcement failed:', claimErr?.message); continue; }
       if (claimed) {
-        chatStore.sendMessage(`📢 ${n.title}`, n.id);
+        chatStore.sendMessage(n.title, n.id);
       }
     }
   }

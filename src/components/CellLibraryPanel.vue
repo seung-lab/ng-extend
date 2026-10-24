@@ -35,6 +35,8 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
+import RetinaCastTab from './RetinaCastTab.vue';
+import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
@@ -147,7 +149,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -536,6 +538,18 @@ function setWorkingTask(id: number | null) {
   try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
   try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
 }
+// The cast shows its cells over the player's view: the claim being worked on
+// is saved first and stops being the open one, so a cast cell is never saved
+// into it, and Back to my view makes it the open one again.
+setCastClaimHooks({
+  async leave() {
+    const id = workingTaskId;
+    if (!(await leaveCurrentWork(null))) return false;
+    if (id) setWorkingTask(null);
+    return id;
+  },
+  reopen(id) { setWorkingTask(id); },
+});
 /** Save the view to the claim being worked on. False = stay put. */
 async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
   const id = workingTaskId;
@@ -1832,6 +1846,9 @@ watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value =
  *  says so and offers the switch (Ames 2026-10-13: "it's not clear that my
  *  tasks don't show up until I realize I'm in the wrong dataset"). */
 const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
+/** The cast of the retina (Ames 2026-10-24): one example of each cell type,
+ *  on the Retina only. */
+const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
 /** The quests' dataset as the top bar names it, "Retina" (Ames 2026-10-13:
  *  "this should say Switch to Retina"; its longer name reads "EyeWire II"). */
@@ -2366,6 +2383,8 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'links',     label: 'My Links' },
   // Annotation Quests (Ames 2026-10-12): shown on datasets that have one.
   { key: 'quests',    label: 'Quests' },
+  // The cast of the retina (Ames 2026-10-24): Retina only.
+  { key: 'cast',      label: 'Meet the cells' },
 ];
 /** Hidden by default (still in the gear picker): the tab bar was cropping
  *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
@@ -2381,6 +2400,11 @@ const visibleTabs = ref<string[]>((() => {
       if (!localStorage.getItem('nge_cl_tabs_teams_added_v1')) {
         localStorage.setItem('nge_cl_tabs_teams_added_v1', '1');
         if (!saved.includes('teams')) { saved.push('teams'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
+      }
+      // Cast arrived 2026-10-24: a tab list saved before then gets it once.
+      if (!localStorage.getItem('nge_cl_tabs_cast_added_v1')) {
+        localStorage.setItem('nge_cl_tabs_cast_added_v1', '1');
+        if (!saved.includes('cast')) { saved.push('cast'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
       }
       // Quests arrived 2026-10-12: a tab list saved before then gets it once.
       if (!localStorage.getItem('nge_cl_tabs_quests_added_v1')) {
@@ -2770,6 +2794,10 @@ const panelStyle = computed(() => ({
                       :title="questsHere ? 'Annotation quests: mark the cilia on a starburst amacrine cell, without completing it. The number is the cells open to claim.' : 'Annotation quests are on Retina for now'">
                 Quests <b v-if="questsHere && questState.loaded">{{ questOpenCount() }}</b>
               </button>
+              <button v-if="castHere && tabShown('cast')" :class="{ active: filter === 'cast', 'nge-cl-cast-tab': true }" @click="filter = 'cast'"
+                      title="One example cell of each retinal type, to turn in 3D, alone or all together">
+                Meet the cells <b>{{ CAST.length }}</b>
+              </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
               </button>
@@ -2814,7 +2842,7 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
-        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams'" class="nge-cl-search">
+        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams' && filter !== 'cast'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
@@ -3211,6 +3239,11 @@ const panelStyle = computed(() => ({
             <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
                     title="Switch this view to the quests' dataset">Switch to {{ questDatasetName }}</button>
           </div>
+        </div>
+
+        <!-- ═══ CAST TAB (one example of each retinal cell type) ═══ -->
+        <div v-else-if="filter === 'cast' && castHere" class="nge-cl-list">
+          <retina-cast-tab />
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
@@ -4554,8 +4587,10 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 6px;
   background: rgba(10, 10, 30, 0.6);
-  color: #ccd;
-  font-size: 0.76em;
+  color: #dde4f0;
+  /* readable in a narrow panel (Ames 2026-10-24: "this text is way too small") */
+  font-size: 14px;
+  line-height: 1.45;
   font-family: inherit;
   resize: vertical;
   outline: none;
@@ -4570,8 +4605,8 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.12);
   border-radius: 5px;
   background: rgba(10, 10, 30, 0.5);
-  color: #ccd;
-  font-size: 0.72em;
+  color: #dde4f0;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -4589,7 +4624,7 @@ const panelStyle = computed(() => ({
   min-width: 0;
 }
 .nge-cl-btn--copy-state {
-  font-size: 0.68em;
+  font-size: 13px;
   padding: 4px 8px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -4598,7 +4633,8 @@ const panelStyle = computed(() => ({
   align-self: flex-end;
   border-color: rgba(68, 170, 102, 0.25);
   color: #4a6;
-  padding: 5px 12px;
+  padding: 6px 14px;
+  font-size: 14px;
 }
 .nge-cl-btn--submit-response:hover { background: rgba(68, 170, 102, 0.12); }
 .nge-cl-btn--submit-response:disabled {
