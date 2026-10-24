@@ -27,11 +27,17 @@ export type CastType = typeof CAST_TYPES[number];
 export const CAST = CAST_TYPES;
 export const CAST_DATASET = 'stroeh_mouse_retina';
 
-export const CAST_CLASSES: { key: string; name: string; plural: string; color: string }[] = [
-  { key: 'BC', name: 'Bipolar cell', plural: 'Bipolar', color: '#f5b84a' },
-  { key: 'HC', name: 'Horizontal cell', plural: 'Horizontal', color: '#b48cff' },
-  { key: 'AC', name: 'Amacrine cell', plural: 'Amacrine', color: '#ff5fb0' },
-  { key: 'RGC', name: 'Ganglion cell', plural: 'Ganglion', color: '#3e96f0' },
+/** Each class with what it does, in a sentence or two (Ames 2026-10-24: "a
+ *  little description of what each class of cell does"). */
+export const CAST_CLASSES: { key: string; name: string; plural: string; group: string; color: string; about: string }[] = [
+  { key: 'BC', name: 'Bipolar cell', plural: 'Bipolar', group: 'bipolar cells', color: '#f5b84a',
+    about: 'Bipolar cells stand upright in the retina and carry the signal from the photoreceptors down to the amacrine and ganglion cells. ON types end their axons deeper, OFF types nearer the cell body.' },
+  { key: 'HC', name: 'Horizontal cell', plural: 'Horizontal', group: 'horizontal cells', color: '#b48cff',
+    about: 'Horizontal cells spread sideways just under the photoreceptors. They compare each spot of light with its surroundings, which sharpens contrast at edges. The mouse has one type.' },
+  { key: 'AC', name: 'Amacrine cell', plural: 'Amacrine', group: 'amacrine cells', color: '#ff5fb0',
+    about: 'Amacrine cells shape the signal on its way from bipolar cells to ganglion cells, mostly by inhibiting it. They do jobs like telling which way something moves, and they are the most varied class of all.' },
+  { key: 'RGC', name: 'Ganglion cell', plural: 'Ganglion', group: 'ganglion cells', color: '#3e96f0',
+    about: 'Ganglion cells are the output of the retina. Each type picks out one feature of the scene, such as edges, motion or brightness, and sends it to the brain through the optic nerve.' },
 ];
 export const castClass = (key: string) => CAST_CLASSES.find(c => c.key === key) ?? CAST_CLASSES[0];
 
@@ -48,6 +54,10 @@ export const castState = reactive({
   spinning: false,
   loading: false,
   error: '',
+  /** A whole group on screen: 'all', or a class key ('BC', ...). */
+  group: null as string | null,
+  /** Cells found so far while a group loads. */
+  found: 0,
   /** The player's own view is saved and can be put back. */
   saved: false,
 });
@@ -85,61 +95,165 @@ async function saveMyView(): Promise<boolean> {
   return true;
 }
 
-function frame(t: CastType) {
+/** The box holding these types' meshes. */
+function boxOf(types: CastType[]) {
+  return {
+    min: [0, 1, 2].map(i => Math.min(...types.map(t => t.min[i]))),
+    max: [0, 1, 2].map(i => Math.max(...types.map(t => t.max[i]))),
+  };
+}
+
+function frame() {
   const v = viewer();
-  if (!v) return;
-  v.navigationState.position.value = Float32Array.from([0, 1, 2].map(i => (t.min[i] + t.max[i]) / 2 / VOXEL_UM[i]));
+  const types = shownTypes();
+  if (!v || !types.length) return;
+  const { min, max } = boxOf(types);
+  v.navigationState.position.value = Float32Array.from([0, 1, 2].map(i => (min[i] + max[i]) / 2 / VOXEL_UM[i]));
   v.perspectiveNavigationState.pose.orientation.restoreState(castState.view === 'side' ? VIEW_SIDE : VIEW_TOP);
   const ext = castState.view === 'side'
-    ? Math.max(t.max[0] - t.min[0], t.max[2] - t.min[2])
-    : Math.max(t.max[0] - t.min[0], t.max[1] - t.min[1]);
+    ? Math.max(max[0] - min[0], max[2] - min[2])
+    : Math.max(max[0] - min[0], max[1] - min[1]);
   v.projectionScale.value = ext * SCALE_PER_UM;
 }
 
+// ── Colors ──────────────────────────────────────────────────────────────
+// One type alone, or every class together: the class color. One class
+// together: each type its own shade of the class color, so the types can be
+// told apart (Ames 2026-10-24: "color coded by type, ish").
+function hexToHsl(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  if (!d) return [0, 0, l];
+  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+function hslToHex(h: number, s: number, l: number): string {
+  const f = (k: number) => {
+    const a = s * Math.min(l, 1 - l), t = (k + h / 30) % 12;
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(t - 3, 9 - t, 1))));
+  };
+  return '#' + [f(0), f(8), f(4)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+/** Shades spread around the class color: hue within 50 degrees each way,
+ *  lightness stepping through three levels so neighbors differ. */
+function shades(cls: string, count: number): string[] {
+  const [h, s] = hexToHsl(castClass(cls).color);
+  return Array.from({ length: count }, (_, i) => {
+    const t = count > 1 ? i / (count - 1) : 0.5;
+    return hslToHex((h - 50 + 100 * t + 360) % 360, Math.max(0.55, s), [0.62, 0.48, 0.74][i % 3]);
+  });
+}
+/** The color each shown type has in the 3D view, by supervoxel (the list's
+ *  swatches read it). */
+export const castColors = reactive<Record<string, string>>({});
+
+/** What is on screen: one type, or a whole group. */
+function shownTypes(): CastType[] {
+  if (castState.current) return [castState.current];
+  if (castState.group === 'all') return CAST;
+  if (castState.group) return CAST.filter(t => t.cls === castState.group);
+  return [];
+}
+
+/** Roots for these supervoxels, a few lookups at a time. */
+async function rootsOf(types: CastType[], mine: number): Promise<(string | null)[]> {
+  const out: (string | null)[] = new Array(types.length).fill(null);
+  let next = 0;
+  const worker = async () => {
+    while (next < types.length && mine === token) {
+      const i = next++;
+      out[i] = await getRootFromSupervoxel(types[i].sv);
+      castState.found = out.filter(Boolean).length;
+    }
+  };
+  await Promise.all(Array.from({ length: 8 }, worker));
+  return out;
+}
+
 let token = 0;
-/** Show one type's example cell alone in 3D, framed to it. */
-export async function showCastType(t: CastType) {
+/** Put these types on screen, each in its color, in their own places in the
+ *  retina, framed together. */
+async function display(types: CastType[], colorOf: (t: CastType) => string, setUp: () => void) {
   const mine = ++token;
   castState.error = '';
   castState.loading = true;
+  castState.found = 0;
   stopSpin();
   try {
     if (!(await saveMyView())) { castState.loading = false; return; }
-    const root = await getRootFromSupervoxel(t.sv);
+    const roots = await rootsOf(types, mine);
     if (mine !== token) return;
-    if (!root) { castState.error = 'This cell could not be found right now. Try again in a moment.'; return; }
+    const missing = roots.filter(r => !r).length;
+    if (missing === types.length) {
+      castState.error = types.length === 1
+        ? 'This cell could not be found right now. Try again in a moment.'
+        : 'These cells could not be found right now. Try again in a moment.';
+      return;
+    }
     const v = viewer();
     const seg = currentSegLayer();
     const layer = seg?.layer;
     const group = layer?.displayState?.segmentationGroupState?.value;
     if (!v || !group) { castState.error = 'The retina is still loading. Try again in a moment.'; return; }
-    // The cell alone: other layers off, 3D only.
+    // The cells alone: other layers off, 3D only.
     for (const ml of v.layerManager.managedLayers) if (ml !== seg && ml.visible) ml.setVisible(false);
     if (!seg.visible) seg.setVisible(true);
     v.layout.restoreState('3d');
     v.showPerspectiveSliceViews.value = false;
     v.showAxisLines.value = false;
     group.visibleSegments.clear();
-    const id = Uint64.parseString(root);
-    const n = parseInt(castClass(t.cls).color.slice(1), 16);
-    // neuroglancer packs colors as 0xBBGGRR.
-    const packed = ((n >> 16) & 255) | (n & 0xff00) | ((n & 255) << 16);
-    try { setStatedColor(layer.displayState.segmentationColorGroupState.value.segmentStatedColors, id, packed); } catch { /* keeps its own color */ }
-    group.visibleSegments.add(id);
-    castState.current = t;
-    castState.view = startsSide(t) ? 'side' : 'top';
-    frame(t);
+    for (const k of Object.keys(castColors)) delete castColors[k];
+    const colors = layer.displayState.segmentationColorGroupState?.value?.segmentStatedColors;
+    types.forEach((t, i) => {
+      const root = roots[i];
+      if (!root) return;
+      const hex = colorOf(t);
+      castColors[t.sv] = hex;
+      const id = Uint64.parseString(root);
+      const n = parseInt(hex.slice(1), 16);
+      // neuroglancer packs colors as 0xBBGGRR.
+      const packed = ((n >> 16) & 255) | (n & 0xff00) | ((n & 255) << 16);
+      try { if (colors) setStatedColor(colors, id, packed); } catch { /* keeps its own color */ }
+      group.visibleSegments.add(id);
+    });
+    setUp();
+    frame();
+    if (missing) castState.error = `${missing} of ${types.length} cells could not be found right now.`;
   } catch (e: any) {
-    if (mine === token) castState.error = 'This cell could not be shown: ' + (e?.message || e);
+    if (mine === token) castState.error = 'The cells could not be shown: ' + (e?.message || e);
   } finally {
     if (mine === token) castState.loading = false;
   }
 }
 
+/** Show one type's example cell alone in 3D, framed to it. */
+export function showCastType(t: CastType) {
+  return display([t], x => castClass(x.cls).color, () => {
+    castState.current = t;
+    castState.group = null;
+    castState.view = startsSide(t) ? 'side' : 'top';
+  });
+}
+
+/** Show every example of a class ('BC', ...) or of all classes ('all') at
+ *  once, each where it sits in the retina. */
+export function showCastGroup(key: string) {
+  const types = key === 'all' ? CAST : CAST.filter(t => t.cls === key);
+  const shadeOf = new Map<CastType, string>();
+  if (key !== 'all') shades(key, types.length).forEach((c, i) => shadeOf.set(types[i], c));
+  return display(types, t => shadeOf.get(t) ?? castClass(t.cls).color, () => {
+    castState.current = null;
+    castState.group = key;
+    castState.view = key === 'BC' || key === 'HC' ? 'side' : 'top';
+  });
+}
+
 export function setCastView(view: 'top' | 'side') {
   castState.view = view;
   stopSpin();
-  if (castState.current) frame(castState.current);
+  frame();
 }
 
 // Spin: turn about the screen's upright axis until the player stops it or
@@ -176,6 +290,8 @@ export function backToMyView() {
   savedTask = null;
   castState.saved = false;
   castState.current = null;
+  castState.group = null;
+  for (const k of Object.keys(castColors)) delete castColors[k];
   castState.error = '';
   castState.loading = false;
   try { sessionStorage.removeItem(SAVED_KEY); } catch { /* private window */ }
@@ -190,6 +306,7 @@ export function forgetCast() {
   savedTask = null;
   castState.saved = false;
   castState.current = null;
+  castState.group = null;
   castState.loading = false;
   try { sessionStorage.removeItem(SAVED_KEY); } catch { /* private window */ }
 }

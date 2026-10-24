@@ -2342,7 +2342,7 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   // Annotation Quests (Ames 2026-10-12): shown on datasets that have one.
   { key: 'quests',    label: 'Quests' },
   // The cast of the retina (Ames 2026-10-24): Retina only.
-  { key: 'cast',      label: 'Cast' },
+  { key: 'cast',      label: 'Meet the cells' },
 ];
 /** Hidden by default (still in the gear picker): the tab bar was cropping
  *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
@@ -2753,8 +2753,8 @@ const panelStyle = computed(() => ({
                 Quests <b v-if="questsHere && questState.loaded">{{ questOpenCount() }}</b>
               </button>
               <button v-if="castHere && tabShown('cast')" :class="{ active: filter === 'cast', 'nge-cl-cast-tab': true }" @click="filter = 'cast'"
-                      title="The cast of the retina: one example cell of each type, to turn in 3D">
-                Cast <b>{{ CAST.length }}</b>
+                      title="One example cell of each retinal type, to turn in 3D, alone or all together">
+                Meet the cells <b>{{ CAST.length }}</b>
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>

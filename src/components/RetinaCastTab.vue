@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * RetinaCastTab.vue
- * The Cast tab of the Cell Library, Retina only (Ames 2026-10-24): one
+ * The Meet the cells tab of the Cell Library (called the Cast at first), Retina only (Ames 2026-10-24): one
  * proofread example of each retinal cell type, most common first, with the
  * class to filter by and a search. Clicking a type shows its cell alone in
  * 3D (src/retina_cast.ts); Previous and Next step through the list as it is
@@ -10,7 +10,7 @@
 import { computed, ref } from 'vue';
 import thumbsUrl from '../images/retina-cast-thumbs.png';
 import { CAST_THUMB_COLS } from '../data/retina-cast';
-import { CAST, CAST_CLASSES, castClass, castState, showCastType, setCastView, toggleSpin, backToMyView, type CastType } from '../retina_cast';
+import { CAST, CAST_CLASSES, castClass, castState, castColors, showCastType, showCastGroup, setCastView, toggleSpin, backToMyView, type CastType } from '../retina_cast';
 
 const cls = ref<string>('');
 const query = ref('');
@@ -40,16 +40,36 @@ function thumbStyle(t: CastType, px = THUMB) {
   };
 }
 const fmt = (n: number) => n.toLocaleString('en-US');
+
+/** "Show all together" shows what the class filter picks: every type, or one
+ *  class (Ames 2026-10-24: "I would like to be able to see all at once"). */
+const groupKey = computed(() => cls.value || 'all');
+const groupLabel = computed(() => cls.value
+  ? `Show all ${countOf(cls.value)} ${castClass(cls.value).group} together`
+  : `Show all ${CAST.length} together`);
+const groupClass = computed(() => castState.group && castState.group !== 'all' ? castClass(castState.group) : null);
+const groupSize = computed(() => castState.group === 'all' ? CAST.length : castState.group ? countOf(castState.group) : 0);
 </script>
 
 <template>
   <div class="nge-cast">
     <div class="nge-cast-head">
-      <div class="nge-cast-title">The cast of the retina</div>
-      <div class="nge-cast-lead">One proofread cell of each type, {{ CAST.length }} types, most common first. The type names are the labels people gave these cells.</div>
+      <div class="nge-cast-title">Meet the cells</div>
+      <div class="nge-cast-lead">One proofread cell of each of the {{ CAST.length }} retinal cell types, most common first. The type names are the labels people gave these cells.</div>
     </div>
 
-    <div v-if="castState.current || castState.saved || castState.loading || castState.error" class="nge-cast-now">
+    <div v-if="castState.current || castState.group || castState.saved || castState.loading || castState.error" class="nge-cast-now">
+      <template v-if="castState.group">
+        <div class="nge-cast-now-name">{{ groupClass ? `All ${groupSize} ${groupClass.group}` : `All ${groupSize} types` }} together</div>
+        <div class="nge-cast-now-count">Each in its own place in the retina.
+          {{ groupClass ? 'Each type has its own shade; the dot by each name in the list shows it.' : 'Colored by class.' }}</div>
+        <div v-if="groupClass" class="nge-cast-about">{{ groupClass.about }}</div>
+        <div v-else class="nge-cast-classes">
+          <div v-for="c in CAST_CLASSES" :key="c.key" class="nge-cast-about">
+            <b :style="{ color: c.color }">{{ c.plural }}.</b> {{ c.about }}
+          </div>
+        </div>
+      </template>
       <div v-if="castState.current" class="nge-cast-now-row">
         <span class="nge-cast-thumb nge-cast-thumb--big" :style="thumbStyle(castState.current, 64)"></span>
         <div class="nge-cast-now-text">
@@ -61,17 +81,18 @@ const fmt = (n: number) => n.toLocaleString('en-US');
           <div class="nge-cast-now-count">{{ fmt(castState.current.n) }} proofread cells carry this label.</div>
         </div>
       </div>
-      <div v-if="castState.loading" class="nge-cast-note">Finding the cell...</div>
+      <div v-if="castState.current" class="nge-cast-about">{{ castClass(castState.current.cls).about }}</div>
+      <div v-if="castState.loading" class="nge-cast-note">{{ castState.group || !castState.current ? `Finding the cells, ${castState.found} so far...` : 'Finding the cell...' }}</div>
       <div v-if="castState.error" class="nge-cast-note nge-cast-note--err">{{ castState.error }}</div>
       <div class="nge-cast-controls">
-        <button class="nge-cl-btn" @click="step(-1)" title="The type before this one in the list">&lsaquo; Previous</button>
-        <button class="nge-cl-btn" @click="step(1)" title="The next type in the list">Next &rsaquo;</button>
-        <template v-if="castState.current">
-          <button class="nge-cl-btn" :class="{ 'nge-cast-on': castState.view === 'top' }" @click="setCastView('top')" title="Look down on the retina">Top</button>
-          <button class="nge-cl-btn" :class="{ 'nge-cast-on': castState.view === 'side' }" @click="setCastView('side')" title="Look at the retina from the side">Side</button>
-          <button class="nge-cl-btn" :class="{ 'nge-cast-on': castState.spinning }" @click="toggleSpin()" title="Turn the cell slowly. Drag the cell to stop.">{{ castState.spinning ? 'Stop' : 'Spin' }}</button>
+        <button class="nge-cast-btn" @click="step(-1)" title="The type before this one in the list">&lsaquo; Previous</button>
+        <button class="nge-cast-btn" @click="step(1)" title="The next type in the list">Next &rsaquo;</button>
+        <template v-if="castState.current || castState.group">
+          <button class="nge-cast-btn" :class="{ 'nge-cast-on': castState.view === 'top' }" @click="setCastView('top')" title="Look down on the retina">Top</button>
+          <button class="nge-cast-btn" :class="{ 'nge-cast-on': castState.view === 'side' }" @click="setCastView('side')" title="Look at the retina from the side">Side</button>
+          <button class="nge-cast-btn" :class="{ 'nge-cast-on': castState.spinning }" @click="toggleSpin()" title="Turn the cell slowly. Drag the cell to stop.">{{ castState.spinning ? 'Stop' : 'Spin' }}</button>
         </template>
-        <button v-if="castState.saved" class="nge-cl-btn nge-cast-back" @click="backToMyView()" title="Put back the view you had before the cast, with your layers">Back to my view</button>
+        <button v-if="castState.saved" class="nge-cast-btn nge-cast-back" @click="backToMyView()" title="Put back the view you had before the cast, with your layers">Back to my view</button>
       </div>
       <div v-if="castState.current" class="nge-cast-note">Drag the cell to turn it. Scroll to zoom.</div>
     </div>
@@ -81,6 +102,8 @@ const fmt = (n: number) => n.toLocaleString('en-US');
       <button v-for="c in CAST_CLASSES" :key="c.key" class="nge-cast-chip" :class="{ 'nge-cast-chip--on': cls === c.key }"
               :style="{ '--chip': c.color }" @click="cls = cls === c.key ? '' : c.key">{{ c.plural }} {{ countOf(c.key) }}</button>
     </div>
+    <button class="nge-cast-btn nge-cast-all" :class="{ 'nge-cast-on': castState.group === groupKey }" @click="showCastGroup(groupKey)"
+            title="Every example cell at once, each where it sits in the retina">{{ groupLabel }}</button>
     <input v-model="query" class="nge-cast-search" type="search" placeholder="Find a type, like ON alpha" aria-label="Find a cell type" />
 
     <div class="nge-cast-list">
@@ -88,7 +111,7 @@ const fmt = (n: number) => n.toLocaleString('en-US');
               @click="showCastType(t)" :title="`Show the ${t.type} example alone in 3D`">
         <span class="nge-cast-thumb" :style="thumbStyle(t)"></span>
         <span class="nge-cast-row-text">
-          <span class="nge-cast-row-name">{{ t.type }}</span>
+          <span class="nge-cast-row-name"><span v-if="castColors[t.sv] && castState.group" class="nge-cast-dot" :style="{ background: castColors[t.sv] }"></span>{{ t.type }}</span>
           <span class="nge-cast-row-cls" :style="{ color: castClass(t.cls).color }">{{ castClass(t.cls).name }}</span>
         </span>
         <span class="nge-cast-row-n" :title="`${fmt(t.n)} proofread cells carry this label`">{{ fmt(t.n) }}</span>
@@ -112,8 +135,20 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 .nge-cast-now-meta { font-size: 13px; color: #a9b8cc; }
 .nge-cast-now-count { font-size: 13px; color: #cfdcef; }
 .nge-cast-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.nge-cast-btn {
+  padding: 5px 11px; border: 1px solid rgba(120, 140, 255, 0.25); border-radius: 5px;
+  background: transparent; color: #8bf; font: 600 13px 'Inter', sans-serif;
+  cursor: pointer; white-space: nowrap; transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.nge-cast-btn:hover { background: rgba(74, 158, 255, 0.1); border-color: rgba(126, 202, 255, 0.5); }
 .nge-cast-on { background: rgba(74, 158, 255, 0.18); border-color: rgba(126, 202, 255, 0.6); color: #eaf6ff; }
 .nge-cast-back { color: #a6ffd6; border-color: rgba(166, 255, 214, 0.35); }
+.nge-cast-back:hover { background: rgba(166, 255, 214, 0.1); border-color: rgba(166, 255, 214, 0.6); }
+.nge-cast-all { margin: 0 12px 8px; align-self: flex-start; }
+.nge-cast-about { font-size: 13px; line-height: 1.5; color: #cfdcef; }
+.nge-cast-about b { font-weight: 700; }
+.nge-cast-classes { display: flex; flex-direction: column; gap: 6px; }
+.nge-cast-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .nge-cast-note { font-size: 13px; color: #93a0b6; line-height: 1.4; }
 .nge-cast-note--err { color: #ff9b9b; }
 
