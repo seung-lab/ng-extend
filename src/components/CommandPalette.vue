@@ -20,6 +20,7 @@ import { pumpkinSeason, togglePumpkin } from '../util/pumpkin';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
+import { collectKeys, warnKeyClashes, isKeysQuery, KEY_GROUPS, type KeyGroup } from '../util/key_list';
 
 const emit = defineEmits({
   'open-profile': null,
@@ -51,6 +52,8 @@ interface PaletteItem {
   label: string;
   description?: string;
   category: 'action' | 'navigate' | 'cell' | 'tool' | 'help' | 'shortcut';
+  /** For keys: Moving around, Editing, Tools or Panels. */
+  keyGroup?: KeyGroup;
   icon: string;
   shortcut?: string;
   action: () => void;
@@ -81,7 +84,6 @@ function buildActions(): PaletteItem[] {
       description: 'Open cell type selector',
       category: 'action',
       icon: '🏷',
-      shortcut: 'Ctrl+Shift+T',
       action: () => {
         const toggle = document.querySelector('.nge-ann-type-toggle') as HTMLButtonElement;
         if (toggle) toggle.click();
@@ -163,6 +165,7 @@ function buildActions(): PaletteItem[] {
     description: 'Browse all cells, claim and complete',
     category: 'navigate',
     icon: '🧬',
+    shortcut: 'Shift+L',
     action: () => emit('open-cells'),
   });
   items.push({
@@ -408,187 +411,30 @@ function buildActions(): PaletteItem[] {
     });
   }
 
-  // ── Keyboard Shortcuts (dynamically from neuroglancer + curated labels) ──
-  const FRIENDLY_NAMES: Record<string, { label: string; icon: string; aliases?: string[] }> = {
-    'recolor':                      { label: 'Recolor Segments', icon: '🎨', aliases: ['colors', 'randomize'] },
-    'clear-segments':               { label: 'Clear All Segments', icon: '🧹', aliases: ['deselect', 'hide'] },
-    'toggle-show-slices':           { label: 'Toggle Slices', icon: '🔍', aliases: ['cross section', 'slices'] },
-    'toggle-scale-bar':             { label: 'Toggle Scale Bar', icon: '📏', aliases: ['ruler', 'measurement'] },
-    'toggle-default-annotations':   { label: 'Toggle Annotations', icon: '📌', aliases: ['pins', 'markers'] },
-    'toggle-axis-lines':            { label: 'Toggle Axis Lines', icon: '➕', aliases: ['grid', 'axes'] },
-    'toggle-orthographic-projection': { label: 'Toggle Orthographic', icon: '🔲', aliases: ['perspective', 'ortho'] },
-    'toggle-layout':                { label: 'Toggle Layout', icon: '⊞', aliases: ['panels', 'arrangement'] },
-    'toggle-layout-alternative':    { label: 'Toggle Layout (Alt)', icon: '⊞' },
-    'toggle-show-statistics':       { label: 'Toggle Statistics', icon: '📊', aliases: ['stats', 'gpu', 'performance'] },
-    'help':                         { label: 'Show All Keyboard Shortcuts', icon: '⌨️', aliases: ['keys', 'keybindings', 'hotkeys', '?'] },
-    'add-layer':                    { label: 'Add New Layer', icon: '➕', aliases: ['new layer'] },
-    'snap':                         { label: 'Snap to Nearest Section', icon: '🧲', aliases: ['align', 'section'] },
-    'zoom-in':                      { label: 'Zoom In', icon: '🔎', aliases: ['magnify', 'closer'] },
-    'zoom-out':                     { label: 'Zoom Out', icon: '🔎', aliases: ['shrink', 'farther'] },
-    'select':                       { label: 'Select Segment', icon: '👆', aliases: ['pick', 'choose'] },
-    'rotate-relative-z-':           { label: 'Rotate View Left', icon: '🔄', aliases: ['rotate'] },
-    'rotate-relative-z+':           { label: 'Rotate View Right', icon: '🔄', aliases: ['rotate'] },
-    'x-':                           { label: 'Move Left', icon: '⬅️' },
-    'x+':                           { label: 'Move Right', icon: '➡️' },
-    'y-':                           { label: 'Move Up', icon: '⬆️' },
-    'y+':                           { label: 'Move Down', icon: '⬇️' },
-    'z-':                           { label: 'Slice Down (Z-)', icon: '⏬', aliases: ['z minus', 'deeper'] },
-    'z+':                           { label: 'Slice Up (Z+)', icon: '⏫', aliases: ['z plus', 'shallower'] },
-    'move-to-mouse-position':       { label: 'Move to Mouse Position', icon: '🎯', aliases: ['jump', 'center'] },
-  };
-
-  // Pure mouse/touch gestures we can't fire from a keyboard event. They
-  // still show up in the palette (so users searching "rotate" or "drag"
-  // see the right gesture), but clicking them opens the help panel
-  // instead of dispatching a key. Anything outside this set is treated
-  // as a real keyboard binding and dispatched directly.
-  const NON_KEYBOARD_ACTIONS = new Set([
-    'rotate-via-mouse-drag', 'translate-via-mouse-drag',
-    'zoom-via-wheel', 'adjust-depth-range-via-wheel',
-    'z+1-via-wheel', 'z+10-via-wheel',
-    'zoom-via-touchpinch',
-    'rotate-in-plane-via-touchrotate', 'translate-in-plane-via-touchtranslate',
-    'rotate-out-of-plane-via-touchtranslate', 'translate-z-via-touchtranslate',
-  ]);
-
-  // Format raw key codes to readable shortcuts
-  function formatKey(raw: string): string {
-    return raw
-      .replace(/\bat:/, '')
-      .replace(/\bkey([a-z])/gi, (_, c) => c.toUpperCase())
-      .replace(/\bdigit(\d)/g, '$1')
-      .replace(/\barrow(up|down|left|right)/gi, (_, d) => d.charAt(0).toUpperCase() + d.slice(1))
-      .replace(/\bcontrol\b/g, 'Ctrl')
-      .replace(/\bshift\b/g, 'Shift')
-      .replace(/\balt\b/g, 'Alt')
-      .replace(/\bequal\b/g, '=')
-      .replace(/\bminus\b/g, '-')
-      .replace(/\bcomma\b/g, ',')
-      .replace(/\bperiod\b/g, '.')
-      .replace(/\bspace\b/g, 'Space')
-      .replace(/\bbackslash\b/g, '\\')
-      .replace(/\bbracketleft\b/g, '[')
-      .replace(/\bbracketright\b/g, ']')
-      .replace(/\bmousedown(\d)\b/g, 'Mouse$1')
-      .replace(/\bdblclick(\d)\b/g, 'DblClick')
-      .replace(/\+/g, '+');
-  }
-
-  // Dynamically read all bindings from the viewer
+  // ── Keys (util/key_list.ts) ──
+  // Every key a player can press, read from neuroglancer's live bindings, the
+  // custom keybinds, the shortcut fields above and Pyr's hand listed window
+  // handlers. Typing "keys" or "?" lists them all, by group.
   try {
     const viewer = (window as any)['viewer'];
-    if (viewer?.inputEventBindings) {
-      const seen = new Set<string>(); // dedupe by action
-      const sources: [string, any][] = [
-        ['Global', viewer.inputEventBindings.global],
-        ['Slice View', viewer.inputEventBindings.sliceView],
-        ['3D View', viewer.inputEventBindings.perspectiveView],
-      ];
-
-      for (const [group, eventMap] of sources) {
-        if (!eventMap?.bindings) continue;
-        // Walk the map and its parents — same traversal the help panel
-        // uses (`?`), so the palette ends up with the same set of bindings.
-        const walkMap = (map: any) => {
-          if (!map?.bindings) return;
-          for (const [event, eventAction] of map.bindings.entries()) {
-            const action = typeof eventAction === 'string' ? eventAction : eventAction?.action;
-            if (!action) continue;
-
-            const dedupeKey = action;
-            if (seen.has(dedupeKey)) continue;
-            seen.add(dedupeKey);
-
-            const rawKey = event.replace(/^[^:]*:/, ''); // strip "at:" prefix
-            const shortcutStr = formatKey(rawKey);
-            const friendly = FRIENDLY_NAMES[action];
-            const label = friendly?.label || action.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            const icon = friendly?.icon || '⌨️';
-
-            const isMouseGesture = NON_KEYBOARD_ACTIONS.has(action) ||
-              event.includes('touch') || event.includes('wheel') ||
-              event.includes('mouse') || event.includes('drag');
-
-            items.push({
-              id: `shortcut-${action}`,
-              label,
-              description: isMouseGesture ? `${group} mouse/touch gesture` : `${group} shortcut`,
-              category: 'shortcut',
-              icon: isMouseGesture ? '🖱' : icon,
-              shortcut: shortcutStr,
-              aliases: [
-                action, action.replace(/-/g, ' '),
-                ...(friendly?.aliases || []),
-              ],
-              action: action === 'help'
-                ? () => { close(); try { viewer.toggleHelpPanel?.(); } catch {} }
-                : isMouseGesture
-                  ? () => { close(); try { viewer.toggleHelpPanel?.(); } catch {} }
-                  : () => {
-                      close();
-                      // Dispatch the original key event
-                      const parts = rawKey.split('+');
-                      const keyPart = parts[parts.length - 1];
-                      const code = keyPart.startsWith('key') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
-                        : keyPart.startsWith('digit') ? keyPart.charAt(0).toUpperCase() + keyPart.slice(1)
-                        : keyPart.charAt(0).toUpperCase() + keyPart.slice(1);
-                      document.dispatchEvent(new KeyboardEvent('keydown', {
-                        key: keyPart.replace(/^key/, '').replace(/^digit/, ''),
-                        code,
-                        ctrlKey: rawKey.includes('control'),
-                        shiftKey: rawKey.includes('shift'),
-                        altKey: rawKey.includes('alt'),
-                        bubbles: true,
-                      }));
-                    },
-            });
-          }
-          // Walk parents
-          if (map.parents) {
-            for (const parent of map.parents) {
-              walkMap(parent);
-            }
-          }
-        };
-        walkMap(eventMap);
-      }
-
-      // Tool bindings (Shift+keyX) — what the help panel lists under
-      // "Tool bindings for layer ...". These are user-bound tools that
-      // act on a specific layer (e.g. Shift+M = merge on segmentation
-      // layer). The palette previously skipped tool-* entirely.
-      try {
-        const toolBinder = viewer.globalToolBinder;
-        if (toolBinder?.bindings) {
-          for (const [key, tool] of toolBinder.bindings) {
-            const id = `tool-binding-${key}`;
-            if (seen.has(id)) continue;
-            seen.add(id);
-            const layerName = tool.context?.managedLayer?.name || tool.context?.constructor?.name || 'layer';
-            const desc = tool.description || 'Layer tool';
-            items.push({
-              id,
-              label: desc,
-              description: `Tool on ${layerName}`,
-              category: 'shortcut',
-              icon: '🛠',
-              shortcut: `Shift+${key}`,
-              aliases: [desc.toLowerCase(), 'tool', layerName.toLowerCase()],
-              action: () => {
-                close();
-                document.dispatchEvent(new KeyboardEvent('keydown', {
-                  key: key.toLowerCase(),
-                  code: 'Key' + key.toUpperCase(),
-                  shiftKey: true,
-                  bubbles: true,
-                }));
-              },
-            });
-          }
-        }
-      } catch {}
+    const commandKeys = items.filter(i => i.shortcut).map(i => ({ id: i.id, label: i.label, shortcut: i.shortcut!, category: i.category }));
+    for (const row of collectKeys(viewer, commandKeys)) {
+      const runs = row.runId && items.find(i => i.id === row.runId);
+      items.push({
+        id: row.id,
+        label: row.label,
+        description: row.where ? `${row.group}, ${row.where}` : row.group,
+        category: 'shortcut',
+        keyGroup: row.group,
+        icon: '⌨️',
+        shortcut: row.keys.length === 2 ? row.keys.join(' or ') : row.keys.join(' '),
+        aliases: ['key', 'keys', 'shortcut', row.group.toLowerCase(), ...row.keys.map(k => k.toLowerCase())],
+        action: runs ? runs.action : () => { close(); pressKey(row.strokes[0], row.where); },
+      });
     }
-  } catch {};
+  } catch (e) {
+    console.warn('[cmdPalette] key list failed:', e);
+  }
 
   // ── Cells (from history) ──
   for (const cell of cellHistory.value.slice(0, 30)) {
@@ -660,6 +506,29 @@ function activateTool(toolType: 'multicut' | 'merge') {
   }
 }
 
+/** Press a key for the player, from the key list: on the view the key works
+ *  in, so neuroglancer's view keys, its global keys and Pyr's window handlers
+ *  all see it. `stroke` is neuroglancer's form, e.g. 'control+keyz'. */
+function pressKey(stroke: string, where?: string) {
+  const viewer = (window as any)['viewer'];
+  const parts = stroke.split('+');
+  const key = parts.pop()!;
+  const code = key.replace(/^(key|digit|arrow)(.)/, (_m, a, c) => a.charAt(0).toUpperCase() + a.slice(1) + c.toUpperCase());
+  const ch = /^key[a-z]$/.test(key) ? key.slice(3) : /^digit\d$/.test(key) ? key.slice(5)
+    : ({ comma: ',', period: '.', slash: '/', bracketleft: '[', bracketright: ']', space: ' ', escape: 'Escape', delete: 'Delete' } as Record<string, string>)[key] ?? code;
+  const shift = parts.includes('shift');
+  const panels = [...document.querySelectorAll('.neuroglancer-rendered-data-panel')] as HTMLElement[];
+  const panel = where === '3D' ? panels.find(p => p.classList.contains('nge-3d-panel'))
+    : panels.find(p => !p.classList.contains('nge-3d-panel'));
+  const target = panel || panels[0] || viewer?.element || document.body;
+  target.dispatchEvent(new KeyboardEvent('keydown', {
+    key: shift && ch.length === 1 ? (ch === '/' ? '?' : ch.toUpperCase()) : ch,
+    code: code.charAt(0).toUpperCase() + code.slice(1),
+    ctrlKey: parts.includes('control'), shiftKey: shift, altKey: parts.includes('alt'), metaKey: parts.includes('meta'),
+    bubbles: true, cancelable: true,
+  }));
+}
+
 // ── Fuzzy search ──────────────────────────────────────────────────────────────
 function fuzzyMatch(text: string, pattern: string): boolean {
   const t = text.toLowerCase();
@@ -698,6 +567,7 @@ const results = computed(() => {
     return [...actions, ...nav, ...tools, ...help, ...cells];
   }
   const q = query.value.trim();
+  if (isKeysQuery(q)) return all.filter(i => i.category === 'shortcut');
   return all
     .map(item => {
       const aliasScores = (item.aliases || []).map(a => fuzzyScore(a, q));
@@ -797,6 +667,10 @@ function globalKeyHandler(e: KeyboardEvent) {
 }
 
 onMounted(() => document.addEventListener('keydown', globalKeyHandler, true));
+// Dev and test sites: warn when two handlers take the same key.
+onMounted(() => warnKeyClashes(() => (window as any)['viewer'], () => buildActions()
+  .filter(i => i.shortcut && i.category !== 'shortcut')
+  .map(i => ({ id: i.id, label: i.label, shortcut: i.shortcut!, category: i.category }))));
 onUnmounted(() => document.removeEventListener('keydown', globalKeyHandler, true));
 
 // Category labels
@@ -808,6 +682,8 @@ function categoryLabel(cat: string): string {
     case 'help': return 'HELP & LEARNING';
     case 'shortcut': return 'KEYBOARD SHORTCUTS';
     case 'cell': return 'CELLS';
+    case 'keys:Moving around': case 'keys:Editing': case 'keys:Tools': case 'keys:Panels':
+      return 'KEYS: ' + cat.slice(5).toUpperCase();
     default: return cat.toUpperCase();
   }
 }
@@ -817,9 +693,10 @@ const groupedResults = computed(() => {
   const groups: { category: string; items: PaletteItem[] }[] = [];
   let lastCat = '';
   for (const item of results.value) {
-    if (item.category !== lastCat) {
-      groups.push({ category: item.category, items: [] });
-      lastCat = item.category;
+    const cat = item.keyGroup ? `keys:${item.keyGroup}` : item.category;
+    if (cat !== lastCat) {
+      groups.push({ category: cat, items: [] });
+      lastCat = cat;
     }
     groups[groups.length - 1].items.push(item);
   }
@@ -888,6 +765,20 @@ function searchCommands(q: string, limit = 8) {
   }
 }
 
+/** Every key, grouped as Moving around, Editing, Tools and Panels, for the
+ *  Keys list in the Ask dock. Plain data; run a row with runCommandById(). */
+function listKeys() {
+  try {
+    const rows = buildActions().filter(i => i.keyGroup);
+    return KEY_GROUPS.map(group => ({
+      group,
+      rows: rows.filter(r => r.keyGroup === group).map(r => ({ id: r.id, label: r.label, keys: r.shortcut || '', description: r.description })),
+    })).filter(g => g.rows.length);
+  } catch {
+    return [];
+  }
+}
+
 /** Run a command by id. Returns false when the id is unknown. */
 function runCommandById(id: string): boolean {
   try {
@@ -903,7 +794,7 @@ function runCommandById(id: string): boolean {
 // Expose the headless command API. `open`/`close`/`toggle` are retained so any
 // remaining caller still works, but the palette UI is no longer bound to a
 // shortcut — the Ask dock is the single entry point.
-defineExpose({ open, close, toggle, commandCatalog, searchCommands, runCommandById });
+defineExpose({ open, close, toggle, commandCatalog, searchCommands, runCommandById, listKeys });
 </script>
 
 <template>

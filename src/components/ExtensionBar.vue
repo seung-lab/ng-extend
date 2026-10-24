@@ -53,6 +53,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
 import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon, findDatasetBySegName, findDatasetByCanonical, canonicalDataset} from '../datasets';
+import { transitionDone } from '../util/dataset_transition';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -225,6 +226,12 @@ onMounted(() => {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    // ?: the dock opens on the list of every key (util/key_list.ts).
+    if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openKeyList();
+    }
     if (!typing && e.shiftKey && (e.key === 'T' || e.key === 't')) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -572,6 +579,14 @@ function searchCommands(q: string, limit = 6) {
 function runCommandById(id: string): boolean {
   return (cmdPalette.value as any)?.runCommandById?.(id) ?? false;
 }
+function listKeys() {
+  return (cmdPalette.value as any)?.listKeys?.() ?? [];
+}
+/** The Ask dock, open on the list of every key (the ? key and the menu). */
+function openKeyList() {
+  showAssistant.value = true;
+  document.dispatchEvent(new CustomEvent('nge:show-keys'));
+}
 
 /**
  * Ctrl+K / Cmd+K opens the Ask dock (previously the command palette).
@@ -706,10 +721,29 @@ watch(() => backendStore.userId, id => {
     const want = JSON.parse(sessionStorage.getItem('nge_cl_after_switch') || 'null');
     if (!want || Date.now() - (want.at || 0) > 120_000) return;
     reopenedAfterSwitch = true;
-    cellLibraryInitialTab.value = want.tab || 'help';
-    showCellLibrary.value = true;
+    void reopenWhenReady(want.tab || 'help');
   } catch { /* nothing to reopen */ }
 }, { immediate: true });
+/** Wait until the new dataset is on screen and no sign in screen is up
+ *  (Ames 2026-10-23: the library opened over Identity Verification, saying
+ *  "you are on another dataset"). Both have to hold for a moment, since the
+ *  data server's sign in comes a beat after its layer. Gives up after
+ *  10 minutes, leaving the library closed. */
+async function reopenWhenReady(tab: string) {
+  let steady = 0;
+  for (let i = 0; i < 1200 && steady < 3; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    const signIn = document.querySelector('.nge-login-blocker');
+    const ready = !!currentSegLayerName() && !(signIn && signIn.getClientRects().length);
+    steady = ready ? steady + 1 : 0;
+  }
+  if (steady < 3) return;
+  // After "Now entering" has played, never on top of it (Ames 2026-10-23).
+  await transitionDone();
+  if (showCellLibrary.value) return;
+  cellLibraryInitialTab.value = tab;
+  showCellLibrary.value = true;
+}
 const { tutorialStep } = storeToRefs(useTutorialStore());
 
 function logout(session: loginSession) {
@@ -973,6 +1007,7 @@ function onIconDrop(e: DragEvent, id: string) {
     :ui-state="assistantUiState"
     :search-commands="searchCommands"
     :run-command-by-id="runCommandById"
+    :list-keys="listKeys"
     @hide="showAssistant = false"
   />
   <div id="extensionBar">
@@ -1190,12 +1225,20 @@ function onIconDrop(e: DragEvent, id: string) {
             <span class="nge-menu-num">4</span><span>Advanced Interface</span>
           </div>
         </li>
+        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
+             game. Number 5, straight after Advanced Interface (Ames
+             2026-10-23), the next step once the tutorials are done. -->
+        <li>
+          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
+            <span class="nge-menu-num">5</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+          </div>
+        </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
              mistakes, scored by the server; a pass opens production. Shown
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
             <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
@@ -1229,12 +1272,10 @@ function onIconDrop(e: DragEvent, id: string) {
             <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
           </div>
         </li>
-        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
-             game. Last in the menu, where a player looks for what comes next. -->
-        <li class="nge-menu-heading" @click.stop>Edit access</li>
+        <!-- The same list of every key that ? opens (util/key_list.ts). -->
         <li>
-          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">✦</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+          <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
           </div>
         </li>
       </template>

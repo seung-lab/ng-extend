@@ -5,11 +5,14 @@
  * Switching loads new neuroglancer layers + updates CAVE config automatically.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { DATASETS, DATASET_GROUPS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry, type DatasetSection, isDatasetShown } from '../datasets';
+import { DATASETS, DATASET_GROUPS, switchToDataset, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, segLayerName, type DatasetEntry, type DatasetSection, isDatasetShown } from '../datasets';
 import { runPanelTrace } from '../util/holo_trace';
-import { startDatasetTransition } from '../util/dataset_transition';
+import { startDatasetTransition, transitionDone } from '../util/dataset_transition';
 import { queueDatasetTour, runPendingDatasetTour } from '../dataset_tour';
 import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
+import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests';
+import { useProofreadingBackendStore } from '../store';
+import { skipNextViewRestoreOffer } from '../util/view_autosave';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -112,9 +115,9 @@ onMounted(() => {
   if (here?.group) openGroup.value = here.group;
 });
 
-async function switchTo(ds: DatasetEntry) {
-  if (ds.id === currentDatasetId.value) return;
-  if (accessOf(ds) === 'none') return;
+async function switchTo(ds: DatasetEntry): Promise<boolean> {
+  if (ds.id === currentDatasetId.value) return true;
+  if (accessOf(ds) === 'none') return false;
   // Close the switcher and play "Now entering" (it survives the reload a
   // curated dataset triggers). Let it paint before the switch blocks.
   // Close the Cell Library first (Amy 2026-09-30): it belongs to the dataset
@@ -129,6 +132,65 @@ async function switchTo(ds: DatasetEntry) {
   const ok = await switchToDataset(ds);
   if (ok) { currentDatasetId.value = ds.id; runPendingDatasetTour(); }
   switching.value = false;
+  return ok;
+}
+
+// ── Straight to the work (a player's idea, Ames 2026-10-23) ─────────────────
+// A card with cells to claim offers its Cell Library tabs, so a player goes
+// from here to Available cells, Quests or their own cells in one click
+// instead of switching, opening the library and finding the tab.
+type TaskTab = 'available' | 'mine' | 'quests';
+const hasQuests = (ds: DatasetEntry) => canonicalDataset(segLayerName(ds)) === QUEST_DATASET;
+const showTasks = (ds: DatasetEntry) => accessOf(ds) !== 'none' && (!!ds.cellTasks || hasQuests(ds));
+
+// Your claims per dataset: one small read when the window opens (a player
+// holds at most a few), so My cells shows only where you have cells.
+const backend = useProofreadingBackendStore();
+const myClaims = ref<Record<string, number>>({});
+onMounted(async () => {
+  if (!backend.userId) return;
+  const counts: Record<string, number> = {};
+  for (const t of await backend.loadMyActiveClaims()) {
+    const key = canonicalDataset(t.dataset);
+    if (key) counts[key] = (counts[key] || 0) + 1;
+  }
+  myClaims.value = counts;
+});
+const claimsOn = (ds: DatasetEntry) => myClaims.value[canonicalDataset(segLayerName(ds))] || 0;
+/** The quests' open count, only when this page has already read it: the
+ *  list has a daily read cap, so the window never reads it for a number. */
+const questCount = computed(() => questState.loaded ? questOpenCount() : 0);
+
+// A switch reloads the page when the dataset has a start view. The Cell
+// Library's note (CellLibraryPanel AFTER_SWITCH_KEY, read by ExtensionBar)
+// reopens it on the tab after the reload.
+const AFTER_SWITCH_KEY = 'nge_cl_after_switch';
+function openLibrary(tab: TaskTab) {
+  document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab } }));
+}
+async function openTask(ds: DatasetEntry, tab: TaskTab) {
+  if (accessOf(ds) === 'none' || switching.value) return;
+  if (ds.id === currentDatasetId.value) {
+    emit('hide');
+    openLibrary(tab);
+    return;
+  }
+  try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab, reqId: null, at: Date.now() })); } catch { /* private window */ }
+  // Going straight to the work: no "Pick up where you left off?" on arrival.
+  skipNextViewRestoreOffer();
+  let leaving = false;
+  const onLeave = () => { leaving = true; };
+  window.addEventListener('beforeunload', onLeave);
+  const ok = await switchTo(ds);
+  // No reload came (no start view for this dataset): open it here.
+  await new Promise(r => setTimeout(r, 1200));
+  window.removeEventListener('beforeunload', onLeave);
+  if (leaving) return;
+  try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ }
+  if (!ok) { skipNextViewRestoreOffer(false); return; }
+  // After "Now entering" has played, never on top of it.
+  await transitionDone();
+  openLibrary(tab);
 }
 </script>
 
@@ -226,6 +288,20 @@ async function switchTo(ds: DatasetEntry) {
                   <div class="nge-ds-card-label">{{ ds.label }}</div>
                   <div class="nge-ds-card-desc">{{ ds.description }}</div>
                   <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
+                  <div v-if="showTasks(ds)" class="nge-ds-tasks">
+                    <button v-if="ds.cellTasks" class="nge-ds-task" @click.stop="openTask(ds, 'available')"
+                            :title="'Open the Cell Library on the cells nobody has claimed yet' + (ds.id === currentDatasetId ? '' : ', after switching here')">
+                      Available cells<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    </button>
+                    <button v-if="hasQuests(ds)" class="nge-ds-task" @click.stop="openTask(ds, 'quests')"
+                            :title="'Open the Quests: mark the cilia on a starburst amacrine cell' + (ds.id === currentDatasetId ? '' : ', after switching here')">
+                      Quests<b v-if="questCount" class="nge-ds-task-n">{{ questCount }} open</b><span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    </button>
+                    <button v-if="ds.cellTasks && claimsOn(ds)" class="nge-ds-task nge-ds-task--in" @click.stop="openTask(ds, 'mine')"
+                            :title="'Open the Cell Library on the cells you have claimed here' + (ds.id === currentDatasetId ? '' : ', after switching here')">
+                      My cells<b class="nge-ds-task-n">{{ claimsOn(ds) }}</b><span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    </button>
+                  </div>
                   </div>
                   <div v-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
                   <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-badge nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
@@ -249,7 +325,7 @@ async function switchTo(ds: DatasetEntry) {
 .nge-ds-screen {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 10015; /* above the Cell Library (10010), which sits behind this window */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -297,7 +373,7 @@ async function switchTo(ds: DatasetEntry) {
 .nge-ds-sub { font-size: 12px; color: rgba(190, 215, 245, 0.6); }
 .nge-ds-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
   gap: 22px;
   padding: 18px 22px 22px;
   overflow-y: auto;
@@ -549,6 +625,41 @@ async function switchTo(ds: DatasetEntry) {
   border-radius: 3px;
   letter-spacing: 0.03em;
 }
+
+/* Straight to the work: chips in the Dataset Stats button's own
+   voice (angular edge, title lettering), quieter so the card stays calm. */
+.nge-ds-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.nge-ds-task {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 9px 0 10px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  white-space: nowrap;
+  color: #9fe6ff;
+  background: rgba(126, 224, 255, 0.55);   /* the 1px edge, shown round the fill below */
+  border: 0;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  position: relative; isolation: isolate;
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity 0.16s ease, color 0.16s ease;
+}
+.nge-ds-task::before {
+  content: ''; position: absolute; inset: 1px; z-index: -1;
+  background: linear-gradient(180deg, #0f1f38, #0a1428);
+  clip-path: polygon(6.4px 0, 100% 0, 100% calc(100% - 6.4px), calc(100% - 6.4px) 100%, 0 100%, 0 6.4px);
+  transition: background 0.16s ease;
+}
+.nge-ds-task:hover, .nge-ds-task:focus-visible { opacity: 1; color: #fff; outline: none; }
+.nge-ds-task:hover::before, .nge-ds-task:focus-visible::before { background: linear-gradient(180deg, #1a3a66, #0d1d3a); }
+.nge-ds-task-n { font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #8fd8ff; }
+.nge-ds-task-arrow { display: inline-block; transition: transform 0.18s ease; }
+.nge-ds-task:hover .nge-ds-task-arrow { transform: translateX(2px); }
+/* My cells arrives a moment after the window opens (your claims are read
+   then): it fades in rather than popping. */
+.nge-ds-task--in { animation: nge-ds-task-in 0.35s ease backwards; }
+@keyframes nge-ds-task-in { from { opacity: 0; } to { opacity: 0.9; } }
+@media (prefers-reduced-motion: reduce) { .nge-ds-task, .nge-ds-task-arrow { transition: none; } .nge-ds-task--in { animation: none; } }
 
 /* Section card sizes. Last in the file on purpose: they override the base
    card grid above (same specificity, so order decides). */

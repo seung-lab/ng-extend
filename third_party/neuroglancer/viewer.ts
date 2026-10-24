@@ -292,7 +292,9 @@ export class Viewer extends RefCounted implements ViewerState {
   showPerspectiveSliceViews = new TrackableBoolean(true, true);
   visibleLayerRoles = allRenderLayerRoles();
   showDefaultAnnotations = new TrackableBoolean(true, true);
-  crossSectionBackgroundColor = new TrackableRGB(vec3.fromValues(0.5, 0.5, 0.5));
+  // Black, not neuroglancer's mid grey: opening split screen flashed a grey
+  // 2D panel until the first EM tiles arrived (Ames 2026-10-23).
+  crossSectionBackgroundColor = new TrackableRGB(vec3.fromValues(0, 0, 0));
   perspectiveViewBackgroundColor = new TrackableRGB(vec3.fromValues(0, 0, 0));
   scaleBarOptions = new TrackableScaleBarOptions();
   partialViewport = new TrackableWindowedViewport();

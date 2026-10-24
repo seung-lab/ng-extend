@@ -604,6 +604,25 @@ function toggleFold(key: TriageGroupKey) {
 /** Folded right now. While searching nothing is folded, so a match in Done
  *  or Dismissed is not hidden. */
 const isFolded = (key: TriageGroupKey) => triageFolded.value[key] && !triageWords.value.length;
+// Triage zero: when the last report under Needs your decision is handled,
+// a party (Ames 2026-10-23: "some celebration when Triage reached zero").
+// Only when it goes from some to none while you watch, never on load.
+const zeroParty = ref(0);
+const decideCount = computed(() => triageGroups.value.find(g => g.key === 'decide')?.rows.length ?? -1);
+let hadDecisions = false;
+watch(decideCount, (n, before) => {
+  if (triageLoading.value) return;
+  if (n > 0) { hadDecisions = true; return; }
+  if (n === 0 && hadDecisions && (before ?? 0) > 0) {
+    hadDecisions = false;
+    zeroParty.value = Date.now();
+    setTimeout(() => { if (Date.now() - zeroParty.value >= 5900) zeroParty.value = 0; }, 6000);
+  }
+});
+const ZERO_BITS = Array.from({ length: 70 }, (_, i) => ({
+  left: (i * 37) % 100, delay: (i % 14) * 0.09, dur: 2.4 + (i % 7) * 0.35, rot: (i * 53) % 360,
+  color: ['#4f8cff', '#2ec4b6', '#f5c542', '#ff6fae', '#38bdf8'][i % 5], wide: i % 3 === 0,
+}));
 const boardColumns = computed(() => triageGroups.value.map(g => (isFolded(g.key) ? '46px' : 'minmax(0, 1fr)')).join(' '));
 
 // ── In progress, by hand ──
@@ -1474,7 +1493,11 @@ function categoryCount(key: string): number {
   return backend.adminNotifications.filter((n: any) => notifCategory(n) === key).length;
 }
 
-const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n)));
+/** The automatic "Was your help request answered?" a day after a reply
+ *  (functions/help-reminder.js): Ames trusts them and does not need them in
+ *  Scheduled (2026-10-24). They still send, and show once sent. */
+const isHelpReminder = (n: any) => n?.target_type === 'user' && String(n?.body ?? '').includes('#nge-help-solved=');
+const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n) && !isHelpReminder(n)));
 const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'   && isCategoryVisible(n)));
 const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'  && isCategoryVisible(n)));
 
@@ -1591,8 +1614,14 @@ const hasDraft = computed(() =>
 watch([notifTitle, notifBody, notifTargetType, notifTargetId,
        notifPostToChat, notifSendAt, notifExpiresAt], saveDraft);
 
+/** A title is always needed; words only when there is no picture. A title
+ *  and a picture is a note of its own, shown big (Ames 2026-10-24: the
+ *  button stayed grey with no body text). */
+const notifHasPicture = computed(() => !!notifImageFile.value || (editingId.value != null && !!editingImageUrl.value));
+const notifReady = computed(() => !!notifTitle.value.trim() && (!!notifBody.value.trim() || notifHasPicture.value));
+
 async function sendNotification() {
-  if (!notifTitle.value.trim() || !notifBody.value.trim()) return;
+  if (!notifReady.value) return;
   const editing = editingId.value != null;
   notifSteps.value = [
     ...(notifImageFile.value ? [{ key: 'image' as NotifStep, label: 'Uploading the image' }] : []),
@@ -2391,7 +2420,7 @@ function practiceWhen(iso: string | null) {
           <button type="button" class="nge-admin-action-btn" @click="notifImageFile = null">Remove</button>
         </div>
         <div class="nge-admin-row">
-          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
+          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifReady" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>
             <span v-else-if="notifSending">{{ notifSteps.find(x => x.key === notifSendStage)?.label || 'Sending' }}…</span>
             <span v-else-if="editingId != null">Save Changes</span>
@@ -2774,6 +2803,15 @@ function practiceWhen(iso: string | null) {
           reporter. Approving a fix sends it to Claude, who posts a preview in
           the Slack thread for you to test before anything goes live.
         </div>
+        <div v-if="zeroParty" :key="zeroParty" class="nge-zero-party" role="status" @click="zeroParty = 0">
+            <i v-for="(c, i) in ZERO_BITS" :key="i" class="nge-zero-bit" :class="{ 'nge-zero-bit--wide': c.wide }"
+               :style="{ left: c.left + '%', background: c.color, animationDelay: c.delay + 's', animationDuration: c.dur + 's', '--r': c.rot + 'deg' }"></i>
+            <div class="nge-zero-card">
+              <img :src="nurroConfetti" alt="" />
+              <div class="nge-zero-title">Triage zero!</div>
+              <div class="nge-zero-sub">Every report handled. Nurro is so proud of you.</div>
+            </div>
+          </div>
         <Transition name="nge-triage-cheer">
           <div v-if="triageCheer" :key="triageCheer.key" class="nge-triage-cheer" :class="`nge-triage-cheer--${triageCheer.kind}`" role="status">
             <span class="nge-triage-cheer-ring" aria-hidden="true"></span>
@@ -2839,7 +2877,12 @@ function practiceWhen(iso: string | null) {
             <!-- Copy the whole log (Ames 2026-10-21: "we need a copy button for console logs"). -->
             <button v-if="issueConsoleOpen[row.id] && issueConsole[row.id]" class="nge-triage-console-btn" title="Copy all the console messages"
                     @click.stop="copyText(issueConsole[row.id] || '')">{{ copied === issueConsole[row.id] ? '✓ Copied' : '📋 Copy' }}</button>
-            <pre v-if="issueConsoleOpen[row.id]" class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
+            <div v-if="issueConsoleOpen[row.id]" class="nge-triage-console-wrap">
+              <!-- Also on the log itself, where the eye is (Ames 2026-10-23: "I need a copy console logs button"). -->
+              <button v-if="issueConsole[row.id]" class="nge-triage-console-copy" title="Copy all the console messages"
+                      @click.stop="copyText(issueConsole[row.id] || '')">{{ copied === issueConsole[row.id] ? '✓ Copied' : '📋 Copy logs' }}</button>
+              <pre class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
+            </div>
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
           <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale"><template v-for="(pt, pi) in linkParts(row.rationale)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
@@ -4425,7 +4468,26 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-preview-toggle[aria-pressed="true"] { border-color: rgba(79, 207, 255, 0.7); }
 .nge-todo-icon { color: #7c9cff; vertical-align: -2px; margin-right: 5px; }
 /* Triage zero: Nurro cheers (Ames 2026-10-23: "use nurro on triage zero"). */
-.nge-triage-zero-nurro { display: block; width: 150px; height: 150px; object-fit: contain; margin: 6px auto 4px; animation: nge-zero-bob 3s ease-in-out infinite; }
-@keyframes nge-zero-bob { 50% { transform: translateY(-6px) rotate(-3deg); } }
+/* Bigger, and a slow float up and back (Ames 2026-10-23: "bigger, slower"). */
+.nge-triage-zero-nurro { display: block; width: 300px; height: 300px; object-fit: contain; margin: 10px auto 6px; animation: nge-zero-bob 8s ease-in-out infinite; }
+@keyframes nge-zero-bob { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-14px) rotate(-2deg); } }
 @media (prefers-reduced-motion: reduce) { .nge-triage-zero-nurro { animation: none; } }
+.nge-triage-console-wrap { position: relative; flex-basis: 100%; }
+.nge-triage-console-copy { position: sticky; float: right; top: 6px; margin: 6px 8px -34px 0; z-index: 1; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  font: 600 12px Inter, system-ui, sans-serif; color: #fff; background: #4f8cff; border: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+.nge-triage-console-copy:hover { background: #3a74e8; }
+/* Triage zero party. */
+.nge-zero-party { position: fixed; inset: 0; z-index: 10070; pointer-events: auto; overflow: hidden; display: grid; place-items: center; background: rgba(255, 255, 255, 0.35); animation: nge-zero-fade 6s ease-out forwards; cursor: pointer; }
+@keyframes nge-zero-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.nge-zero-bit { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation-name: nge-zero-fall; animation-timing-function: cubic-bezier(.3,.6,.5,1); animation-fill-mode: both; }
+.nge-zero-bit--wide { width: 14px; height: 8px; border-radius: 50%; }
+@keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(110vh) rotate(calc(var(--r) * 3)); } }
+.nge-zero-card { text-align: center; padding: 20px 34px 24px; border-radius: 20px; background: #ffffff; border: 2px solid #f5c542;
+  box-shadow: 0 20px 50px rgba(40, 70, 140, 0.22), 0 0 30px rgba(245, 197, 66, 0.3); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes nge-zero-pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.nge-zero-card img { width: 220px; height: 220px; object-fit: contain; animation: nge-zero-bob 8s ease-in-out infinite; }
+.nge-zero-title { font: 800 40px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em;
+  color: #2f6fe0; }
+.nge-zero-sub { margin-top: 6px; color: #3a4a66; font: 600 16px Inter, system-ui, sans-serif; }
+@media (prefers-reduced-motion: reduce) { .nge-zero-bit { display: none; } .nge-zero-card, .nge-zero-card img { animation: none; } }
 </style>

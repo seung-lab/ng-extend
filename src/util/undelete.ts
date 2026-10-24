@@ -158,6 +158,13 @@ function removeHovered(): boolean {
   return true;
 }
 
+/** The two keys below, for the Keys list (util/key_list.ts). Change them
+ *  together with onKey. */
+export const UNDELETE_KEYS = [
+  { keys: ['shift+delete'], label: 'Remove the cell under the mouse' },
+  { keys: ['mod+keyz'], label: 'Bring back the last cell removed' },
+];
+
 /** Ctrl+Z (⌘+Z) brings a step back, when the player has the Undelete icon
  *  turned on and is not typing somewhere. */
 function onKey(e: KeyboardEvent, enabled: () => boolean) {

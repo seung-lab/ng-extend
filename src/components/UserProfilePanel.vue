@@ -201,14 +201,30 @@ const profileSpecialBadges = computed(() => {
   return backendStore.mySpecialBadges;
 });
 
-// Player assists — help requests resolved by current user
-const helpStore = useHelpRequestStore();
-const playerAssists = computed(() => {
-  if (viewingOtherUser.value) return 0;
-  const name = backendStore.userName || backendStore.userEmail?.split('@')[0];
-  if (!name) return 0;
-  return helpStore.requests.filter(r => r.resolved && r.resolvedByName === name && inScope(r.dataset)).length;
-});
+// Assists (Ames 2026-10-24): other players' help requests you replied to,
+// one each however many replies you wrote; your own requests do not count.
+// It used to count requests solved under your NAME among the 200 newest.
+// Read from help_responses, per account, a number only, for whichever
+// player's profile is open (Ames: "I see it in my profile but not in Nik's").
+const assistRequests = ref<{ id: string; dataset: string | null }[]>([]);
+async function loadAssists(uid: string) {
+  const { data: replies } = await supabase.from('help_responses').select('request_id').eq('user_id', uid).limit(5000);
+  const ids = [...new Set((replies ?? []).map((r: any) => r.request_id).filter(Boolean))] as string[];
+  const out: { id: string; dataset: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await supabase.from('help_requests').select('id,user_id,dataset').in('id', ids.slice(i, i + 100));
+    for (const r of (data ?? []) as any[]) if (r.user_id !== uid) out.push({ id: r.id, dataset: r.dataset ?? null });
+  }
+  if (assistsFor.value === uid) assistRequests.value = out;
+}
+const assistsFor = computed(() => props.viewUserId || backendStore.userId || '');
+watch(assistsFor, uid => {
+  assistRequests.value = [];
+  if (uid) void loadAssists(uid).catch(() => { /* stays empty */ });
+}, { immediate: true });
+/** Every dataset, on your profile and on anyone else's, like the
+ *  annotations beside it. */
+const playerAssists = computed(() => assistRequests.value.length);
 
 // ── Local state ───────────────────────────────────────────────────────────────
 const closing        = ref(false);
@@ -1940,7 +1956,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-label">You Fixed</div>
                 <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
               </div>
-              <div class="nge-profile-stat-col" title="Cells where you helped answer another player's request">
+              <div class="nge-profile-stat-col" title="Other players' help requests you replied to, one each, on every dataset">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
               </div>
@@ -1961,11 +1977,15 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             </template>
             <template v-else>
-            <div class="nge-profile-section-label">▌ Annotations</div>
+            <div class="nge-profile-section-label">▌ Annotations and Assists</div>
             <div class="nge-profile-stat-row" style="margin-bottom: 12px;">
               <div class="nge-profile-stat-col" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
-                <div class="nge-profile-stat-label">All Time</div>
+                <div class="nge-profile-stat-label">Annotations</div>
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Other players' help requests this player replied to, one each, on every dataset">
+                <div class="nge-profile-stat-label">Assists</div>
+                <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
               </div>
             </div>
             </template>
@@ -4989,11 +5009,14 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 /* ── No scroll on the Overview (Ames 2026-10-11) ──────────────────────────
    The three rows take their natural height, the last row takes what is
    left, and the list scrolls inside its own box. Phones keep scrolling as
-   one page (mobile.css). */
-body:not(.nge-mobile) .nge-profile-col--main { overflow: hidden; display: flex; flex-direction: column; }
+   one page (mobile.css). On a short screen the last row keeps room for the
+   Scout report and several cells, and the Overview scrolls instead of
+   cutting them off (Ames 2026-10-24: "keep in mind smaller screens, we may
+   have to enable scroll"). Tall screens never see a scrollbar. */
+body:not(.nge-mobile) .nge-profile-col--main { overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
 body:not(.nge-mobile) .nge-track-rows { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
 body:not(.nge-mobile) .nge-track-row { flex: none; }
-body:not(.nge-mobile) .nge-track-row--rest { flex: 1 1 0; min-height: 0; }
+body:not(.nge-mobile) .nge-track-row--rest { flex: 1 1 0; min-height: 240px; }
 body:not(.nge-mobile) .nge-track-row--rest > .nge-track-stats { display: flex; flex-direction: column; min-height: 0; }
 body:not(.nge-mobile) .nge-track-row--rest .nge-profile-section--cells { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 body:not(.nge-mobile) .nge-track-row--rest .nge-cell-list { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: 0; }

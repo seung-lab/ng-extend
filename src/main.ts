@@ -79,6 +79,8 @@ import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/uti
 import {getLayerScales} from "./widgets/widget_utils";
 import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 import pyrIconUrl from './images/pyr-icon.png';
+// The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
+import pyrTriageIconUrl from './images/pyr-icon-triage.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
@@ -142,7 +144,7 @@ function injectNeuronFavicon() {
   const link = document.createElement('link');
   link.rel = 'icon';
   link.type = 'image/png';
-  link.href = pyrIconUrl;
+  link.href = isTriagePage() ? pyrTriageIconUrl : pyrIconUrl;
   document.head.appendChild(link);
   // Also set the page title (neuroglancer's bindTitle keeps it, see
   // third_party/neuroglancer/ui/title.ts)
