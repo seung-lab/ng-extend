@@ -2,6 +2,22 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T11:52:00Z",
+      "title": "Straight to the work from Switch Dataset",
+      "digest": "minor",
+      "items": [
+        "In Switch Dataset, the Retina, MEC and Sandbox cards now have buttons that take you straight to Available cells, your own cells or Quests. One click switches if needed and opens the Cell Library on that tab, after you are signed in and the dataset is on screen."
+      ]
+    },
+    {
+      "at": "2026-10-24T11:52:00Z",
+      "title": "Picture notes show the picture big",
+      "digest": "minor",
+      "items": [
+        "A notification with just a title and a picture now shows the title on top and the picture across the whole window, like a video note."
+      ]
+    },
+    {
       "at": "2026-10-23T21:02:58Z",
       "title": "Today in Pyr counts what players did",
       "items": [
