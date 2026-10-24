@@ -1,6 +1,5 @@
 import { canonicalDataset, currentDatasetTag } from './datasets';
 import { functionUrl } from './functions_base';
-import { mecMarkSummary } from './util/mec_marks';
 
 /** The ways a cell can end, per dataset, spelled exactly as that dataset's
  *  sheet spells them in its Status dropdown (Retina, read 2026-10-03). The
@@ -40,6 +39,9 @@ export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinate
   // points themselves are in the Final Link, the count is readable in the
   // sheet. Read now, before the view's markup is cleared.
   if (action === 'complete' && dataset === 'pni_mec') {
+    // Loaded here, not imported: mec_marks reaches datasets, which reaches
+    // store, which imports this file.
+    const { mecMarkSummary } = await import('./util/mec_marks');
     const marks = mecMarkSummary();
     if (marks) notes = [String(notes ?? '').trim().slice(0, 1000 - marks.length - 3), marks].filter(Boolean).join(' | ');
   }

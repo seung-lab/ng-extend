@@ -6,26 +6,24 @@
  *   Can't Fix  a branch that should go on, but the next piece can't be found
  *   Hits Edge  a branch that runs into the end of the dataset
  * Each is a point in its own annotation layer. The names and colours are the
- * ones a claimed MEC cell opens with (src/util/mec_layers.ts on the
- * claude/mec-instructions branch), so a mark placed here and a point placed
- * by hand land in the same layer. Keep the two lists the same.
+ * ones a claimed MEC cell opens with (MEC_LAYERS in mec_layers.ts), so a
+ * mark placed here and a point placed by hand land in the same layer.
  *
  * The lab proofreaders start with the axons, and so does this: mark the AIS,
  * colour the axon (everything beyond the AIS), then mark each of its ends.
  */
 import { currentDatasetTag } from '../datasets';
+import { MEC_LAYERS } from './mec_layers';
 
-export interface MecKind { key: string; label: string; layer: string; color: string; emoji: string; hint: string; }
-export const MEC_KINDS: MecKind[] = [
-  { key: 'mec:ais', label: 'AIS', layer: 'AIS 🐬', color: '#4dd8f0', emoji: '🐬',
-    hint: 'Where the axon leaves the cell. Some cell types have none: then skip it.' },
-  { key: 'mec:end', label: 'True End', layer: 'True End 🟢', color: '#3ddc84', emoji: '🟢',
-    hint: 'A branch end where the branch naturally stops.' },
-  { key: 'mec:cantfix', label: "Can't Fix", layer: "Can't Fix 🔴", color: '#ff4d5e', emoji: '🔴',
-    hint: "A branch that should go on, but you can't find the next piece." },
-  { key: 'mec:edge', label: 'Hits Edge', layer: 'Hits Edge 🟠', color: '#ff9a3c', emoji: '🟠',
-    hint: 'A branch that reaches the end of the dataset.' },
+export interface MecKind { key: string; label: string; layer: string; color: string; hint: string; }
+const KIND_INFO: { key: string; label: string; hint: string }[] = [
+  { key: 'mec:ais', label: 'AIS', hint: 'Where the axon leaves the cell. Some cell types have none: then skip it.' },
+  { key: 'mec:end', label: 'True End', hint: 'A branch end where the branch naturally stops.' },
+  { key: 'mec:cantfix', label: "Can't Fix", hint: "A branch that should go on, but you can't find the next piece." },
+  { key: 'mec:edge', label: 'Hits Edge', hint: 'A branch that reaches the end of the dataset.' },
 ];
+/** The layer names and colours come from MEC_LAYERS, in the same order. */
+export const MEC_KINDS: MecKind[] = KIND_INFO.map((k, i) => ({ ...k, layer: MEC_LAYERS[i].name, color: MEC_LAYERS[i].color }));
 export const MEC_AIS = MEC_KINDS[0];
 export const MEC_EDGE = MEC_KINDS[3];
 /** The axon, coloured beyond the AIS: a highlight layer of its own, so the

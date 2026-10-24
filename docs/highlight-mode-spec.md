@@ -130,7 +130,7 @@ already rely on, and tells us whether Stages 2 and 3 are worth the week.
 
 On MEC (dataset pni_mec) the Highlight box has a **Lab marks** section above
 the colors: AIS, True End, Can't Fix and Hits Edge, in the lab's colors and
-layer names ("AIS 🐬", "True End 🟢", "Can't Fix 🔴", "Hits Edge 🟠", the
+layer names (MEC_LAYERS in src/util/mec_layers.ts, the
 same layers a claimed MEC cell opens with). Pick one, and one Ctrl + click
 drops a point in that layer, and the cell glows in that color around it.
 

@@ -3,8 +3,9 @@
   "entries": [
     {
       "at": "2026-10-24T19:16:58Z",
-      "title": "Highlight marks MEC cells for the lab",
+      "title": "MEC cells: their layers, and Highlight marks them",
       "items": [
+        "Claim an MEC cell and it opens with the AIS, True End, Can't Fix and Hits Edge layers ready, and the Cell Library's instructions for MEC are in the game.",
         "On MEC, the Highlight box has the lab marks: AIS, True End, Can't Fix and Hits Edge. Pick one and Ctrl + click the cell to drop it, and that end of the cell glows in its color.",
         "Start with the axon, as the lab does: mark the AIS, then Color the axon colors everything beyond it.",
         "Find ends at the edge marks Hits Edge on every branch end that reaches the edge of the data for you, along the axon once the AIS is marked.",

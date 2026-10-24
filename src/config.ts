@@ -23,6 +23,22 @@ const RETINA_HOWTO: string[] = [
   'Questions or problems? Use the <b>(!)</b> button in the top bar.',
 ];
 
+/** MEC's steps in the Cell Library (Ames 2026-10-24, from the lab's sheet).
+ *  The start link and the soma coordinates are the Cell Library's job here,
+ *  so those steps of the sheet are left out. Admins can edit these in the game
+ *  (howto.mec). */
+const MEC_HOWTO: string[] = [
+  `Click <b>Available</b> and choose a cell.`,
+  `<b>Claim</b> it. Its view opens with four annotation layers ready: <b>AIS 🐬</b>, <b>True End 🟢</b>, <b>Can't Fix 🔴</b> and <b>Hits Edge 🟠</b>.`,
+  `Go to the soma (the cell body) and center your crosshairs in a colored part of it. The Cell Library records the soma's position in the spreadsheet for you.`,
+  `If the nucleus is a separate segment, <b>merge</b> it with the soma.`,
+  `Proofread the cell, <b>axon first</b>, as the lab does, and mark it as you go. Open <b>Highlight</b> (Shift+H), pick a lab mark and Ctrl+click the cell to drop it. <b>AIS 🐬</b>: where the axon leaves the cell (skip it if the cell has no distinct axon). <b>True End 🟢</b>: every branch end where the branch naturally stops. <b>Can't Fix 🔴</b>: a branch that should go on, but you can't find the next piece. <b>Hits Edge 🟠</b>: a branch that reaches the end of the dataset.`,
+  `Once the AIS is marked, <b>Color the axon</b> in Highlight shows the whole axon, and <b>Find axon ends at the edge</b> puts a Hits Edge mark on each axon end that reaches the end of the dataset. Check each one. Then do the rest of the cell the same way.`,
+  `Want a layer of your own, for notes or spots to come back to? Ctrl+click (or right click) the <b>+</b> beside the layer tabs, and give it a name.`,
+  `<b>Reminder: do NOT merge mitochondria.</b>`,
+  `When the cell is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID. That records it in the spreadsheet, with how many of each mark you placed.`,
+];
+
 export interface DatasetCaveConfig {
   caveServer: string;
   datastack: string;
@@ -237,6 +253,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // Ames's labelled view (2026-09-29).
     cellTypesUrl:     'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718150469386240',
     instructionsUrl:  'https://docs.google.com/spreadsheets/d/1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw/edit?gid=1005852930#gid=1005852930',
+    howToSteps:       MEC_HOWTO,
+    howToKey:         'howto.mec',
     // Root ids and camera lifted from the team proofreading state
     // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
     defaultSegments:  ['720575947322423718', '720575947401560895', '720575947322485926'],
