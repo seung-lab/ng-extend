@@ -738,6 +738,19 @@ export class Viewer extends RefCounted implements ViewerState {
           layer.pickEnabled = !layer.pickEnabled;
         }
       });
+      this.bindAction(`nge-number-layer-${i}`, () => {
+        const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
+        if (layer === undefined) return;
+        let classic = false;
+        try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicNumberKeys === true; } catch { /* default */ }
+        if (classic) {
+          layer.setVisible(!layer.visible);
+        } else {
+          // The same as a left click on its tab: the active layer, its panel open.
+          this.selectedLayer.layer = layer;
+          this.selectedLayer.visible = true;
+        }
+      });
       this.bindAction(`select-layer-${i}`, () => {
         const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
         if (layer !== undefined) {

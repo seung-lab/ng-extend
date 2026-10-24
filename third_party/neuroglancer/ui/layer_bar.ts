@@ -46,6 +46,14 @@ function imageLayerPanel(): boolean {
 const isImageLayer = (layer: any) => (layer?.layer?.constructor as any)?.type === 'image';
 const toggles2D = (layer: any) => isImageLayer(layer) && !imageLayerPanel() && typeof (window as any).ngeToggle2D === 'function';
 
+/** Settings > "Classic number keys": a number shows or hides its layer. */
+function classicNumberKeys(): boolean {
+  try {
+    return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicNumberKeys === true;
+  } catch {
+    return false;
+  }
+}
 function classicLayerClicks(): boolean {
   try {
     return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true;
@@ -201,10 +209,20 @@ class LayerWidget extends RefCounted {
     if (layerLocked(layer)) element.dataset.ngeLocked = 'true'; else delete element.dataset.ngeLocked;
     element.dataset.selected = (layer === this.panel.selectedLayer.layer).toString();
     element.dataset.pick = layer.pickEnabled.toString();
-    element.title = classicLayerClicks()
+    // The layer's number key, for the first nine (Ames 2026-10-24: "We could
+    // add this to tooltip").
+    let n = 0;
+    for (const l of this.panel.layerManager.managedLayers) {
+      if (l.archived) continue;
+      ++n;
+      if (l === layer) break;
+    }
+    const keys = n >= 1 && n <= 9 && !layer.archived
+        ? (classicNumberKeys() ? `. Key ${n}: on/off` : `. Key ${n}: activate. Shift+${n}: on/off`) : '';
+    element.title = (classicLayerClicks()
         ? 'Left click to toggle on/off, right click to activate'
         : toggles2D(layer) ? 'Click to show or hide the 2D view, right click to toggle the layer on/off'
-        : 'Left click to activate, right click to toggle on/off';
+        : 'Left click to activate, right click to toggle on/off') + keys;
   }
 
   disposed() {

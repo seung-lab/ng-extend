@@ -1047,6 +1047,13 @@ export interface UserPreferences {
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). */
   classicLayerClicks?: boolean;
+  /** Classic number keys: 1 to 9 show and hide layers, as in neuroglancer.
+   *  Defaults to false: a number makes its layer the active one and Shift +
+   *  the number shows or hides it (Ames 2026-10-24). */
+  classicNumberKeys?: boolean;
+  /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
+   *  Defaults to false: it shows. */
+  hideRadio?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;

@@ -1137,7 +1137,7 @@ function onIconDrop(e: DragEvent, id: string) {
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <!-- 🔥 streak: its fire, its click and its card live in StreakChip.vue -->
     <!-- EyeWire Radio: bottom right, teleported to the body -->
-    <RadioPlayer v-if="login.sessions.length > 0" />
+    <RadioPlayer v-if="login.sessions.length > 0 && !useUserPreferencesStore().prefs.hideRadio" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"

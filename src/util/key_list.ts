@@ -117,6 +117,7 @@ const ACTIONS: Record<string, [string, KeyGroup] | null> = {
 };
 /** Families of nine (keys 1 to 9), shown as one row. */
 const LAYER_FAMILIES: [RegExp, string][] = [
+  [/^nge-number-layer-\d$/, 'Make layer 1 to 9 the active one (Settings: Classic number keys shows or hides it)'],
   [/^toggle-layer-\d$/, 'Show or hide layer 1 to 9'],
   [/^select-layer-\d$/, 'Open layer 1 to 9 in the side panel'],
   [/^toggle-pick-layer-\d$/, 'Picking on or off for layer 1 to 9'],

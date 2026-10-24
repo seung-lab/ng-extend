@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T22:16:00Z",
+      "title": "Number keys pick a layer",
+      "items": [
+        "A number key, 1 to 9, now makes that layer the active one, and Shift + the number shows or hides it. Each layer tab says its keys when you point at it.",
+        "Prefer the old way? Settings has Classic number keys, where a number shows or hides its layer again.",
+        "Settings can hide the EyeWire Radio speaker in the corner."
+      ]
+    },
+    {
       "at": "2026-10-24T20:20:00Z",
       "title": "MEC cells: their layers, and Highlight marks them",
       "items": [
