@@ -724,9 +724,17 @@ watch(() => backendStore.userId, id => {
   if (!id || reopenedAfterSwitch) return;
   try {
     const want = JSON.parse(sessionStorage.getItem('nge_cl_after_switch') || 'null');
-    if (!want || Date.now() - (want.at || 0) > 120_000) return;
+    if (want && Date.now() - (want.at || 0) <= 120_000) {
+      reopenedAfterSwitch = true;
+      void reopenWhenReady(want.tab || 'help');
+      return;
+    }
+    // Open when the page was refreshed (Nseraf, report 232): back on the same
+    // tab. CellLibraryPanel left the note and puts the slim view back itself.
+    const was = JSON.parse(sessionStorage.getItem('nge_cl_on_refresh') || 'null');
+    if (!was || Date.now() - (was.at || 0) > 30 * 60_000) return;
     reopenedAfterSwitch = true;
-    void reopenWhenReady(want.tab || 'help');
+    void reopenWhenReady(was.tab || 'mine');
   } catch { /* nothing to reopen */ }
 }, { immediate: true });
 /** Wait until the new dataset is on screen and no sign in screen is up

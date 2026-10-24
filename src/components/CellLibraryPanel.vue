@@ -2657,6 +2657,49 @@ function expandAndStay() {
   setSlimMode(false);
   expandFull();
 }
+
+// ── Back as it was after a refresh (Nseraf, report 232) ─────────────────
+// F5, Ctrl+F5, Pyr's gem or "Reload now": the library comes back open, on
+// the same tab, slimmed to the same cell. The note lives in this tab only
+// (sessionStorage), is written as the page goes, and is dropped when the
+// library is closed, so a closed library stays closed. ExtensionBar reads
+// it to reopen the library; the slim part is restored here.
+const REFRESH_KEY = 'nge_cl_on_refresh';
+function rememberForRefresh() {
+  try {
+    sessionStorage.setItem(REFRESH_KEY, JSON.stringify({
+      tab: filter.value, slimSeg: slimSeg.value, slimEmpty: slimEmpty.value, at: Date.now(),
+    }));
+  } catch { /* private window */ }
+}
+window.addEventListener('pagehide', rememberForRefresh);
+onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', rememberForRefresh);
+  try { sessionStorage.removeItem(REFRESH_KEY); } catch { /* */ }
+});
+onMounted(async () => {
+  let want: { slimSeg?: string | null; slimEmpty?: boolean; at?: number } | null = null;
+  try { want = JSON.parse(sessionStorage.getItem(REFRESH_KEY) || 'null'); } catch { want = null; }
+  try { sessionStorage.removeItem(REFRESH_KEY); } catch { /* */ }
+  if (!want || Date.now() - (want.at || 0) > 30 * 60_000) return;
+  if (want.slimEmpty) {
+    slimEmpty.value = true;
+    await nextTick();
+    clampPanelPos();
+    return;
+  }
+  if (!want.slimSeg) return;
+  // The cells load after the panel opens: wait for that one to be listed.
+  for (let i = 0; i < 60; i++) {
+    if (datasetScopedCells.value.some(c => c.segId === want!.slimSeg)) {
+      slimSeg.value = want.slimSeg;
+      await nextTick();
+      clampPanelPos();
+      return;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+});
 async function collapseTo(cell: CellRow | null) {
   if (cell ? slimSeg.value === cell.segId : slimEmpty.value) return;
   const el = panelEl.value;
