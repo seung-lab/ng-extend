@@ -21,8 +21,25 @@ const shown = computed(() => {
 });
 const countOf = (key: string) => CAST.filter(t => t.cls === key).length;
 
-const place = computed(() => castState.current ? shown.value.indexOf(castState.current) : -1);
+// castState.current is the reactive copy of a type, so types are matched by
+// supervoxel, never by object (matching by object kept Next on the first cell,
+// Ames 2026-10-24).
+const isCurrent = (t: CastType) => !!castState.current && castState.current.sv === t.sv;
+const place = computed(() => shown.value.findIndex(isCurrent));
+
+/** The classes in the order Next walks them when a whole class is showing. */
+const CLASS_ORDER = CAST_CLASSES.map(c => c.key);
 function step(d: number) {
+  // A whole class on screen: Next and Previous go to the next class, all
+  // together (Ames 2026-10-24); from every class at once, to the first.
+  if (castState.group) {
+    const at = CLASS_ORDER.indexOf(castState.group);
+    const key = at < 0 ? CLASS_ORDER[d > 0 ? 0 : CLASS_ORDER.length - 1] : CLASS_ORDER[(at + d + CLASS_ORDER.length) % CLASS_ORDER.length];
+    cls.value = key;
+    query.value = '';
+    void showCastGroup(key);
+    return;
+  }
   const list = shown.value;
   if (!list.length) return;
   const i = place.value < 0 ? (d > 0 ? 0 : list.length - 1) : (place.value + d + list.length) % list.length;
@@ -44,8 +61,12 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 /** "Show all together" shows what the class filter picks: every type, or one
  *  class (Ames 2026-10-24: "I would like to be able to see all at once"). */
 const groupKey = computed(() => cls.value || 'all');
+/** "all 15 bipolar cells", or "the horizontal cell" for a class of one. */
+const allOf = (key: string) => countOf(key) === 1
+  ? `the ${castClass(key).name.toLowerCase()}`
+  : `all ${countOf(key)} ${castClass(key).group}`;
 const groupLabel = computed(() => cls.value
-  ? `Show all ${countOf(cls.value)} ${castClass(cls.value).group} together`
+  ? (countOf(cls.value) === 1 ? `Show ${allOf(cls.value)} in place` : `Show ${allOf(cls.value)} together`)
   : `Show all ${CAST.length} together`);
 const groupClass = computed(() => castState.group && castState.group !== 'all' ? castClass(castState.group) : null);
 const groupSize = computed(() => castState.group === 'all' ? CAST.length : castState.group ? countOf(castState.group) : 0);
@@ -60,7 +81,7 @@ const groupSize = computed(() => castState.group === 'all' ? CAST.length : castS
 
     <div v-if="castState.current || castState.group || castState.saved || castState.loading || castState.error" class="nge-cast-now">
       <template v-if="castState.group">
-        <div class="nge-cast-now-name">{{ groupClass ? `All ${groupSize} ${groupClass.group}` : `All ${groupSize} types` }} together</div>
+        <div class="nge-cast-now-name">{{ groupClass ? (groupSize === 1 ? `The ${groupClass.name.toLowerCase()}, in place` : `All ${groupSize} ${groupClass.group} together`) : `All ${groupSize} types together` }}</div>
         <div v-if="groupClass" class="nge-cast-about">{{ groupClass.about }}</div>
         <div v-else class="nge-cast-classes">
           <div v-for="c in CAST_CLASSES" :key="c.key" class="nge-cast-about">
@@ -83,8 +104,8 @@ const groupSize = computed(() => castState.group === 'all' ? CAST.length : castS
       <div v-if="castState.loading" class="nge-cast-note">{{ castState.group || !castState.current ? `Finding the cells, ${castState.found} so far...` : 'Finding the cell...' }}</div>
       <div v-if="castState.error" class="nge-cast-note nge-cast-note--err">{{ castState.error }}</div>
       <div class="nge-cast-controls">
-        <button class="nge-cast-btn" @click="step(-1)" title="The type before this one in the list">&lsaquo; Previous</button>
-        <button class="nge-cast-btn" @click="step(1)" title="The next type in the list">Next &rsaquo;</button>
+        <button class="nge-cast-btn" @click="step(-1)" :title="castState.group ? 'The class before this one, all together' : 'The type before this one in the list'">&lsaquo; Previous</button>
+        <button class="nge-cast-btn" @click="step(1)" :title="castState.group ? 'The next class, all together' : 'The next type in the list'">Next &rsaquo;</button>
         <template v-if="castState.current || castState.group">
           <button class="nge-cast-btn" :class="{ 'nge-cast-on': castState.view === 'top' }" @click="setCastView('top')" title="Look down on the retina">Top</button>
           <button class="nge-cast-btn" :class="{ 'nge-cast-on': castState.view === 'side' }" @click="setCastView('side')" title="Look at the retina from the side">Side</button>
@@ -105,7 +126,7 @@ const groupSize = computed(() => castState.group === 'all' ? CAST.length : castS
     <input v-model="query" class="nge-cast-search" type="search" placeholder="Find a type, like ON alpha" aria-label="Find a cell type" />
 
     <div class="nge-cast-list">
-      <button v-for="t in shown" :key="t.sv" class="nge-cast-row" :class="{ 'nge-cast-row--on': castState.current === t }"
+      <button v-for="t in shown" :key="t.sv" class="nge-cast-row" :class="{ 'nge-cast-row--on': isCurrent(t) }"
               @click="showCastType(t)" :title="`Show the ${t.type} example alone in 3D`">
         <span class="nge-cast-thumb" :style="thumbStyle(t)"></span>
         <span class="nge-cast-row-text">
