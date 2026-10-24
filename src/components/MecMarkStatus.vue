@@ -10,9 +10,9 @@
  * Highlight's lab marks (highlight.ts), in the same layers, so they mix.
  * Counts every point in the lab's layers, placed here, in Highlight or by hand.
  */
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer } from '../util/mec_marks';
-import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, addEdgeMarks, workingRoot, autoEdgeNews } from '../util/highlight';
+import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, addEdgeMarks, workingRoot, autoEdgeNews, sharedLabPick } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
 const open = ref(!!props.startOpen);
@@ -21,7 +21,8 @@ const soma = ref(somaState());
 const hasStart = ref(!!startXyz());
 const marks = MEC_KINDS.filter(k => k !== MEC_SOMA);
 /** The mark a Ctrl + click drops, while one is picked. */
-const armed = ref<string | null>(null);
+// Shared with the Highlight box, so both always place the same mark.
+const armed = sharedLabPick;
 const busy = ref(false);
 const message = ref('');
 const bad = ref(false);
@@ -50,7 +51,7 @@ function arm(key: string) {
   armed.value = armed.value === key ? null : key;
   say(armed.value ? `Ctrl + click the cell to place ${labelOf(armed.value)}.` : '');
 }
-watch(open, o => { if (!o) armed.value = null; });
+// Closing Marks leaves the pick alone: the Highlight box may be using it.
 
 // ── The number keys pick a mark too (Ames 2026-10-24: "I want to be able to
 // use the numbers to switch between these highlight points as well"). The

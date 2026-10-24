@@ -13,7 +13,7 @@ import { claimTouchTaps } from '../util/touch_tap';
 import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
 import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
@@ -67,7 +67,8 @@ const labCounts = ref<Record<string, number>>(mecCounts());
 const hintOf = (key: string) => MEC_KINDS.find(k => k.key === key)?.hint ?? '';
 /** The cell clicked last: the one Color the axon and Find ends work on. */
 const lastRoot = ref<string | null>(null);
-if (mec.value) styleKey.value = !labCounts.value['mec:soma'] ? 'mec:soma' : !labCounts.value['mec:ais'] ? 'mec:ais' : 'mec:end';
+if (mec.value) styleKey.value = sharedLabPick.value
+  || (!labCounts.value['mec:soma'] ? 'mec:soma' : !labCounts.value['mec:ais'] ? 'mec:ais' : 'mec:end');
 /** Where the soma mark is, for the hint under the chips. */
 const somaAt = ref<number[] | null>(somaXyz());
 /** The cell's starting point (the nucleus), when the Cell Library knows it. */
@@ -367,6 +368,9 @@ async function findEdges() {
 }
 // A lab mark is one click: a start point left from a stretch is dropped.
 watch(styleKey, () => { if (labOn.value && first.value && !busy.value) { first.value = null; branchWay.value = null; clearStartMarker(); } });
+// One picked lab mark for this box and the Cell Library's Marks.
+watch(styleKey, k => { const lab = k.startsWith('mec:') ? k : null; if (sharedLabPick.value !== lab) sharedLabPick.value = lab; }, { immediate: true });
+watch(sharedLabPick, k => { if (k && k !== styleKey.value) styleKey.value = k; });
 
 // The ask for the soma lights up as it arrives: one head of light laps its
 // border and a few sparks leave it, in the soma layer's amber. Once.

@@ -5,6 +5,7 @@
  * a "Checked" style layer. The strokes are ordinary annotations, so they save
  * with the view (Save view, autosave, shared links) and survive edits.
  */
+import { ref } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
@@ -487,6 +488,12 @@ async function labSource(kind: MecKind): Promise<any> {
 const kindOf = (style: HighlightStyle) => MEC_KINDS.find(k => k.key === style.key);
 
 /** Drop one MEC mark where the player clicked. */
+/** The lab mark picked, shared by the Highlight box and the Cell Library's
+ *  Marks (Ames 2026-10-24: "if I have highlight mode on it overrules the cell
+ *  marks, which is a bit confusing"). Whichever of the two takes the click, it
+ *  places this mark. Null: no lab mark is picked. */
+export const sharedLabPick = ref<string | null>(null);
+
 /** A highlight spot: one click, a point in the color's own layer that glows
  *  on the cell, for where the server can't trace a stretch (Ames 2026-10-24:
  *  "We should at least be able to add more highlight points"). */
