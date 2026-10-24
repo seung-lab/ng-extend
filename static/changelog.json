@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-24T00:00:00Z",
+      "title": "Your country and bio follow you to a new browser",
+      "items": [
+        "Sign in on a browser you have not used before and your profile shows your country and bio, instead of looking empty."
+      ]
+    },
+    {
+      "at": "2026-10-24T00:00:00Z",
       "title": "The Selection box stays shut while you merge and cut",
       "items": [
         "Placing merge and cut points no longer throws the Selection box open (it often said Annotation not found). It still opens for your own annotation layers."
