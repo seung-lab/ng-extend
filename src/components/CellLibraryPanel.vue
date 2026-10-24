@@ -54,6 +54,7 @@ import { applyShowcaseWhenLoaded } from '../showcase';
 import { datasetHasTour, startDatasetTour } from '../dataset_tour';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import ScreenshotDialog from './ScreenshotDialog.vue';
+import { useDragBox } from '../util/drag_box';
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -1693,6 +1694,30 @@ async function submitResponse(req: HelpRequest, andResolve = false) {
   helpStore.refreshPending();
 }
 
+// ── Pop-out: one help request in its own window ─────────────────────
+// The list packs every request, its links and its buttons into one box, so
+// the question itself got lost (annkri, report #227, 2026-10-24). The ⧉
+// button opens just that request in a box of its own that can be moved and
+// resized. It lives in the game, not a browser window, so Jump still flies
+// the view. It is remembered for this tab, so a dataset switch (which
+// reloads the page) brings it back.
+const POPOUT_KEY = 'nge_help_popout';
+const popoutEl = ref<HTMLElement | null>(null);
+const poppedHelpId = ref<string | null>((() => { try { return sessionStorage.getItem(POPOUT_KEY); } catch { return null; } })());
+const poppedReq = computed(() => helpStore.requests.find(r => r.id === poppedHelpId.value) ?? null);
+const { dragging: popoutDragging, posStyle: popoutPosStyle, startDrag: startPopoutDrag } = useDragBox('nge_help_popout_pos', popoutEl);
+function popOutReq(req: HelpRequest) {
+  poppedHelpId.value = req.id;
+  try { sessionStorage.setItem(POPOUT_KEY, req.id); } catch { /* private window */ }
+}
+function closePopout() {
+  if (respondingTo.value === poppedHelpId.value) respondingTo.value = null;
+  poppedHelpId.value = null;
+  try { sessionStorage.removeItem(POPOUT_KEY); } catch { /* private window */ }
+}
+// Closing the library closes the pop-out too (it uses the library's buttons).
+onBeforeUnmount(() => { try { sessionStorage.removeItem(POPOUT_KEY); } catch { /* */ } });
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -3069,6 +3094,9 @@ const panelStyle = computed(() => ({
                     </div>
                   </div>
                   <div class="nge-cl-row-actions">
+                    <button class="nge-cl-btn nge-cl-btn--jump nge-cl-btn--popout" :class="{ 'nge-cl-btn--jump-active': poppedHelpId === req.id }"
+                            title="Open this request in its own window, easy to read" aria-label="Open in its own window"
+                            @click="popOutReq(req)">⧉</button>
                     <button
                       class="nge-cl-btn nge-cl-btn--jump"
                       @click="jumpToReq(req)"
@@ -3106,7 +3134,7 @@ const panelStyle = computed(() => ({
             </div>
 
             <!-- Inline response form (below existing thread) -->
-            <div v-if="respondingTo === req.id" class="nge-cl-response-form">
+            <div v-if="respondingTo === req.id && poppedHelpId !== req.id" class="nge-cl-response-form">
               <textarea
                 v-model="responseNote"
                 placeholder="Write your response... (Enter to submit, Shift+Enter for newline)"
@@ -3189,6 +3217,9 @@ const panelStyle = computed(() => ({
                   </div>
                 </div>
                 <div class="nge-cl-row-actions">
+                  <button class="nge-cl-btn nge-cl-btn--jump nge-cl-btn--popout" :class="{ 'nge-cl-btn--jump-active': poppedHelpId === req.id }"
+                          title="Open this request in its own window, easy to read" aria-label="Open in its own window"
+                          @click="popOutReq(req)">⧉</button>
                   <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
                   <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
                 </div>
@@ -3838,6 +3869,95 @@ const panelStyle = computed(() => ({
 
       </div>
     </Transition>
+  </Teleport>
+
+  <!-- One help request in its own window (⧉ on a request; annkri, #227). -->
+  <Teleport to="body">
+    <div v-if="poppedHelpId" ref="popoutEl" class="nge-cl-popout" :class="{ 'nge-cl-popout--dragging': popoutDragging }"
+         :style="popoutPosStyle" role="dialog" aria-label="Help request">
+      <div class="nge-cl-popout-head" title="Drag to move" @pointerdown="startPopoutDrag">
+        <span class="nge-cl-title">HELP REQUEST</span>
+        <button class="nge-cl-close" title="Close this window" aria-label="Close" @click="closePopout">×</button>
+      </div>
+      <div v-if="!poppedReq" class="nge-cl-popout-body nge-cl-popout-muted">
+        {{ helpStore.requests.length ? 'This help request is no longer in the list.' : 'Loading…' }}
+      </div>
+      <div v-else class="nge-cl-popout-body">
+        <div class="nge-cl-popout-who">
+          <b>{{ poppedReq.userName || 'A player' }}</b> asked {{ relativeTime(poppedReq.createdAt) }}
+          <span class="nge-cl-badge nge-cl-status--help" :class="{ 'nge-cl-badge--live': isLiveHelp(poppedReq) }">{{ poppedReq.issueType }}</span>
+          <span v-if="poppedReq.resolved" class="nge-cl-popout-solved">✓ Solved{{ poppedReq.resolvedByName ? ' by ' + poppedReq.resolvedByName : '' }}</span>
+        </div>
+        <div class="nge-cl-popout-cell">
+          <span v-if="poppedReq.segId" class="nge-cl-row-name" @click="copyId(poppedReq.segId)" :title="'Click to copy ' + poppedReq.segId">
+            Cell {{ poppedReq.segId }}<span v-if="copiedId === poppedReq.segId" class="nge-cl-copied">copied</span>
+          </span>
+          <span v-if="poppedReq.dataset" class="nge-cl-popout-muted">{{ datasetHeading(poppedReq.dataset) }}</span>
+        </div>
+        <div v-if="poppedReq.note" class="nge-cl-popout-question">{{ poppedReq.note }}</div>
+        <div v-else class="nge-cl-popout-question nge-cl-popout-muted">They did not write a question.</div>
+        <a v-if="poppedReq.screenshotUrl" :href="poppedReq.screenshotUrl" target="_blank" rel="noopener"
+           class="nge-cl-popout-shot" title="Open the full picture">
+          <img :src="poppedReq.screenshotUrl" alt="Their picture" />
+        </a>
+        <div class="nge-cl-popout-links">
+          <a v-if="poppedReq.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(poppedReq.viewUrl)"
+             title="Load the view they were looking at">↗ Open their view</a>
+          <span v-if="poppedReq.annotationLayer" class="nge-cl-response-layer">📐 {{ poppedReq.annotationLayer === 'All annotation layers' ? poppedReq.annotationLayer : (poppedReq.annotationLayer.includes(', ') ? 'Layers: ' : 'Layer: ') + poppedReq.annotationLayer }}</span>
+        </div>
+
+        <div class="nge-cl-popout-actions">
+          <button class="nge-cl-btn" @click="jumpToReq(poppedReq)" title="Fly the view to this cell">↗ Jump to the cell</button>
+          <button v-if="!poppedReq.resolved" class="nge-cl-btn" @click="toggleResponseForm(poppedReq.id)">{{ respondingTo === poppedReq.id ? 'Cancel reply' : '💬 Reply' }}</button>
+          <button v-if="teamAllowed && !poppedReq.resolved && isLiveHelp(poppedReq) && poppedReq.userId && poppedReq.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
+                  :disabled="offeredTo.has(poppedReq.id)" @click="offerToJoin(poppedReq)">{{ offeredTo.has(poppedReq.id) ? 'Offered' : 'Join' }}</button>
+          <button v-if="!poppedReq.resolved && canResolve(poppedReq)" class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(poppedReq)"
+                  :title="poppedReq.userId === backend.userId ? 'Your question is answered: move it to Resolved for everyone' : 'Close this request for everyone: it moves to Resolved'">Mark solved</button>
+        </div>
+
+        <div v-if="respondingTo === poppedReq.id" class="nge-cl-response-form nge-cl-popout-form">
+          <textarea
+            v-model="responseNote"
+            placeholder="Write your reply... (Enter to send, Shift+Enter for a new line)"
+            class="nge-cl-response-textarea"
+            rows="3"
+            @keydown.stop @keyup.stop @keypress.stop
+            @keydown.enter.exact.prevent="submitResponse(poppedReq)"
+          ></textarea>
+          <div class="nge-cl-response-url-row">
+            <input v-model="responseUrl" placeholder="Neuroglancer state URL (optional)" class="nge-cl-response-input" @keydown.stop @keyup.stop @keypress.stop />
+            <button class="nge-cl-btn nge-cl-btn--copy-state" @click="copyCurrentState" title="Copy current viewer state URL">📋 State</button>
+          </div>
+          <select v-if="getAnnotationLayers().length > 0" v-model="responseAnnotationLayer" class="nge-cl-response-input">
+            <option value="">Select annotation layer (optional)</option>
+            <option v-for="layer in getAnnotationLayers()" :key="layer" :value="layer">{{ layer }}</option>
+          </select>
+          <button v-if="!responseScreenshotUrl" class="nge-cl-btn nge-cl-help-shot-btn" @click="showResponseScreenshotDialog = true"
+                  title="Attach a screenshot of the current view">📷 Attach screenshot</button>
+          <div v-else class="nge-cl-help-shot-preview">
+            <img :src="responseScreenshotUrl" alt="Reply screenshot" />
+            <button class="nge-cl-help-shot-remove" @click="clearResponseScreenshot" title="Remove screenshot">×</button>
+          </div>
+          <button class="nge-cl-btn nge-cl-btn--submit-response" :disabled="!responseNote.trim() && !responseScreenshotUrl"
+                  @click="submitResponse(poppedReq)">Send reply</button>
+          <button v-if="canResolve(poppedReq)" class="nge-cl-btn nge-cl-btn--submit-response nge-cl-btn--resolve"
+                  :disabled="!responseNote.trim() && !responseScreenshotUrl"
+                  title="Send the reply and move the request to Resolved for everyone"
+                  @click="submitResponse(poppedReq, true)">Reply and mark solved</button>
+        </div>
+
+        <div class="nge-cl-popout-replies-title">{{ poppedReq.responses?.length ? (poppedReq.responses.length === 1 ? '1 reply' : poppedReq.responses.length + ' replies') : 'No replies yet' }}</div>
+        <div v-for="resp in poppedReq.responses || []" :key="resp.id" class="nge-cl-popout-reply">
+          <div class="nge-cl-response-label">💬 {{ resp.userName || 'Reply' }}<span v-if="resp.resolved"> · solved it</span></div>
+          <div v-if="resp.note" class="nge-cl-popout-reply-text">{{ resp.note }}</div>
+          <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
+          <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
+          <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener" class="nge-cl-popout-shot" title="Open the full picture">
+            <img :src="resp.screenshotUrl" alt="Reply picture" />
+          </a>
+        </div>
+      </div>
+    </div>
   </Teleport>
 
   <!-- Cross-dataset jump confirmation modal -->
@@ -5793,4 +5913,48 @@ select.nge-cl-complete-type:hover {
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 46px; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-right: -46px; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -46px; }
+
+/* ── Pop-out: one help request in its own window (#227) ── */
+.nge-cl-popout {
+  position: fixed; right: 520px; top: 80px; z-index: 10011;
+  width: 420px; height: 520px; min-width: 300px; min-height: 220px;
+  max-width: calc(100vw - 16px); max-height: calc(100vh - 56px);
+  resize: both; overflow: hidden; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  background: linear-gradient(158deg, rgba(15, 18, 24, 0.97) 0%, rgba(6, 10, 18, 0.98) 100%);
+  border: 1px solid rgba(74, 150, 224, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 0 60px rgba(74, 150, 224, 0.06), inset 0 1px 0 rgba(196, 228, 255, 0.10);
+  backdrop-filter: blur(10px) saturate(1.2);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--nge-fs-base);
+  color: #ccd;
+}
+.nge-cl-popout-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: rgba(30, 30, 60, 0.9);
+  border-bottom: 1px solid rgba(120, 140, 255, 0.08);
+  cursor: grab; user-select: none; touch-action: none; flex: none;
+}
+.nge-cl-popout--dragging .nge-cl-popout-head { cursor: grabbing; }
+.nge-cl-popout-body { flex: 1; overflow-y: auto; padding: 12px 16px 16px; }
+.nge-cl-popout-muted { color: #889; font-size: 13px; }
+.nge-cl-popout-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; color: #aab; }
+.nge-cl-popout-who b { color: #eef; }
+.nge-cl-popout-solved { color: #7f8; font-size: 13px; }
+.nge-cl-popout-cell { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-top: 6px; }
+.nge-cl-popout-question {
+  margin: 12px 0 4px; padding: 10px 12px;
+  font-size: 16px; line-height: 1.5; color: #eef; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: rgba(74, 150, 224, 0.08); border-left: 3px solid rgba(74, 150, 224, 0.6); border-radius: 6px;
+}
+.nge-cl-popout-shot { display: block; margin-top: 8px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.12); }
+.nge-cl-popout-shot img { display: block; width: 100%; height: auto; max-height: 360px; object-fit: contain; background: #000; }
+.nge-cl-popout-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.nge-cl-popout-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(120, 140, 255, 0.1); }
+.nge-cl-popout-form { margin-top: 10px; padding: 0; }
+.nge-cl-popout-replies-title { margin-top: 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #889; }
+.nge-cl-popout-reply { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); font-size: 14px; }
+.nge-cl-popout-reply-text { color: #dde; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 960px) { .nge-cl-popout { right: 8px; } }
 </style>
