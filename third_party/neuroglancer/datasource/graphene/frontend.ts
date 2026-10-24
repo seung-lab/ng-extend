@@ -1089,10 +1089,10 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       const {path, source, target} = findPathState;
       const annotationSource = findPathGroup.source;
       if (source.value && !source.value.annotationReference) {
-        addSelection(annotationSource, source.value, "find path source");
+        addSelection(annotationSource, source.value, "source");
       }
       if (target.value && !target.value.annotationReference) {
-        addSelection(annotationSource, target.value, "find path target");
+        addSelection(annotationSource, target.value, "target");
       }
       for (const annotation of annotationSource) {
         if (annotation.id !== source.value?.annotationReference?.id &&
