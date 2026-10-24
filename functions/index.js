@@ -1123,11 +1123,11 @@ async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
   // mid-day. The list is served from the server's five minute copy, so these
   // reads cost the sheet nothing; they get limits of their own.
   const QUEST_READS = prefix === "read:quests";
-  // 60 a minute stops a runaway; a full day of admin work (triage, the To do
-  // board, tests) went past 5,000 (2026-10-24), so the day allows more.
+  // Players: 60 a minute, 5,000 a day (Ames 2026-10-24: "players don't need
+  // that high of a limit"). Admins get the bigger allowance below.
   // Admins get far more room (Ames 2026-10-24: "you can give me a higher
   // allowance than regular users"): triage, the To do board and tests add up.
-  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:20000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
+  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
   // Signed in writes count per person only (Ames 2026-10-24: "Please wait
   // before sending another change" on the triage board and the Cell
