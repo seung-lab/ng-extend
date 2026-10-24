@@ -1123,7 +1123,9 @@ async function rateLimit(req, loggedIn, prefix = "a") {
   // mid-day. The list is served from the server's five minute copy, so these
   // reads cost the sheet nothing; they get limits of their own.
   const QUEST_READS = prefix === "read:quests";
-  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
+  // 60 a minute stops a runaway; a full day of admin work (triage, the To do
+  // board, tests) went past 5,000 (2026-10-24), so the day allows more.
+  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:20000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
   // Signed in writes count per person only (Ames 2026-10-24: "Please wait
   // before sending another change" on the triage board and the Cell
@@ -1797,6 +1799,9 @@ exports.ewSecureWrite = onRequest(
     }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to EyeWire II again, then retry." }); return; }
+    // Which actions are called, and by whom (a hash, never the email), so a
+    // runaway caller shows in the logs (Ames hit 5,000 in a day, 2026-10-24).
+    console.log("[secureWrite] call", String(action).slice(0, 40), crypto.createHash("sha256").update(String(who.email)).digest("hex").slice(0, 8));
     if (!(await rateLimit({ip:who.email}, true, "write:secure")).ok) return res.status(429).json({error:"Please wait before sending another change."});
     const sb = ewSb(ewServiceKey.value().trim()); // a pasted key can carry a stray newline
     try {
