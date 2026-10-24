@@ -2169,10 +2169,11 @@ exports.ewProofreadingTest = onRequest(
     if (typeof action !== "string" || !action.startsWith("test.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to EyeWire II again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait before sending another change." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
-      const { me } = await pilotContext(sb, who);
+      const { me, isAdmin: limitAdmin } = await pilotContext(sb, who);
+      // After we know who it is: admins get the bigger allowance (2026-10-24).
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!limitAdmin)).ok) return res.status(429).json({ error: "Please wait before sending another change." });
       const { handle: testHandle } = require("./proofreading-test");
       const data = await testHandle({ action, args, who, me, io: {
         fetch, caveToken: ewCaveToken.value().trim(), sb,
@@ -2229,10 +2230,11 @@ exports.ewReportReply = onRequest(
     if (typeof action !== "string" || !action.startsWith("reply.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
       const { me, isAdmin } = await pilotContext(sb, who);
+      // After we know who it is: admins get the bigger allowance (Ames hit it sending a reply, 2026-10-24).
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
       const data = await require("./report-reply").handle(action, args, { sb, me, isAdmin,
         wake: () => wakeWorkflow("slack-triage-bridge.yml", "report reply") });
       res.json({ ok: true, data });
@@ -2293,10 +2295,10 @@ exports.ewAccessRequest = onRequest(
     if (typeof action !== "string" || !action.startsWith("access.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
       const { me, isAdmin, isPilot } = await pilotContext(sb, who);
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
       const note = (userIds, title, body, image) => {
         const rows = userIds.map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500), target_type: "user",
           ...(image ? { image_url: image, thumbnail_url: image } : {}),
