@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T15:26:51Z",
+      "title": "Help replies take you to the request, and Assists",
+      "digest": "minor",
+      "items": [
+        "Open in Help tab on a reply to your help request now opens that request, highlighted, even when it is on another dataset.",
+        "The Help tab has All requests and Mine, so you can see just your own requests.",
+        "Assists on a profile now counts the other players' help requests you replied to, one each, and shows on every player's profile.",
+        "On a short screen the profile Overview scrolls instead of cutting off the Scout Report and your cells."
+      ]
+    },
+    {
       "at": "2026-10-24T14:01:30Z",
       "title": "Cut tutorial waits for both red points",
       "items": [
