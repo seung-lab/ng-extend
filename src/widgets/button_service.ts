@@ -1104,7 +1104,14 @@ export class ButtonService {
         releaseBtn.addEventListener('click', async () => {
           releaseBtn.disabled = true;
           releaseBtn.textContent = 'Releasing…';
-          await backend.releaseBySegment(segmentIDString);
+          const released = await backend.releaseBySegment(segmentIDString);
+          if (!released) {
+            // Said "Released" before even when the server refused or did not
+            // answer, and the cell stayed claimed (save failures audit).
+            releaseBtn.textContent = "Couldn't release, try again";
+            releaseBtn.disabled = false;
+            return;
+          }
           releaseBtn.textContent = '✓ Released';
           claimStatus.textContent = 'Available';
           this._resetSegmentColor(segmentIDString);

@@ -470,6 +470,30 @@ const pictureWide = ref(false);
 // point, so the picture keeps its ordinary column and the text gets the room.
 const LONG_READ_CHARS = 600;
 const longRead = computed(() => String(openNotif.value?.body ?? '').length > LONG_READ_CHARS);
+/** Just a title and a picture (Ames 2026-10-24): laid out like a video note,
+ *  the title on top and the picture across the card below it, with no empty
+ *  text column beside the picture. */
+const pictureOnly = computed(() => {
+  const n = openNotif.value;
+  if (!n || !(n.image_url || n.thumbnail_url)) return false;
+  if (champions.value || replyAsked.value || isHelpNotification(n)) return false;
+  return !cleanCopy(String(n.body ?? '')).trim();
+});
+/** Today in Pyr ends with what players did, "Players made 1,234 edits and
+ *  completed 12 cells." (scripts/daily-deploy-digest.mjs). That line is shown
+ *  as two numbers under the picture, to the left of the text (Ames
+ *  2026-10-23), and left out of the text itself. */
+const DIGEST_STATS = /(?:^|\n)\s*Players made ([\d,]+) edits? and completed ([\d,]+) cells?\.\s*$/;
+const digestStats = computed(() => {
+  const n = openNotif.value;
+  if (!n || !String(n.title || '').startsWith('Today in Pyr')) return null;
+  const m = String(n.body || '').match(DIGEST_STATS);
+  return m ? { edits: m[1], cells: m[2], editsOne: m[1] === '1', cellsOne: m[2] === '1' } : null;
+});
+const detailBody = computed(() => {
+  const body = String(openNotif.value?.body ?? '');
+  return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
+});
 function onPictureLoad(e: Event) {
   const img = e.target as HTMLImageElement;
   pictureWide.value = img.naturalWidth >= 600 && img.naturalWidth / Math.max(1, img.naturalHeight) >= 1.25;
@@ -757,7 +781,7 @@ function padRank(rank: number): string {
             <button class="nge-notif-detail-close" @click="closeDetail" aria-label="Close">×</button>
           </div>
           <div class="nge-notif-detail-scroll">
-            <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': openNotif.image_url || openNotif.thumbnail_url }">
+            <div class="nge-notif-detail-layout" :class="{ 'nge-notif-detail-layout--has-image': (openNotif.image_url || openNotif.thumbnail_url) && !pictureOnly, 'nge-notif-detail-layout--picture-only': pictureOnly }">
               <div v-if="openNotif.image_url || openNotif.thumbnail_url" class="nge-notif-detail-image">
                 <img
                   :src="openNotif.image_url || openNotif.thumbnail_url"
@@ -765,6 +789,17 @@ function padRank(rank: number): string {
                   @load="onPictureLoad"
                   @click="lightboxUrl = openNotif.image_url || openNotif.thumbnail_url"
                 />
+                <div v-if="digestStats" class="nge-notif-digest-stats" aria-label="What players did">
+                  <div class="nge-notif-digest-stats-kicker">Players made</div>
+                  <div class="nge-notif-digest-stat">
+                    <span class="nge-notif-digest-stat-num">{{ digestStats.edits }}</span>
+                    <span class="nge-notif-digest-stat-label">{{ digestStats.editsOne ? 'edit' : 'edits' }}</span>
+                  </div>
+                  <div class="nge-notif-digest-stat">
+                    <span class="nge-notif-digest-stat-num">{{ digestStats.cells }}</span>
+                    <span class="nge-notif-digest-stat-label">{{ digestStats.cellsOne ? 'cell completed' : 'cells completed' }}</span>
+                  </div>
+                </div>
               </div>
               <div class="nge-notif-detail-text">
                 <!-- Weekly Champions: parsed into a podium. parseChampions()
@@ -849,7 +884,7 @@ function padRank(rank: number): string {
                   <div class="nge-notif-detail-rule" aria-hidden="true"></div>
                   <div
                     class="nge-notif-detail-body"
-                    v-html="withVideoEmbeds(renderMarkdown(cleanCopy(openNotif.body)))"
+                    v-html="withVideoEmbeds(renderMarkdown(cleanCopy(detailBody)))"
                     @click="onDetailBodyClick"
                   ></div>
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
@@ -1699,6 +1734,24 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-image {
   flex-shrink: 0;
 }
+/* Today in Pyr: what players did, under the picture (Ames 2026-10-23) */
+.nge-notif-digest-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-top: 12px; padding: 12px 14px;
+  border: 1px solid rgba(74, 158, 255, 0.28); border-radius: 8px;
+  background: linear-gradient(180deg, rgba(20, 40, 76, 0.55), rgba(8, 16, 34, 0.55));
+}
+.nge-notif-digest-stats-kicker {
+  grid-column: 1 / -1;
+  font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(126, 224, 255, 0.85);
+}
+.nge-notif-digest-stat { display: flex; flex-direction: column; gap: 4px; }
+.nge-notif-digest-stat-num {
+  font: 700 30px/1 'Orbitron', 'Inter', sans-serif; color: #f2f8ff;
+  text-shadow: 0 0 14px rgba(126, 224, 255, 0.45);
+}
+.nge-notif-digest-stat-label { font-size: 13px; color: #b6c8e2; }
 .nge-notif-detail-layout--has-image .nge-notif-detail-image {
   width: 440px;
   /* The image stays put while the text scrolls past it (Ames 2026-09-30). */
@@ -1724,6 +1777,14 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-text {
   flex: 1;
   min-width: 0;
+}
+/* Title and picture only: the title first, the picture across the card. */
+.nge-notif-detail-layout--picture-only .nge-notif-detail-text { order: -1; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-body:empty { display: none; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-image { width: 100%; }
+.nge-notif-detail-layout--picture-only .nge-notif-detail-img {
+  width: auto; max-width: 100%; margin: 0 auto; box-sizing: border-box;
+  max-height: min(900px, calc(88vh - 150px));
 }
 
 .nge-notif-detail-img {

@@ -71,7 +71,8 @@ const isRedActive = computed(() => store.activeGroup === 'red');
 // colour (Ames, 2026-10-07). The G key and the hint keep pulsing until the
 // colour is switched.
 const needsSwap = computed(() => isMulticut.value && !store.pendingClose
-  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red');
+  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red'
+  && !moreRedWanted.value);
 // The large "Press G" prompt is for learners only: it shows while a step of
 // the Merge, Cut or Merger Sandbox tutorial is up (Ames, 2026-10-08). Outside
 // a tutorial the lit G key on the bar is the only nudge, and it holds still.
@@ -81,7 +82,16 @@ const tutorialStore = useTutorialStore();
  *  G" banner and the learning styles showed during real cuts (Nseraf,
  *  Ames 2026-10-22: "we gotta do something about that giant G"). */
 const tutorialOnScreen = ref(false);
-setInterval(() => { tutorialOnScreen.value = !!document.querySelector('.introductionStep'); }, 500);
+/** Red points a tutorial step still waits for before it asks for G
+ *  (tutorial-3.ts watchCutStep sets window.__ngeCutRedNeed). The Cut
+ *  tutorial wants two, and "Now press G" came up after the first (annkri,
+ *  report 217). */
+const cutRedNeed = ref(0);
+setInterval(() => {
+  tutorialOnScreen.value = !!document.querySelector('.introductionStep');
+  cutRedNeed.value = Number((window as any).__ngeCutRedNeed) || 0;
+}, 300);
+const moreRedWanted = computed(() => tutorialOnScreen.value && store.redPointCount < cutRedNeed.value);
 const inPracticeTutorial = computed(() => {
   const step = tutorialStore.getTutorialStep();
   return tutorialOnScreen.value && [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
@@ -127,6 +137,7 @@ const contextHint = computed(() => {
   const touch = isTouchRef.value;
   if (isMulticut.value && !store.pendingClose) {
     if (totalPoints.value === 0) return touch ? 'Tap supervoxels to mark them' : 'Ctrl+Click on supervoxels to mark them';
+    if (moreRedWanted.value) return touch ? 'Tap another red point' : 'Ctrl+Click another red point';
     if (store.redPointCount > 0 && store.bluePointCount === 0) return touch ? 'Tap Blue, then tap the other side' : 'Press G to swap to Blue group, then Ctrl+Click';
     if (store.redPointCount > 0 && store.bluePointCount > 0) return touch ? 'Ready to submit' : 'Ready to submit. Press Enter';
     return touch ? 'Tap to add more points' : 'Ctrl+Click to add more points';
