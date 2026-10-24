@@ -1158,7 +1158,12 @@ export class TrackableDataSelectionState extends RefCounted implements
     const state = {} as UserLayerSelectionState;
     userLayer.initializeSelectionState(state);
     if (capture(state)) {
-      this.location.visible = true;
+      // nge: a cell layer's points are the merge and cut tools' own, placed
+      // and cleared all the time. Each one threw the Selection panel open,
+      // soon reading "Annotation not found" (Ames 2026-10-24: "why this
+      // selection box keeps being activated"). They are still selected; the
+      // panel just is not forced open for them.
+      if ((userLayer as any).type !== 'segmentation') this.location.visible = true;
       if (pin === true) {
         this.pin.value = true;
       } else if (pin === 'toggle') {

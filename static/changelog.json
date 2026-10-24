@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-24T00:00:00Z",
+      "title": "The Selection box stays shut while you merge and cut",
+      "items": [
+        "Placing merge and cut points no longer throws the Selection box open (it often said Annotation not found). It still opens for your own annotation layers."
+      ]
+    },
+    {
       "at": "2026-10-24T22:22:00Z",
       "title": "Open a help request in its own window",
       "digest": "minor",
