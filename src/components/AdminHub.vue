@@ -4477,17 +4477,17 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
   font: 600 12px Inter, system-ui, sans-serif; color: #fff; background: #4f8cff; border: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
 .nge-triage-console-copy:hover { background: #3a74e8; }
 /* Triage zero party. */
-.nge-zero-party { position: fixed; inset: 0; z-index: 10070; pointer-events: auto; overflow: hidden; display: grid; place-items: center; background: rgba(8, 14, 30, 0.25); animation: nge-zero-fade 6s ease-out forwards; cursor: pointer; }
+.nge-zero-party { position: fixed; inset: 0; z-index: 10070; pointer-events: auto; overflow: hidden; display: grid; place-items: center; background: rgba(255, 255, 255, 0.35); animation: nge-zero-fade 6s ease-out forwards; cursor: pointer; }
 @keyframes nge-zero-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 .nge-zero-bit { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation-name: nge-zero-fall; animation-timing-function: cubic-bezier(.3,.6,.5,1); animation-fill-mode: both; }
 .nge-zero-bit--wide { width: 14px; height: 8px; border-radius: 50%; }
 @keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(110vh) rotate(calc(var(--r) * 3)); } }
-.nge-zero-card { text-align: center; padding: 20px 34px 24px; border-radius: 20px; background: rgba(15, 22, 38, 0.92); border: 2px solid #f5c542;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(245, 197, 66, 0.35); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+.nge-zero-card { text-align: center; padding: 20px 34px 24px; border-radius: 20px; background: #ffffff; border: 2px solid #f5c542;
+  box-shadow: 0 20px 50px rgba(40, 70, 140, 0.22), 0 0 30px rgba(245, 197, 66, 0.3); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
 @keyframes nge-zero-pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .nge-zero-card img { width: 220px; height: 220px; object-fit: contain; animation: nge-zero-bob 8s ease-in-out infinite; }
 .nge-zero-title { font: 800 40px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em;
-  color: #f5c542; text-shadow: 0 0 18px rgba(245, 197, 66, 0.55); }
-.nge-zero-sub { margin-top: 6px; color: #e6eefc; font: 600 16px Inter, system-ui, sans-serif; }
+  color: #2f6fe0; }
+.nge-zero-sub { margin-top: 6px; color: #3a4a66; font: 600 16px Inter, system-ui, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .nge-zero-bit { display: none; } .nge-zero-card, .nge-zero-card img { animation: none; } }
 </style>
