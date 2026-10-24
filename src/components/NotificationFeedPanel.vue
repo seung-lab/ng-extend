@@ -451,10 +451,34 @@ function isHelpNotification(notif: any): boolean {
   return notif?.title?.includes('help request') || notif?.title?.includes('Response to your');
 }
 
-function openHelpTab() {
+async function openHelpTab() {
+  const id = await helpRequestFor(openNotif.value);
   closeDetail();
   emit('hide');
   emit('open-help');
+  if (id) useHelpRequestStore().focusId = id;
+}
+
+/** Which help request a help notification is about (Ames 2026-10-24: "open
+ *  not just the help tab but the specific help request"). The reminder links
+ *  its request; a reply note says only "<name> responded[ on <cell>]: <reply>",
+ *  so it is matched to your request whose reply says the same, then by cell. */
+async function helpRequestFor(n: any): Promise<string | null> {
+  const body = String(n?.body ?? '');
+  const linked = body.match(/#nge-help-solved=([0-9a-f-]{1,40})/i);
+  if (linked) return linked[1];
+  const m = body.match(/^(.*?) responded(?: on (\S+))?: ([\s\S]*)$/);
+  if (!m) return null;
+  const [, who, seg, note] = m;
+  const help = useHelpRequestStore();
+  if (!help.requests.length) { try { await help.load(); } catch { return null; } }
+  const head = note.trim().slice(0, 60);
+  const mineFirst = [...help.requests].sort((a, b) => Number(b.userId === backend.userId) - Number(a.userId === backend.userId));
+  const said = (r: any, byWho: boolean) => (r.responses || []).some((x: any) =>
+    head && String(x.note || '').trim().startsWith(head) && (!byWho || (x.userName || '') === who));
+  const hit = mineFirst.find(r => said(r, true)) || mineFirst.find(r => said(r, false))
+    || (seg ? mineFirst.find(r => r.segId === seg) : undefined);
+  return hit?.id ?? null;
 }
 
 /** Sanitize stored Markdown, including generated URLs; remote images are omitted. */

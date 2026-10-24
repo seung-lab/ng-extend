@@ -1890,7 +1890,10 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   load();
   subscribe();
 
-  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
+  /** A request the Help tab should open on and show (a reply notification's
+   *  "Open in Help tab", Ames 2026-10-24). CellLibraryPanel clears it. */
+  const focusId = ref<string | null>(null);
+  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe, focusId };
 });
 
 // ── Issue Tags (Scout tags) ────────────────────────────────────────────────
