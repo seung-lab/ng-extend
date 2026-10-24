@@ -19,6 +19,7 @@ const QUIET_MS = 12000;     // save this long after the last change
 const MIN_GAP_MS = 30000;   // and at most this often
 const MAX_BYTES = 240 * 1024;
 const OFFER_KEY = 'nge-offer-view-restore';
+const SKIP_KEY = 'nge-skip-view-restore';
 
 let lastSaved = '';
 let lastSaveAt = 0;
@@ -56,6 +57,21 @@ export function offerViewRestoreAfterSwitch() {
   }, 4000);
 }
 
+/** The next offer is not wanted: the player switched datasets to go straight
+ *  to some work (the Switch Dataset chips), so they will pick the cell
+ *  themselves (Ames 2026-10-24). Kept across the switch's reload, used once,
+ *  and stale after two minutes. */
+export function skipNextViewRestoreOffer(skip = true) {
+  try { if (skip) sessionStorage.setItem(SKIP_KEY, String(Date.now())); else sessionStorage.removeItem(SKIP_KEY); } catch { /* private mode */ }
+}
+function takeSkip(): boolean {
+  try {
+    const at = Number(sessionStorage.getItem(SKIP_KEY) || 0);
+    sessionStorage.removeItem(SKIP_KEY);
+    return at > 0 && Date.now() - at < 120_000;
+  } catch { return false; }
+}
+
 /** True when the address held no view the player chose themselves: empty, or
  *  the dataset's own starting view. Decided once the dataset is known. */
 function withoutOwnView(hashAtLoad: string): boolean {
@@ -76,6 +92,7 @@ async function offerRestore(viewer: any) {
   // Never on the Sandbox (practice data, nothing to pick up), and not when
   // the player turned the offer off (Ames 2026-10-01).
   if (!offerEnabled()) return;
+  if (takeSkip()) return;
   if (findDatasetBySegName(currentSegLayerName())?.section === 'sandbox') return;
   const { data, error } = await supabase.from('user_views')
     .select('state,updated_at').eq('dataset', dataset).maybeSingle();

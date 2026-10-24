@@ -82,6 +82,10 @@ export interface DatasetEntry {
    *  long stretches (502, taking the segmentation service down for a minute)
    *  and it has no L2 cache, 2026-10-02. Remove the line when that is fixed. */
   highlightOff?: string;
+  /** The dataset has cells to claim in the Cell Library, so its card in the
+   *  switcher offers Available cells and My cells (2026-10-23). Set it when a
+   *  dataset gets proofreading tasks; FlyWire production has none yet. */
+  cellTasks?: boolean;
   layers: any[];
 }
 
@@ -126,6 +130,7 @@ export const DATASETS: DatasetEntry[] = [
     id: 'stroeh_mouse_retina',
     origin: 'Princeton',
     section: 'production',
+    cellTasks: true,
     caveDataset: 'stroeh-mouse-retina',
     thumbnail: thumbRetina,
     label: 'EyeWire II: Retina',
@@ -154,6 +159,7 @@ export const DATASETS: DatasetEntry[] = [
     id: 'pinky_sandbox',
     origin: 'MICrONS Consortium',
     section: 'sandbox',
+    cellTasks: true,
     caveDataset: 'pinky100',
     thumbnail: thumbMicrons,
     label: 'Pinky Sandbox',
@@ -531,6 +537,7 @@ export const DATASETS: DatasetEntry[] = [
     id: 'pni_mec',
     origin: 'Princeton',
     section: 'production',
+    cellTasks: true,
     highlightOff: 'Highlight is not available on this dataset yet: its server cannot trace paths along a cell.',
     caveDataset: 'HiMC',
     thumbnail: thumbMec,

@@ -53,6 +53,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
 import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon, findDatasetBySegName, findDatasetByCanonical, canonicalDataset} from '../datasets';
+import { transitionDone } from '../util/dataset_transition';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -720,10 +721,29 @@ watch(() => backendStore.userId, id => {
     const want = JSON.parse(sessionStorage.getItem('nge_cl_after_switch') || 'null');
     if (!want || Date.now() - (want.at || 0) > 120_000) return;
     reopenedAfterSwitch = true;
-    cellLibraryInitialTab.value = want.tab || 'help';
-    showCellLibrary.value = true;
+    void reopenWhenReady(want.tab || 'help');
   } catch { /* nothing to reopen */ }
 }, { immediate: true });
+/** Wait until the new dataset is on screen and no sign in screen is up
+ *  (Ames 2026-10-23: the library opened over Identity Verification, saying
+ *  "you are on another dataset"). Both have to hold for a moment, since the
+ *  data server's sign in comes a beat after its layer. Gives up after
+ *  10 minutes, leaving the library closed. */
+async function reopenWhenReady(tab: string) {
+  let steady = 0;
+  for (let i = 0; i < 1200 && steady < 3; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    const signIn = document.querySelector('.nge-login-blocker');
+    const ready = !!currentSegLayerName() && !(signIn && signIn.getClientRects().length);
+    steady = ready ? steady + 1 : 0;
+  }
+  if (steady < 3) return;
+  // After "Now entering" has played, never on top of it (Ames 2026-10-23).
+  await transitionDone();
+  if (showCellLibrary.value) return;
+  cellLibraryInitialTab.value = tab;
+  showCellLibrary.value = true;
+}
 const { tutorialStep } = storeToRefs(useTutorialStore());
 
 function logout(session: loginSession) {
