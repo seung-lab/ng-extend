@@ -1116,7 +1116,7 @@ function clientIp(req) {
 }
 
 // Atomically check+increment the per-IP windows. Returns {ok} or {ok:false,scope}.
-async function rateLimit(req, loggedIn, prefix = "a") {
+async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
   // Browser login flags do not establish identity. Keep the anonymous tier.
   // Quest list reads (Krzysztof #159, #161, 2026-10-17): a quest player reads
   // the list about five times a cell, and the anonymous 60 a day ran out by
@@ -1125,7 +1125,9 @@ async function rateLimit(req, loggedIn, prefix = "a") {
   const QUEST_READS = prefix === "read:quests";
   // 60 a minute stops a runaway; a full day of admin work (triage, the To do
   // board, tests) went past 5,000 (2026-10-24), so the day allows more.
-  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:20000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
+  // Admins get far more room (Ames 2026-10-24: "you can give me a higher
+  // allowance than regular users"): triage, the To do board and tests add up.
+  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:20000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
   // Signed in writes count per person only (Ames 2026-10-24: "Please wait
   // before sending another change" on the triage board and the Cell
@@ -1802,11 +1804,12 @@ exports.ewSecureWrite = onRequest(
     // Which actions are called, and by whom (a hash, never the email), so a
     // runaway caller shows in the logs (Ames hit 5,000 in a day, 2026-10-24).
     console.log("[secureWrite] call", String(action).slice(0, 40), crypto.createHash("sha256").update(String(who.email)).digest("hex").slice(0, 8));
-    if (!(await rateLimit({ip:who.email}, true, "write:secure")).ok) return res.status(429).json({error:"Please wait before sending another change."});
     const sb = ewSb(ewServiceKey.value().trim()); // a pasted key can carry a stray newline
     try {
       const ctx = await pilotContext(sb,who);
       const {me,isAdmin} = ctx;
+      // Checked once we know whether this is an admin, who gets a bigger allowance.
+      if (!(await rateLimit({ip:who.email}, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({error:"Please wait before sending another change."});
       if(action === "pilot.status") return res.json({ok:true,data:{invited:!!(isAdmin||ctx.isPilot),admin:isAdmin}});
       requirePilot(ctx);
       const needAdmin = () => { if (!isAdmin) throw ewErr(403, "Admins only"); };
@@ -2383,7 +2386,7 @@ exports.ewCommunityData = onRequest(
         }
       }
       if (plan.method !== "GET" && plan.method !== "HEAD") {
-        const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table);
+        const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table, !!isAdmin);
         if (!quota.ok) throw ewErr(429,"Please wait before sending another change.");
       }
       // Counted activity is recorded by the server, never written as a number
