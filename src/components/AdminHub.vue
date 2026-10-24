@@ -2809,7 +2809,7 @@ function practiceWhen(iso: string | null) {
             <div class="nge-zero-card">
               <img :src="nurroConfetti" alt="" />
               <div class="nge-zero-title">Triage zero!</div>
-              <div class="nge-zero-sub">Every report handled. Nurro is proud of you.</div>
+              <div class="nge-zero-sub">Every report handled. Nurro is so proud of you.</div>
             </div>
           </div>
         <Transition name="nge-triage-cheer">
