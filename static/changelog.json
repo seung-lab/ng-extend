@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T00:30:00Z",
+      "title": "Marks open on MEC claims",
+      "items": [
+        "Marks under your MEC claim in the Cell Library are open from the start. Close them and they stay closed in this browser."
+      ]
+    },
+    {
       "at": "2026-10-25T00:21:00Z",
       "title": "Number keys pick a layer",
       "items": [

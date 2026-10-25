@@ -10,12 +10,16 @@
  * Highlight's lab marks (highlight.ts), in the same layers, so they mix.
  * Counts every point in the lab's layers, placed here, in Highlight or by hand.
  */
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer } from '../util/mec_marks';
 import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
-const open = ref(!!props.startOpen);
+// Open unless the player closed it (Ames 2026-10-24: "make the Marks open by
+// default on MEC claims"); a close is remembered in this browser.
+const OPEN_KEY = 'nge_mec_marks_closed';
+const open = ref(!!props.startOpen || (() => { try { return localStorage.getItem(OPEN_KEY) !== '1'; } catch { return true; } })());
+watch(open, o => { if (!props.startOpen) { try { o ? localStorage.removeItem(OPEN_KEY) : localStorage.setItem(OPEN_KEY, '1'); } catch { /* private mode */ } } });
 const counts = ref<Record<string, number>>(mecCounts());
 const soma = ref(somaState());
 const hasStart = ref(!!startXyz());
