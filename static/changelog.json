@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T22:45:00Z",
+      "title": "A tidier Merge tutorial",
+      "items": [
+        "The Merge tutorial is shorter to read, and both merges bring the view in close on the spots to click.",
+        "If you switch merge mode off partway, the box asks you to press M to turn it back on.",
+        "On the second merge the box sits low, so it no longer covers the cell."
+      ]
+    },
+    {
       "at": "2026-10-25T22:34:00Z",
       "title": "Pumpkins that grow, and another round",
       "digest": "minor",
