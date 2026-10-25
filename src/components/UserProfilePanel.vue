@@ -5155,7 +5155,7 @@ body.nge-mobile .nge-track-achievements { padding-left: 0; border-left: none; }
 /* A number that can not be read says so; it is never shown as zero. */
 .nge-profile-stat-unavailable { font-size: 0.82em; color: rgba(200, 215, 240, 0.55); }
 
-/* ══ Calm screen (body.nge-calm; Settings > User Interface, off by default) ══
+/* ══ Calm screen (body.nge-calm; Settings > Screen, off by default) ══
    Annkri (#144): "too many glowing / bright elements stealing focus ... it
    gets too much and strenuous to look at over time". The base in
    ng-override.css already stops every animation and transition and clears
