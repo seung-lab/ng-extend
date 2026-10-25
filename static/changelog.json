@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-25T00:00:00Z",
+      "title": "Merge and cut stay open through a refresh",
+      "items": [
+        "If merge or cut was open when you refreshed, it opens again once the cell has loaded, with your points still there."
+      ]
+    },
+    {
+      "at": "2026-10-25T00:00:00Z",
       "title": "Quieter celebrations, if you like",
       "items": [
         "Settings has a new Achievement celebration switch. Turn it off and achievements no longer pop up with a card and confetti; they are still in your Trophy Case and the bell.",
