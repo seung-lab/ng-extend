@@ -710,3 +710,11 @@ textarea.neuroglancer-annotation-details-description:focus {
    the two lines is its own height (Ames 2026-10-25: "a tad less spacing"). */
 .neuroglancer-annotation-toolbox { row-gap: 0; }
 .neuroglancer-annotation-toolbox .nge-ann-tool-break { flex-basis: 100%; height: 5px; }
+
+/* Four even columns (Ames 2026-10-25: "align them more in vertical columns,
+   they look haphazard"): the swatch and every button take the same width, so
+   the points line and the shapes line line up under each other. */
+.neuroglancer-annotation-toolbox { column-gap: 6px; }
+.neuroglancer-annotation-toolbox .neuroglancer-icon,
+.neuroglancer-annotation-toolbox .neuroglancer-icon.nge-polyline-tool { width: 42px; min-width: 42px; padding: 0; box-sizing: border-box; }
+.neuroglancer-annotation-toolbox input.neuroglancer-color-widget { width: 42px; margin: 0; box-sizing: border-box; }
