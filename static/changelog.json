@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T22:34:00Z",
+      "title": "Pumpkins that grow, and another round",
+      "digest": "minor",
+      "items": [
+        "The Sandbox pumpkins now grow in over their cells once the cells have loaded, and the hammer bar counts them in while they grow.",
+        "When every pumpkin is smashed, the bar offers Again? to grow them back for another round."
+      ]
+    },
+    {
       "at": "2026-10-25T22:22:00Z",
       "title": "The Cell Library opens faster",
       "items": [
