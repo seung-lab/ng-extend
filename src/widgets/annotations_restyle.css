@@ -706,4 +706,7 @@ textarea.neuroglancer-annotation-details-description:focus {
 /* The shapes (box, line, ellipse, polyline) on a line of their own under the
    points (Ames 2026-10-25). */
 .neuroglancer-annotation-toolbox { flex-wrap: wrap; }
-.neuroglancer-annotation-toolbox .nge-ann-tool-break { flex-basis: 100%; height: 0; }
+/* The break is a row of its own, so it takes no row gap: the space between
+   the two lines is its own height (Ames 2026-10-25: "a tad less spacing"). */
+.neuroglancer-annotation-toolbox { row-gap: 0; }
+.neuroglancer-annotation-toolbox .nge-ann-tool-break { flex-basis: 100%; height: 5px; }
