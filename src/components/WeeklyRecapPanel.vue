@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {pendingAnnotations} from '../util/annotation_counter';
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { recapWeekStart, weekPeriodET, monthStartET } from '../util/recap_week';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import RollUp from 'components/RollUp.vue';
@@ -19,21 +20,13 @@ const emit = defineEmits({ hide: null });
 // modal chrome and render the content inline.
 const props = defineProps<{ embedded?: boolean }>();
 
-// ── Week date range label: "Feb 23 – Mar 1, 2026" ────────────────────────
-const weekRange = computed<string>(() => {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun … 6=Sat
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diffToMon);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+// ── The week shown: the one a recap notification is about, or this week ──
+// (util/recap_week.ts). Everything weekly below counts from start up to end.
+const period = computed(() => weekPeriodET(recapWeekStart.value));
+onUnmounted(() => { recapWeekStart.value = null; });
 
-  const fmt = (d: Date) =>
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-  return `${fmt(monday)} to ${fmt(sunday)}, ${sunday.getFullYear()}`;
-});
+// ── Week date range label: "Feb 23 to Mar 1, 2026" ───────────────────────
+const weekRange = computed<string>(() => period.value.label);
 
 // ── Scout and help activity this week (Amy: the recap was missing tag
 // and help stats). Tags scope by their own timestamps; help requests have
@@ -79,17 +72,20 @@ onMounted(async () => {
   if (!uid) return;
   try {
     const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setHours(0, 0, 0, 0);
-    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // Monday
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const since = weekStart < monthStart ? weekStart : monthStart;
+    const weekStart = period.value.start, weekEnd = period.value.end;
+    const monthStart = monthStartET();
     const { supabase } = await import('../supabase');
+    // Only the week's completions and annotations come back as rows; merges
+    // and splits are counted by the server below. Reading every row of the
+    // month stopped at the server's 1,000-row cap, so a busy player's month
+    // showed 24 edits where the log had 20,750 (Nseraf, report 250).
     const { data, error } = await supabase.from('edit_log')
       .select('operation, timestamp, success, metadata')
       .eq('user_id', uid)
-      .gte('timestamp', since.toISOString())
-      .limit(20000);
+      .in('operation', ['annotate', 'mark_complete', 'complete_task', 'unmark_complete'])
+      .gte('timestamp', weekStart.toISOString())
+      .lt('timestamp', weekEnd.toISOString())
+      .limit(1000);
     if (error || !data) return;
     const week: [number, number] = [0, 0];
     const month: [number, number] = [0, 0];
@@ -120,6 +116,25 @@ onMounted(async () => {
       if (t >= weekStart) week[i]++;
       if (t >= monthStart) month[i]++;
     }
+    // Merges and splits, exact counts from the server: no rows, no cap.
+    const edits = async (op: string, from: Date, to?: Date) => {
+      let q = supabase.from('edit_log').select('user_id', { count: 'exact', head: true })
+        .eq('user_id', uid).eq('operation', op).not('success', 'is', false).gte('timestamp', from.toISOString());
+      if (to) q = q.lt('timestamp', to.toISOString());
+      const { count, error: e } = await q;
+      return e ? null : (count ?? 0);
+    };
+    const [wm, ws, mm, ms] = await Promise.all([edits('merge', weekStart, weekEnd), edits('split', weekStart, weekEnd), edits('merge', monthStart), edits('split', monthStart)]);
+    if (wm != null) week[0] = wm;
+    if (ws != null) week[1] = ws;
+    if (mm != null) month[0] = mm;
+    if (ms != null) month[1] = ms;
+    // Cells completed, counted the leaderboard's way (ew_cell_completions).
+    try {
+      const { count, error: e } = await supabase.from('ew_cell_completions').select('user_id', { count: 'exact', head: true })
+        .eq('user_id', uid).gte('done_at', weekStart.toISOString()).lt('done_at', weekEnd.toISOString());
+      if (!e && count != null) cells = Math.max(cells, count);
+    } catch { /* the log's own count stands */ }
     serverCounts.value = { week, month, cells, annotations };
   } catch { /* keep the local tally */ }
 });
@@ -143,13 +158,11 @@ onMounted(async () => {
     };
   } catch { /* the section just stays hidden */ }
 });
-const weekStartMs = computed(() => {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon).getTime();
-});
-const inWeek = (iso?: string) => !!iso && new Date(iso).getTime() >= weekStartMs.value;
+const inWeek = (iso?: string) => {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return t >= period.value.start.getTime() && t < period.value.end.getTime();
+};
 const tagsPlacedThisWeek = computed(() =>
   tagStoreW.tags.filter(t => t.userId && t.userId === backendW.userId && inWeek(t.createdAt)).length);
 const tagsFixedThisWeek = computed(() =>
@@ -247,18 +260,8 @@ const currentFact = computed<string>(() => {
 // ── Cell activity this week ──────────────────────────────────────────────
 const historyStore = useCellHistoryStore();
 
-const mondayStart = computed<Date>(() => {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMon = day === 0 ? -6 : 1 - day;
-  const mon = new Date(now);
-  mon.setDate(now.getDate() + diffToMon);
-  mon.setHours(0, 0, 0, 0);
-  return mon;
-});
-
 const cellsThisWeek = computed(() =>
-  historyStore.cells.filter(c => new Date(c.updatedAt) >= mondayStart.value)
+  historyStore.cells.filter(c => { const t = new Date(c.updatedAt); return t >= period.value.start && t < period.value.end; })
 );
 const cellsCompleted = computed(() => cellsThisWeek.value.filter(c => c.isComplete));
 const cellsIdentified = computed(() => cellsThisWeek.value.filter(c => c.cellType));

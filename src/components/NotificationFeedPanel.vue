@@ -7,6 +7,7 @@ import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesSto
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
+import { recapWeekStart, weekFromRecapTitle } from '../util/recap_week';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
@@ -307,6 +308,8 @@ function openDetail(notif: any) {
   backend.markNotificationRead(notif.id);
   // The weekly recap opens the full Week in Science tab in the profile.
   if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Week in Science')) {
+    // The week the recap is about, not the week now (Nseraf, report 250).
+    recapWeekStart.value = weekFromRecapTitle(notif.title || '');
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
     emit('hide');
     return;

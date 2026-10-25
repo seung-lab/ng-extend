@@ -2,7 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-25T00:00:00Z",
+      "at": "2026-10-25T23:40:36Z",
+      "title": "Your Week in Science counts every edit",
+      "items": [
+        "Busy weeks and months showed far too few edits in Your Week in Science (one player saw 24 for a month of over 20,000). It now counts all of them, and cells completed the way the leaderboard does.",
+        "Opening the Sunday Your Week in Science notification now shows that week, not the new one, and every week and month runs on US Eastern time, like the notification."
+      ]
+    },
+    {
+      "at": "2026-10-25T23:40:36Z",
       "title": "Your share of the week, never 0%",
       "digest": "minor",
       "items": [

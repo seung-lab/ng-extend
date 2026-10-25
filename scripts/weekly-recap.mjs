@@ -29,6 +29,19 @@ async function supabaseGet(table, query = '') {
   return res.json();
 }
 
+/** Every row of a query, 1,000 at a time: the server returns at most 1,000
+ *  rows a request, and one busy player makes more than that in a week, so a
+ *  single read undercounted everyone (Nseraf, report 250). */
+async function supabaseGetAll(table, query) {
+  const rows = [];
+  for (let from = 0; from < 1000000; from += 1000) {
+    const page = await supabaseGet(table, `${query}&order=timestamp.asc&offset=${from}&limit=1000`);
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
+  return rows;
+}
+
 async function supabasePost(table, rows) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
@@ -66,7 +79,7 @@ async function main() {
 
   // 1. Get active users from edit_log in the past 7 days
   //    Aggregate: count by operation per user
-  const editLogs = await supabaseGet(
+  const editLogs = await supabaseGetAll(
     'edit_log',
     `select=user_id,operation&timestamp=gte.${sevenDaysAgo}&success=not.is.false`
   );
