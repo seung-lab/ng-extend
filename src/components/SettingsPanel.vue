@@ -328,6 +328,19 @@ function handleCountryGlobalClick(e: MouseEvent) {
 }
 onMounted(() => document.addEventListener('click', handleCountryGlobalClick, true));
 
+// The Neuroglancer box's (i): a click opens a short note on what neuroglancer
+// is (Ames 2026-10-25: "make a popup with info bc it's long for a tooltip").
+// A click anywhere else or Escape closes it.
+const ngInfoOpen = ref(false);
+function closeNgInfo(e: Event) {
+  if (!ngInfoOpen.value) return;
+  if (e instanceof KeyboardEvent) { if (e.key !== 'Escape') return; e.stopPropagation(); }
+  else if ((e.target as HTMLElement | null)?.closest?.('.nge-set-info, .nge-set-info-pop')) return;
+  ngInfoOpen.value = false;
+}
+onMounted(() => { document.addEventListener('click', closeNgInfo, true); document.addEventListener('keydown', closeNgInfo, true); });
+onUnmounted(() => { document.removeEventListener('click', closeNgInfo, true); document.removeEventListener('keydown', closeNgInfo, true); });
+
 // These four open something in the viewer itself, which sits BEHIND this
 // panel (and behind the profile it may be shown in). The button seemed to do
 // nothing until the panel was closed by hand (M Sorek 2026-10-09). So the
@@ -677,7 +690,13 @@ const props = defineProps<{ embedded?: boolean }>();
                Took over the Advanced card. Named Neuroglancer, with an (i)
                saying what that is (Ames 2026-10-25). -->
           <div class="nge-settings-section nge-set-card--classic" :class="{ 'nge-set-folded': isFolded('classic') }">
-            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('classic')" title="Fold or unfold this box" @click.prevent="toggleFold('classic')" @keydown.enter.prevent="toggleFold('classic')" @keydown.space.prevent="toggleFold('classic')">Neuroglancer<span class="nge-set-info" tabindex="0" role="img" aria-label="What is neuroglancer?" title="Neuroglancer is the free viewer for brain data, first made at Google, that Pyr is built on. It draws the 2D images and the 3D cells you work on. Scientists also use it on its own, and these switches bring back its own way of doing things for players who know it." @click.stop.prevent @keydown.stop>i</span><span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('classic')" title="Fold or unfold this box" @click.prevent="toggleFold('classic')" @keydown.enter.prevent="toggleFold('classic')" @keydown.space.prevent="toggleFold('classic')">Neuroglancer<button type="button" class="nge-set-info" :class="{ 'nge-set-info--on': ngInfoOpen }" aria-label="What is neuroglancer?" :aria-expanded="ngInfoOpen" title="What is neuroglancer?" @click.stop.prevent="ngInfoOpen = !ngInfoOpen" @keydown.enter.stop @keydown.space.stop>i</button><span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <div v-if="ngInfoOpen" class="nge-set-info-pop" role="dialog" aria-label="What is neuroglancer?" @click.stop>
+              <button type="button" class="nge-set-info-x" aria-label="Close" @click="ngInfoOpen = false">×</button>
+              <p class="nge-set-info-title">What is neuroglancer?</p>
+              <p>Neuroglancer is a connectomics proofreading platform made by Google that Pyr is built on. It draws the 2D images and the 3D cells you work on. Scientists also use it (without the fancy Pyr interface).</p>
+              <p>Settings here bring back its original, and dare we say unintuitive, user interface elements. This section brings back legacy neuroglancer elements and advanced settings.</p>
+            </div>
             <p class="nge-settings-hint">Neuroglancer's own controls and panels, for players who know it from before.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationGems" />
@@ -1546,12 +1565,27 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-set-fold-chev { margin-left: auto; font-size: 13px; color: #7ecaff; transition: transform 0.2s ease; }
 .nge-set-folded .nge-set-fold-chev { transform: rotate(-90deg); }
 /* (i) beside a box title: hover (or focus) for what the title means (Ames 2026-10-25). */
+.nge-set-card--classic { position: relative; }
 .nge-set-info {
+  padding: 0; background: none;
   display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: -2px;
   border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.55); color: #9fdcff; cursor: help;
   font: italic 700 10px/1 Georgia, 'Times New Roman', serif; letter-spacing: 0; text-transform: none;
 }
-.nge-set-info:hover, .nge-set-info:focus-visible { background: rgba(74, 158, 255, 0.18); color: #fff; outline: none; }
+.nge-set-info:hover, .nge-set-info:focus-visible, .nge-set-info--on { background: rgba(74, 158, 255, 0.18); color: #fff; outline: none; }
+.nge-set-info-pop {
+  position: absolute; z-index: 5; top: 36px; left: 10px; right: 10px; box-sizing: border-box;
+  padding: 12px 30px 4px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; color: #cfe0ff;
+  background: linear-gradient(160deg, rgba(16, 28, 52, 0.98), rgba(8, 14, 30, 0.98));
+  border: 1px solid rgba(74, 158, 255, 0.45); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), 0 0 18px rgba(74, 158, 255, 0.12);
+}
+.nge-set-info-pop p { margin: 0 0 8px; }
+.nge-set-info-title { font-weight: 700; color: #9fdcff; letter-spacing: 0.02em; }
+.nge-set-info-x {
+  position: absolute; top: 6px; right: 8px; padding: 0 4px; font-size: 18px; line-height: 1;
+  color: #8fa6c6; background: none; border: 0; cursor: pointer;
+}
+.nge-set-info-x:hover { color: #fff; }
 .nge-set-folded > :not(.nge-settings-label) { display: none !important; }
 .nge-settings-shell--embedded .nge-set-folded { padding-bottom: 13px; }
 
