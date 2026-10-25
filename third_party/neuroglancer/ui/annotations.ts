@@ -810,7 +810,11 @@ export class AnnotationLayerView extends Tab {
     return {annotationId, annotationLayerState, pin};
   }, this.layer.manager.root.selectionState, this.layer.manager.root.selectionState.pin);
 
-  private updateSelectionView() {
+  /** nge: `scroll` false when the list was only redrawn (a folder opened,
+   *  closed or hidden, rows picked): the selected row is marked again but the
+   *  list stays where it is. It went to the selected row, often the newest
+   *  annotation at the bottom (annkri, report 234). */
+  private updateSelectionView(scroll = true) {
     const selectionState = this.selectedAnnotationState.value;
     const {previousSelectedState} = this;
     if (previousSelectedState === selectionState ||
@@ -825,7 +829,7 @@ export class AnnotationLayerView extends Tab {
     if (selectionState === undefined) return;
     const element = this.getRenderedAnnotationListElement(
         selectionState.annotationLayerState, selectionState.annotationId,
-        /*scrollIntoView=*/selectionState.pin);
+        /*scrollIntoView=*/scroll && selectionState.pin);
     if (element !== undefined) {
       element.classList.add('neuroglancer-annotation-selected');
     }
@@ -1044,7 +1048,7 @@ export class AnnotationLayerView extends Tab {
     this.clearSelectionClass();
     this.updated = true;
     this.updateHoverView();
-    this.updateSelectionView();
+    this.updateSelectionView(/*scroll=*/false);
   }
 }
 

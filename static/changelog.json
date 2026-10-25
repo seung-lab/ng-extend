@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-25T00:00:00Z",
+      "title": "Annotation folders keep your place",
+      "items": [
+        "Opening, closing or hiding an annotation folder no longer throws the list down to the bottom; it stays where you were."
+      ]
+    },
+    {
+      "at": "2026-10-25T00:00:00Z",
       "title": "Merge and cut stay open through a refresh",
       "items": [
         "If merge or cut was open when you refreshed, it opens again once the cell has loaded, with your points still there."
