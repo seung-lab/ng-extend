@@ -3761,6 +3761,18 @@ const panelStyle = computed(() => ({
 
             <!-- Right: actions -->
             <div class="nge-cl-row-actions">
+              <!-- Save view comes first: it shows on the claim being worked on
+                   only, so the buttons after it stay put on every row (toknow,
+                   report 236). -->
+              <button
+                v-if="isWorkingClaim(cell)"
+                class="nge-cl-btn nge-cl-btn--saveview"
+                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
+                :disabled="savingView === cell.taskId"
+                @click="saveClaimView(cell)"
+                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
+              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
                 :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
@@ -3774,15 +3786,6 @@ const panelStyle = computed(() => ({
                 :disabled="claiming.has(cellKey(cell))"
                 @click="claimCell(cell)"
               ><span v-if="claiming.has(cellKey(cell))" class="nge-cl-spin" />{{ claiming.has(cellKey(cell)) ? 'Claiming…' : 'Claim' }}</button>
-
-              <button
-                v-if="isWorkingClaim(cell)"
-                class="nge-cl-btn nge-cl-btn--saveview"
-                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
-                :disabled="savingView === cell.taskId"
-                @click="saveClaimView(cell)"
-                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
-              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
 
               <button
                 v-if="isMyClaim(cell) && teamsHere && teamsOnDataset(cell.dataset) && cell.status !== 'completed'"
