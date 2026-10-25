@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T21:23:00Z",
+      "title": "A note on neuroglancer's old controls",
+      "digest": "minor",
+      "items": [
+        "In Settings, the switch for neuroglancer's controls button now says that its list is out of date for Pyr, and where to find Pyr's own keyboard shortcuts."
+      ]
+    },
+    {
       "at": "2026-10-25T21:13:58Z",
       "title": "Help reminders say which request",
       "items": [
