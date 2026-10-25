@@ -156,11 +156,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 .nge-patch-hide {
   /* its own line under the two answers */
   order: 3; flex-basis: 100%; margin-top: 2px; padding: 6px 4px; font: inherit; font-size: 14px; cursor: pointer;
-  color: #ffc98a; background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; text-align: right;
+  color: #ffc98a; background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; text-align: right; white-space: nowrap;
 }
 .nge-patch-hide:hover { color: #ffd59a; }
 .nge-patch-hide:focus-visible { outline: 2px solid #ffd59a; outline-offset: 2px; border-radius: 4px; }
-.nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 18px; border-radius: 8px; cursor: pointer; }
+.nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 .nge-patch-no { color: #d8e2f0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(160, 175, 200, 0.35); }
 .nge-patch-no:hover { background: rgba(255, 255, 255, 0.1); }
 .nge-patch-yes {
