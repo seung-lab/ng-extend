@@ -12,9 +12,11 @@
  * streak's amber. Escape or a click outside says no.
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { patchSize } from '../util/pumpkin';
+import { patchSize, pumpkinHidden } from '../util/pumpkin';
 
-const emit = defineEmits({ yes: null, no: null });
+const emit = defineEmits({ yes: null, no: null, hide: null });
+/** Already hidden: nothing to hide, so the button is left out. */
+const hidden = pumpkinHidden();
 const yesEl = ref<HTMLButtonElement | null>(null);
 const sightings = patchSize();
 const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); emit('no'); } };
@@ -46,6 +48,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
           Proofreaders in the Sandbox report a <b>jack o' lantern neuron</b>. Only ever seen in October.
         </p>
         <div class="nge-patch-row nge-patch-btns" style="--i: 3">
+          <!-- Hide the pumpkin (Ames 2026-10-25): the pumpkins off, the same
+               as the Settings switch, for a player who would rather not. -->
+          <button v-if="!hidden" class="nge-patch-hide" @click="emit('hide')">Hide the pumpkin</button>
           <button class="nge-patch-no" @click="emit('no')">Not now</button>
           <button ref="yesEl" class="nge-patch-yes" @click="emit('yes')">Go see it</button>
         </div>
@@ -139,7 +144,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 
 .nge-patch-text { margin: 0 0 16px; color: #d4dcea; font-size: 15.5px; }
 .nge-patch-text b { color: #ffc27a; font-weight: 600; white-space: nowrap; }
-.nge-patch-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.nge-patch-btns { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+/* a quiet text button on the left, so the two answers keep their place */
+.nge-patch-hide {
+  margin-right: auto; padding: 8px 4px; font: inherit; font-size: 13.5px; cursor: pointer;
+  color: #b9c4d6; background: none; border: 0; text-decoration: underline; text-underline-offset: 3px;
+}
+.nge-patch-hide:hover { color: #ffd59a; }
+.nge-patch-hide:focus-visible { outline: 2px solid #ffd59a; outline-offset: 2px; border-radius: 4px; }
 .nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 18px; border-radius: 8px; cursor: pointer; }
 .nge-patch-no { color: #d8e2f0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(160, 175, 200, 0.35); }
 .nge-patch-no:hover { background: rgba(255, 255, 255, 0.1); }

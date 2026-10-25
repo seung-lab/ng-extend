@@ -240,6 +240,12 @@ export function pumpkinHidden(): boolean {
   try { return useUserPreferencesStore().prefs.hidePumpkin === true; } catch { return false; }
 }
 
+/** The field report's Hide the pumpkin: off (or back on), whatever it was. */
+export function setPumpkinHidden(hidden: boolean) {
+  try { useUserPreferencesStore().save({ hidePumpkin: hidden }); } catch { return; }
+  check();
+}
+
 /** The chat button and the palette: hide the pumpkins, or bring them back. */
 export function togglePumpkin() {
   try { useUserPreferencesStore().save({ hidePumpkin: !pumpkinHidden() }); } catch { return; }
