@@ -583,7 +583,7 @@ const props = defineProps<{ embedded?: boolean }>();
             </label>
             <label class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
               <input type="checkbox" v-model="draftShowRadio" />
-              <span class="nge-settings-toggle-label">Show the EyeWire Radio speaker</span>
+              <span class="nge-settings-toggle-label">Show the sound icon (EyeWire Radio)</span>
             </label>
           </div>
 
@@ -674,9 +674,10 @@ const props = defineProps<{ embedded?: boolean }>();
 
           <!-- Everything that brings back neuroglancer's own way of working, in
                one place for players who know it from before (Ames 2026-10-25).
-               Took over the Advanced card. -->
+               Took over the Advanced card. Named Neuroglancer, with an (i)
+               saying what that is (Ames 2026-10-25). -->
           <div class="nge-settings-section nge-set-card--classic" :class="{ 'nge-set-folded': isFolded('classic') }">
-            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('classic')" title="Fold or unfold this box" @click.prevent="toggleFold('classic')" @keydown.enter.prevent="toggleFold('classic')" @keydown.space.prevent="toggleFold('classic')">Classic neuroglancer<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('classic')" title="Fold or unfold this box" @click.prevent="toggleFold('classic')" @keydown.enter.prevent="toggleFold('classic')" @keydown.space.prevent="toggleFold('classic')">Neuroglancer<span class="nge-set-info" tabindex="0" role="img" aria-label="What is neuroglancer?" title="Neuroglancer is the free viewer for brain data, first made at Google, that Pyr is built on. It draws the 2D images and the 3D cells you work on. Scientists also use it on its own, and these switches bring back its own way of doing things for players who know it." @click.stop.prevent @keydown.stop>i</span><span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Neuroglancer's own controls and panels, for players who know it from before.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationGems" />
@@ -1544,6 +1545,13 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-set-fold:focus-visible { outline: 1px solid rgba(74, 158, 255, 0.7); outline-offset: 3px; border-radius: 3px; }
 .nge-set-fold-chev { margin-left: auto; font-size: 13px; color: #7ecaff; transition: transform 0.2s ease; }
 .nge-set-folded .nge-set-fold-chev { transform: rotate(-90deg); }
+/* (i) beside a box title: hover (or focus) for what the title means (Ames 2026-10-25). */
+.nge-set-info {
+  display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: -2px;
+  border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.55); color: #9fdcff; cursor: help;
+  font: italic 700 10px/1 Georgia, 'Times New Roman', serif; letter-spacing: 0; text-transform: none;
+}
+.nge-set-info:hover, .nge-set-info:focus-visible { background: rgba(74, 158, 255, 0.18); color: #fff; outline: none; }
 .nge-set-folded > :not(.nge-settings-label) { display: none !important; }
 .nge-settings-shell--embedded .nge-set-folded { padding-bottom: 13px; }
 
