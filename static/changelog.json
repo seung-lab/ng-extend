@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-24T22:41:00Z",
+      "at": "2026-10-25T00:21:00Z",
       "title": "Number keys pick a layer",
       "items": [
         "A number key, 1 to 9, now makes that layer the active one, and Shift + the number shows or hides it. Each layer tab says its keys when you point at it.",
@@ -11,13 +11,12 @@
       ]
     },
     {
-      "at": "2026-10-24T22:41:00Z",
+      "at": "2026-10-25T00:21:00Z",
       "title": "Mark MEC cells for the lab",
       "items": [
         "Under the MEC cell you are working on, the Cell Library has Marks: pick Soma, AIS, True End, Can't Fix or Hits Edge and Ctrl + click the cell to place it, and see what is placed and what is still missing.",
         "In Marks, a lab layer's number key picks its mark, so you can switch marks without clicking.",
         "The soma is quick: the starting point is the nucleus, so Go to the starting point, check it is in the soma, and Confirm soma here.",
-        "Pyr marks Hits Edge for you wherever the cell reaches the edge of the data, once it has loaded. Check each one.",
         "Highlight opens on MEC too, with the same lab marks, and your highlight colors mark spots: one click, and the spot glows on the cell in its color.",
         "When you complete an MEC cell, the Complete form lists the marks, and the lab's sheet gets how many of each you placed."
       ]

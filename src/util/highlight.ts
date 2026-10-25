@@ -16,7 +16,6 @@ import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 import { isTouchRef } from './mobile';
-import { StatusMessage } from 'neuroglancer/status';
 
 export interface HighlightStyle {
   key: string; label: string; layer: string; color: string;
@@ -1002,38 +1001,3 @@ export function startHighlightTint(viewer: any) {
   scan();
 }
 
-// ── Hits Edge, found on its own (Ames 2026-10-24: "I thought it was
-// supposed to auto detect when it reaches the edge of the dataset") ────────
-// While an MEC claim is open and its cell is the one on screen, Pyr waits for
-// the cell's 3D mesh to finish loading, then marks Hits Edge wherever it
-// reaches the edge of the data (addEdgeMarks, the Hunt's rule). Once per cell
-// id per page: an edit gives the cell a new id, so a grown branch is looked at
-// again, and ends already marked are never marked twice. The player is told,
-// and checks each one.
-const edgeLooked = new Set<string>();
-let edgeLoadSeen: { root: string; loaded: number } | null = null;
-export const autoEdgeNews = { last: '' };
-async function autoEdgeTick() {
-  if (!isMec() || !startXyz()) return;
-  let root: string;
-  try { root = workingRoot(); } catch { return; }
-  if (edgeLooked.has(root)) return;
-  const bounds = dataBoundsNm() ?? segBoundsNm(currentSegLayer());
-  if (!bounds) return;
-  const { pieces, loaded } = meshEdgeSpots([root], bounds, EDGE_NM, 3000, true);
-  // Loaded, and no more pieces came in since the last look.
-  const steady = pieces > 0 && loaded === pieces && edgeLoadSeen?.root === root && edgeLoadSeen.loaded === loaded;
-  edgeLoadSeen = { root, loaded };
-  if (!steady) return;
-  edgeLooked.add(root);
-  try {
-    const r = await addEdgeMarks(root);
-    if (!r.added) return;
-    autoEdgeNews.last = `Pyr marked ${r.added} ${r.added === 1 ? 'place' : 'places'} where this cell reaches the edge of the data. Check each one: a branch that only runs along the edge is not an end.`;
-    StatusMessage.showTemporaryMessage(autoEdgeNews.last, 9000);
-  } catch (e) { console.warn('[highlight] Hits Edge on its own failed:', e); }
-}
-/** Call once the viewer exists. */
-export function startAutoEdgeMarks() {
-  setInterval(() => { void autoEdgeTick(); }, 4000);
-}

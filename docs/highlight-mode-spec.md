@@ -157,3 +157,5 @@ drops a point in that layer, and the cell glows in that color around it.
   usual highlight marks (two clicks, To soma, Beyond) in the mark's color, in
   a layer of their own ("Can't Fix highlight"), and a two click stretch also
   drops the lab's point at its second click.
+
+- **2026-10-24, later:** the automatic Hits Edge marks and Find ends at the edge are off. MEC's segmented area is not a box (a cell stopped at y 2333 um inside a box reaching 2380.9 um), so a box test cannot find its edge. Ames is asking the lab for the coverage outline; the code (addEdgeMarks, edgeEnds, meshEdgeSpots, dataBoundsNm, window.__ngeMecEdge) stays for when it comes.

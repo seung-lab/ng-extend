@@ -353,19 +353,6 @@ async function colourAxon() {
     return n;
   }, 'pieces');
 }
-/** Hits Edge, found: branch ends that reach the edge of the data. */
-async function findEdges() {
-  if (busy.value) return;
-  await trace(async wanted => {
-    const r = await addEdgeMarks(workingRoot(lastRoot.value), wanted);
-    const where = r.axonOnly ? 'along the axon' : r.fromMesh ? 'on this cell, from its 3D mesh,' : 'on this cell';
-    const had = r.already ? ` ${r.already} already marked.` : '';
-    doneText.value = r.added
-      ? `Added ${r.added} Hits Edge ${r.added === 1 ? 'mark' : 'marks'} ${where}.${had} Check each one.`
-      : `No new branch ends reach the edge of the data ${where}.${had}`;
-    return r.added;
-  }, 'ends');
-}
 // A lab mark is one click: a start point left from a stretch is dropped.
 watch(styleKey, () => { if (labOn.value && first.value && !busy.value) { first.value = null; branchWay.value = null; clearStartMarker(); } });
 // One picked lab mark for this box and the Cell Library's Marks.
@@ -633,8 +620,6 @@ onBeforeUnmount(() => {
         <div v-else class="nge-hl-mec-actions">
           <button v-if="!noTrace" class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
                   :title="labCounts['mec:ais'] ? 'Color everything beyond the AIS, away from the soma: the axon.' : 'Mark the AIS first: the axon is everything beyond it.'">Color the axon</button>
-          <button class="nge-hl-btn" type="button" :disabled="busy" @click="findEdges"
-                  title="Find where the cell reaches the edge of the data, and mark each Hits Edge.">{{ labCounts['mec:ais'] && !noTrace ? 'Find axon ends at the edge' : 'Find ends at the edge' }}</button>
         </div>
       </div>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">

@@ -12,7 +12,7 @@
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer } from '../util/mec_marks';
-import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, addEdgeMarks, workingRoot, autoEdgeNews, sharedLabPick } from '../util/highlight';
+import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
 const open = ref(!!props.startOpen);
@@ -28,11 +28,8 @@ const message = ref('');
 const bad = ref(false);
 let lastRoot: string | null = null;
 
-let newsShown = '';
 function read() {
   counts.value = mecCounts(); soma.value = somaState(); hasStart.value = !!startXyz();
-  // Hits Edge placed on their own: said here too, once.
-  if (autoEdgeNews.last && autoEdgeNews.last !== newsShown) { newsShown = autoEdgeNews.last; say(newsShown); }
 }
 function say(text: string, isBad = false) { message.value = text; bad.value = isBad; }
 
@@ -114,19 +111,6 @@ async function confirmSoma() {
 }
 function lookAtStart() { if (!goToStart()) say("Pyr doesn't know this cell's starting point.", true); }
 
-async function findEdges() {
-  if (busy.value) return;
-  busy.value = true;
-  say('Looking for the edge of the data...');
-  try {
-    const r = await addEdgeMarks(workingRoot(lastRoot));
-    read();
-    const had = r.already ? ` ${r.already} already marked.` : '';
-    say(r.added ? `Added ${r.added} Hits Edge ${r.added === 1 ? 'mark' : 'marks'}.${had} Check each one: a branch that only runs along the edge is not an end.`
-      : `Nothing new reaches the edge of the data.${had}${r.closestNm !== undefined && Number.isFinite(r.closestNm) ? ` The cell comes within ${(Math.max(0, r.closestNm) / 1000).toFixed(1)} µm of it at its closest.` : ''}`);
-  } catch (e: any) { say(e?.message || 'Could not look for the edge.', true); }
-  finally { busy.value = false; }
-}
 
 let timer: ReturnType<typeof setInterval> | undefined;
 let stopSelected = () => { /* set on mount */ };
@@ -190,8 +174,6 @@ onBeforeUnmount(() => {
         <div v-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
       </div>
       <div class="nge-mms-foot">
-        <button type="button" class="nge-mms-btn" :disabled="busy" @click="findEdges"
-                title="Mark Hits Edge wherever the cell reaches the edge of the data.">Find ends at the edge</button>
         <span class="nge-mms-msg" :class="{ 'nge-mms-msg--bad': bad }" role="status">{{ message || "The lab's sheet gets these counts when you complete the cell." }}</span>
       </div>
     </div>
