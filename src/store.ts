@@ -1025,6 +1025,10 @@ export interface UserPreferences {
    *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
    *  distracting from the workflow"). */
   cellCompleteMessage?: 'full' | 'small' | 'off';
+  /** Settings, "Achievement celebration" (toknow, report 239; Ames
+   *  2026-10-25). False: no card and no confetti when one is earned; it is
+   *  still in the Trophy Case and the bell. */
+  achievementCelebration?: boolean;
   /** 2D image detail: 1 full (default), 2 half, 4 quarter, as neuroglancer's
    *  render scale target for image layers. Coarser loads far less on a slow
    *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
