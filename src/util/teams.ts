@@ -16,6 +16,7 @@ import { reactive, watch } from 'vue';
 import { secureWrite } from '../secure_write';
 import { useProofreadingBackendStore, useCellHistoryStore } from '../store';
 import { canonicalDataset, currentDatasetTag, currentSegLayer, findDatasetByCanonical } from '../datasets';
+import { anyTabVisible, leadership, onSharedResult, shareResult } from './tabs';
 import { team, openSavedRoom, attachSaved, savedRoom, leaveTeam, type SavedSink, type TeamChatLine } from './team_session';
 
 export interface SavedTeamMember { id: string; name: string; state: 'invited' | 'requested' | 'joined'; partDone: boolean; }
@@ -202,8 +203,28 @@ export function startTeams() {
   // The list is read when the game opens, every quarter of an hour while it
   // is in front, whenever the Teams tab is open, and when a team notification
   // arrives. Not more often: every read is a request to the server, which
-  // shares one daily allowance among all players.
-  setInterval(() => { if (!document.hidden) void loadTeams(); }, 900_000);
+  // shares one daily allowance among all players. The quarter hour read is
+  // the leader tab's, handed to the other tabs (Ames 2026-10-25). The leader
+  // is chosen among the tabs that started teams (signed in), so it is never a
+  // tab that has nobody to ask for.
+  const leader = leadership('pyr-leader-teams');
+  leader.join();
+  const refresh = async () => {
+    if (!leader.isLeader() || !anyTabVisible()) return;
+    await loadTeams();
+    if (!teamsState.error) shareResult('teams', { user: me(), teams: teamsState.teams, open: teamsState.open, max: teamsState.max, installed: teamsState.installed });
+  };
+  setInterval(() => { void refresh(); }, 900_000);
+  leader.onChange((isLeader, takeover) => { if (isLeader && takeover) void refresh(); });
+  onSharedResult<{ user: string; teams: SavedTeam[]; open: SavedTeam[]; max: number; installed: boolean }>('teams', m => {
+    if (!m || m.user !== me()) return;
+    teamsState.installed = m.installed;
+    teamsState.teams = m.teams || [];
+    teamsState.open = m.open || [];
+    teamsState.max = m.max || 4;
+    teamsState.error = '';
+    teamsState.loaded = true;
+  });
   document.addEventListener('nge:teams-refresh', () => { void loadTeams(); });
   try {
     const b: any = useProofreadingBackendStore();

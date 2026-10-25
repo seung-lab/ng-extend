@@ -15,6 +15,7 @@
  */
 import { segLayerName, canonicalDataset, currentDatasetTag, findDatasetByCanonical, type DatasetEntry } from '../datasets';
 import { completedCells, datasetKey, type CompletedCell, type CompletionLogRow } from './completion_rule';
+import { caveMirrorCells, editHours, helpRequestDatasets } from './player_summary';
 
 export interface DatasetContribution {
   edits: number; completions: number; helpRequests: number;
@@ -57,32 +58,41 @@ export function datasetTagVariants(ds: DatasetEntry): string[] {
  *
  * The rule needs the player's whole completion history on every dataset
  * (when a cell was completed is decided before anything is filtered), so
- * this reads all of it, a page at a time, and keeps it for a minute.
+ * this reads all of it, a page at a time, and keeps it for a minute. The
+ * read itself is kept, not only its result: the Datasets tab asks for all 15
+ * datasets at once, and each used to start its own full read (2026-10-25).
  */
-let logCache: { uid: string; at: number; cells: CompletedCell[] } | null = null;
+let logCache: { uid: string; at: number; cells: Promise<CompletedCell[] | null> } | null = null;
+async function readLoggedCells(uid: string): Promise<CompletedCell[] | null> {
+  const { supabase } = await import('../supabase');
+  const rows: CompletionLogRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    // The log's time column is `timestamp`. (It was read as `created_at`,
+    // which does not exist, so this always failed and the mirror's number
+    // was shown alone: audit of 2026-10-05.)
+    const { data, error } = await supabase.from('edit_log')
+      .select('id,operation,metadata,task_id,dataset,success,timestamp')
+      .eq('user_id', uid)
+      .in('operation', ['complete_task', 'mark_complete', 'unmark_complete'])
+      .order('timestamp', { ascending: true }).order('id', { ascending: true })
+      .range(from, from + 999);
+    if (error || !data) return null;
+    rows.push(...(data as any[]));
+    if (data.length < 1000) break;
+  }
+  return completedCells(rows);
+}
 async function loggedCells(uid: string, tags: string[]): Promise<CompletedCell[] | null> {
   try {
     if (!logCache || logCache.uid !== uid || Date.now() - logCache.at > 60_000) {
-      const { supabase } = await import('../supabase');
-      const rows: CompletionLogRow[] = [];
-      for (let from = 0; ; from += 1000) {
-        // The log's time column is `timestamp`. (It was read as `created_at`,
-        // which does not exist, so this always failed and the mirror's number
-        // was shown alone: audit of 2026-10-05.)
-        const { data, error } = await supabase.from('edit_log')
-          .select('id,operation,metadata,task_id,dataset,success,timestamp')
-          .eq('user_id', uid)
-          .in('operation', ['complete_task', 'mark_complete', 'unmark_complete'])
-          .order('timestamp', { ascending: true }).order('id', { ascending: true })
-          .range(from, from + 999);
-        if (error || !data) return null;
-        rows.push(...(data as any[]));
-        if (data.length < 1000) break;
-      }
-      logCache = { uid, at: Date.now(), cells: completedCells(rows) };
+      const entry = { uid, at: Date.now(), cells: readLoggedCells(uid).catch(() => null) };
+      logCache = entry;
+      void entry.cells.then(c => { if (c === null && logCache === entry) logCache = null; });
     }
+    const cells = await logCache.cells;
+    if (!cells) return null;
     const keys = new Set(tags.map(datasetKey));
-    return logCache.cells.filter(c => keys.has(c.dataset));
+    return cells.filter(c => keys.has(c.dataset));
   } catch { return null; }
 }
 
@@ -115,35 +125,45 @@ export async function celebrationCellCounts(uid: string): Promise<{ label: strin
 }
 
 /** The cells CAVE's copy of a dataset's own records credits to a player,
- *  as root ids. Empty when the player has no CAVE id or it cannot be read. */
+ *  as root ids. Empty when the player has no CAVE id or it cannot be read.
+ *  One read covers every dataset (player_summary.ts). */
 async function mirroredCells(uid: string, tags: string[]): Promise<Set<string>> {
-  const ids = new Set<string>();
-  try {
-    const { supabase } = await import('../supabase');
-    const { data: me } = await supabase.from('users').select('cave_user_id').eq('id', uid).single();
-    const caveId = (me as any)?.cave_user_id;
-    if (caveId == null) return ids;
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from('cave_completions_mirror').select('segment_id')
-        .eq('cave_user_id', caveId).in('dataset', tags).order('segment_id', { ascending: true }).range(from, from + 999);
-      if (error || !data) break;
-      for (const r of data as any[]) ids.add(String(r.segment_id));
-      if (data.length < 1000) break;
-    }
-  } catch { /* the card simply shows no outside work */ }
-  return ids;
+  const want = new Set(tags);
+  const rows = await caveMirrorCells(uid);
+  return new Set((rows ?? []).filter(r => want.has(r.dataset)).map(r => r.segment));
+}
+
+/** Splits and merges that went through: the same rows the board counts. From
+ *  the player's hourly totals when they exist, else counted in edit_log. */
+async function editCount(uid: string, tags: string[]): Promise<number> {
+  const hours = await editHours(uid);
+  if (hours) {
+    const want = new Set(tags);
+    return hours.reduce((s, h) => s + (want.has(h.dataset) ? h.merges + h.splits : 0), 0);
+  }
+  const { supabase } = await import('../supabase');
+  const r: any = await supabase.from('edit_log').select('id', { count: 'exact', head: true })
+    .eq('user_id', uid).in('dataset', tags).in('operation', ['split', 'merge']).not('success', 'is', false);
+  return r.count ?? 0;
+}
+
+async function helpRequestCount(uid: string, tags: string[]): Promise<number> {
+  const asked = await helpRequestDatasets(uid);
+  if (asked) {
+    const want = new Set(tags);
+    return asked.filter(d => want.has(d)).length;
+  }
+  const { supabase } = await import('../supabase');
+  const r: any = await supabase.from('help_requests').select('id', { count: 'exact', head: true })
+    .eq('user_id', uid).in('dataset', tags);
+  return r.count ?? 0;
 }
 
 export async function loadContribution(ds: DatasetEntry, uid: string): Promise<DatasetContribution> {
-  const { supabase } = await import('../supabase');
   const tags = datasetTagVariants(ds);
   const [edits, helpRequests, logged, mirror] = await Promise.all([
-    // Splits and merges that went through: the same rows the board counts.
-    supabase.from('edit_log').select('id', { count: 'exact', head: true })
-      .eq('user_id', uid).in('dataset', tags).in('operation', ['split', 'merge']).not('success', 'is', false)
-      .then((r: any) => r.count ?? 0),
-    supabase.from('help_requests').select('id', { count: 'exact', head: true })
-      .eq('user_id', uid).in('dataset', tags).then((r: any) => r.count ?? 0),
+    editCount(uid, tags),
+    helpRequestCount(uid, tags),
     loggedCells(uid, tags),
     // Only where most work happens in other tools. On the game's own datasets
     // the game's log is the whole record.

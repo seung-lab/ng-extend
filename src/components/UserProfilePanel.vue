@@ -11,6 +11,7 @@ import BlogEditor from 'components/BlogEditor.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { loadContribution, showsAllStats, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
 import { datasetKey } from '../util/completion_rule';
+import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
@@ -1145,16 +1146,17 @@ function localDay(t: number): string {
   const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-/** A dense run of days from the first stamp to today, zeros where nothing happened. */
-function denseDays(stamps: number[]): EffortDay[] {
+/** A dense run of days from the first stamp to today, zeros where nothing
+ *  happened. `weights[i]` is how many stamp i stands for (an hour's edits). */
+function denseDays(stamps: number[], weights?: number[]): EffortDay[] {
   if (!stamps.length) return [];
   const counts = new Map<string, number>();
   let first = Infinity;
-  for (const t of stamps) {
+  stamps.forEach((t, i) => {
     first = Math.min(first, t);
     const k = localDay(t);
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
+    counts.set(k, (counts.get(k) ?? 0) + (weights ? weights[i] : 1));
+  });
   const out: EffortDay[] = [];
   const d = new Date(first); d.setHours(0, 0, 0, 0);
   const end = new Date(); end.setHours(0, 0, 0, 0);
@@ -1177,6 +1179,32 @@ async function loadScopedEdits() {
   void canon;
   if (!uid) { scopedEdits.value = null; scopedEditDays.value = null; return; }
   try {
+    // The player's hourly totals (Ames 2026-10-25: reading every edit on
+    // every open was a large share of the database's load). An hour's edits
+    // fall on the day and window its first minute does, so Today and the 7
+    // days can differ from the edit by edit count by an hour at the edge.
+    const hours = await editHours(uid);
+    if (hours) {
+      if (req !== scopedEditsReq) return;
+      const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+      const weekAgo = Date.now() - 7 * 86400000;
+      const blank = (): EditWindow => ({ edits: 0, merges: 0, splits: 0 });
+      const out = { today: blank(), week: blank(), all: blank() };
+      const stamps: number[] = [], weights: number[] = [];
+      for (const h of hours) {
+        const n = h.merges + h.splits;
+        if (n <= 0) continue;
+        stamps.push(h.hour); weights.push(n);
+        const wins = [out.all];
+        if (h.hour >= weekAgo) wins.push(out.week);
+        if (h.hour >= startOfToday.getTime()) wins.push(out.today);
+        for (const w of wins) { w.edits += n; w.merges += h.merges; w.splits += h.splits; }
+      }
+      scopedEdits.value = out;
+      scopedEditDays.value = denseDays(stamps, weights);
+      return;
+    }
+    // Before the hourly totals exist (supabase-db-load.sql step 6): every edit.
     const { supabase } = await import('../supabase');
     const rows: Array<{ operation: string; timestamp: string; success: boolean | null }> = [];
     const PAGE = 1000;  // PostgREST's default row cap per request
@@ -1269,12 +1297,20 @@ async function loadScopedCompletions() {
   }
 }
 
-loadScopedEdits();
-loadScopedCompletions();
-loadScopedIdentifications();
-watch(() => backendStore.userId, () => { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); });
+// When the Overview's numbers were last read, and whose. Coming back to
+// Overview within 30 seconds reuses them (2026-10-25: every tab switch read
+// the whole record again).
+let overviewRead = { uid: '' as string | null | undefined, at: 0 };
+function loadOverview(force = false) {
+  const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
+  if (!force && overviewRead.uid === uid && Date.now() - overviewRead.at < 30_000) return;
+  overviewRead = { uid, at: Date.now() };
+  loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications();
+}
+loadOverview(true);
+watch(() => backendStore.userId, () => loadOverview(true));
 // Re-scope when coming back to Overview (the Datasets tab can switch datasets).
-watch(activeTab, tab => { if (tab === 'overview') { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); } });
+watch(activeTab, tab => { if (tab === 'overview') loadOverview(); });
 
 /** Edits section numbers: this dataset's, or career-wide if edit_log failed. */
 const overviewEdits = computed(() => {
