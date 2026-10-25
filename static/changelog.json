@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T00:00:00Z",
+      "title": "Clearer annotation tools",
+      "items": [
+        "In an annotation layer, the Pyr gem comes first, the box, line, ellipse and polyline sit on a line of their own under the points, and the tool you pick is the one lit up."
+      ]
+    },
+    {
       "at": "2026-10-25T18:51:00Z",
       "title": "My Cells buttons stay in place",
       "items": [
