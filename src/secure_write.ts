@@ -35,6 +35,7 @@ export type SecureAction =
   | 'reply.ask' | 'reply.send' | 'reply.console'
   | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon' | 'test.tries' | 'test.try' | 'test.queueJoin' | 'test.queueLeave' | 'test.queueRemove'
+  | 'access.betaStatus' | 'access.beta'
   | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide' | 'access.reset'
   | 'notification.self' | 'notification.helpReply' | 'help.dropReminder' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
 
@@ -50,6 +51,8 @@ export async function secureWrite<T = any>(action: SecureAction, args: Record<st
   });
   let json: any = null;
   try { json = await res.json(); } catch { /* non JSON error page */ }
-  if (!res.ok || !json?.ok) throw new Error(json?.error || `Save failed (${res.status})`);
+  // The status rides along, so a caller can tell a server that is down (5xx)
+  // from one that said no (4xx).
+  if (!res.ok || !json?.ok) throw Object.assign(new Error(json?.error || `Save failed (${res.status})`), { status: res.status });
   return json.data as T;
 }

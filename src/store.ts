@@ -7,6 +7,8 @@ import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
+import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
+import { trackSave } from './save_status';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -1023,6 +1025,10 @@ export interface UserPreferences {
    *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
    *  distracting from the workflow"). */
   cellCompleteMessage?: 'full' | 'small' | 'off';
+  /** Settings, "Achievement celebration" (toknow, report 239; Ames
+   *  2026-10-25). False: no card and no confetti when one is earned; it is
+   *  still in the Trophy Case and the bell. */
+  achievementCelebration?: boolean;
   /** 2D image detail: 1 full (default), 2 half, 4 quarter, as neuroglancer's
    *  render scale target for image layers. Coarser loads far less on a slow
    *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
@@ -1043,8 +1049,13 @@ export interface UserPreferences {
   pulseColor?: string;
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
-   *  selects, right click hides (Ames 2026-10-06). */
+   *  selects, right click hides (Ames 2026-10-06). It also sets the number
+   *  keys: on, 1 to 9 show and hide layers; off, a number makes its layer the
+   *  active one and Shift + the number shows or hides it (Ames 2026-10-24). */
   classicLayerClicks?: boolean;
+  /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
+   *  Defaults to false: it shows. */
+  hideRadio?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
@@ -1218,6 +1229,27 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
     } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }
   }
 
+  /** Flag and bio live on the public profile row, and this browser keeps a
+   *  copy that the profile and Settings show. A browser new to the player
+   *  started with an empty copy, so the country and bio looked deleted
+   *  (AzureJay, report 229, first sign in on Firefox), and saving Settings
+   *  there would have blanked them for real. The row's values fill the copy. */
+  let profilePulledFor = '';
+  async function pullProfile(userId: string) {
+    if (!userId || profilePulledFor === userId) return;
+    try {
+      const { data, error } = await supabase.from('users').select('flag, bio').eq('id', userId).maybeSingle();
+      if (error || !data) return;
+      profilePulledFor = userId;
+      const flag = typeof (data as any).flag === 'string' ? (data as any).flag : '';
+      const bio = typeof (data as any).bio === 'string' ? (data as any).bio : '';
+      let changed = false;
+      if (flag && prefs.value.flag !== flag) { prefs.value.flag = flag; changed = true; }
+      if (bio && prefs.value.bio !== bio) { prefs.value.bio = bio; changed = true; }
+      if (changed) localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+    } catch (e) { console.warn('[prefs] could not read your profile:', e); }
+  }
+
   load(); // hydrate from localStorage on store init
   // The cursor size follows the setting, on every computer the account uses.
   watch(() => prefs.value.cursorXL === true, on => { document.body?.classList.toggle('nge-cursor-xl', on); }, { immediate: true });
@@ -1236,7 +1268,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // Once signed in, the account's copy wins over this browser's.
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
-  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
+  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) { pullFromAccount(String(id)); void pullProfile(String(id)); } }, { immediate: true }), 0);
   return { prefs, save, resetToDefaults, accountLoaded };
 });
 
@@ -1888,7 +1920,10 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   load();
   subscribe();
 
-  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
+  /** A request the Help tab should open on and show (a reply notification's
+   *  "Open in Help tab", Ames 2026-10-24). CellLibraryPanel clears it. */
+  const focusId = ref<string | null>(null);
+  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe, focusId };
 });
 
 // ── Issue Tags (Scout tags) ────────────────────────────────────────────────
@@ -3619,16 +3654,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     userName.value = displayName;
     console.info('[backend] syncUser called for', email);
     try {
-      // Try to find existing user by email
-      const { data: existing, error: selectErr } = await supabase
-        .from('users')
-        .select('id, username')
-        .eq('middleauth_email', email)
-        .single();
-
-      if (selectErr && selectErr.code !== 'PGRST116') {
+      // Find the player's row by email. A failed read (server busy, too many
+      // requests, a network blip) used to fall through to "create a new
+      // user", which failed too, and left the whole visit without a profile:
+      // chat said "Log in to chat" to a signed in player (Ames 2026-10-25).
+      // Now a failed read is tried again, and only a real "no row" creates one.
+      let existing: { id: string; username?: string | null } | null = null;
+      for (let attempt = 0; ; attempt++) {
+        const { data, error: selectErr } = await supabase
+          .from('users')
+          .select('id, username')
+          .eq('middleauth_email', email)
+          .single();
         // PGRST116 = "no rows returned" (expected for new users)
-        console.warn('[backend] syncUser SELECT error:', selectErr.message);
+        if (!selectErr || selectErr.code === 'PGRST116') { existing = data as any; break; }
+        console.warn(`[backend] syncUser SELECT error (try ${attempt + 1}):`, selectErr.message);
+        if (attempt >= 5) throw new Error('Could not read your profile: ' + selectErr.message);
+        await new Promise(r => setTimeout(r, [2000, 5000, 10000, 20000, 40000][attempt]));
+        if (userEmail.value !== email) return;   // signed in as someone else meanwhile
       }
 
       if (existing) {
@@ -3759,6 +3802,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   let tasksSyncedDataset = '';
   let tasksSyncedAt = '';
 
+  /** A task row names a cell. One with a blank id showed as an empty first
+   *  entry in MEC's Cell Library (Krzysztof Kruk, report 223), and Claim a
+   *  new cell could pick it. */
+  const hasCellId = (t: ProofreadingTask) => /^[1-9]\d*$/.test(String(t.segment_id ?? '').trim());
   async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string, opts: { full?: boolean } = {}) {
     if (!statusFilter && !opts.full && dataset === tasksSyncedDataset && tasksSyncedAt) {
       try {
@@ -3770,8 +3817,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .order('updated_at', { ascending: true })
           .limit(1000);
         if (fetchErr) throw fetchErr;
-        const rows = (data ?? []) as ProofreadingTask[];
-        if (rows.length < 1000) {
+        const fetched = (data ?? []) as ProofreadingTask[];
+        const rows = fetched.filter(hasCellId);
+        if (fetched.length < 1000) {
           const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
           const next = tasks.value.slice();
           let added = false;
@@ -3811,7 +3859,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .order('created_at', { ascending: true })
           .order('id', { ascending: true })
           .limit(PAGE);
-        if (mine) tasks.value = mine as ProofreadingTask[];
+        if (mine) tasks.value = (mine as ProofreadingTask[]).filter(hasCellId);
       }
       const page = async (from: number) => {
         let query = supabase
@@ -3834,7 +3882,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         for (const g of got) all.push(...g);
         if (got.some(g => g.length < PAGE)) break;
       }
-      tasks.value = all;
+      tasks.value = all.filter(hasCellId);
       if (!statusFilter) {
         tasksSyncedDataset = dataset;
         tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
@@ -3896,7 +3944,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         await syncCellToSheet('release', String(mine.segment_id), undefined, (mine as any).dataset)
           .catch((e: any) => console.warn('[backend] sheet not updated on release:', e?.message));
       }
-      await taskAction('release', { id: taskId });
+      // A server that is busy or down is asked again: a failed release used
+      // to leave the cell claimed while the menu said it was released.
+      for (let attempt = 0; ; attempt++) {
+        try { await trackSave(taskAction('release', { id: taskId })); break; }
+        catch (e: any) {
+          if (attempt >= 3 || !serverMayRecover(e) || Number(e?.status) === 401) throw e;
+          await new Promise(r => setTimeout(r, 1000 * 2 ** attempt + Math.random() * 500));
+        }
+      }
       tellScripts('release', taskId);
 
       await logEdit({ operation: 'release_task', task_id: taskId });
@@ -3975,6 +4031,49 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * yet (the server answers counted: false). In both, the counters are
    * updated from here as they always were.
    */
+  /** Send one activity row, waiting out the server's "Please wait". */
+  async function sendActivity(row: Record<string, any>): Promise<any> {
+    for (let attempt = 0; ; attempt++) {
+      try { return await secureWrite('activity.log', { row }); }
+      catch (e: any) {
+        if (attempt >= 3 || !/please wait/i.test(e?.message ?? '')) throw e;
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1) + Math.random() * 1000));
+      }
+    }
+  }
+
+  /** The server recorded a row and answered with the counters: show them. */
+  function applyServerCounts(result: any) {
+    // The server's numbers are the numbers.
+    useUserStatsStore().setStats({
+      editsAllTime: result.total_edits ?? 0,
+      mergesAllTime: result.total_merges ?? 0,
+      splitsAllTime: result.total_splits ?? 0,
+      cellsSubmitted: result.cells_completed ?? 0,
+      currentStreak: result.current_streak ?? 0,
+      longestStreak: result.longest_streak ?? 0,
+      ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
+      ...(typeof result.total_days === 'number' ? { totalDays: result.total_days } : {}),
+    });
+    if (result.recorded) {
+      celebrateDays(result.days_before, result.total_days, false);
+      if ((result.current_streak ?? 0) !== (result.streak_before ?? 0)) sendStreakMilestone(result.current_streak).catch(() => {});
+      if ((result.edits_before ?? 0) < 3 && (result.total_edits ?? 0) >= 3) sendThirdEditThanks().catch(() => {});
+    }
+  }
+
+  // Rows the server did not take wait in this browser and go out later,
+  // only under the sign in of the player who made them.
+  startActivityOutbox({
+    currentUser: () => userId.value,
+    send: row => sendActivity(row),
+    onRecorded: (result, row) => {
+      if (!result?.counted || !userId.value) return;
+      document.dispatchEvent(new CustomEvent('nge:edit-logged', { detail: { operation: row.operation } }));
+      applyServerCounts(result);
+    },
+  });
+
   async function logEdit(entry: EditLogEntry) {
     try {
       const uid = entry.user_id ?? userId.value;
@@ -3991,6 +4090,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         metadata: entry.metadata ?? null,
         dataset: entry.dataset ?? currentDatasetTag(),
         success: entry.success ?? true,
+        // The server records a row once per key, so this row can be sent
+        // again after a failure without counting twice. A split or merge is
+        // keyed by its graph operation id instead (activity-policy.js).
+        ...(entry.operation === 'split' || entry.operation === 'merge' ? {} : { op_key: newOpKey() }),
       };
       let result: any = null;
       try {
@@ -3998,20 +4101,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // the same moment (a batch of up to 20 merges finishing together). It
         // was refused before anything was written, so sending it again cannot
         // count an edit twice. Without this the edit was simply never counted.
-        for (let attempt = 0; ; attempt++) {
-          try { result = await secureWrite('activity.log', { row: logRow }); break; }
-          catch (e: any) {
-            if (attempt >= 3 || !/please wait/i.test(e?.message ?? '')) throw e;
-            await new Promise(r => setTimeout(r, 1500 * (attempt + 1) + Math.random() * 1000));
-          }
-        }
+        result = await trackSave(sendActivity(logRow));
       } catch (e: any) {
         if (!/unknown action/i.test(e?.message ?? '')) {
-          console.warn('[backend] activity not recorded:', e?.message);
+          // The server is down or did not answer: the edit waits in this
+          // browser and is sent again (activity_outbox.ts). It used to be
+          // dropped here with only this console line, so the split or merge
+          // was in CAVE but never counted (save failures audit, 2026-10-23).
+          if (serverMayRecover(e) && queueActivity(uid, logRow)) {
+            console.warn('[backend] activity not recorded yet, will retry:', e?.message);
+          } else {
+            console.warn('[backend] activity not recorded:', e?.message);
+          }
           return;
         }
         // A server from before this change: the plain insert it expects.
-        supabase.from('edit_log').insert({ ...logRow, user_id: uid }).then(
+        const { op_key: _key, ...plain } = logRow as any;
+        supabase.from('edit_log').insert({ ...plain, user_id: uid }).then(
           ({ error }) => { if (error) console.warn('[backend] edit_log insert failed:', error.message); },
           () => {},
         );
@@ -4023,22 +4129,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       document.dispatchEvent(new CustomEvent('nge:edit-logged', { detail: { operation: op } }));
 
       if (result?.counted) {
-        // The server's numbers are the numbers.
-        useUserStatsStore().setStats({
-          editsAllTime: result.total_edits ?? 0,
-          mergesAllTime: result.total_merges ?? 0,
-          splitsAllTime: result.total_splits ?? 0,
-          cellsSubmitted: result.cells_completed ?? 0,
-          currentStreak: result.current_streak ?? 0,
-          longestStreak: result.longest_streak ?? 0,
-          ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
-          ...(typeof result.total_days === 'number' ? { totalDays: result.total_days } : {}),
-        });
-        if (result.recorded) {
-          celebrateDays(result.days_before, result.total_days, false);
-          if ((result.current_streak ?? 0) !== (result.streak_before ?? 0)) sendStreakMilestone(result.current_streak).catch(() => {});
-          if ((result.edits_before ?? 0) < 3 && (result.total_edits ?? 0) >= 3) sendThirdEditThanks().catch(() => {});
-        }
+        applyServerCounts(result);
         return;
       }
 
@@ -5024,7 +5115,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     activeTaskId.value = task.id;
     const released = await releaseTask();
     activeTaskId.value = prevActive;
-    if (!released) return false;
+    if (!released) {
+      // The answer may have been lost on the way back after the release went
+      // through: ask what the cell's state is now.
+      try { await loadTasks(); } catch { return false; }
+      const stillMine = tasks.value.some(t => t.id === task.id && t.assigned_to === userId.value &&
+        (t.status === 'assigned' || t.status === 'in_progress'));
+      if (!stillMine) error.value = '';
+      return !stillMine;
+    }
     await loadTasks();
     return true;
   }
@@ -5168,7 +5267,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .from('notifications')
       .select('*')
       .lte('send_at', now)
-      .order('created_at', { ascending: false })
+      .order('send_at', { ascending: false })
       .limit(newOnly ? 50 : notifLimit.value);
     if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
@@ -5190,14 +5289,32 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
 
     if (!newOnly) {
-      // Load read + dismissed status together (both live on notification_reads).
-      const { data: reads } = await supabase
-        .from('notification_reads')
-        .select('notification_id, dismissed')
-        .eq('user_id', userId.value);
-      notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
-      notificationDismissals.value = new Set(
-        (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));
+      // Read + dismissed status together (both live on notification_reads),
+      // for just the notifications this feed can show: the page just read,
+      // and the ones delivered before (kept below). It used to read every
+      // row a player had, and the gateway sends at most 500, so a player with
+      // more lost the rest to "unread" (report 212).
+      const wanted = [...new Set([...(allNotifs as any[]).map(n => Number(n.id)),
+        ...(useUserPreferencesStore().prefs.notifDelivered || [])])].filter(Number.isInteger).slice(0, 450);
+      const reads: any[] = [];
+      let readsFailed = false;
+      if (wanted.length) {
+        const { data, error } = await supabase
+          .from('notification_reads')
+          .select('notification_id, dismissed')
+          .eq('user_id', userId.value)
+          .in('notification_id', wanted);
+        if (error || !data) readsFailed = true;
+        else reads.push(...data);
+      }
+      // A read that failed (the server busy for a moment) used to empty the
+      // list, and everything already read came back as unread (toknow,
+      // report 212: the reads were all saved on the server). Keep what this
+      // tab knows and add what did come back.
+      const ids = reads.map((r: any) => r.notification_id);
+      const gone = reads.filter((r: any) => r.dismissed).map((r: any) => r.notification_id);
+      notificationReads.value = readsFailed ? new Set([...notificationReads.value, ...ids]) : new Set(ids);
+      notificationDismissals.value = readsFailed ? new Set([...notificationDismissals.value, ...gone]) : new Set(gone);
     }
 
     // "Stop sending at" is a deadline for DELIVERY, not for the notification
@@ -5218,7 +5335,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // New ones join the feed in front of what is already there.
     const current = newOnly
       ? [...due.filter(n => !notifications.value.some(o => o.id === n.id)), ...notifications.value]
-          .sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)))
+          .sort((a: any, b: any) => String(b.send_at || b.created_at).localeCompare(String(a.send_at || a.created_at)))
       : due;
 
     // Delivered ones that have since stopped: the server leaves those out of
@@ -5230,7 +5347,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (kept.length && !newOnly) {
       const { data: older } = await supabase.from('notifications').select('*').in('id', kept).lte('send_at', now);
       for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
-      current.sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)));
+      current.sort((a: any, b: any) => String(b.send_at || b.created_at).localeCompare(String(a.send_at || a.created_at)));
     }
     notifications.value = current;
 
@@ -5306,9 +5423,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     patch(notifications.value);
   }
 
+  // Read in one tab is read in the others (report 212: with two Pyr tabs
+  // open, the other tab kept showing what had been read as unread).
+  const readsChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('pyr-notif-reads') : null;
+  if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
+    const m = e.data || {};
+    if (m.user !== userId.value || !Array.isArray(m.ids)) return;
+    const set = m.dismissed ? notificationDismissals : notificationReads;
+    for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
+    if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
+  };
+  function tellOtherTabs(ids: number[], dismissed = false) {
+    if (ids.length) try { readsChannel?.postMessage({ user: userId.value, ids, dismissed }); } catch { /* closed */ }
+  }
+
   async function markNotificationRead(notifId: number) {
     if (!userId.value) return;
     notificationReads.value.add(notifId);
+    tellOtherTabs([notifId]);
     await supabase.from('notification_reads').insert({
       notification_id: notifId,
       user_id: userId.value,
@@ -5323,6 +5455,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     for (const n of unread) {
       notificationReads.value.add(n.id);
     }
+    tellOtherTabs(unread.map(n => n.id));
     // Batch insert (ignore conflicts)
     const rows = unread.map(n => ({ notification_id: n.id, user_id: userId.value }));
     if (rows.length > 0) {
@@ -5389,7 +5522,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try {
         const chatStore = useChatStore();
         if (chatStore.connected || chatStore.polling) {
-          chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
+          chatStore.sendMessage(data.title, newNotifId);
           // Record that the announcement already went out, so the every-10-min
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
           // Only mark it when we actually sent: if chat was offline we couldn't
@@ -5442,7 +5575,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: n.id })).claimed; }
       catch (claimErr: any) { console.warn('[admin] claim chat announcement failed:', claimErr?.message); continue; }
       if (claimed) {
-        chatStore.sendMessage(`📢 ${n.title}`, n.id);
+        chatStore.sendMessage(n.title, n.id);
       }
     }
   }
@@ -5541,6 +5674,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notificationDismissals.value.add(notifId);
     notifications.value = notifications.value.filter(n => n.id !== notifId);
     if (!userId.value) return;
+    tellOtherTabs([notifId], true);
     const { error } = await supabase.from('notification_reads').upsert({
       notification_id: notifId,
       user_id: userId.value,
@@ -5566,6 +5700,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!visible.length) return;
     for (const n of visible) notificationDismissals.value.add(n.id);
     notifications.value = pick ? notifications.value.filter(n => !pick.has(n.id)) : [];
+    tellOtherTabs(visible.map(n => n.id), true);
     const rows = visible.map(n => ({
       notification_id: n.id,
       user_id: userId.value,

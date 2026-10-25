@@ -154,7 +154,12 @@ function showCaptureSign(): () => void {
   return () => { try { app.unmount(); } catch { /* already gone */ } el.remove(); };
 }
 
+/** Drawing the page failed once since this dialog opened. The next press of
+ *  Capture screen goes straight to the browser's own capture. */
+let drawFailed = false;
+
 async function captureWholeScreen(): Promise<HTMLCanvasElement> {
+  if (!drawFailed) {
   // First choice: the app draws the page itself, so the browser has nothing
   // to ask (Ames 2026-10-01: "avoid the chrome permission every time").
   dialogHidden.value = true;
@@ -166,11 +171,20 @@ async function captureWholeScreen(): Promise<HTMLCanvasElement> {
     return await capturePage();
   } catch (e) {
     console.warn('[screenshot] drawing the page failed, asking the browser to capture the tab instead:', e);
+    drawFailed = true;
   } finally {
     hideSign();
     dialogHidden.value = false;
     document.body.classList.remove('nge-shot-capturing');
     showOpener();
+  }
+  }
+  // The browser asks only straight after a click. A slow page drawing used up
+  // that moment, and the capture failed with "getDisplayMedia requires
+  // transient activation" (toknow, report 215). Ask for a fresh click.
+  const ua = (navigator as any).userActivation;
+  if (ua && !ua.isActive) {
+    throw new Error('Drawing the page took too long. Press Capture screen and choose this tab.');
   }
   const md = navigator.mediaDevices as any;
   if (!md?.getDisplayMedia) throw new Error('This browser cannot capture the screen. Untick "Whole screen" to capture the viewer only.');
@@ -853,6 +867,7 @@ watch(() => props.show, async (open) => {
     nurroImg.value = null;
     strokes.value = [];
     screenCap.value = null;
+    drawFailed = false;
     // Whole screen: take the picture straight away, while the click that
     // opened this still counts as permission to ask. The dialog then shows
     // once, with the real picture in it (Ames 2026-10-01: it used to show a

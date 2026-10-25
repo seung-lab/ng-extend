@@ -116,6 +116,10 @@ label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-b
 body.nge-radio-on label.perspective-panel-show-slice-views { right: 46px; bottom: calc(10px + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
+/* The merge and cut bar runs the full width of the window and covered the
+   foot of the side panels, the last cells of the Segments list among them
+   (Ames 2026-10-24). While it is open the panels end above it. */
+body.nge-tool-bar-open .neuroglancer-side-panel { padding-bottom: calc(var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); box-sizing: border-box; }
 .neuroglancer-mouse-position-widget:empty {
   display: none;
 }
@@ -358,9 +362,12 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   /* reaches the shape's very top, so the trace is the only top edge */
   inset: 3px 1px 1px 1px;
   clip-path: polygon(4px 0, calc(100% - 9px) 0, 100% 10px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 5.2px);
-  background: linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
+  /* a stronger fill, so the selected tab reads at a glance (player request,
+     Ames 2026-10-23); it was close to the others' */
+  background: linear-gradient(180deg, #3a72c0, #1f4580 80%);
 }
-.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #f2f8ff; }
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #ffffff; font-weight: 700 !important; text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8); }
+body.nge-friendly-layers .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label[data-nge-label]::after { font-weight: 700 !important; }
 .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number { background: #7ee0ff !important; color: #04101f !important; }
 /* a layer that answers clicks: no box inside the box, the name carries a small lit point */
 .neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label {
@@ -385,7 +392,7 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 .neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number { background: var(--nge-layer-color) !important; color: #05080f !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true] { background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 0%, var(--nge-layer-color) 34%, transparent 96%) !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true]::before {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 70%, #101c34), color-mix(in srgb, var(--nge-layer-color) 44%, #0a1326) 80%);
 }
 /* ── The selected tab's edge is a circuit trace (Ames 2026-10-06, after her
       own chip drawings) ────────────────────────────────────────────────────
@@ -1291,9 +1298,11 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 /* Only the newest plain message shows (Nseraf: in cut and merge mode the
    errors stacked up line after line, and the bar, the cut bar and the
    TODO / PROOFREAD legend all rose with them; "They should stay
-   stationary"). A line with a newer plain line after it is hidden. */
-#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status):has(~ li:not(.neuroglancer-tool-status):not(.nge-fp-status)) {
-  display: none;
+   stationary"). A line with a newer shown plain line after it is hidden.
+   !important: neuroglancer shows each line with an inline display: block,
+   which beat this rule (Ames 2026-10-23: still four lines). */
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status):has(~ li:not(.neuroglancer-tool-status):not(.nge-fp-status):not([style*="display: none"])) {
+  display: none !important;
 }
 #statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status)::before {
   content: '';

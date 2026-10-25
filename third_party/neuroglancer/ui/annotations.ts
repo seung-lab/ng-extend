@@ -355,7 +355,8 @@ export class AnnotationLayerView extends Tab {
           const count = folders!.cellsIn(entry.folder.id).filter(id => present!.has(id)).length;
           items.push({
             kind: 'folder', state, folder: entry.folder, depth: entry.depth, count,
-            key: `f:${entry.folder.id}:${ngeObjectId(entry.folder)}:${entry.depth}:${count}`,
+            key: `f:${entry.folder.id}:${ngeObjectId(entry.folder)}:${entry.depth}:${count}:` +
+                `${folders!.activeFolder === entry.folder.id ? 1 : 0}:${folders!.isHidden(entry.folder.id) ? 1 : 0}`,
           });
           continue;
         }
@@ -364,7 +365,8 @@ export class AnnotationLayerView extends Tab {
         const item: NgeListItem = {
           kind: 'annotation', state, annotation: entry.annotation, number, depth: entry.depth, folder,
           key: `a:${ngeObjectId(state)}:${entry.annotation.id}:${ngeObjectId(entry.annotation)}:${number}:` +
-              `${entry.depth}:${folder ? ngeObjectId(folder) : ''}:${picked.has(entry.annotation.id) ? 1 : 0}`,
+              `${entry.depth}:${folder ? ngeObjectId(folder) : ''}:${picked.has(entry.annotation.id) ? 1 : 0}:` +
+              `${(state.source as AnnotationSource).ngeHidden?.has(entry.annotation.id) ? 1 : 0}`,
         };
         all.push(item);
         if (entry.hidden) continue;
@@ -506,7 +508,6 @@ export class AnnotationLayerView extends Tab {
         this.layer.tool.value = new PlacePointTool(this.layer, {});
       },
     });
-    mutableControls.appendChild(pointButton);
     // EyeWire II (Amy 2026-10-01): the regular dot stays; the big dot and Pyr
     // are their own buttons. All three place points, and each sets how THIS
     // layer draws them (saved in the layer as "pointMarker" and "pointSize").
@@ -522,7 +523,6 @@ export class AnnotationLayerView extends Tab {
       },
     });
     bigButton.classList.add('nge-big-dot-tool');
-    mutableControls.appendChild(bigButton);
     const pyrButton = makeIcon({
       title: 'Annotate point, shown as a Pyr gem in 3D',
       onClick: () => {
@@ -536,17 +536,8 @@ export class AnnotationLayerView extends Tab {
     pyrImg.alt = '';
     pyrImg.className = 'nge-pyr-tool-icon';
     pyrButton.appendChild(pyrImg);
-    mutableControls.appendChild(pyrButton);
-    const showMarker = () => {
-      const marker = displayState.ngeMarker.value;
-      const size = displayState.ngeSize.value;
-      pointButton.classList.toggle('nge-marker-on', marker === 'dot' && size === 1);
-      bigButton.classList.toggle('nge-marker-on', marker === 'dot' && size !== 1);
-      pyrButton.classList.toggle('nge-marker-on', marker === 'pyr');
-    };
-    this.registerDisposer(displayState.ngeMarker.changed.add(showMarker));
-    this.registerDisposer(displayState.ngeSize.changed.add(showMarker));
-    showMarker();
+    // nge (Ames 2026-10-25): the Pyr gem first, then the dots.
+    mutableControls.append(pyrButton, pointButton, bigButton);
 
     const boundingBoxButton = makeIcon({
       text: annotationTypeHandlers[AnnotationType.AXIS_ALIGNED_BOUNDING_BOX].icon,
@@ -591,6 +582,31 @@ export class AnnotationLayerView extends Tab {
         '<circle cx="3" cy="14" r="1.7" fill="currentColor"/><circle cx="7.5" cy="6.5" r="1.4" fill="currentColor"/>' +
         '<circle cx="11.5" cy="11" r="1.4" fill="currentColor"/><circle cx="15" cy="4" r="1.7" fill="currentColor"/></svg>';
     mutableControls.appendChild(polylineButton);
+    // nge (Ames 2026-10-25): the shapes on a line of their own, under the
+    // points, and the button lit is the tool in hand. It used to follow the
+    // point style alone, so picking a box or a line left a point button lit.
+    const shapesBreak = document.createElement('div');
+    shapesBreak.className = 'nge-ann-tool-break';
+    mutableControls.insertBefore(shapesBreak, boundingBoxButton);
+    const showMarker = () => {
+      const tool = this.layer.tool.value;
+      const shape = tool instanceof PlaceBoundingBoxTool ? boundingBoxButton :
+          tool instanceof PlaceLineTool ? lineButton :
+          tool instanceof PlaceEllipsoidTool ? ellipsoidButton :
+          tool instanceof PlacePolylineTool ? polylineButton : undefined;
+      const marker = displayState.ngeMarker.value;
+      const size = displayState.ngeSize.value;
+      pointButton.classList.toggle('nge-marker-on', !shape && marker === 'dot' && size === 1);
+      bigButton.classList.toggle('nge-marker-on', !shape && marker === 'dot' && size !== 1);
+      pyrButton.classList.toggle('nge-marker-on', !shape && marker === 'pyr');
+      for (const b of [boundingBoxButton, lineButton, ellipsoidButton, polylineButton]) {
+        b.classList.toggle('nge-marker-on', b === shape);
+      }
+    };
+    this.registerDisposer(displayState.ngeMarker.changed.add(showMarker));
+    this.registerDisposer(displayState.ngeSize.changed.add(showMarker));
+    this.registerDisposer(this.layer.tool.changed.add(showMarker));
+    showMarker();
     toolbox.appendChild(mutableControls);
     this.element.appendChild(toolbox);
 
@@ -808,7 +824,11 @@ export class AnnotationLayerView extends Tab {
     return {annotationId, annotationLayerState, pin};
   }, this.layer.manager.root.selectionState, this.layer.manager.root.selectionState.pin);
 
-  private updateSelectionView() {
+  /** nge: `scroll` false when the list was only redrawn (a folder opened,
+   *  closed or hidden, rows picked): the selected row is marked again but the
+   *  list stays where it is. It went to the selected row, often the newest
+   *  annotation at the bottom (annkri, report 234). */
+  private updateSelectionView(scroll = true) {
     const selectionState = this.selectedAnnotationState.value;
     const {previousSelectedState} = this;
     if (previousSelectedState === selectionState ||
@@ -823,7 +843,7 @@ export class AnnotationLayerView extends Tab {
     if (selectionState === undefined) return;
     const element = this.getRenderedAnnotationListElement(
         selectionState.annotationLayerState, selectionState.annotationId,
-        /*scrollIntoView=*/selectionState.pin);
+        /*scrollIntoView=*/scroll && selectionState.pin);
     if (element !== undefined) {
       element.classList.add('neuroglancer-annotation-selected');
     }
@@ -877,6 +897,8 @@ export class AnnotationLayerView extends Tab {
       num.title = `Annotation ${item.number}`;
     }
     element.classList.toggle('nge-ann-picked', pickedAnnotations.ids.has(annotation.id));
+    // in a hidden folder: still listed, dimmed (report 225)
+    element.classList.toggle('nge-ann-hidden', !!(state.source as AnnotationSource).ngeHidden?.has(annotation.id));
     if (item.depth > 0) {
       element.classList.add('nge-ann-in-folder');
       element.style.setProperty('--nge-ann-depth', String(item.depth));
@@ -1040,7 +1062,7 @@ export class AnnotationLayerView extends Tab {
     this.clearSelectionClass();
     this.updated = true;
     this.updateHoverView();
-    this.updateSelectionView();
+    this.updateSelectionView(/*scroll=*/false);
   }
 }
 

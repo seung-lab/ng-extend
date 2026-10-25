@@ -16,6 +16,8 @@ import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startTabs } from './util/tabs';
+import { showOutageBanner } from './util/outage_banner';
+import { startPanelFront } from './util/panel_front';
 import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
@@ -80,6 +82,8 @@ import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/uti
 import {getLayerScales} from "./widgets/widget_utils";
 import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 import pyrIconUrl from './images/pyr-icon.png';
+// The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
+import pyrTriageIconUrl from './images/pyr-icon-triage.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
@@ -143,7 +147,7 @@ function injectNeuronFavicon() {
   const link = document.createElement('link');
   link.rel = 'icon';
   link.type = 'image/png';
-  link.href = pyrIconUrl;
+  link.href = isTriagePage() ? pyrTriageIconUrl : pyrIconUrl;
   document.head.appendChild(link);
   // Also set the page title (neuroglancer's bindTitle keeps it, see
   // third_party/neuroglancer/ui/title.ts)
@@ -182,6 +186,8 @@ window.addEventListener('DOMContentLoaded', () => {
   startCalm();
   // Other Pyr tabs in this browser, and a notice if the views stop drawing.
   startTabs();
+  showOutageBanner();
+  startPanelFront();
   startContextLostNotice();
   // P over a cell in 3D: it sends a ring of light along itself.
   startPulseKey();

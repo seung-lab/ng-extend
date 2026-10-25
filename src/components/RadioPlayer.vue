@@ -95,14 +95,45 @@ function nextTrack(): Track | null {
   return queue.shift() || null;
 }
 
+// ── One tab plays (Ames 2026-10-23: "if I have multiple tabs open and have
+// eyewire radio playing, only one should play music") ──
+// A tab that starts playing says so; any other tab playing then pauses and
+// shows the station off, for this tab only: the saved choice is untouched,
+// so the next visit still starts it. A tab that opens while another plays
+// stays quiet. Turning the station on in a tab makes that tab the one.
+const RADIO_CHANNEL = 'pyr-radio';
+const tabId = Math.random().toString(36).slice(2);
+const radioChannel: BroadcastChannel | null = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(RADIO_CHANNEL) : null;
+let otherTabPlaying = false;
+if (radioChannel) {
+  radioChannel.onmessage = (e: MessageEvent) => {
+    const m = e.data || {};
+    if (m.id === tabId) return;
+    if (m.kind === 'playing') {
+      otherTabPlaying = true;
+      if (on.value) { on.value = false; audio?.pause(); }
+    } else if (m.kind === 'stopped') {
+      otherTabPlaying = false;
+    } else if (m.kind === 'who' && playing.value) {
+      radioChannel.postMessage({ kind: 'playing', id: tabId });
+    }
+  };
+}
+/** Is another tab playing right now? Asked when this tab opens. */
+function askOtherTabs(): Promise<boolean> {
+  if (!radioChannel) return Promise.resolve(false);
+  radioChannel.postMessage({ kind: 'who', id: tabId });
+  return new Promise(resolve => setTimeout(() => resolve(otherTabPlaying), 400));
+}
+
 function ensureAudio(): HTMLAudioElement {
   if (audio) return audio;
   audio = new Audio();
   audio.preload = 'auto';
   audio.volume = volume.value;
   audio.addEventListener('ended', () => { void playNext(); });
-  audio.addEventListener('playing', () => { playing.value = true; });
-  audio.addEventListener('pause', () => { playing.value = false; });
+  audio.addEventListener('playing', () => { playing.value = true; otherTabPlaying = false; radioChannel?.postMessage({ kind: 'playing', id: tabId }); });
+  audio.addEventListener('pause', () => { playing.value = false; radioChannel?.postMessage({ kind: 'stopped', id: tabId }); });
   audio.addEventListener('timeupdate', () => { progress.value = audio && audio.duration ? audio.currentTime / audio.duration : 0; saveSpot(); });
   audio.addEventListener('pause', () => saveSpot(true));
   // A song that will not load is skipped, but not in a tight loop.
@@ -332,7 +363,8 @@ onMounted(() => {
   window.addEventListener('pagehide', onPageHide);
   // Left on last time, or never chosen: start the station (on the first
   // click, if the browser wants one before any sound).
-  if (wasOn) void turnOnQuietly();
+  // Not while another tab is already playing it.
+  if (wasOn) void askOtherTabs().then(busy => { if (!busy) void turnOnQuietly(); });
 });
 // The wheel over the control turns the volume, as it does on a system mixer.
 function onWheel(e: WheelEvent) {
@@ -356,7 +388,7 @@ watch(volume, v => { if (audio) audio.volume = v; });
 watch(() => prefsStore.prefs.radio, r => {
   if (!r || touched) return;
   if (typeof r.volume === 'number') volume.value = clamp01(r.volume);
-  if (r.on && !on.value) void turnOnQuietly();
+  if (r.on && !on.value && !otherTabPlaying) void turnOnQuietly();
   else if (!r.on && on.value) { on.value = false; audio?.pause(); }
 }, { deep: true });
 </script>

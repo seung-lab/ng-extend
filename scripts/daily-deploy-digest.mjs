@@ -39,6 +39,8 @@
  * one line when a notification has post_to_chat set).
  */
 
+import { countCompletions } from './weekly-completions.mjs';
+
 const LIVE_URL = process.env.PYR_LIVE_URL ||
     'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com';
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -84,6 +86,46 @@ async function supabasePost(table, rows) {
     method: 'POST', headers, body: JSON.stringify(rows),
   });
   if (!res.ok) throw new Error(`POST ${table}: ${res.status} ${await res.text()}`);
+}
+
+// ── What players did (Ames 2026-10-23) ──────────────────────────────
+// "Players made 1,234 edits and completed 12 cells.": one line at the end of
+// the note, counted over the same window as the updates. The bell lifts it
+// out and shows the two numbers under the picture (NotificationFeedPanel.vue,
+// digestStats); in chat it reads as a sentence. Edits are splits and merges,
+// cells are counted as the weekly champions count them (weekly-completions.mjs).
+/** Rows matching a query, without reading them (PostgREST's exact count). */
+async function supabaseCount(table, query) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}&limit=1`, {
+    method: 'HEAD', headers: { ...headers, Prefer: 'count=exact' },
+  });
+  if (!res.ok) throw new Error(`COUNT ${table}: ${res.status}`);
+  const total = Number((res.headers.get('content-range') || '').split('/')[1]);
+  if (!Number.isFinite(total)) throw new Error(`COUNT ${table}: no total`);
+  return total;
+}
+/** Every row of a query, a page of 1000 at a time (the server's most). */
+async function supabaseGetAll(table, query) {
+  const rows = [];
+  for (let from = 0; from < 100000; from += 1000) {
+    const page = await supabaseGet(table, `${query}&order=timestamp.asc&offset=${from}&limit=1000`);
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
+  return rows;
+}
+async function playerActivity(sinceMs, nowMs) {
+  const span = `timestamp=gte.${encodeURIComponent(new Date(sinceMs).toISOString())}` +
+      `&timestamp=lt.${encodeURIComponent(new Date(nowMs).toISOString())}`;
+  const edits = await supabaseCount('edit_log', `select=user_id&${span}&operation=in.(split,merge)&success=not.is.false`);
+  const marks = await supabaseGetAll('edit_log',
+      `select=user_id,operation,timestamp,metadata,success&${span}&operation=in.(complete_task,mark_complete,unmark_complete)`);
+  const cells = countCompletions(marks).reduce((sum, p) => sum + p.count, 0);
+  return { edits, cells };
+}
+const plural = (n, one, many) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
+function activityLine({ edits, cells }) {
+  return `Players made ${plural(edits, 'edit', 'edits')} and completed ${plural(cells, 'cell', 'cells')}.`;
 }
 
 function easternDay(d) {
@@ -346,7 +388,15 @@ function easternMinutes(d) {
   // Entries marked minor are never in the note; they still count in the total.
   const told = entries.filter(e => !isMinor(e));
   const summary = told.length ? await writeSummary(told) : null;
-  const body = buildBody(entries, sinceMs, nowMs, summary);
+  let body = buildBody(entries, sinceMs, nowMs, summary);
+  // The counts are a bonus: a failed count never holds back the note.
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    try {
+      const activity = await playerActivity(sinceMs, nowMs);
+      console.log(`[digest] players: ${activity.edits} edits, ${activity.cells} cells`);
+      body += '\n\n' + activityLine(activity);
+    } catch (e) { console.warn('[digest] could not count what players did:', e?.message || e); }
+  }
   const row = {
     title, body, target_type: 'all', send_at: now.toISOString(), post_to_chat: postToChat,
     thumbnail_url: THUMBNAIL_URL, image_url: IMAGE_URL,

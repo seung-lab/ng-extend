@@ -48,8 +48,28 @@ let toastId = 0;
 /** Hero badge — shown centered as a big celebration */
 const heroBadge = ref<Toast | null>(null);
 
+/** Settings: how much a completed cell or Quest, and an achievement, show
+ *  (toknow, report 239: "keep silent when submission and achievement
+ *  unlock"). Read each time, so a change applies to the next one. */
+function messagePref(key: 'cellCompleteMessage'): 'full' | 'small' | 'off' {
+  try {
+    const v = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')[key];
+    return v === 'small' || v === 'off' ? v : 'full';
+  } catch { return 'full'; }
+}
+/** Settings, "Achievement celebration": on unless switched off. */
+function achievementCelebration(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').achievementCelebration !== false; } catch { return true; }
+}
+/** An achievement's confetti, only with the celebration on. */
+function badgeConfetti(intensity: number) {
+  if (achievementCelebration()) fireConfetti('gold', intensity);
+}
+
 function addToast(toast: Omit<Toast, 'id' | 'leaving'>) {
   const t: Toast = { ...toast, id: ++toastId, leaving: false };
+  // Celebration off: nothing on screen; it is still in the Trophy Case and the bell.
+  if (toast.type === 'badge' && !achievementCelebration()) return;
   // Badge unlocks get hero treatment
   if (toast.type === 'badge') {
     heroBadge.value = t;
@@ -139,7 +159,7 @@ onMounted(() => {
       icon: BADGE_IMAGE_MAP[BUILDING_BADGES[4]?.imageKey] || '🏅',
       isImage: !!BADGE_IMAGE_MAP[BUILDING_BADGES[4]?.imageKey],
     });
-    fireConfetti('gold', 1.5);
+    badgeConfetti(1.5);
   };
 });
 
@@ -165,7 +185,7 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
-      fireConfetti('gold', 1.5);
+      badgeConfetti(1.5);
     }
   }
   // Edit milestones (round numbers) — confetti scales with milestone size
@@ -213,7 +233,7 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
-      fireConfetti('gold', 1.5);
+      badgeConfetti(1.5);
     }
   }
   // Cell-completion milestone toasts removed — exploration badge hero popup
@@ -229,7 +249,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   // store when the streak is saved); here, only the confetti, once, sized
   // by the largest milestone passed.
   const passed = streakMilestonesBetween(prevStreak, newStreak);
-  if (passed.length) fireConfetti('gold', passed[passed.length - 1] >= 30 ? 2 : 1);
+  if (passed.length) badgeConfetti(passed[passed.length - 1] >= 30 ? 2 : 1);
   prevStreak = newStreak;
 });
 
@@ -279,7 +299,7 @@ function settleLoyalty(days: number) {
   const img = rel ? new URL(rel, document.baseURI).href : '';
   if (claimCelebration(title)) {
     addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: rel || '🏅', isImage: !!rel });
-    fireConfetti('gold', 1.5);
+    badgeConfetti(1.5);
   }
   if (LOYALTY_TEST_ONLY) return;
   backend.createSelfNotification({
@@ -306,6 +326,8 @@ document.addEventListener('nge:loyalty-days', onLoyaltyDays);
 function onQuestConfetti(e: Event) {
   const d = ((e as CustomEvent).detail || {}) as { origin?: { x: number; y: number } };
   const origin = d.origin && Number.isFinite(d.origin.x) && Number.isFinite(d.origin.y) ? d.origin : undefined;
+  // A Quest goes with completed cells in Settings: confetti only with the full message.
+  if (messagePref('cellCompleteMessage') !== 'full') return;
   console.info('[quests] confetti');
   fireConfetti('mono', 2.5, origin);
 }
@@ -319,6 +341,7 @@ let questCardTimer: ReturnType<typeof setTimeout> | null = null;
 function closeQuestCard() { questCard.value = null; if (questCardTimer) { clearTimeout(questCardTimer); questCardTimer = null; } }
 function onQuestComplete(e: Event) {
   const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number };
+  if (messagePref('cellCompleteMessage') === 'off') return;
   questCard.value = { index: String(d.index || ''), points: Math.max(0, Number(d.points) || 0), done: Math.max(0, Number(d.done) || 0) };
   if (questCardTimer) clearTimeout(questCardTimer);
   questCardTimer = setTimeout(closeQuestCard, 7000);
@@ -423,7 +446,7 @@ watch(() => backend.notifications.length, () => {
         icon: notif.image_url || notif.thumbnail_url || '🏆',
         isImage: !!(notif.image_url || notif.thumbnail_url),
       });
-      fireConfetti('gold', 1.5);
+      badgeConfetti(1.5);
     }
   }
 });
@@ -448,7 +471,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
     icon: pending.imageUrl || '🏆',
     isImage: !!pending.imageUrl,
   });
-  fireConfetti('gold', 1.5);
+  badgeConfetti(1.5);
 });
 
 // ── Cell completion celebration ──

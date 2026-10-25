@@ -135,9 +135,45 @@ export function clearUndelete() {
   save(); publish();
 }
 
+/** Shift+Delete: the cell under the mouse (in the 2D or 3D view, or its row
+ *  in the segment list) leaves the list, as its trash button does, and Ctrl+Z
+ *  brings it back (Nseraf; Ames 2026-10-23: two keys, never Delete alone, so
+ *  a player who thinks they are typing in chat removes nothing). */
+function removeHovered(): boolean {
+  const ml = segLayer();
+  const hover = ml?.layer?.displayState?.segmentSelectionState;
+  const { selected, visible } = setsOf(ml);
+  if (!hover?.hasSelectedSegment || !selected) return false;
+  // Only while the mouse is on a view or a segment row now: neuroglancer
+  // keeps the last cell pointed at after the mouse leaves the views, and that
+  // cell must not go because the mouse is somewhere else (Ames 2026-10-23).
+  const overRow = !!document.querySelector('.neuroglancer-segment-list-entry:hover');
+  const overView = !!(window as any).viewer?.mouseState?.active && !!document.querySelector('.neuroglancer-rendered-data-panel:hover');
+  if (!overRow && !overView) return false;
+  const id = hover.selectedSegment.clone ? hover.selectedSegment.clone() : hover.selectedSegment;
+  if (!selected.has(id)) return false;
+  attach();
+  visible?.delete(id);
+  selected.delete(id);
+  return true;
+}
+
+/** The two keys below, for the Keys list (util/key_list.ts). Change them
+ *  together with onKey. */
+export const UNDELETE_KEYS = [
+  { keys: ['shift+delete'], label: 'Remove the cell under the mouse' },
+  { keys: ['mod+keyz'], label: 'Bring back the last cell removed' },
+];
+
 /** Ctrl+Z (⌘+Z) brings a step back, when the player has the Undelete icon
  *  turned on and is not typing somewhere. */
 function onKey(e: KeyboardEvent, enabled: () => boolean) {
+  if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Delete') {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (removeHovered()) e.preventDefault();
+    return;
+  }
   if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
   const t = e.target as HTMLElement | null;
   if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;

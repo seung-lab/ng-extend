@@ -50,7 +50,12 @@ const draftChatFade = ref(true);
 const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
-const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
+/** "Cell & Quest celebration" (Ames 2026-10-25): a switch, on unless set
+ *  off. Kept in cellCompleteMessage, so a player who had picked the small
+ *  note keeps it while the switch is on. */
+const draftCellCelebration = ref(true);
+let savedCellMessage: 'full' | 'small' | 'off' = 'full';
+const draftAchievementCelebration = ref(true);
 /** How the cell under the mouse is shown (wolfryder101 #181): the classic fade (default), halo or pulse. */
 const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'saturate' | 'spotlight' | 'fade' | 'none'>('fade');
 /** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
@@ -71,6 +76,7 @@ const draftImageSource = ref<'auto' | 'americas' | 'asia'>('auto');
 const autoImageRegion = computed(() => imageRegionLabel(automaticRegion()));
 const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
+const draftShowRadio = ref(true);
 const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
@@ -144,13 +150,16 @@ onMounted(() => {
   draftChatMarkMine.value = prefsStore.prefs.chatMarkMine !== false;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
-  draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
+  savedCellMessage = prefsStore.prefs.cellCompleteMessage || 'full';
+  draftCellCelebration.value = savedCellMessage !== 'off';
+  draftAchievementCelebration.value = prefsStore.prefs.achievementCelebration !== false;
   draftHoverStyle.value = ngeHoverStyle.value;
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
   draftImageSource.value = prefsStore.prefs.imageSource === 'americas' || prefsStore.prefs.imageSource === 'asia' ? prefsStore.prefs.imageSource : 'auto';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
+  draftShowRadio.value = prefsStore.prefs.hideRadio !== true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
@@ -228,7 +237,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -498,9 +507,13 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftKeepDisplay" />
               <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: left click selects a layer, right click hides or shows it. On: the other way round, as in neuroglancer.">
+            <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
-              <span class="nge-settings-toggle-label">Classic layer tabs: left click hides a layer, right click selects it</span>
+              <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
+            </label>
+            <label class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
+              <input type="checkbox" v-model="draftShowRadio" />
+              <span class="nge-settings-toggle-label">Show the EyeWire Radio speaker</span>
             </label>
             <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
               <input type="checkbox" v-model="draftUndeleteCounter" />
@@ -549,13 +562,13 @@ const props = defineProps<{ embedded?: boolean }>();
               </div>
             </div>
             <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
-            <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">
-              <span class="nge-settings-toggle-label">When I complete a cell, show</span>
-              <select v-model="draftCellMessage" class="nge-sv-select">
-                <option value="full">Full congratulations</option>
-                <option value="small">A small note at the top</option>
-                <option value="off">Nothing</option>
-              </select>
+            <label class="nge-settings-toggle" title="On: completing a cell or submitting a Quest brings up the congratulations, with confetti. Off: nothing comes up; the cell still shows as Proofread in its menu and in the segment list, and a Quest still counts.">
+              <input type="checkbox" v-model="draftCellCelebration" />
+              <span class="nge-settings-toggle-label">Cell &amp; Quest celebration</span>
+            </label>
+            <label class="nge-settings-toggle" title="On: an achievement you earn comes up as a card in the middle of the screen, with confetti. Off: nothing comes up; it is still in your Trophy Case and in the bell.">
+              <input type="checkbox" v-model="draftAchievementCelebration" />
+              <span class="nge-settings-toggle-label">Achievement celebration</span>
             </label>
             <label class="nge-settings-toggle nge-settings-pick" title="How sharp the 2D images are drawn. Half loads about a quarter of the data and Quarter about a sixteenth, so they load much faster on a slow connection, but the images stay that blurry until you set Full again.">
               <span class="nge-settings-toggle-label">2D image detail</span>

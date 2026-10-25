@@ -9,7 +9,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, groupProgress, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
@@ -64,6 +64,10 @@ async function pointsInState(stateUrl: string): Promise<number[][]> {
 const MERGE_HINT_STATES: Record<string, string> = {
   // First merge (dendrite): one point on the yellow piece, one on the purple.
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5193945751486464',
+  // Extension Sandbox cells (Ames, 2026-10-24).
+  '141062c3-e988-452f-84ed-fecc92652b87': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4744042558521344',
+  'f3dfed18-9592-46ed-8ca7-90310aea0d60': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600',
+  '63a057ed-ce08-4a6f-915d-eca29214e48c': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960',
 };
 
 /** Or the two spots themselves, in viewer voxels, where Ames gave them
@@ -624,10 +628,13 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string, need = 1) {
   waitingFor = null;
   helpWanted = true;
   const bar = useSplitMergeOverlayStore();
+  // The cut bar holds back "Now press G" until this many red points are in
+  // (SplitMergeOverlay.vue, moreRedWanted).
+  (window as any).__ngeCutRedNeed = want === 'red' ? need : 0;
   const tick = () => {
-    if (token !== practiceWatch) return;
+    if (token !== practiceWatch) { if (want === 'red') (window as any).__ngeCutRedNeed = 0; return; }
     const done = want === 'red' ? bar.redPointCount >= need : bar.activeGroup === 'blue';
-    if (done) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
+    if (done) { (window as any).__ngeCutRedNeed = 0; practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
     practiceStatus(waiting);
     setTimeout(tick, 300);
   };
@@ -724,6 +731,16 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       }
     }
     if (cutStage) { practiceStatus(cutStage, false, true); setTimeout(tick, 700); return; }
+    // A cell missing several pieces: say how many are back on.
+    if (wantMerged && !failed) {
+      const pr = await groupProgress();
+      if (token !== practiceWatch) return;
+      if (pr && pr.joined > 0 && pr.joined < pr.total) {
+        practiceStatus(`Good merge! ${pr.joined} of the ${pr.total} missing pieces ${pr.joined === 1 ? 'is' : 'are'} back on. Find the ${pr.total - pr.joined === 1 ? 'last one' : 'rest'}.`);
+        setTimeout(tick, 3000);
+        return;
+      }
+    }
     practiceStatus(failed
       ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
         + (wantMerged
@@ -932,7 +949,7 @@ const FRIENDLY_TIPS: Record<string, string> = {
   '3D neurons': 'The 3D reconstruction of every cell in the images',
 };
 function friendlyLayerNames() {
-  const inTutorial = [3, 5, 9].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  const inTutorial = [3, 5, 9, 13].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
   // Which dataset is on screen decides the shown names. The Sandbox and the
   // tutorials say "2D EM" and "3D segmentation", the Retina "2D EM" and
   // "3D Retina Cells" (Ames 2026-10-06). Every other dataset says
@@ -988,6 +1005,22 @@ function friendlyLayerNames() {
   }
 }
 setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
+
+// Opening split screen redraws the layer tabs, and until the next tick they
+// showed the raw names ("img") for up to a second (Ames 2026-10-23). A
+// redrawn tab is renamed as it appears: mutation callbacks run before the
+// next paint, so the raw name is never seen.
+let renaming = false;
+new MutationObserver(records => {
+  if (renaming) return;
+  const tab = (n: Node) => n instanceof HTMLElement && (n.matches('.neuroglancer-layer-item, .neuroglancer-layer-item-label') || !!n.querySelector('.neuroglancer-layer-item'));
+  const touched = records.some(r => r.type === 'characterData'
+    ? !!r.target.parentElement?.closest('.neuroglancer-layer-item-label')
+    : Array.from(r.addedNodes).some(tab) || (r.target instanceof HTMLElement && r.target.matches('.neuroglancer-layer-item-label')));
+  if (!touched) return;
+  renaming = true;
+  try { friendlyLayerNames(); } catch { /* store not ready yet */ } finally { renaming = false; }
+}).observe(document.body, { childList: true, subtree: true, characterData: true });
 
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   const chip = segLayerChip();

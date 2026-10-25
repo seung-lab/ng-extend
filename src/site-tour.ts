@@ -401,7 +401,7 @@ Click a segment to select it. A **Delta menu** next to the segment ID has comple
     Every edit you make brings us closer to mapping the brain.
   </p>
   <p class="nge-tour-finale-contact">
-    Questions? <a href="mailto:support@eyewire.org">support@eyewire.org</a>
+    Questions? <a href="mailto:support@eyewire.ai">support@eyewire.ai</a>
   </p>
   <p class="nge-tour-finale-tag">
     For Science!

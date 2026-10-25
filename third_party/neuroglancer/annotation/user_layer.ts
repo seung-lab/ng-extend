@@ -375,6 +375,8 @@ export class AnnotationUserLayer extends Base {
     this.linkedSegmentationLayers.restoreState(specification);
     this.localAnnotationsJson = specification[ANNOTATIONS_JSON_KEY];
     this.ngeAnnFolders.restoreState(specification[ANN_FOLDERS_JSON_KEY]);
+    const active = specification['ngeAnnActiveFolder'];
+    this.ngeAnnFolders.setActive(typeof active === 'string' ? active : undefined);
     this.localAnnotationProperties = verifyOptionalObjectProperty(
         specification, ANNOTATION_PROPERTIES_JSON_KEY, parseAnnotationPropertySpecs);
     this.localAnnotationRelationships = verifyOptionalObjectProperty(
@@ -580,6 +582,7 @@ export class AnnotationUserLayer extends Base {
       // only the annotations still in the layer
       const local = this.localAnnotations;
       x[ANN_FOLDERS_JSON_KEY] = this.ngeAnnFolders.toJSON(id => local.get(id) !== undefined);
+      x['ngeAnnActiveFolder'] = this.ngeAnnFolders.activeFolder;
     } else if (this.localAnnotationsJson !== undefined) {
       x[ANNOTATIONS_JSON_KEY] = this.localAnnotationsJson;
       x[ANN_FOLDERS_JSON_KEY] = this.ngeAnnFolders.toJSON();

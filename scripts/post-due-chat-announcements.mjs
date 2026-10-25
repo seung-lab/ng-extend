@@ -68,7 +68,8 @@ async function postToChat(title) {
   const row = {
     name: 'EyeWire II',
     rank: 'admin',
-    text: `📢 ${title} — check your notifications for details!`,
+    // No megaphone and no dash (Ames 2026-10-24): the title, then where to look.
+    text: `${title}. Check your notifications for details!`,
   };
   const res = await fetch(`${SUPABASE_URL}/rest/v1/chat_messages`, {
     method: 'POST',

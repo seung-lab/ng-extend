@@ -38,6 +38,7 @@ import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
+import BetaGate from "components/BetaGate.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
 import { undelete, undeleteCount } from "../util/undelete";
@@ -53,6 +54,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
 import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon, findDatasetBySegName, findDatasetByCanonical, canonicalDataset} from '../datasets';
+import { transitionDone } from '../util/dataset_transition';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -116,14 +118,18 @@ document.addEventListener('animationend', (e) => {
 }, true);
 
 // Merger Sandbox examples (src/merger-sandbox.ts).
-import { SANDBOX_CELLS } from '../practice_pools';
+import { SANDBOX_CELLS, EXTENSION_CELLS } from '../practice_pools';
 import { sandboxDone } from '../merger-sandbox';
+import { extensionDone } from '../extension-sandbox';
 // The Proofreading Test (src/proofreading-test.ts): listed once the server
 // says a test is open; its line says passed or in use.
 import { testStatus } from '../proofreading-test';
 function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
+// Extension Sandbox (extension-sandbox.ts), the same way.
+const extensionFinished = computed(() => EXTENSION_CELLS.filter(c => extensionDone.value.includes(c.id)).length);
+function startNextExtension() { document.dispatchEvent(new CustomEvent('nge:extsandbox-next')); }
 import { myAccess, loadMyAccess, accessStatusLabel, resumeReview } from '../access_request';
 import { datasetAccess } from '../util/dataset_access';
 const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
@@ -225,6 +231,12 @@ onMounted(() => {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    // ?: the dock opens on the list of every key (util/key_list.ts).
+    if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openKeyList();
+    }
     if (!typing && e.shiftKey && (e.key === 'T' || e.key === 't')) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -572,6 +584,14 @@ function searchCommands(q: string, limit = 6) {
 function runCommandById(id: string): boolean {
   return (cmdPalette.value as any)?.runCommandById?.(id) ?? false;
 }
+function listKeys() {
+  return (cmdPalette.value as any)?.listKeys?.() ?? [];
+}
+/** The Ask dock, open on the list of every key (the ? key and the menu). */
+function openKeyList() {
+  showAssistant.value = true;
+  document.dispatchEvent(new CustomEvent('nge:show-keys'));
+}
 
 /**
  * Ctrl+K / Cmd+K opens the Ask dock (previously the command palette).
@@ -704,12 +724,39 @@ watch(() => backendStore.userId, id => {
   if (!id || reopenedAfterSwitch) return;
   try {
     const want = JSON.parse(sessionStorage.getItem('nge_cl_after_switch') || 'null');
-    if (!want || Date.now() - (want.at || 0) > 120_000) return;
+    if (want && Date.now() - (want.at || 0) <= 120_000) {
+      reopenedAfterSwitch = true;
+      void reopenWhenReady(want.tab || 'help');
+      return;
+    }
+    // Open when the page was refreshed (Nseraf, report 232): back on the same
+    // tab. CellLibraryPanel left the note and puts the slim view back itself.
+    const was = JSON.parse(sessionStorage.getItem('nge_cl_on_refresh') || 'null');
+    if (!was || Date.now() - (was.at || 0) > 30 * 60_000) return;
     reopenedAfterSwitch = true;
-    cellLibraryInitialTab.value = want.tab || 'help';
-    showCellLibrary.value = true;
+    void reopenWhenReady(was.tab || 'mine');
   } catch { /* nothing to reopen */ }
 }, { immediate: true });
+/** Wait until the new dataset is on screen and no sign in screen is up
+ *  (Ames 2026-10-23: the library opened over Identity Verification, saying
+ *  "you are on another dataset"). Both have to hold for a moment, since the
+ *  data server's sign in comes a beat after its layer. Gives up after
+ *  10 minutes, leaving the library closed. */
+async function reopenWhenReady(tab: string) {
+  let steady = 0;
+  for (let i = 0; i < 1200 && steady < 3; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    const signIn = document.querySelector('.nge-login-blocker');
+    const ready = !!currentSegLayerName() && !(signIn && signIn.getClientRects().length);
+    steady = ready ? steady + 1 : 0;
+  }
+  if (steady < 3) return;
+  // After "Now entering" has played, never on top of it (Ames 2026-10-23).
+  await transitionDone();
+  if (showCellLibrary.value) return;
+  cellLibraryInitialTab.value = tab;
+  showCellLibrary.value = true;
+}
 const { tutorialStep } = storeToRefs(useTutorialStore());
 
 function logout(session: loginSession) {
@@ -952,6 +999,8 @@ function onIconDrop(e: DragEvent, id: string) {
   <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
+  <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
+  <beta-gate />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
@@ -973,6 +1022,7 @@ function onIconDrop(e: DragEvent, id: string) {
     :ui-state="assistantUiState"
     :search-commands="searchCommands"
     :run-command-by-id="runCommandById"
+    :list-keys="listKeys"
     @hide="showAssistant = false"
   />
   <div id="extensionBar">
@@ -1095,7 +1145,7 @@ function onIconDrop(e: DragEvent, id: string) {
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <!-- 🔥 streak: its fire, its click and its card live in StreakChip.vue -->
     <!-- EyeWire Radio: bottom right, teleported to the body -->
-    <RadioPlayer v-if="login.sessions.length > 0" />
+    <RadioPlayer v-if="login.sessions.length > 0 && !useUserPreferencesStore().prefs.hideRadio" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
@@ -1190,12 +1240,20 @@ function onIconDrop(e: DragEvent, id: string) {
             <span class="nge-menu-num">4</span><span>Advanced Interface</span>
           </div>
         </li>
+        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
+             game. Number 5, straight after Advanced Interface (Ames
+             2026-10-23), the next step once the tutorials are done. -->
+        <li>
+          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
+            <span class="nge-menu-num">5</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+          </div>
+        </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
              mistakes, scored by the server; a pass opens production. Shown
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
             <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
@@ -1208,6 +1266,14 @@ function onIconDrop(e: DragEvent, id: string) {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
             <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
+          </div>
+        </li>
+        <!-- Cells that stop too soon: merge the missing pieces back on
+             (Ames, 2026-10-24). -->
+        <li class="nge-menu-heading" @click.stop>Extension Sandbox</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startNextExtension(); closeHamburger()">
+            <span class="nge-menu-num">{{ extensionFinished >= EXTENSION_CELLS.length ? '✓' : extensionFinished }}</span><span>Find the missing pieces ({{ extensionFinished }} of {{ EXTENSION_CELLS.length }})</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
@@ -1224,17 +1290,16 @@ function onIconDrop(e: DragEvent, id: string) {
         <li class="nge-menu-heading" @click.stop>Learn more</li>
         <!-- The Proofreading Guide link was taken out (Ames 2026-10-16): the old
              guide no longer matches Pyr. -->
+        <!-- Laid out like the other rows, so it lines up on the left (Ames 2026-10-24). -->
         <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
-          </div>
+          <a class="logoutButton button nge-menu-item" target="_blank" rel="noopener" href="https://forum.eyewire.org" @click="closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">💬</span><span>Forum ↗</span>
+          </a>
         </li>
-        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
-             game. Last in the menu, where a player looks for what comes next. -->
-        <li class="nge-menu-heading" @click.stop>Edit access</li>
+        <!-- The same list of every key that ? opens (util/key_list.ts). -->
         <li>
-          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">✦</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+          <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
           </div>
         </li>
       </template>
@@ -2301,6 +2366,12 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 /* Numbered rows start at the left edge, so the numbers form one column
    (Ames, 2026-10-13). */
 #hamburger li:has(> .nge-menu-item) { justify-content: start; }
+/* Tighter rows (Ames 2026-10-24: "too spaced out"): the row and the button
+   inside it both had padding, 57px a row. And the menu scrolls when it is
+   taller than the window: a player could not reach the bottom items. */
+#hamburger li:has(> .logoutButton) { padding-top: 1px; padding-bottom: 1px; }
+#hamburger li .logoutButton { padding-top: 6px; padding-bottom: 6px; }
+#hamburger .dropdownMenu { max-height: calc(100vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
 .nge-menu-num {
   display: inline-flex;
   align-items: center;

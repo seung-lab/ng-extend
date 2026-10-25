@@ -58,7 +58,7 @@ import {parseArray, parseFixedLengthArray, verify3dVec, verifyBoolean, verifyEnu
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {NullarySignal} from 'neuroglancer/util/signal';
 import {cancellableFetchSpecialOk, parseSpecialUrl, SpecialProtocolCredentials, SpecialProtocolCredentialsProvider} from 'neuroglancer/util/special_protocol_request';
-import {CancellationToken, CancellationTokenSource} from 'neuroglancer/util/cancellation';
+import {CancellationToken, CancellationTokenSource, uncancelableToken} from 'neuroglancer/util/cancellation';
 import {Trackable} from 'neuroglancer/util/trackable';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {makeDeleteButton} from 'neuroglancer/widget/delete_button';
@@ -1089,10 +1089,10 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       const {path, source, target} = findPathState;
       const annotationSource = findPathGroup.source;
       if (source.value && !source.value.annotationReference) {
-        addSelection(annotationSource, source.value, "find path source");
+        addSelection(annotationSource, source.value, "source");
       }
       if (target.value && !target.value.annotationReference) {
-        addSelection(annotationSource, target.value, "find path target");
+        addSelection(annotationSource, target.value, "target");
       }
       for (const annotation of annotationSource) {
         if (annotation.id !== source.value?.annotationReference?.id &&
@@ -1219,10 +1219,33 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     const {state: {findPathState}} = this;
     const {source, target} = findPathState;
     if (!source.value || !target.value) return false;
-    const centroids = await this.graph.graphServer.findPath(source.value, target.value, precisionMode, annotationToNanometers);
-    StatusMessage.showTemporaryMessage('Path found!', 5000);    
-    findPathState.centroids.value = centroids;
-    return true;
+    // nge: one search at a time; closing Find Path stops it (ngeStopFindPath),
+    // and a search that runs too long gives up and says why (Ames
+    // 2026-10-24: stuck at 3 minutes on MEC with Precision mode, still going
+    // after the tool was closed).
+    ngeFindPathRun?.cancel();
+    const run = ngeFindPathRun = new CancellationTokenSource();
+    let tooSlow = false;
+    const timer = setTimeout(() => { tooSlow = true; run.cancel(); }, (precisionMode ? 90 : 60) * 1000);
+    try {
+      const centroids = await this.graph.graphServer.findPath(source.value, target.value, precisionMode, annotationToNanometers, run);
+      StatusMessage.showTemporaryMessage('Path found!', 5000);
+      findPathState.centroids.value = centroids;
+      return true;
+    } catch (e) {
+      if (run.isCanceled) {
+        if (tooSlow) {
+          StatusMessage.showTemporaryMessage(precisionMode
+              ? 'Path finding failed: the server took too long. Turn Precision mode off and try again, or pick two closer points.'
+              : 'Path finding failed: the server took too long. Try two closer points.', 10000);
+        }
+        return false;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+      if (ngeFindPathRun === run) ngeFindPathRun = undefined;
+    }
   }
 
   async submitMulticut(annotationToNanometers: Float64Array): Promise<boolean> {
@@ -1428,11 +1451,22 @@ async function withErrorMessageHTTP(promise: Promise<Response>, options: {
         status.setVisible(true);
         throw new Error(`[${e.response.status}] ${errorPrefix}${msg}`);
       }
+      // nge: a request that was stopped (Find Path closed, or too slow) or
+      // never reached the server took its "Finding path" line with it; it
+      // stayed and kept counting (Ames 2026-10-24).
+      dispose();
       throw e;
     }
 }
 
 export const GRAPH_SERVER_NOT_SPECIFIED = Symbol('Graph Server Not Specified.');
+
+/** nge: the Find Path tool's search under way, if any. */
+let ngeFindPathRun: CancellationTokenSource|undefined;
+export function ngeStopFindPath() {
+  ngeFindPathRun?.cancel();
+  ngeFindPathRun = undefined;
+}
 
 
 /**
@@ -1574,7 +1608,8 @@ class GrapheneGraphServerInterface {
     return res;
   }
 
-  async findPath(first: SegmentSelection, second: SegmentSelection, precisionMode: boolean, annotationToNanometers: Float64Array):
+  async findPath(first: SegmentSelection, second: SegmentSelection, precisionMode: boolean, annotationToNanometers: Float64Array,
+      cancellationToken: CancellationToken = uncancelableToken):
       Promise<number[][]> {
     const {url} = this;
     if (url === '') {
@@ -1588,7 +1623,7 @@ class GrapheneGraphServerInterface {
             [String(first.rootId), ...first.position.map((val, i) => val * annotationToNanometers[i])],
             [String(second.rootId), ...second.position.map((val, i) => val * annotationToNanometers[i])],
           ]),
-        }, responseIdentity);
+        }, responseIdentity, cancellationToken);
 
     const response = await withErrorMessageHTTP(promise, {
       initialMessage: `Finding path between ${first.segmentId} and ${second.segmentId}`,
@@ -2610,6 +2645,8 @@ class FindPathTool extends LayerTool<SegmentationUserLayer> {
 
     const {body, header} = makeToolActivationStatusMessageWithHeader(activation);
     header.textContent = 'Find Path';
+    // nge: closing the tool stops a search still running.
+    activation.registerDisposer(ngeStopFindPath);
     body.classList.add('graphene-tool-status', 'graphene-find-path');
 
     const submitAction = () => {
