@@ -4,7 +4,7 @@
  * were all down, and there was no way to tell players). It is built into the
  * game: set the text and deploy; clear it and deploy again when it is over.
  */
-const OUTAGE_MESSAGE = "We're having server trouble: chat, profiles and notifications are down for now. Merging and cutting still work, and your edits will be counted once it is back. We're on it!";
+const OUTAGE_MESSAGE = '';
 
 export function showOutageBanner(): void {
   if (!OUTAGE_MESSAGE) return;
