@@ -718,7 +718,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftSegSetupTabs" />
               <span class="nge-settings-toggle-label">Show Source and Graph tabs on segmentation layers</span>
             </label>
-            <label class="nge-settings-toggle" title="The round (?) button at the top right of the viewer, with neuroglancer's own list of keyboard and mouse controls.">
+            <label class="nge-settings-toggle" title="The round (?) button at the top right of the viewer opens neuroglancer's own list of keyboard and mouse controls. Many of them are out of date and do not match Pyr. For Pyr's own keys, press Ctrl+K and type keys.">
               <input type="checkbox" v-model="draftShowNgControls" />
               <span class="nge-settings-toggle-label">Show the neuroglancer controls button (?)</span>
             </label>
