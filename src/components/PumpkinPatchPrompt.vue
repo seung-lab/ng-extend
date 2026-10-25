@@ -12,11 +12,9 @@
  * streak's amber. Escape or a click outside says no.
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { patchSize, pumpkinHidden } from '../util/pumpkin';
+import { patchSize } from '../util/pumpkin';
 
-const emit = defineEmits({ yes: null, no: null, hide: null });
-/** Already hidden: nothing to hide, so the button is left out. */
-const hidden = pumpkinHidden();
+const emit = defineEmits({ yes: null, no: null, smash: null });
 const yesEl = ref<HTMLButtonElement | null>(null);
 const sightings = patchSize();
 const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); emit('no'); } };
@@ -48,9 +46,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
           Proofreaders in the Sandbox report a <b>jack o' lantern neuron</b>. Only ever seen in October.
         </p>
         <div class="nge-patch-row nge-patch-btns" style="--i: 3">
-          <!-- Hide the pumpkin (Ames 2026-10-25): the pumpkins off, the same
-               as the Settings switch, for a player who would rather not. -->
-          <button v-if="!hidden" class="nge-patch-hide" @click="emit('hide')">Hide the pumpkin</button>
+          <!-- Smash the pumpkins (Ames 2026-10-25): off to the patch with a
+               hammer; smashed pumpkins stay off until the chat bar's pumpkin
+               button brings them back (util/pumpkin.ts). -->
+          <button class="nge-patch-hide" @click="emit('smash')">🔨 Smash the pumpkins</button>
           <button class="nge-patch-no" @click="emit('no')">Not now</button>
           <button ref="yesEl" class="nge-patch-yes" @click="emit('yes')">Go see it</button>
         </div>

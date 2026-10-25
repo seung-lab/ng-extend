@@ -28,7 +28,7 @@ import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
-import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, setPumpkinHidden } from '../util/pumpkin';
+import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
 // The pumpkin button (Ames 2026-10-20): on a patch cell it turns the
 // pumpkin off and on; anywhere else it offers a trip to the pumpkin patch.
@@ -41,7 +41,7 @@ function pumpkinTitle(): string {
 }
 function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
 function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
-function hidePatch() { askPatch.value = false; setPumpkinHidden(true); }
+function smashPatch() { askPatch.value = false; smashPumpkins(); }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -1666,7 +1666,7 @@ function toggleCollapse() {
                  on a patch cell, a trip to the patch anywhere else. -->
             <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
                     @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
-            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @hide="hidePatch()" />
+            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" />
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
