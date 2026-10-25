@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T21:53:00Z",
+      "title": "A tidier pumpkin card, and a wink",
+      "digest": "minor",
+      "items": [
+        "The pumpkin button in chat now always opens the pumpkin card, with Hide the pumpkin, Go to the patch, and Smash the pumpkins.",
+        "The chat emoji list has a wink."
+      ]
+    },
+    {
       "at": "2026-10-25T21:44:00Z",
       "title": "Smash the pumpkins",
       "items": [
