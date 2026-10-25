@@ -349,6 +349,10 @@ onMounted(() => {
     // Back from reviewing an access request in the view (AccessReviewBar).
     activeTab.value = 'adminHub';
     adminInitialSubTab.value = 'access';
+  } else if (props.initialTab === 'tutorialEdits' && !viewingOtherUser.value) {
+    // From a "Tutorial edit to approve" notification.
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'tutorialEdits';
   }
 });
 

@@ -7,6 +7,7 @@ import { storeToRefs } from "pinia";
 import { useTutorialStore } from '../store-pyr';
 import { useProofreadingBackendStore } from '../store';
 import { supabase } from '../supabase';
+import { TUTORIAL_NAMES } from '../tutorial_edits';
 import { steps as steps1 } from '../tutorial-1';
 import { steps as steps2 } from '../tutorial-2';
 import { steps as steps3 } from '../tutorial-3';
@@ -273,7 +274,6 @@ const back = () => { (window as any).__ngeStepPending = false; store.setTutorial
 // opened Retina. A tutorial found partway at load now waits behind a small
 // Continue / Exit card and loads nothing until you choose. Starting a
 // tutorial from the menu (step 0) needs no prompt.
-const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox', 11: 'Proofreading Test' };
 // Top bar staging: a step that points at an icon (or names it in `reveals`)
 // brings it in, whichever tutorial gets there first. The Site Tour points at
 // every icon, so it skips the ones not yet received instead (site-tour.ts).
@@ -359,7 +359,7 @@ const exitIntro = () => {
         </div>
     </div>
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
-        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel"
+        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
         v-on:next="next"
         v-on:back="back" v-on:exitIntro="exitIntro" />
     </template>

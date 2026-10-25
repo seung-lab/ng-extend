@@ -329,6 +329,11 @@ function openDetail(notif: any) {
   }
   // The Proofreading Test (Ames 2026-10-21): an admin's note of a result
   // opens Admin Hub > Test tries; "Your turn" opens the test itself.
+  if (accessTitle.startsWith('📋 Tutorial edit to approve') && backend.isAdmin) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
+    emit('hide');
+    return;
+  }
   if (accessTitle.startsWith('Proofreading Test: ') && backend.isAdmin) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tests' } }));
     emit('hide');

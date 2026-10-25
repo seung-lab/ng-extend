@@ -32,6 +32,7 @@ import nurroSuccess from '../../static/nurro/nurro-success.png';
 import {loadRepoStats, type RepoStats} from '../util/repo_stats';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
+import TutorialEditsTab from 'components/TutorialEditsTab.vue';
 import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
@@ -41,8 +42,8 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'tutorialEdits'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits'
     ? props.initialSubTab
     : 'notifications');
 
@@ -2258,7 +2259,11 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'access' }" @click="adminSubTab = 'access'" title="Players' ten examples for retina access">Access requests</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tests' }" @click="adminSubTab = 'tests'" title="Every Proofreading Test try: the score, what was missed, and the player's cell">Test tries</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tutorialEdits' }" @click="adminSubTab = 'tutorialEdits'" title="Tutorial boxes admins reworded, and suggestions waiting for approval">Tutorial edits</button>
     </div>
+
+    <!-- ── Tutorial edits (Ames 2026-10-25): the pencil on a tutorial box ── -->
+    <TutorialEditsTab v-if="adminSubTab === 'tutorialEdits'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
