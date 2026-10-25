@@ -6,6 +6,7 @@ import { notifKind, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
+import { openStartLink } from '../util/start_link';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
@@ -312,14 +313,45 @@ async function onDetailBodyClick(e: MouseEvent) {
   const m = a?.getAttribute('href')?.match(/^#nge-help-solved=([0-9a-f-]{1,40})$/i);
   if (!m) return;
   e.preventDefault();
+  await markReminderSolved(m[1]);
+}
+async function markReminderSolved(id: string) {
   const help = useHelpRequestStore();
   if (!help.requests.length) { try { await help.load(); } catch { /* said below */ } }
-  const req = help.requests.find(r => r.id === m[1]);
+  const req = help.requests.find(r => r.id === id);
   if (!req) { helpSolvedNote.value = 'That help request is no longer there.'; return; }
   if (req.resolved) { helpSolvedNote.value = 'This request is already marked solved.'; return; }
   if (req.userId && req.userId !== backend.userId && !backend.isAdmin) { helpSolvedNote.value = 'Only the player who asked can mark this solved.'; return; }
   const ok = await help.resolve(req.id);
   helpSolvedNote.value = ok ? 'Marked solved. Thanks for letting the helpers know!' : 'That did not work. Try Mark solved in the Help tab.';
+}
+
+/** The reminder's own buttons (Ames 2026-10-25): mark it solved, and open the
+ *  view, the helper's from their latest reply or else the one the request
+ *  was asked from. */
+const reminderId = computed(() => String(openNotif.value?.body ?? '').match(/#nge-help-solved=([0-9a-f-]{1,40})/i)?.[1] ?? '');
+const reminderReq = ref<any>(null);
+watch(reminderId, async id => {
+  reminderReq.value = null;
+  if (!id) return;
+  const help = useHelpRequestStore();
+  if (!help.requests.length) { try { await help.load(); } catch { return; } }
+  if (reminderId.value === id) reminderReq.value = help.requests.find(r => r.id === id) ?? null;
+}, { immediate: true });
+const reminderView = computed(() => {
+  const r = reminderReq.value;
+  if (!r) return { url: '', label: '' };
+  const replies = [...(r.responses || [])].reverse();
+  const fromHelper = replies.find((x: any) => x.url)?.url;
+  if (fromHelper) return { url: fromHelper, label: "Open the helper's view" };
+  return r.viewUrl ? { url: r.viewUrl, label: 'Open your view' } : { url: '', label: '' };
+});
+function openReminderView() {
+  const url = reminderView.value.url;
+  if (!url) return;
+  closeDetail();
+  emit('hide');
+  if (!openStartLink(url)) window.open(url, '_blank', 'noopener');
 }
 
 // ── A reply the team asked for (Ames 2026-10-13) ─────────────────────────
@@ -986,8 +1018,14 @@ function padRank(rank: number): string {
                     <div v-if="replyError" class="nge-notif-reply-error" role="alert">{{ replyError }}</div>
                   </template>
                 </div>
+                <div v-if="reminderId" class="nge-notif-reminder-actions">
+                  <button class="nge-notif-open-help nge-notif-solve" :disabled="!!reminderReq?.resolved || helpSolvedNote.startsWith('Marked solved')"
+                          @click="markReminderSolved(reminderId)">{{ reminderReq?.resolved || helpSolvedNote.startsWith('Marked solved') ? 'Solved ✓' : '✓ Mark solved' }}</button>
+                  <button v-if="reminderView.url" class="nge-notif-open-help" @click="openReminderView">↗ {{ reminderView.label }}</button>
+                  <button class="nge-notif-open-help" @click="openHelpTab">Open in Help tab →</button>
+                </div>
                 <button
-                  v-if="isHelpNotification(openNotif)"
+                  v-if="isHelpNotification(openNotif) && !reminderId"
                   class="nge-notif-open-help"
                   @click="openHelpTab"
                 >Open in Help tab →</button>
@@ -1831,6 +1869,8 @@ span.nge-notif-reply-part { cursor: default; }
   color: rgb(var(--nd-cyan));
   font-size: 14px;
 }
+.nge-notif-reminder-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.nge-notif-solve:disabled { opacity: 0.6; cursor: default; }
 .nge-notif-open-help {
   margin-top: 16px;
   padding: 8px 16px;
