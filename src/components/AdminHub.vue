@@ -960,29 +960,12 @@ function reporterComposer(row: TriageRow): Composer {
  *  The quote is the whole submission, as the card shows it (the report's full
  *  message once loaded, else the stored excerpt), never cut short: Ames was
  *  pasting the rest in by hand every time (2026-10-12). */
+// Just the report's title (Ames 2026-10-25: "make the default text ...
+// 'you reported: <TITLE>' and that is all"); the rest is hers to write.
 function draftReporterUpdate(row: TriageRow): string {
-  const t = fullTextOf(row).trim();
-  const q = t ? `You reported: "${t}".` : 'Thanks for your report.';
-  if (row.status === 'done' || row.impl_state === 'deployed') {
-    // Same wording as the bridge's fixedNote: thanks, their words, what was built.
-    const fix = String(row.result_note || row.impl_summary || '')
-      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
-      .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
-      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '')
-      // "QUESTION: ..." is Claude asking the approver, not a fix: never sent on.
-      .replace(/^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:[\s\S]*$/i, '');
-    const thanks = t ? `Thank you for submitting: "${t}".` : 'Thank you for your report.';
-    return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
-  }
-  if (row.status === 'dismissed') {
-    return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
-  }
-  if (row.status === 'approved') {
-    return isBuildable(row)
-      ? `${q} Thanks! The team accepted it and a fix is in the works. We'll let you know when it's live.`
-      : `${q} Thanks! The team reviewed it and is following up.`;
-  }
-  return `${q} Thanks! The team has it and is looking into it now.`;
+  const title = String(reporterOf(row)?.title || '').replace(/\*\*/g, '').trim()
+    || fullTextOf(row).split('\n')[0].replace(/\*\*/g, '').trim().slice(0, 140);
+  return title ? `You reported: "${title}"\n\n` : '';
 }
 
 function closeReporterDraft(row: TriageRow) {
