@@ -28,6 +28,8 @@ const SPEEDS = [
 ] as const;
 /** One full turn of the recording takes this long. */
 const RECORD_SECONDS = 6;
+/** Recordings keep the view's own pixels up to this width. */
+const MAX_RECORD_WIDTH = 1920;
 const IDLE_MS = 2500;
 
 const spinning = ref(true);
@@ -283,15 +285,21 @@ function recordSpin() {
   const mime = pickMime();
   if (!mime) { say('This browser cannot record video. Pyr needs Chrome.'); return; }
   const rect = viewRect(gl);
-  // Keep files a sensible size: at most 1280 pixels wide, even sizes for the encoder.
-  const scale = Math.min(1, 1280 / rect.w);
+  // Thin branches are one pixel wide on screen. Shrinking the frame (it was
+  // capped at 1280 wide) or starving the encoder broke them into dots or lost
+  // them (Ames 2026-10-24, a whole class in Meet the cells). So: the view's own
+  // size up to 1920 wide, smooth shrinking past that, and bits to match.
+  const scale = Math.min(1, MAX_RECORD_WIDTH / rect.w);
   const out = document.createElement('canvas');
   out.width = Math.max(2, Math.round(rect.w * scale / 2) * 2);
   out.height = Math.max(2, Math.round(rect.h * scale / 2) * 2);
   const ctx = out.getContext('2d')!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   drawInto(ctx, rect);
   const stream = out.captureStream(30);
-  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+  const bits = Math.max(8_000_000, Math.min(24_000_000, out.width * out.height * 10));
+  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bits });
   const chunks: Blob[] = [];
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => {
