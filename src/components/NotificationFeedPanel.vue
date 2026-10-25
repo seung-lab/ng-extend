@@ -198,6 +198,26 @@ const oneList = computed(() => useUserPreferencesStore().prefs.notifOneList === 
 const showFeedTabs = computed(() => !oneList.value);
 const showAdminTab = computed(() => backend.isAdmin && adminNotes.value.length > 0);
 const showTriageTab = computed(() => backend.isAdmin && triageNotes.value.length > 0);
+// Admin and Triage share one tab, so four tabs fit (Ames 2026-10-25: "admins
+// will need a wider notifications tab"). It holds both, with a switch inside
+// it when both have notes; underneath they stay the two lists they were, so
+// Mark read, Delete all and loading more still work on the side you are on.
+const showAdminGroup = computed(() => showAdminTab.value || showTriageTab.value);
+const onAdminGroup = computed(() => feedTab.value === 'admin' || feedTab.value === 'triage');
+const showAdminSwitch = computed(() => onAdminGroup.value && showAdminTab.value && showTriageTab.value);
+const adminGroupUnread = computed(() => unreadIn(adminNotes.value) + unreadIn(triageNotes.value));
+let lastAdminSide: 'admin' | 'triage' = feedTab.value === 'triage' ? 'triage' : 'admin';
+watch(feedTab, t => { if (t === 'admin' || t === 'triage') lastAdminSide = t; });
+/** The Admin tab opens on the side with the newest unread note, else the side
+ *  used last, else whichever side has notes. */
+function openAdminGroup() {
+  const newest = (list: any[]) => { const n = list.find(x => !isRead(x.id)); return n ? String(n.send_at || n.created_at || '') : ''; };
+  const a = showAdminTab.value ? newest(adminNotes.value) : '', t = showTriageTab.value ? newest(triageNotes.value) : '';
+  let side: 'admin' | 'triage' = a || t ? (t > a ? 'triage' : 'admin') : lastAdminSide;
+  if (side === 'admin' && !showAdminTab.value) side = 'triage';
+  if (side === 'triage' && !showTriageTab.value) side = 'admin';
+  feedTab.value = side;
+}
 const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications
   : feedTab.value === 'triage' ? triageNotes.value : feedTab.value === 'admin' ? adminNotes.value
   : feedTab.value === 'updates' ? updateNotes.value : mineNotes.value);
@@ -244,7 +264,9 @@ function markAllRead() {
 // "Show Today in Pyr" switched in Settings: read the feed again with it.
 watch(() => useUserPreferencesStore().prefs.showDailyDigest, () => { void backend.loadNotifications(); });
 watch([showAdminTab, showTriageTab], () => {
-  if ((feedTab.value === 'admin' && !showAdminTab.value) || (feedTab.value === 'triage' && !showTriageTab.value)) feedTab.value = 'mine';
+  // One side of the Admin tab emptied: the other side, if it has notes.
+  if (feedTab.value === 'admin' && !showAdminTab.value) feedTab.value = showTriageTab.value ? 'triage' : 'mine';
+  else if (feedTab.value === 'triage' && !showTriageTab.value) feedTab.value = showAdminTab.value ? 'admin' : 'mine';
 });
 watch(feedTab, () => { confirmDeleteAll.value = false; });   // the question was about the other tab
 
@@ -791,11 +813,19 @@ function padRank(rank: number): string {
               title="Sent to everyone: Today in Pyr, announcements, blog posts, Weekly Champions, competitions">
         Pyr Updates<b v-if="unreadIn(updateNotes) > 0">{{ unreadIn(updateNotes) }}</b>
       </button>
-      <button v-if="showAdminTab" class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
-              title="Access requests, proofreading tests, and players' answers to replies you asked for">
-        Admin<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
+      <button v-if="showAdminGroup" class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': onAdminGroup }" role="tab" :aria-selected="onAdminGroup" @click="onAdminGroup || openAdminGroup()"
+              title="Access requests, proofreading tests, players' answers to replies you asked for, and triage reports">
+        Admin<b v-if="adminGroupUnread > 0">{{ adminGroupUnread }}</b>
       </button>
-      <button v-if="showTriageTab" class="nge-notif-tab nge-notif-tab--triage" :class="{ 'nge-notif-tab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'">
+    </div>
+    <!-- Inside the Admin tab, when both kinds have notes: which ones to show. -->
+    <div v-if="showFeedTabs && showAdminSwitch" class="nge-notif-subtabs" role="tablist">
+      <button class="nge-notif-subtab" :class="{ 'nge-notif-subtab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
+              title="Access requests, proofreading tests, and players' answers to replies you asked for">
+        Access and tests<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
+      </button>
+      <button class="nge-notif-subtab nge-notif-subtab--triage" :class="{ 'nge-notif-subtab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'"
+              title="Triage: bug reports and ideas from players, and what the triage loop did with them">
         Triage<b v-if="unreadIn(triageNotes) > 0">{{ unreadIn(triageNotes) }}</b>
       </button>
     </div>
@@ -1193,6 +1223,29 @@ function padRank(rank: number): string {
   font-size: 10px; font-weight: 700; text-align: center; color: #06121f; background: #7ee0ff;
 }
 .nge-notif-tab--triage b { background: #ff8f8f; }
+/* A tab name never breaks onto two lines ("My Pyr" did, with four tabs). */
+.nge-notif-tab { white-space: nowrap; flex-shrink: 0; }
+
+/* The Admin tab's switch between its two kinds of notes. */
+.nge-notif-subtabs {
+  display: flex; gap: 2px; flex-shrink: 0;
+  margin: 8px 12px 0; padding: 2px;
+  border-radius: 8px; background: rgba(255, 255, 255, 0.05);
+}
+.nge-notif-subtab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 5px 8px;
+  font: 600 11.5px/1 'Inter', system-ui, sans-serif;
+  color: #8b97ad; background: none; border: 0; border-radius: 6px;
+  white-space: nowrap; cursor: pointer;
+}
+.nge-notif-subtab:hover { color: #dce6f5; }
+.nge-notif-subtab--on { color: #fff; background: rgba(229, 72, 77, 0.22); }
+.nge-notif-subtab b {
+  min-width: 16px; padding: 2px 5px; border-radius: 8px; box-sizing: border-box;
+  font-size: 10px; font-weight: 700; text-align: center; color: #fff; background: #e5484d;
+}
+.nge-notif-subtab--triage b { background: #ff8f8f; color: #06121f; }
 
 .nge-notif-confirm {
   display: flex;
