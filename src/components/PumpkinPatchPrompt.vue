@@ -154,12 +154,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 .nge-patch-btns { flex-wrap: wrap; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 /* a quiet text button on the left, so the two answers keep their place */
 .nge-patch-hide {
-  /* its own line under the two answers */
-  order: 3; flex-basis: 100%; margin-top: 2px; padding: 6px 4px; font: inherit; font-size: 14px; cursor: pointer;
-  color: #ffc98a; background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; text-align: right; white-space: nowrap;
+  /* a full-width button of its own above the two answers, easy to find
+     (Ames 2026-10-25: "we want it easier to find the smash!") */
+  order: -1; flex-basis: 100%; margin-bottom: 2px; padding: 9px 16px; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; color: #ffe2bf;
+  background: linear-gradient(180deg, rgba(255, 120, 30, 0.22), rgba(140, 50, 0, 0.3));
+  border: 1px solid rgba(255, 150, 60, 0.75); box-shadow: 0 0 14px rgba(255, 130, 30, 0.22);
 }
-.nge-patch-hide:hover { color: #ffd59a; }
-.nge-patch-hide:focus-visible { outline: 2px solid #ffd59a; outline-offset: 2px; border-radius: 4px; }
+.nge-patch-hide:hover { background: linear-gradient(180deg, rgba(255, 140, 40, 0.34), rgba(160, 60, 0, 0.42)); color: #fff; }
+.nge-patch-hide:focus-visible { outline: 2px solid #ffd59a; outline-offset: 2px; }
 .nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 .nge-patch-no { color: #d8e2f0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(160, 175, 200, 0.35); }
 .nge-patch-no:hover { background: rgba(255, 255, 255, 0.1); }
