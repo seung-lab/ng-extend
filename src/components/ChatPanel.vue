@@ -30,16 +30,20 @@ import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
 import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
-// The pumpkin button (Ames 2026-10-20): on a patch cell it turns the
-// pumpkin off and on; anywhere else it offers a trip to the pumpkin patch.
+// The pumpkin button (Ames 2026-10-20): opens the field report card, which
+// hides or shows the pumpkins, goes to the patch, or hands out the hammer
+// (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
+// patch, smash the pumpkins"). It used to hide the pumpkins straight away on
+// a patch cell, so the card only ever showed on other datasets.
 const showPumpkinBtn = pumpkinSeason();
 const askPatch = ref(false);
 function pumpkinOff(): boolean { return pumpkinUi.here && useUserPreferencesStore().prefs.hidePumpkin === true; }
 function pumpkinTitle(): string {
   if (!pumpkinUi.here) return 'A rare cell type has been spotted';
-  return useUserPreferencesStore().prefs.hidePumpkin === true ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell';
+  return 'The pumpkin patch: hide, show or smash the pumpkins';
 }
-function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
+function onPumpkin() { askPatch.value = true; }
+function togglePatch() { askPatch.value = false; togglePumpkin(); }
 function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
 function smashPatch() { askPatch.value = false; smashPumpkins(); }
 
@@ -1018,7 +1022,7 @@ function closePopovers(e: MouseEvent) {
 
 // ── Emoji for writing messages (Amy 2026-09-30), not just reactions ──
 const CHAT_EMOJI = [
-  '👋', '😊', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
+  '👋', '😊', '😉', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
   '👍', '👏', '🙌', '💪', '👀', '✨', '🔥', '💯', '🎉', '❤️',
   '🧠', '🔬', '🧬', '⚡', '👁️', '🐭', '🪰', '🐟', '🦉', '🐙',
   '🚀', '🌟', '🎯', '✅', '❌', '⚠️', '☕', '🍕', '🌈', '😴',
@@ -1666,7 +1670,7 @@ function toggleCollapse() {
                  on a patch cell, a trip to the patch anywhere else. -->
             <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
                     @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
-            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" />
+            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" @toggle="togglePatch()" />
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"

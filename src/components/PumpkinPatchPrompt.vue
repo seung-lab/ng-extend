@@ -12,9 +12,11 @@
  * streak's amber. Escape or a click outside says no.
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { patchSize } from '../util/pumpkin';
+import { patchSize, pumpkinHidden } from '../util/pumpkin';
 
-const emit = defineEmits({ yes: null, no: null, smash: null });
+const emit = defineEmits({ yes: null, no: null, smash: null, toggle: null });
+/** Off already: the middle button puts them back instead. */
+const hidden = pumpkinHidden();
 const yesEl = ref<HTMLButtonElement | null>(null);
 const sightings = patchSize();
 const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); emit('no'); } };
@@ -30,6 +32,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
         <span class="nge-patch-scan" aria-hidden="true"></span>
         <i class="nge-patch-brk tl" aria-hidden="true"></i><i class="nge-patch-brk tr" aria-hidden="true"></i>
         <i class="nge-patch-brk bl" aria-hidden="true"></i><i class="nge-patch-brk br" aria-hidden="true"></i>
+        <button class="nge-patch-x" aria-label="Close" title="Close" @click="emit('no')">×</button>
 
         <div class="nge-patch-row nge-patch-head" style="--i: 0">
           <span class="nge-patch-pumpkin" aria-hidden="true">🎃</span>
@@ -50,8 +53,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
                hammer; smashed pumpkins stay off until the chat bar's pumpkin
                button brings them back (util/pumpkin.ts). -->
           <button class="nge-patch-hide" @click="emit('smash')">🔨 Smash the pumpkins</button>
-          <button class="nge-patch-no" @click="emit('no')">Not now</button>
-          <button ref="yesEl" class="nge-patch-yes" @click="emit('yes')">Go see it</button>
+          <button class="nge-patch-no" @click="emit('toggle')">{{ hidden ? 'Show the pumpkin' : 'Hide the pumpkin' }}</button>
+          <button ref="yesEl" class="nge-patch-yes" @click="emit('yes')">Go to the patch</button>
         </div>
       </div>
     </div>
@@ -143,11 +146,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 
 .nge-patch-text { margin: 0 0 16px; color: #d4dcea; font-size: 15.5px; }
 .nge-patch-text b { color: #ffc27a; font-weight: 600; white-space: nowrap; }
-.nge-patch-btns { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.nge-patch-x {
+  position: absolute; top: 8px; right: 10px; z-index: 2; padding: 0 4px; font-size: 20px; line-height: 1;
+  color: #b9a48c; background: none; border: 0; cursor: pointer;
+}
+.nge-patch-x:hover { color: #ffd59a; }
+.nge-patch-btns { flex-wrap: wrap; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 /* a quiet text button on the left, so the two answers keep their place */
 .nge-patch-hide {
-  margin-right: auto; padding: 8px 4px; font: inherit; font-size: 13.5px; cursor: pointer;
-  color: #b9c4d6; background: none; border: 0; text-decoration: underline; text-underline-offset: 3px;
+  /* its own line under the two answers */
+  order: 3; flex-basis: 100%; margin-top: 2px; padding: 6px 4px; font: inherit; font-size: 14px; cursor: pointer;
+  color: #ffc98a; background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; text-align: right;
 }
 .nge-patch-hide:hover { color: #ffd59a; }
 .nge-patch-hide:focus-visible { outline: 2px solid #ffd59a; outline-offset: 2px; border-radius: 4px; }
