@@ -163,7 +163,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 }
 .nge-patch-hide:hover { background: linear-gradient(180deg, rgba(255, 140, 40, 0.34), rgba(160, 60, 0, 0.42)); color: #fff; }
 .nge-patch-hide:focus-visible { outline: 2px solid #ffd59a; outline-offset: 2px; }
-.nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.nge-patch-no, .nge-patch-yes { flex: 1 1 0; font: inherit; font-size: 15px; padding: 8px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 .nge-patch-no { color: #d8e2f0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(160, 175, 200, 0.35); }
 .nge-patch-no:hover { background: rgba(255, 255, 255, 0.1); }
 .nge-patch-yes {
