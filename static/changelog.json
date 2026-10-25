@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-25T00:00:00Z",
+      "at": "2026-10-25T19:06:48Z",
       "title": "Chat no longer asks you to log in when you are",
       "items": [
         "If the server was busy for a moment when you signed in, Pyr now tries again for your profile, instead of leaving chat saying Log in to chat until you reloaded."
