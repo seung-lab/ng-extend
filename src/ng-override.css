@@ -116,6 +116,10 @@ label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-b
 body.nge-radio-on label.perspective-panel-show-slice-views { right: 46px; bottom: calc(10px + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
+/* The merge and cut bar runs the full width of the window and covered the
+   foot of the side panels, the last cells of the Segments list among them
+   (Ames 2026-10-24). While it is open the panels end above it. */
+body.nge-tool-bar-open .neuroglancer-side-panel { padding-bottom: calc(var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); box-sizing: border-box; }
 .neuroglancer-mouse-position-widget:empty {
   display: none;
 }

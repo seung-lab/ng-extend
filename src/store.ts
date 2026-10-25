@@ -1225,6 +1225,27 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
     } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }
   }
 
+  /** Flag and bio live on the public profile row, and this browser keeps a
+   *  copy that the profile and Settings show. A browser new to the player
+   *  started with an empty copy, so the country and bio looked deleted
+   *  (AzureJay, report 229, first sign in on Firefox), and saving Settings
+   *  there would have blanked them for real. The row's values fill the copy. */
+  let profilePulledFor = '';
+  async function pullProfile(userId: string) {
+    if (!userId || profilePulledFor === userId) return;
+    try {
+      const { data, error } = await supabase.from('users').select('flag, bio').eq('id', userId).maybeSingle();
+      if (error || !data) return;
+      profilePulledFor = userId;
+      const flag = typeof (data as any).flag === 'string' ? (data as any).flag : '';
+      const bio = typeof (data as any).bio === 'string' ? (data as any).bio : '';
+      let changed = false;
+      if (flag && prefs.value.flag !== flag) { prefs.value.flag = flag; changed = true; }
+      if (bio && prefs.value.bio !== bio) { prefs.value.bio = bio; changed = true; }
+      if (changed) localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+    } catch (e) { console.warn('[prefs] could not read your profile:', e); }
+  }
+
   load(); // hydrate from localStorage on store init
   // The cursor size follows the setting, on every computer the account uses.
   watch(() => prefs.value.cursorXL === true, on => { document.body?.classList.toggle('nge-cursor-xl', on); }, { immediate: true });
@@ -1243,7 +1264,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // Once signed in, the account's copy wins over this browser's.
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
-  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
+  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) { pullFromAccount(String(id)); void pullProfile(String(id)); } }, { immediate: true }), 0);
   return { prefs, save, resetToDefaults, accountLoaded };
 });
 

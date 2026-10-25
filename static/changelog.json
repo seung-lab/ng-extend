@@ -22,6 +22,43 @@
       ]
     },
     {
+      "at": "2026-10-24T23:19:00Z",
+      "title": "Sandboxes keep your progress on a cell",
+      "items": [
+        "In the Merger and Extension Sandboxes, pressing Next before you are done now says what is left and keeps your work. It used to put the cell back, so a half finished cell had to be done again.",
+        "The Extension Sandbox starts with the easy cell, one merge, before the one that needs two."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:07:00Z",
+      "title": "The Cell Library comes back after a refresh, and tidier Find Path boxes",
+      "items": [
+        "Refresh the page with the Cell Library open and it opens again on the same tab, still slimmed to the cell you were on.",
+        "In Find Path, the start and end points each sit on one short line, labelled source and target."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:01:05Z",
+      "title": "The merge and cut bar no longer covers the Segments list",
+      "items": [
+        "While merging or cutting, the side panel ends above the tool bar, so the last cells in the Segments list can be reached."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:01:05Z",
+      "title": "Your country and bio follow you to a new browser",
+      "items": [
+        "Sign in on a browser you have not used before and your profile shows your country and bio, instead of looking empty."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:01:05Z",
+      "title": "The Selection box stays shut while you merge and cut",
+      "items": [
+        "Placing merge and cut points no longer throws the Selection box open (it often said Annotation not found). It still opens for your own annotation layers."
+      ]
+    },
+    {
       "at": "2026-10-24T22:22:00Z",
       "title": "Open a help request in its own window",
       "digest": "minor",

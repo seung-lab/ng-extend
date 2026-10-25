@@ -15,8 +15,8 @@ import { steps as steps5 } from '../tutorial-cut';
 import { steps as steps6 } from '../tutorial-mec-tour';
 import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
-import { steps as steps9, sandboxContinue, sandboxRestart } from '../merger-sandbox';
-import { extensionSteps as steps13, extensionContinue, extensionRestart, EXTENSION_TUTORIAL } from '../extension-sandbox';
+import { steps as steps9, sandboxContinue, sandboxRestart, sandboxNext } from '../merger-sandbox';
+import { extensionSteps as steps13, extensionContinue, extensionRestart, extensionNext, EXTENSION_TUTORIAL } from '../extension-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
@@ -208,6 +208,10 @@ const next = (_auto?: unknown) => {
     // The Extension Sandbox works the same way.
     if (isLastStep && tutorialNum === EXTENSION_TUTORIAL && extensionContinue()) return;
     if (!isLastStep && tutorialNum === EXTENSION_TUTORIAL && extensionRestart()) return;
+    // Next pressed on a sandbox's working box checks the work and stays put
+    // until it is done. When the watch sees it done, it moves on by itself.
+    if (!isLastStep && _auto !== true && tutorialNum === 9 && sandboxNext()) return;
+    if (!isLastStep && _auto !== true && tutorialNum === EXTENSION_TUTORIAL && extensionNext()) return;
     // The test's last box: "Try again" starts over.
     if (isLastStep && tutorialNum === TEST_TUTORIAL && testContinue()) return;
     // Its first box, while someone else has the cell: join the line, or close.

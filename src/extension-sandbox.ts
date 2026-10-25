@@ -44,6 +44,7 @@ ${cell.note}` : ''}`,
 
 To go again, open the Extension Sandbox from the burger menu.`,
     nextLabel: 'Next cell',
+    notYet: 'Not finished yet: a piece is still missing. Keep going, or press Help me to see where to click.',
     skipTip: 'Leave this cell for later and go to another',
   },
 });
@@ -52,3 +53,4 @@ export const extensionSteps = sandbox.steps;
 export const extensionDone = sandbox.done;
 export const extensionRestart = sandbox.restart;
 export const extensionContinue = sandbox.continueOn;
+export const extensionNext = sandbox.next;

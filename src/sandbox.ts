@@ -15,7 +15,7 @@ import { ref } from 'vue';
 import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
 import imgWheresNurro from './images/wheres-nurro.png';
-import { beginPractice, cellIsCut, cellIsJoined, endPractice, ensureTool, type PracticeKind } from './practice';
+import { beginPractice, cellIsCut, cellIsJoined, endPractice, ensureTool, groupProgress, type PracticeKind } from './practice';
 import type { SandboxCell } from './practice_pools';
 import { supabase } from './supabase';
 import { awardSpecialOnce } from './util/special_award';
@@ -47,6 +47,8 @@ export interface SandboxWords {
   allDone(total: number): string;
   /** Main button on a success box with more to go. */
   nextLabel: string;
+  /** Said when Next is pressed before the exercise is solved. */
+  notYet: string;
   /** Skip's tooltip. */
   skipTip: string;
   /** For the Achievement record, if the sandbox has one. */
@@ -304,6 +306,33 @@ export function makeSandbox(cfg: SandboxConfig) {
     return true;
   }
 
+  /**
+   * Next on the working box (Ames, 2026-10-24). Solved: on to the success
+   * box. Not yet: stay, with the cell still held, and say what is left. It
+   * used to go to a "not yet" box whose Try again handed the cell back, so a
+   * cell half done (one of two pieces merged) was put back and both merges
+   * had to be made again.
+   */
+  let checkingNext = false;
+  function next(): boolean {
+    if (askAgain.value) return false;
+    if (checkingNext) return true;
+    checkingNext = true;
+    const store = useTutorialStore();
+    const id = cell().id, at = current;
+    void isSolved(id).catch(() => null).then(async (solved) => {
+      try {
+        if (store.activeTutorial !== tutorial || current !== at || store.getTutorialStep() !== 0) return;
+        if (solved) { store.setTutorialStep(1); return; }
+        const pr = cfg.kind === 'cut' ? null : await groupProgress(id);
+        practiceStatus(pr && pr.joined > 0 && pr.joined < pr.total
+          ? `${pr.joined} of the ${pr.total} missing pieces ${pr.joined === 1 ? 'is' : 'are'} back on. Find the ${pr.total - pr.joined === 1 ? 'last one' : 'rest'}, then press Next.`
+          : W.notYet);
+      } finally { checkingNext = false; }
+    });
+    return true;
+  }
+
   const steps: Step[] = [
     // 1: The exercise
     {
@@ -429,5 +458,5 @@ ${progressBar()}
     } as Step,
   ];
 
-  return { steps, done, start, restart, continueOn, TOTAL };
+  return { steps, done, start, restart, continueOn, next, TOTAL };
 }

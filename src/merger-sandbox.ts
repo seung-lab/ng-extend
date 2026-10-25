@@ -50,6 +50,7 @@ const sandbox = makeSandbox({
 
 To go again, open the Merger Sandbox from the burger menu.`,
     nextLabel: 'Next merger',
+    notYet: 'Not cut yet: the two neurons are still one segment. Keep going, or press Help me to see where the points go.',
     skipTip: 'Leave this merger for later and go to another',
     awardReason: (total) => `Cut all ${total} mergers in the Merger Sandbox`,
   },
@@ -60,3 +61,4 @@ export const sandboxDone = sandbox.done;
 export const startSandbox = sandbox.start;
 export const sandboxRestart = sandbox.restart;
 export const sandboxContinue = sandbox.continueOn;
+export const sandboxNext = sandbox.next;

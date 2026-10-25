@@ -50,14 +50,14 @@ const RETIRED_SANDBOX_IDS = ['844165a8-5b97-40b0-afba-42125d343dcf'];
  * practice.ts holds the pieces).
  */
 export const EXTENSION_CELLS: SandboxCell[] = [
-  // Ames, 2026-10-24: a cell with two branches left behind, at
-  // (77321, 49937, 213) and (87334, 52032, 994); the cell at (58256, 36905, 1161).
-  { id: '63a057ed-ce08-4a6f-915d-eca29214e48c', title: 'Cell 1', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960', pieces: 2 },
-  // Ames, 2026-10-24, easy: an axon to extend by one piece. The axon at
+  // Ames, 2026-10-24, easy, first (one merge): an axon to extend by one piece. The axon at
   // (82238, 60100, 708), the piece at (82269, 59986, 690). A player merged it
   // on 2026-10-13; Ames cut it apart again (operation 2501), and the
   // baseline is just after that cut.
-  { id: '141062c3-e988-452f-84ed-fecc92652b87', title: 'Cell 2', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4744042558521344', pieces: 1 },
+  { id: '141062c3-e988-452f-84ed-fecc92652b87', title: 'Cell 1', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4744042558521344', pieces: 1 },
+  // Ames, 2026-10-24: a cell with two branches left behind, at
+  // (77321, 49937, 213) and (87334, 52032, 994); the cell at (58256, 36905, 1161).
+  { id: '63a057ed-ce08-4a6f-915d-eca29214e48c', title: 'Cell 2', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960', pieces: 2 },
   // Ames, 2026-10-24, medium, kept last: extending through a black spill. The cell at
   // (62612, 39202, 558); pieces at (62448, 39130, 537) and (61025, 38968, 394).
   // Two more small ones further on, (59871, 38215, 136) and (59810, 38060,
