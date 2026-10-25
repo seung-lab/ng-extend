@@ -185,6 +185,15 @@ function buildActions(): PaletteItem[] {
     action: () => emit('open-settings'),
   });
   items.push({
+    id: 'hide-top-bar',
+    label: 'Hide the top bar until I point at it',
+    description: 'On or off. While on, point at the thin strip at the top, or press the \\ key, to bring the bar down',
+    category: 'action',
+    icon: '▔',
+    aliases: ['top bar', 'toolbar', 'auto hide', 'autohide', 'hide bar', 'full screen', 'more room'],
+    action: () => { const p = useUserPreferencesStore(); p.save({ hideTopBar: p.prefs.hideTopBar !== true }); },
+  });
+  items.push({
     id: 'tag-mode',
     label: 'Scout Tag Mode',
     description: 'Flag mergers and missing branches (Shift+T)',

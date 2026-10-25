@@ -30,7 +30,7 @@
  * the moments above. Real tutorial steps reveal icons in that pretend state
  * too, so a tutorial can be played through as a new player would.
  */
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref, shallowRef, watch } from 'vue';
 import { getActivePinia } from 'pinia';
 import { supabase } from '../supabase';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
@@ -296,7 +296,11 @@ export function siteTourShows(iconId: string): boolean {
 /** Set by Tutorial.vue: whether a tutorial box, a practice cell or the test is
  *  on screen, so edits made there do not count as your own. */
 let tutorialBusy: () => boolean = () => false;
-export function setTutorialBusy(fn: () => boolean) { tutorialBusy = fn; }
+// A ref, so a computed that asks before Tutorial.vue has set it still updates.
+const tutorialBusyFn = shallowRef(tutorialBusy);
+export function setTutorialBusy(fn: () => boolean) { tutorialBusy = fn; tutorialBusyFn.value = fn; }
+/** Is a tutorial box, a practice cell or the test on screen? (reactive) */
+export function isTutorialBusy(): boolean { return tutorialBusyFn.value(); }
 
 /**
  * Get Started is over. Once its Achievement and the username question have

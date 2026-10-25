@@ -63,6 +63,7 @@ export const PYR_KEYS: PyrKey[] = [
   { keys: ['keyh'], label: 'Hold to place a point', group: 'Tools', owner: 'HighlightModePanel', where: 'In Highlight mode', scoped: true },
   { keys: ['shift+keyn'], label: 'Lantern on or off', group: 'Tools', owner: 'ExtensionBar' },
   { keys: ['shift+keyl'], label: 'Cell Library', group: 'Panels', owner: 'ExtensionBar' },
+  { keys: ['backslash'], label: 'Show or hide the top bar', group: 'Panels', owner: 'ExtensionBar', where: 'With Hide the top bar on in Settings' },
   // Found, not labeled (ExtensionBar).
   { keys: ['shift+keyf'], label: 'Flight mode', group: 'Tools', owner: 'ExtensionBar', hidden: true },
   { keys: ['keyp'], label: 'Send a pulse along the cell under the mouse', group: 'Tools', owner: 'pulse_key', where: '3D' },

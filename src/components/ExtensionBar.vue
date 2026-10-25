@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
-import {computed, onMounted, onUnmounted, ref, watch} from "vue";
+import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
@@ -241,6 +241,12 @@ onMounted(() => {
       e.preventDefault();
       e.stopImmediatePropagation();
       showTagMode.value = !showTagMode.value;
+    }
+    // \: the hidden top bar, down and up again (Settings: Hide the top bar).
+    if (!typing && (e.code === 'Backslash' || e.key === '\\') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && barAutoHide.value) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      toggleBarPinned();
     }
     // Shift+L: the Cell Library (Nik 2026-10-09). Plain L is neuroglancer's
     // "recolour", so the library takes the shifted key, as tag mode does.
@@ -782,7 +788,7 @@ interface ToolbarIcon {
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
 import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG, LEADERBOARD_SVG } from '../data/toolbar-icons';
-import { iconArrived, isStaged, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
+import { iconArrived, isStaged, isTutorialBusy, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
 import StagingAnnouncement from 'components/StagingAnnouncement.vue';
 import StagingTestPanel from 'components/StagingTestPanel.vue';
 
@@ -959,6 +965,111 @@ function onIconDrop(e: DragEvent, id: string) {
 }
 
 
+
+// ── Hide the top bar until pointed at (Settings, Nik #243, Ames 2026-10-25) ──────────
+// Like a Mac's hidden menu bar: the bar tucks away above a thin strip and comes
+// down over the top of the views when the mouse rests on the strip. The strip
+// keeps a place in the page, so the views never move as the bar comes and goes.
+// Never on a touch screen (no pointing), during a tutorial, or while a new
+// player's icons are still arriving (staging teaches through the bar).
+const canHover = ref(typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches);
+{
+  const mq = typeof window !== 'undefined' ? window.matchMedia?.('(hover: hover) and (pointer: fine)') : null;
+  mq?.addEventListener?.('change', e => { canHover.value = e.matches; });
+}
+const barAutoHide = computed(() => useUserPreferencesStore().prefs.hideTopBar === true
+  && canHover.value && !isMobileRef.value && !isTutorialBusy() && !isStaged());
+const barHover = ref(false);     // the bar has come down for the mouse
+const barPinned = ref(false);    // the \ key brought it down
+const barFocus = ref(false);     // typing in it (the position box)
+// A menu or panel opened from the bar keeps it down until it closes.
+const barMenuOpen = computed(() => showNotifications.value || showDatasetSelector.value || barFocus.value
+  || Object.values(dropdownStore.activeDropdowns).some(v => v !== undefined));
+const barShown = computed(() => !barAutoHide.value || barHover.value || barPinned.value || barMenuOpen.value);
+let barOpenTimer: ReturnType<typeof setTimeout> | null = null;
+let barCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let mouseOnBar = false;
+const BAR_OPEN_DELAY = 250;   // passing over the strip does not open it
+const BAR_CLOSE_DELAY = 400;  // nor does slipping off the bar for a moment close it
+function clearBarTimers() {
+  if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+  if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+}
+function onStripEnter() {
+  if (!barAutoHide.value) return;
+  if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+  if (barHover.value || barOpenTimer) return;
+  barOpenTimer = setTimeout(() => { barOpenTimer = null; barHover.value = true; }, BAR_OPEN_DELAY);
+}
+function onStripLeave() {
+  if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+}
+function scheduleBarClose() {
+  if (barCloseTimer) clearTimeout(barCloseTimer);
+  barCloseTimer = setTimeout(() => { barCloseTimer = null; if (!mouseOnBar) barHover.value = false; }, BAR_CLOSE_DELAY);
+}
+// While the bar is down for the mouse, every move asks whether the mouse is
+// still on it (or on a menu inside it). Enter and leave events alone miss the
+// case of a bar that slid in under a mouse that had not moved.
+function onBarMouseMove(e: MouseEvent) {
+  const t = e.target as Node | null;
+  const bar = document.getElementById('extensionBar');
+  mouseOnBar = !!t && !!bar && (bar.contains(t) || !!(t as HTMLElement).closest?.('.nge-bar-strip'));
+  if (mouseOnBar) {
+    if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+    // Down for a menu or the key, and now pointed at: it stays while pointed at.
+    barHover.value = true;
+  } else if (barHover.value && !barCloseTimer) scheduleBarClose();
+}
+watch(() => barAutoHide.value && barShown.value, on => {
+  if (on) window.addEventListener('mousemove', onBarMouseMove, { capture: true, passive: true });
+  else { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); mouseOnBar = false; }
+});
+function onBarFocusIn(e: FocusEvent) {
+  const t = e.target as HTMLElement | null;
+  barFocus.value = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
+function onBarFocusOut() { barFocus.value = false; }
+// A menu closed with the mouse already elsewhere: the bar goes up shortly.
+watch(barMenuOpen, open => { if (!open && barHover.value && !mouseOnBar) scheduleBarClose(); });
+// Pinned by the key, the bar goes up again on the next press.
+function toggleBarPinned() {
+  if (!barAutoHide.value) return;
+  clearBarTimers();
+  if (barShown.value) { barPinned.value = false; barHover.value = false; }
+  else barPinned.value = true;
+}
+watch(barAutoHide, on => { if (!on) { clearBarTimers(); barHover.value = false; barPinned.value = false; } });
+watch([barAutoHide, barShown], ([on, shown]) => {
+  document.body.classList.toggle('nge-bar-autohide', on);
+  document.body.classList.toggle('nge-bar-tucked', on && !shown);
+}, { immediate: true });
+
+// The red counts, copied onto the strip under their own icons so a reply or a
+// help request is not missed while the bar is up.
+interface StripBadge { id: string; label: string; count: number; admin: number; mention: boolean; x: number }
+const stripBadges = ref<StripBadge[]>([]);
+const badgeSig = computed(() => visibleToolbar.value
+  .map(i => `${i.id}:${i.badge?.() ?? 0}:${i.adminBadge?.() ?? 0}`).join('|') + (chatMentionPending.value ? '!' : ''));
+function placeStripBadges() {
+  if (!barAutoHide.value) { stripBadges.value = []; return; }
+  const out: StripBadge[] = [];
+  for (const icon of visibleToolbar.value) {
+    const count = icon.badge?.() ?? 0, admin = icon.adminBadge?.() ?? 0;
+    const mention = icon.id === 'chat' && !!chatMentionPending.value;
+    if (count <= 0 && admin <= 0 && !mention) continue;
+    const btn = document.querySelector<HTMLElement>(`#extensionBar [data-icon-id="${icon.id}"]`);
+    const r = btn?.getBoundingClientRect();
+    const x = r && r.width ? Math.min(Math.max(r.left + r.width / 2, 16), window.innerWidth - 16) : window.innerWidth - 60;
+    out.push({ id: icon.id, label: icon.label, count, admin, mention, x });
+  }
+  stripBadges.value = out;
+}
+watch([badgeSig, barAutoHide], () => nextTick(placeStripBadges), { immediate: true });
+const onBarResize = () => placeStripBadges();
+onMounted(() => window.addEventListener('resize', onBarResize));
+onUnmounted(() => { window.removeEventListener('resize', onBarResize); window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); clearBarTimers(); });
+
 </script>
 
 <template>
@@ -1028,7 +1139,16 @@ function onIconDrop(e: DragEvent, id: string) {
     :list-keys="listKeys"
     @hide="showAssistant = false"
   />
-  <div id="extensionBar">
+  <div v-if="barAutoHide" class="nge-bar-strip" :class="{ 'nge-bar-strip--hidden': barShown }"
+       title="The top bar. Point here, or press the \ key, to bring it down."
+       @mouseenter="onStripEnter" @mouseleave="onStripLeave">
+    <template v-if="!barShown">
+      <span v-for="b in stripBadges" :key="b.id" class="nge-strip-badge"
+            :class="{ 'nge-strip-badge--chat': b.id === 'chat', 'nge-strip-badge--mention': b.mention && !(b.count + b.admin) }"
+            :style="{ left: b.x + 'px' }" :title="b.label">{{ b.count + b.admin > 0 ? b.count + b.admin : '@' }}</span>
+    </template>
+  </div>
+  <div id="extensionBar" @focusin="onBarFocusIn" @focusout="onBarFocusOut">
     <div class="ng-extend-logo">
       <!-- Click → hard refresh. Reloads the bundle from the server (skips
            the disk cache so a freshly-deployed JS hits the user without a
@@ -2426,4 +2546,78 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 }
 /* The Site Tour's compass sits in the same circle as the numbers. */
 .nge-menu-num--icon { font-size: 10px; line-height: 1; }
+
+/* ── Hide the top bar until pointed at (Settings) ─────────────────────────
+   body.nge-bar-autohide: the bar leaves the page flow and lies over the top
+   of the views; a 7px strip keeps its place, so nothing moves as it comes and
+   goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather
+   than a transform, so the bar's fixed position children (share toast) keep
+   the window as their frame. */
+body.nge-bar-autohide .ng-extend {
+  position: relative;
+  flex: 0 0 7px;
+  height: 7px;
+  /* No z-index here: every panel the bar opens is rendered in .ng-extend too,
+     and a stacking context would cap them all at this level. */
+}
+body.nge-bar-autohide #extensionBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 41;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: top 0.16s ease-out, box-shadow 0.16s;
+}
+body.nge-bar-autohide.nge-bar-tucked #extensionBar {
+  top: -64px;
+  box-shadow: none;
+  transition: top 0.2s ease-in, box-shadow 0.2s;
+}
+body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
+.nge-bar-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 7px;
+  z-index: 40;
+  background: linear-gradient(to bottom, rgba(16, 26, 46, 0.98), rgba(9, 15, 28, 0.98));
+  border-bottom: 1px solid rgba(110, 170, 255, 0.28);
+  box-sizing: border-box;
+  cursor: default;
+}
+/* A small notch in the middle says "something is up here". */
+.nge-bar-strip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 36px;
+  height: 2px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: rgba(160, 200, 255, 0.45);
+}
+.nge-bar-strip:hover { background: linear-gradient(to bottom, rgba(26, 42, 72, 0.98), rgba(14, 24, 44, 0.98)); }
+.nge-bar-strip--hidden::after { display: none; }
+.nge-strip-badge {
+  position: absolute;
+  top: 1px;
+  transform: translateX(-50%);
+  min-width: 14px;
+  height: 13px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: #7c4dff;
+  color: #fff;
+  font: 700 9px/13px 'Inter', 'Roboto', sans-serif;
+  text-align: center;
+  box-shadow: 0 0 8px rgba(124, 77, 255, 0.6);
+  animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.nge-strip-badge--chat { background: #4ad07a; color: #06170d; box-shadow: 0 0 8px rgba(74, 208, 122, 0.6); }
+.nge-strip-badge--mention { background: #f5b942; color: #241600; }
 </style>
