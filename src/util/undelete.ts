@@ -129,6 +129,13 @@ export function undelete(): number {
   return n;
 }
 
+/** Cells hidden from view by something other than a removal (the scythe,
+ *  scythe.ts, which unticks them): one step, so Ctrl+Z brings them back. */
+export function rememberRemoved(ids: string[]) {
+  attach();
+  remember(ids);
+}
+
 /** Forget every step for the dataset on screen. */
 export function clearUndelete() {
   steps = [];

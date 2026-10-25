@@ -7,6 +7,7 @@ import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
+import {startScytheOffers} from './util/scythe';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
@@ -433,6 +434,7 @@ function setupViewer() {
   startLantern(viewer);
   startSpooky(viewer);
   startPumpkin(viewer);
+  startScytheOffers(viewer);
   startInvalidSegmentWatch(viewer);
   recoverCellHistory();
   startAnnotationClickSelect(viewer);

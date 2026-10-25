@@ -17,6 +17,7 @@ import {
   CellHistoryEntry,
 } from '../store';
 import { pumpkinSeason, togglePumpkin, smashPumpkins } from '../util/pumpkin';
+import { startScythe } from '../util/scythe';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -234,6 +235,15 @@ function buildActions(): PaletteItem[] {
       action: () => smashPumpkins(),
     });
   }
+  items.push({
+    id: 'scythe',
+    label: 'Pick up the Scythe',
+    description: 'Swipe a cell in 3D to clear it from view (Ctrl+Z brings it back)',
+    category: 'tool',
+    icon: '💀',
+    aliases: ['scythe', 'reaper', 'grim reaper', 'clear piece', 'crumble', 'swipe'],
+    action: () => startScythe(),
+  });
   if (ARCADE_ENABLED) items.push({
     id: 'pyr-arcade',
     label: 'Pyr Arcade',

@@ -352,6 +352,32 @@ function ngePulseFor(gl: GL, shader: ShaderProgram, key: string, hovered: boolea
 }
 const ngeLanternPos = new Float32Array(3);
 
+// ── EyeWire II scythe (src/util/scythe.ts, Ames 2026-10-25) ────────────────
+// A cell swiped with the scythe crumbles away: it breaks into chunks (a few
+// percent of the view across) that drop down the screen one after another,
+// each falling to dust as it goes. All in the shader, keyed to one segment;
+// nothing in the data changes. The scythe hides the cell once it is gone.
+const ngeCrumbles = new Map<string, {t0: number, ms: number}>();
+/** Start crumbling the cell with this key (`low,high`, getObjectKey). It
+ *  stays crumbled (gone) until ngeCrumbleClear. */
+export function ngeCrumble(key: string, ms: number) {
+  ngeCrumbles.set(key, {t0: performance.now(), ms});
+}
+export function ngeCrumbleClear(key: string) {
+  ngeCrumbles.delete(key);
+}
+function ngeCrumbleFor(gl: GL, shader: ShaderProgram, key: string) {
+  const c = ngeCrumbles.size ? ngeCrumbles.get(key) : undefined;
+  if (c === undefined) {
+    gl.uniform4f(shader.uniform('uNgeCrumble'), 0, 1, 0, 0);
+    return;
+  }
+  const t = Math.min(1, (performance.now() - c.t0) / c.ms);
+  if (t < 1) ngePulseRunning = true;
+  // Chunks about 3% of the view across, in nm.
+  gl.uniform4f(shader.uniform('uNgeCrumble'), Math.max(1e-4, t), Math.max(1, ngePulseViewNm * 0.03), 0, 0);
+}
+
 export class MeshShaderManager {
   private tempLightVec = new Float32Array(4);
   private vertexPositionHandler = vertexPositionHandlers[this.vertexPositionFormat];
@@ -549,6 +575,18 @@ export class MeshShaderManager {
         builder.addUniform('highp vec3', 'uNgePulseScale');
         builder.addUniform('highp vec4', 'uNgePulseColor');
         builder.addUniform('highp vec4', 'uNgeRim');
+        // Scythe crumble: x how far along (0 off, 1 gone), y chunk size, nm.
+        builder.addUniform('highp vec4', 'uNgeCrumble');
+        builder.addVarying('highp vec4', 'vNgeCrumble');
+        const crumbleHash = `
+highp float ngeCrumbleHash(highp vec3 p3) {
+  p3 = fract(p3 * 0.1031);
+  p3 += dot(p3, p3.zyx + 31.32);
+  return fract((p3.x + p3.y) * p3.z);
+}
+`;
+        builder.addVertexCode(crumbleHash);
+        builder.addFragmentCode(crumbleHash);
         builder.addVarying('highp vec4', 'vNgeHolo');
         builder.addVarying('highp vec3', 'vNgeHoloPos');
         builder.addVarying('highp vec3', 'vNgeHoloN');
@@ -740,9 +778,30 @@ if (uNgeShell.w > 0.5) {
   gl_Position.z += uNgeShell.y * gl_Position.w;
   vColor = uNgeShellColor;
 }
+vNgeCrumble = vec4(0.0);
+if (uNgeCrumble.x > 0.0) {
+  // EyeWire II scythe: each chunk waits its turn, then drops and drifts.
+  highp vec3 crumbleAt = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale / uNgeCrumble.y;
+  highp float crumbleH = ngeCrumbleHash(floor(crumbleAt));
+  highp float crumbleWait = crumbleH * 0.5;
+  highp float crumbleT = clamp((uNgeCrumble.x - crumbleWait) / (1.0 - crumbleWait), 0.0, 1.0);
+  gl_Position.y -= crumbleT * crumbleT * 1.4 * gl_Position.w;
+  gl_Position.x += (fract(crumbleH * 91.7) - 0.5) * 0.3 * crumbleT * gl_Position.w;
+  vColor.rgb *= 1.0 - 0.45 * crumbleT;
+  vNgeCrumble = vec4(crumbleAt, crumbleT);
+}
 `;
         builder.setVertexMain(vertexMain);
         builder.setFragmentMain(`
+if (uNgeCrumble.x > 0.0) {
+  // A triangle that spans two chunks is torn between them: drop it, so the
+  // chunks come apart cleanly. Each chunk falls to dust as it goes.
+  highp vec3 crumbleCell = floor(vNgeCrumble.xyz);
+  highp float crumbleWait = ngeCrumbleHash(crumbleCell) * 0.5;
+  highp float crumbleT = clamp((uNgeCrumble.x - crumbleWait) / (1.0 - crumbleWait), 0.0, 1.0);
+  if (abs(crumbleT - vNgeCrumble.w) > 0.02) discard;
+  if (ngeCrumbleHash(floor(vNgeCrumble.xyz * 5.0) + 7.0) < crumbleT * 1.08 - 0.08 || uNgeCrumble.x >= 1.0) discard;
+}
 if (vNgeHolo.w > 0.5) {
   if (vNgeHolo.z > 0.5) {
     // Metallic (Ames 2026-10-21: "this does not look like a hologram, but it
@@ -871,6 +930,7 @@ export class MeshLayer extends
               }
             }
           };
+          ngeCrumbleFor(gl, shader, key);
           // EyeWire II: the outline and halo pass draws only the hovered cell's shells.
           if (shells !== null) {
             if (!hovered) return;
@@ -1137,6 +1197,7 @@ export class MultiscaleMeshLayer extends
           const hovered = displayState.hoverHighlight.value &&
               displayState.segmentSelectionState.isSelected(objectId);
           if (shells !== null && !hovered) return;
+          ngeCrumbleFor(gl, shader, key);
           if (shells === null && renderContext.emitColor) {
             meshShaderManager.setColor(gl, shader, color!);
             const pulsing = ngePulseFor(gl, shader, key, hovered);
