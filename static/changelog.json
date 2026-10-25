@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-25T22:04:00Z",
+      "at": "2026-10-25T22:05:00Z",
       "title": "Watch a cell grow",
       "items": [
         "The Δ menu has a Watch it grow button. It opens a slider through every edit of the cell, oldest first, and shows the cell as it was at each one in the 3D view, including branches that were still separate pieces before they were joined on.",
@@ -10,6 +10,17 @@
         "Press Play to step through on its own, at the speed you choose, for screen recordings. Closing the panel shows today's cell again.",
         "A bit cut out of another merger and joined on later shows on its own before it joins, without the rest of that merger.",
         "A cell with hundreds of edits shows 150 of them, spread evenly from first to last."
+      ]
+    },
+    {
+      "at": "2026-10-25T22:04:00Z",
+      "title": "Photo mode: sharper recordings, MP4 and GIF, fades",
+      "items": [
+        "Record spin in photo mode now keeps the thin branches of cells, which used to come out dotted or missing, most of all with a whole class on screen.",
+        "Recordings are saved as MP4, which plays in VLC and most other players, or as a small looping GIF for the forum.",
+        "Photo mode can turn the cell left and right or over the top.",
+        "Speed changes are gradual, and you choose how many seconds they take.",
+        "Fade in and Fade out make the cells appear or disappear slowly, and a recording follows what you do while it turns."
       ]
     },
     {
