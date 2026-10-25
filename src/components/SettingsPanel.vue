@@ -50,7 +50,11 @@ const draftChatFade = ref(true);
 const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
-const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
+/** "Cell & Quest celebration" (Ames 2026-10-25): a switch, on unless set
+ *  off. Kept in cellCompleteMessage, so a player who had picked the small
+ *  note keeps it while the switch is on. */
+const draftCellCelebration = ref(true);
+let savedCellMessage: 'full' | 'small' | 'off' = 'full';
 const draftAchievementCelebration = ref(true);
 /** How the cell under the mouse is shown (wolfryder101 #181): the classic fade (default), halo or pulse. */
 const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'saturate' | 'spotlight' | 'fade' | 'none'>('fade');
@@ -146,7 +150,8 @@ onMounted(() => {
   draftChatMarkMine.value = prefsStore.prefs.chatMarkMine !== false;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
-  draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
+  savedCellMessage = prefsStore.prefs.cellCompleteMessage || 'full';
+  draftCellCelebration.value = savedCellMessage !== 'off';
   draftAchievementCelebration.value = prefsStore.prefs.achievementCelebration !== false;
   draftHoverStyle.value = ngeHoverStyle.value;
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
@@ -232,7 +237,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, achievementCelebration: draftAchievementCelebration.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -557,13 +562,9 @@ const props = defineProps<{ embedded?: boolean }>();
               </div>
             </div>
             <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
-            <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen, and confetti for a Quest. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list, and a Quest still counts.">
-              <span class="nge-settings-toggle-label">When I complete a cell or a Quest, show</span>
-              <select v-model="draftCellMessage" class="nge-sv-select">
-                <option value="full">Full congratulations</option>
-                <option value="small">A small note at the top</option>
-                <option value="off">Nothing</option>
-              </select>
+            <label class="nge-settings-toggle" title="On: completing a cell or submitting a Quest brings up the congratulations, with confetti. Off: nothing comes up; the cell still shows as Proofread in its menu and in the segment list, and a Quest still counts.">
+              <input type="checkbox" v-model="draftCellCelebration" />
+              <span class="nge-settings-toggle-label">Cell &amp; Quest celebration</span>
             </label>
             <label class="nge-settings-toggle" title="On: an achievement you earn comes up as a card in the middle of the screen, with confetti. Off: nothing comes up; it is still in your Trophy Case and in the bell.">
               <input type="checkbox" v-model="draftAchievementCelebration" />
