@@ -995,15 +995,37 @@ function clearBarTimers() {
   if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
   if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
 }
-function onStripEnter() {
-  if (!barAutoHide.value) return;
-  if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+// Where the mouse brings the bar down: the strip, and a band just under it
+// (Ames: the strip alone was too thin to find), except over a layer tab, a
+// button or a box, so reaching for those never opens the bar.
+const STRIP_H = 12;
+const OPEN_BAND = STRIP_H + 18;
+const NOT_A_BAR_SPOT = '.neuroglancer-layer-item, button, input, textarea, select, a, [role="button"], [contenteditable="true"]';
+function onTuckedMouseMove(e: MouseEvent) {
+  const t = e.target as HTMLElement | null;
+  const onStrip = !!t?.closest?.('.nge-bar-strip');
+  const inBand = onStrip || (e.clientY < OPEN_BAND && !t?.closest?.(NOT_A_BAR_SPOT));
+  if (!inBand) { if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; } return; }
   if (barHover.value || barOpenTimer) return;
   barOpenTimer = setTimeout(() => { barOpenTimer = null; barHover.value = true; }, BAR_OPEN_DELAY);
 }
-function onStripLeave() {
-  if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+// The mouse left the page across the top edge (into the browser's own bar).
+function onTuckedMouseOut(e: MouseEvent) {
+  if (!e.relatedTarget && barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
 }
+const barTucked = computed(() => barAutoHide.value && !barShown.value);
+watch(barTucked, on => {
+  if (on) {
+    window.addEventListener('mousemove', onTuckedMouseMove, { capture: true, passive: true });
+    document.addEventListener('mouseout', onTuckedMouseOut, true);
+  } else {
+    window.removeEventListener('mousemove', onTuckedMouseMove, { capture: true } as any);
+    document.removeEventListener('mouseout', onTuckedMouseOut, true);
+    if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+  }
+}, { immediate: true });
+// A click on the strip brings the bar down at once.
+function onStripClick() { if (barAutoHide.value) { clearBarTimers(); barHover.value = true; } }
 function scheduleBarClose() {
   if (barCloseTimer) clearTimeout(barCloseTimer);
   barCloseTimer = setTimeout(() => { barCloseTimer = null; if (!mouseOnBar) barHover.value = false; }, BAR_CLOSE_DELAY);
@@ -1047,22 +1069,28 @@ watch([barAutoHide, barShown], ([on, shown]) => {
 
 // The red counts, copied onto the strip under their own icons so a reply or a
 // help request is not missed while the bar is up.
-interface StripBadge { id: string; label: string; count: number; admin: number; mention: boolean; x: number }
+interface StripBadge { id: string; label: string; count: number; mention: boolean; svg?: string; img?: string; emoji?: string }
 const stripBadges = ref<StripBadge[]>([]);
+const stripBadgesX = ref(0);
 const badgeSig = computed(() => visibleToolbar.value
   .map(i => `${i.id}:${i.badge?.() ?? 0}:${i.adminBadge?.() ?? 0}`).join('|') + (chatMentionPending.value ? '!' : ''));
 function placeStripBadges() {
   if (!barAutoHide.value) { stripBadges.value = []; return; }
+  // Each count with its own icon beside it (Ames: bare numbers read as
+  // "rogue numbers"), side by side, roughly under where those icons sit.
   const out: StripBadge[] = [];
+  const xs: number[] = [];
   for (const icon of visibleToolbar.value) {
-    const count = icon.badge?.() ?? 0, admin = icon.adminBadge?.() ?? 0;
+    const count = (icon.badge?.() ?? 0) + (icon.adminBadge?.() ?? 0);
     const mention = icon.id === 'chat' && !!chatMentionPending.value;
-    if (count <= 0 && admin <= 0 && !mention) continue;
-    const btn = document.querySelector<HTMLElement>(`#extensionBar [data-icon-id="${icon.id}"]`);
-    const r = btn?.getBoundingClientRect();
-    const x = r && r.width ? Math.min(Math.max(r.left + r.width / 2, 16), window.innerWidth - 16) : window.innerWidth - 60;
-    out.push({ id: icon.id, label: icon.label, count, admin, mention, x });
+    if (count <= 0 && !mention) continue;
+    const r = document.querySelector<HTMLElement>(`#extensionBar [data-icon-id="${icon.id}"]`)?.getBoundingClientRect();
+    if (r && r.width) xs.push(r.left + r.width / 2);
+    out.push({ id: icon.id, label: icon.label, count, mention, svg: icon.svg, img: icon.img, emoji: icon.emoji });
   }
+  const mid = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : window.innerWidth - 160;
+  const half = out.length * 22 + 8;
+  stripBadgesX.value = Math.min(Math.max(mid, half + 8), window.innerWidth - half - 8);
   stripBadges.value = out;
 }
 watch([badgeSig, barAutoHide], () => nextTick(placeStripBadges), { immediate: true });
@@ -1141,12 +1169,12 @@ onUnmounted(() => { window.removeEventListener('resize', onBarResize); window.re
   />
   <div v-if="barAutoHide" class="nge-bar-strip" :class="{ 'nge-bar-strip--hidden': barShown }"
        title="The top bar. Point here, or press the \ key, to bring it down."
-       @mouseenter="onStripEnter" @mouseleave="onStripLeave">
-    <template v-if="!barShown">
+       @click="onStripClick">
+    <div v-if="!barShown && stripBadges.length" class="nge-strip-counts" :style="{ left: stripBadgesX + 'px' }">
       <span v-for="b in stripBadges" :key="b.id" class="nge-strip-badge"
-            :class="{ 'nge-strip-badge--chat': b.id === 'chat', 'nge-strip-badge--mention': b.mention && !(b.count + b.admin) }"
-            :style="{ left: b.x + 'px' }" :title="b.label">{{ b.count + b.admin > 0 ? b.count + b.admin : '@' }}</span>
-    </template>
+            :class="{ 'nge-strip-badge--chat': b.id === 'chat', 'nge-strip-badge--mention': b.mention && !b.count }"
+            :title="b.count ? `${b.label}: ${b.count}` : `${b.label}: someone mentioned you`"><span class="nge-strip-badge-icon"><span v-if="b.svg" v-html="b.svg"></span><img v-else-if="b.img" :src="b.img" alt="" /><template v-else>{{ b.emoji }}</template></span>{{ b.count || '@' }}</span>
+    </div>
   </div>
   <div id="extensionBar" @focusin="onBarFocusIn" @focusout="onBarFocusOut">
     <div class="ng-extend-logo">
@@ -2549,14 +2577,14 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 
 /* ── Hide the top bar until pointed at (Settings) ─────────────────────────
    body.nge-bar-autohide: the bar leaves the page flow and lies over the top
-   of the views; a 7px strip keeps its place, so nothing moves as it comes and
+   of the views; a 12px strip keeps its place, so nothing moves as it comes and
    goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather
    than a transform, so the bar's fixed position children (share toast) keep
    the window as their frame. */
 body.nge-bar-autohide .ng-extend {
   position: relative;
-  flex: 0 0 7px;
-  height: 7px;
+  flex: 0 0 12px;
+  height: 12px;
   /* No z-index here: every panel the bar opens is rendered in .ng-extend too,
      and a stacking context would cap them all at this level. */
 }
@@ -2581,43 +2609,53 @@ body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
   top: 0;
   left: 0;
   right: 0;
-  height: 7px;
+  height: 12px;
   z-index: 40;
-  background: linear-gradient(to bottom, rgba(16, 26, 46, 0.98), rgba(9, 15, 28, 0.98));
-  border-bottom: 1px solid rgba(110, 170, 255, 0.28);
+  background: linear-gradient(to bottom, rgba(18, 30, 54, 0.98), rgba(9, 15, 28, 0.98));
+  border-bottom: 1px solid rgba(110, 170, 255, 0.3);
   box-sizing: border-box;
-  cursor: default;
+  cursor: pointer;
 }
 /* A small notch in the middle says "something is up here". */
 .nge-bar-strip::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: 2px;
-  width: 36px;
-  height: 2px;
-  margin-left: -18px;
+  top: 4px;
+  width: 40px;
+  height: 3px;
+  margin-left: -20px;
   border-radius: 2px;
-  background: rgba(160, 200, 255, 0.45);
+  background: rgba(160, 200, 255, 0.5);
 }
-.nge-bar-strip:hover { background: linear-gradient(to bottom, rgba(26, 42, 72, 0.98), rgba(14, 24, 44, 0.98)); }
+.nge-bar-strip:hover { background: linear-gradient(to bottom, rgba(28, 46, 80, 0.98), rgba(14, 24, 44, 0.98)); }
 .nge-bar-strip--hidden::after { display: none; }
-.nge-strip-badge {
+.nge-strip-counts {
   position: absolute;
-  top: 1px;
+  top: 0;
+  height: 11px;
   transform: translateX(-50%);
-  min-width: 14px;
-  height: 13px;
-  padding: 0 4px;
+  display: flex;
+  gap: 4px;
+}
+.nge-strip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 11px;
+  padding: 0 5px 0 3px;
   box-sizing: border-box;
-  border-radius: 7px;
+  border-radius: 6px;
   background: #7c4dff;
   color: #fff;
-  font: 700 9px/13px 'Inter', 'Roboto', sans-serif;
-  text-align: center;
-  box-shadow: 0 0 8px rgba(124, 77, 255, 0.6);
+  font: 700 9px/11px 'Inter', 'Roboto', sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 0 6px rgba(124, 77, 255, 0.55);
   animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.nge-strip-badge--chat { background: #4ad07a; color: #06170d; box-shadow: 0 0 8px rgba(74, 208, 122, 0.6); }
+.nge-strip-badge-icon { display: inline-flex; align-items: center; font-size: 9px; line-height: 1; }
+.nge-strip-badge-icon svg { width: 9px !important; height: 9px !important; vertical-align: 0; }
+.nge-strip-badge-icon img { width: 9px; height: 9px; object-fit: contain; }
+.nge-strip-badge--chat { background: #4ad07a; color: #06170d; box-shadow: 0 0 6px rgba(74, 208, 122, 0.55); }
 .nge-strip-badge--mention { background: #f5b942; color: #241600; }
 </style>
