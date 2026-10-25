@@ -520,7 +520,7 @@ const props = defineProps<{ embedded?: boolean }>();
                point size is not here: it is set on the annotation layer itself. -->
           <div class="nge-settings-section nge-set-card--look" :class="{ 'nge-set-folded': isFolded('look') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('look')" title="Fold or unfold this box" @click.prevent="toggleFold('look')" @keydown.enter.prevent="toggleFold('look')" @keydown.space.prevent="toggleFold('look')">3D looks<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
-            <p class="nge-settings-hint">How cells and points look in 3D.</p>
+            <p class="nge-settings-hint">How cells look in 3D.</p>
             <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Spotlight: the cell turns a little richer and the other cells in 3D dim, so it stands out gently. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Hologram: the cell turns into cyan light (or your pulse colour), glowing brightest at its edges, with a soft glow around it. Metallic: a dark, shiny cell with bright edges. None: nothing marks it. In 2D the cell keeps its own colour, at your Render opacity. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
@@ -548,10 +548,6 @@ const props = defineProps<{ embedded?: boolean }>();
               </div>
             </div>
             <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftAnnotationGems" />
-              <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
-            </label>
             <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
               <input type="checkbox" v-model="draftPumpkin" />
               <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
@@ -682,6 +678,10 @@ const props = defineProps<{ embedded?: boolean }>();
           <div class="nge-settings-section nge-set-card--classic" :class="{ 'nge-set-folded': isFolded('classic') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('classic')" title="Fold or unfold this box" @click.prevent="toggleFold('classic')" @keydown.enter.prevent="toggleFold('classic')" @keydown.space.prevent="toggleFold('classic')">Classic neuroglancer<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Neuroglancer's own controls and panels, for players who know it from before.</p>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftAnnotationGems" />
+              <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
+            </label>
             <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
