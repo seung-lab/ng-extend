@@ -844,11 +844,14 @@ const toolbarActions: Record<string, ToolbarAction> = {
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount,
-                 adminBadge: () => backendStore.unreadAdminNotificationCount },
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : backendStore.unreadStaffNotificationCount),
+                 adminBadge: () => backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : 0 },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
+
+/** The phone bell's count: in player view, without admin and triage notes. */
+const mobileNotifCount = computed(() => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? 0 : backendStore.unreadStaffNotificationCount));
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => {
   return TOOLBAR_ICON_DEFS
@@ -965,7 +968,7 @@ function onIconDrop(e: DragEvent, id: string) {
   <achievement-toast />
   <staging-announcement />
   <!-- Test sites, and admins on the live site (util/toolbar_staging.ts). -->
-  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.isAdmin" />
+  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.showAdminUi" />
   <command-palette
     ref="cmdPalette"
     @open-profile="showProfile = true"
@@ -1193,6 +1196,12 @@ function onIconDrop(e: DragEvent, id: string) {
       ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ icon.badge() }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
     </div>
 
+    <!-- Player view (Ames 2026-10-25): an admin seeing the game as players do.
+         Shown only while it is on; a click goes back to admin view. The dot
+         means admin or triage notifications are waiting. -->
+    <button v-if="backendStore.isAdmin && backendStore.playerView" type="button" class="nge-player-view-chip"
+            :title="backendStore.unreadStaffNotificationCount > 0 ? `Player view is on. ${backendStore.unreadStaffNotificationCount} admin notifications waiting. Click for admin view.` : 'Player view is on: admin things are hidden. Click for admin view.'"
+            @click="backendStore.setPlayerView(false)">Player view<span v-if="backendStore.unreadStaffNotificationCount > 0" class="nge-player-view-dot" aria-label="Admin notifications waiting"></span></button>
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     <!-- Phones: the leaderboard, where the layer side panel's sliders used to
          sit (Ames 2026-10-05). The side panel is a desktop tool; on a phone
@@ -1345,7 +1354,7 @@ function onIconDrop(e: DragEvent, id: string) {
     <button :class="{ 'nge-mnav--active': showNotifications }" data-mnav="alerts" @click="showNotifications = !showNotifications">
       <span class="nge-mnav-icon">🔔</span>
       <span class="nge-mnav-label">Notifs</span>
-      <span v-if="backendStore.unreadNotificationCount > 0" class="nge-mnav-badge">{{ backendStore.unreadNotificationCount }}</span>
+      <span v-if="mobileNotifCount > 0" class="nge-mnav-badge">{{ mobileNotifCount }}</span>
     </button>
     <button :class="{ 'nge-mnav--active': showMobileWelcome }" data-mnav="guide" @click="showMobileWelcome = true">
       <span class="nge-mnav-icon">✨</span>
@@ -1878,6 +1887,37 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
   background: #4ad07a;
   color: #06170d;
   box-shadow: 0 0 8px rgba(74, 208, 122, 0.55);
+}
+
+/* Player view chip (Ames 2026-10-25): only while an admin has it on. */
+.nge-player-view-chip,
+#extensionBar .nge-player-view-chip {
+  position: relative;
+  align-self: center;
+  margin: 0 6px;
+  padding: 2px 9px;
+  border: 1px solid #7ee0ff;
+  border-radius: 999px;
+  background: rgba(126, 224, 255, 0.12);
+  color: #bfefff;
+  height: 20px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nge-player-view-chip:hover { background: rgba(126, 224, 255, 0.24); color: #fff; }
+.nge-player-view-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5484d;
+  box-shadow: 0 0 0 2px #0b1220;
 }
 
 /* ── Right end of the bar: profile, burger, ? and the layer panel toggle ──

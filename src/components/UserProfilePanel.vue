@@ -1441,7 +1441,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           @click="activeTab = 'settings'"
         >⚙️ Settings</button>
         <button
-          v-if="!viewingOtherUser && backendStore.isAdmin"
+          v-if="!viewingOtherUser && backendStore.showAdminUi"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"

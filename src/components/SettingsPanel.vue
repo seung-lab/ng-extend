@@ -415,6 +415,17 @@ const props = defineProps<{ embedded?: boolean }>();
 
       <!-- Settings content -->
       <div class="nge-settings-content">
+        <!-- Admins: see the game as a player does (Ames 2026-10-25). Display
+             only and instant, so no Save: admin powers stay, and the
+             "Player view" chip in the top bar switches back. -->
+        <div v-if="backendStore.isAdmin" class="nge-set-viewas">
+          <span class="nge-set-viewas-label">See the game as</span>
+          <div class="nge-set-viewas-seg" role="radiogroup" aria-label="See the game as">
+            <button type="button" role="radio" :aria-checked="!backendStore.playerView" :class="{ 'is-on': !backendStore.playerView }" @click="backendStore.setPlayerView(false)">Admin</button>
+            <button type="button" role="radio" :aria-checked="backendStore.playerView" :class="{ 'is-on': backendStore.playerView }" @click="backendStore.setPlayerView(true)">Player</button>
+          </div>
+          <span class="nge-set-viewas-hint">Player view hides admin buttons and tabs, so you see Pyr as players do. It works straight away, with no Save, and your admin powers stay. Waiting admin notifications show as a red dot on the Player view label in the top bar; click that label to come back.</span>
+        </div>
         <!-- Three columns in the profile (Ames 2026-09-29: "larger, full profile
              size, a cool layout, keep it scifi"). In the stand-alone window
              the column wrappers are display: contents, so it stays one list. -->
@@ -1487,6 +1498,31 @@ const props = defineProps<{ embedded?: boolean }>();
 @media (max-width: 680px) {
   .nge-settings-shell--embedded .nge-settings-content { grid-template-columns: 1fr; }
 }
+/* See the game as (admins only): a strip across the top. */
+.nge-set-viewas {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(126, 224, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(126, 224, 255, 0.06);
+}
+.nge-set-viewas-label { color: #dce6f5; font-weight: 600; font-size: 13px; }
+.nge-set-viewas-seg { display: inline-flex; border: 1px solid rgba(126, 224, 255, 0.45); border-radius: 999px; overflow: hidden; }
+.nge-set-viewas-seg button {
+  padding: 3px 14px;
+  border: 0;
+  background: transparent;
+  color: #9fb3cc;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nge-set-viewas-seg button.is-on { background: rgba(126, 224, 255, 0.22); color: #fff; font-weight: 600; }
+.nge-set-viewas-hint { flex: 1 1 260px; color: #8ea2bd; font-size: 12px; line-height: 1.4; }
 .nge-settings-shell--embedded .nge-set-col {
   display: flex;
   flex-direction: column;

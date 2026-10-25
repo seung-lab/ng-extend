@@ -5351,6 +5351,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (isAdmin.value) console.info('[backend] Admin access granted for', email);
   }
 
+  /** Player view (Ames 2026-10-25): an admin sees the game as a player does.
+   *  Display only: isAdmin, and everything the server allows, stay the same.
+   *  Interface that only admins see asks showAdminUi instead of isAdmin.
+   *  Remembered per browser. */
+  const PLAYER_VIEW_KEY = 'nge-player-view';
+  const playerView = ref((() => { try { return localStorage.getItem(PLAYER_VIEW_KEY) === '1'; } catch { return false; } })());
+  function setPlayerView(on: boolean) {
+    playerView.value = on;
+    try { if (on) localStorage.setItem(PLAYER_VIEW_KEY, '1'); else localStorage.removeItem(PLAYER_VIEW_KEY); } catch { /* storage blocked */ }
+  }
+  const showAdminUi = computed(() => isAdmin.value && !playerView.value);
+
   // ── Notifications ─────────────────────────────────────────────────────
 
   interface Notification {
@@ -5415,6 +5427,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
     notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) === 'admin').length
+  );
+  /** Unread in the bell's Admin and Triage tabs together: the dot on the
+   *  Player view chip, so admin alerts still show while those tabs are hidden. */
+  const unreadStaffNotificationCount = computed(() =>
+    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) !== 'main').length
   );
 
   // The bell used to ask for the 50 newest notifications in full, twice a
@@ -6391,9 +6408,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     liveRoots, refreshLiveRoots, anchorClaimAt,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub
-    isAdmin, checkAdmin, isBlogAuthor,
+    isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, notifRead, unreadNotificationCount, unreadAdminNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,

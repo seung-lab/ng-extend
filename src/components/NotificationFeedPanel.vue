@@ -196,8 +196,12 @@ const mineNotes = computed(() => mainNotes.value.filter((n: any) => n.target_typ
 const updateNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type !== 'user'));
 const oneList = computed(() => useUserPreferencesStore().prefs.notifOneList === true);
 const showFeedTabs = computed(() => !oneList.value);
-const showAdminTab = computed(() => backend.isAdmin && adminNotes.value.length > 0);
-const showTriageTab = computed(() => backend.isAdmin && triageNotes.value.length > 0);
+// Player view (store.ts showAdminUi) hides the Admin and Triage tabs and
+// keeps their notes out of the single list; the Player view chip in the top
+// bar shows a dot when any are unread.
+const showAdminTab = computed(() => backend.showAdminUi && adminNotes.value.length > 0);
+const showTriageTab = computed(() => backend.showAdminUi && triageNotes.value.length > 0);
+watch(() => backend.showAdminUi, on => { if (!on && (feedTab.value === 'admin' || feedTab.value === 'triage')) feedTab.value = 'mine'; }, { immediate: true });
 // Admin and Triage share one tab, so four tabs fit (Ames 2026-10-25: "admins
 // will need a wider notifications tab"). It holds both, with a switch inside
 // it when both have notes; underneath they stay the two lists they were, so
@@ -218,8 +222,8 @@ function openAdminGroup() {
   if (side === 'triage' && !showTriageTab.value) side = 'admin';
   feedTab.value = side;
 }
-const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications
-  : feedTab.value === 'triage' ? triageNotes.value : feedTab.value === 'admin' ? adminNotes.value
+const shownNotes = computed(() => !showFeedTabs.value ? (backend.showAdminUi ? backend.notifications : mainNotes.value)
+  : feedTab.value === 'triage' && backend.showAdminUi ? triageNotes.value : feedTab.value === 'admin' && backend.showAdminUi ? adminNotes.value
   : feedTab.value === 'updates' ? updateNotes.value : mineNotes.value);
 /** Opening the bell: the tab with the newest unread notification, or the
  *  tab used last when nothing is unread. It never moves while open. */

@@ -2181,7 +2181,7 @@ function jumpToAiTag(tag: IssueTag) {
 
 /** Who may close a help request: the player who asked, and admins. */
 function canResolve(req: HelpRequest): boolean {
-  return backend.isAdmin || (!!req.userId && req.userId === backend.userId);
+  return backend.showAdminUi || (!!req.userId && req.userId === backend.userId);
 }
 /** A note longer than its two shown lines gets a Show more button. */
 function noteIsLong(note: string): boolean {
