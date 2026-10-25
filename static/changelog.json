@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T21:57:09Z",
+      "title": "My Pyr and Pyr Updates",
+      "items": [
+        "The bell has two tabs: My Pyr for what was sent to you (replies, achievements, your week, your results), and Pyr Updates for news for everyone. It opens on the tab with the newest unread one.",
+        "Pyr Updates older than 5 days count as read, so the daily updates do not pile up, and Mark all read clears both tabs.",
+        "In Settings: Show all notifications in one list, and Show Today in Pyr daily updates."
+      ]
+    },
+    {
       "at": "2026-10-25T21:53:00Z",
       "title": "A tidier pumpkin card, and a wink",
       "digest": "minor",

@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
-import { useProofreadingBackendStore, useHelpRequestStore } from '../store';
+import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore } from '../store';
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
@@ -181,14 +181,41 @@ const confirmDeleteAll = ref(false);
 // results and players' answers to replies an admin asked for. Bug reports
 // stay in Triage. Which is which: util/notif_kinds.ts, shared with the bell's
 // red count.
-const feedTab = ref<NotifKind>('main');
+// My Pyr and Pyr Updates, for everyone (Ames 2026-10-25, from annkri's
+// report 248): what was sent to you alone, and what went to everyone or a
+// group. Settings can put them back in one list.
+type FeedTab = 'mine' | 'updates' | 'admin' | 'triage';
+const TAB_KEY = 'nge-notif-tab';
+const feedTab = ref<FeedTab>((() => { try { const t = localStorage.getItem(TAB_KEY); return (['mine', 'updates', 'admin', 'triage'] as string[]).includes(t || '') ? t as FeedTab : 'mine'; } catch { return 'mine'; } })());
+watch(feedTab, t => { try { localStorage.setItem(TAB_KEY, t); } catch { /* private mode */ } });
 const kindOf = (n: { title?: string | null }) => notifKind(n.title, backend.isAdmin);
 const triageNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'triage'));
 const adminNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'admin'));
 const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
-const showFeedTabs = computed(() => backend.isAdmin && (triageNotes.value.length > 0 || adminNotes.value.length > 0));
+const mineNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type === 'user'));
+const updateNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type !== 'user'));
+const oneList = computed(() => useUserPreferencesStore().prefs.notifOneList === true);
+const showFeedTabs = computed(() => !oneList.value);
+const showAdminTab = computed(() => backend.isAdmin && adminNotes.value.length > 0);
+const showTriageTab = computed(() => backend.isAdmin && triageNotes.value.length > 0);
 const shownNotes = computed(() => !showFeedTabs.value ? backend.notifications
-  : feedTab.value === 'triage' ? triageNotes.value : feedTab.value === 'admin' ? adminNotes.value : mainNotes.value);
+  : feedTab.value === 'triage' ? triageNotes.value : feedTab.value === 'admin' ? adminNotes.value
+  : feedTab.value === 'updates' ? updateNotes.value : mineNotes.value);
+/** Opening the bell: the tab with the newest unread notification, or the
+ *  tab used last when nothing is unread. It never moves while open. */
+watch(() => props.visible, open => {
+  if (!open || !showFeedTabs.value) return;
+  const tabs: [FeedTab, any[]][] = [['mine', mineNotes.value], ['updates', updateNotes.value]];
+  if (showAdminTab.value) tabs.push(['admin', adminNotes.value]);
+  if (showTriageTab.value) tabs.push(['triage', triageNotes.value]);
+  let best: FeedTab | null = null, bestAt = '';
+  for (const [tab, list] of tabs) {
+    const n = list.find((x: any) => !isRead(x.id));
+    const at = n ? String(n.send_at || n.created_at || '') : '';
+    if (n && at > bestAt) { best = tab; bestAt = at; }
+  }
+  if (best) feedTab.value = best;
+}, { immediate: true });
 // The feed loads the newest notifications of every kind together, so one tab
 // could show only two or three while triage alerts took the rest (Ames
 // 2026-10-21: "this should load more than 2"). While the panel is open, the
@@ -207,7 +234,18 @@ async function fillTab() {
 }
 watch([() => props.visible, feedTab, () => shownNotes.value.length], () => { void fillTab(); });
 const unreadIn = (list: { id: number }[]) => list.filter(n => !isRead(n.id)).length;
-watch(showFeedTabs, on => { if (!on) feedTab.value = 'main'; });
+/** "Mark all read" on My Pyr or Pyr Updates marks both (Ames 2026-10-25);
+ *  Admin and Triage keep their own. */
+function markAllRead() {
+  if (!showFeedTabs.value) return backend.markAllNotificationsRead();
+  const list = feedTab.value === 'admin' ? adminNotes.value : feedTab.value === 'triage' ? triageNotes.value : mainNotes.value;
+  return backend.markAllNotificationsRead(list.map(n => n.id));
+}
+// "Show Today in Pyr" switched in Settings: read the feed again with it.
+watch(() => useUserPreferencesStore().prefs.showDailyDigest, () => { void backend.loadNotifications(); });
+watch([showAdminTab, showTriageTab], () => {
+  if ((feedTab.value === 'admin' && !showAdminTab.value) || (feedTab.value === 'triage' && !showTriageTab.value)) feedTab.value = 'mine';
+});
 watch(feedTab, () => { confirmDeleteAll.value = false; });   // the question was about the other tab
 
 // With the two admin tabs showing, "Delete all" clears the tab you are on
@@ -229,8 +267,10 @@ function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
+/** Read, or a Pyr Update more than 5 days old (store.ts notifRead). */
 function isRead(id: number): boolean {
-  return (backend as any).notificationReads?.has?.(id) ?? false;
+  const n = backend.notifications.find((x: any) => x.id === id);
+  return n ? backend.notifRead(n) : ((backend as any).notificationReads?.has?.(id) ?? false);
 }
 
 function isBadgeNotification(notif: any): boolean {
@@ -714,9 +754,9 @@ function padRank(rank: number): string {
       <div class="nge-notif-topbar-actions">
         <!-- With the two admin tabs showing, this marks the tab you are on. -->
         <button
-          v-if="showFeedTabs ? unreadIn(shownNotes) > 0 : backend.unreadNotificationCount > 0"
+          v-if="showFeedTabs ? unreadIn(feedTab === 'admin' ? adminNotes : feedTab === 'triage' ? triageNotes : mainNotes) > 0 : backend.unreadNotificationCount > 0"
           class="nge-notif-mark-all"
-          @click="showFeedTabs ? backend.markAllNotificationsRead(shownNotes.map(n => n.id)) : backend.markAllNotificationsRead()"
+          @click="markAllRead()"
         >{{ showFeedTabs && feedTab === 'triage' ? 'Mark triage read' : showFeedTabs && feedTab === 'admin' ? 'Mark admin read' : 'Mark all read' }}</button>
         <!-- Separate from "mark all read" on purpose: read state controls the
              unread pip, this clears the feed. Only hides them for THIS user —
@@ -743,14 +783,19 @@ function padRank(rank: number): string {
     </div>
 
     <div v-if="showFeedTabs" class="nge-notif-tabs" role="tablist">
-      <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'main' }" role="tab" :aria-selected="feedTab === 'main'" @click="feedTab = 'main'">
-        Notifications<b v-if="unreadIn(mainNotes) > 0">{{ unreadIn(mainNotes) }}</b>
+      <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'mine' }" role="tab" :aria-selected="feedTab === 'mine'" @click="feedTab = 'mine'"
+              title="Sent to you: replies, achievements, your week, your results">
+        My Pyr<b v-if="unreadIn(mineNotes) > 0">{{ unreadIn(mineNotes) }}</b>
       </button>
-      <button class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
+      <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'updates' }" role="tab" :aria-selected="feedTab === 'updates'" @click="feedTab = 'updates'"
+              title="Sent to everyone: Today in Pyr, announcements, blog posts, Weekly Champions, competitions">
+        Pyr Updates<b v-if="unreadIn(updateNotes) > 0">{{ unreadIn(updateNotes) }}</b>
+      </button>
+      <button v-if="showAdminTab" class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': feedTab === 'admin' }" role="tab" :aria-selected="feedTab === 'admin'" @click="feedTab = 'admin'"
               title="Access requests, proofreading tests, and players' answers to replies you asked for">
         Admin<b v-if="unreadIn(adminNotes) > 0">{{ unreadIn(adminNotes) }}</b>
       </button>
-      <button class="nge-notif-tab nge-notif-tab--triage" :class="{ 'nge-notif-tab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'">
+      <button v-if="showTriageTab" class="nge-notif-tab nge-notif-tab--triage" :class="{ 'nge-notif-tab--on': feedTab === 'triage' }" role="tab" :aria-selected="feedTab === 'triage'" @click="feedTab = 'triage'">
         Triage<b v-if="unreadIn(triageNotes) > 0">{{ unreadIn(triageNotes) }}</b>
       </button>
     </div>
