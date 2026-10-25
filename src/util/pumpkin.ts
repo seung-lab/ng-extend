@@ -68,6 +68,12 @@ const PATCH: PatchCell[] = [
   // shorter to come out the same width (Ames: "that pumpkin is too big").
   // Raised over its cell body (Ames: "fang needs to be higher up").
   { soma: [81640, 56504, 1162], ids: ['648518346355866943'], heightNm: 22000, dropNm: -3000, model: 'fang-o-lantern', green: 0x6736b0 },
+  // The cell the Sandbox opens on for Ames now (Ames 2026-10-25: "it is a
+  // different cell yes, you can add the fang jack o lantern to it"), soma
+  // from Ames's position readout. It sits about 20 um below the purple fang
+  // and 12 um across, so this one is smaller (16 um tall) and the two never
+  // touch when the whole patch is shown. Kept in its own blue.
+  { soma: [84730, 61617, 1260], ids: ['648518346352711309'], heightNm: 16000, dropNm: -2000, model: 'fang-o-lantern', green: 0x3d7fe6 },
 ];
 /** The Sandbox's segmentation layer. */
 const SANDBOX_LAYER = 'pinky_nf_v2';
