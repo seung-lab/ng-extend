@@ -1029,6 +1029,12 @@ export interface UserPreferences {
    *  2026-10-25). False: no card and no confetti when one is earned; it is
    *  still in the Trophy Case and the bell. */
   achievementCelebration?: boolean;
+  /** Settings: every notification in one list instead of My Pyr and Pyr
+   *  Updates (Ames 2026-10-25). */
+  notifOneList?: boolean;
+  /** Settings, "Show Today in Pyr": false keeps the daily update out of the
+   *  bell (Ames 2026-10-25). */
+  showDailyDigest?: boolean;
   /** 2D image detail: 1 full (default), 2 half, 4 quarter, as neuroglancer's
    *  render scale target for image layers. Coarser loads far less on a slow
    *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
@@ -1108,6 +1114,10 @@ export interface UserPreferences {
   /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
    *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
   cursorXL?: boolean;
+  /** Large text: Pyr's windows and the layer side panel drawn a fifth bigger
+   *  (body.nge-large-text, src/large_text.css; Ames 2026-10-25, for older
+   *  players). Defaults to false. */
+  largeText?: boolean;
   /** Advanced: a click on the 2D image layer's tab opens its side panel, as
    *  in neuroglancer. Off (default): it shows or hides the 2D view. */
   imageLayerPanel?: boolean;
@@ -1159,7 +1169,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'showDailyDigest'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1253,6 +1263,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   load(); // hydrate from localStorage on store init
   // The cursor size follows the setting, on every computer the account uses.
   watch(() => prefs.value.cursorXL === true, on => { document.body?.classList.toggle('nge-cursor-xl', on); }, { immediate: true });
+  watch(() => prefs.value.largeText === true, on => { document.body?.classList.toggle('nge-large-text', on); }, { immediate: true });
   // The renderer reads the hover style and pulse colour from these.
   watch(() => [prefs.value.hoverStyle, prefs.value.pulseColor], () => {
     ngeHoverStyle.value = ngeParseHoverStyle(prefs.value);
@@ -5213,13 +5224,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
   const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string } | null>(null);
 
+  /** Read, or a Pyr Update (sent to everyone) more than 5 days old: those
+   *  count as read, so the daily updates do not pile up as unread (Ames
+   *  2026-10-25). Nothing is saved for them. */
+  const UPDATE_STALE_MS = 5 * 24 * 60 * 60 * 1000;
+  function notifRead(n: Notification): boolean {
+    if (notificationReads.value.has(n.id)) return true;
+    if (n.target_type === 'user') return false;
+    const at = Date.parse(String((n as any).send_at || (n as any).created_at || ''));
+    return Number.isFinite(at) && Date.now() - at > UPDATE_STALE_MS;
+  }
   const unreadNotificationCount = computed(() =>
-    notifications.value.filter(n => !notificationReads.value.has(n.id)).length
+    notifications.value.filter(n => !notifRead(n)).length
   );
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
-    notifications.value.filter(n => !notificationReads.value.has(n.id) && notifKind(n.title, isAdmin.value) === 'admin').length
+    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) === 'admin').length
   );
 
   // The bell used to ask for the 50 newest notifications in full, twice a
@@ -5326,7 +5347,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const prefsStore = useUserPreferencesStore();
     const delivered = new Set<number>([...(prefsStore.prefs.notifDelivered || []), ...notificationReads.value]);
     const groupIds = notifGroupIds;
-    const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && (
+    // Settings, "Show Today in Pyr" off: the daily update stays out of the bell.
+    const hideDigest = prefsStore.prefs.showDailyDigest === false;
+    const mine = (n: Notification) => !notificationDismissals.value.has(n.id)
+      && !(hideDigest && n.target_type !== 'user' && String(n.title || '').startsWith('Today in Pyr')) && (
       n.target_type === 'all'
       || (n.target_type === 'user' && n.target_id === userId.value)
       || (n.target_type === 'group' && groupIds.includes(n.target_id || '')));
@@ -6194,7 +6218,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor,
     // Notifications
-    notifications, notificationReads, unreadNotificationCount, unreadAdminNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, unreadNotificationCount, unreadAdminNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,

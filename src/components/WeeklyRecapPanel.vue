@@ -515,7 +515,7 @@ function jumpToCell(segId: string) {
 .nge-recap-shell {
   display: flex;
   flex-direction: column;
-  max-height: 88vh;
+  max-height: calc(88 * var(--nge-vh, 1vh));
 }
 /* Embedded in the profile tab: no modal height cap, let the profile body scroll.
    Fill the profile shell's width instead of the standalone modal's fixed 580px,

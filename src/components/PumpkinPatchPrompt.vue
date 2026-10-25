@@ -12,9 +12,11 @@
  * streak's amber. Escape or a click outside says no.
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { patchSize } from '../util/pumpkin';
+import { patchSize, pumpkinHidden } from '../util/pumpkin';
 
-const emit = defineEmits({ yes: null, no: null });
+const emit = defineEmits({ yes: null, no: null, smash: null, toggle: null });
+/** Off already: the middle button puts them back instead. */
+const hidden = pumpkinHidden();
 const yesEl = ref<HTMLButtonElement | null>(null);
 const sightings = patchSize();
 const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); emit('no'); } };
@@ -30,6 +32,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
         <span class="nge-patch-scan" aria-hidden="true"></span>
         <i class="nge-patch-brk tl" aria-hidden="true"></i><i class="nge-patch-brk tr" aria-hidden="true"></i>
         <i class="nge-patch-brk bl" aria-hidden="true"></i><i class="nge-patch-brk br" aria-hidden="true"></i>
+        <button class="nge-patch-x" aria-label="Close" title="Close" @click="emit('no')">×</button>
 
         <div class="nge-patch-row nge-patch-head" style="--i: 0">
           <span class="nge-patch-pumpkin" aria-hidden="true">🎃</span>
@@ -46,8 +49,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
           Proofreaders in the Sandbox report a <b>jack o' lantern neuron</b>. Only ever seen in October.
         </p>
         <div class="nge-patch-row nge-patch-btns" style="--i: 3">
-          <button class="nge-patch-no" @click="emit('no')">Not now</button>
-          <button ref="yesEl" class="nge-patch-yes" @click="emit('yes')">Go see it</button>
+          <!-- Smash the pumpkins (Ames 2026-10-25): off to the patch with a
+               hammer; smashed pumpkins stay off until the chat bar's pumpkin
+               button brings them back (util/pumpkin.ts). -->
+          <button class="nge-patch-hide" @click="emit('smash')">🔨 Smash the pumpkins</button>
+          <button class="nge-patch-no" @click="emit('toggle')">{{ hidden ? 'Show the pumpkin' : 'Hide the pumpkin' }}</button>
+          <button ref="yesEl" class="nge-patch-yes" @click="emit('yes')">Go to the patch</button>
         </div>
       </div>
     </div>
@@ -139,8 +146,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 
 .nge-patch-text { margin: 0 0 16px; color: #d4dcea; font-size: 15.5px; }
 .nge-patch-text b { color: #ffc27a; font-weight: 600; white-space: nowrap; }
-.nge-patch-btns { display: flex; justify-content: flex-end; gap: 8px; }
-.nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 18px; border-radius: 8px; cursor: pointer; }
+.nge-patch-x {
+  position: absolute; top: 8px; right: 10px; z-index: 2; padding: 0 4px; font-size: 20px; line-height: 1;
+  color: #b9a48c; background: none; border: 0; cursor: pointer;
+}
+.nge-patch-x:hover { color: #ffd59a; }
+.nge-patch-btns { flex-wrap: wrap; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+/* a quiet text button on the left, so the two answers keep their place */
+.nge-patch-hide {
+  /* a full-width button of its own above the two answers, easy to find
+     (Ames 2026-10-25: "we want it easier to find the smash!") */
+  order: -1; flex-basis: 100%; margin-bottom: 2px; padding: 9px 16px; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; color: #ffe2bf;
+  background: linear-gradient(180deg, rgba(255, 120, 30, 0.22), rgba(140, 50, 0, 0.3));
+  border: 1px solid rgba(255, 150, 60, 0.75); box-shadow: 0 0 14px rgba(255, 130, 30, 0.22);
+}
+.nge-patch-hide:hover { background: linear-gradient(180deg, rgba(255, 140, 40, 0.34), rgba(160, 60, 0, 0.42)); color: #fff; }
+.nge-patch-hide:focus-visible { outline: 2px solid #ffd59a; outline-offset: 2px; }
+.nge-patch-no, .nge-patch-yes { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 .nge-patch-no { color: #d8e2f0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(160, 175, 200, 0.35); }
 .nge-patch-no:hover { background: rgba(255, 255, 255, 0.1); }
 .nge-patch-yes {

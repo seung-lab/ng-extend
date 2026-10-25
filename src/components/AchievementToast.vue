@@ -1257,7 +1257,7 @@ function playBatchChime() {
      1080 screen (Krzysztof #147); below the screenshot window (10040). */
   z-index: 10020;
   width: 520px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 32px);
   padding: 22px 28px 24px;
   box-sizing: border-box;
   display: flex;
@@ -1563,7 +1563,7 @@ function playBatchChime() {
     calc(var(--chip-pad-x) + 8px) 0, calc(var(--chip-pad-x) + 8px) 3px,
     calc(100% - 14px) 3px, 100% 17px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
   position: fixed; top: 88px; left: 50%; transform: translateX(-50%); z-index: 100000;
-  display: inline-flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px); box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 10px; max-width: calc(100 * var(--nge-vw, 1vw) - 24px); box-sizing: border-box;
   padding: 11px 20px 8px 12px; border: 0; border-radius: 0; cursor: pointer;
   background: linear-gradient(180deg, var(--chip-trace) 0%, rgba(141, 240, 164, 0.8) 30%, rgba(141, 240, 164, 0.28) 72%, rgba(141, 240, 164, 0.05) 100%) no-repeat left bottom / 100% calc(100% - 3px);
   clip-path: var(--chip-cut);
@@ -1659,13 +1659,13 @@ function playBatchChime() {
 @keyframes nge-batch-particle-rise {
   0%   { transform: translateY(0)     translateX(0); opacity: 0; }
   6%   { opacity: 1; }
-  16%  { transform: translateY(-15vh) translateX(calc(var(--drift) * 22px)); }
-  30%  { transform: translateY(-30vh) translateX(calc(var(--drift) * -28px)); }
-  44%  { transform: translateY(-45vh) translateX(calc(var(--drift) * 32px)); }
-  58%  { transform: translateY(-60vh) translateX(calc(var(--drift) * -22px)); }
-  72%  { transform: translateY(-75vh) translateX(calc(var(--drift) * 26px)); }
-  86%  { transform: translateY(-90vh) translateX(calc(var(--drift) * -18px)); opacity: 1; }
-  100% { transform: translateY(-110vh) translateX(0); opacity: 0; }
+  16%  { transform: translateY(calc(-15 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * 22px)); }
+  30%  { transform: translateY(calc(-30 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * -28px)); }
+  44%  { transform: translateY(calc(-45 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * 32px)); }
+  58%  { transform: translateY(calc(-60 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * -22px)); }
+  72%  { transform: translateY(calc(-75 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * 26px)); }
+  86%  { transform: translateY(calc(-90 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * -18px)); opacity: 1; }
+  100% { transform: translateY(calc(-110 * var(--nge-vh, 1vh))) translateX(0); opacity: 0; }
 }
 
 /* Card */
@@ -1683,7 +1683,7 @@ function playBatchChime() {
     0 0 160px rgba(74, 158, 255, 0.18),
     0 20px 60px rgba(0,0,0,0.6);
   min-width: 380px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
   z-index: 2;
   animation: nge-batch-card-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -1945,7 +1945,7 @@ function playBatchChime() {
 .nge-batch-ray {
   position: absolute;
   width: 2px;
-  height: 140vh;
+  height: calc(140 * var(--nge-vh, 1vh));
   top: 50%;
   left: 50%;
   transform-origin: center;
