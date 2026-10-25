@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T19:31:51Z",
+      "title": "A note while the servers are down",
+      "digest": "minor",
+      "items": [
+        "While our data server is down, a note at the top says so. Merging and cutting still work."
+      ]
+    },
+    {
       "at": "2026-10-25T19:06:48Z",
       "title": "Chat no longer asks you to log in when you are",
       "items": [
