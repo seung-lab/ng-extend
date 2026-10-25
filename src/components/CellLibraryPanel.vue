@@ -881,26 +881,9 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 
 // ── How the cell ended (Nseraf 2026-09-30) ─────────────────────────────────
 // Retina's sheet has four endings and the form could only write "Complete".
-// The proofreader picks one; the last pick is offered again next time, since
-// most cells in a session end the same way. A dataset with one ending shows
-// no choice.
-const STATUS_KEY = 'nge_cl_complete_status';
-function rememberedStatus(cell: CellRow): string {
-  const options = completeStatusesFor(cell.dataset);
-  if (!options.length) return '';
-  try {
-    const last = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}')[canonicalDataset(cell.dataset)];
-    if (options.some(o => o.value === last)) return last;
-  } catch { /* nothing remembered */ }
-  return '';   // first time: no default, the choice is the proofreader's
-}
-function rememberStatus(cell: CellRow, status: string) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}');
-    all[canonicalDataset(cell.dataset)] = status;
-    localStorage.setItem(STATUS_KEY, JSON.stringify(all));
-  } catch { /* private mode */ }
-}
+// The proofreader picks one, every time: the last pick used to be offered
+// again, and went in by mistake (toknow, report 237). A dataset with one
+// ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
@@ -931,7 +914,9 @@ async function prefillCellType(root: string) {
 
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
-  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
+  // No ending picked to start with: the last one carried over, and a player
+  // who forgot to change it sent the wrong one (toknow, report 237).
+  completing.value = { key: cellKey(cell), link: '', notes: '', status: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
     cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '', correcting: false };
   void runCrosshairCheck(cell).then(() => {
     const root = completing.value?.check?.root;
@@ -1044,7 +1029,6 @@ async function submitComplete(cell: CellRow) {
       // The player's type, to the sheet's "CitSci Suggested Type" (Celia).
       cellType: type || undefined,
     });
-    if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
     // Straight on to your next claim; with none left, the slim bar offers a
     // new one (Ames 2026-10-21; it used to open the full library).

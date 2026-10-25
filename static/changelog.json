@@ -3,6 +3,13 @@
   "entries": [
     {
       "at": "2026-10-25T00:00:00Z",
+      "title": "Pick how each cell ended",
+      "items": [
+        "Completing a cell no longer starts with your last answer to How did it end? picked. You choose each time, so a wrong one cannot slip through."
+      ]
+    },
+    {
+      "at": "2026-10-25T00:00:00Z",
       "title": "Clearer annotation tools",
       "items": [
         "In an annotation layer, the Pyr gem comes first, the box, line, ellipse and polyline sit on a line of their own under the points, and the tool you pick is the one lit up."
