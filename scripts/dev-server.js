@@ -216,6 +216,20 @@ for (const track of ['building', 'exploration', 'loyalty']) {
   }
 }
 
+// ── Halloween models (the Sandbox pumpkins, the ghost) ──────────────────────
+// src/util/pumpkin.ts fetches /halloween/<model>.glb. Without a copy here the
+// dev server answered with index.html, the model failed as "not a glTF 2
+// binary file", and no pumpkin ever showed on a dev server (Ames 2026-10-25).
+const HALLOWEEN = path.join(__dirname, '..', 'static', 'halloween');
+if (fs.existsSync(HALLOWEEN)) {
+  const dest = path.join(__dirname, '..', 'dist', 'dev', 'halloween');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(HALLOWEEN)) {
+    if (file.endsWith('.glb')) fs.copyFileSync(path.join(HALLOWEEN, file), path.join(dest, file));
+  }
+  console.log(`Copied Halloween models → ${dest}`);
+}
+
 console.log('Starting dev server...');
 const proc = spawn(process.execPath, args, { stdio: 'inherit', shell: false });
 proc.on('exit', code => process.exit(code ?? 0));
