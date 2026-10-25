@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T13:21:11Z",
+      "title": "The Lantern bar stays behind your profile",
+      "items": [
+        "Lantern's bar, and the Highlight, Batch and Quests boxes, now tuck behind the profile and the other full-screen windows instead of showing on top of them."
+      ]
+    },
+    {
       "at": "2026-10-25T00:30:00Z",
       "title": "Marks open on MEC claims",
       "items": [
