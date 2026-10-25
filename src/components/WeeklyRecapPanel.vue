@@ -263,6 +263,16 @@ const cellsThisWeek = computed(() =>
 const cellsCompleted = computed(() => cellsThisWeek.value.filter(c => c.isComplete));
 const cellsIdentified = computed(() => cellsThisWeek.value.filter(c => c.cellType));
 
+/** A player's share of everyone's edits: whole numbers from 10%, one decimal
+ *  below, and "under 0.1%" for the tiniest, never "0%" for someone who made
+ *  edits (Ames 2026-10-25: 11 of 10,990 showed as 0%). */
+function sharePct(mine: number, all: number): string {
+  const p = all > 0 ? mine / all * 100 : 0;
+  if (p >= 10) return `${Math.round(p)}%`;
+  if (p >= 0.1) return `${(Math.round(p * 10) / 10).toFixed(1).replace(/\.0$/, '')}%`;
+  return 'under 0.1%';
+}
+
 function truncateId(id: string): string {
   return id.length > 12 ? id.slice(0, 6) + '…' + id.slice(-4) : id;
 }
@@ -478,7 +488,7 @@ function jumpToCell(segId: string) {
           </div>
           <div class="nge-recap-global-share" v-if="globalStats.mineWeek > 0 && globalStats.editsWeek > 0">
             You made <strong><RollUp :value="globalStats.mineWeek" /></strong> of them,
-            <strong>{{ Math.round(globalStats.mineWeek / globalStats.editsWeek * 100) }}%</strong> of the community's edits.
+            <strong>{{ sharePct(globalStats.mineWeek, globalStats.editsWeek) }}</strong> of the community's edits.
           </div>
           </div>
           <div class="nge-recap-global-half">
