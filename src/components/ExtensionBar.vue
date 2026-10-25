@@ -788,7 +788,7 @@ interface ToolbarIcon {
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
 import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG, LEADERBOARD_SVG } from '../data/toolbar-icons';
-import { iconArrived, isStaged, isTutorialBusy, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
+import { iconArrived, isStaged, isTutorialOnScreen, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
 import StagingAnnouncement from 'components/StagingAnnouncement.vue';
 import StagingTestPanel from 'components/StagingTestPanel.vue';
 
@@ -978,7 +978,7 @@ const canHover = ref(typeof window !== 'undefined' && !!window.matchMedia?.('(ho
   mq?.addEventListener?.('change', e => { canHover.value = e.matches; });
 }
 const barAutoHide = computed(() => useUserPreferencesStore().prefs.hideTopBar === true
-  && canHover.value && !isMobileRef.value && !isTutorialBusy() && !isStaged());
+  && canHover.value && !isMobileRef.value && !isTutorialOnScreen() && !isStaged());
 const barHover = ref(false);     // the bar has come down for the mouse
 const barPinned = ref(false);    // the \ key brought it down
 const barFocus = ref(false);     // typing in it (the position box)

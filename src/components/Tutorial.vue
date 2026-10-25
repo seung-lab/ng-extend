@@ -24,7 +24,7 @@ import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
-import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialFinished, tutorialStepReveals, verifyStepIcons } from '../util/toolbar_staging';
+import { getStartedFinished, reveal, runMoment, setTutorialBusy, setTutorialOnScreen, SITE_TOUR, tutorialFinished, tutorialStepReveals, verifyStepIcons } from '../util/toolbar_staging';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Mini Michelangelo art from Ames (2026-10-07).
@@ -320,6 +320,8 @@ if (QUIET_TEST_HOST) {
     });
 }
 const quietOnLoad = computed(() => QUIET_TEST_HOST && !startedHere.value);
+// The hidden top bar stays down while a tutorial box is drawn (ExtensionBar.vue).
+setTutorialOnScreen(() => !quietOnLoad.value && !!activeStep.value);
 const resumeName = computed(() => TUTORIAL_NAMES[store.activeTutorial] ?? 'the tutorial');
 function continueTutorial() { resumeDecided.value = true; }
 function exitFromPrompt() { resumeDecided.value = true; exitIntro(); }

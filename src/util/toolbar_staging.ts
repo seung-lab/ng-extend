@@ -296,11 +296,14 @@ export function siteTourShows(iconId: string): boolean {
 /** Set by Tutorial.vue: whether a tutorial box, a practice cell or the test is
  *  on screen, so edits made there do not count as your own. */
 let tutorialBusy: () => boolean = () => false;
-// A ref, so a computed that asks before Tutorial.vue has set it still updates.
-const tutorialBusyFn = shallowRef(tutorialBusy);
-export function setTutorialBusy(fn: () => boolean) { tutorialBusy = fn; tutorialBusyFn.value = fn; }
-/** Is a tutorial box, a practice cell or the test on screen? (reactive) */
-export function isTutorialBusy(): boolean { return tutorialBusyFn.value(); }
+export function setTutorialBusy(fn: () => boolean) { tutorialBusy = fn; }
+/** Set by Tutorial.vue: whether a tutorial box (or its resume card) is drawn.
+ *  A tutorial in progress is not enough: a test site keeps it out of sight
+ *  until started from the menu. A ref, so a computed that asks before
+ *  Tutorial.vue has set it still updates (the hidden top bar asks). */
+const tutorialOnScreenFn = shallowRef<() => boolean>(() => false);
+export function setTutorialOnScreen(fn: () => boolean) { tutorialOnScreenFn.value = fn; }
+export function isTutorialOnScreen(): boolean { return tutorialOnScreenFn.value(); }
 
 /**
  * Get Started is over. Once its Achievement and the username question have
