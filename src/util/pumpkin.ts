@@ -213,8 +213,30 @@ function placement(c: PatchCell): mat4 | null {
 /** The pumpkins drawn right now (indexes into PATCH). */
 let shownNow: number[] = [];
 
+/** A pumpkin grows in from nothing over its cell body the first time it
+ *  appears, once the cell has drawn (Ames 2026-10-25: "a little loading
+ *  indicator like the pumpkins grow after the cell meshes"). Calm screen:
+ *  it is simply there. */
+const GROW_MS = 750;
+function grow(prop: NgeProp, full: mat4) {
+  const set = (f: number) => { for (const c of [0, 1, 2]) for (const r of [0, 1, 2]) prop.modelMat[c * 4 + r] = full[c * 4 + r] * f; };
+  if (document.body.classList.contains('nge-calm')) { set(1); return; }
+  set(0);
+  const start = performance.now();
+  const step = () => {
+    const t = Math.min(1, (performance.now() - start) / GROW_MS);
+    // ease out with a little overshoot: it swells, then settles
+    const k = 1.7;
+    set(1 + (k + 1) * Math.pow(t - 1, 3) + k * Math.pow(t - 1, 2));
+    try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 function show(which: number[]) {
   shownNow = which;
+  updateHint();
   const key = which.join(',');
   if (key === shownKey) return;
   const props: NgeProp[] = [];
@@ -224,7 +246,8 @@ function show(which: number[]) {
       const mesh = meshes[PATCH[i].model];
       const modelMat = placement(PATCH[i]);
       if (!mesh || !modelMat) continue;
-      st.prop = { mesh, modelMat, alpha: 1, dissolve: 0, seed: 0.37 + i * 0.11, glow: [0.22, 0.1, 0.02], rim: [1, 0.55, 0.12], shade: 1 };
+      st.prop = { mesh, modelMat: mat4.clone(modelMat), alpha: 1, dissolve: 0, seed: 0.37 + i * 0.11, glow: [0.22, 0.1, 0.02], rim: [1, 0.55, 0.12], shade: 1 };
+      grow(st.prop, modelMat);
     }
     props.push(st.prop);
   }
@@ -366,6 +389,29 @@ let smashing = false;
 const smashed = new Set<number>();
 let flying = 0;
 let hint: HTMLDivElement | null = null;
+let hintLabel: HTMLSpanElement | null = null;
+let againBtn: HTMLButtonElement | null = null;
+let smashFrom = 0;
+/** Every pumpkin smashed: the bar stays up with Again? (Ames 2026-10-25:
+ *  "keep that chip up at the top and after player finishes offer again?"). */
+let finished = false;
+
+/** The hammer bar: "growing" with a count while the pumpkins are still on
+ *  their way (the cells load first), then the instruction. After 15 s it
+ *  stops waiting for one that never comes. */
+function updateHint() {
+  if (!hint || !hintLabel) return;
+  if (againBtn) againBtn.hidden = !finished;
+  if (finished) {
+    hintLabel.textContent = '💥 All smashed!';
+    hint.classList.remove('nge-hammer-hint--growing');
+    return;
+  }
+  const n = shownNow.length, all = PATCH.length;
+  const ready = n >= all || (n > 0 && performance.now() - smashFrom > 15_000);
+  hintLabel.textContent = ready ? '🔨 Click a pumpkin to smash it' : `🌱 The pumpkins are growing, ${n} of ${all}`;
+  hint.classList.toggle('nge-hammer-hint--growing', !ready);
+}
 
 const HAMMER = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><text x="2" y="32" font-size="30">🔨</text></svg>')}") 8 8, crosshair`;
 
@@ -382,6 +428,8 @@ body.nge-pumpkin-hammer .nge-3d-panel, body.nge-pumpkin-hammer .nge-3d-panel * {
   background: rgba(26, 14, 4, 0.92); border: 1px solid rgba(255, 150, 50, 0.6);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(255, 140, 30, 0.25);
 }
+.nge-hammer-hint--growing span { animation: nge-hammer-grow 1.1s ease-in-out infinite alternate; }
+@keyframes nge-hammer-grow { from { opacity: 0.55; } to { opacity: 1; } }
 .nge-hammer-hint button {
   font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
   color: #1c0d00; background: linear-gradient(180deg, #ffb35c, #ff8a1f); border: 0;
@@ -448,7 +496,7 @@ function smash(i: number) {
     try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
     if (t < 1) { requestAnimationFrame(step); return; }
     flying--;
-    if (smashing && shownNow.every(k => smashed.has(k))) stopSmashing();
+    if (smashing && !finished && flying === 0 && shownNow.length && shownNow.every(k => smashed.has(k))) allSmashed();
   };
   requestAnimationFrame(step);
 }
@@ -500,13 +548,43 @@ export function startSmashing() {
   hint.className = 'nge-hammer-hint';
   hint.setAttribute('role', 'status');
   const label = document.createElement('span');
-  label.textContent = '🔨 Click a pumpkin to smash it';
+  hintLabel = label;
+  smashFrom = performance.now();
+  againBtn = document.createElement('button');
+  againBtn.type = 'button';
+  againBtn.textContent = 'Again?';
+  againBtn.hidden = true;
+  againBtn.addEventListener('click', () => smashAgain());
   const done = document.createElement('button');
   done.type = 'button';
   done.textContent = 'Done';
   done.addEventListener('click', () => stopSmashing());
-  hint.append(label, done);
+  hint.append(label, againBtn, done);
   document.body.appendChild(hint);
+  updateHint();
+}
+
+/** The last pumpkin is down: they are off (hidePumpkin), whole again behind
+ *  the scenes, and the bar offers another round. */
+function allSmashed() {
+  finished = true;
+  setPumpkinHidden(true);
+  for (const i of smashed) { const p = states[i].prop; if (p) { p.shatter = 0; p.alpha = 1; } }
+  smashed.clear();
+  updateHint();
+}
+
+/** Again?: the pumpkins grow back and the hammer stays. */
+function smashAgain() {
+  if (!smashing) return;
+  finished = false;
+  smashFrom = performance.now();
+  for (let i = 0; i < PATCH.length; i++) {
+    const prop = states[i].prop, full = placement(PATCH[i]);
+    if (prop && full) grow(prop, full);
+  }
+  setPumpkinHidden(false);
+  updateHint();
 }
 
 /** Put the hammer away. Pumpkins smashed: all of them off until the chat
@@ -522,6 +600,9 @@ export function stopSmashing() {
   window.removeEventListener('keydown', onHammerKey, true);
   hint?.remove();
   hint = null;
+  hintLabel = null;
+  againBtn = null;
+  finished = false;
   const any = smashed.size > 0;
   const finish = () => {
     // off first, so the pieces never flash back whole
