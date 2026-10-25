@@ -3806,10 +3806,17 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // ── Task management ───────────────────────────────────────────────────
   /** Load tasks for a dataset, with optional status filter. */
   // Incremental sync (Amy 2026-09-28: "don't go through thousands of rows each
-  // time"). The first load of a dataset pages through every task once; after
-  // that only rows whose updated_at moved are fetched and merged in. Every
-  // claim, release, completion and expiry bumps updated_at (pilot_task_action,
-  // expire_stale_assignments), so a claim or release costs one tiny query.
+  // time"). After the first load of a dataset only rows whose updated_at moved
+  // are fetched and merged in. Every claim, release, completion and expiry
+  // bumps updated_at (pilot_task_action, expire_stale_assignments), so a claim
+  // or release costs one tiny query.
+  //
+  // A dataset of more than WHOLE_LIST_MAX tasks is paged (Ames 2026-10-25):
+  // Retina's 16,000+ rows (17 reads, 10 MB) were pulled by every player who
+  // opened the Cell Library while its database sat at full CPU. Such a dataset
+  // loads the player's own tasks in full, the first TASK_PAGE available ones,
+  // and the tab counts from count queries. Load more, search, tab switches and
+  // findTasks fetch the rest as they are needed.
   let tasksSyncedDataset = '';
   let tasksSyncedAt = '';
 
@@ -3817,9 +3824,125 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  entry in MEC's Cell Library (Krzysztof Kruk, report 223), and Claim a
    *  new cell could pick it. */
   const hasCellId = (t: ProofreadingTask) => /^[1-9]\d*$/.test(String(t.segment_id ?? '').trim());
+  /** hasCellId, as a server filter. */
+  const CELL_ID_RE = '^ *[1-9][0-9]* *$';
+  const TASK_PAGE = 100;
+  const WHOLE_LIST_MAX = 1000;
+  /** Load more asks again for a few rows it already has, so a row that left
+   *  the tab meanwhile does not push one past the page edge unseen. */
+  const PAGE_OVERLAP = 10;
+  type TaskTab = 'available' | 'claimed' | 'completed' | 'all';
+  const TAB_STATUSES: Record<TaskTab, string[] | null> = {
+    available: ['pending'], claimed: ['assigned', 'in_progress'], completed: ['completed'], all: null,
+  };
+  const freshPages = (): Record<TaskTab, { next: number; done: boolean }> => ({
+    available: { next: 0, done: false }, claimed: { next: 0, done: false },
+    completed: { next: 0, done: false }, all: { next: 0, done: false },
+  });
+  /** True when `tasks` holds only part of the dataset (see above). */
+  const tasksPaged = ref(false);
+  /** Server counts per tab while paged, else null. */
+  const taskCounts = ref<Record<TaskTab, number> | null>(null);
+  /** How far each tab has been read from the server while paged. */
+  const taskPages = ref(freshPages());
+  const loadingMore = ref<TaskTab | null>(null);
+  /** The player whose own tasks are loaded in full. */
+  let tasksMineFor = '';
+
+  /** List order. A paged list puts the sheet's cells first, as the sheet
+   *  backed Cell Library does, so its first page holds cells from the sheet. */
+  const sheetRank = (t: ProofreadingTask) => (t.source_sheet_url ? 0 : 1);
+  function taskOrder(a: ProofreadingTask, b: ProofreadingTask): number {
+    return (tasksPaged.value ? sheetRank(a) - sheetRank(b) || String(a.source_sheet_url ?? '').localeCompare(String(b.source_sheet_url ?? '')) : 0)
+      || (b.priority ?? 0) - (a.priority ?? 0)
+      || String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id;
+  }
+  function orderedQuery(q: any) {
+    return q.order('source_sheet_url', { ascending: true, nullsFirst: false })
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+  }
+  /** One tab's rows of a dataset, cells with an ID only. */
+  function tabQuery(dataset: string, tab: TaskTab, select = '*', opts?: { count?: 'exact'; head?: boolean }) {
+    let q: any = supabase.from('proofreading_tasks').select(select, opts)
+      .eq('dataset', dataset).filter('segment_id', 'match', CELL_ID_RE);
+    const st = TAB_STATUSES[tab];
+    if (st) q = st.length === 1 ? q.eq('status', st[0]) : q.in('status', st);
+    return q;
+  }
+  async function countTab(dataset: string, tab: TaskTab): Promise<number> {
+    const { count, error: e } = await tabQuery(dataset, tab, 'id', { count: 'exact', head: true });
+    if (e) throw e;
+    return count ?? 0;
+  }
+  async function refreshTaskCounts(dataset: string) {
+    const tabs: TaskTab[] = ['available', 'claimed', 'completed', 'all'];
+    const got = await Promise.all(tabs.map(t => countTab(dataset, t)));
+    if (dataset !== tasksSyncedDataset || !tasksPaged.value) return;
+    taskCounts.value = Object.fromEntries(tabs.map((t, i) => [t, got[i]])) as Record<TaskTab, number>;
+  }
+  /** Merge rows into `tasks`: a known row is replaced, a new one added in order. */
+  function mergeTasks(rows: ProofreadingTask[]) {
+    const ok = rows.filter(hasCellId);
+    if (!ok.length) return;
+    const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
+    const next = tasks.value.slice();
+    let added = false;
+    for (const r of ok) {
+      const i = byId.get(r.id);
+      if (i === undefined) { byId.set(r.id, next.length); next.push(r); added = true; } else next[i] = r;
+    }
+    if (added) next.sort(taskOrder);
+    tasks.value = next;
+  }
+  /** The player's own tasks in a dataset (claimed, completed), all of them. */
+  async function fetchMyTasks(dataset: string): Promise<ProofreadingTask[]> {
+    const out: ProofreadingTask[] = [];
+    for (let from = 0; from <= 20_000; from += 1000) {
+      const { data, error: e } = await supabase.from('proofreading_tasks').select('*')
+        .eq('dataset', dataset).eq('assigned_to', userId.value).order('id', { ascending: true })
+        .range(from, from + 999);
+      if (e) throw e;
+      out.push(...((data ?? []) as ProofreadingTask[]));
+      if ((data ?? []).length < 1000) break;
+    }
+    return out;
+  }
+  /** Every row of a dataset, 1,000 a read (the API's cap), AT_ONCE reads at once. */
+  async function fetchWholeList(dataset: string, statusFilter?: string, AT_ONCE = 4): Promise<ProofreadingTask[]> {
+    const PAGE = 1000;
+    const page = async (from: number) => {
+      let query = supabase
+        .from('proofreading_tasks')
+        .select('*')
+        .eq('dataset', dataset)
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (statusFilter) query = query.eq('status', statusFilter);
+      const { data, error: fetchErr } = await query;
+      if (fetchErr) throw fetchErr;
+      return (data ?? []) as ProofreadingTask[];
+    };
+    const all: ProofreadingTask[] = [];
+    for (let from = 0; from <= 50_000; from += PAGE * AT_ONCE) {
+      const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE)));
+      for (const g of got) all.push(...g);
+      if (got.some(g => g.length < PAGE)) break;
+    }
+    return all;
+  }
+
   async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string, opts: { full?: boolean } = {}) {
     if (!statusFilter && !opts.full && dataset === tasksSyncedDataset && tasksSyncedAt) {
       try {
+        // Signed in since the list loaded: bring in the player's own cells.
+        if (tasksPaged.value && userId.value && tasksMineFor !== userId.value) {
+          mergeTasks(await fetchMyTasks(dataset));
+          tasksMineFor = userId.value;
+        }
         const { data, error: fetchErr } = await supabase
           .from('proofreading_tasks')
           .select('*')
@@ -3829,21 +3952,20 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .limit(1000);
         if (fetchErr) throw fetchErr;
         const fetched = (data ?? []) as ProofreadingTask[];
-        const rows = fetched.filter(hasCellId);
         if (fetched.length < 1000) {
-          const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
-          const next = tasks.value.slice();
-          let added = false;
-          for (const r of rows) {
-            const i = byId.get(r.id);
-            if (i === undefined) { next.push(r); added = true; } else next[i] = r;
-            if (r.updated_at > tasksSyncedAt) tasksSyncedAt = r.updated_at;
+          const since = tasksSyncedAt;
+          for (const r of fetched) if (r.updated_at > tasksSyncedAt) tasksSyncedAt = r.updated_at;
+          // A paged list takes changes to rows it holds, and rows that are
+          // now the player's. Other rows stay unloaded; the counts follow.
+          const known = new Set(tasks.value.map(t => t.id));
+          mergeTasks(tasksPaged.value
+            ? fetched.filter(r => known.has(r.id) || (!!userId.value && r.assigned_to === userId.value))
+            : fetched);
+          // The read starts at the newest change already seen, so that row
+          // comes back every time: only a later one changes the counts.
+          if (tasksPaged.value && fetched.some(r => r.updated_at > since)) {
+            await refreshTaskCounts(dataset).catch((e: any) => console.warn('[backend] task counts not refreshed:', e?.message));
           }
-          if (added) {
-            next.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)
-              || String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id);
-          }
-          if (rows.length) tasks.value = next;
           return;
         }
         // Too much changed since the last sync: fall through to a full load.
@@ -3854,55 +3976,107 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loading.value = true;
     error.value = '';
     try {
-      // Page through everything: the API returns at most 1,000 rows per read,
-      // and Retina has 2,300+ tasks, so new claims (the newest ids) were cut off
-      // and never showed in My Cells (Amy 2026-09-28).
-      const PAGE = 1000;
-      // Retina has 16,000+ tasks (17 pages, ~10 MB), and My Cells waited for
-      // all of them (Ames 2026-10-01: "my cells take a long time to load").
-      // On the first load of a dataset, show the player's own cells at once,
-      // then fetch the rest four pages at a time instead of one by one.
-      if (!statusFilter && dataset !== tasksSyncedDataset && userId.value) {
-        const { data: mine } = await supabase
-          .from('proofreading_tasks').select('*')
-          .eq('dataset', dataset).eq('assigned_to', userId.value)
-          .order('priority', { ascending: false })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .limit(PAGE);
-        if (mine) tasks.value = (mine as ProofreadingTask[]).filter(hasCellId);
-      }
-      const page = async (from: number) => {
-        let query = supabase
-          .from('proofreading_tasks')
-          .select('*')
-          .eq('dataset', dataset)
-          .order('priority', { ascending: false })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (statusFilter) query = query.eq('status', statusFilter);
-        const { data, error: fetchErr } = await query;
-        if (fetchErr) throw fetchErr;
-        return (data ?? []) as ProofreadingTask[];
-      };
-      const all: ProofreadingTask[] = [];
-      const AT_ONCE = 4;
-      for (let from = 0; from <= 50_000; from += PAGE * AT_ONCE) {
-        const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE)));
-        for (const g of got) all.push(...g);
-        if (got.some(g => g.length < PAGE)) break;
-      }
-      tasks.value = all.filter(hasCellId);
-      if (!statusFilter) {
+      if (statusFilter) {
+        tasks.value = (await fetchWholeList(dataset, statusFilter)).filter(hasCellId);
+      } else {
+        const total = await countTab(dataset, 'all');
+        if (total <= WHOLE_LIST_MAX) {
+          const all = await fetchWholeList(dataset, undefined, 1);
+          tasksPaged.value = false;
+          taskCounts.value = null;
+          tasks.value = all.filter(hasCellId);
+          tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
+        } else {
+          // The newest change before anything is read: the next sync starts there.
+          const { data: newest, error: markErr } = await supabase.from('proofreading_tasks').select('updated_at')
+            .eq('dataset', dataset).order('updated_at', { ascending: false }).limit(1);
+          if (markErr) throw markErr;
+          const me = userId.value;
+          const [mine, firstPage, claimed, completed] = await Promise.all([
+            me ? fetchMyTasks(dataset) : Promise.resolve([] as ProofreadingTask[]),
+            orderedQuery(tabQuery(dataset, 'available', '*', { count: 'exact' })).range(0, TASK_PAGE - 1),
+            countTab(dataset, 'claimed'),
+            countTab(dataset, 'completed'),
+          ]);
+          if (firstPage.error) throw firstPage.error;
+          const rows = (firstPage.data ?? []) as ProofreadingTask[];
+          tasksPaged.value = true;
+          taskPages.value = { ...freshPages(), available: { next: rows.length, done: rows.length < TASK_PAGE } };
+          taskCounts.value = { available: firstPage.count ?? rows.length, claimed, completed, all: total };
+          tasks.value = [];
+          mergeTasks([...mine, ...rows]);
+          tasksMineFor = me;
+          tasksSyncedAt = String(newest?.[0]?.updated_at ?? '');
+        }
         tasksSyncedDataset = dataset;
-        tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
       }
     } catch (e: any) {
       error.value = e.message || 'Failed to load tasks';
       console.warn('[backend] loadTasks error:', e.message);
     }
     loading.value = false;
+  }
+
+  /** Paged list: read the next page of one tab. Returns how many rows were new. */
+  async function loadMoreTasks(tab: TaskTab, dataset: string = currentDatasetTag()): Promise<number> {
+    if (!tasksPaged.value || dataset !== tasksSyncedDataset || loadingMore.value) return 0;
+    const p = taskPages.value[tab];
+    if (p.done) return 0;
+    loadingMore.value = tab;
+    try {
+      const from = Math.max(0, p.next - PAGE_OVERLAP);
+      const want = p.next - from + TASK_PAGE;
+      const { data, error: e } = await orderedQuery(tabQuery(dataset, tab)).range(from, from + want - 1);
+      if (e) throw e;
+      const rows = (data ?? []) as ProofreadingTask[];
+      const before = tasks.value.length;
+      mergeTasks(rows);
+      taskPages.value = { ...taskPages.value, [tab]: { next: from + rows.length, done: rows.length < want } };
+      return tasks.value.length - before;
+    } catch (e: any) {
+      console.warn('[backend] loadMoreTasks error:', e?.message);
+      return 0;
+    } finally {
+      loadingMore.value = null;
+    }
+  }
+
+  /** Paged list: fetch the tasks of these cells, and with `text`, the tasks
+   *  whose cell ID, final ID or notes contain it (the Cell Library search). */
+  async function findTasks(dataset: string, segIds: string[], text = ''): Promise<void> {
+    if (!tasksPaged.value || dataset !== tasksSyncedDataset) return;
+    const known = new Set(tasks.value.map(t => String(t.segment_id)));
+    const want = [...new Set(segIds.map(s => String(s || '').trim()))].filter(s => /^\d+$/.test(s) && !known.has(s)).slice(0, 300);
+    const reads: PromiseLike<any>[] = [];
+    for (let i = 0; i < want.length; i += 100) {
+      reads.push(supabase.from('proofreading_tasks').select('*').eq('dataset', dataset).in('segment_id', want.slice(i, i + 100)));
+    }
+    const term = text.replace(/[^\w #.-]/g, '').trim();
+    if (term.length >= 3) {
+      const like = `"*${term}*"`;
+      reads.push(orderedQuery(tabQuery(dataset, 'all'))
+        .or(`segment_id.ilike.${like},final_segment_id.ilike.${like},notes.ilike.${like}`).limit(TASK_PAGE));
+    }
+    if (!reads.length) return;
+    const got = await Promise.all(reads);
+    const rows: ProofreadingTask[] = [];
+    for (const g of got) {
+      if (g.error) { console.warn('[backend] findTasks error:', g.error.message); continue; }
+      rows.push(...((g.data ?? []) as ProofreadingTask[]));
+    }
+    mergeTasks(rows);
+  }
+
+  /** Paged list: the available cells that follow `task` in list order (Claim
+   *  this + next N from a search). */
+  async function loadAvailableAfter(task: ProofreadingTask, n: number): Promise<void> {
+    if (!tasksPaged.value || task.dataset !== tasksSyncedDataset) return;
+    let q: any = orderedQuery(tabQuery(task.dataset, 'available'))
+      .eq('priority', task.priority ?? 0).gte('created_at', task.created_at);
+    q = task.source_sheet_url ? q.eq('source_sheet_url', task.source_sheet_url) : q.is('source_sheet_url', null);
+    const { data, error: e } = await q.limit(n + 1);
+    if (e) { console.warn('[backend] loadAvailableAfter error:', e.message); return; }
+    mergeTasks((data ?? []) as ProofreadingTask[]);
   }
 
   /** Player scripts (window.eyewire) hear about claims, releases and completions. */
@@ -6208,6 +6382,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
     leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
+    tasksPaged, taskCounts, taskPages, loadingMore, loadMoreTasks, findTasks, loadAvailableAfter,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims

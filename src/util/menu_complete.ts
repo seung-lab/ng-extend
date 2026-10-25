@@ -97,6 +97,8 @@ export async function planMenuCompletion(segId: string): Promise<MenuCompletionP
 
   const backend = useProofreadingBackendStore();
   await backend.loadTasks(dataset);
+  // A paged list (Retina) may not hold this cell's task yet.
+  await backend.findTasks(dataset, [row.segId]);
   let task = backend.tasks.find(t => t.segment_id === row!.segId);
   if (!task && backend.tasks.some(t => t.assigned_to === backend.userId && backend.isTaskCell(t, segId))) {
     // My claim on this cell, still under a rewritten ID: put the listed ID
@@ -121,6 +123,8 @@ export async function planMenuCompletion(segId: string): Promise<MenuCompletionP
 async function planFromTasks(plan: MenuCompletionPlan) {
   const backend = useProofreadingBackendStore();
   await backend.loadTasks(plan.dataset);
+  // MEC loads whole (under 1,000 tasks); a paged dataset at least has this cell.
+  await backend.findTasks(plan.dataset, [plan.segId]);
   const tasks = backend.tasks.filter(t => t.segment_id && /^\d+$/.test(t.segment_id));
   let task = tasks.find(t => t.segment_id === plan.segId || t.final_segment_id === plan.segId);
   // Crosshairs in the nucleus (Ames 2026-09-29): complete the cell around it,
@@ -251,6 +255,7 @@ export async function finishMenuCompletion(plan: MenuCompletionPlan, opts: Finis
         : await backend.claimCell(point, row.segId);
       if (!claimed.ok) throw new Error(`Saved, but the sheet was not updated: ${claimed.reason || 'could not claim this cell'}.`);
       await backend.loadTasks(plan.dataset);
+      await backend.findTasks(plan.dataset, [row.segId]);
       task = backend.tasks.find(t => t.segment_id === row.segId);
       if (!task) throw new Error('Saved, but the Cell Library claim could not be found.');
     }

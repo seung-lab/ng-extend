@@ -377,7 +377,9 @@ const cells = computed(() => {
         liveSegId: null as string | null,
       }));
 
-    return [...sheetCells, ...extraTasks];
+    // A paged list (Retina) holds only some of the tasks: the sheet rows it
+    // shows are the ones whose task is loaded, so Load more adds to the list.
+    return [...(backend.tasksPaged ? sheetCells.filter(c => c.taskId != null) : sheetCells), ...extraTasks];
   }
 
   // Fallback: use Supabase tasks directly
@@ -453,9 +455,72 @@ const shownCells = computed(() => filteredCells.value.slice(0, rowsShown.value))
 
 const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
 
-const availableCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'pending').length);
-const completedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'completed').length);
-const claimedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
+const isClaimedStatus = (s: string) => s === 'assigned' || s === 'in_progress';
+/** A paged list counts on the server. A sheet hold ("WIP", "Complete" by
+ *  hand) moves an available cell to Claimed or Completed here, so the loaded
+ *  cells that are held move between the server's counts the same way. */
+const heldShift = computed(() => {
+  const status = new Map(backend.tasks.map(t => [t.id, t.status] as [number, string]));
+  let claimed = 0, completed = 0;
+  for (const c of datasetScopedCells.value) {
+    if (c.taskId == null || status.get(c.taskId) !== 'pending' || c.status === 'pending') continue;
+    if (c.status === 'completed') completed++; else if (isClaimedStatus(c.status)) claimed++;
+  }
+  return { claimed, completed };
+});
+const serverCounts = computed(() => (backend.tasksPaged ? backend.taskCounts : null));
+const availableCount = computed(() => serverCounts.value
+  ? Math.max(0, serverCounts.value.available - heldShift.value.claimed - heldShift.value.completed)
+  : datasetScopedCells.value.filter(c => c.status === 'pending').length);
+const completedCount = computed(() => serverCounts.value
+  ? serverCounts.value.completed + heldShift.value.completed
+  : datasetScopedCells.value.filter(c => c.status === 'completed').length);
+const claimedCount = computed(() => serverCounts.value
+  ? serverCounts.value.claimed + heldShift.value.claimed
+  : datasetScopedCells.value.filter(c => isClaimedStatus(c.status)).length);
+const allCount = computed(() => serverCounts.value ? serverCounts.value.all : datasetScopedCells.value.length);
+
+// ── Paged list (Retina): Load more, tabs and search reach the server ─────
+/** The server tab behind a cell tab; My Cells is always loaded in full. */
+const PAGED_TABS: Record<string, 'available' | 'claimed' | 'completed' | 'all'> = {
+  available: 'available', claimed: 'claimed', completed: 'completed', all: 'all',
+};
+const pagedTab = computed(() => (backend.tasksPaged ? PAGED_TABS[filter.value] ?? null : null));
+/** More of this tab is on the server than is loaded. */
+const serverHasMore = computed(() => !!pagedTab.value && !backend.taskPages[pagedTab.value].done);
+const tabTotal = computed(() => {
+  switch (filter.value) {
+    case 'available': return availableCount.value;
+    case 'claimed': return claimedCount.value;
+    case 'completed': return completedCount.value;
+    case 'all': return allCount.value;
+    default: return filteredCells.value.length;
+  }
+});
+async function loadMore() {
+  if (filteredCells.value.length > shownCells.value.length) { rowsShown.value += ROWS_STEP; return; }
+  const tab = pagedTab.value;
+  if (!tab) return;
+  await backend.loadMoreTasks(tab);
+  rowsShown.value = Math.max(rowsShown.value, filteredCells.value.length);
+}
+// A tab opened for the first time reads its first page.
+watch(pagedTab, tab => { if (tab && backend.taskPages[tab].next === 0) void backend.loadMoreTasks(tab); });
+// A search asks the server for cells that are not loaded: the sheet rows
+// whose number, notes or name match, and tasks whose IDs or notes do.
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(search, q => {
+  if (searchTimer) clearTimeout(searchTimer);
+  if (!backend.tasksPaged || !q.trim()) return;
+  searchTimer = setTimeout(() => {
+    const term = q.trim().toLowerCase();
+    const segIds = queue.items.filter(i =>
+      i.segId.includes(term) || (i.index || '').toLowerCase().includes(term) ||
+      (i.notes || '').toLowerCase().includes(term) || (history.getNickname(i.segId) || '').toLowerCase().includes(term),
+    ).slice(0, 300).map(i => i.segId);
+    void backend.findTasks(currentDatasetTag(), segIds, term);
+  }, 350);
+});
 
 // ── Dataset labels for the empty-Available prompt ────────────────────
 /** Friendly label of the dataset currently in the viewer. */
@@ -779,6 +844,16 @@ async function batchClaim() {
   const room = heldHere(await backend.loadMyActiveClaims());
   const n = backend.claimLimitFor() - room.length;
   if (n <= 0) { showClaimLimit(room); return; }
+  // A paged list reads the cells to claim first: the ones after a searched
+  // cell, or more of Available when the loaded part has too few.
+  if (backend.tasksPaged) {
+    const start = batchStart.value;
+    const startTask = start?.taskId != null ? backend.tasks.find(t => t.id === start.taskId) : undefined;
+    if (startTask) await backend.loadAvailableAfter(startTask, n);
+    else if (!search.value.trim()) {
+      for (let i = 0; i < 5 && batchCandidates.value.length < n && !backend.taskPages.available.done; i++) await backend.loadMoreTasks('available');
+    }
+  }
   const picks = batchCandidates.value.slice(0, n);
   if (!picks.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
   batchClaiming.value = { done: 0, total: picks.length };
@@ -2585,12 +2660,23 @@ function collapseToCurrent() {
 }
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
 const nextAvailableCell = computed(() => datasetScopedCells.value.find(c => c.status === 'pending') ?? null);
+/** A paged list may hold no available cell yet while the server has more. */
+const canClaimNew = computed(() => !!nextAvailableCell.value || (backend.tasksPaged && !backend.taskPages.available.done));
+/** The top available cell, reading more of the paged list when the loaded
+ *  part has none left (all claimed meanwhile, or held in the sheet). */
+async function findNextAvailable(): Promise<CellRow | null> {
+  for (let i = 0; i < 5 && !nextAvailableCell.value && backend.tasksPaged && !backend.taskPages.available.done; i++) {
+    await backend.loadMoreTasks('available');
+  }
+  return nextAvailableCell.value;
+}
 const claimingNew = ref(false);
 async function claimNewCell() {
-  const cell = nextAvailableCell.value;
-  if (!cell || claimingNew.value) return;
+  if (!canClaimNew.value || claimingNew.value) return;
   claimingNew.value = true;
   try {
+    const cell = await findNextAvailable();
+    if (!cell) return;
     await claimCell(cell);
     await nextTick();
     // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
@@ -2677,6 +2763,8 @@ onMounted(async () => {
   }
   if (!want.slimSeg) return;
   // The cells load after the panel opens: wait for that one to be listed.
+  // A paged list may not hold it: ask for it once the list is in.
+  let asked = false;
   for (let i = 0; i < 60; i++) {
     if (datasetScopedCells.value.some(c => c.segId === want!.slimSeg)) {
       slimSeg.value = want.slimSeg;
@@ -2684,6 +2772,7 @@ onMounted(async () => {
       clampPanelPos();
       return;
     }
+    if (!asked && backend.tasksPaged && !backend.loading) { asked = true; void backend.findTasks(currentDatasetTag(), [want.slimSeg]); }
     await new Promise(r => setTimeout(r, 500));
   }
 });
@@ -2845,7 +2934,7 @@ const panelStyle = computed(() => ({
                 Claimed <b>{{ claimedCount }}</b>
               </button>
               <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'" title="Every cell in this dataset">
-                All <b>{{ datasetScopedCells.length }}</b>
+                All <b>{{ allCount }}</b>
               </button>
               <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
               <button v-if="tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
@@ -3709,11 +3798,11 @@ const panelStyle = computed(() => ({
           </button>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
-            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!nextAvailableCell || claimingNew || !isLoggedIn"
+            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
                     :title="!isLoggedIn ? 'Sign in to claim cells'
-                      : nextAvailableCell ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
+                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
                       : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
-                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : nextAvailableCell ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
+                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : canClaimNew ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
           </div>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
@@ -3887,9 +3976,9 @@ const panelStyle = computed(() => ({
             </div>
           </div>
           </template>
-          <div v-if="!slimCell && filteredCells.length > shownCells.length" class="nge-cl-more">
-            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ filteredCells.length.toLocaleString() }}. Search finds any of them.</span>
-            <button class="nge-cl-btn" @click="rowsShown += ROWS_STEP">Show {{ Math.min(ROWS_STEP, filteredCells.length - shownCells.length) }} more</button>
+          <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
+            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ Math.max(tabTotal, filteredCells.length).toLocaleString() }}. Search finds any of them.</span>
+            <button class="nge-cl-btn" :disabled="!!backend.loadingMore" @click="loadMore"><span v-if="backend.loadingMore" class="nge-cl-spin" />{{ backend.loadingMore ? 'Loading…' : 'Load more' }}</button>
           </div>
         </div>
 

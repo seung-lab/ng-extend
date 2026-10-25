@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T22:22:00Z",
+      "title": "The Cell Library opens faster",
+      "items": [
+        "On Retina the Cell Library now loads the first 100 cells of a tab, with a Load more button at the bottom for the next 100, instead of every cell at once. My Cells still shows all of your cells.",
+        "The tab counts, Claim a new cell, Claim 10 and the search still cover every cell in the dataset."
+      ]
+    },
+    {
       "at": "2026-10-25T22:05:00Z",
       "title": "Watch a cell grow",
       "items": [

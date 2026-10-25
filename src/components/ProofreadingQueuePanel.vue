@@ -4,6 +4,7 @@ import { useProofreadingQueueStore, useCellHistoryStore, useUserStatsStore, useP
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { Uint64 } from 'neuroglancer/util/uint64';
+import { currentDatasetTag } from '../datasets';
 
 const queue = useProofreadingQueueStore();
 const history = useCellHistoryStore();
@@ -317,6 +318,8 @@ async function claimCell() {
   sheetSyncError.value = '';
   try {
     await backend.loadTasks();
+    // A paged list (Retina) may not hold this cell's task yet.
+    await backend.findTasks(currentDatasetTag(), [item.segId]);
     const task = backend.tasks.find(t => t.segment_id === item.segId && (!item.dataset || t.dataset === item.dataset));
     if (!task || task.assigned_to !== backend.userId || !['assigned','in_progress','completed'].includes(task.status)) {
       if (backend.myActiveClaimCount() >= backend.claimLimitFor()) throw new Error(`Max ${backend.claimLimitFor()} claims reached`);
