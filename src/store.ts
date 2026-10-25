@@ -3654,16 +3654,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     userName.value = displayName;
     console.info('[backend] syncUser called for', email);
     try {
-      // Try to find existing user by email
-      const { data: existing, error: selectErr } = await supabase
-        .from('users')
-        .select('id, username')
-        .eq('middleauth_email', email)
-        .single();
-
-      if (selectErr && selectErr.code !== 'PGRST116') {
+      // Find the player's row by email. A failed read (server busy, too many
+      // requests, a network blip) used to fall through to "create a new
+      // user", which failed too, and left the whole visit without a profile:
+      // chat said "Log in to chat" to a signed in player (Ames 2026-10-25).
+      // Now a failed read is tried again, and only a real "no row" creates one.
+      let existing: { id: string; username?: string | null } | null = null;
+      for (let attempt = 0; ; attempt++) {
+        const { data, error: selectErr } = await supabase
+          .from('users')
+          .select('id, username')
+          .eq('middleauth_email', email)
+          .single();
         // PGRST116 = "no rows returned" (expected for new users)
-        console.warn('[backend] syncUser SELECT error:', selectErr.message);
+        if (!selectErr || selectErr.code === 'PGRST116') { existing = data as any; break; }
+        console.warn(`[backend] syncUser SELECT error (try ${attempt + 1}):`, selectErr.message);
+        if (attempt >= 5) throw new Error('Could not read your profile: ' + selectErr.message);
+        await new Promise(r => setTimeout(r, [2000, 5000, 10000, 20000, 40000][attempt]));
+        if (userEmail.value !== email) return;   // signed in as someone else meanwhile
       }
 
       if (existing) {
