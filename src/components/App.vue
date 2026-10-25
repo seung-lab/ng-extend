@@ -64,6 +64,7 @@ async function hardReload() {
 @import "../common.css";
 @import "../ng-override.css";
 @import "../responsive.css";
+@import "../large_text.css";
 @import "../mobile.css";
 
 #vueMain {

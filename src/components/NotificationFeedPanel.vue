@@ -1012,7 +1012,7 @@ function padRank(rank: number): string {
 
 <style scoped>
 /* Dragged taller or shorter by the grip at the bottom (Ames 2026-10-20). */
-.nge-notif-panel.nge-notif-panel--sized { height: var(--nge-notif-h); max-height: calc(100vh - 50px); }
+.nge-notif-panel.nge-notif-panel--sized { height: var(--nge-notif-h); max-height: calc(100 * var(--nge-vh, 1vh) - 50px); }
 .nge-notif-panel--sized .nge-notif-list { max-height: none; flex: 1 1 auto; min-height: 0; }
 .nge-notif-grip {
   flex: 0 0 auto; height: 10px; cursor: row-resize; position: relative; touch-action: none;
@@ -1035,7 +1035,7 @@ function padRank(rank: number): string {
   top: 42px;
   right: 8px;
   width: 340px;
-  max-height: min(480px, calc(100vh - 60px));
+  max-height: min(480px, calc(100 * var(--nge-vh, 1vh) - 60px));
   background: linear-gradient(135deg, rgba(4, 6, 14, 0.97) 0%, rgba(8, 12, 24, 0.95) 50%, rgba(4, 8, 18, 0.97) 100%);
   border: 1px solid rgba(74, 158, 255, 0.15);
   border-radius: 10px;
@@ -1487,8 +1487,8 @@ span.nge-notif-reply-part { cursor: default; }
   position: relative;
   isolation: isolate;
   width: 920px;
-  max-width: 90vw;
-  max-height: 80vh;
+  max-width: calc(90 * var(--nge-vw, 1vw));
+  max-height: calc(80 * var(--nge-vh, 1vh));
   background:
     radial-gradient(120% 60% at 50% -10%, rgb(var(--nd-accent) / 0.10), transparent 60%),
     linear-gradient(158deg, rgba(10, 17, 32, 0.97) 0%, rgba(5, 9, 19, 0.985) 100%);
@@ -1784,16 +1784,16 @@ span.nge-notif-reply-part { cursor: default; }
   align-self: flex-start;
 }
 .nge-notif-detail-layout--has-image .nge-notif-detail-img {
-  max-height: min(600px, calc(100vh - 220px));
+  max-height: min(600px, calc(100 * var(--nge-vh, 1vh) - 220px));
 }
 /* With a picture the card may use more of the window, and a wide picture
    takes the larger column. Phones and narrow windows keep the stacked layout
    below. */
 @media (min-width: 761px) {
-  .nge-notif-detail--picture { width: min(1080px, 94vw); max-width: 94vw; max-height: 88vh; }
-  .nge-notif-detail--wide-picture { width: min(1360px, 94vw); }
+  .nge-notif-detail--picture { width: min(1080px, calc(94 * var(--nge-vw, 1vw))); max-width: calc(94 * var(--nge-vw, 1vw)); max-height: calc(88 * var(--nge-vh, 1vh)); }
+  .nge-notif-detail--wide-picture { width: min(1360px, calc(94 * var(--nge-vw, 1vw))); }
   .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-image { width: 62%; }
-  .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-img { max-height: calc(88vh - 130px); }
+  .nge-notif-detail--wide-picture .nge-notif-detail-layout--has-image .nge-notif-detail-img { max-height: calc(88 * var(--nge-vh, 1vh) - 130px); }
   .nge-notif-detail--picture .nge-notif-detail-layout--has-image .nge-notif-detail-image { transition: width 0.25s ease; }
   .nge-notif-detail--picture { transition: width 0.25s ease; }
 }
@@ -1808,7 +1808,7 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail-layout--picture-only .nge-notif-detail-image { width: 100%; }
 .nge-notif-detail-layout--picture-only .nge-notif-detail-img {
   width: auto; max-width: 100%; margin: 0 auto; box-sizing: border-box;
-  max-height: min(900px, calc(88vh - 150px));
+  max-height: min(900px, calc(88 * var(--nge-vh, 1vh) - 150px));
 }
 
 .nge-notif-detail-img {
@@ -1909,13 +1909,13 @@ span.nge-notif-reply-part { cursor: default; }
 /* Two columns on a wide window, one category each; the window widens to
    hold them. Ranks four and below scroll inside their own column, so a top
    twenty never pushes the podiums apart. */
-.nge-notif-detail--champions { width: 1140px; max-width: 94vw; max-height: 90vh; }
+.nge-notif-detail--champions { width: 1140px; max-width: calc(94 * var(--nge-vw, 1vw)); max-height: calc(90 * var(--nge-vh, 1vh)); }
 .nge-champs-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 34px; align-items: start; }
 .nge-champs-columns > .nge-champs-section { margin-top: 4px; }
 /* Side by side, the lists take what height the window has left, so the
    whole broadcast fits without the page itself scrolling. */
 @media (min-width: 901px) {
-  .nge-champs-columns .nge-champs-list { max-height: clamp(128px, calc(90vh - 590px), 300px); }
+  .nge-champs-columns .nge-champs-list { max-height: clamp(128px, calc(90 * var(--nge-vh, 1vh) - 590px), 300px); }
 }
 @media (max-width: 900px) {
   .nge-champs-columns { grid-template-columns: minmax(0, 1fr); }
@@ -2073,7 +2073,7 @@ span.nge-notif-reply-part { cursor: default; }
   flex-direction: column;
   gap: 4px;
   /* about five rows, then it scrolls */
-  max-height: min(214px, 28vh);
+  max-height: min(214px, calc(28 * var(--nge-vh, 1vh)));
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--nd-accent) / 0.35) transparent;
@@ -2226,8 +2226,8 @@ span.nge-notif-reply-part { cursor: default; }
   cursor: pointer;
 }
 .nge-notif-lightbox-img {
-  max-width: 90vw;
-  max-height: 90vh;
+  max-width: calc(90 * var(--nge-vw, 1vw));
+  max-height: calc(90 * var(--nge-vh, 1vh));
   object-fit: contain;
   border-radius: 8px;
 }

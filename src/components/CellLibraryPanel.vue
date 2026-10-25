@@ -4079,7 +4079,7 @@ const panelStyle = computed(() => ({
   position: fixed;
   z-index: 10010;
   width: 480px;
-  max-height: 70vh;
+  max-height: calc(70 * var(--nge-vh, 1vh));
   display: flex;
   flex-direction: column;
   /* scifi-ui .holopanel surface: dark gradient, soft rim, lit inset line.
@@ -5707,7 +5707,7 @@ select.nge-cl-complete-type:hover {
   border-radius: 10px;
   padding: 22px 24px;
   width: 460px;
-  max-width: 92vw;
+  max-width: calc(92 * var(--nge-vw, 1vw));
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
               0 0 40px rgba(245, 166, 35, 0.08) inset;
   color: #e0e0e0;
@@ -5892,7 +5892,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-topbar .nge-cl-title { margin-right: auto; }
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
 .nge-cl-caret { margin-right: 10px; }
-.nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
+.nge-cl-panel--slim { max-height: calc(100 * var(--nge-vh, 1vh) - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
@@ -5958,7 +5958,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-popout {
   position: fixed; right: 520px; top: 80px; z-index: 10011;
   width: 420px; height: 520px; min-width: 300px; min-height: 220px;
-  max-width: calc(100vw - 16px); max-height: calc(100vh - 56px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 16px); max-height: calc(100 * var(--nge-vh, 1vh) - 56px);
   resize: both; overflow: hidden; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: linear-gradient(158deg, rgba(15, 18, 24, 0.97) 0%, rgba(6, 10, 18, 0.98) 100%);

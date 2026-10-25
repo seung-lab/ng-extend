@@ -3484,7 +3484,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-admin-modal {
   width: 340px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 32px);
   padding: 18px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(8, 10, 20, 0.98), rgba(12, 16, 28, 0.98));
@@ -4464,7 +4464,7 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 @keyframes nge-zero-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 .nge-zero-bit { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation-name: nge-zero-fall; animation-timing-function: cubic-bezier(.3,.6,.5,1); animation-fill-mode: both; }
 .nge-zero-bit--wide { width: 14px; height: 8px; border-radius: 50%; }
-@keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(110vh) rotate(calc(var(--r) * 3)); } }
+@keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(calc(110 * var(--nge-vh, 1vh))) rotate(calc(var(--r) * 3)); } }
 .nge-zero-card { text-align: center; padding: 20px 34px 24px; border-radius: 20px; background: #ffffff; border: 2px solid #f5c542;
   box-shadow: 0 20px 50px rgba(40, 70, 140, 0.22), 0 0 30px rgba(245, 197, 66, 0.3); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
 @keyframes nge-zero-pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }

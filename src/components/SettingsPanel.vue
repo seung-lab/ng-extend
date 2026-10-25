@@ -81,6 +81,7 @@ const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftCursorXL = ref(false);
+const draftLargeText = ref(false);
 const draftImageLayerPanel = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
@@ -164,6 +165,7 @@ onMounted(() => {
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftCursorXL.value = prefsStore.prefs.cursorXL === true;
+  draftLargeText.value = prefsStore.prefs.largeText === true;
   draftImageLayerPanel.value = prefsStore.prefs.imageLayerPanel === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
@@ -237,7 +239,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -575,6 +577,10 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftCursorXL" />
               <span class="nge-settings-toggle-label">Extra large cursor</span>
             </label>
+            <label class="nge-settings-toggle" title="Makes the text in Pyr's windows (your profile, Settings, the Cell Library, the bell, the leaderboard) and in the layer side panel a fifth bigger, with everything around it, so it is easier to read. The 2D and 3D views stay as they are.">
+              <input type="checkbox" v-model="draftLargeText" />
+              <span class="nge-settings-toggle-label">Large text</span>
+            </label>
             <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
               <input type="checkbox" v-model="draftSegShowId" />
               <span class="nge-settings-toggle-label">Show the segment ID under a cell's label</span>
@@ -809,8 +815,8 @@ const props = defineProps<{ embedded?: boolean }>();
   /* Never exceed the viewport. Without this the panel grew to its natural
      height and simply ran off the bottom of a small laptop screen, taking the
      Save button with it. */
-  max-width: calc(100vw - 24px);
-  max-height: calc(100vh - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 24px);
+  max-height: calc(100 * var(--nge-vh, 1vh) - 32px);
 }
 
 /* Embedded in the profile's Settings tab: the profile shell owns size and
