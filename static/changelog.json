@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-25T21:10:00Z",
+      "title": "Tidier Settings, Large text, and a fourth pumpkin",
+      "items": [
+        "Settings are sorted into small boxes by topic: 3D looks, Screen, Jumping and views, 2D images, and Chat and notifications. Every setting works as before.",
+        "A new Neuroglancer box gathers the switches that bring back neuroglancer's own controls. Click its (i) to read what neuroglancer is.",
+        "A new Large text switch in Settings, under Screen, makes the text in Pyr's windows, the Cell Library, the bell and the side panel bigger.",
+        "A fourth jack o' lantern has appeared in the Sandbox pumpkin patch, and the pumpkin card has a Hide the pumpkin button."
+      ]
+    },
+    {
       "at": "2026-10-25T19:31:51Z",
       "title": "A note while the servers are down",
       "digest": "minor",
