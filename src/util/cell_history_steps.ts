@@ -226,6 +226,59 @@ export function blockCounts(answers: string[], root: string): Map<string, number
   return counts;
 }
 
+/** Which of today's blocks each cell held at a moment: answers[k] is the
+ *  cell of blocks[k] then. Only cells on today's level, as blockCounts. */
+export function blocksByCell(blocks: string[], answers: string[], root: string): Map<string, string[]> {
+  const level = (id: string) => Math.floor(Number(id) / 2 ** 56);
+  const want = level(root);
+  const out = new Map<string, string[]>();
+  answers.forEach((id, k) => {
+    if (!/^\d+$/.test(id) || id === '0' || level(id) !== want || blocks[k] === undefined) return;
+    (out.get(id) ?? out.set(id, []).get(id)!).push(blocks[k]);
+  });
+  return out;
+}
+
+/** Share of a piece that must end up in this cell for it to be drawn whole. */
+export const MOSTLY_THIS_CELL = 0.6;
+/** Most blocks drawn one by one for a single borrowed piece. */
+export const MAX_BORROWED_BLOCKS = 400;
+
+export interface PieceDrawing {
+  /** Drawn whole, as the cell was then. */
+  whole: string[];
+  /** Blocks drawn one by one, standing in for `of`, a piece that was mostly
+   *  other material (a bit cut out of another merger and joined on later). */
+  blocks: { of: string; ids: string[] }[];
+  /** Mostly other material with too many blocks to draw one by one: drawn
+   *  faded, so it reads as not part of the cell. */
+  faded: string[];
+}
+
+/** How to draw a step's pieces (Nseraf 2026-10-24: on a cell built from bits
+ *  cut out of other mergers, each whole merger showed before its bit was cut
+ *  out). The main body, the piece holding most of today's cell, is always
+ *  whole, so a merger the cell started inside still shows. Another piece is
+ *  whole when most of it ends up in this cell (a standalone branch), else
+ *  only its blocks in today's cell are drawn. `total` is a piece's size in
+ *  blocks; unknown counts as whole. */
+export function drawPieces(ids: string[], held: Map<string, string[]>, total: Map<string, number | null>): PieceDrawing {
+  const out: PieceDrawing = { whole: [], blocks: [], faded: [] };
+  let main = '', most = -1;
+  for (const id of ids) {
+    const n = held.get(id)?.length ?? 0;
+    if (n > most) { most = n; main = id; }
+  }
+  for (const id of ids) {
+    const mine = held.get(id);
+    const size = total.get(id);
+    if (id === main || !mine || !size || mine.length / size >= MOSTLY_THIS_CELL) { out.whole.push(id); continue; }
+    if (mine.length <= MAX_BORROWED_BLOCKS) out.blocks.push({ of: id, ids: mine.slice() });
+    else out.faded.push(id);
+  }
+  return out;
+}
+
 /** "unknown" unless the lab login belongs to a Pyr player with a name. */
 export function editorName(userId: string, names: Map<string, string>): string {
   return names.get(userId) || 'unknown';

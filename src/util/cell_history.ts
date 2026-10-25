@@ -26,11 +26,12 @@ import { currentSegLayer } from '../datasets';
 import { authHeaders, getPcgInfo } from '../widgets/pcg_service';
 import { supabase } from '../supabase';
 import { setStatedColor } from '../widgets/widget_utils';
-import { parseBigJson, parseChangeLog, parseLineage, piecesAt, blockCounts, evenSample, stepView, historySteps, editorName, type HistoryEdit, type HistoryStep, type Lineage, type StepView } from './cell_history_steps';
+import { parseBigJson, parseChangeLog, parseLineage, piecesAt, blockCounts, blocksByCell, drawPieces, evenSample, stepView, MOSTLY_THIS_CELL, historySteps, editorName, type HistoryEdit, type HistoryStep, type Lineage, type StepView, type PieceDrawing } from './cell_history_steps';
 import './cell_history.css';
 
 const SHOW_LAYER = 'Cell history (temporary)';
 const AHEAD_LAYER = 'Cell history, next steps (temporary)';
+const FADED_LAYER = 'Cell history, other material (temporary)';
 const OPEN_KEY = 'nge_cell_history_open';
 const LOOK_AHEAD = 3;
 /** Most pieces loaded ahead at once, so a cell built from hundreds of
@@ -38,7 +39,7 @@ const LOOK_AHEAD = 3;
 const MAX_AHEAD = 40;
 /** Building blocks of today's cell asked about at each step, and how many
  *  steps are asked about at once. */
-const MAX_SAMPLE = 2000;
+const MAX_SAMPLE = 30000;
 const MAX_LOOKUPS = 2;
 /** The piece joined at a step, and the piece cut off at one. */
 const JOINED_COLOR = '#ffd84d';
@@ -129,6 +130,25 @@ async function rootsAt(ids: string[], at: number): Promise<string[]> {
   return Array.from(new BigUint64Array(await res.arrayBuffer()), v => v.toString());
 }
 
+/** A past cell's size in level 2 blocks. Only asked about pieces that are
+ *  not the cell's main body, and remembered: a cell id never changes. */
+const sizeMem = new Map<string, Promise<number | null>>();
+function pieceSize(id: string): Promise<number | null> {
+  const pcg = getPcgInfo();
+  if (!pcg) return Promise.resolve(null);
+  const key = `${pcg.server}|${pcg.table}|${id}`;
+  let p = sizeMem.get(key);
+  if (!p) {
+    p = fetch(`${pcg.server}/segmentation/api/v1/table/${pcg.table}/node/${id}/leaves?int64_as_str=1&stop_layer=2`,
+      { headers: authHeaders(pcg.server) })
+      .then(async res => (res.ok ? ((await res.text()).match(/\d{15,}/g) ?? []).length || null : null))
+      .catch(() => null);
+    sizeMem.set(key, p);
+    p.then(n => { if (n === null) sizeMem.delete(key); });   // a failure is asked again
+  }
+  return p;
+}
+
 /** Pyr names for lab logins, where the login is a Pyr player's. */
 async function playerNames(userIds: string[]): Promise<Map<string, string>> {
   const names = new Map<string, string>();
@@ -148,7 +168,7 @@ async function playerNames(userIds: string[]): Promise<Map<string, string>> {
 function removeTempLayers() {
   const lm = viewerOf()?.layerManager;
   for (const ml of [...(lm?.managedLayers ?? [])]) {
-    if (ml.name === SHOW_LAYER || ml.name === AHEAD_LAYER) {
+    if (ml.name === SHOW_LAYER || ml.name === AHEAD_LAYER || ml.name === FADED_LAYER) {
       try { lm.removeManagedLayer(ml); } catch { /* already gone */ }
     }
   }
@@ -294,6 +314,7 @@ export function openCellHistory(root: string) {
   // Asked a couple of steps at a time, the step on screen first.
   const piecesMem = new Map<number, string[]>();
   const countsMem = new Map<number, Map<string, number>>();
+  const heldMem = new Map<number, Map<string, string[]>>();
   const pending = new Map<number, Promise<string[] | null>>();
   const queue: number[] = [];
   const runners = new Map<number, () => Promise<void>>();
@@ -325,6 +346,7 @@ export function openCellHistory(root: string) {
           if (!answers) { resolve(null); return; }
           const counts = blockCounts(answers, root);
           countsMem.set(i, counts);
+          heldMem.set(i, blocksByCell(sample, answers, root));
           resolve(done([...counts.keys()].sort()));
         });
       });
@@ -379,8 +401,7 @@ export function openCellHistory(root: string) {
     color = '#' + Array.from(c.slice(0, 3)).map(v => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
   } catch { /* the default green */ }
 
-  function showPieces(view: StepView) {
-    const ids = view.ids;
+  function showPieces(view: StepView, drawing: PieceDrawing, borrowedCut = false) {
     if (closed) return;
     if (!hidMain) {
       const group = groupOf(main);
@@ -388,15 +409,27 @@ export function openCellHistory(root: string) {
       if (group?.visibleSegments.has(id)) { group.visibleSegments.delete(id); hidMain = true; }
       try { localStorage.setItem(OPEN_KEY, JSON.stringify({ root: hidMain ? root : undefined })); } catch { /* */ }
     }
-    shown = ids;
+    shown = view.ids;
     const colors: Record<string, string> = {};
     for (const id of view.added) colors[id] = JOINED_COLOR;
     for (const id of view.cut) colors[id] = CUT_COLOR;
-    setLayerCells(SHOW_LAYER, ids, color, 1, colors);
-    legendEl.hidden = !view.added.length && !view.cut.length;
-    legendEl.innerHTML = view.added.length
-      ? `<span class="nge-ch-swatch" style="background:${JOINED_COLOR}"></span>The piece joined on at this edit`
-      : `<span class="nge-ch-swatch" style="background:${CUT_COLOR}"></span>The piece cut off at this edit`;
+    // A borrowed piece drawn as its blocks: the blocks take its colour.
+    const drawn = [...drawing.whole];
+    for (const b of drawing.blocks) {
+      drawn.push(...b.ids);
+      if (colors[b.of]) for (const id of b.ids) colors[id] = colors[b.of];
+    }
+    setLayerCells(SHOW_LAYER, drawn, color, 1, colors);
+    if (drawing.faded.length || managedByName(FADED_LAYER)) setLayerCells(FADED_LAYER, drawing.faded, color, 0.2);
+    const swatch = (c: string, text: string) => `<div class="nge-ch-legend-row"><span class="nge-ch-swatch" style="background:${c}"></span>${text}</div>`;
+    const rows: string[] = [];
+    if (view.added.length) rows.push(swatch(JOINED_COLOR, 'The piece joined on at this edit'));
+    if (view.cut.length) rows.push(swatch(CUT_COLOR, 'The piece cut off at this edit'));
+    if (borrowedCut) rows.push('<div class="nge-ch-legend-row">This edit cut a bit out of another merger. The bit joins this cell later.</div>');
+    if (drawing.blocks.length) rows.push('<div class="nge-ch-legend-row">Bits that were still inside another merger show without the rest of it.</div>');
+    if (drawing.faded.length) rows.push('<div class="nge-ch-legend-row">Faded: the rest of another merger a bit was later cut out of.</div>');
+    legendEl.hidden = !rows.length;
+    legendEl.innerHTML = rows.join('');
   }
 
   async function lookAhead(from: number) {
@@ -404,7 +437,11 @@ export function openCellHistory(root: string) {
     for (let i = from + 1; i < steps.length && i <= from + LOOK_AHEAD; i++) {
       const p = await piecesOf(i);
       if (closed || current !== from) return;
-      for (const id of p ?? []) if (!shown.includes(id) && !next.includes(id)) next.push(id);
+      // Only each step's main body: another piece may turn out to be a bit
+      // of a big merger, drawn as its blocks, and is not worth fetching whole.
+      const held = heldMem.get(i);
+      const body = held ? [...held.entries()].sort((a, b) => b[1].length - a[1].length)[0]?.[0] : p?.[0];
+      if (body && !shown.includes(body) && !next.includes(body)) next.push(body);
     }
     for (let i = Math.max(0, from - 2); i < from; i++) void piecesOf(i);
     // Fetched but never drawn: alpha 0 skips drawing, not loading.
@@ -471,10 +508,38 @@ export function openCellHistory(root: string) {
     if (i > 0) await piecesOf(i - 1);
     if (closed || seq !== showSeq) return;
     const before = countsMem.get(i - 1);
-    const view = stepView(lineage!, steps[i].edit >= 0 ? edits[steps[i].edit] : undefined, pieces,
+    let view = stepView(lineage!, steps[i].edit >= 0 ? edits[steps[i].edit] : undefined, pieces,
       before ? (id => before.get(id) ?? 0) : undefined);
+    // Which of today's blocks each piece held (just before the edit too, for
+    // the pieces a join shows), and the sizes of the pieces that may be bits
+    // of other mergers.
+    const held = new Map([...(heldMem.get(i - 1) ?? []), ...(heldMem.get(i) ?? [])]);
+    const body = [...view.ids].sort((a, b) => (held.get(b)?.length ?? 0) - (held.get(a)?.length ?? 0))[0];
+    const sizes = new Map<string, number | null>();
+    // A cut that took a bit out of another merger (the bit joins later):
+    // the rest of that merger was never part of this cell, so it is not
+    // shown in red as if cut off it (Nseraf's capillary, 2026-10-24).
+    let borrowedCut = false;
+    const edit = steps[i].edit >= 0 ? edits[steps[i].edit] : undefined;
+    if (edit && !edit.isMerge && view.cut.length) {
+      const prevHeld = heldMem.get(i - 1) ?? new Map<string, string[]>();
+      const prevBody = [...prevHeld.entries()].sort((a, b) => b[1].length - a[1].length)[0]?.[0];
+      for (const from of edit.beforeRoots) {
+        const mine = prevHeld.get(from)?.length ?? 0;
+        if (from === prevBody || !mine) continue;
+        const size = await pieceSize(from);
+        if (size && mine / size < MOSTLY_THIS_CELL) borrowedCut = true;
+      }
+      if (closed || seq !== showSeq) return;
+      if (borrowedCut) view = { ...view, ids: view.ids.filter(id => !view.cut.includes(id)), cut: [] };
+    }
+    const others = view.ids.filter(id => id !== body && held.has(id));
+    if (others.some(id => !sizeMem.has(`${getPcgInfo()?.server}|${getPcgInfo()?.table}|${id}`))) say('Loading this step…');
+    await Promise.all(others.map(async id => sizes.set(id, await pieceSize(id))));
+    if (closed || seq !== showSeq) return;
+    const drawing = drawPieces(view.ids, held, sizes);
     const same = sameSet(view.ids, shown);
-    showPieces(view);
+    showPieces(view, drawing, borrowedCut);
     void lookAhead(i);
     const note = quietAt(i) ? 'Nothing that ends up in this cell changes at this edit.' : piecesLine(i);
     if (same) { say(note); return; }

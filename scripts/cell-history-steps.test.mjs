@@ -9,7 +9,7 @@ import module from 'node:module';
 const strip = module.stripTypeScriptTypes;
 const load = () => {
   const js = strip(fs.readFileSync(new URL('../src/util/cell_history_steps.ts', import.meta.url), 'utf8')).replace(/^export /gm, '');
-  return new Function(js + ';return {parseChangeLog, parseBigJson, sampleEdits, historySteps, editorName, parseLineage, piecesAt, stepView, evenSample, piecesFromRoots, blockCounts, MAX_HISTORY_STEPS};')();
+  return new Function(js + ';return {parseChangeLog, parseBigJson, sampleEdits, historySteps, editorName, parseLineage, piecesAt, stepView, evenSample, piecesFromRoots, blockCounts, blocksByCell, drawPieces, MAX_HISTORY_STEPS};')();
 };
 const H = load();
 
@@ -159,4 +159,24 @@ test('the piece joined on is the one holding less of the cell today', () => {
   assert.equal(counts.get(A0), 3);
   const v = H.stepView(L, { isMerge: true, beforeRoots: [A0, T], afterRoots: [A1] }, [A1], x => counts.get(x) ?? 0);
   assert.deepEqual(v.added, [T]);
+});
+
+test('a bit cut out of another merger is drawn as its blocks, not the whole merger', () => {
+  const root = '864691135000000099';
+  const BODY = '864691135000000011', BRANCH = '864691135000000022', MERGER = '864691135000000033';
+  const blocks = ['1', '2', '3', '4', '5', '6'].map(n => String(144115188075855000n + BigInt(n)));
+  // Then: blocks 1 to 3 in the body (itself inside a merger it started in),
+  // block 4 in a standalone branch, blocks 5 and 6 inside another merger.
+  const held = H.blocksByCell(blocks, [BODY, BODY, BODY, BRANCH, MERGER, MERGER], root);
+  assert.deepEqual(held.get(MERGER), [blocks[4], blocks[5]]);
+  const total = new Map([[BODY, 900], [BRANCH, 1], [MERGER, 500]]);
+  const d = H.drawPieces([BODY, BRANCH, MERGER], held, total);
+  assert.deepEqual(d.whole, [BODY, BRANCH]);
+  assert.deepEqual(d.blocks, [{ of: MERGER, ids: [blocks[4], blocks[5]] }]);
+  assert.deepEqual(d.faded, []);
+  // Size unknown: drawn whole, as before.
+  assert.deepEqual(H.drawPieces([BODY, MERGER], held, new Map()).whole, [BODY, MERGER]);
+  // Too many blocks to draw one by one: faded.
+  const many = new Map([[BODY, Array(1000).fill('x')], [MERGER, Array(401).fill('y')]]);
+  assert.deepEqual(H.drawPieces([BODY, MERGER], many, new Map([[MERGER, 100000]])).faded, [MERGER]);
 });

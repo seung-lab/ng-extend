@@ -8,6 +8,7 @@
         "The Δ menu has a Watch it grow button. It opens a slider through every edit of the cell, oldest first, and shows the cell as it was at each one in the 3D view, including branches that were still separate pieces before they were joined on.",
         "Each step says whether pieces were joined or cut off, who did it and when. The piece joined on shows in yellow and a piece cut off in red, so small edits stand out. Edits by lab members who are not Pyr players show as unknown.",
         "Press Play to step through on its own, at the speed you choose, for screen recordings. Closing the panel shows today's cell again.",
+        "A bit cut out of another merger and joined on later shows on its own before it joins, without the rest of that merger.",
         "A cell with hundreds of edits shows 150 of them, spread evenly from first to last."
       ]
     },
