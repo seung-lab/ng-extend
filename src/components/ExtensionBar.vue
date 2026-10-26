@@ -998,7 +998,7 @@ function clearBarTimers() {
 // Where the mouse brings the bar down: the strip, and a band just under it
 // (Ames: the strip alone was too thin to find), except over a layer tab, a
 // button or a box, so reaching for those never opens the bar.
-const STRIP_H = 16;
+const STRIP_H = 12;
 const OPEN_BAND = STRIP_H + 18;
 const NOT_A_BAR_SPOT = '.neuroglancer-layer-item, button, input, textarea, select, a, [role="button"], [contenteditable="true"]';
 function onTuckedMouseMove(e: MouseEvent) {
@@ -1067,27 +1067,41 @@ watch([barAutoHide, barShown], ([on, shown]) => {
   document.body.classList.toggle('nge-bar-tucked', on && !shown);
 }, { immediate: true });
 
-// The red counts, copied onto the strip under their own icons so a reply or a
-// help request is not missed while the bar is up.
-interface StripBadge { id: string; label: string; count: number; mention: boolean; svg?: string; img?: string; emoji?: string }
-const stripBadges = ref<StripBadge[]>([]);
-const badgeSig = computed(() => visibleToolbar.value
-  .map(i => `${i.id}:${i.badge?.() ?? 0}:${i.adminBadge?.() ?? 0}`).join('|') + (chatMentionPending.value ? '!' : ''));
-function placeStripBadges() {
-  if (!barAutoHide.value) { stripBadges.value = []; return; }
-  // Each count with its own icon beside it (Ames: bare numbers read as
-  // "rogue numbers"), side by side in the top right corner (Ames).
-  const out: StripBadge[] = [];
-  for (const icon of visibleToolbar.value) {
-    const count = (icon.badge?.() ?? 0) + (icon.adminBadge?.() ?? 0);
-    const mention = icon.id === 'chat' && !!chatMentionPending.value;
-    if (count <= 0 && !mention) continue;
-    out.push({ id: icon.id, label: icon.label, count, mention, svg: icon.svg, img: icon.img, emoji: icon.emoji });
+// While the bar is up, your own unread notifications show as a dot in the
+// top right corner of the 3D view (Ames). Only the bell's personal count:
+// help requests, chat and the Admin tab are not about you. A click on the dot
+// opens the bell. With no 3D view on screen it sits at the right of the strip.
+const tuckedNotifCount = computed(() => barTucked.value
+  ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount) : 0);
+let notifDot: HTMLButtonElement | null = null;
+let notifDotTimer: ReturnType<typeof setInterval> | null = null;
+function placeNotifDot() {
+  const n = tuckedNotifCount.value;
+  if (!n) { notifDot?.remove(); return; }
+  if (!notifDot) {
+    notifDot = document.createElement('button');
+    notifDot.type = 'button';
+    notifDot.className = 'nge-notif-dot';
+    notifDot.addEventListener('click', e => { e.stopPropagation(); showNotifications.value = true; });
+    // Clicks and drags on it must not reach the 3D view under it.
+    for (const t of ['pointerdown', 'mousedown', 'wheel']) notifDot.addEventListener(t, e => e.stopPropagation());
   }
-  stripBadges.value = out;
+  const bell = toolbarDefs.value.find(d => d.id === 'notif')?.svg ?? '';
+  notifDot.innerHTML = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
+  notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
+  // The 3D view is rebuilt when the layout changes, so look for it each time.
+  const panel = [...document.querySelectorAll<HTMLElement>('.nge-3d-panel')].find(p => p.offsetWidth > 0);
+  const home = panel ?? document.querySelector<HTMLElement>('.nge-bar-strip');
+  if (!home) return;
+  notifDot.classList.toggle('nge-notif-dot--strip', !panel);
+  if (notifDot.parentElement !== home) home.appendChild(notifDot);
 }
-watch([badgeSig, barAutoHide], placeStripBadges, { immediate: true });
-onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); clearBarTimers(); });
+watch(tuckedNotifCount, n => {
+  placeNotifDot();
+  if (n && !notifDotTimer) notifDotTimer = setInterval(placeNotifDot, 1000);
+  if (!n && notifDotTimer) { clearInterval(notifDotTimer); notifDotTimer = null; }
+}, { immediate: true });
+onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); clearBarTimers(); if (notifDotTimer) clearInterval(notifDotTimer); notifDot?.remove(); });
 
 </script>
 
@@ -1161,11 +1175,6 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <div v-if="barAutoHide" class="nge-bar-strip" :class="{ 'nge-bar-strip--hidden': barShown }"
        title="The top bar. Point here, or press the \ key, to bring it down."
        @click="onStripClick">
-    <div v-if="!barShown && stripBadges.length" class="nge-strip-counts">
-      <span v-for="b in stripBadges" :key="b.id" class="nge-strip-badge"
-            :class="{ 'nge-strip-badge--chat': b.id === 'chat', 'nge-strip-badge--mention': b.mention && !b.count }"
-            :title="b.count ? `${b.label}: ${b.count}` : `${b.label}: someone mentioned you`"><span class="nge-strip-badge-icon"><span v-if="b.svg" v-html="b.svg"></span><img v-else-if="b.img" :src="b.img" alt="" /><template v-else>{{ b.emoji }}</template></span>{{ b.count || '@' }}</span>
-    </div>
   </div>
   <div id="extensionBar" @focusin="onBarFocusIn" @focusout="onBarFocusOut">
     <div class="ng-extend-logo">
@@ -2568,14 +2577,14 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 
 /* ── Hide the top bar until pointed at (Settings) ─────────────────────────
    body.nge-bar-autohide: the bar leaves the page flow and lies over the top
-   of the views; a 16px strip keeps its place, so nothing moves as it comes and
+   of the views; a 12px strip keeps its place, so nothing moves as it comes and
    goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather
    than a transform, so the bar's fixed position children (share toast) keep
    the window as their frame. */
 body.nge-bar-autohide .ng-extend {
   position: relative;
-  flex: 0 0 16px;
-  height: 16px;
+  flex: 0 0 12px;
+  height: 12px;
   /* No z-index here: every panel the bar opens is rendered in .ng-extend too,
      and a stacking context would cap them all at this level. */
 }
@@ -2600,7 +2609,7 @@ body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
   top: 0;
   left: 0;
   right: 0;
-  height: 16px;
+  height: 12px;
   z-index: 40;
   background: linear-gradient(to bottom, rgba(18, 30, 54, 0.98), rgba(9, 15, 28, 0.98));
   border-bottom: 1px solid rgba(110, 170, 255, 0.3);
@@ -2608,32 +2617,27 @@ body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
   cursor: pointer;
 }
 .nge-bar-strip:hover { background: linear-gradient(to bottom, rgba(28, 46, 80, 0.98), rgba(14, 24, 44, 0.98)); }
-.nge-strip-counts {
+.nge-notif-dot {
   position: absolute;
-  top: 0;
-  right: 12px;
-  height: 20px;
-  display: flex;
-  gap: 4px;
-}
-.nge-strip-badge {
+  top: 8px;
+  right: 40px;
+  z-index: 5;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 7px 0 6px;
-  box-sizing: border-box;
-  border-radius: 10px;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border: none;
+  border-radius: 11px;
   background: #7c4dff;
   color: #fff;
-  font: 700 12px/20px 'Inter', 'Roboto', sans-serif;
-  white-space: nowrap;
-  box-shadow: 0 0 6px rgba(124, 77, 255, 0.55);
+  font: 700 12px/22px 'Inter', 'Roboto', sans-serif;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(124, 77, 255, 0.6);
   animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.nge-strip-badge-icon { display: inline-flex; align-items: center; font-size: 12px; line-height: 1; }
-.nge-strip-badge-icon svg { width: 12px !important; height: 12px !important; vertical-align: 0; }
-.nge-strip-badge-icon img { width: 12px; height: 12px; object-fit: contain; }
-.nge-strip-badge--chat { background: #4ad07a; color: #06170d; box-shadow: 0 0 6px rgba(74, 208, 122, 0.55); }
-.nge-strip-badge--mention { background: #f5b942; color: #241600; }
+.nge-notif-dot:hover { background: #8f66ff; }
+.nge-notif-dot--strip { top: 0; right: 12px; height: 18px; line-height: 18px; }
+.nge-notif-dot-icon { display: inline-flex; align-items: center; }
+.nge-notif-dot-icon svg { width: 13px !important; height: 13px !important; }
 </style>
