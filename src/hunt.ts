@@ -397,6 +397,23 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
 
 /** Where the edges of the dataset are, shown to players: teal rings, read only, so nobody spends a
  *  gem finding them (Ames 2026-10-23: "we should just highlight/show where the edges [are]"). */
+/**
+ * A Hunt's note in chat as the Hunt stands now (Ames 2026-10-26: "can we update this message when a hunt is
+ * active? bc it's not 'coming' anymore"). "🔎 The Hunt is coming: X" reads "is on" while X runs and "is over"
+ * after. stage: 0 coming, 1 on, 2 over, so chat can keep only the newest card per Hunt. From the Hunt's
+ * phase as the server last gave it (the list is asked again at each start and end), not a ticking clock.
+ */
+const HUNT_NOTE = /^(\s*🔎\s*The Hunt) (is coming|is on|is over): (.+?)\s*$/u;
+export function huntNoteNow(text: string): { text: string; title: string; stage: number } | null {
+  const m = HUNT_NOTE.exec(text);
+  if (!m) return null;
+  const title = m[3];
+  const stage = m[2] === 'is coming' ? 0 : m[2] === 'is on' ? 1 : 2;
+  const h = huntState.hunts.find(x => x.title === title);
+  const now = !h ? stage : h.phase === 'live' ? 1 : h.phase === 'ended' ? 2 : 0;
+  return { text: now > stage ? `${m[1]} ${now === 1 ? 'is on' : 'is over'}: ${title}` : text, title, stage };
+}
+
 export const huntAnswersLayerName = (h: HuntInfo) => `Hunt answers: ${h.title}`;
 /** Nanometres to the viewer's global coordinates, at the current position for any other axes. */
 function nmToGlobal(): ((nm: number[]) => number[]) | null {

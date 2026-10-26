@@ -779,36 +779,55 @@ async function answers(args, ctx) {
 async function current(ctx) {
   const { db, me, now = new Date() } = ctx;
   const since = new Date(now.getTime() - SHOW_ENDED_DAYS * DAY).toISOString();
-  // An admins only hunt (for testing) is never shown to players.
-  const rows = (await db.visibleHunts(since)).filter((h) => visible(h, now) && (!adminsOnly(h, ctx) || ctx.isAdmin));
-  const hunts = [];
-  for (const h of rows) {
+  // An admins only hunt (for testing) is never shown to players, and the database leaves those out for
+  // them. For admins, a test Hunt goes once its results window is over (Ames 2026-10-26: "this takes a
+  // long time to load": 17 Hunts, 146 reads one after another, 9 s, for an admin).
+  const players = !ctx.isAdmin;
+  const rows = (await db.visibleHunts(since, { players })).filter((h) => visible(h, now) && (!adminsOnly(h, ctx) || ctx.isAdmin)
+    && !(h.admins_only && phase(h, now) === 'ended' && now.getTime() - Date.parse(h.end_at) > resultsHours(h) * 3600000));
+  // Each Hunt's reads go together, and the Hunts together.
+  const hunts = await Promise.all(rows.map((h) => huntForPlayer(h, ctx)));
+  return { now: now.toISOString(), hunts };
+}
+
+/** One Hunt as hunt.current gives it: the player's own run, the board, the medals once given. */
+async function huntForPlayer(h, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  {
     if (phase(h, now) === 'ended' && !h.awarded_at) {
       try { const r = await finalize(h, ctx); if (r) h.awarded_at = now.toISOString(); }
       catch (e) { console.warn('[hunt] awards for', h.id, 'failed:', e && e.message); }
     }
-    const key = await db.key(h.id);
+    const open = phase(h, now) !== 'announced';
+    const [key, ex, subs, run, prizes] = await Promise.all([
+      db.key(h.id),
+      open && db.keyExtras ? db.keyExtras(h.id) : null,
+      db.submissions(h.id),
+      open ? db.myRun(h.id, me.id) : null,
+      prizesFor(h, db, ctx.site),
+    ]);
     h._kinds = kindCounts(key);
-    if (phase(h, now) !== 'announced' && db.keyExtras) { const ex = await db.keyExtras(h.id); h._edges = ex.edges; h._bounds = ex.bounds; }
-    const subs = await db.submissions(h.id);
+    if (ex) { h._edges = ex.edges; h._bounds = ex.bounds; }
     const board = leaderboard(subs);
-    const th = thresholds(h), gl = gemLimits(h);
     const top = board.slice(0, 10);
     const mineBest = board.find((b) => b.user_id === me.id);
-    const names = { ...(await db.names([...new Set([...top.map((b) => b.user_id), me.id])])) };
-    const run = phase(h, now) === 'announced' ? null : await db.myRun(h.id, me.id);
+    const ended = phase(h, now) === 'ended';
+    const [names0, medals, allRuns] = await Promise.all([
+      db.names([...new Set([...top.map((b) => b.user_id), me.id])]),
+      // The medals, from the awards once they are given (never before).
+      ended && h.awarded_at && db.huntMedals ? db.huntMedals(h) : [],
+      ended && board.length && db.allSubmissions ? db.allSubmissions(h.id) : null,
+    ]);
+    const names = { ...names0 };
     const runDrops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : null;
     const mine = runView(h, runDrops || [], key, runDrops ? run : null);
-    const ended = phase(h, now) === 'ended';
     // At the ceremony everyone who took part is listed (Ames 2026-10-21); while it runs, the top ten.
-    // The medals, from the awards once they are given (never before: they are places, decided at the end).
-    const medals = ended && h.awarded_at && db.huntMedals ? await db.huntMedals(h) : [];
     const medalOf = new Map(medals.filter((m) => m.tier !== 'fastest').map((m) => [m.user_id, m.tier]));
     const speed = medals.find((m) => m.tier === 'fastest') || null;
     const order = { gold: 0, silver: 1, bronze: 2 };
     let clockOf = new Map();
-    if (ended && board.length && db.allSubmissions) {
-      const runs = (await db.allSubmissions(h.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)));
+    if (allRuns) {
+      const runs = allRuns.filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)));
       clockOf = new Map(runs.map((x) => [x.user_id, runClock(x, normalizeDrops(x.points))]));
     }
     const clock = (b) => { const v = clockOf.get(b.user_id); return v == null ? Infinity : v; };
@@ -816,8 +835,8 @@ async function current(ctx) {
       || (clock(a) - clock(b)) || (b.found - a.found) || (a.gems - b.gems)) : board;
     const shown = ended ? ranked.slice(0, 200) : top;
     if (ended) { const more = await db.names([...new Set([...shown.map((b) => b.user_id), ...(speed ? [speed.user_id] : [])])]); Object.assign(names, more); }
-    hunts.push({
-      ...publicHunt(h, now), prizes: await prizesFor(h, db, ctx.site),
+    return {
+      ...publicHunt(h, now), prizes,
       you: { ...mine, best: mineBest ? mineBest.found : 0, submissions: run ? 1 : 0,
         tier: medalOf.get(me.id) || null, rank: mineBest ? ranked.indexOf(mineBest) + 1 : 0 },
       board: shown.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: medalOf.get(b.user_id) || null, you: b.user_id === me.id,
@@ -825,9 +844,8 @@ async function current(ctx) {
       fastest: speed ? { name: names[speed.user_id] || 'Player', reason: speed.reason || '', you: speed.user_id === me.id } : null,
       players: board.length,
       winners: TIERS.reduce((o, t) => { o[t] = medals.filter((m) => m.tier === t).length; return o; }, {}),
-    });
+    };
   }
-  return { now: now.toISOString(), hunts };
 }
 
 /** The player opened the Hunt: their run, and its clock, start now (once; a second call changes nothing). */
@@ -1294,7 +1312,9 @@ function restDb(sb) {
   const rawKey = async (id) => { const r = await one(sb(`hunt_keys?hunt_id=eq.${id}&select=targets&limit=1`)); return (r && r.targets) || []; };
   return {
     hunts: () => sb('hunts?select=*&order=start_at.desc.nullslast&limit=200'),
-    visibleHunts: (since) => sb(`hunts?status=eq.scheduled&end_at=gte.${enc(since)}&select=*&order=start_at.asc&limit=20`),
+    // Newest first, so the newest Hunt is never the one left out (it was oldest first, 20 at most: Hunt 21
+    // would have been missing); back in start order for the box. A player's list has no admins only Hunts.
+    visibleHunts: async (since, o = {}) => (await sb(`hunts?status=eq.scheduled&end_at=gte.${enc(since)}${o.players ? '&admins_only=eq.false' : ''}&select=*&order=start_at.desc&limit=50`)).reverse(),
     hunt: (id) => one(sb(`hunts?id=eq.${id}&select=*&limit=1`)),
     insertHunt: (row) => one(sb('hunts', { method: 'POST', body: JSON.stringify(row) })),
     patchHunt: (id, row) => one(sb(`hunts?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) })),
