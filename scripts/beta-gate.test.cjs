@@ -65,6 +65,8 @@ async function player(browser, status) {
     const text = shown ? (await p.page.innerText('.nge-beta-panel')).replace(/\s+/g, ' ') : '';
     check('it says invite only and names support@eyewire.ai', /Pyr is invite only for now/i.test(text) && /support@eyewire\.ai/.test(text), text.slice(0, 200));
     check('no dashes in its words', !/[\u2013\u2014]/.test(text));
+    // Ames 2026-10-26: the radio played under the screen, with no way to stop it.
+    check('the radio is not there behind the screen', !(await p.page.evaluate(() => document.body.classList.contains('nge-radio-on'))));
     const box0 = await p.page.locator('.nge-beta-panel').boundingBox();
     await p.page.screenshot({ path: path.join(OUT, 'beta-gate.png'), clip: { x: box0.x - 30, y: box0.y - 30, width: box0.width + 60, height: box0.height + 60 } });
     await p.page.keyboard.press('Escape');
@@ -93,7 +95,10 @@ async function player(browser, status) {
     const sent = p.calls.filter(c => c.action === 'access.beta');
     check('Request beta access sends one request: name, email and note', sent.length === 1 && sent[0].name === "Zoë O'Brien" && sent[0].email === 'new@example.org' && sent[0].note === 'My EyeWire name is tester1', sent);
     const done = (await p.page.innerText('.nge-beta-panel')).replace(/\s+/g, ' ');
-    check('then it says the request is in, and offers no button', /Your request is in/.test(done) && !(await p.page.$('.nge-beta-btn')), done.slice(0, 160));
+    check('then it thanks them, signs off, and offers no button', /Thanks for requesting early access to map the brain/.test(done) && /The Pyr \(pronounced "peer"\) team at Princeton University/.test(done) && !(await p.page.$('.nge-beta-btn')), done.slice(0, 200));
+    const links = await p.page.$$eval('.nge-beta-links a', as => as.map(a => a.href));
+    check('and offers EyeWire and things to learn while they wait', links.some(h => /eyewire\.org/.test(h)) && links.filter(h => /connectome\.quest/.test(h)).length >= 2, links);
+    check('no dashes in the thanks', !/[–—]/.test(done));
     const box = await p.page.locator('.nge-beta-panel').boundingBox();
     await p.page.screenshot({ path: path.join(OUT, 'beta-gate-sent.png'), clip: { x: box.x - 30, y: box.y - 30, width: box.width + 60, height: box.height + 60 } });
     check('no page errors', p.errors.filter(e => !/Failed to fetch/.test(e)).length === 0, p.errors.slice(0, 3));
@@ -107,6 +112,7 @@ async function player(browser, status) {
     // 3. Controls: a tester, and a server that cannot be asked.
     const t = await player(browser, { invited: true, requested: false });
     check('control: a tester gets no popup (and was asked)', !(await t.page.$('.nge-beta-panel')) && t.calls.some(c => c.action === 'access.betaStatus'));
+    check('control: a tester gets the radio', await t.page.evaluate(() => document.body.classList.contains('nge-radio-on')));
     await t.context.close();
     const d = await player(browser, 500);
     check('control: a server error shows no popup (fails open)', !(await d.page.$('.nge-beta-panel')) && d.calls.some(c => c.action === 'access.betaStatus'));
