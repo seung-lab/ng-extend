@@ -2,6 +2,20 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T17:34:46Z",
+      "title": "Hunt fixes from the first Hunt",
+      "digest": "minor",
+      "items": [
+        "Top hunters now updates for everyone about every half minute while a Hunt runs. Before, you only saw your own row move.",
+        "The Gems box shows the gems you have left, and a line under it says how many you used: how many were right and how many missed. Thanks to Nseraf for spotting that it did not add up.",
+        "A color key under the Hunt instructions says what each gem color means, and what the teal glow on a cell means.",
+        "Take back removes your last gem before you press Submit. Gems that are already checked stay where they are.",
+        "Cut and Extend follow the gem layer you pick, and their tooltips name the number key that switches between them.",
+        "A Hunt cell that would be drawn teal gets another color, so teal always means the edge of the dataset.",
+        "In the small Hunt box, Cut and Extend stay readable beside Submit."
+      ]
+    },
+    {
       "at": "2026-10-26T17:20:00Z",
       "title": "A shorter line in Settings",
       "digest": "minor",
