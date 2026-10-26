@@ -107,7 +107,87 @@ async function setPilot(email:string,enabled:boolean) {
   const {error} = await supabase.from('pilot_members').update({enabled}).eq('email',email);
   if(error) pilotError.value=error.message; else await loadPilot();
 }
-watch(adminSubTab,t=>{if(t==='pilot')loadPilot();});
+// ── Beta requests (Ames 2026-10-26: "Where should I see the access request?
+//    Can you grant me a button that adds their email to the pilot tester
+//    list?"). Every Beta access report (functions/access-request.js, from the
+//    game or connectome.quest), newest first, with Let them in. The email to
+//    add is read from the server's own lines of the report, never the note.
+type BetaRequest = { id: string; name: string; email: string; note: string; site: boolean; at: string; ewName: string; ewRank: string };
+const betaRequests = ref<BetaRequest[]>([]);
+const betaError = ref('');
+const betaBusy = ref('');
+// Which requests show (Ames 2026-10-26: "move them from the page and put
+// them in a db list", and "remove request"). Marks are kept by the server.
+type BetaView = 'waiting' | 'listed' | 'in' | 'removed';
+const betaView = ref<BetaView>('waiting');
+const betaMarks = ref<Record<string, { mark: string; at: string }>>({});
+function parseBetaRequest(r: any): BetaRequest | null {
+  const lines = String(r.message || '').split('\n');
+  const noteAt = lines.findIndex(l => l.startsWith('Their note: '));
+  const head = noteAt < 0 ? lines : lines.slice(0, noteAt);
+  const pick = (label: string) => {
+    for (const l of head) {
+      const m = l.match(new RegExp('^' + label + ': ([^\\s]+@[^\\s]+?)\\.?(?:\\s|$)'));
+      if (m) return m[1].toLowerCase();
+    }
+    return '';
+  };
+  // In the game, the sign in email is the one that counts; from the site, the one they gave.
+  const email = pick('Sign in email') || pick('Email') || pick('Email they gave');
+  if (!email) return null;
+  const note = noteAt < 0 ? '' : lines.slice(noteAt).join('\n').replace(/^Their note: /, '');
+  const line = (label: string) => (head.find(l => l.startsWith(label + ': ')) || '').slice(label.length + 2).trim();
+  return { id: r.id, name: r.user_name || '', email, note, site: /connectome\.quest/.test(String(r.url || '') + String(r.title || '')), at: r.created_at,
+    ewName: line('EyeWire username'), ewRank: line('EyeWire rank') };
+}
+async function loadBetaRequests() {
+  betaError.value = '';
+  const { data, error } = await supabase.from('site_issues').select('id,user_name,title,message,url,created_at')
+    .eq('category', 'Beta access').order('created_at', { ascending: false }).limit(300);
+  if (error) { betaError.value = error.message; return; }
+  const seen = new Set<string>();
+  betaRequests.value = ((data || []) as any[]).map(parseBetaRequest)
+    .filter((r): r is BetaRequest => !!r && !seen.has(r.email) && !!seen.add(r.email));
+  try { betaMarks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMarks')) || {}; }
+  catch (e: any) { betaError.value = e?.message || 'The sorted lists could not be loaded.'; }
+}
+const pilotEnabled = computed(() => new Set(pilotRows.value.filter(m => m.enabled).map(m => m.email.toLowerCase())));
+/** Let in wins; then a mark, unless they asked again after it was made. */
+function betaStateOf(r: BetaRequest): BetaView {
+  if (pilotEnabled.value.has(r.email)) return 'in';
+  const m = betaMarks.value[r.email];
+  if (m && (m.mark === 'listed' || m.mark === 'removed') && String(m.at) >= String(r.at)) return m.mark;
+  return 'waiting';
+}
+const BETA_VIEWS: { key: BetaView; label: string }[] = [
+  { key: 'waiting', label: 'Waiting' }, { key: 'listed', label: 'On the list' }, { key: 'in', label: 'Let in' }, { key: 'removed', label: 'Removed' },
+];
+const betaCount = computed(() => {
+  const n = { waiting: 0, listed: 0, in: 0, removed: 0 } as Record<BetaView, number>;
+  for (const r of betaRequests.value) n[betaStateOf(r)]++;
+  return n;
+});
+const betaShown = computed(() => betaRequests.value.filter(r => betaStateOf(r) === betaView.value));
+async function markBeta(r: BetaRequest, mark: 'listed' | 'removed' | 'waiting') {
+  betaBusy.value = r.email; betaError.value = '';
+  try { betaMarks.value = (await secureWrite<Record<string, { mark: string; at: string }>>('access.betaMark', { email: r.email, mark })) || {}; }
+  catch (e: any) { betaError.value = e?.message || 'That did not save. Please try again.'; }
+  betaBusy.value = '';
+}
+async function letBetaIn(r: BetaRequest) {
+  betaBusy.value = r.email; betaError.value = '';
+  const { error } = await supabase.from('pilot_members').upsert([{ email: r.email, enabled: true }], { onConflict: 'email' });
+  if (error) betaError.value = error.message; else await loadPilot();
+  betaBusy.value = '';
+}
+/** An email to tell them, ready to send from the admin's own mail. */
+function betaMailto(r: BetaRequest) {
+  const first = r.name.split(' ')[0] || 'there';
+  const body = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${r.email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
+  return `mailto:${encodeURIComponent(r.email)}?subject=${encodeURIComponent("You're in: Pyr early access")}&body=${encodeURIComponent(body)}`;
+}
+const betaWhen = (at: string) => { try { return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
+watch(adminSubTab,t=>{if(t==='pilot'){loadPilot();void loadBetaRequests();}},{immediate:true});
 
 // ── Feedback triage ──────────────────────────────────────────────────────────
 // A scheduled agent reads incoming feedback (site_issues, client_errors) and
@@ -1498,8 +1578,8 @@ function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
  */
 function notifCategory(n: any): string {
   const t = n.title || '';
-  if (t.includes('Weekly Champions') || t.includes('Monthly Champions')) return 'weeklyChampions';
-  if (t.includes('Week in Science') || t.includes('Month in Science')) return 'weeklyRecap';
+  if (t.includes('Weekly Champions') || t.includes('Monthly Champions') || t.includes('Year Champions')) return 'weeklyChampions';
+  if (t.includes('Week in Science') || t.includes('Month in Science') || t.includes('Year in Science')) return 'weeklyRecap';
   if (t.includes('Response to your help request')) return 'helpResponse';
   if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
@@ -1508,10 +1588,10 @@ function notifCategory(n: any): string {
 
 const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'announcement',    label: 'Announcements' },
-  { key: 'weeklyChampions', label: 'Weekly and monthly champions' },
+  { key: 'weeklyChampions', label: 'Weekly, monthly and yearly champions' },
   { key: 'customBadge',     label: 'Custom badges' },
   { key: 'personalBadge',   label: 'Personal badges' },
-  { key: 'weeklyRecap',     label: 'Weekly and monthly recaps' },
+  { key: 'weeklyRecap',     label: 'Weekly, monthly and yearly recaps' },
   { key: 'helpResponse',    label: 'Help replies' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
@@ -2356,6 +2436,37 @@ function practiceWhen(iso: string | null) {
 
     <!-- ── Notifications ── -->
     <section v-if="adminSubTab === 'pilot'" class="nge-pilot-admin">
+      <h2>Beta requests</h2>
+      <p>People who asked to join, in the game or on connectome.quest. Let them in adds their email to Pilot testers below; then email them so they know. Add to list keeps them on the list for later, and Remove request takes them off this page.</p>
+      <div class="nge-beta-views" role="tablist" aria-label="Beta requests">
+        <button v-for="v in BETA_VIEWS" :key="v.key" role="tab" :aria-selected="betaView === v.key"
+                :class="{ 'nge-beta-view--on': betaView === v.key }" @click="betaView = v.key">{{ v.label }} <span>{{ betaCount[v.key] }}</span></button>
+      </div>
+      <p v-if="betaError" role="alert">{{ betaError }}</p>
+      <p v-if="!betaShown.length" class="nge-beta-req-empty">{{ betaView === 'waiting' ? (betaRequests.length ? 'Nobody is waiting.' : 'No requests yet.') : 'Nobody here.' }}</p>
+      <ul v-else class="nge-beta-req">
+        <li v-for="r in betaShown" :key="r.id">
+          <span>
+            <b class="nge-pilot-name">{{ r.name || 'No name' }}</b> · {{ r.email }}
+            <i class="nge-beta-req-meta">{{ betaWhen(r.at) }}{{ r.site ? ', from connectome.quest' : ', in the game' }}</i>
+            <span v-if="r.ewName || r.ewRank" class="nge-beta-req-ew">EyeWire: {{ [r.ewName, r.ewRank].filter(Boolean).join(', ') }}</span>
+            <span v-if="r.note" class="nge-beta-req-note">{{ r.note }}</span>
+          </span>
+          <span class="nge-beta-req-acts">
+            <template v-if="betaStateOf(r) === 'in'">
+              <em class="nge-beta-req-in">In</em>
+              <a class="nge-beta-req-mail" :href="betaMailto(r)">Email them</a>
+            </template>
+            <template v-else>
+              <button :disabled="betaBusy === r.email" @click="letBetaIn(r)">{{ betaBusy === r.email ? 'Saving…' : 'Let them in' }}</button>
+              <button v-if="betaStateOf(r) !== 'listed'" :disabled="betaBusy === r.email" @click="markBeta(r, 'listed')">Add to list</button>
+              <button v-if="betaStateOf(r) !== 'removed'" :disabled="betaBusy === r.email" @click="markBeta(r, 'removed')">Remove request</button>
+              <button v-if="betaStateOf(r) !== 'waiting'" :disabled="betaBusy === r.email" @click="markBeta(r, 'waiting')">Back to waiting</button>
+            </template>
+          </span>
+        </li>
+      </ul>
+
       <h2>Pilot testers</h2>
       <p>Invited testers can claim cells, use practice cells, sync Sheets, and contribute to the site. Existing administrators already have access.</p>
       <form @submit.prevent="invitePilot">
@@ -4512,6 +4623,19 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-name { font-weight:700; color:#fff; }
 .nge-pilot-noname { font-style:normal; color:#93a1b3; }
 .nge-pilot-admin button { cursor:pointer; }
+.nge-beta-req li { align-items:flex-start; padding:10px 12px; margin:10px 0; border:1px solid rgba(116,133,154,0.45); border-radius:8px; background:rgba(21,36,52,0.55); }
+.nge-beta-req-meta { display:block; font-style:normal; color:#93a1b3; font-size:0.9rem; }
+.nge-beta-req-note { display:block; margin-top:4px; color:#d6deea; white-space:pre-wrap; overflow-wrap:anywhere; }
+.nge-beta-req-in { font-style:normal; color:#7ee0a0; font-weight:700; align-self:center; }
+.nge-beta-req-mail { color:#7ec8ff; align-self:center; }
+.nge-beta-req-empty { color:#b6c2d1; }
+.nge-beta-req { margin-bottom:28px; }
+.nge-beta-req-ew { display:block; margin-top:4px; color:#b6c2d1; }
+.nge-pilot-admin .nge-beta-req-acts { flex:0 1 auto; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.nge-beta-views { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }
+.nge-pilot-admin .nge-beta-views button { padding:6px 12px; border-radius:999px; background:transparent; color:#b6c2d1; }
+.nge-pilot-admin .nge-beta-views button span { opacity:0.75; margin-left:4px; }
+.nge-pilot-admin .nge-beta-views .nge-beta-view--on { background:#1d3a55; color:#fff; border-color:#7ec8ff; }
 .nge-outbox-line { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.86em; line-height: 1.5;
   background: rgba(74, 150, 224, 0.08); border: 1px solid rgba(74, 150, 224, 0.25); }
 .nge-triage-link { color: #7ec8ff; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; cursor: pointer; }

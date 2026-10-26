@@ -59,7 +59,7 @@ const notInstalled = ref(false);
 // The form
 // Empty number fields mean "automatic" and show what that is (0 read as a real zero, Ames 2026-10-21).
 const blankPrize = (): Prize => ({ mode: 'own', badge_id: '', image: null });
-const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: '' as number | '', max_submissions: 10, results_hours: '' as number | '',
+const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, max_points: '' as number | '', max_submissions: 10, results_hours: '' as number | '', show_answers: true,
   tiers: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
   /** The most gems each medal allows (empty: Gold auto, the others no limit). */
   tierGems: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
@@ -163,6 +163,7 @@ async function open(h: AdminHunt) {
     editing.value = full; board.value = full.board || [];
     form.value = { title: full.title, description: full.description || '', link: keyLink(full), tolerance_um: Math.round(full.tolerance_nm / 100) / 10,
       max_points: full.max_points || '', max_submissions: full.max_submissions || 10, results_hours: (full.tiers as any)?.results_hours || '',
+      show_answers: !(full.tiers as any)?.hide_answers,
       tiers: { gold: full.tiers?.gold || '', silver: full.tiers?.silver || '', bronze: full.tiers?.bronze || '' },
       tierGems: { gold: (full.tiers as any)?.gold_gems || '', silver: (full.tiers as any)?.silver_gems || '', bronze: (full.tiers as any)?.bronze_gems || '' },
       prize: { gold: prizeFrom(full.art?.gold), silver: prizeFrom(full.art?.silver), bronze: prizeFrom(full.art?.bronze) },
@@ -271,7 +272,7 @@ async function save(status?: 'draft' | 'scheduled') {
       max_points: Number(f.max_points) || 0, max_submissions: Number(f.max_submissions) || 10,
       tiers: { gold: Number(f.tiers.gold) || 0, silver: Number(f.tiers.silver) || 0, bronze: Number(f.tiers.bronze) || 0,
         gold_gems: Number(f.tierGems.gold) || 0, silver_gems: Number(f.tierGems.silver) || 0, bronze_gems: Number(f.tierGems.bronze) || 0,
-        results_hours: Number(f.results_hours) || 0 },
+        results_hours: Number(f.results_hours) || 0, hide_answers: !f.show_answers },
       art: artFields(),
       announce_at: fromLocalInput(f.announce), start_at: fromLocalInput(f.start), end_at: fromLocalInput(f.end),
       notif_images: pictureFields(), admins_only: !!f.admins_only,
@@ -573,6 +574,7 @@ async function duplicate() {
           <label><span class="nge-hunts-timehead">Start (ET) <button type="button" class="nge-hunts-nowlink" title="Start it this minute" @click.prevent="setNow('start')">Now</button></span><input v-model="form.start" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.start) }}</span></label>
           <label>End (ET) <input v-model="form.end" type="datetime-local" class="nge-hunts-input" /><span class="nge-hunts-when">{{ whenLine(form.end) }}</span></label>
         </div>
+        <label class="nge-hunts-check nge-hunts-answers"><input v-model="form.show_answers" type="checkbox" /> <span><b>Show the answers after the end</b>: players can ring every merger and extension. Untick it to use these cells in another Hunt.</span></label>
         <label class="nge-hunts-resultshours">Results in the top bar for <input v-model.number="form.results_hours" type="number" min="1" max="168" class="nge-hunts-input" placeholder="24" /> hours after the end <span class="nge-hunts-muted">(24 if empty; at most a week)</span></label>
       </fieldset>
 
@@ -799,6 +801,7 @@ async function duplicate() {
 .nge-hunts-tierbox { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(90, 170, 255, 0.04); border: 1px solid rgba(90, 170, 255, 0.15); }
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
+.nge-hunts-answers { margin-top: 8px; }
 .nge-hunts-resultshours { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .nge-hunts-resultshours .nge-hunts-input { width: 72px; }
 .nge-hunts-startrow { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; }

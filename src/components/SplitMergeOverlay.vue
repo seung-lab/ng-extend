@@ -266,6 +266,19 @@ function resetQueuePlace() {
 }
 watch(hasMergeSegments, shown => { if (shown) placeBesideChat(); }, { immediate: true });
 
+// Minimized to the Merge Mode bar (Krzysztof Kruk, report 255: "on smaller
+// screens the popup ... can cover a significant useful space"). The bar then
+// shows "Merge Queue (n)" with a button to open it again. Remembered across
+// reloads and datasets.
+const QUEUE_MIN_KEY = 'nge-merge-queue-min';
+const queueMin = ref(false);
+try { queueMin.value = localStorage.getItem(QUEUE_MIN_KEY) === '1'; } catch { /* not remembered */ }
+function setQueueMin(on: boolean) {
+  queueMin.value = on;
+  try { localStorage.setItem(QUEUE_MIN_KEY, on ? '1' : '0'); } catch { /* not remembered */ }
+  if (!on) placeBesideChat();
+}
+
 // Each queued merge says where it stands while a batch is going through
 // (Ames 2026-10-08), and loses its remove button once it has been sent.
 const rowStatus = (i: number) => store.mergeRows[i]?.status || '';
@@ -454,6 +467,9 @@ function cancelTool() {
             <span v-if="!isTouchRef" class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
           </div>
 
+          <button v-if="queueMin && hasMergeSegments" class="nge-smo-action-btn nge-smo-queue-chip" @click="setQueueMin(false)"
+                  title="Show the Merge Queue">Merge Queue ({{ store.mergeSegments.length }}) <span aria-hidden="true">▴</span></button>
+
           <div class="nge-smo-hint nge-smo-hint--left merge-hint" :class="{ 'error-hint': hasInlineResult && resultIsError }">{{ contextHint }}</div>
         </template>
 
@@ -462,11 +478,13 @@ function cancelTool() {
 
     <!-- Merge segment queue (vertical list, left side) -->
     <transition name="merge-list-fade">
-      <div v-if="isMerge && hasMergeSegments && !isPendingClose" ref="queueEl" class="nge-smo-merge-panel" :style="queueStyle">
+      <div v-if="isMerge && hasMergeSegments && !isPendingClose && !queueMin" ref="queueEl" class="nge-smo-merge-panel" :style="queueStyle">
         <div class="nge-smo-merge-panel-header" title="Drag to move. Double click to put it back."
              @mousedown="startQueueDrag" @dblclick="resetQueuePlace">
           Merge Queue ({{ store.mergeSegments.length }})
           <span class="nge-smo-merge-grip" aria-hidden="true">⠿</span>
+          <button class="nge-smo-merge-min" @mousedown.stop @dblclick.stop @click.stop="setQueueMin(true)"
+                  title="Minimize to the Merge Mode bar" aria-label="Minimize the Merge Queue">–</button>
         </div>
         <div class="nge-smo-merge-panel-list">
           <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
@@ -933,6 +951,15 @@ function cancelTool() {
   letter-spacing: 0.5px;
   border-bottom: 1px solid rgba(0, 220, 120, 0.15);
 }
+
+.nge-smo-merge-panel-header { display: flex; align-items: center; gap: 6px; }
+.nge-smo-merge-grip { margin-left: auto; }
+.nge-smo-merge-min {
+  background: none; border: 1px solid rgba(0, 220, 120, 0.3); border-radius: 4px; color: #80ffc0;
+  font-size: 13px; line-height: 1; width: 20px; height: 18px; padding: 0; cursor: pointer;
+}
+.nge-smo-merge-min:hover { background: rgba(0, 220, 120, 0.18); color: #fff; }
+.nge-smo-queue-chip { white-space: nowrap; }
 
 .nge-smo-merge-panel-list {
   overflow-y: auto;

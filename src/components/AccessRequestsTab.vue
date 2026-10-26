@@ -6,7 +6,7 @@
  * redos or invite. An invite adds the player to the pilot testers; the CAVE
  * group (Eyewire_2_Edit) is still given by hand, and the tab says so.
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
 import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing, resetAccess,
   type AccessRequest, type AccessItem, type AccessFilter } from '../access_request';
@@ -17,7 +17,17 @@ const requests = ref<AccessRequest[]>([]);
 const loading = ref(false);
 const error = ref('');
 const openId = ref<number | null>(null);
-const notes = ref<Record<number, string>>({});
+// The answer being written to each requester is kept as it is typed, so it is
+// still there after reviewing an example in the view (Celia D, report 258:
+// "overall feedback is deleted"). It goes once the answer is sent.
+const NOTES_KEY = 'nge_access_answer_drafts';
+const notes = ref<Record<number, string>>((() => {
+  try { const v = JSON.parse(localStorage.getItem(NOTES_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+})());
+watch(notes, v => {
+  const keep = Object.fromEntries(Object.entries(v).filter(([, t]) => typeof t === 'string' && t.trim()));
+  try { localStorage.setItem(NOTES_KEY, JSON.stringify(keep)); } catch { /* private window: kept for this visit */ }
+}, { deep: true });
 const busy = ref('');
 const done = ref<Record<number, string>>({});
 
@@ -80,6 +90,7 @@ async function decide(r: AccessRequest, outcome: 'redo' | 'invited', byHand = fa
   try {
     const out = await decideAccess(r.id, outcome, notes.value[r.id] || '', byHand);
     Object.assign(r, out);
+    delete notes.value[r.id];
     done.value[r.id] = outcome === 'invited'
       ? (out.cave_granted
         ? `Access granted: ${r.player_name || r.email} is in Eyewire_2_Edit, on the pilot testers, and was told.`

@@ -15,6 +15,8 @@ import { reactive } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { setNgeMeshEdge, getNgeMeshEdge } from 'neuroglancer/mesh/nge_edge';
+import { getBaseObjectColor } from 'neuroglancer/segmentation_display_state/frontend';
+import { setStatedColor } from './widgets/widget_utils';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, findDatasetByCanonical, switchToDataset } from './datasets';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from './util/keep_display';
@@ -35,6 +37,8 @@ export interface HuntInfo {
   results_hours?: number;
   /** The edge spots the key marks, in nanometres: shown to players once the Hunt is open. */
   edges_nm?: number[][];
+  /** The answers can be shown (the Hunt is over and does not keep them). */
+  answers?: boolean;
   /** The segmentation volume's bounds in nanometres: where the data ends. The cells glow teal within edge_nm of them. */
   bounds_nm?: number[][] | null;
   /** This close to the bounds is the edge of the dataset, nm (the server's judging rule, EDGE_NM). */
@@ -80,6 +84,8 @@ export const huntState = reactive({
   pending: null as null | { id: string; gem: GemKind; x?: number; y?: number; at: number },
   /** Which layer Ctrl + Click drops into: cut gems or extend gems. */
   kind: 'cut' as GemKind,
+  /** The number key that picks each gem layer (its place in the layer tabs), for the buttons' tooltips. */
+  keys: {} as Partial<Record<GemKind, number>>,
   /** Gems dropped and waiting for Submit (when each gem is not checked as it lands). */
   waiting: 0,
   loaded: false,
@@ -185,9 +191,29 @@ function scheduleRefresh() {
   refreshTimer = setTimeout(() => { void loadHunts(); }, wait);
 }
 
+/**
+ * The board again every half minute while a Hunt runs and this tab is in view (Ames 2026-10-26: every
+ * player saw their own row move and everyone else's stand still until the end). hunt.board reads the
+ * board alone, not every Hunt.
+ */
+let boardAt = 0, boardBusy = false;
+async function refreshBoard() {
+  const t = serverNow();
+  const h = huntState.hunts.find(x => !x.test && Date.parse(x.start_at) <= t && t < Date.parse(x.end_at));
+  if (!h || boardBusy || Date.now() - boardAt < 28_000 || (typeof document !== 'undefined' && document.hidden)) return;
+  boardBusy = true; boardAt = Date.now();
+  try {
+    const r = await huntCall<{ id: number; rank: number; board: HuntInfo['board'] }>('hunt.board', { id: h.id });
+    const copy = huntState.hunts.find(x => x.id === h.id);
+    if (copy && Array.isArray(r?.board)) { copy.board = r.board; if (copy.you) copy.you = { ...copy.you, rank: r.rank }; }
+  } catch { /* the next turn asks again */ }
+  finally { boardBusy = false; }
+}
+
 function startTicker() {
   if (ticker) return;
-  ticker = setInterval(() => { huntState.now = serverNow(); }, 1000);
+  ticker = setInterval(() => { huntState.now = serverNow(); void refreshBoard(); }, 1000);
+  try { document.addEventListener('visibilitychange', () => { if (!document.hidden) { boardAt = 0; void refreshBoard(); } }); } catch { /* no document */ }
 }
 
 /** The hunt the top bar shows: a running one first, then the next to start, then the latest to end. */
@@ -271,6 +297,15 @@ const FOUND = { id: 'hunt-found', name: 'Found', color: '#f5d142' };    // a fou
 const FOUND_COLOR: Record<GemKind, string> = { cut: '#f5d142', merge: '#9b5cff' };   // purple for a missing extension
 const MISSED = { id: 'hunt-missed', name: 'Missed', color: '#7d8799' }; // a missed one goes gray
 const EDGE = { id: 'hunt-edge', name: 'Edge of the dataset', color: '#42d5ec' };   // teal: no gem used, neither found nor missed
+/** What the gem colors mean, for the key in the Hunt box (Ames 2026-10-26: "add a key for what the colors of gems mean"). */
+export const GEM_KEY: { colors: string[]; words: string }[] = [
+  { colors: [KIND_COLOR.cut, KIND_COLOR.merge], words: 'Not checked yet' },
+  { colors: [FOUND_COLOR.cut], words: 'Merger found' },
+  { colors: [FOUND_COLOR.merge], words: 'Extension found' },
+  { colors: [MISSED.color], words: 'Missed' },
+  { colors: [EDGE.color], words: 'Edge of the dataset' },
+];
+export const EDGE_COLOR = EDGE.color;
 const edgeIds = new Set<string>();
 
 /** The layer for one kind of gem; a test run has layers of its own, so trying a hunt never mixes with playing it. */
@@ -362,6 +397,52 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
 
 /** Where the edges of the dataset are, shown to players: teal rings, read only, so nobody spends a
  *  gem finding them (Ames 2026-10-23: "we should just highlight/show where the edges [are]"). */
+export const huntAnswersLayerName = (h: HuntInfo) => `Hunt answers: ${h.title}`;
+/** Nanometres to the viewer's global coordinates, at the current position for any other axes. */
+function nmToGlobal(): ((nm: number[]) => number[]) | null {
+  const v = viewer();
+  const cs = v?.coordinateSpace?.value;
+  const names: string[] = cs?.names ?? [], scales = cs?.scales;
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (!scales || ix.some(i => i < 0)) return null;
+  const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
+  return (e: number[]) => { const p = here.slice(); ix.forEach((i, k) => { p[i] = e[k] / (Number(scales[i]) * 1e9); }); return p; };
+}
+/**
+ * The answers on the cells once the Hunt is over (Ames 2026-10-26: "should we show players the answer to the hunt
+ * at the end", yes): a ring on every merger (gold) and extension (purple). The player's own gems sit on the ones
+ * they found, so the rings alone are the ones they missed. Shown through the cells, so none hides.
+ */
+export async function showAnswers(h: HuntInfo): Promise<{ total: number; found: number; tookPart: boolean } | null> {
+  const r = await huntCall<{ took_part: boolean; places: { at: number[]; kind: GemKind; found: boolean }[] }>('hunt.answers', { id: h.id });
+  if (!gemKinds(h).some(k => managed(huntLayerName(h, k)))) { if (await goToHunt(h) === 'switching') return null; }
+  const v = viewer();
+  const toGlobal = nmToGlobal();
+  if (!v?.layerSpecification || !toGlobal) throw new Error('The viewer is not ready yet. Try again in a moment.');
+  const old = managed(huntAnswersLayerName(h));
+  if (old) { try { v.layerManager.removeManagedLayer(old); } catch { /* already gone */ } }
+  const places = r.places.map((p, i) => ({ ...p, id: `answer-${i + 1}` }));
+  const folders = (['cut', 'merge'] as GemKind[]).map(k => ({ id: `answers-${k}`, name: k === 'cut' ? 'Mergers' : 'Extensions',
+    ids: places.filter(p => p.kind === k).map(p => p.id), color: FOUND_COLOR[k], paint: true })).filter(f => f.ids.length);
+  const ml = makeLayer(v.layerSpecification, huntAnswersLayerName(h), {
+    type: 'annotation', source: { url: 'local://annotations' },
+    annotations: places.map(p => ({ type: 'point', id: p.id, point: toGlobal(p.at) })),
+    annotationColor: FOUND_COLOR.cut, pointSize: 6, onTop: true, ngeAnnFolders: folders,
+  });
+  v.layerSpecification.add(ml);
+  setTimeout(() => {
+    const ds = managed(huntAnswersLayerName(h))?.layer?.annotationDisplayState;
+    const ref = Number((h.view as any)?.projectionScale) || 0;
+    try { if (ds?.ngeShrinkRef && ref > 0) ds.ngeShrinkRef.value = ref; } catch { /* optional */ }
+  }, 300);
+  return { total: places.length, found: places.filter(p => p.found).length, tookPart: r.took_part };
+}
+export function hideAnswers(h: HuntInfo) {
+  const ml = managed(huntAnswersLayerName(h));
+  if (ml) { try { viewer()?.layerManager?.removeManagedLayer(ml); } catch { /* already gone */ } }
+}
+export const answersOnScreen = (h: HuntInfo) => !!managed(huntAnswersLayerName(h));
+
 export const huntEdgeLayerName = (h: HuntInfo) => `${h.test ? 'Hunt test edges' : 'Hunt edges'}: ${h.title}`;
 function ensureEdgeLayer(h: HuntInfo) {
   const v = viewer();
@@ -411,7 +492,39 @@ function setRingsVisible(h: HuntInfo) {
  * player has not switched it off ("it might be distracting in a hunt").
  */
 let glowKey = '';
-const EDGE_RGB: [number, number, number] = [0x42 / 255, 0xd5 / 255, 0xec / 255];
+const EDGE_RGB = [1, 3, 5].map(i => parseInt(EDGE.color.slice(i, i + 2), 16) / 255) as [number, number, number];   // the edge gems' teal
+
+/**
+ * Hunt cells drawn close to that teal get another color when the Hunt opens (Ames 2026-10-26: "how do we
+ * handle marking edge of dataset if the cell loads blue?"), so teal on a cell only ever means the data ends.
+ */
+const OFF_TEAL = [0xff5fa8, 0x58e07c, 0xff7a6b, 0xc76bff];   // pink, green, coral, violet (0xRRGGBB)
+function nearTeal(r: number, g: number, b: number): boolean {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max < 0.3 || max - min < 0.2 * max) return false;   // dark or gray: no hue to mix up
+  const d = max - min;
+  const hue = max === r ? 60 * (((g - b) / d) % 6) : max === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+  const deg = (hue + 360) % 360;
+  return deg >= 160 && deg <= 225;   // cyan to light blue, around the teal's 189
+}
+function cellsOffTeal(h: HuntInfo) {
+  if (!h.bounds_nm) return;
+  const roots = (h.cells ?? []).map(c => String(c.root));
+  let n = 0;
+  for (const ml of viewer()?.layerManager?.managedLayers ?? []) {
+    const ds = ml?.layer?.type === 'segmentation' ? ml.layer.displayState : null;
+    const stated = ds?.segmentationColorGroupState?.value?.segmentStatedColors;
+    if (!stated) continue;
+    for (const root of roots) {
+      const id = new Uint64();
+      if (!id.tryParseString(root)) continue;
+      const c = getBaseObjectColor(ds, id, new Float32Array(4));
+      if (!nearTeal(c[0], c[1], c[2])) continue;
+      const hex = OFF_TEAL[n++ % OFF_TEAL.length];
+      try { setStatedColor(stated, id, ((hex >> 16) & 255) | (hex & 0xff00) | ((hex & 255) << 16)); } catch { /* keeps its color */ }
+    }
+  }
+}
 function edgeGlow(h: HuntInfo | null) {
   const v = viewer();
   const b = h?.bounds_nm;
@@ -458,6 +571,9 @@ function fileGem(h: HuntInfo, kind: GemKind, id: string, hit: boolean | 'edge') 
   if (!value.some(f => f.id === want.id)) value = [...value, { id: want.id, name: want.name, ids: [], color: want.color, paint: true }];
   folders.value = value.map(f => (f.id === want.id ? { ...f, ids: [...f.ids, id], color: want.color } : f));
   folders.changed.dispatch();
+  // Checked: it stays from now on (keepCheckedGems), even if taken off before the next look.
+  const a = managed(huntLayerName(h, kind))?.layer?.localAnnotations?.get?.(id);
+  if (a?.point) lockedGems.set(id, { kind, point: Array.from(a.point as Float32Array), folder: want.id });
 }
 
 function removeGem(h: HuntInfo, kind: GemKind, id: string) {
@@ -538,6 +654,7 @@ async function openHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   openingStep('Placing your gems');
   ensureGemLayers(h, kept);
   judged.clear();
+  lockedGems.clear();
   for (const d of h.you?.drops ?? []) judged.add(d.id);
   for (const g of kept) if (g.judged) judged.add(g.id);
   onScreenBefore.clear();
@@ -545,8 +662,9 @@ async function openHunt(given: HuntInfo): Promise<'ok' | 'switching'> {
   active = h;
   quietPanels();
   gemsBehindCells(h);
+  cellsOffTeal(h);
   edgeGlow(h);
-  setTimeout(() => gemsBehindCells(h), 1500);   // after the display keeper has put back what it kept
+  setTimeout(() => { gemsBehindCells(h); cellsOffTeal(h); }, 1500);   // after the display keeper has put back what it kept
   startDropWatch();
   // The run's clock starts at the first open (the server keeps the first time; a second open changes nothing).
   if (!h.test && h.phase === 'live' && !h.you?.started_at) {
@@ -585,7 +703,7 @@ export async function openTestHunt(id: number): Promise<HuntInfo> {
 
 /** What the last gem did, for the Hunt box. */
 export interface DropNews {
-  id: string; result: 'hit' | 'miss' | 'already' | 'refused' | 'edge'; kind?: GemKind | null; gem: GemKind;
+  id: string; result: 'hit' | 'miss' | 'already' | 'refused' | 'edge' | 'kept'; kind?: GemKind | null; gem: GemKind;
   other?: GemKind | null; text?: string; nearest_um?: number | null; at: number;
   /** Where on screen the gem was dropped (the Ctrl + Click), for the burst there. */
   x?: number; y?: number;
@@ -655,9 +773,79 @@ function hookPanels() {
   w.changed.add(() => {
     if (w.value && active && !huntPrefs.panels && lastCtrlAt && Date.now() - lastCtrlAt < 1500) w.value = false;
   });
+  // The Cut and Extend buttons follow the gem layer picked any way (Ames 2026-10-26: "the buttons in hunt
+  // should track my changes -- eg I am in Cut but the box shows extend"): its tab, or its number key.
+  // Going from one gem layer to the other leaves the side panel as the player has it, as the buttons do.
+  const sl = v.selectedLayer;
+  if (!sl?.changed) return;
+  let lastName: string | undefined = sl.layer?.name;
+  sl.changed.add(() => {
+    const name: string | undefined = sl.layer?.name;
+    if (name === lastName) return;
+    const fromGem = isGemLayer(lastName);
+    lastName = name;
+    const k = gemKindOf(name);
+    if (!k) return;
+    if (huntState.kind !== k) huntState.kind = k;
+    if (fromGem && !huntPrefs.panels) queueMicrotask(() => { if (sl.layer?.name === name && sl.visible) sl.visible = false; });
+  });
+}
+/** Which gem a layer holds in the open Hunt, if it is one of its gem layers. */
+function gemKindOf(name: unknown): GemKind | null {
+  if (!active || typeof name !== 'string') return null;
+  return gemKinds(active).find(k => huntLayerName(active!, k) === name) ?? null;
+}
+/** The buttons show the gem layer picked (a hook added late misses a change), and each gem layer's number key. */
+function followKind(h: HuntInfo) {
+  const v = viewer();
+  const k = gemKindOf(v?.selectedLayer?.layer?.name);
+  if (k && huntState.kind !== k) huntState.kind = k;
+  // The number keys pick a layer by its place in the tabs, 1 to 9; with Classic Layers (Settings) they show
+  // and hide it instead, so no key is offered then.
+  let classic = false;
+  try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true; } catch { /* default */ }
+  const tabs = classic ? [] : (v?.layerManager?.managedLayers ?? []).filter((l: any) => !l.archived).map((l: any) => l.name);
+  const keys: Partial<Record<GemKind, number>> = {};
+  for (const g of gemKinds(h)) { const i = tabs.indexOf(huntLayerName(h, g)); if (i >= 0 && i < 9) keys[g] = i + 1; }
+  if (JSON.stringify(keys) !== JSON.stringify(huntState.keys)) huntState.keys = keys;
 }
 /** Gems dropped but not sent yet (Submit mode). */
 const waiting: { id: string; kind: GemKind; x?: number; y?: number }[] = [];
+/** Take back the last gem not sent yet (Ames 2026-10-26, from Celia: you can delete a gem added by
+ *  mistake while "Check each gem as it lands" is off). */
+export function takeBackGem() {
+  const h = active;
+  const w = waiting.pop();
+  huntState.waiting = waiting.length;
+  if (h && w) removeGem(h, w.kind, w.id);
+}
+/**
+ * Checked gems stay (Celia 2026-10-26: you should not be able to remove gems marked correct or incorrect):
+ * one taken off, from the Annotations panel or anywhere, comes back at once in its folder.
+ */
+const lockedGems = new Map<string, { kind: GemKind; point: number[]; folder: string }>();
+function keepCheckedGems(h: HuntInfo) {
+  for (const kind of gemKinds(h)) {
+    const layer = managed(huntLayerName(h, kind))?.layer;
+    const src = layer?.localAnnotations;
+    if (!src) continue;
+    const folders = ((layer.ngeAnnFolders?.value ?? []) as any[]);
+    const folderOf = (id: string) => folders.find(f => [FOUND.id, MISSED.id, EDGE.id].includes(f.id) && f.ids.includes(id))?.id as string | undefined;
+    for (const a of src) {
+      if (!a || a.type !== 0 || !a.point || !judged.has(a.id)) continue;
+      const folder = folderOf(a.id);
+      if (folder) lockedGems.set(a.id, { kind, point: Array.from(a.point as Float32Array), folder });
+    }
+    let back = 0;
+    for (const [id, g] of lockedGems) {
+      if (g.kind !== kind || src.get?.(id)) continue;
+      try { src.add({ type: 0, id, point: Float32Array.from(g.point), description: '', properties: [] } as any); } catch { continue; }
+      fileGem(h, kind, id, g.folder === EDGE.id ? 'edge' : g.folder === FOUND.id);
+      back++;
+    }
+    if (back) tell({ id: `kept-${Date.now()}`, gem: kind, result: 'kept', at: Date.now() });
+  }
+}
 export function setAutoJudge(on: boolean) {
   huntPrefs.auto = on;
   try { localStorage.setItem('nge-hunt-auto', on ? '1' : '0'); } catch { /* private window */ }
@@ -768,6 +956,8 @@ export function startDropWatch() {
     edgeGlow(h);
     if (!h) return;
     hookPanels();
+    followKind(h);
+    keepCheckedGems(h);
     for (const kind of gemKinds(h)) {
       const src = managed(huntLayerName(h, kind))?.layer?.localAnnotations;
       if (!src) continue;
@@ -826,6 +1016,7 @@ function resumeOnScreen() {
     const kinds = gemKinds(h).filter(k => managed(huntLayerName(h, k)));
     if (!kinds.length) continue;
     judged.clear();
+    lockedGems.clear();
     for (const d of h.you?.drops ?? []) {
       judged.add(d.id);
       if (kinds.includes(dropKind(d))) fileGem(h, dropKind(d), d.id, d.hit);
@@ -835,6 +1026,7 @@ function resumeOnScreen() {
     for (const k of kinds) for (const a of managed(huntLayerName(h, k))?.layer?.localAnnotations ?? []) if (a?.id) onScreenBefore.add(a.id);
     active = h;
     gemsBehindCells(h);
+    cellsOffTeal(h);
     ensureEdgeLayer(h);   // a ring layer from before the glow comes back with the link: drawn again with the rings left
     startDropWatch();
     return;

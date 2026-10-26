@@ -44,6 +44,7 @@ import HuntOpening from "components/HuntOpening.vue";
 import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import BetaGate from "components/BetaGate.vue";
+import { betaGate } from "../beta_gate";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
 import { undelete, undeleteCount } from "../util/undelete";
@@ -1377,8 +1378,9 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     <screenshot-dialog :show="showScreenshotDialog" @close="showScreenshotDialog = false" />
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <!-- 🔥 streak: its fire, its click and its card live in StreakChip.vue -->
-    <!-- EyeWire Radio: bottom right, teleported to the body -->
-    <RadioPlayer v-if="login.sessions.length > 0 && !useUserPreferencesStore().prefs.hideRadio" />
+    <!-- EyeWire Radio: bottom right, teleported to the body. Not until the
+         player is past the beta gate: its screen covers the control. -->
+    <RadioPlayer v-if="login.sessions.length > 0 && betaGate === 'in' && !useUserPreferencesStore().prefs.hideRadio" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <!-- The Hunt: only while one is announced, running or just over. -->

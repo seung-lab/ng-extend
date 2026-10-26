@@ -30,6 +30,8 @@ const MAX_TARGETS = 200;
 const MAX_CELLS = 20;
 const SHOW_ENDED_DAYS = 7;
 const DEFAULT_RESULTS_HOURS = 24;   // "Hunt results" in the top bar this long after the end
+/** Players may see the answers once the Hunt is over, unless the Hunt keeps them (its cells are for another Hunt). */
+const answersOpen = (h) => !(h && h.tiers && h.tiers.hide_answers);
 const resultsHours = (h) => { const v = posIntOf(h && h.tiers && h.tiers.results_hours); return v ? Math.min(v, SHOW_ENDED_DAYS * 24) : DEFAULT_RESULTS_HOURS; };
 function posIntOf(v) { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; }
 const MAX_VIEW_BYTES = 150000;
@@ -347,6 +349,7 @@ function publicHunt(h, now) {
     tolerance_um: Math.round((Number(h.tolerance_nm) || DEFAULT_TOLERANCE_NM) / 100) / 10,
     max_points: maxPoints(h), max_submissions: posInt(h.max_submissions) || DEFAULT_MAX_SUBMISSIONS,
     tiers: thresholds(h), gem_limits: gemLimits(h), budget: maxPoints(h), awarded: !!h.awarded_at, results_hours: resultsHours(h),
+    answers: p === 'ended' && answersOpen(h),
     view: open ? startView(h) : null,
   };
 }
@@ -656,7 +659,7 @@ function cleanFields(f) {
     const t = f.tiers || {};
     out.tiers = { gold: posInt(t.gold), silver: posInt(t.silver), bronze: posInt(t.bronze),
       gold_gems: posInt(t.gold_gems), silver_gems: posInt(t.silver_gems), bronze_gems: posInt(t.bronze_gems),
-      results_hours: Math.min(posInt(t.results_hours), SHOW_ENDED_DAYS * 24) };
+      results_hours: Math.min(posInt(t.results_hours), SHOW_ENDED_DAYS * 24), hide_answers: !!t.hide_answers };
   }
   if ('art' in f) {
     // Per tier: { badge_id } (a special Achievement already made), { image_url, thumbnail_url } (the hunt's own,
@@ -706,6 +709,8 @@ async function huntAction(action, args, ctx) {
   args = args || {};
   switch (action) {
     case 'hunt.current': return current(ctx);
+    case 'hunt.board': return liveBoard(args, ctx);
+    case 'hunt.answers': return answers(args, ctx);
     case 'hunt.drop': return drop(args, ctx);
     case 'hunt.start': return startRun(args, ctx);
     case 'hunt.submit': fail(410, 'The Hunt now judges each gem as it lands. Reload Pyr for the new Hunt box.'); break;
@@ -731,6 +736,43 @@ async function getHunt(db, id) {
   const h = await db.hunt(posInt(id));
   if (!h) fail(404, 'No such Hunt.');
   return h;
+}
+
+/**
+ * The top ten of a running Hunt and nothing else, for the box to ask again while it runs (Ames
+ * 2026-10-26: each player saw only their own row move; Krzysztof's board had no row for her).
+ * The same rows as hunt.current gives while the Hunt runs, from far fewer reads.
+ */
+async function liveBoard(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (h.status !== 'scheduled' || (adminsOnly(h, ctx) && !ctx.isAdmin)) fail(404, 'No such Hunt.');
+  if (phase(h, now) !== 'live') fail(409, 'This Hunt is not running.');
+  const board = leaderboard(await db.submissions(h.id));
+  const top = board.slice(0, 10);
+  const mine = board.find((b) => b.user_id === me.id);
+  const names = await db.names([...new Set([...top.map((b) => b.user_id), me.id])]);
+  return {
+    id: h.id, rank: mine ? board.indexOf(mine) + 1 : 0,
+    board: top.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: null, you: b.user_id === me.id, fastest: false })),
+  };
+}
+
+/**
+ * The answers, once the Hunt is over (Ames 2026-10-26: "should we show players the answer to the hunt at the
+ * end", yes, unless the Hunt keeps them): every merger and extension, in nanometres, and which this player found.
+ */
+async function answers(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (h.status !== 'scheduled' || (adminsOnly(h, ctx) && !ctx.isAdmin)) fail(404, 'No such Hunt.');
+  if (phase(h, now) !== 'ended') fail(409, 'The answers show once the Hunt is over.');
+  if (!answersOpen(h)) fail(403, 'This Hunt keeps its answers.');
+  const key = await db.key(h.id);
+  const run = await db.myRun(h.id, me.id);
+  const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
+  const found = new Set(drops.filter((d) => d.hit >= 0).map((d) => d.hit));
+  return { id: h.id, took_part: !!run, places: key.map((t, i) => ({ at: [t[0], t[1], t[2]], kind: kindOf(t), found: found.has(i) })) };
 }
 
 /** The hunts a player can see, with their own result and the top ten. Ends any hunt whose time is up. */

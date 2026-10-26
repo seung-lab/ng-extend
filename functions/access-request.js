@@ -396,6 +396,8 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
 //   access.beta        a player not on the list: send the request.
 const BETA_CATEGORY = 'Beta access';
 const BETA_BELL = '🔑 Beta access request';
+// Clicking the bell opens Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26).
+const LET_IN = 'Click this note, then Let them in.';
 async function betaRequested(sb, me) {
   if (!me) return false;
   const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id) + '&select=id&limit=1');
@@ -422,6 +424,9 @@ function betaEmail(value) {
   if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(email)) fail(400, 'That email does not look right.');
   return email;
 }
+/** The player's note for the bell (Ames 2026-10-26: "Note from beta request
+ *  should appear here"), every line escaped so it shows as plain text. */
+const noteForBell = note => note ? '\n\nTheir note:\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
 /** Text for a markdown note: every markdown character escaped. */
 const mdText = s => String(s).replace(/[\\`*_{}\[\]()#+\-.!|<>~&:@]/g, c => '\\' + c);
 async function beta(a, io) {
@@ -430,31 +435,125 @@ async function beta(a, io) {
   const name = betaName(a.name);
   const email = betaEmail(a.email);
   const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
   if (await betaRequested(io.sb, io.me)) return {invited: false, requested: true, already: true};
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
+  const same = email === signIn;
   const message = [
     `${name} asks to join the Pyr beta.`,
-    `Email they gave: ${email}`,
-    `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    same ? '' : `Email they gave: ${email}`,
+    `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    ...ewLines(ew),
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
   const title = `Beta access request from ${name}`.slice(0, 120);
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
-  const bell = `${mdText(name)} asks to join the Pyr beta.\n\nEmail they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}\n\nTo let them in, add the sign in email under Admin Hub, Pilot testers.`
-    + (note ? ' Their note is on the triage board.' : '');
+  const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
+    + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
+    + ewForBell(ew)
+    + `\n\n${LET_IN}`
+    + noteForBell(note);
   // Every admin's Admin tab (Ames 2026-10-24: "yes to all admins").
   try { await (io.notifyAdmins || io.notifyReviewers)({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
+  await wakeBoard(io);
   return {invited: false, requested: true};
+}
+
+// ── Beta access from connectome.quest (Ames 2026-10-26) ─────────────────
+// "update connectome.quest with a request early access thing". A visitor to
+// the site's Access page has no Pyr sign in yet, only a name and an email,
+// so this is access.beta without the sign in: the same report on the triage
+// board, bell to every admin and Slack post, marked as from the site. The
+// email they gave is the one an admin adds under Pilot testers, so they must
+// sign in to Pyr with it. Served by ewAccessRequest as action
+// "access.visitorBeta", before its sign in check; the body size and a per
+// address rate limit are there. Here: the same hard checks as access.beta, a
+// hidden field (website) that only a bot fills, and one request per email.
+const SITE = 'connectome.quest';
+async function visitorBetaRequested(sb, email) {
+  // Any Beta access report already naming this email, from the site or the game.
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY)
+    + '&message=ilike.' + encodeURIComponent('*' + email.replace(/[*%,()]/g, '') + '*') + '&select=id&limit=1');
+  return Array.isArray(rows) && rows.length > 0;
+}
+async function visitorBeta(args, io) {
+  const a = args && typeof args === 'object' ? args : {};
+  // A bot that filled the hidden field is told it worked, and nothing happens.
+  if (a.website) return {requested: true};
+  const name = betaName(a.name);
+  const email = betaEmail(a.email);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  const ew = eyewireOf(a);
+  if (a.agree !== true) fail(400, 'Please tick the box to say you agree to the community principles.');
+  if (await visitorBetaRequested(io.sb, email)) return {requested: true, already: true};
+  const message = [
+    `${name} asks to join the Pyr beta, from ${SITE}.`,
+    `Email they gave: ${email}. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.`,
+    'They agreed to the community principles.',
+    ...ewLines(ew),
+    note ? `Their note: ${note}` : '',
+  ].filter(Boolean).join('\n');
+  const title = `Beta access request from ${name} (${SITE})`.slice(0, 120);
+  const url = `https://${SITE}/access.html`;
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, url, user_id: null, user_name: name}])});
+  const bell = `${mdText(name)} asks to join the Pyr beta, from ${mdText(SITE)}.\n\nEmail they gave: ${mdText(email)}\n\nThey have not signed in to Pyr yet. ${LET_IN} Then email them to sign in with this address.`
+    + ewForBell(ew)
+    + noteForBell(note);
+  try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name, url}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
+  await wakeBoard(io);
+  return {requested: true};
+}
+
+// ── EyeWire username and rank, both optional (Ames 2026-10-26) ──────────
+// One line each on the report, before the note, so Beta requests in the
+// Admin Hub reads them back from the server's own lines.
+const EW_RANK_MAX = 40;
+function eyewireOf(a) {
+  const username = cleanEwName(a.eyewireUsername);
+  const rank = cleanText(a.eyewireRank, EW_RANK_MAX, 'Your EyeWire rank');
+  if (rank && !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(rank)) fail(400, 'An EyeWire rank has letters, numbers and spaces only.');
+  return {username: username ? username.replace(/\s+/g, ' ') : null, rank: rank ? rank.replace(/\s+/g, ' ') : null};
+}
+const ewLines = ew => [ew.username ? `EyeWire username: ${ew.username}` : '', ew.rank ? `EyeWire rank: ${ew.rank}` : ''];
+const ewForBell = ew => (ew.username ? `\n\nEyeWire username: ${mdText(ew.username)}` : '') + (ew.rank ? `\n\nEyeWire rank: ${mdText(ew.rank)}` : '');
+/** A new request goes on the triage board now, not at the next (often late)
+ *  timed run of the Slack bridge (Ames 2026-10-26: "fix the slack triage robot"). */
+async function wakeBoard(io) {
+  try { if (io.wake) await io.wake(); } catch (e) { console.warn('[beta] board not woken', e && e.message); }
+}
+
+// ── Sorting Beta requests (Ames 2026-10-26: "move them from the page and
+// put them in a db list", and "remove request") ─────────────────────────
+// A mark per email: listed (kept on the list for later) or removed (taken
+// off). Waiting clears it. A request newer than its mark shows again. The
+// store is passed in (Firestore in index.js), so this needs no new table.
+//   access.betaMarks  admins: every mark, by email.
+//   access.betaMark   admins: {email, mark: 'listed' | 'removed' | 'waiting'}.
+const BETA_MARKS = ['listed', 'removed', 'waiting'];
+async function betaMarks(a, io) {
+  needAdmin(io.isAdmin);
+  return io.marks.all();
+}
+async function betaMark(a, io) {
+  needAdmin(io.isAdmin);
+  const email = betaEmail(a.email);
+  if (!BETA_MARKS.includes(a.mark)) fail(400, 'Unknown mark.');
+  await io.marks.set(email, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
+  return io.marks.all();
 }
 
 async function handle(action, args, io) {
   const a = args || {};
   if (action === 'access.betaStatus') return betaStatus(a, io);
   if (action === 'access.beta') return beta(a, io);
+  if (action === 'access.betaMarks') return betaMarks(a, io);
+  if (action === 'access.betaMark') return betaMark(a, io);
   if (action === 'access.mine') return mine(a, io);
   if (action === 'access.save') return save(a, io);
   if (action === 'access.remove') return remove(a, io);
@@ -467,4 +566,4 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanExample, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
+module.exports = {handle, visitorBeta, cleanExample, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};

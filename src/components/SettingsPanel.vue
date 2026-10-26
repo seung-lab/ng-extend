@@ -8,7 +8,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { DATASETS, segLayerName } from '../datasets';
 import { startViewHash } from '../util/start_view';
 import { automaticRegion, imageRegionLabel } from '../util/image_source';
-import { ngePointScale, ngePointGem } from 'neuroglancer/annotation/point';
+import { ngePointGem } from 'neuroglancer/annotation/point';
 import { ngeHoverStyle } from 'neuroglancer/segmentation_display_state/frontend';
 
 const prefsStore = useUserPreferencesStore();
@@ -89,24 +89,9 @@ const draftImageLayerPanel = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
 const draftOfferRestore = ref(true);
-/** Point annotation size (after EyeWire's "Annotation Resizer" addon). Applied
- *  live while you drag; kept when you save, put back if you close without. */
-const draftAnnotationSize = ref(1);
-const savedAnnotationSize = ref(1);
 const draftAnnotationGems = ref(true);
 const draftAnnotationSetupTabs = ref(false);
 const draftSegSetupTabs = ref(false);
-function previewAnnotationSize() {
-  ngePointScale.value = draftAnnotationSize.value;
-  try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
-}
-onUnmounted(() => {
-  // Closed without saving: put the saved size back.
-  if (ngePointScale.value !== savedAnnotationSize.value) {
-    draftAnnotationSize.value = savedAnnotationSize.value;
-    previewAnnotationSize();
-  }
-});
 const draftHelpMuted = ref(false);
 const saved      = ref(false);
 
@@ -176,7 +161,6 @@ onMounted(() => {
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
-  draftAnnotationSize.value = savedAnnotationSize.value = ngePointScale.value;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
   draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
   draftSegSetupTabs.value = prefsStore.prefs.showSegSetupTabs === true;
@@ -245,14 +229,13 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifOneList: draftNotifOneList.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifOneList: draftNotifOneList.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
-  savedAnnotationSize.value = draftAnnotationSize.value;
   ngePointGem.value = draftAnnotationGems.value;
   try { (window as any).viewer?.display?.scheduleRedraw(); } catch { /* no viewer */ }
   // Show or hide the "?" controls button right away.
@@ -726,7 +709,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <p>Neuroglancer is a connectomics proofreading platform made by Google that Pyr is built on. It draws the 2D images and the 3D cells you work on. Scientists also use it (without the fancy Pyr interface).</p>
               <p>Settings here bring back its original, and dare we say unintuitive, user interface elements. This section brings back legacy neuroglancer elements and advanced settings.</p>
             </div>
-            <p class="nge-settings-hint">Neuroglancer's own controls and panels, for players who know it from before.</p>
+            <p class="nge-settings-hint">Neuroglancer's own controls and panels.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationGems" />
               <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>

@@ -50,7 +50,37 @@ export function monthRange(ym) {
   }
   const start = etMidnight(y, m, 1);
   const end = etMidnight(m === 11 ? y + 1 : y, (m + 1) % 12, 1);
-  return { y, m, label: `${MONTH_NAMES[m]} ${y}`, startISO: start.toISOString(), endISO: end.toISOString() };
+  return { kind: 'month', key: `month-${y}-${String(m + 1).padStart(2, '0')}`, y, m, label: `${MONTH_NAMES[m]} ${y}`,
+    startISO: start.toISOString(), endISO: end.toISOString() };
+}
+
+// ── The Pyr year ─────────────────────────────────────────────────────────────
+// Pyr's year starts on September 28, the day the first testers were invited
+// in 2026 (Ames 2026-10-26), at 00:00 ET. Year One is Sep 28, 2026 up to
+// Sep 28, 2027.
+const FIRST_YEAR = 2026;
+const YEAR_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+export const yearName = (n) => `Year ${YEAR_WORDS[n] ?? n}`;
+
+/** Year n of Pyr (RECAP_YEAR), or the one that ended most recently. */
+export function yearRange(nArg) {
+  let n = Number(nArg);
+  if (nArg && !(Number.isInteger(n) && n >= 1)) throw new Error(`year must be a whole number from 1, got ${nArg}`);
+  if (!nArg) {
+    const [ty, tm, td] = etDay(Date.now()).split('-').map(Number);
+    const startOfCurrent = (tm > 9 || (tm === 9 && td >= 28)) ? ty : ty - 1;   // the year now running began then
+    n = startOfCurrent - FIRST_YEAR;                                            // so the one before it ended
+    if (n < 1) throw new Error('No Pyr year has ended yet. Year One ends on Sep 28, 2027.');
+  }
+  const y = FIRST_YEAR + n - 1;
+  const start = etMidnight(y, 8, 28), end = etMidnight(y + 1, 8, 28);
+  return { kind: 'year', key: `year-${n}`, n, label: yearName(n), dates: `Sep 28, ${y} to Sep 27, ${y + 1}`,
+    startISO: start.toISOString(), endISO: end.toISOString() };
+}
+
+/** RECAP_PERIOD=year picks a Pyr year (RECAP_YEAR), else a month (RECAP_MONTH). */
+export function periodFromEnv(env = process.env) {
+  return env.RECAP_PERIOD === 'year' ? yearRange(env.RECAP_YEAR || '') : monthRange(env.RECAP_MONTH || '');
 }
 
 /** Reads the Supabase REST API with the service key. */
@@ -87,11 +117,12 @@ export function supabaseClient() {
     if (!res.ok) throw new Error(`HEAD ${path}: ${res.status}`);
     return Number((res.headers.get('content-range') || '').split('/')[1]);
   };
-  const send = async (method, path, body) => {
+  const send = async (method, path, body, prefer = 'return=minimal') => {
     const res = await fetch(`${url}/rest/v1/${path}`, {
-      method, headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify(body),
+      method, headers: { ...headers, Prefer: prefer }, body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
+    return prefer.includes('return=representation') ? res.json() : null;
   };
   return { get, getAll, count, send };
 }

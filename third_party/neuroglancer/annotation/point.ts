@@ -29,16 +29,19 @@ import {defineVertexId, VertexIdHelper} from 'neuroglancer/webgl/vertex_id';
 
 /**
  * EyeWire II (Amy 2026-09-30, after the EyeWire "Annotation Resizer" addon):
- * a local multiplier on point annotation size and border, set in Settings.
- * Applied in this shader, so nothing global is patched and it is never saved
- * into shared links. Read once at load; the Settings slider updates it live.
+ * a local multiplier on point annotation size and border. Applied in this
+ * shader, so nothing global is patched and it is never saved into shared
+ * links. Now 1, except while a tutorial step enlarges points.
  */
-export const ngePointScale = {value: (() => {
-  try {
-    const v = Number(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').annotationSize);
-    return Number.isFinite(v) && v >= 0.5 && v <= 5 ? v : 1;
-  } catch { return 1; }
-})()};
+export const ngePointScale = {value: 1};
+// The Settings slider went when point size moved to each annotation layer
+// (26826f6b), but a size saved from it still applied, with no way left to
+// change it: every gem and point was drawn up to 4x (Celia D, report 260:
+// "my default gem/point size seems XL and I don't see a place to change it").
+// A tutorial's big points (3x for one step) could be saved the same way by
+// opening Settings during that step. The saved size is no longer read; each
+// layer's own Size slider sets its points. The tutorial still sets this for
+// its step.
 
 /** EyeWire II (Celia #177): the size of cut mode's points, set in the cut bar,
  *  apart from annotation layers (some like those big, cut points small).

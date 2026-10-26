@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {pendingAnnotations} from '../util/annotation_counter';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { recapWeekStart, recapMonth, weekPeriodET, monthPeriodET, monthStartET } from '../util/recap_week';
+import { recapWeekStart, recapMonth, recapYear, weekPeriodET, monthPeriodET, yearPeriodET, monthStartET } from '../util/recap_week';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import RollUp from 'components/RollUp.vue';
@@ -24,10 +24,14 @@ const props = defineProps<{ embedded?: boolean }>();
 // (util/recap_week.ts). Everything weekly below counts from start up to end.
 // The monthly recap notification shows a whole month the same way ("My
 // Month in Science", Ames 2026-10-25): every count below then spans it.
-const isMonth = computed(() => !!recapMonth.value);
-const period = computed(() => recapMonth.value ? monthPeriodET(recapMonth.value) : weekPeriodET(recapWeekStart.value));
-const span = computed(() => isMonth.value ? 'this month' : 'this week');
-onUnmounted(() => { recapWeekStart.value = null; recapMonth.value = null; });
+// The yearly one shows a whole Pyr year (Sep 28 to Sep 28 ET). isMonth means
+// "longer than a week" below: a month or a year.
+const isYear = computed(() => !!recapYear.value);
+const isMonth = computed(() => !!recapMonth.value || isYear.value);
+const period = computed(() => recapYear.value ? yearPeriodET(recapYear.value)
+  : recapMonth.value ? monthPeriodET(recapMonth.value) : weekPeriodET(recapWeekStart.value));
+const span = computed(() => isYear.value ? 'this year' : isMonth.value ? 'this month' : 'this week');
+onUnmounted(() => { recapWeekStart.value = null; recapMonth.value = null; recapYear.value = null; });
 
 // ── Week date range label: "Feb 23 to Mar 1, 2026" ───────────────────────
 const weekRange = computed<string>(() => period.value.label);
@@ -168,6 +172,26 @@ onMounted(async () => {
       scientists: data.filter((r: any) => (r.edits_alltime || 0) > 0 || (r.completions_alltime || 0) > 0).length,
       mineWeek: me?.edits_week || 0,
     };
+    // The month view: the whole community over the same ET month, exact
+    // counts with no rows read (Ames 2026-10-26).
+    if (isMonth.value) {
+      const from = period.value.start.toISOString(), to = period.value.end.toISOString();
+      const count = async (q: any) => { const { count: n, error: e } = await q; return e ? null : (n ?? 0); };
+      const edits = (uid?: string) => {
+        let q = supabase.from('edit_log').select('user_id', { count: 'exact', head: true })
+          .in('operation', ['merge', 'split']).not('success', 'is', false).gte('timestamp', from).lt('timestamp', to);
+        if (uid) q = q.eq('user_id', uid);
+        return count(q);
+      };
+      const [all, cells, mine] = await Promise.all([
+        edits(),
+        count(supabase.from('ew_cell_completions').select('user_id', { count: 'exact', head: true }).gte('done_at', from).lt('done_at', to)),
+        backendW.userId ? edits(backendW.userId) : Promise.resolve(0),
+      ]);
+      if (all != null && cells != null && globalStats.value) {
+        globalStats.value = { ...globalStats.value, editsWeek: all, cellsWeek: cells, mineWeek: mine ?? 0 };
+      }
+    }
   } catch { /* the section just stays hidden */ }
 });
 const inWeek = (iso?: string) => {
@@ -320,7 +344,7 @@ function jumpToCell(segId: string) {
         <div class="nge-recap-hero">
           <!-- "My" when shown inside your own profile, "Your" when it appears
                as a standalone toast/panel addressed to the reader. -->
-          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} {{ isMonth ? 'Month' : 'Week' }} in Science</div>
+          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} {{ isYear ? 'Year' : isMonth ? 'Month' : 'Week' }} in Science</div>
           <div class="nge-recap-hero-daterange">{{ weekRange }}</div>
         </div>
 
@@ -486,13 +510,13 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-section-label">Global Stats</div>
           <div class="nge-recap-global-halves">
           <div class="nge-recap-global-half">
-          <div class="nge-recap-global-sub">Everyone in EyeWire II, last 7 days</div>
+          <div class="nge-recap-global-sub">Everyone in Pyr, {{ isMonth ? period.label : 'last 7 days' }}</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">
               <div class="nge-recap-month-num" style="color: #42d5ec;"><RollUp :value="globalStats.editsWeek" /></div>
               <div class="nge-recap-month-key">edits</div>
             </div>
-            <div class="nge-recap-month-cell">
+            <div class="nge-recap-month-cell" v-if="!isMonth">
               <div class="nge-recap-month-num" style="color: #c98bff;"><RollUp :value="globalStats.activeWeek" /></div>
               <div class="nge-recap-month-key">scientists editing</div>
             </div>

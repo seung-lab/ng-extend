@@ -786,6 +786,48 @@ test('edges of the dataset: an Extend gem where a branch leaves the data uses no
   assert.deepEqual([(await h.db.key(d.id)).length, ex.edges.length, !!ex.bounds], [2, 2, true]);
 });
 
+test('hunt.board: the running board alone, the same rows as hunt.current, refused before and after (Ames 2026-10-26)', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  await assert.rejects(H.huntAction('hunt.board', { id: d.id }, h.ctx(P1, at(30))), /not running/);
+  const drop = (who, p, id, t) => H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...p, id }]), dims: DIMS }, h.ctx(who, at(t)));
+  await drop(P1, pt(1000, 1000, 100), 'a1', 50);
+  await drop(P2, pt(1000, 1000, 100), 'b1', 51);
+  await drop(P2, pt(5000, 5000, 100), 'b2', 52);
+  await drop(P3, pt(30000, 30000, 300), 'c1', 53);
+  for (const who of [P1, P2, P3]) {
+    const cur = (await H.huntAction('hunt.current', {}, h.ctx(who, at(60)))).hunts[0];
+    const b = await H.huntAction('hunt.board', { id: d.id }, h.ctx(who, at(60)));
+    assert.deepEqual(b.board, cur.board);
+    assert.equal(b.rank, cur.you.rank);
+  }
+  const b = await H.huntAction('hunt.board', { id: d.id }, h.ctx(P1, at(60)));
+  assert.deepEqual(b.board.map((r) => [r.rank, r.found, r.you]), [[1, 2, false], [2, 1, true], [3, 0, false]]);
+  await assert.rejects(H.huntAction('hunt.board', { id: d.id }, h.ctx(P1, at(121))), /not running/);
+  await assert.rejects(H.huntAction('hunt.board', { id: 999 }, h.ctx(P1, at(60))), /No such Hunt/);
+});
+
+test('hunt.answers: every place once the Hunt is over, which you found, never before, and not when the Hunt keeps them (Ames 2026-10-26)', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(5000, 5000, 100), id: 'a1' }]), dims: DIMS }, h.ctx(P1, at(50)));
+  await assert.rejects(H.huntAction('hunt.answers', { id: d.id }, h.ctx(P1, at(60))), /once the Hunt is over/);
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0].answers, false);
+  const a = await H.huntAction('hunt.answers', { id: d.id }, h.ctx(P1, at(121)));
+  assert.equal(a.took_part, true);
+  assert.deepEqual(a.places.map((p) => [p.kind, p.found]), [['cut', false], ['cut', true], ['cut', false]]);
+  assert.deepEqual(a.places[1].at, [20000, 20000, 4000]);   // nanometres
+  const other = await H.huntAction('hunt.answers', { id: d.id }, h.ctx(P2, at(121)));
+  assert.deepEqual([other.took_part, other.places.filter((p) => p.found).length], [false, 0]);
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(121)))).hunts[0].answers, true);
+  // A Hunt that keeps its answers (its cells are for another Hunt).
+  await H.huntAction('hunt.save', { id: d.id, fields: { tiers: { gold: 3, silver: 2, bronze: 1, hide_answers: true } } }, h.ctx(ADMIN, at(122), true));
+  await assert.rejects(H.huntAction('hunt.answers', { id: d.id }, h.ctx(P1, at(123))), /keeps its answers/);
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(123)))).hunts[0].answers, false);
+});
+
 test('"Hunt results" stays in the top bar 24 hours after the end unless the Hunt says (Ames 2026-10-23)', async () => {
   const h = harness();
   const d = await makeHunt(h);

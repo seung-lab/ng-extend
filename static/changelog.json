@@ -2,12 +2,114 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-26T18:11:00Z",
+      "at": "2026-10-26T20:02:00Z",
       "title": "Hits Edge found for you on MEC",
       "items": [
         "Pyr now marks Hits Edge on its own wherever an MEC cell reaches the end of the imaged data, using the lab's image mask, once the cell has loaded in 3D. Check each one.",
         "Find ends at the edge in Marks looks again, with a bar showing how far it has got, and Undo in Marks takes back the newest mark, or every mark one search placed.",
         "Claiming or opening an MEC cell no longer adds extra copies of the Can't Fix layer, and copies already there are folded back into one, keeping their points."
+      ]
+    },
+    {
+      "at": "2026-10-26T19:56:44Z",
+      "title": "See the answers after a Hunt",
+      "items": [
+        "When a Hunt is over, Show the answers in the Hunt box puts a ring on every merger and missing extension, so you can see the ones you missed.",
+        "Your own gems stay where you dropped them, so a ring with no gem on it is one you did not find."
+      ]
+    },
+    {
+      "at": "2026-10-26T19:53:00Z",
+      "title": "Tell us your EyeWire name when you ask to join",
+      "digest": "minor",
+      "items": [
+        "When you ask to join Pyr, you can now add your EyeWire username and rank if you played EyeWire."
+      ]
+    },
+    {
+      "at": "2026-10-26T19:40:34Z",
+      "title": "Reviewing access requests: two more",
+      "items": [
+        "Pointing at or clicking a point in the 2D or 3D view lights up that point in the review box's list.",
+        "The answer you are writing to a requester in the Admin Hub is kept while you go and review their examples, until you send it.",
+        "Thanks to Celia for both."
+      ]
+    },
+    {
+      "at": "2026-10-26T19:40:34Z",
+      "title": "Calm screen no longer blanks the page",
+      "items": [
+        "With Calm screen on in Settings, Pyr opened to a black page since the Hunt arrived. It now opens as it should, with the Hunt's effects calmed.",
+        "Thanks to Krzysztof for finding exactly what was hiding it."
+      ]
+    },
+    {
+      "at": "2026-10-26T17:34:46Z",
+      "title": "Hunt fixes from the first Hunt",
+      "digest": "minor",
+      "items": [
+        "Top hunters now updates for everyone about every half minute while a Hunt runs. Before, you only saw your own row move.",
+        "The Gems box shows the gems you have left, and a line under it says how many you used: how many were right and how many missed. Thanks to Nseraf for spotting that it did not add up.",
+        "A color key under the Hunt instructions says what each gem color means, and what the teal glow on a cell means.",
+        "Take back removes your last gem before you press Submit. Gems that are already checked stay where they are.",
+        "Cut and Extend follow the gem layer you pick, and their tooltips name the number key that switches between them.",
+        "A Hunt cell that would be drawn teal gets another color, so teal always means the edge of the dataset.",
+        "In the small Hunt box, Cut and Extend stay readable beside Submit."
+      ]
+    },
+    {
+      "at": "2026-10-26T17:20:00Z",
+      "title": "A shorter line in Settings",
+      "digest": "minor",
+      "items": [
+        "The Neuroglancer box in Settings now simply says: Neuroglancer's own controls and panels."
+      ]
+    },
+    {
+      "at": "2026-10-26T17:19:52Z",
+      "title": "Trophies for the Champions",
+      "items": [
+        "Monthly Champions now has its own gold and violet look: gold, silver and bronze neuron cups for the top editors, and neuron awards for the top cell completers.",
+        "Weekly Champions has a trophy of its own too: a gem held by a golden neuron.",
+        "Opening Weekly or Monthly Champions sets off blue, purple and yellow confetti behind it.",
+        "Weekly Champions now counts the week Monday to Sunday on US Eastern time, like Your Week in Science.",
+        "Your Month in Science shows the whole community's edits and cells for that month.",
+        "Each month's top three editors and top three cell completers win a trophy that joins Competitions in their profile, and each winner gets a note in My Pyr."
+      ]
+    },
+    {
+      "at": "2026-10-26T17:17:26Z",
+      "title": "Fixes to reviewing access requests",
+      "items": [
+        "Reviewing an access request: the points now show on every example you jump to, and clicking a point takes you to it instead of off into empty space.",
+        "The review box has a close button that ends the review and takes its points away, and a long list of points scrolls inside the box instead of running off the bottom of the screen.",
+        "Thanks to Celia for all four."
+      ]
+    },
+    {
+      "at": "2026-10-26T17:06:49Z",
+      "title": "Gems and points back to their normal size",
+      "items": [
+        "Some players had every gem and annotation point drawn extra large, from an old size setting that is no longer in Settings. That old setting no longer applies; each annotation layer's Size slider sets its own points.",
+        "Thanks to Celia for reporting it."
+      ]
+    },
+    {
+      "at": "2026-10-26T16:58:38Z",
+      "title": "Minimize the Merge Queue",
+      "items": [
+        "The Merge Queue has a minimize button: it folds into the Merge Mode bar as Merge Queue with the number of pairs, and one click opens it again. It stays minimized after a reload and on other datasets.",
+        "Merge and Cut mode now stay behind your profile, Submit an issue and other full windows instead of showing on top of them.",
+        "Thanks to Krzysztof for both ideas."
+      ]
+    },
+    {
+      "at": "2026-10-26T15:34:00Z",
+      "title": "A warmer welcome while you wait to join",
+      "items": [
+        "If Pyr is still invite only for you, the music no longer starts behind the waiting screen.",
+        "After you ask to join, the waiting screen thanks you and suggests things to do meanwhile: play EyeWire, or learn about the brain on connectome.quest.",
+        "You can now ask to join Pyr from connectome.quest too, without signing in first."
       ]
     },
     {

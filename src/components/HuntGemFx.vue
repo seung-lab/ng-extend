@@ -100,6 +100,6 @@ const sparks = Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * 360, d: 46 
   .nge-gemfx-spark, .nge-gemfx-ring { display: none; }
   .nge-gemfx-word { transform: translate(-50%, -100%); }
 }
-:global(body.nge-calm) .nge-gemfx-spin, :global(body.nge-calm) .nge-gemfx-gem, :global(body.nge-calm) .nge-gemfx-word { animation: none !important; }
-:global(body.nge-calm) .nge-gemfx-spark, :global(body.nge-calm) .nge-gemfx-ring { display: none; }
+:global(body.nge-calm .nge-gemfx-spin), :global(body.nge-calm .nge-gemfx-gem), :global(body.nge-calm .nge-gemfx-word) { animation: none !important; }
+:global(body.nge-calm .nge-gemfx-spark), :global(body.nge-calm .nge-gemfx-ring) { display: none; }
 </style>

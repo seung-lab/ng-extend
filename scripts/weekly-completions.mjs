@@ -15,20 +15,29 @@
  * again after, it does. Failed operations never count.
  */
 
-/** [startISO, endISO) of the Monday to Sunday week (UTC) that starts on
- *  weekStart ("YYYY-MM-DD", a Monday), or the most recently completed one. */
+import { etMidnight, etDay } from './recap-month.mjs';
+
+/** [startISO, endISO) of the Monday to Sunday week on US Eastern time that
+ *  starts on weekStart ("YYYY-MM-DD", a Monday), or the most recently
+ *  completed one. ET like every other week and month in Pyr (Ames
+ *  2026-10-26: "fix it all to ET"); it was UTC, which ended the champions'
+ *  week at 7 or 8 pm Sunday in New York. */
 export function weekRange(weekStart) {
-  let monday;
+  let y, m, d;
   if (weekStart) {
-    monday = new Date(`${weekStart}T00:00:00Z`);
-    if (Number.isNaN(monday.getTime()) || monday.getUTCDay() !== 1) throw new Error(`week_start must be a Monday (YYYY-MM-DD), got ${weekStart}`);
+    const t = new Date(`${weekStart}T00:00:00Z`);
+    if (Number.isNaN(t.getTime()) || t.getUTCDay() !== 1) throw new Error(`week_start must be a Monday (YYYY-MM-DD), got ${weekStart}`);
+    [y, m, d] = [t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()];
   } else {
-    const now = new Date();
-    const dow = now.getUTCDay() || 7; // Sun -> 7
-    monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (dow - 1) - 7));
+    const [ty, tm, td] = etDay(Date.now()).split('-').map(Number);
+    const today = new Date(Date.UTC(ty, tm - 1, td));
+    const dow = today.getUTCDay() || 7;            // Sun -> 7
+    const mon = new Date(Date.UTC(ty, tm - 1, td - (dow - 1) - 7));
+    [y, m, d] = [mon.getUTCFullYear(), mon.getUTCMonth(), mon.getUTCDate()];
   }
-  const end = new Date(monday); end.setUTCDate(monday.getUTCDate() + 7);
-  return { weekStart: monday.toISOString().slice(0, 10), startISO: monday.toISOString(), endISO: end.toISOString() };
+  const start = etMidnight(y, m, d), end = etMidnight(y, m, d + 7);
+  const ymd = new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+  return { weekStart: ymd, startISO: start.toISOString(), endISO: end.toISOString() };
 }
 
 /** Cells per player from edit_log rows, most first. Ties go to whoever
@@ -63,26 +72,47 @@ export function countCompletions(rows) {
     .sort((a, b) => b.count - a.count || a.reachedAt - b.reachedAt);
 }
 
-/** Top N completers of [startISO, endISO). get(path) reads the Supabase REST API. */
+/** Top N completers of [startISO, endISO). get(path) reads the Supabase REST API.
+ *  The leaderboard's rule (ew_cell_completions), read a page at a time. The
+ *  database's ew_weekly_ranking counts UTC weeks, so it is no longer used here.
+ *  Ties: whoever reached the count first, then the lower id. */
 export async function topCompleters(get, startISO, endISO, n = 10) {
-  // The database's own rule, when it is installed (ew_weekly_ranking in
-  // supabase-leaderboard-accuracy.sql): the rule the board's view reads, so
-  // the week's count is decided in one place. It also looks at a player's
-  // whole history, which the rows of one week can not: a cell first completed
-  // last month and marked again this week is not a new cell. Until that SQL
-  // is run, the count below is used, as before.
-  try {
-    const ranked = await get(`rpc/ew_weekly_ranking?p_week_start=${startISO.slice(0, 10)}&p_metric=completions&p_limit=${n}`);
-    if (Array.isArray(ranked)) return ranked.map(r => ({ user_id: r.user_id, count: r.count }));
-  } catch (e) {
-    if (!/\b404\b/.test(String(e?.message))) throw e;
+  const rows = [];
+  for (let from = 0; from < 1000000; from += 1000) {
+    const page = await get(`ew_cell_completions?select=user_id,done_at` +
+      `&done_at=gte.${encodeURIComponent(startISO)}&done_at=lt.${encodeURIComponent(endISO)}` +
+      `&order=user_id.asc,dataset.asc,cell.asc&offset=${from}&limit=1000`);
+    rows.push(...page);
+    if (page.length < 1000) break;
   }
-  const rows = await get(
-    `edit_log?select=user_id,operation,timestamp,metadata,success` +
-    `&timestamp=gte.${encodeURIComponent(startISO)}` +
-    `&timestamp=lt.${encodeURIComponent(endISO)}` +
-    `&operation=in.(complete_task,mark_complete,unmark_complete)` +
-    `&limit=200000`,
-  );
-  return countCompletions(rows).slice(0, n).map(({ user_id, count }) => ({ user_id, count }));
+  const by = new Map();
+  for (const r of rows) {
+    const c = by.get(r.user_id) ?? { count: 0, at: 0 };
+    c.count++; c.at = Math.max(c.at, Date.parse(r.done_at));
+    by.set(r.user_id, c);
+  }
+  return [...by.entries()]
+    .sort((a, b) => b[1].count - a[1].count || a[1].at - b[1].at || (a[0] < b[0] ? -1 : 1))
+    .slice(0, n).map(([user_id, c]) => ({ user_id, count: c.count }));
+}
+
+/** Top N editors (merges and cuts) of [startISO, endISO), a page at a time.
+ *  Ties as above. */
+export async function topEditors(get, startISO, endISO, n = 10) {
+  const by = new Map();
+  for (let from = 0; from < 5000000; from += 1000) {
+    const page = await get(`edit_log?select=id,user_id,timestamp` +
+      `&timestamp=gte.${encodeURIComponent(startISO)}&timestamp=lt.${encodeURIComponent(endISO)}` +
+      `&operation=in.(split,merge)&success=not.is.false&order=id.asc&offset=${from}&limit=1000`);
+    for (const r of page) {
+      if (!r.user_id) continue;
+      const c = by.get(r.user_id) ?? { count: 0, at: 0 };
+      c.count++; c.at = Math.max(c.at, Date.parse(r.timestamp));
+      by.set(r.user_id, c);
+    }
+    if (page.length < 1000) break;
+  }
+  return [...by.entries()]
+    .sort((a, b) => b[1].count - a[1].count || a[1].at - b[1].at || (a[0] < b[0] ? -1 : 1))
+    .slice(0, n).map(([user_id, c]) => ({ user_id, count: c.count }));
 }

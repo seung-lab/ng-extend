@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
@@ -7,13 +7,28 @@ import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesSto
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
-import { recapWeekStart, recapMonth, weekFromRecapTitle, monthFromRecapTitle } from '../util/recap_week';
+import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRecapTitle, yearFromRecapTitle } from '../util/recap_week';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
+import ConfettiCelebration from 'components/ConfettiCelebration.vue';
+import { isCalm } from '../util/calm';
 declare const NGE_BUILD: string | undefined;
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
+import goldCup from '../../static/images/champions/gold-cup.png';
+import silverCup from '../../static/images/champions/silver-cup.png';
+import bronzeCup from '../../static/images/champions/bronze-cup.png';
+import goldAward from '../../static/images/champions/gold-award.png';
+import silverAward from '../../static/images/champions/silver-award.png';
+import bronzeAward from '../../static/images/champions/bronze-award.png';
+import goldYearAward from '../../static/images/champions/gold-year-award.png';
+import silverYearAward from '../../static/images/champions/silver-year-award.png';
+import bronzeYearAward from '../../static/images/champions/bronze-year-award.png';
+import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
+import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
+import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
+import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
@@ -311,6 +326,7 @@ function openDetail(notif: any) {
     // The week the recap is about, not the week now (Nseraf, report 250).
     recapWeekStart.value = weekFromRecapTitle(notif.title || '');
     recapMonth.value = null;
+    recapYear.value = null;
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
     emit('hide');
     return;
@@ -318,6 +334,16 @@ function openDetail(notif: any) {
   // The monthly recap opens the same tab switched to its month.
   if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Month in Science')) {
     recapMonth.value = monthFromRecapTitle(notif.title || '');
+    recapWeekStart.value = null;
+    recapYear.value = null;
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
+    emit('hide');
+    return;
+  }
+  // The yearly recap (Sep 28): the same tab, switched to that Pyr year.
+  if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Year in Science')) {
+    recapYear.value = yearFromRecapTitle(notif.title || '');
+    recapMonth.value = null;
     recapWeekStart.value = null;
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
     emit('hide');
@@ -339,6 +365,13 @@ function openDetail(notif: any) {
   }
   if (accessTitle === '🔬 Notes on your retina access request' || (accessTitle === '🎉 Congratulations! Your edit access has been granted!' || accessTitle === '🎉 You are invited to the retina')) {
     document.dispatchEvent(new CustomEvent('nge:access-open'));
+    emit('hide');
+    return;
+  }
+  // A beta access request opens Admin Hub > Pilot testers, where Beta
+  // requests has Let them in (Ames 2026-10-26).
+  if (accessTitle.startsWith('🔑 Beta access request') && backend.isAdmin) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'pilot' } }));
     emit('hide');
     return;
   }
@@ -722,10 +755,11 @@ function stripMd(text: string): string {
 function parseChampions(notif: any): ChampionsView | null {
   const title = String(notif?.title || '');
   // Weekly, or Monthly from scripts/monthly-champions.mjs (same body shape).
-  const kind = /monthly champions/i.test(title) ? 'Monthly Champions' : 'Weekly Champions';
-  if (!/(weekly|monthly) champions/i.test(title)) return null;
+  // Weekly, Monthly, or the Pyr Year (scripts/monthly-champions.mjs RECAP_PERIOD=year).
+  const kind = /year champions/i.test(title) ? 'Pyr Year Champions' : /monthly champions/i.test(title) ? 'Monthly Champions' : 'Weekly Champions';
+  if (!/(weekly|monthly|year) champions/i.test(title)) return null;
   try {
-    const range = cleanCopy(title.replace(/^[\s\S]*?(weekly|monthly) champions/i, ''))
+    const range = cleanCopy(title.replace(/^[\s\S]*?(weekly|monthly|year) champions/i, ''))
       .replace(/^[\s,:;·|-]+/, '')
       .trim();
 
@@ -786,7 +820,59 @@ function parseChampions(notif: any): ChampionsView | null {
 
 const champions = computed<ChampionsView | null>(() =>
   openNotif.value ? parseChampions(openNotif.value) : null);
+/** Trophy art for each broadcast (Ames 2026-10-26: Ames is making one for
+ *  weekly and one for monthly). Put the PNG in static/images/champions/,
+ *  import it at the top of this file and set it here; null shows the cup. */
+const CHAMP_TROPHY: Record<string, string | null> = { 'Weekly Champions': weeklyTrophy, 'Monthly Champions': goldCup, 'Pyr Year Champions': goldYearAward };
+const CHAMP_CHEER = 'Big Congratulations! Thanks for contributing to neuroscience!';
+/** The Pyr year's anniversary (Sep 28, the day the first testers came in 2026). */
+const YEAR_CHEER = 'Happy birthday, Pyr! Thank you for a whole year of neuroscience!';
+const champCheer = computed(() => champions.value?.kind === 'Pyr Year Champions' ? YEAR_CHEER : CHAMP_CHEER);
+/** Longer than a week: the gold and violet card. */
+const champGrand = computed(() => champions.value?.kind === 'Monthly Champions' || champions.value?.kind === 'Pyr Year Champions');
+const champSpan = computed(() => champions.value?.kind === 'Pyr Year Champions' ? 'year' : champions.value?.kind === 'Monthly Champions' ? 'month' : 'week');
+const YEAR_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+/** "Year One" → "Sep 28, 2026 to Sep 27, 2027". */
+const champYearDates = computed(() => {
+  const w = /Year (\w+)/.exec(champions.value?.range || '')?.[1];
+  const n = w ? (YEAR_WORDS.indexOf(w) > 0 ? YEAR_WORDS.indexOf(w) : Number(w)) : 0;
+  return n > 0 ? `Sep 28, ${2025 + n} to Sep 27, ${2026 + n}` : '';
+});
+/** The month's podiums hold trophies instead of medals (Ames 2026-10-26):
+ *  cups for edits, neuron awards for cells. */
+const MONTH_CUPS = [goldCup, silverCup, bronzeCup];
+const MONTH_AWARDS = [goldAward, silverAward, bronzeAward];
+const YEAR_EDITS = [goldYearAward, silverYearAward, bronzeYearAward];
+const YEAR_CELLS = [goldYearTrophy, silverYearTrophy, bronzeYearTrophy];
+const monthTrophy = (label: string, rank: number) => {
+  const cells = /cell|complet/i.test(label);
+  if (champions.value?.kind === 'Pyr Year Champions') return (cells ? YEAR_CELLS : YEAR_EDITS)[rank - 1];
+  return (cells ? MONTH_AWARDS : MONTH_CUPS)[rank - 1];
+};
+const champTrophy = computed(() => champions.value ? CHAMP_TROPHY[champions.value.kind] ?? null : null);
 watch(champions, c => { if (c) void loadChampionIds(); });
+// Opening a Champions card: blue, purple and yellow confetti behind it, a
+// bigger burst for the month. Not for players who asked for calm.
+const champConfetti = ref<InstanceType<typeof ConfettiCelebration> | null>(null);
+watch(() => champions.value && openNotif.value, async (open, was) => {
+  if (!open || open === was || isCalm()) return;
+  await nextTick();
+  // After the card has faded in, or the burst shows through it.
+  await new Promise(r => setTimeout(r, 600));
+  if (!champions.value) return;
+  const kind = champions.value?.kind;
+  const monthly = kind === 'Monthly Champions';
+  // The year: a fanfare of four waves, the last one gold.
+  if (kind === 'Pyr Year Champions') {
+    champConfetti.value?.trigger('champions', 3.5);
+    setTimeout(() => champConfetti.value?.trigger('champions', 2.5), 400);
+    setTimeout(() => champConfetti.value?.trigger('champions', 2.5), 900);
+    setTimeout(() => champConfetti.value?.trigger('gold', 3), 1500);
+    return;
+  }
+  champConfetti.value?.trigger('champions', monthly ? 3 : 2);
+  if (monthly) setTimeout(() => champConfetti.value?.trigger('champions', 2), 450);
+});
 
 /** Podium order: silver, gold, bronze, so gold stands in the middle. */
 function podiumOrder(entries: ChampEntry[]): ChampEntry[] {
@@ -926,9 +1012,11 @@ function padRank(rank: number): string {
   <Teleport to="body">
     <Transition name="nge-notif-detail">
       <div v-if="openNotif" class="nge-notif-detail-backdrop" :class="{ 'nge-notif-detail-backdrop--preview': openNotif.preview }" @click.self="closeDetail">
+        <!-- Champions: confetti falls behind the card (Ames 2026-10-26). -->
+        <ConfettiCelebration v-if="champions" ref="champConfetti" inline />
         <div
           class="nge-notif-detail"
-          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
+          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--monthly': champGrand, 'nge-notif-detail--yearly': champions?.kind === 'Pyr Year Champions', 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
           role="dialog"
           aria-modal="true"
           :aria-label="cleanCopy(openNotif.title)"
@@ -977,13 +1065,20 @@ function padRank(rank: number): string {
                      ordinary rendering below. -->
                 <template v-if="champions">
                   <header class="nge-champs-head">
-                    <div class="nge-champs-emblem" aria-hidden="true">🏆</div>
+                    <!-- The trophy: Ames's art when it is in (CHAMP_TROPHY), the cup until then. -->
+                    <div class="nge-champs-emblem" :class="{ 'nge-champs-emblem--art': champTrophy }" aria-hidden="true">
+                      <img v-if="champTrophy" :src="champTrophy" alt="" class="nge-champs-trophy">
+                      <span v-else class="nge-champs-cup">🏆</span>
+                    </div>
                     <div class="nge-champs-head-text">
                       <div class="nge-champs-kicker">{{ champions.kind }}</div>
-                      <h2 class="nge-champs-range">{{ champions.range || (champions.kind === 'Monthly Champions' ? 'This month' : 'This week') }}</h2>
+                      <h2 class="nge-champs-range">{{ champions.range || `This ${champSpan}` }}</h2>
+                      <div v-if="champYearDates" class="nge-champs-dates">{{ champYearDates }}</div>
                     </div>
                   </header>
-                  <p v-if="champions.intro" class="nge-champs-intro">{{ champions.intro }}</p>
+                  <!-- One line for every Champions card, old and new (Ames 2026-10-26: the date
+                       above already says which week or month). -->
+                  <p class="nge-champs-intro">{{ champCheer }}</p>
 
                   <!-- Wide screens: the categories sit side by side (Ames 2026-10-05). -->
                   <div class="nge-champs-columns">
@@ -1001,8 +1096,8 @@ function padRank(rank: number): string {
                     <div v-if="section.entries.length === 0" class="nge-champs-empty">
                       <span class="nge-champs-empty-ring" aria-hidden="true"><span></span></span>
                       <div class="nge-champs-empty-text">
-                        <div class="nge-champs-empty-title">No activity this week</div>
-                        <div class="nge-champs-empty-sub">The podium is open. Next week it could be yours.</div>
+                        <div class="nge-champs-empty-title">No activity this {{ champSpan }}</div>
+                        <div class="nge-champs-empty-sub">The podium is open. Next {{ champSpan }} it could be yours.</div>
                       </div>
                     </div>
 
@@ -1018,7 +1113,8 @@ function padRank(rank: number): string {
                                :role="championId(entry.name) ? 'button' : undefined" :tabindex="championId(entry.name) ? 0 : undefined"
                                :title="championId(entry.name) ? `Open ${entry.name}'s profile` : undefined"
                                @click="openChampion(entry.name)" @keydown.enter="openChampion(entry.name)">
-                            <span class="nge-champs-medal" aria-hidden="true">{{ champMedal(entry.rank) }}</span>
+                            <img v-if="champGrand && entry.rank <= 3" :src="monthTrophy(section.label, entry.rank)" alt="" class="nge-champs-medal nge-champs-cupimg">
+                            <span v-else class="nge-champs-medal" aria-hidden="true">{{ champMedal(entry.rank) }}</span>
                             <span class="nge-champs-name">{{ entry.name }}</span>
                             <span class="nge-champs-num">{{ entry.count }}</span>
                             <span class="nge-champs-unit">{{ entry.unit }}</span>
@@ -1657,6 +1753,7 @@ span.nge-notif-reply-part { cursor: default; }
 }
 
 .nge-notif-detail {
+  z-index: 1;   /* in front of the champions confetti */
   --nd-accent: 74 158 255;
   --nd-cyan: 126 224 255;
   --nd-line: 196 228 255;
@@ -2188,6 +2285,9 @@ span.nge-notif-reply-part { cursor: default; }
   filter: drop-shadow(0 0 8px rgb(var(--tier) / 0.45));
 }
 .nge-champs-step--gold .nge-champs-medal { font-size: 2em; }
+/* Monthly podium cups: the art in place of the medal. */
+.nge-champs-cupimg { display: block; width: 46px; height: 46px; object-fit: contain; }
+.nge-champs-step--gold .nge-champs-cupimg { width: 62px; height: 62px; }
 /* A name that is a player: the whole card or row opens their profile. */
 .nge-champs-link { cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
 .nge-champs-card.nge-champs-link:hover, .nge-champs-card.nge-champs-link:focus-visible { transform: translateY(-2px); border-color: rgb(var(--tier) / 0.75); outline: none; }
@@ -2352,6 +2452,228 @@ span.nge-notif-reply-part { cursor: default; }
   color: rgb(var(--nd-dim));
 }
 
+/* Trophy art, when it is in: it stands free of the ring. */
+.nge-champs-emblem--art { width: 84px; height: 84px; margin: -10px 0 -8px; border: 0; background: none; box-shadow: none; }
+.nge-champs-trophy { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 14px rgba(255, 211, 90, 0.45)); }
+.nge-champs-cup { line-height: 1; }
+
+/* ═══ Monthly Champions: the grander one (Ames 2026-10-26) ═══
+   Gold and deep violet instead of the weekly blue. The shared accents are
+   retinted through the panel's colour variables, then the header, trophy,
+   winner and plinths get their own touches. */
+.nge-notif-detail--monthly {
+  --nd-accent: 199 150 255;
+  --nd-cyan: 255 214 120;
+  --nd-line: 255 232 180;
+  --nd-dim: 196 186 214;
+  --gold: 255 211 90;
+  background:
+    radial-gradient(70% 45% at 50% 0%, rgb(var(--gold) / 0.16), transparent 70%),
+    radial-gradient(60% 60% at 100% 100%, rgba(120, 60, 200, 0.22), transparent 70%),
+    radial-gradient(50% 50% at 0% 70%, rgba(90, 40, 170, 0.18), transparent 70%),
+    linear-gradient(158deg, rgba(22, 12, 40, 0.97) 0%, rgba(8, 6, 20, 0.985) 100%);
+  border-color: rgb(var(--gold) / 0.45);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.75),
+    0 0 70px rgb(var(--gold) / 0.14),
+    0 0 120px rgba(140, 80, 255, 0.12),
+    inset 0 1px 0 rgb(var(--gold) / 0.25);
+}
+/* A slow twinkle of stars behind the header. */
+.nge-notif-detail--monthly .nge-notif-detail-text { position: relative; isolation: isolate; }
+.nge-notif-detail--monthly .nge-notif-detail-text::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  top: -20px;
+  height: 260px;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgb(var(--gold) / 0.9), transparent),
+    radial-gradient(1px 1px at 28% 62%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 47% 12%, rgba(220, 190, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 63% 40%, rgb(var(--gold) / 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 78% 22%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 90% 55%, rgba(220, 190, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 6% 48%, rgba(255, 255, 255, 0.6), transparent);
+  animation: ngeChampsTwinkle 5s ease-in-out infinite alternate;
+}
+@keyframes ngeChampsTwinkle { from { opacity: 0.45; } to { opacity: 1; } }
+
+/* Header: a big trophy, gold lettering. */
+.nge-notif-detail--monthly .nge-champs-head { gap: 26px; margin-bottom: 18px; padding-left: 10px; }
+.nge-notif-detail--monthly .nge-champs-emblem {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  font-size: 54px;
+  border: 2px solid rgb(var(--gold) / 0.7);
+  background: radial-gradient(circle, rgb(var(--gold) / 0.28), rgba(120, 60, 200, 0.12) 60%, transparent 72%);
+  box-shadow:
+    0 0 0 5px rgba(20, 10, 36, 0.95),
+    0 0 0 7px rgb(var(--gold) / 0.35),
+    0 0 40px rgb(var(--gold) / 0.35),
+    0 0 80px rgba(150, 90, 255, 0.25);
+}
+.nge-notif-detail--monthly .nge-champs-emblem--art { width: 136px; height: 136px; margin: -14px 0 -10px; border: 0; background: radial-gradient(circle, rgba(120, 200, 255, 0.22), rgb(var(--gold) / 0.08) 45%, transparent 68%); box-shadow: none; }
+.nge-notif-detail--monthly .nge-champs-emblem--art .nge-champs-trophy { filter: drop-shadow(0 0 16px rgba(120, 200, 255, 0.45)) drop-shadow(0 0 22px rgb(var(--gold) / 0.3)); animation: ngeChampsTrophy 4s ease-in-out infinite; }
+@keyframes ngeChampsTrophy { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.nge-notif-detail--monthly .nge-champs-cup { filter: drop-shadow(0 0 12px rgb(var(--gold) / 0.7)); }
+.nge-notif-detail--monthly .nge-champs-kicker {
+  font-size: 0.78em;
+  letter-spacing: 0.34em;
+  color: rgb(var(--gold));
+  text-shadow: 0 0 14px rgb(var(--gold) / 0.5);
+}
+.nge-notif-detail--monthly .nge-champs-range {
+  font-size: 1.9em;
+  letter-spacing: 0.06em;
+  background: linear-gradient(100deg, #fff4cf 0%, #ffd35a 30%, #fff8e4 45%, #e9b23c 60%, #ffe39a 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 14px rgb(var(--gold) / 0.35));
+  animation: ngeChampsGilt 6s ease-in-out infinite;
+}
+@keyframes ngeChampsGilt { 0%, 100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
+.nge-notif-detail--champions .nge-champs-intro {
+  /* A gold ribbon on both Champions cards (Ames 2026-10-26: "this doesn't
+     match", "I like the new bar"). The middle takes each card's accent. */
+  position: relative;
+  margin: 8px 0 22px;
+  padding: 10px 40px;
+  border: 0;
+  border-top: 1px solid rgb(var(--gold, 255 211 90) / 0.45);
+  border-bottom: 1px solid rgb(var(--gold, 255 211 90) / 0.45);
+  background: linear-gradient(90deg, transparent, rgb(var(--gold, 255 211 90) / 0.12) 20%, rgb(var(--nd-accent) / 0.10) 50%, rgb(var(--gold, 255 211 90) / 0.12) 80%, transparent);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  text-align: center;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.9em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #ffe6a6;
+  text-shadow: 0 0 12px rgb(var(--gold, 255 211 90) / 0.35);
+}
+.nge-notif-detail--champions .nge-champs-intro::before,
+.nge-notif-detail--champions .nge-champs-intro::after {
+  content: "◆";
+  margin: 0 14px;
+  font-size: 0.7em;
+  vertical-align: 2px;
+  color: rgb(var(--gold, 255 211 90) / 0.8);
+}
+.nge-notif-detail--monthly .nge-champs-section-label { color: rgb(var(--gold)); text-shadow: 0 0 10px rgb(var(--gold) / 0.35); }
+.nge-notif-detail--monthly .nge-champs-section-rule { background: linear-gradient(90deg, rgb(var(--gold) / 0.6), rgba(160, 100, 255, 0.35) 50%, transparent); }
+
+/* The winner: a soft glow behind the gold card, a taller plinth. */
+.nge-notif-detail--monthly .nge-champs-podium { isolation: isolate; }
+.nge-notif-detail--monthly .nge-champs-step--gold { position: relative; }
+.nge-notif-detail--monthly .nge-champs-step--gold::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50px;
+  width: 260px;
+  height: 200px;
+  margin: -100px 0 0 -130px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse, rgb(var(--gold) / 0.16), transparent 65%);
+}
+.nge-notif-detail--monthly .nge-champs-card { background: linear-gradient(180deg, rgb(var(--tier) / 0.16), rgba(26, 14, 44, 0.92) 85%); }
+.nge-notif-detail--monthly .nge-champs-step--gold .nge-champs-card {
+  border-color: rgb(var(--gold) / 0.8);
+  background: linear-gradient(180deg, rgb(var(--gold) / 0.26), rgba(40, 20, 60, 0.92) 88%);
+  box-shadow: 0 0 40px rgb(var(--gold) / 0.28), inset 0 0 30px rgb(var(--gold) / 0.1);
+}
+.nge-notif-detail--monthly .nge-champs-step--gold .nge-champs-plinth { height: 76px; }
+.nge-notif-detail--monthly .nge-champs-medal { animation: ngeChampsMedal 3.2s ease-in-out infinite; }
+.nge-notif-detail--monthly .nge-champs-step--silver .nge-champs-medal { animation-delay: 0.6s; }
+.nge-notif-detail--monthly .nge-champs-step--bronze .nge-champs-medal { animation-delay: 1.2s; }
+@keyframes ngeChampsMedal {
+  0%, 100% { filter: drop-shadow(0 0 6px rgb(var(--tier) / 0.4)); transform: translateY(0); }
+  50% { filter: drop-shadow(0 0 16px rgb(var(--tier) / 0.9)); transform: translateY(-2px); }
+}
+/* Plinths: a band of light sweeps across now and then. */
+.nge-notif-detail--monthly .nge-champs-plinth { position: relative; overflow: hidden; }
+.nge-notif-detail--monthly .nge-champs-plinth::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgb(var(--tier) / 0.35), transparent);
+  animation: ngeChampsSweep 5s ease-in-out infinite;
+}
+.nge-notif-detail--monthly .nge-champs-step--silver .nge-champs-plinth::after { animation-delay: 0.4s; }
+.nge-notif-detail--monthly .nge-champs-step--bronze .nge-champs-plinth::after { animation-delay: 0.8s; }
+@keyframes ngeChampsSweep { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
+
+/* ═══ Pyr Year Champions: the anniversary, every Sep 28 (Ames 2026-10-26:
+   "special pomp and circumstance"). The monthly card, grander: a double gold
+   frame, a warm dawn behind the trophy that breathes (nothing turns), the
+   year's dates under its name. ═══ */
+.nge-notif-detail--yearly {
+  border: 2px solid rgb(var(--gold) / 0.7);
+  outline: 1px solid rgb(var(--gold) / 0.25);
+  outline-offset: 4px;
+  background:
+    radial-gradient(80% 50% at 18% 0%, rgb(var(--gold) / 0.24), transparent 70%),
+    radial-gradient(60% 60% at 100% 100%, rgba(120, 60, 200, 0.26), transparent 70%),
+    radial-gradient(50% 50% at 0% 70%, rgba(90, 40, 170, 0.2), transparent 70%),
+    linear-gradient(158deg, rgba(26, 14, 44, 0.98) 0%, rgba(8, 6, 20, 0.99) 100%);
+  box-shadow:
+    0 24px 90px rgba(0, 0, 0, 0.8),
+    0 0 90px rgb(var(--gold) / 0.22),
+    0 0 160px rgba(140, 80, 255, 0.16),
+    inset 0 1px 0 rgb(var(--gold) / 0.4);
+}
+.nge-notif-detail--yearly .nge-champs-emblem--art { position: relative; width: 168px; height: 168px; margin: -20px 0 -14px; }
+.nge-notif-detail--yearly .nge-champs-emblem--art::before {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--gold) / 0.45), rgba(150, 90, 255, 0.18) 45%, transparent 70%);
+  animation: ngeChampsDawn 5s ease-in-out infinite;
+}
+@keyframes ngeChampsDawn { 0%, 100% { opacity: 0.55; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1.04); } }
+.nge-notif-detail--yearly .nge-champs-kicker { font-size: 0.86em; letter-spacing: 0.4em; }
+.nge-notif-detail--yearly .nge-champs-range { font-size: 2.3em; }
+.nge-champs-dates {
+  margin-top: 4px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.74em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(var(--gold, 255 211 90) / 0.75);
+}
+.nge-notif-detail--yearly .nge-champs-intro {
+  border-top: 3px double rgb(var(--gold) / 0.7);
+  border-bottom: 3px double rgb(var(--gold) / 0.7);
+  font-size: 1em;
+  padding: 12px 40px;
+}
+.nge-notif-detail--yearly .nge-champs-cupimg { width: 54px; height: 54px; }
+.nge-notif-detail--yearly .nge-champs-step--gold .nge-champs-cupimg { width: 76px; height: 76px; }
+
+/* Ranks four and below: gold hairlines. */
+.nge-notif-detail--monthly .nge-champs-row {
+  border-color: rgb(var(--gold) / 0.14);
+  border-left-color: rgb(var(--gold) / 0.6);
+  background: linear-gradient(90deg, rgb(var(--gold) / 0.06), rgba(140, 80, 255, 0.04));
+}
+.nge-notif-detail--monthly .nge-champs-row-rank { color: rgb(var(--gold)); }
+.nge-notif-detail--monthly .nge-champs-outro { border-top-color: rgb(var(--gold) / 0.2); }
+
 /* Narrow windows and phones: the image on top, full width. */
 @media (max-width: 760px) {
   .nge-notif-detail-layout--has-image { flex-direction: column; }
@@ -2366,6 +2688,13 @@ span.nge-notif-reply-part { cursor: default; }
   .nge-champs-num { font-size: 1.5em; }
   .nge-champs-step--gold .nge-champs-num { font-size: 1.85em; }
   .nge-champs-name { font-size: 0.8em; }
+  .nge-notif-detail--monthly .nge-champs-emblem { width: 72px; height: 72px; font-size: 36px; }
+  .nge-champs-emblem--art { width: 64px; height: 64px; margin: -6px 0; }
+  .nge-notif-detail--monthly .nge-champs-emblem--art { width: 92px; height: 92px; margin: -8px 0 -6px; }
+  .nge-notif-detail--monthly .nge-champs-range { font-size: 1.35em; }
+  .nge-notif-detail--yearly .nge-champs-emblem--art { width: 104px; height: 104px; margin: -10px 0 -8px; }
+  .nge-notif-detail--yearly .nge-champs-range { font-size: 1.55em; }
+  .nge-notif-detail--monthly .nge-champs-step--gold::before { width: 180px; margin-left: -90px; }
 }
 
 /* ── Transition ── */
@@ -2385,6 +2714,12 @@ span.nge-notif-reply-part { cursor: default; }
   .nge-notif-detail,
   .nge-notif-bracket,
   .nge-champs-step { animation: none; }
+  .nge-notif-detail--monthly .nge-notif-detail-text::before,
+  .nge-notif-detail--monthly .nge-champs-range,
+  .nge-notif-detail--monthly .nge-champs-medal,
+  .nge-notif-detail--monthly .nge-champs-trophy,
+  .nge-notif-detail--monthly .nge-champs-plinth::after,
+  .nge-notif-detail--yearly .nge-champs-emblem--art::before { animation: none; }
   .nge-notif-detail-scan { animation: none; opacity: 0; display: none; }
   .nge-notif-detail-close,
   .nge-notif-open-help { transition: none; }

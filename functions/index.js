@@ -1123,11 +1123,13 @@ async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
   // mid-day. The list is served from the server's five minute copy, so these
   // reads cost the sheet nothing; they get limits of their own.
   const QUEST_READS = prefix === "read:quests";
+  // Beta access from connectome.quest (Ames 2026-10-26): a person asks once.
+  const VISITOR = prefix === "visitor:beta";
   // Players: 60 a minute, 5,000 a day (Ames 2026-10-24: "players don't need
   // that high of a limit"). Admins get the bigger allowance below.
   // Admins get far more room (Ames 2026-10-24: "you can give me a higher
   // allowance than regular users"): triage, the To do board and tests add up.
-  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
+  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : VISITOR ? {perMin:2,perDay:5} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
   // Signed in writes count per person only (Ames 2026-10-24: "Please wait
   // before sending another change" on the triage board and the Cell
@@ -1144,7 +1146,7 @@ async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
       const now=Date.now(), next=[];
       for(let i=0;i<refs.length;i++) {
         const d=snapshots[i].exists?snapshots[i].data():{};
-        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : {perMin:60,perDay:1500}) : tier;
+        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : VISITOR ? {perMin:10,perDay:200} : {perMin:60,perDay:1500}) : tier;
         const minute=now-(d.minStart||0)>=60000, day=now-(d.dayStart||0)>=86400000;
         const minCount=minute?0:(d.minCount||0), dayCount=day?0:(d.dayCount||0);
         if(minCount>=limits.perMin || dayCount>=limits.perDay) {
@@ -1502,7 +1504,7 @@ async function postIssueToSlack(token, raw) {
 }
 
 exports.submitIssue = onRequest(
-  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken, ewServiceKey] },
+  { region: "us-central1", cors: false, invoker: "public", maxInstances: 10, secrets: [slackBotToken, ewServiceKey, githubDispatchToken] },
   async (req, res) => {
     const origin = req.get("origin") || "";
     const originOk = GUIDE_ALLOWED_ORIGIN_RE.test(origin);
@@ -1543,6 +1545,9 @@ exports.submitIssue = onRequest(
         user: user || null, dataset: dataset || null, url: pageUrl || null,
         origin, at: FieldValue.serverTimestamp(),
       });
+      // Onto the triage board now, not at the next late timed run of the
+      // Slack bridge (Ames 2026-10-26: "fix the slack triage robot").
+      await wakeWorkflow("slack-triage-bridge.yml", "new report");
       res.json({ ok: true });
       // Fire-and-forget Slack post (response already sent).
       postIssueToSlack(slackBotToken.value(), { title, message, category, user, dataset, url: pageUrl });
@@ -2251,7 +2256,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-24-beta-access-1";
+const EW_ACCESS_CODE_VERSION = "2026-10-26-beta-sort-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2275,14 +2280,64 @@ async function postAccessRequestToSlack(token, { name, email, tries, eyewireUser
   }
   if (!r.ok) throw new Error(r.error || "slack post failed");
 }
+// Every admin's user id, for a bell to all of them.
+async function adminUserIds(sb) {
+  const emails = (await sb("admins?select=email")).map((r) => String(r.email || "").replace(/[",()]/g, "")).filter(Boolean);
+  if (!emails.length) return [];
+  const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(emails.map((e) => `"${e}"`).join(",")) + ")");
+  return people.map((p) => p.id);
+}
+// The connectome.quest Access page asks for beta access here too, with no
+// Pyr sign in (Ames 2026-10-26), so this one function takes that address.
+const ACCESS_ORIGINS = [...EW_ORIGINS, /^https:\/\/(www\.)?connectome\.quest$/];
+// A beta request goes on the triage board now (Ames 2026-10-26: "fix the
+// slack triage robot"): the bridge only runs when woken, or on its timer,
+// which GitHub starts late (gaps of two hours seen 2026-10-26).
+const wakeBetaBoard = () => wakeWorkflow("slack-triage-bridge.yml", "beta request");
+// Beta requests sorted in the Admin Hub: listed or removed, by email
+// (access-request.js, access.betaMark). Firestore, so no new table.
+const betaMarkStore = {
+  all: async () => {
+    const snap = await db.collection("beta_request_marks").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.email) out[v.email] = { mark: v.mark, at: v.at, by: v.by || "" }; });
+    return out;
+  },
+  set: async (email, v) => {
+    const ref = db.collection("beta_request_marks").doc(crypto.createHash("sha256").update(email).digest("hex"));
+    if (!v) await ref.delete(); else await ref.set({ email, ...v });
+  },
+};
+async function visitorBetaRequest(req, res, args) {
+  if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long. Please shorten your note." });
+  if (!(await rateLimit(req, false, "visitor:beta")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+  const sb = ewSb(ewServiceKey.value().trim());
+  try {
+    const data = await require("./access-request").visitorBeta(args, { sb, wake: wakeBetaBoard,
+      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
+      notifyAdmins: async ({ title, body }) => {
+        const rows = (await adminUserIds(sb)).map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500),
+          target_type: "user", target_id: id, send_at: new Date().toISOString(), created_by: null }));
+        if (rows.length) await sb("notifications", { method: "POST", body: JSON.stringify(rows) });
+      },
+    });
+    res.json({ ok: true, data });
+  } catch (e) {
+    if (e.status) { res.status(e.status).json({ error: e.message }); return; }
+    console.warn("[visitorBeta]", e.message);
+    res.status(500).json({ error: "That did not go through. Please try again." });
+  }
+}
 exports.ewAccessRequest = onRequest(
   // EW_CAVE_TOKEN (Ames's, a CAVE superadmin): Grant edit access adds the
   // player to Eyewire_2_Edit, group 203 (Ames 2026-10-16).
-  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken, githubDispatchToken], cors: ACCESS_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
     const { action, token, ...args } = req.body || {};
+    // A visitor to connectome.quest, not signed in to Pyr.
+    if (action === "access.visitorBeta") return visitorBetaRequest(req, res, args);
     if (action === "health") {
       const probe = ewSb(ewServiceKey.value().trim());
       try { await probe("admins?select=id&limit=1"); }
@@ -2306,6 +2361,7 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
+        wake: wakeBetaBoard, marks: betaMarkStore,
         // Beta access requests post like any report (Ames 2026-10-24).
         postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
@@ -2315,12 +2371,7 @@ exports.ewAccessRequest = onRequest(
           await note(people.map((p) => p.id), title, body, image);
         },
         // Beta access requests reach every admin (Ames 2026-10-24).
-        notifyAdmins: async ({ title, body, image }) => {
-          const emails = (await sb("admins?select=email")).map((r) => String(r.email || "").replace(/[",()]/g, "")).filter(Boolean);
-          if (!emails.length) return;
-          const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(emails.map((e) => `"${e}"`).join(",")) + ")");
-          await note(people.map((p) => p.id), title, body, image);
-        },
+        notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
         // Add a player to Eyewire_2_Edit. 422 means already a member: as good.
@@ -2350,7 +2401,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-26-hunt-15-launch";
+const EW_HUNT_CODE_VERSION = "2026-10-26-hunt-17-answers";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
@@ -2489,7 +2540,10 @@ exports.ewCommunityData = onRequest(
       headers.Accept = input.accept === "application/vnd.pgrst.object+json" ? input.accept : "application/json";
       const preferences = ["return=representation"];
       if (String(input.prefer).includes("count=exact")) preferences.push("count=exact");
-      if (["notification_reads","user_group_members","chat_presence","user_settings","user_views",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
+      // An upsert replaces the row with that key. Without this a second save of a site text (Admin
+      // edits of instructions, Tutorial edits) is a plain insert and fails on the existing key
+      // (Ames 2026-10-26, saving the Hunt's instructions again: "Not saved").
+      if (["notification_reads","user_group_members","chat_presence","user_settings","user_views","site_texts",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
       headers.Prefer = preferences.join(",");
       if (typeof input.range === "string" && /^\d+-\d+$/.test(input.range)) {
         const [from,to] = input.range.split("-").map(Number);

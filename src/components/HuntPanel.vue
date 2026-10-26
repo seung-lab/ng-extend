@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -77,6 +77,26 @@ onUnmounted(() => { if (gemTimer) clearInterval(gemTimer); });
 // A new hunt in the panel (or a switch between a test run and the real one) starts clean.
 watch(() => `${hunt.value?.id ?? ''}:${hunt.value?.test ? 'test' : ''}`, () => { error.value = ''; });
 
+/** The answers on the cells, once the Hunt is over (Ames 2026-10-26). */
+const answersShown = ref(false);
+const answersNote = ref('');
+watch(() => hunt.value?.id, () => { const h = hunt.value; answersShown.value = !!h && answersOnScreen(h); answersNote.value = ''; });
+async function toggleAnswers() {
+  const h = hunt.value; if (!h || busy.value) return;
+  if (answersShown.value) { hideAnswers(h); answersShown.value = false; answersNote.value = ''; return; }
+  busy.value = 'answers'; error.value = '';
+  try {
+    const r = await showAnswers(h);
+    if (!r) return;
+    answersShown.value = true;
+    const missed = r.total - r.found;
+    answersNote.value = r.tookPart
+      ? `Rings mark all ${r.total}: ${r.found} you found, ${missed} you missed.`
+      : `Rings mark all ${r.total}: ${h.spots.cut} ${h.spots.cut === 1 ? 'merger' : 'mergers'} in gold, ${h.spots.merge} ${h.spots.merge === 1 ? 'extension' : 'extensions'} in purple.`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
+
 async function go() {
   const h = hunt.value; if (!h || busy.value) return;
   busy.value = 'go'; error.value = '';
@@ -90,7 +110,19 @@ async function go() {
 // ── While it runs: the gems ──
 const kinds = computed<GemKind[]>(() => (hunt.value ? gemKinds(hunt.value) : ['cut']));
 const opened = computed(() => onDataset.value && gems.value >= 0);
-function choose(k: GemKind) { if (hunt.value) pickKind(hunt.value, k); }
+function choose(k: GemKind) {
+  if (!hunt.value) return;
+  pickKind(hunt.value, k);
+  // The number keys work straight after a button: the keyboard goes back to the view.
+  try { (document.querySelector('.neuroglancer-rendered-data-panel') as HTMLElement | null)?.focus(); } catch { /* optional */ }
+}
+/** "Ctrl + Click drops a cut gem, for mergers. Press 3 to switch to Cut." (Ames 2026-10-26: "add in tooltip that you can press 3 or 4"). */
+/** Gems used that found nothing (a gem on a place found already, or at the edge, uses none). */
+const missed = computed(() => Math.max(0, (run.value?.gems_used ?? 0) - (run.value?.found ?? 0)));
+function kindTitle(k: GemKind) {
+  const key = huntState.keys[k];
+  return `Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}.${key ? ` Press ${key} to switch to ${KIND[k].word}.` : ''}`;
+}
 const run = computed(() => hunt.value?.you);
 /** One pip per gem: gold while unused, gray once dropped (up to 30; beyond that, the number alone). */
 const pips = computed(() => {
@@ -111,6 +143,7 @@ function wordsFor(n: any) {
   if (n.result === 'already') return { cls: 'already', head: 'Found already', text: 'You found that one before. No gem used.' };
   if (n.result === 'edge') return { cls: 'edge', head: 'Edge of the dataset', text: 'The branch leaves the data here. No gem used.' };
   if (n.result === 'refused') return { cls: 'refused', head: 'No gem dropped', text: n.text || '' };
+  if (n.result === 'kept') return { cls: 'already', head: 'Checked gems stay', text: 'That gem is back. Once a gem is checked it stays on the cell.' };
   if (n.other) return { cls: 'miss', head: 'Wrong gem', text: `Something is there, but it needs ${n.other === 'merge' ? 'an extension' : 'a cut'}.` };
   return { cls: 'miss', head: 'Not there', text: 'No problem at that spot.' };
 }
@@ -134,6 +167,7 @@ const newsLine = computed(() => {
   if (n.result === 'already') return { cls: 'already', head: 'Found already', text: 'You found that one before. No gem used.' };
   if (n.result === 'edge') return { cls: 'edge', head: 'Edge of the dataset', text: 'The branch leaves the data here. No gem used.' };
   if (n.result === 'refused') return { cls: 'refused', head: 'No gem dropped', text: n.text || '' };
+  if (n.result === 'kept') return { cls: 'already', head: 'Checked gems stay', text: 'That gem is back. Once a gem is checked it stays on the cell.' };
   const w = wordsFor(n);
   const near = n.nearest_um != null && hunt.value?.test ? ` The nearest ${n.gem === 'merge' ? 'missing extension' : 'merger'} is ${n.nearest_um} µm away (tolerance ${hunt.value.tolerance_um} µm).` : '';
   return { ...w, text: w.text + near, other: n.other || null };
@@ -297,15 +331,18 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span class="nge-hunt-slim-read" :title="`${run.gems_left} of ${run.budget} gems left`"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><small>{{ run.gems_left === 1 ? 'gem left' : 'gems left' }}</small></span>
           </div>
           <div v-if="opened && !run.done && (kinds.length > 1 || !huntPrefs.auto)" class="nge-hunt-slim-row">
-            <div v-if="kinds.length > 1" class="nge-hunt-kinds nge-hunt-kinds--slim" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
+            <div v-if="kinds.length > 1" class="nge-hunt-kinds nge-hunt-kinds--slim" :class="{ 'nge-hunt-kinds--fill': huntPrefs.auto }" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
               <button v-for="k in kinds" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': huntState.kind === k }]"
-                      role="radio" :aria-checked="huntState.kind === k" :title="`Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}`" @click="choose(k)">
+                      role="radio" :aria-checked="huntState.kind === k" :title="kindTitle(k)" @click="choose(k)">
                 <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
                 <span>{{ KIND[k].word }}</span>
               </button>
             </div>
             <button v-if="!huntPrefs.auto" class="nge-hunt-submit nge-hunt-submit--slim" :class="{ 'nge-hunt-submit--alone': kinds.length < 2 }" :disabled="!huntState.waiting" :title="huntState.waiting ? '' : 'Drop gems, then submit'" @click="submitWaiting">
               {{ huntState.waiting ? `Submit ${huntState.waiting}` : 'Submit' }}
+            </button>
+            <button v-if="!huntPrefs.auto" class="nge-hunt-takeback nge-hunt-takeback--slim" :disabled="!huntState.waiting" title="Take back your last gem (not sent yet)" aria-label="Take back your last gem" @click="takeBackGem">
+              <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M6 4L3 7l3 3M3.5 7H10a3 3 0 0 1 0 6H8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
           <button v-if="!opened" class="nge-hunt-btn nge-hunt-btn--primary nge-hunt-btn--slim" :disabled="!!busy" @click="go">
@@ -327,10 +364,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               <span class="nge-hunt-read-val"><b :key="'f' + run.found" class="nge-hunt-pop">{{ run.found }}</b><i>/{{ run.of }}</i></span>
             </div>
             <div class="nge-hunt-read">
+              <!-- Gems LEFT, "of" the total, so it never reads as a score beside Found (Ames 2026-10-26, Nseraf #259: "8+4= more than 8") -->
               <span class="nge-hunt-read-label">Gems</span>
-              <span class="nge-hunt-read-val"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i>/{{ run.budget }}</i></span>
+              <span class="nge-hunt-read-val"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i> of {{ run.budget }}</i></span>
               <span v-if="huntState.waiting" class="nge-hunt-read-sub">{{ huntState.waiting }} waiting</span>
-              <span v-else-if="run.gems_left === 0" class="nge-hunt-read-sub">none left</span>
+              <span v-else class="nge-hunt-read-sub">{{ run.gems_left === 0 ? 'none left' : 'left' }}</span>
             </div>
             <!-- The medal stays a secret until the end (Ames 2026-10-21: "do we want to reveal what achievement they have before they win it?"); the clock shows instead. -->
             <div class="nge-hunt-read" title="Your clock started when you first opened the Hunt, and runs once">
@@ -343,11 +381,13 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           <div v-if="pips.length && !mini" class="nge-hunt-pips" :style="{ '--pips': pips.length }" :title="`${run.gems_left} of ${run.budget} gems left`" aria-hidden="true">
             <span v-for="(used, i) in pips" :key="i" class="nge-hunt-pip" :class="{ 'nge-hunt-pip--used': used }"></span>
           </div>
+          <!-- Where the used gems went, so found, missed and left add up to the total -->
+          <p v-if="!mini && run.gems_used > 0" class="nge-hunt-used">{{ run.gems_used }} {{ run.gems_used === 1 ? 'gem' : 'gems' }} used: {{ run.found }} right, {{ missed }} missed</p>
 
           <div v-if="!run.done" class="nge-hunt-controls">
             <div v-if="kinds.length > 1" class="nge-hunt-kinds" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
               <button v-for="k in kinds" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': huntState.kind === k }]"
-                      role="radio" :aria-checked="huntState.kind === k" :title="`Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}`" @click="choose(k)">
+                      role="radio" :aria-checked="huntState.kind === k" :title="kindTitle(k)" @click="choose(k)">
                 <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
                 <span class="nge-hunt-kind-word">{{ KIND[k].word }}</span>
                 <span class="nge-hunt-kind-count">{{ run.found_by?.[k] ?? 0 }}<i>/{{ run.of_by?.[k] ?? 0 }}</i></span>
@@ -358,9 +398,16 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               <span class="nge-hunt-switch-track" aria-hidden="true"><span class="nge-hunt-switch-knob"></span></span>
               <span class="nge-hunt-switch-text">Check each gem as it lands</span>
             </label>
-            <button v-if="!huntPrefs.auto" class="nge-hunt-submit" :disabled="!huntState.waiting" @click="submitWaiting">
-              {{ huntState.waiting ? `Submit ${huntState.waiting} ${huntState.waiting === 1 ? 'gem' : 'gems'}` : 'Drop gems, then submit' }}
-            </button>
+            <div v-if="!huntPrefs.auto" class="nge-hunt-submitrow">
+              <button class="nge-hunt-submit" :disabled="!huntState.waiting" @click="submitWaiting">
+                {{ huntState.waiting ? `Submit ${huntState.waiting} ${huntState.waiting === 1 ? 'gem' : 'gems'}` : 'Drop gems, then submit' }}
+              </button>
+              <!-- A gem dropped by mistake comes off before Submit (Ames 2026-10-26, from Celia) -->
+              <button class="nge-hunt-takeback" :disabled="!huntState.waiting" title="Take back your last gem (not sent yet)" @click="takeBackGem">
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M6 4L3 7l3 3M3.5 7H10a3 3 0 0 1 0 6H8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Take back
+              </button>
+            </div>
           </div>
           <!-- The cells glow teal where they run out of the data; off if it distracts (Ames 2026-10-23) -->
           <label v-if="opened && hunt?.bounds_nm" class="nge-hunt-switch nge-hunt-switch--edge" title="On: the cells glow teal where they run out of the data. An Extend gem there is the edge of the dataset and uses no gem.">
@@ -416,6 +463,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           <img src="hunt/fastest-128.png" alt="" />
           <div><b>Fastest: {{ hunt.fastest.you ? 'you!' : hunt.fastest.name }}</b><span>{{ fastestShort }}</span></div>
         </div>
+        <!-- Where every merger and extension was (Ames 2026-10-26), unless the Hunt keeps its answers -->
+        <button v-if="hunt.answers && !hunt.test" class="nge-hunt-btn nge-hunt-answersbtn" :disabled="busy === 'answers'" @click="toggleAnswers">
+          {{ answersShown ? 'Hide the answers' : busy === 'answers' ? 'Showing the answers…' : 'Show the answers' }}
+        </button>
+        <p v-if="answersShown && answersNote" class="nge-hunt-answersnote">{{ answersNote }}</p>
       </template>
 
       <p v-if="error" class="nge-hunt-error" role="alert">{{ error }}</p>
@@ -431,6 +483,17 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
       <div v-if="howOpen && phase !== 'ended' && !mini" class="nge-hunt-howpanel">
         <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
         <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" />
+        <!-- What the colors mean (Ames 2026-10-26): the gems' own colors, and the glow on a cell -->
+        <div class="nge-hunt-key" aria-label="What the colors mean">
+          <span v-for="k in GEM_KEY" :key="k.words" class="nge-hunt-keyitem">
+            <svg v-for="c in k.colors" :key="c" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" :fill="c"/></svg>
+            {{ k.words }}
+          </span>
+          <span v-if="hunt.bounds_nm" class="nge-hunt-keyitem nge-hunt-keyitem--wide">
+            <i class="nge-hunt-keyglow" :style="{ '--edge': EDGE_COLOR }" aria-hidden="true"></i>
+            A teal glow on a cell: the data ends there. An Extend gem there costs nothing.
+          </span>
+        </div>
         <div class="nge-hunt-medalrow" aria-label="Medals">
           <span v-for="t in TIERS" :key="t" class="nge-hunt-medalmini" :title="`${TIER_WORD[t]}: ${needShort(t)}`">
             <img :src="medalArt(t)" alt="" /><b :class="`nge-hunt-tierword--${t}`">{{ TIER_WORD[t] }}</b><small>{{ needShort(t) }}</small>
@@ -450,7 +513,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span class="nge-hunt-who">{{ b.name }}</span>
             <img v-if="b.fastest" src="hunt/fastest-128.png" class="nge-hunt-speedmark" title="Fastest" alt="Fastest" />
             <span v-if="b.tier && phase === 'ended'" class="nge-hunt-tierdot" :class="`nge-hunt-tierdot--${b.tier}`" :title="TIER_WORD[b.tier]"></span>
-            <span class="nge-hunt-found">{{ b.found }}/{{ hunt.target_count }}<span class="nge-hunt-gemcount"> · {{ b.gems }} {{ b.gems === 1 ? 'gem' : 'gems' }}</span></span>
+            <!-- While it runs, found only: no gem counts (Ames 2026-10-26); the results show them, as the medals count them -->
+            <span class="nge-hunt-found">{{ b.found }}/{{ hunt.target_count }}<span v-if="phase === 'ended'" class="nge-hunt-gemcount"> · {{ b.gems }} {{ b.gems === 1 ? 'gem' : 'gems' }}</span></span>
           </li>
         </ol>
       </section>
@@ -541,7 +605,21 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-slim-read i { font-style: normal; font-size: 11px; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-slim-read small { margin-left: 5px; font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
 .nge-hunt-slim-time { margin-left: auto; font: 600 11px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.7); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nge-hunt-submit--slim { flex: 1 0 auto; padding: 5px 10px; font-size: 11px; }
+.nge-hunt-submitrow { display: flex; gap: 6px; }
+.nge-hunt-submitrow .nge-hunt-submit { flex: 1; min-width: 0; }
+.nge-hunt-takeback { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 9px; cursor: pointer;
+  background: rgba(4, 8, 18, 0.55); border: 1px solid rgb(var(--hn-accent) / 0.45); color: rgb(var(--hn-line) / 0.85); font: 600 12px 'Inter', sans-serif; }
+.nge-hunt-takeback:hover:not(:disabled), .nge-hunt-takeback:focus-visible { color: #fff; border-color: rgb(var(--hn-cyan) / 0.8); }
+.nge-hunt-takeback:disabled { opacity: 0.4; cursor: default; }
+.nge-hunt-takeback--slim { padding: 5px 7px; border-radius: 8px; }
+/* The color key, under the instructions */
+.nge-hunt-key { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 8px 2px 2px; border-top: 1px solid rgb(var(--hn-accent) / 0.18); font: 11.5px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.8); }
+.nge-hunt-keyitem { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.nge-hunt-keyitem svg { flex: none; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6)); }
+.nge-hunt-keyitem--wide { white-space: normal; grid-column: 1 / -1; align-items: flex-start; }
+.nge-hunt-keyitem--wide .nge-hunt-keyglow { margin-top: 5px; }
+.nge-hunt-keyglow { flex: none; width: 18px; height: 7px; border-radius: 4px; background: var(--edge); box-shadow: 0 0 6px var(--edge); }
+.nge-hunt-submit--slim { flex: 1 1 auto; min-width: 0; padding: 5px 10px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-hunt-btn--slim { flex: none; padding: 6px 10px; font-size: 11.5px; }
 .nge-hunt-slim-done { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-slim-done span { font: 500 11px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; color: rgb(var(--hn-line) / 0.7); }
@@ -606,6 +684,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-tierword--bronze { color: #d9a77c !important; text-shadow: 0 0 8px rgba(217, 167, 124, 0.3); }
 
 /* ── Chances: one gem a pip ── */
+.nge-hunt-used { margin: -4px 0 0; text-align: center; font: 11.5px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.7); }
 .nge-hunt-pips { display: grid; grid-template-columns: repeat(var(--pips, 10), minmax(0, 1fr)); justify-items: center; align-items: center; gap: 3px 0; padding: 0 2px; }
 .nge-hunt-pip {
   width: 9px; height: 11px; background: rgb(var(--hn-gold)); clip-path: polygon(15% 32%, 35% 0, 65% 0, 85% 32%, 50% 100%);
@@ -719,8 +798,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-kind:hover, .nge-hunt-kind:focus-visible { color: #fff; border-color: rgb(var(--k) / 0.7); }
 .nge-hunt-kind--on { color: #fff; background: rgb(var(--k) / 0.16); border-color: rgb(var(--k) / 0.9); box-shadow: 0 0 14px rgb(var(--k) / 0.28), inset 0 0 10px rgb(var(--k) / 0.12); }
 .nge-hunt-kind--on .nge-hunt-kind-count { color: #fff; }
-.nge-hunt-kinds--slim { flex: 1; min-width: 0; gap: 4px; }
-.nge-hunt-kinds--slim .nge-hunt-kind { padding: 4px 7px; font-size: 11.5px; border-radius: 8px; }
+/* Small box: Cut and Extend keep their words whole and Submit takes the rest (Ames 2026-10-26: "display bug",
+   the two were squeezed under each other beside Submit 1); with no Submit they share the row. */
+.nge-hunt-kinds--slim { flex: none; grid-template-columns: auto auto; gap: 4px; }
+.nge-hunt-kinds--slim.nge-hunt-kinds--fill { flex: 1; grid-template-columns: 1fr 1fr; }
+.nge-hunt-kinds--slim .nge-hunt-kind { padding: 4px 8px; font-size: 11.5px; border-radius: 8px; white-space: nowrap; }
 .nge-hunt-submit--alone { flex: 1 1 auto; }
 /* The check switch */
 .nge-hunt-switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: rgb(var(--hn-line) / 0.8); font-size: 12px; padding: 1px 2px; }
@@ -780,6 +862,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-log--miss b { color: #a7b0bf; }
 .nge-hunt-log--already b { color: #9fd0ff; }
 .nge-hunt-log--refused b { color: #ffb3b3; }
+.nge-hunt-answersbtn { width: 100%; }
+.nge-hunt-answersnote { margin: -2px 0 0; text-align: center; font: 12px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.8); }
 .nge-hunt-congrats { padding: 10px 12px; border-radius: 10px; text-align: center; background: radial-gradient(120% 120% at 50% 0%, rgb(var(--hn-gold) / 0.16), rgb(var(--hn-accent) / 0.05) 70%); border: 1px solid rgb(var(--hn-gold) / 0.55); animation: ngeHuntHit 0.7s cubic-bezier(0.2, 1.5, 0.4, 1); }
 .nge-hunt-congrats-head { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px 0 2px; }
 .nge-hunt-congrats-big { font: 700 19px/1.1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; color: rgb(var(--hn-gold)); text-shadow: 0 0 14px rgb(var(--hn-gold) / 0.45); }
@@ -803,7 +887,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
   .nge-hunt-scan { display: none; }
   .nge-hunt-pip { transition: none; }
 }
-:global(body.nge-calm) .nge-hunt, :global(body.nge-calm) .nge-hunt-pop,
-:global(body.nge-calm) .nge-hunt-news, :global(body.nge-calm) .nge-hunt-done { animation: none !important; }
-:global(body.nge-calm) .nge-hunt-scan { display: none; }
+:global(body.nge-calm .nge-hunt), :global(body.nge-calm .nge-hunt-pop),
+:global(body.nge-calm .nge-hunt-news), :global(body.nge-calm .nge-hunt-done) { animation: none !important; }
+:global(body.nge-calm .nge-hunt-scan) { display: none; }
 </style>
