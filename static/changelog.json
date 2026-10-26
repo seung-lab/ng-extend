@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T17:20:00Z",
+      "title": "A shorter line in Settings",
+      "digest": "minor",
+      "items": [
+        "The Neuroglancer box in Settings now simply says: Neuroglancer's own controls and panels."
+      ]
+    },
+    {
       "at": "2026-10-26T17:19:52Z",
       "title": "Trophies for the Champions",
       "items": [
