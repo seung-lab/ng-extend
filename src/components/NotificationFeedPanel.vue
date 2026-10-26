@@ -1258,8 +1258,8 @@ function padRank(rank: number): string {
 .nge-notif-tab:hover { color: #dce6f5; }
 .nge-notif-tab--on { color: #ffffff; border-bottom-color: #7ee0ff; }
 .nge-notif-tab--triage.nge-notif-tab--on { border-bottom-color: #ff8f8f; }
-.nge-notif-tab--admin.nge-notif-tab--on { border-bottom-color: #e5484d; }
-.nge-notif-tab--admin b { background: #e5484d; color: #fff; }
+.nge-notif-tab--admin.nge-notif-tab--on { border-bottom-color: #ffd35a; }
+.nge-notif-tab--admin b { background: #ffd35a; color: #1a1300; }
 .nge-notif-tab b {
   min-width: 16px; padding: 2px 5px; border-radius: 8px; box-sizing: border-box;
   font-size: 10px; font-weight: 700; text-align: center; color: #06121f; background: #7ee0ff;
@@ -1282,10 +1282,10 @@ function padRank(rank: number): string {
   white-space: nowrap; cursor: pointer;
 }
 .nge-notif-subtab:hover { color: #dce6f5; }
-.nge-notif-subtab--on { color: #fff; background: rgba(229, 72, 77, 0.22); }
+.nge-notif-subtab--on { color: #fff3c4; background: rgba(255, 211, 90, 0.18); }
 .nge-notif-subtab b {
   min-width: 16px; padding: 2px 5px; border-radius: 8px; box-sizing: border-box;
-  font-size: 10px; font-weight: 700; text-align: center; color: #fff; background: #e5484d;
+  font-size: 10px; font-weight: 700; text-align: center; color: #1a1300; background: #ffd35a;
 }
 .nge-notif-subtab--triage b { background: #ff8f8f; color: #06121f; }
 
