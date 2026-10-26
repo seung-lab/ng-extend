@@ -22,15 +22,15 @@ const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PAS
 const { handle } = require('../functions/access-request');
 // What functions/access-request.js writes, in its three shapes.
 const ISSUES = [
-  { id: 'i4', user_name: 'Sophia Sterling', title: 'Beta access request from Sophia Sterling', url: null, created_at: '2026-10-26T15:00:00Z',
+  { id: 'i4', category: 'Beta access', user_name: 'Sophia Sterling', title: 'Beta access request from Sophia Sterling', url: null, created_at: '2026-10-26T15:00:00Z',
     message: 'Sophia Sterling asks to join the Pyr beta.\nEmail: sophia@example.org. To let them in, add this one under Admin Hub, Pilot testers.\nTheir note: Sign in email: evil@example.org. please' },
-  { id: 'i3', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-26T14:00:00Z',
+  { id: 'i3', category: 'Beta access', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-26T14:00:00Z',
     message: 'Vic Visitor asks to join the Pyr beta, from connectome.quest.\nEmail they gave: vic@example.org. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.\nThey agreed to the community principles.' },
-  { id: 'i2', user_name: 'Gus Game', title: 'Beta access request from Gus Game', url: null, created_at: '2026-10-25T10:00:00Z',
+  { id: 'i2', category: 'Beta access', user_name: 'Gus Game', title: 'Beta access request from Gus Game', url: null, created_at: '2026-10-25T10:00:00Z',
     message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.\nEyeWire username: gus_ew\nEyeWire rank: Scythe' },
-  { id: 'i1', user_name: 'Tess Tester', title: 'Beta access request from Tess Tester', url: null, created_at: '2026-10-24T10:00:00Z',
+  { id: 'i1', category: 'Beta access', user_name: 'Tess Tester', title: 'Beta access request from Tess Tester', url: null, created_at: '2026-10-24T10:00:00Z',
     message: 'Tess Tester asks to join the Pyr beta.\nEmail: tess@example.org. To let them in, add this one under Admin Hub, Pilot testers.' },
-  { id: 'i0', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-20T10:00:00Z',
+  { id: 'i0', category: 'Beta access', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-20T10:00:00Z',
     message: 'Vic Visitor asks to join the Pyr beta, from connectome.quest.\nEmail they gave: vic@example.org. They have not signed in to Pyr yet.' },
 ];
 
@@ -49,6 +49,11 @@ const ISSUES = [
   // Add to list and Remove request, answered by the real rules over a stand-in store.
   const store = {};
   const marks = { all: async () => ({ ...store }), set: async (e, v) => { if (v) store[e] = v; else delete store[e]; } };
+  await context.route(/ewSecureWrite/, r => {
+    let i = {}; try { i = r.request().postDataJSON() || {}; } catch (e) {}
+    if (i.action === 'triage.update') { triageUpdates.push(i); if (i.fields && i.fields.status) cardStatus = i.fields.status; }
+    r.fulfill(json({ ok: true, data: [] }));
+  });
   await context.route(/ewAccessRequest/, async r => {
     let i = {}; try { i = r.request().postDataJSON() || {}; } catch (e) {}
     const { action, token, ...args } = i;
@@ -57,12 +62,23 @@ const ISSUES = [
     catch (e) { r.fulfill(json({ error: e.message }, e.status || 500)); }
   });
   const upserts = [];
+  let cardStatus = 'proposed';
+  const triageUpdates = [];
   const envelope = (body) => json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await context.route(/ewCommunityData/, r => {
     let i = {}; try { i = r.request().postDataJSON() || {}; } catch (e) {}
     if (i.table === 'site_issues' && i.method === 'GET') {
       const q = new URLSearchParams(i.query);
-      return r.fulfill(envelope(q.get('category') === 'eq.Beta access' ? ISSUES : []));
+      if (q.get('category') === 'eq.Beta access') return r.fulfill(envelope(ISSUES));
+      const ids = (q.get('id') || '').replace(/^in\.\(|\)$/g, '').split(',').map(x => x.replace(/"/g, ''));
+      return r.fulfill(envelope(ISSUES.filter(x => ids.includes(x.id))));
+    }
+    // One triage card: Gus's request (Ames 2026-10-26: let them in from the card).
+    if (i.table === 'feedback_triage' && i.method === 'GET') {
+      const q = new URLSearchParams(i.query);
+      if (q.get('status') && q.get('status') !== 'eq.proposed' && !/proposed/.test(q.get('status'))) return r.fulfill(envelope([]));
+      return r.fulfill(envelope([{ id: 'tc1', source: 'site_issue', source_id: 'i2', status: cardStatus, recommendation: 'nothing',
+        rationale: 'No suggestion yet. To get one, press Suggest a fix on this card.', created_at: '2026-10-25T10:01:00Z', source_excerpt: 'Gus Game asks to join the Pyr beta.' }]));
     }
     if (i.table === 'pilot_members' && i.method === 'GET') return r.fulfill(envelope(pilot));
     if (i.table === 'pilot_members' && i.method === 'POST') {
@@ -133,6 +149,27 @@ const ISSUES = [
     check('Let in: Vic says In, with Email them', /\bIn\b/.test(vic) && /Email them/.test(vic), all);
     const mail = await page.$eval('.nge-beta-req-mail', a => a.getAttribute('href')).catch(() => '');
     check('Email them is addressed to them and has no dashes', /^mailto:/.test(mail) && !/%E2%80%93|%E2%80%94/i.test(mail), mail.slice(0, 120));
+    // The triage card: Let them in, right on a Beta access card. The board
+    // is its own page (?triage=board), signed in the same way.
+    upserts.length = 0;
+    await context.route(/user\/me/, r => r.fulfill(json({ email: 'amy@example.org', name: 'Ames' })));
+    const board = await context.newPage();
+    board.on('pageerror', e => errors.push(String(e).slice(0, 200)));
+    await board.goto(`http://localhost:${PORT}/?triage=board`, { waitUntil: 'load' });
+    await board.waitForSelector('.nge-triage-beta', { timeout: 20000 }).catch(() => {});
+    const cardText = await board.$eval('.nge-triage-beta', e => e.innerText).catch(() => '');
+    if (!cardText) { console.log('DEBUG', (await board.evaluate(() => document.body.innerText.slice(0, 900))).replace(/\s+/g, ' ')); await board.screenshot({ path: path.join(OUT, 'card-debug.png') }); }
+    check('a Beta access triage card has Let them in, with the email it will add', /Let them in/.test(cardText) && /gus@work\.example/.test(cardText), cardText);
+    await board.click('text=Beta access request from Gus Game').catch(() => {});
+    await board.waitForTimeout(800);
+    const cardBox = await board.locator('.nge-triage-beta').boundingBox().catch(() => null);
+    if (cardBox) await board.screenshot({ path: path.join(OUT, 'triage-card.png'), clip: { x: Math.max(0, cardBox.x - 30), y: Math.max(0, cardBox.y - 220), width: Math.min(900, cardBox.width + 400), height: 320 } });
+    await board.click('.nge-triage-beta >> text=Let them in').catch(() => {});
+    await board.waitForTimeout(1500);
+    check('Let them in on the card adds that email to Pilot testers', upserts.length === 1 && upserts[0].email === 'gus@work.example' && upserts[0].enabled === true, upserts);
+    const done = triageUpdates.find(u => u.fields && u.fields.status === 'done');
+    check('and moves the card to Done with a note', !!done && /gus@work\.example added to Pilot testers/.test(JSON.stringify(done)), triageUpdates);
+    await board.close();
     const text = await page.innerText('.nge-pilot-admin');
     check('no dashes in the words', !/[\u2013\u2014]/.test(text));
     check('no page errors', errors.filter(e => !/Failed to fetch/.test(e)).length === 0, errors.slice(0, 3));
