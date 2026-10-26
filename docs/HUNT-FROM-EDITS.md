@@ -155,7 +155,7 @@ python -I scripts/hunt-from-edits.py https://minnie.microns-daf.com minnie65_pub
 
 ## 6. Recommended design: Admin Hub > Hunts > "Make a Hunt from a proofread cell"
 
-Not built. The plan reuses what the editor already does, so it needs no server change, no SQL, and no new key format.
+**Built 2026-10-26 on `claude/hunt-from-edits`** (Ames approved the mockup). Code: `src/util/hunt_history_steps.ts` (the rules, tested by `scripts/hunt-history-steps.test.mjs`), `src/util/hunt_from_edits.ts` (the calls and the screen), `src/components/HuntFromEdits.vue` (in the editor), `HuntPlacesList.vue`, and `HuntPlacesBox.vue` (the box over the viewer, since the Admin Hub covers it). One change from the plan below: a cut that separated nothing (the graph made only the root kept) is left out with the undone edits. The plan as written before the build: The plan reuses what the editor already does, so it needs no server change, no SQL, and no new key format.
 
 **Where:** in the editor's step 1 (The answer key), beside the link box: a root box and a button "Make from a proofread cell".
 
