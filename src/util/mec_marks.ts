@@ -403,6 +403,7 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
   const out = { spots: [] as number[][], pieces, loaded };
   // What happened at each step, for window.__ngeMecEdgeDebug().
   const st = { parts: 0, partsAtTopOrBottom: 0, sections: 0, unknownTiles: 0, zeroNear: 0, looksOutside: 0, rejectedByNeighbours: 0, marked: 0,
+    rejected: [] as any[],
     cellUm: null as string[] | null, maskZ: [] as number[] };
   lastEdgeStats = st;
   if (!loaded) return out;
@@ -488,22 +489,34 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
       // A damaged section can be mostly empty inside the tissue (section 5480
       // is 93% empty at one soma, Ames: "nope", a line of marks across a cell
       // at one depth). The real edge stays from section to section: the same
-      // place must look like the outside AGREE sections above and below too.
+      // place must look like the outside AGREE sections above or below too.
+      // One side is enough: a single damaged section is out of step with both
+      // (a cell that met the edge lost all 28 of its places when both sides
+      // had to agree, Ames 2026-10-26).
       for (const f of found) {
-        let agree = true;
+        const shares: (number | null)[] = [];
         for (const at of [s - AGREE, s + AGREE]) {
-          if (at < 0 || at >= size[2]) continue;
+          if (at < 0 || at >= size[2]) { shares.push(null); continue; }
           const near = new Map<string, Uint8Array | null>();
           for (const x of [f.x - W, f.x + W]) for (const y of [f.y - W, f.y + W]) {
             if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) continue;
             const k = `${Math.floor(x / tile)},${Math.floor(y / tile)}`;
             if (!near.has(k)) near.set(k, await tileOf(Math.floor(x / tile), Math.floor(y / tile), at));
           }
-          if (![...near.values()].some(Boolean)) continue;   // nothing known there
-          if (emptyShare(near, f.x, f.y, W, STEP) < EMPTY) { agree = false; break; }
+          shares.push([...near.values()].some(Boolean) ? emptyShare(near, f.x, f.y, W, STEP) : null);
         }
+        const known = shares.filter((v): v is number => v !== null);
+        const agree = !known.length || known.some(v => v >= EMPTY);
         st.looksOutside++;
-        if (agree) f.b.edge = true; else st.rejectedByNeighbours++;
+        if (agree) f.b.edge = true;
+        else {
+          st.rejectedByNeighbours++;
+          if (st.rejected.length < 10) {
+            st.rejected.push({ section: s, um: [f.x * resNm[0], f.y * resNm[1]].map(v => +(v / 1000).toFixed(1)),
+              here: +emptyShare(tiles, f.x, f.y, W, STEP).toFixed(2), below: shares[0] === null ? null : +shares[0].toFixed(2),
+              above: shares[1] === null ? null : +shares[1].toFixed(2) });
+          }
+        }
       }
     }));
   }
