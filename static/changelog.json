@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T20:59:47Z",
+      "title": "Laser Eyes, and Hunt answers that are bigger than a point",
+      "items": [
+        "Laser Eyes is a new Hunt Achievement: find a real merger or missing extension that the Hunt's answers missed, and once an admin checks it, it counts for you. You can earn it once in each Hunt, and your profile counts them up.",
+        "A Hunt answer can now be a whole area, like a wide flat end, so a gem anywhere on it counts.",
+        "New lines for the Gold, Silver and Bronze Achievements, from Celia."
+      ]
+    },
+    {
       "at": "2026-10-26T20:19:42Z",
       "title": "The Hunt box opens faster",
       "digest": "minor",
