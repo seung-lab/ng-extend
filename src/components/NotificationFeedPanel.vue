@@ -7,7 +7,7 @@ import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesSto
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
-import { recapWeekStart, recapMonth, weekFromRecapTitle, monthFromRecapTitle } from '../util/recap_week';
+import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRecapTitle, yearFromRecapTitle } from '../util/recap_week';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
@@ -22,6 +22,12 @@ import bronzeCup from '../../static/images/champions/bronze-cup.png';
 import goldAward from '../../static/images/champions/gold-award.png';
 import silverAward from '../../static/images/champions/silver-award.png';
 import bronzeAward from '../../static/images/champions/bronze-award.png';
+import goldYearAward from '../../static/images/champions/gold-year-award.png';
+import silverYearAward from '../../static/images/champions/silver-year-award.png';
+import bronzeYearAward from '../../static/images/champions/bronze-year-award.png';
+import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
+import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
+import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
 
 const props = defineProps<{ visible: boolean }>();
@@ -320,6 +326,7 @@ function openDetail(notif: any) {
     // The week the recap is about, not the week now (Nseraf, report 250).
     recapWeekStart.value = weekFromRecapTitle(notif.title || '');
     recapMonth.value = null;
+    recapYear.value = null;
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
     emit('hide');
     return;
@@ -327,6 +334,16 @@ function openDetail(notif: any) {
   // The monthly recap opens the same tab switched to its month.
   if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Month in Science')) {
     recapMonth.value = monthFromRecapTitle(notif.title || '');
+    recapWeekStart.value = null;
+    recapYear.value = null;
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
+    emit('hide');
+    return;
+  }
+  // The yearly recap (Sep 28): the same tab, switched to that Pyr year.
+  if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Year in Science')) {
+    recapYear.value = yearFromRecapTitle(notif.title || '');
+    recapMonth.value = null;
     recapWeekStart.value = null;
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
     emit('hide');
@@ -738,10 +755,11 @@ function stripMd(text: string): string {
 function parseChampions(notif: any): ChampionsView | null {
   const title = String(notif?.title || '');
   // Weekly, or Monthly from scripts/monthly-champions.mjs (same body shape).
-  const kind = /monthly champions/i.test(title) ? 'Monthly Champions' : 'Weekly Champions';
-  if (!/(weekly|monthly) champions/i.test(title)) return null;
+  // Weekly, Monthly, or the Pyr Year (scripts/monthly-champions.mjs RECAP_PERIOD=year).
+  const kind = /year champions/i.test(title) ? 'Pyr Year Champions' : /monthly champions/i.test(title) ? 'Monthly Champions' : 'Weekly Champions';
+  if (!/(weekly|monthly|year) champions/i.test(title)) return null;
   try {
-    const range = cleanCopy(title.replace(/^[\s\S]*?(weekly|monthly) champions/i, ''))
+    const range = cleanCopy(title.replace(/^[\s\S]*?(weekly|monthly|year) champions/i, ''))
       .replace(/^[\s,:;·|-]+/, '')
       .trim();
 
@@ -805,13 +823,32 @@ const champions = computed<ChampionsView | null>(() =>
 /** Trophy art for each broadcast (Ames 2026-10-26: Ames is making one for
  *  weekly and one for monthly). Put the PNG in static/images/champions/,
  *  import it at the top of this file and set it here; null shows the cup. */
-const CHAMP_TROPHY: Record<string, string | null> = { 'Weekly Champions': weeklyTrophy, 'Monthly Champions': goldCup };
+const CHAMP_TROPHY: Record<string, string | null> = { 'Weekly Champions': weeklyTrophy, 'Monthly Champions': goldCup, 'Pyr Year Champions': goldYearAward };
 const CHAMP_CHEER = 'Big Congratulations! Thanks for contributing to neuroscience!';
+/** The Pyr year's anniversary (Sep 28, the day the first testers came in 2026). */
+const YEAR_CHEER = 'Happy birthday, Pyr! Thank you for a whole year of neuroscience!';
+const champCheer = computed(() => champions.value?.kind === 'Pyr Year Champions' ? YEAR_CHEER : CHAMP_CHEER);
+/** Longer than a week: the gold and violet card. */
+const champGrand = computed(() => champions.value?.kind === 'Monthly Champions' || champions.value?.kind === 'Pyr Year Champions');
+const champSpan = computed(() => champions.value?.kind === 'Pyr Year Champions' ? 'year' : champions.value?.kind === 'Monthly Champions' ? 'month' : 'week');
+const YEAR_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+/** "Year One" → "Sep 28, 2026 to Sep 27, 2027". */
+const champYearDates = computed(() => {
+  const w = /Year (\w+)/.exec(champions.value?.range || '')?.[1];
+  const n = w ? (YEAR_WORDS.indexOf(w) > 0 ? YEAR_WORDS.indexOf(w) : Number(w)) : 0;
+  return n > 0 ? `Sep 28, ${2025 + n} to Sep 27, ${2026 + n}` : '';
+});
 /** The month's podiums hold trophies instead of medals (Ames 2026-10-26):
  *  cups for edits, neuron awards for cells. */
 const MONTH_CUPS = [goldCup, silverCup, bronzeCup];
 const MONTH_AWARDS = [goldAward, silverAward, bronzeAward];
-const monthTrophy = (label: string, rank: number) => (/cell|complet/i.test(label) ? MONTH_AWARDS : MONTH_CUPS)[rank - 1];
+const YEAR_EDITS = [goldYearAward, silverYearAward, bronzeYearAward];
+const YEAR_CELLS = [goldYearTrophy, silverYearTrophy, bronzeYearTrophy];
+const monthTrophy = (label: string, rank: number) => {
+  const cells = /cell|complet/i.test(label);
+  if (champions.value?.kind === 'Pyr Year Champions') return (cells ? YEAR_CELLS : YEAR_EDITS)[rank - 1];
+  return (cells ? MONTH_AWARDS : MONTH_CUPS)[rank - 1];
+};
 const champTrophy = computed(() => champions.value ? CHAMP_TROPHY[champions.value.kind] ?? null : null);
 watch(champions, c => { if (c) void loadChampionIds(); });
 // Opening a Champions card: blue, purple and yellow confetti behind it, a
@@ -823,7 +860,16 @@ watch(() => champions.value && openNotif.value, async (open, was) => {
   // After the card has faded in, or the burst shows through it.
   await new Promise(r => setTimeout(r, 600));
   if (!champions.value) return;
-  const monthly = champions.value?.kind === 'Monthly Champions';
+  const kind = champions.value?.kind;
+  const monthly = kind === 'Monthly Champions';
+  // The year: a fanfare of four waves, the last one gold.
+  if (kind === 'Pyr Year Champions') {
+    champConfetti.value?.trigger('champions', 3.5);
+    setTimeout(() => champConfetti.value?.trigger('champions', 2.5), 400);
+    setTimeout(() => champConfetti.value?.trigger('champions', 2.5), 900);
+    setTimeout(() => champConfetti.value?.trigger('gold', 3), 1500);
+    return;
+  }
   champConfetti.value?.trigger('champions', monthly ? 3 : 2);
   if (monthly) setTimeout(() => champConfetti.value?.trigger('champions', 2), 450);
 });
@@ -970,7 +1016,7 @@ function padRank(rank: number): string {
         <ConfettiCelebration v-if="champions" ref="champConfetti" inline />
         <div
           class="nge-notif-detail"
-          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--monthly': champions?.kind === 'Monthly Champions','nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
+          :class="{ 'nge-notif-detail--champions': champions, 'nge-notif-detail--monthly': champGrand, 'nge-notif-detail--yearly': champions?.kind === 'Pyr Year Champions', 'nge-notif-detail--picture': !!(openNotif.image_url || openNotif.thumbnail_url), 'nge-notif-detail--wide-picture': pictureWide && !longRead }"
           role="dialog"
           aria-modal="true"
           :aria-label="cleanCopy(openNotif.title)"
@@ -1026,12 +1072,13 @@ function padRank(rank: number): string {
                     </div>
                     <div class="nge-champs-head-text">
                       <div class="nge-champs-kicker">{{ champions.kind }}</div>
-                      <h2 class="nge-champs-range">{{ champions.range || (champions.kind === 'Monthly Champions' ? 'This month' : 'This week') }}</h2>
+                      <h2 class="nge-champs-range">{{ champions.range || `This ${champSpan}` }}</h2>
+                      <div v-if="champYearDates" class="nge-champs-dates">{{ champYearDates }}</div>
                     </div>
                   </header>
                   <!-- One line for every Champions card, old and new (Ames 2026-10-26: the date
                        above already says which week or month). -->
-                  <p class="nge-champs-intro">{{ CHAMP_CHEER }}</p>
+                  <p class="nge-champs-intro">{{ champCheer }}</p>
 
                   <!-- Wide screens: the categories sit side by side (Ames 2026-10-05). -->
                   <div class="nge-champs-columns">
@@ -1049,8 +1096,8 @@ function padRank(rank: number): string {
                     <div v-if="section.entries.length === 0" class="nge-champs-empty">
                       <span class="nge-champs-empty-ring" aria-hidden="true"><span></span></span>
                       <div class="nge-champs-empty-text">
-                        <div class="nge-champs-empty-title">No activity this {{ champions.kind === 'Monthly Champions' ? 'month' : 'week' }}</div>
-                        <div class="nge-champs-empty-sub">The podium is open. Next {{ champions.kind === 'Monthly Champions' ? 'month' : 'week' }} it could be yours.</div>
+                        <div class="nge-champs-empty-title">No activity this {{ champSpan }}</div>
+                        <div class="nge-champs-empty-sub">The podium is open. Next {{ champSpan }} it could be yours.</div>
                       </div>
                     </div>
 
@@ -1066,7 +1113,7 @@ function padRank(rank: number): string {
                                :role="championId(entry.name) ? 'button' : undefined" :tabindex="championId(entry.name) ? 0 : undefined"
                                :title="championId(entry.name) ? `Open ${entry.name}'s profile` : undefined"
                                @click="openChampion(entry.name)" @keydown.enter="openChampion(entry.name)">
-                            <img v-if="champions.kind === 'Monthly Champions' && entry.rank <= 3" :src="monthTrophy(section.label, entry.rank)" alt="" class="nge-champs-medal nge-champs-cupimg">
+                            <img v-if="champGrand && entry.rank <= 3" :src="monthTrophy(section.label, entry.rank)" alt="" class="nge-champs-medal nge-champs-cupimg">
                             <span v-else class="nge-champs-medal" aria-hidden="true">{{ champMedal(entry.rank) }}</span>
                             <span class="nge-champs-name">{{ entry.name }}</span>
                             <span class="nge-champs-num">{{ entry.count }}</span>
@@ -2569,6 +2616,55 @@ span.nge-notif-reply-part { cursor: default; }
 .nge-notif-detail--monthly .nge-champs-step--bronze .nge-champs-plinth::after { animation-delay: 0.8s; }
 @keyframes ngeChampsSweep { 0%, 55% { left: -60%; } 85%, 100% { left: 130%; } }
 
+/* ═══ Pyr Year Champions: the anniversary, every Sep 28 (Ames 2026-10-26:
+   "special pomp and circumstance"). The monthly card, grander: a double gold
+   frame, a warm dawn behind the trophy that breathes (nothing turns), the
+   year's dates under its name. ═══ */
+.nge-notif-detail--yearly {
+  border: 2px solid rgb(var(--gold) / 0.7);
+  outline: 1px solid rgb(var(--gold) / 0.25);
+  outline-offset: 4px;
+  background:
+    radial-gradient(80% 50% at 18% 0%, rgb(var(--gold) / 0.24), transparent 70%),
+    radial-gradient(60% 60% at 100% 100%, rgba(120, 60, 200, 0.26), transparent 70%),
+    radial-gradient(50% 50% at 0% 70%, rgba(90, 40, 170, 0.2), transparent 70%),
+    linear-gradient(158deg, rgba(26, 14, 44, 0.98) 0%, rgba(8, 6, 20, 0.99) 100%);
+  box-shadow:
+    0 24px 90px rgba(0, 0, 0, 0.8),
+    0 0 90px rgb(var(--gold) / 0.22),
+    0 0 160px rgba(140, 80, 255, 0.16),
+    inset 0 1px 0 rgb(var(--gold) / 0.4);
+}
+.nge-notif-detail--yearly .nge-champs-emblem--art { position: relative; width: 168px; height: 168px; margin: -20px 0 -14px; }
+.nge-notif-detail--yearly .nge-champs-emblem--art::before {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--gold) / 0.45), rgba(150, 90, 255, 0.18) 45%, transparent 70%);
+  animation: ngeChampsDawn 5s ease-in-out infinite;
+}
+@keyframes ngeChampsDawn { 0%, 100% { opacity: 0.55; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1.04); } }
+.nge-notif-detail--yearly .nge-champs-kicker { font-size: 0.86em; letter-spacing: 0.4em; }
+.nge-notif-detail--yearly .nge-champs-range { font-size: 2.3em; }
+.nge-champs-dates {
+  margin-top: 4px;
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.74em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(var(--gold, 255 211 90) / 0.75);
+}
+.nge-notif-detail--yearly .nge-champs-intro {
+  border-top: 3px double rgb(var(--gold) / 0.7);
+  border-bottom: 3px double rgb(var(--gold) / 0.7);
+  font-size: 1em;
+  padding: 12px 40px;
+}
+.nge-notif-detail--yearly .nge-champs-cupimg { width: 54px; height: 54px; }
+.nge-notif-detail--yearly .nge-champs-step--gold .nge-champs-cupimg { width: 76px; height: 76px; }
+
 /* Ranks four and below: gold hairlines. */
 .nge-notif-detail--monthly .nge-champs-row {
   border-color: rgb(var(--gold) / 0.14);
@@ -2596,6 +2692,8 @@ span.nge-notif-reply-part { cursor: default; }
   .nge-champs-emblem--art { width: 64px; height: 64px; margin: -6px 0; }
   .nge-notif-detail--monthly .nge-champs-emblem--art { width: 92px; height: 92px; margin: -8px 0 -6px; }
   .nge-notif-detail--monthly .nge-champs-range { font-size: 1.35em; }
+  .nge-notif-detail--yearly .nge-champs-emblem--art { width: 104px; height: 104px; margin: -10px 0 -8px; }
+  .nge-notif-detail--yearly .nge-champs-range { font-size: 1.55em; }
   .nge-notif-detail--monthly .nge-champs-step--gold::before { width: 180px; margin-left: -90px; }
 }
 
@@ -2620,7 +2718,8 @@ span.nge-notif-reply-part { cursor: default; }
   .nge-notif-detail--monthly .nge-champs-range,
   .nge-notif-detail--monthly .nge-champs-medal,
   .nge-notif-detail--monthly .nge-champs-trophy,
-  .nge-notif-detail--monthly .nge-champs-plinth::after { animation: none; }
+  .nge-notif-detail--monthly .nge-champs-plinth::after,
+  .nge-notif-detail--yearly .nge-champs-emblem--art::before { animation: none; }
   .nge-notif-detail-scan { animation: none; opacity: 0; display: none; }
   .nge-notif-detail-close,
   .nge-notif-open-help { transition: none; }

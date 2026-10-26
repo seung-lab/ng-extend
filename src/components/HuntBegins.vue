@@ -88,6 +88,6 @@ const gems = Array.from({ length: 22 }, (_, i) => ({ x: (i * 47) % 100, delay: (
   .nge-hunt-begins, .nge-hunt-begins-band, .nge-hunt-begins-title { animation: none !important; }
   .nge-hunt-begins-gem { display: none; }
 }
-:global(body.nge-calm) .nge-hunt-begins-band, :global(body.nge-calm) .nge-hunt-begins-title { animation: none !important; }
-:global(body.nge-calm) .nge-hunt-begins-gem { display: none; }
+:global(body.nge-calm .nge-hunt-begins-band), :global(body.nge-calm .nge-hunt-begins-title) { animation: none !important; }
+:global(body.nge-calm .nge-hunt-begins-gem) { display: none; }
 </style>

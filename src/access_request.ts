@@ -366,12 +366,38 @@ function placeReviewPoints(it: AccessItem): boolean {
   return true;
 }
 
+/** The review point picked in the 2D or 3D view (clicked, or under the
+ *  mouse), as the review box's key ("red:2"), so the box lights up its row
+ *  (Celia D, 258: "selecting a point in the 2d or 3d view also jumps you to
+ *  that point on the list or at least highlights it"). */
+export const pickedReviewPoint = ref<string | null>(null);
+let pickWatched: any = null;
+function watchPickedPoint() {
+  const sel = (window as any).viewer?.selectionDetailsState;
+  if (!sel || pickWatched === sel) return;
+  pickWatched = sel;
+  sel.changed.add(() => {
+    let key: string | null = null;
+    try {
+      for (const l of sel.value?.layers ?? []) {
+        const name = l?.layer?.managedLayer?.name;
+        const color = (Object.keys(REVIEW_LAYERS) as AccessColor[]).find(c => REVIEW_LAYERS[c].name === name);
+        const m = String(l?.state?.annotationId ?? '').match(/^(red|blue|merge)-(\d+)$/);
+        if (color && m && m[1] === color) { key = `${color}:${m[2]}`; break; }
+      }
+    } catch { /* nothing picked */ }
+    if (reviewing.value) pickedReviewPoint.value = key;
+  });
+}
+
 /** The link loads a while after the hash changes (seconds, on real data)
  *  and replaces every layer, the drawn points too (Ames 2026-10-16: still no
  *  points). So for as long as this example is being reviewed, the points and
  *  the opacity are put back whenever they are gone. */
 export function showReviewPoints(it: AccessItem) {
   window.clearInterval(reviewTimer);
+  pickedReviewPoint.value = null;
+  watchPickedPoint();
   const want = (['red', 'blue', 'merge'] as const).filter(c => (it.points[c] ?? []).length)
     .map(c => ({ name: REVIEW_LAYERS[c].name, n: (it.points[c] ?? []).length }));
   const have = () => {
@@ -394,6 +420,7 @@ export function showReviewPoints(it: AccessItem) {
 /** Review mode ends: the drawn points go, the cells are solid again. */
 export function endReview() {
   window.clearInterval(reviewTimer);
+  pickedReviewPoint.value = null;
   try { sessionStorage.removeItem(REVIEW_KEY); } catch { /* storage blocked */ }
   try {
     const v = (window as any).viewer;
