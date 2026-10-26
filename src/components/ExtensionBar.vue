@@ -1060,6 +1060,18 @@ function toggleBarPinned() {
   else barPinned.value = true;
 }
 watch(barAutoHide, on => { if (!on) { clearBarTimers(); barHover.value = false; barPinned.value = false; } });
+// While the bar is up, the Pyr gem sits at the left end of the layer tab row
+// (Ames); it is drawn by CSS from this, and pointing at it brings the bar down.
+document.body.style.setProperty('--nge-pyr-gem', `url("${pyrIcon}")`);
+// A click on the gem brings the bar down at once.
+document.addEventListener('click', e => {
+  if (!barTucked.value) return;
+  const t = e.target as HTMLElement | null;
+  if (!t?.classList?.contains('neuroglancer-layer-panel')) return;
+  if (e.clientX - t.getBoundingClientRect().left > 40) return;
+  clearBarTimers();
+  barHover.value = true;
+});
 watch([barAutoHide, barShown], ([on, shown]) => {
   document.body.classList.toggle('nge-bar-autohide', on);
   document.body.classList.toggle('nge-bar-tucked', on && !shown);
@@ -2597,6 +2609,21 @@ body.nge-bar-autohide.nge-bar-tucked #extensionBar {
   transition: top 0.2s ease-in, box-shadow 0.2s;
 }
 body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
+/* Room above the layer tabs once the bar is out of the way (Ames: they were
+   squished at the top), and the Pyr gem at the row's left end. */
+body.nge-bar-autohide .neuroglancer-layer-panel { padding-top: 6px !important; }
+body.nge-bar-autohide .neuroglancer-layer-panel::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 4px 0 2px;
+  background: var(--nge-pyr-gem) center / contain no-repeat;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.35));
+  cursor: pointer;
+}
 .nge-notif-dot {
   position: absolute;
   top: 8px;
