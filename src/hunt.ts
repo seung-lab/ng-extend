@@ -37,6 +37,8 @@ export interface HuntInfo {
   results_hours?: number;
   /** The edge spots the key marks, in nanometres: shown to players once the Hunt is open. */
   edges_nm?: number[][];
+  /** The answers can be shown (the Hunt is over and does not keep them). */
+  answers?: boolean;
   /** The segmentation volume's bounds in nanometres: where the data ends. The cells glow teal within edge_nm of them. */
   bounds_nm?: number[][] | null;
   /** This close to the bounds is the edge of the dataset, nm (the server's judging rule, EDGE_NM). */
@@ -395,6 +397,52 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
 
 /** Where the edges of the dataset are, shown to players: teal rings, read only, so nobody spends a
  *  gem finding them (Ames 2026-10-23: "we should just highlight/show where the edges [are]"). */
+export const huntAnswersLayerName = (h: HuntInfo) => `Hunt answers: ${h.title}`;
+/** Nanometres to the viewer's global coordinates, at the current position for any other axes. */
+function nmToGlobal(): ((nm: number[]) => number[]) | null {
+  const v = viewer();
+  const cs = v?.coordinateSpace?.value;
+  const names: string[] = cs?.names ?? [], scales = cs?.scales;
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (!scales || ix.some(i => i < 0)) return null;
+  const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
+  return (e: number[]) => { const p = here.slice(); ix.forEach((i, k) => { p[i] = e[k] / (Number(scales[i]) * 1e9); }); return p; };
+}
+/**
+ * The answers on the cells once the Hunt is over (Ames 2026-10-26: "should we show players the answer to the hunt
+ * at the end", yes): a ring on every merger (gold) and extension (purple). The player's own gems sit on the ones
+ * they found, so the rings alone are the ones they missed. Shown through the cells, so none hides.
+ */
+export async function showAnswers(h: HuntInfo): Promise<{ total: number; found: number; tookPart: boolean } | null> {
+  const r = await huntCall<{ took_part: boolean; places: { at: number[]; kind: GemKind; found: boolean }[] }>('hunt.answers', { id: h.id });
+  if (!gemKinds(h).some(k => managed(huntLayerName(h, k)))) { if (await goToHunt(h) === 'switching') return null; }
+  const v = viewer();
+  const toGlobal = nmToGlobal();
+  if (!v?.layerSpecification || !toGlobal) throw new Error('The viewer is not ready yet. Try again in a moment.');
+  const old = managed(huntAnswersLayerName(h));
+  if (old) { try { v.layerManager.removeManagedLayer(old); } catch { /* already gone */ } }
+  const places = r.places.map((p, i) => ({ ...p, id: `answer-${i + 1}` }));
+  const folders = (['cut', 'merge'] as GemKind[]).map(k => ({ id: `answers-${k}`, name: k === 'cut' ? 'Mergers' : 'Extensions',
+    ids: places.filter(p => p.kind === k).map(p => p.id), color: FOUND_COLOR[k], paint: true })).filter(f => f.ids.length);
+  const ml = makeLayer(v.layerSpecification, huntAnswersLayerName(h), {
+    type: 'annotation', source: { url: 'local://annotations' },
+    annotations: places.map(p => ({ type: 'point', id: p.id, point: toGlobal(p.at) })),
+    annotationColor: FOUND_COLOR.cut, pointSize: 6, onTop: true, ngeAnnFolders: folders,
+  });
+  v.layerSpecification.add(ml);
+  setTimeout(() => {
+    const ds = managed(huntAnswersLayerName(h))?.layer?.annotationDisplayState;
+    const ref = Number((h.view as any)?.projectionScale) || 0;
+    try { if (ds?.ngeShrinkRef && ref > 0) ds.ngeShrinkRef.value = ref; } catch { /* optional */ }
+  }, 300);
+  return { total: places.length, found: places.filter(p => p.found).length, tookPart: r.took_part };
+}
+export function hideAnswers(h: HuntInfo) {
+  const ml = managed(huntAnswersLayerName(h));
+  if (ml) { try { viewer()?.layerManager?.removeManagedLayer(ml); } catch { /* already gone */ } }
+}
+export const answersOnScreen = (h: HuntInfo) => !!managed(huntAnswersLayerName(h));
+
 export const huntEdgeLayerName = (h: HuntInfo) => `${h.test ? 'Hunt test edges' : 'Hunt edges'}: ${h.title}`;
 function ensureEdgeLayer(h: HuntInfo) {
   const v = viewer();

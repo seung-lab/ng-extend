@@ -808,6 +808,26 @@ test('hunt.board: the running board alone, the same rows as hunt.current, refuse
   await assert.rejects(H.huntAction('hunt.board', { id: 999 }, h.ctx(P1, at(60))), /No such Hunt/);
 });
 
+test('hunt.answers: every place once the Hunt is over, which you found, never before, and not when the Hunt keeps them (Ames 2026-10-26)', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(5000, 5000, 100), id: 'a1' }]), dims: DIMS }, h.ctx(P1, at(50)));
+  await assert.rejects(H.huntAction('hunt.answers', { id: d.id }, h.ctx(P1, at(60))), /once the Hunt is over/);
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(60)))).hunts[0].answers, false);
+  const a = await H.huntAction('hunt.answers', { id: d.id }, h.ctx(P1, at(121)));
+  assert.equal(a.took_part, true);
+  assert.deepEqual(a.places.map((p) => [p.kind, p.found]), [['cut', false], ['cut', true], ['cut', false]]);
+  assert.deepEqual(a.places[1].at, [20000, 20000, 4000]);   // nanometres
+  const other = await H.huntAction('hunt.answers', { id: d.id }, h.ctx(P2, at(121)));
+  assert.deepEqual([other.took_part, other.places.filter((p) => p.found).length], [false, 0]);
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(121)))).hunts[0].answers, true);
+  // A Hunt that keeps its answers (its cells are for another Hunt).
+  await H.huntAction('hunt.save', { id: d.id, fields: { tiers: { gold: 3, silver: 2, bronze: 1, hide_answers: true } } }, h.ctx(ADMIN, at(122), true));
+  await assert.rejects(H.huntAction('hunt.answers', { id: d.id }, h.ctx(P1, at(123))), /keeps its answers/);
+  assert.equal((await H.huntAction('hunt.current', {}, h.ctx(P1, at(123)))).hunts[0].answers, false);
+});
+
 test('"Hunt results" stays in the top bar 24 hours after the end unless the Hunt says (Ames 2026-10-23)', async () => {
   const h = harness();
   const d = await makeHunt(h);

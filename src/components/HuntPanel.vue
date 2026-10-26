@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -76,6 +76,26 @@ onUnmounted(() => { if (gemTimer) clearInterval(gemTimer); });
 
 // A new hunt in the panel (or a switch between a test run and the real one) starts clean.
 watch(() => `${hunt.value?.id ?? ''}:${hunt.value?.test ? 'test' : ''}`, () => { error.value = ''; });
+
+/** The answers on the cells, once the Hunt is over (Ames 2026-10-26). */
+const answersShown = ref(false);
+const answersNote = ref('');
+watch(() => hunt.value?.id, () => { const h = hunt.value; answersShown.value = !!h && answersOnScreen(h); answersNote.value = ''; });
+async function toggleAnswers() {
+  const h = hunt.value; if (!h || busy.value) return;
+  if (answersShown.value) { hideAnswers(h); answersShown.value = false; answersNote.value = ''; return; }
+  busy.value = 'answers'; error.value = '';
+  try {
+    const r = await showAnswers(h);
+    if (!r) return;
+    answersShown.value = true;
+    const missed = r.total - r.found;
+    answersNote.value = r.tookPart
+      ? `Rings mark all ${r.total}: ${r.found} you found, ${missed} you missed.`
+      : `Rings mark all ${r.total}: ${h.spots.cut} ${h.spots.cut === 1 ? 'merger' : 'mergers'} in gold, ${h.spots.merge} ${h.spots.merge === 1 ? 'extension' : 'extensions'} in purple.`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 
 async function go() {
   const h = hunt.value; if (!h || busy.value) return;
@@ -443,6 +463,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           <img src="hunt/fastest-128.png" alt="" />
           <div><b>Fastest: {{ hunt.fastest.you ? 'you!' : hunt.fastest.name }}</b><span>{{ fastestShort }}</span></div>
         </div>
+        <!-- Where every merger and extension was (Ames 2026-10-26), unless the Hunt keeps its answers -->
+        <button v-if="hunt.answers && !hunt.test" class="nge-hunt-btn nge-hunt-answersbtn" :disabled="busy === 'answers'" @click="toggleAnswers">
+          {{ answersShown ? 'Hide the answers' : busy === 'answers' ? 'Showing the answers…' : 'Show the answers' }}
+        </button>
+        <p v-if="answersShown && answersNote" class="nge-hunt-answersnote">{{ answersNote }}</p>
       </template>
 
       <p v-if="error" class="nge-hunt-error" role="alert">{{ error }}</p>
@@ -837,6 +862,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-log--miss b { color: #a7b0bf; }
 .nge-hunt-log--already b { color: #9fd0ff; }
 .nge-hunt-log--refused b { color: #ffb3b3; }
+.nge-hunt-answersbtn { width: 100%; }
+.nge-hunt-answersnote { margin: -2px 0 0; text-align: center; font: 12px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.8); }
 .nge-hunt-congrats { padding: 10px 12px; border-radius: 10px; text-align: center; background: radial-gradient(120% 120% at 50% 0%, rgb(var(--hn-gold) / 0.16), rgb(var(--hn-accent) / 0.05) 70%); border: 1px solid rgb(var(--hn-gold) / 0.55); animation: ngeHuntHit 0.7s cubic-bezier(0.2, 1.5, 0.4, 1); }
 .nge-hunt-congrats-head { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px 0 2px; }
 .nge-hunt-congrats-big { font: 700 19px/1.1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; color: rgb(var(--hn-gold)); text-shadow: 0 0 14px rgb(var(--hn-gold) / 0.45); }
