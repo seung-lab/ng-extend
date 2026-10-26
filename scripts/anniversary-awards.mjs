@@ -73,6 +73,24 @@ function fullYears(joined, today) {
   return ty - jy - ((tm < jm || (tm === jm && td < day)) ? 1 : 0);
 }
 
+/** Ames's birthday lines (2026-10-26). One opens each note, picked by the
+ *  player and the year, so a rerun says the same thing. {span} is "a whole
+ *  year", "two whole years", and so on. */
+const CHEERS = [
+  'Blow out the virtual candles on your virtual cake on your virtual birthday!',
+  '{Span} of Pyr is worth cell-ebrating!',
+  'Cheers to {span} of Pyr!',
+  'You take the cake!',
+  "Hip hip Pyrray! It's your in-game birthday!",
+  'Mmmm cake.',
+];
+function cheerFor(uid, n) {
+  let h = n;
+  for (const ch of uid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const span = n === 1 ? 'a whole year' : `${(WORDS[n] ?? String(n)).toLowerCase()} whole years`;
+  return CHEERS[h % CHEERS.length].replace('{span}', span).replace('{Span}', span[0].toUpperCase() + span.slice(1));
+}
+
 function badgeFor(n) {
   return {
     slug: `anniversary-${n}`,
@@ -101,7 +119,7 @@ async function main() {
   for (const u of due) {
     for (let n = 1; n <= u.years; n++) {
       const badge = badgeFor(n);
-      if (dry) { console.log(`[birthday] would give ${badge.name} to ${u.display_name || u.id} (joined ${etDay(u.created_at)})`); continue; }
+      if (dry) { console.log(`[birthday] would give ${badge.name} to ${u.display_name || u.id} (joined ${etDay(u.created_at)}): ${cheerFor(u.id, n)}`); continue; }
       if (!badges.has(n)) {
         const [saved] = await db.send('POST', 'special_badges?on_conflict=slug', badge, 'resolution=merge-duplicates,return=representation');
         badges.set(n, saved.id);
@@ -113,7 +131,7 @@ async function main() {
         [{ badge_id: id, user_id: u.id, awarded_by: null, reason: `Joined Pyr on ${etDay(u.created_at)}` }], 'resolution=ignore-duplicates,return=minimal');
       await db.send('POST', 'notifications', {
         title: `🎂 New Achievement: ${badge.name}`,
-        body: `Happy Pyr birthday${u.display_name ? `, ${u.display_name}` : ''}! ${n === 1 ? 'A whole year' : `${WORDS[n] ?? n} years`} ago today you joined Pyr. Thank you for mapping the brain with us. 🧬`,
+        body: `${cheerFor(u.id, n)} Happy Pyr birthday${u.display_name ? `, ${u.display_name}` : ''}! ${n === 1 ? 'One year' : `${WORDS[n] ?? n} years`} ago today you joined Pyr. Thank you for mapping the brain with us. 🧬`,
         image_url: ART, thumbnail_url: ART,
         target_type: 'user', target_id: u.id, send_at: new Date().toISOString(), post_to_chat: false,
       });
