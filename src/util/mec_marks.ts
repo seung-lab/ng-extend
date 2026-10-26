@@ -394,6 +394,16 @@ function cellVertices(root: string): { verts: Float32Array[]; pieces: number; lo
  * bottom of the stack. Neighbouring parts are one place: one spot each, in
  * nanometres. `pieces`/`loaded`: the cell's mesh pieces in all, and on hand.
  */
+/** How the mask is read for Hits Edge (Ames 2026-10-26, after three cells):
+ *  W   half the side of the square judged around an empty pixel, in pixels
+ *      (8 = an 8 um square at 512 nm a pixel); STEP reads every STEPth pixel;
+ *  EMPTY  the share of it that must be empty: a hole inside the tissue was
+ *      26% at most, the real edge 33% at least (section 4667);
+ *  AGREE  the section above or below, this many away, must agree (damaged
+ *      sections such as 5480 and 8620 are nearly empty for one section).
+ *  Settable from the console as window.__ngeMecEdgeTuning, for tests. */
+export const EDGE_TUNING = { W: 8, STEP: 1, EMPTY: 0.3, AGREE: 10 };
+try { (window as any).__ngeMecEdgeTuning = EDGE_TUNING; } catch { /* no window */ }
 let lastEdgeStats: any = null;
 try { (window as any).__ngeMecEdgeDebug = () => lastEdgeStats; } catch { /* no window */ }
 export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, reachNm = 2000, binNm = 2000, everySections = 20,
@@ -437,7 +447,7 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
   // 8 um). A 0 counts only when the 40 um square around it is mostly empty, as
   // it is past the real edge: there 47% at least and about half as a rule, in
   // the holes 26% at most (section 4667, 2026-10-26). Read every 2nd pixel.
-  const W = 40, STEP = 2, EMPTY = 0.38, AGREE = 10;
+  const { W, STEP, EMPTY, AGREE } = EDGE_TUNING;
   const outside = new Map<string, boolean>();
   for (let at = 0; at < sections.length; at += 3) {
     onProgress?.(at, sections.length);
