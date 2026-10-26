@@ -524,16 +524,18 @@ async function countIt(b: BoardRow, d: RunGem) {
 
 // A place the key missed, by its coordinates (Ames 2026-10-26: "I want to be able to add coords for missing cut
 // or merge and label them as merge or cut"): x, y, z as the coordinate bar shows them, or the crosshair.
-const addAt = ref<{ x: number | ''; y: number | ''; z: number | ''; kind: 'cut' | 'merge'; size: number | '' }>({ x: '', y: '', z: '', kind: 'cut', size: '' });
+// One box for x, y, z (Ames 2026-10-26: "give me one box for xyz"): paste them as the coordinate bar shows them.
+const addAt = ref<{ xyz: string; kind: 'cut' | 'merge'; size: number | '' }>({ xyz: '', kind: 'cut', size: '' });
+const xyzOf = (text: string) => (text.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
 function addFromCrosshair() {
   const p = crosshairXyz();
-  if (p) addAt.value = { ...addAt.value, x: p[0], y: p[1], z: p[2] };
+  if (p) addAt.value = { ...addAt.value, xyz: p.slice(0, 3).join(', ') };
 }
 async function addPlace() {
   const h = editing.value; if (!h?.id || busy.value) return;
-  const v = [addAt.value.x, addAt.value.y, addAt.value.z].map(Number);
+  const v = xyzOf(addAt.value.xyz);
   error.value = ''; message.value = '';
-  if (v.some(n => !Number.isFinite(n)) || [addAt.value.x, addAt.value.y, addAt.value.z].some(n => n === '')) { error.value = 'Give x, y and z, or use the crosshair.'; return; }
+  if (v.length !== 3 || v.some(n => !Number.isFinite(n))) { error.value = 'Give x, y and z (three numbers), or use the crosshair.'; return; }
   if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) { error.value = 'Open the Hunt on its dataset first (Open the link above), so the coordinates are its own.'; return; }
   const scales = (window as any).viewer?.coordinateSpace?.value?.scales;
   if (!scales || scales.length < 3) { error.value = 'The viewer is not ready yet. Try again in a moment.'; return; }
@@ -548,7 +550,7 @@ async function addPlace() {
     const after = `${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed`
       + `${r.laser ? `, and ${r.laser} ${r.laser === 1 ? 'hunter' : 'hunters'} got Laser Eyes` : ''}.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
     message.value = r.enlarged ? `Made the ${what} there bigger: ${size} µm across. ${after}` : `Added a ${what}${size ? ` ${size} µm across` : ''}: the key has ${r.target_count} places now. ${after}`;
-    addAt.value = { x: '', y: '', z: '', kind: addAt.value.kind, size: '' };
+    addAt.value = { xyz: '', kind: addAt.value.kind, size: '' };
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -816,9 +818,7 @@ async function duplicate() {
         <legend>A place the key missed</legend>
         <p class="nge-hunts-help">A real merger or missing extension the key does not have: put the crosshair on it (or type x, y, z as the coordinate bar shows them), say which it is, and add it. For a wide face, give it a size: a gem anywhere in it counts, and at a place the key has already, that place is made bigger. (In the key layers themselves, an ellipsoid, line or box works the same way.) Everyone is judged again, and each hunter whose gem finds it gets <b>Laser Eyes</b>. A hunter's own gem on it can also be counted below with <b>Count it</b>.</p>
         <div class="nge-hunts-addrow">
-          <input v-model.number="addAt.x" type="number" class="nge-hunts-input" placeholder="x" aria-label="x" />
-          <input v-model.number="addAt.y" type="number" class="nge-hunts-input" placeholder="y" aria-label="y" />
-          <input v-model.number="addAt.z" type="number" class="nge-hunts-input" placeholder="z" aria-label="z" />
+          <input v-model="addAt.xyz" type="text" class="nge-hunts-input nge-hunts-xyz" placeholder="x, y, z" aria-label="x, y, z" spellcheck="false" />
           <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="addFromCrosshair">Use the crosshair</button>
         </div>
         <div class="nge-hunts-addrow">
@@ -942,6 +942,7 @@ async function duplicate() {
 .nge-hunts-reports { border-color: rgba(95, 227, 245, 0.55); box-shadow: 0 0 14px rgba(95, 227, 245, 0.12); }
 .nge-hunts-addrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .nge-hunts-addrow input.nge-hunts-input { width: 92px; }
+.nge-hunts-addrow input.nge-hunts-xyz { flex: 1; min-width: 180px; width: auto; font-variant-numeric: tabular-nums; }
 .nge-hunts-addsize { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: #cfdcef; white-space: nowrap; }
 .nge-hunts-addsize input.nge-hunts-input { width: 74px; }
 .nge-hunts-addsize, .nge-hunts-addsize input { text-transform: none; }
