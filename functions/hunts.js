@@ -437,7 +437,8 @@ function normalizeDrops(points) {
   return (Array.isArray(points) ? points : [])
     .filter((d) => d && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.nm) && d.nm.length === 3)
     .map((d) => ({ id: String(d.id || '').slice(0, 80), nm: d.nm.map(Number), at: Array.isArray(d.at) ? d.at.map(Number) : null,
-      hit: Number.isInteger(d.hit) ? d.hit : -1, k: d.k === 'cut' || d.k === 'merge' ? d.k : null, t: d.t || null }));
+      hit: Number.isInteger(d.hit) ? d.hit : -1, k: d.k === 'cut' || d.k === 'merge' ? d.k : null, t: d.t || null,
+      ...(d.rep === true ? { rep: true } : {}), ...(d.rep_no === true ? { rep_no: true } : {}) }));
 }
 
 /** One gem: the nearest problem not yet found within the tolerance, or one found already, or a miss. */
@@ -487,7 +488,8 @@ function runView(h, drops, targets, run) {
     started_at: (run && run.created_at) || null, time_ms: run ? runClock(run, drops) : null,
     done: (targets.length > 0 && found >= targets.length) || used >= budget,
     tier: null,   // the medals are places, given and shown at the end
-    drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, kind: d.hit >= 0 ? kindOf(targets[d.hit]) : null, k: d.k })),
+    drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, kind: d.hit >= 0 ? kindOf(targets[d.hit]) : null, k: d.k,
+      ...(d.rep ? { rep: true } : {}), ...(d.rep_no ? { rep_no: true } : {}) })),
   };
 }
 
@@ -790,6 +792,9 @@ async function huntAction(action, args, ctx) {
     case 'hunt.duplicate': needAdmin(); return duplicate(args, ctx);
     case 'hunt.run': needAdmin(); return adminRun(args, ctx);
     case 'hunt.count_it': needAdmin(); return countIt(args, ctx);
+    case 'hunt.report': return reportGem(args, ctx);
+    case 'hunt.reports': needAdmin(); return reportsAction(args, ctx);
+    case 'hunt.dismiss_report': needAdmin(); return dismissReport(args, ctx);
     case 'hunt.add_place': needAdmin(); return addPlaceAction(args, ctx);
     case 'hunt.test': needAdmin(); return testOpen(args, ctx);
     case 'hunt.test_drop': needAdmin(); return testDrop(args, ctx);
@@ -955,7 +960,7 @@ async function adminRun(args, ctx) {
   const h = await getHunt(db, args.id);
   const run = await db.myRun(h.id, String(args.user_id || ''));
   const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
-  return { user_id: args.user_id, drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, k: d.k, t: d.t })) };
+  return { user_id: args.user_id, drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, k: d.k, t: d.t, rep: !!d.rep })) };
 }
 
 /**
@@ -987,6 +992,64 @@ async function addPlaceAction(args, ctx) {
   if (args.kind !== 'cut' && args.kind !== 'merge') fail(400, 'Say whether it is a merger (Cut) or a missing extension (Extend).');
   const radius = Math.max(0, Math.min(Number(args.radius_nm) || 0, 100000));
   return addPlace(h, nm, args.kind, ctx, radius);
+}
+
+/**
+ * A hunter says their missed gem is on a real problem the key missed (Ames 2026-10-26: "in this view I want
+ * a 'found an unlabeled cut/merge' type button"). The gem is marked reported in their run and every admin
+ * hears of it; Count it (from the editor's Reported list) then makes it count, with Laser Eyes.
+ */
+async function reportGem(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (h.status !== 'scheduled' || (adminsOnly(h, ctx) && !ctx.isAdmin)) fail(404, 'No such Hunt.');
+  if (phase(h, now) === 'announced') fail(409, 'The Hunt has not started yet.');
+  const run = await db.myRun(h.id, me.id);
+  const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
+  const d = drops.find((x) => x.id === String((args && args.drop_id) || ''));
+  if (!d) fail(404, 'That gem is not in your Hunt.');
+  if (d.hit >= 0) fail(409, 'That gem found a problem already.');
+  if (d.rep) return { reported: true, drop_id: d.id, again: true };
+  const next = drops.map((x) => (x.id === d.id ? { ...x, rep: true } : x));
+  await db.patchSubmission(run.id, { points: next });
+  if (ctx.notify && db.adminUserIds) {
+    const admins = await db.adminUserIds();
+    const name = ((await db.names([me.id])) || {})[me.id] || 'A hunter';
+    const what = d.k === 'merge' ? 'missing extension' : 'merger';
+    const at = (d.at || []).slice(0, 3).map((v) => Math.round(Number(v))).join(', ');
+    if (admins.length) {
+      await ctx.notify(admins.map((u) => ({ user_id: u, title: `🔎 Hunt report: ${h.title}`.slice(0, 120),
+        body: `${name} says their gem is on a real ${what} the answers missed${at ? `, at ${at}` : ''}. Admin Hub > Hunts > ${h.title}: Reported by hunters, to check it and Count it.` })));
+    }
+  }
+  return { reported: true, drop_id: d.id };
+}
+
+/** Every reported gem still a miss in a Hunt, for the editor (the newest first). */
+async function reportsAction(args, ctx) {
+  const { db } = ctx;
+  const h = await getHunt(db, args && args.id);
+  const runs = db.allSubmissions ? await db.allSubmissions(h.id) : [];
+  const out = [];
+  for (const r of runs) {
+    if (!Array.isArray(r.points) || r.points.some((p) => Array.isArray(p))) continue;
+    for (const d of normalizeDrops(r.points)) if (d.rep && d.hit < 0) out.push({ user_id: r.user_id, drop_id: d.id, k: d.k, at: d.at, t: d.t });
+  }
+  const names = out.length ? await db.names([...new Set(out.map((x) => x.user_id))]) : {};
+  return { reports: out.map((x) => ({ ...x, name: names[x.user_id] || 'Player' })).sort((a, b) => String(b.t).localeCompare(String(a.t))) };
+}
+
+/** Not a problem after all: off the Reported list; the hunter's box says it was checked. */
+async function dismissReport(args, ctx) {
+  const { db } = ctx;
+  const h = await getHunt(db, args && args.id);
+  const run = await db.myRun(h.id, String((args && args.user_id) || ''));
+  const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
+  const d = drops.find((x) => x.id === String((args && args.drop_id) || ''));
+  if (!d) fail(404, 'That gem is not in this hunter\'s run.');
+  const next = drops.map((x) => (x.id === d.id ? (({ rep, ...rest }) => ({ ...rest, rep_no: true }))(x) : x));
+  await db.patchSubmission(run.id, { points: next });
+  return reportsAction({ id: h.id }, ctx);
 }
 
 /**

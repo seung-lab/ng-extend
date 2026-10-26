@@ -38,6 +38,7 @@ interface AdminHunt {
 }
 interface BoardRow { rank: number; name: string; user_id: string; found: number; at: string; gems: number; tier: Tier | null }
 interface RunGem { id: string; at: number[] | null; hit: boolean; k: 'cut' | 'merge' | null }
+interface Report { user_id: string; name: string; drop_id: string; k: 'cut' | 'merge' | null; at: number[] | null; t: string | null }
 
 const TIERS: Tier[] = ['gold', 'silver', 'bronze'];
 const TIER_WORD: Record<Tier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
@@ -173,6 +174,7 @@ async function open(h: AdminHunt) {
     cellRows.value = []; setCells(full.cells || []);
     autoRead.value = false;   // a saved key stays until a link is opened
     scan();
+    void loadReports(full);
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -449,6 +451,26 @@ async function showRun(b: BoardRow) {
   catch (e: any) { error.value = e?.message || String(e); }
 }
 function goToGem(d: RunGem) { if (d.at) goToSoma(d.at.slice(0, 3)); }
+
+// Gems hunters say are on a real problem the answers missed (Ames 2026-10-26): check each, then Count it or Not real.
+const reports = ref<Report[]>([]);
+async function loadReports(h: AdminHunt) {
+  reports.value = [];
+  if (!h?.id || (h as any).status !== 'scheduled') return;
+  try { reports.value = (await huntCall<{ reports: Report[] }>('hunt.reports', { id: h.id })).reports || []; } catch { /* the list is a help */ }
+}
+async function countReport(r: Report) {
+  await countIt({ user_id: r.user_id } as BoardRow, { id: r.drop_id, at: r.at, hit: false, k: r.k });
+}
+async function dismissReport(r: Report) {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  busy.value = 'dismiss'; error.value = ''; message.value = '';
+  try {
+    reports.value = (await huntCall<{ reports: Report[] }>('hunt.dismiss_report', { id: h.id, user_id: r.user_id, drop_id: r.drop_id })).reports || [];
+    message.value = `Not counted: ${r.name}'s report is off the list, and their Hunt box says it was checked.`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 async function countIt(b: BoardRow, d: RunGem) {
   const h = editing.value; if (!h?.id || busy.value) return;
   busy.value = 'count'; error.value = ''; message.value = '';
@@ -551,6 +573,21 @@ async function duplicate() {
           <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.2 2.3l2.5 2.5-7.9 7.9-3.1.6.6-3.1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
         </label>
       </div>
+
+      <!-- Reported by hunters (Ames 2026-10-26): at the top, so a report during a Hunt is seen at once -->
+      <fieldset v-if="reports.length" class="nge-hunts-group nge-hunts-reports" :disabled="!!busy">
+        <legend>Reported by hunters ({{ reports.length }})</legend>
+        <p class="nge-hunts-help">Each hunter says their gem is on a real problem the answers missed. Go there and look: <b>Count it</b> puts it in the key, judges everyone again and gives Laser Eyes; <b>Not real</b> takes it off this list.</p>
+        <ul class="nge-hunts-gems">
+          <li v-for="r in reports" :key="r.user_id + r.drop_id" class="nge-hunts-gem--miss">
+            <span><b>{{ r.name }}</b>: {{ r.k === 'merge' ? 'Extend' : 'Cut' }} gem</span>
+            <span class="nge-hunts-muted">{{ (r.at || []).slice(0, 3).map((v) => Math.round(v)).join(', ') }}</span>
+            <button class="nge-hunts-btn nge-hunts-btn--small" :disabled="!r.at" title="Move the view to this gem" @click.stop="goToGem({ id: r.drop_id, at: r.at, hit: false, k: r.k })">Go there</button>
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="A real error the answers missed: add it to the key, judge everyone again, Laser Eyes" @click.stop="countReport(r)">Count it</button>
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="Not a problem the answers missed: off the list" @click.stop="dismissReport(r)">Not real</button>
+          </li>
+        </ul>
+      </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
@@ -862,6 +899,7 @@ async function duplicate() {
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
 .nge-hunts-answers { margin-top: 8px; }
+.nge-hunts-reports { border-color: rgba(95, 227, 245, 0.55); box-shadow: 0 0 14px rgba(95, 227, 245, 0.12); }
 .nge-hunts-addrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .nge-hunts-addrow input.nge-hunts-input { width: 92px; }
 .nge-hunts-addsize { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: #cfdcef; white-space: nowrap; }

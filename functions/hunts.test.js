@@ -744,6 +744,40 @@ test('places with an area: a gem anywhere inside an ellipsoid, along a line or i
   assert.equal(hit.drop.hit, true);   // 7 µm from the middle, inside the 8 µm ellipsoid
 });
 
+test('a hunter reports a missed gem as a real problem: the admins hear, the editor lists it, Count it makes it count (Ames 2026-10-26)', async () => {
+  const h = harness();
+  h.db.adminUserIds = async () => [ADMIN.id];
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(20000, 20000, 100), id: 'r1' }]), dims: DIMS }, h.ctx(P1, at(60)));
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(1000, 1000, 100), id: 'r2' }]), dims: DIMS }, h.ctx(P1, at(61)));
+  await assert.rejects(H.huntAction('hunt.report', { id: d.id, drop_id: 'r2' }, h.ctx(P1, at(62))), /found a problem already/);
+  await assert.rejects(H.huntAction('hunt.report', { id: d.id, drop_id: 'r1' }, h.ctx(P2, at(62))), /not in your Hunt/);
+  const r = await H.huntAction('hunt.report', { id: d.id, drop_id: 'r1' }, h.ctx(P1, at(62)));
+  assert.equal(r.reported, true);
+  assert.deepEqual(h.bell.map((n) => [n.user_id, n.title]), [[ADMIN.id, '🔎 Hunt report: Pinky Hunt']]);
+  assert.match(h.bell[0].body, /^nseraf says their gem is on a real merger the answers missed, at 20000, 20000, 100\./);
+  assert.equal((await H.huntAction('hunt.report', { id: d.id, drop_id: 'r1' }, h.ctx(P1, at(63)))).again, true);
+  assert.equal(h.bell.length, 1);                                   // once
+  const you = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(64)))).hunts[0].you;
+  assert.deepEqual(you.drops.filter((x) => x.rep).map((x) => x.id), ['r1']);
+  await assert.rejects(H.huntAction('hunt.reports', { id: d.id }, h.ctx(P1, at(64))), /Admins only/);
+  const list = await H.huntAction('hunt.reports', { id: d.id }, h.ctx(ADMIN, at(64), true));
+  assert.deepEqual(list.reports.map((x) => [x.name, x.drop_id, x.k]), [['nseraf', 'r1', 'cut']]);
+  // Count it: it counts for them, Laser Eyes, and it leaves the list.
+  const c = await H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'r1' }, h.ctx(ADMIN, at(65), true));
+  assert.equal(c.laser, 1);
+  assert.equal(h.db._s.subs[0].found, 2);
+  assert.deepEqual((await H.huntAction('hunt.reports', { id: d.id }, h.ctx(ADMIN, at(66), true))).reports, []);
+  // Not real: dismissed, off the list, and their box knows it was checked.
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'merge', layer: layer([{ ...pt(30000, 30000, 300), id: 'r3' }]), dims: DIMS }, h.ctx(P1, at(67)));
+  await H.huntAction('hunt.report', { id: d.id, drop_id: 'r3' }, h.ctx(P1, at(68)));
+  const left = await H.huntAction('hunt.dismiss_report', { id: d.id, user_id: P1.id, drop_id: 'r3' }, h.ctx(ADMIN, at(69), true));
+  assert.deepEqual(left.reports, []);
+  const you2 = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(70)))).hunts[0].you;
+  assert.deepEqual(you2.drops.filter((x) => x.rep_no).map((x) => x.id), ['r3']);
+});
+
 test('Add a place the key missed, by its coordinates and kind: everyone judged again, Laser Eyes to whoever finds it (Ames 2026-10-26)', async () => {
   const h = harness();
   const d = await makeHunt(h);

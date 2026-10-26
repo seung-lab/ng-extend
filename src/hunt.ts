@@ -84,6 +84,8 @@ export const huntState = reactive({
   pending: null as null | { id: string; gem: GemKind; x?: number; y?: number; at: number },
   /** Which layer Ctrl + Click drops into: cut gems or extend gems. */
   kind: 'cut' as GemKind,
+  /** Gems this player told the admins about ("It's real"): sent, or checked and not one the key missed. */
+  reported: {} as Record<string, 'sent' | 'no'>,
   /** The number key that picks each gem layer (its place in the layer tabs), for the buttons' tooltips. */
   keys: {} as Partial<Record<GemKind, number>>,
   /** Gems dropped and waiting for Submit (when each gem is not checked as it lands). */
@@ -412,6 +414,22 @@ export function huntNoteNow(text: string): { text: string; title: string; stage:
   const h = huntState.hunts.find(x => x.title === title);
   const now = !h ? stage : h.phase === 'live' ? 1 : h.phase === 'ended' ? 2 : 0;
   return { text: now > stage ? `${m[1]} ${now === 1 ? 'is on' : 'is over'}: ${title}` : text, title, stage };
+}
+
+/**
+ * A missed gem is a real problem the key missed, says the player (Ames 2026-10-26: "a 'found an unlabeled
+ * cut/merge' type button"): the admins hear, and Count it in the editor makes it count, with Laser Eyes.
+ */
+export async function reportGem(h: HuntInfo, dropId: string) {
+  await huntCall('hunt.report', { id: h.id, drop_id: dropId });
+  huntState.reported = { ...huntState.reported, [dropId]: 'sent' };
+}
+/** What the server says of this player's reports (after a reload, or an admin's check). */
+export function reportedOf(h: HuntInfo | null, id: string): 'sent' | 'no' | null {
+  const d = (h?.you as any)?.drops?.find((x: any) => x.id === id);
+  if (d?.rep_no) return 'no';
+  if (d?.rep) return 'sent';
+  return huntState.reported[id] ?? null;
 }
 
 export const huntAnswersLayerName = (h: HuntInfo) => `Hunt answers: ${h.title}`;
