@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T15:00:24Z",
+      "title": "Highlights take far less room",
+      "items": [
+        "A highlight now saves as a few smooth lines instead of hundreds of tiny ones, so a saved view with lots of highlights is up to a hundred times smaller and always fits.",
+        "Highlights you made before are made smaller the same way when you open them; they look and work as before."
+      ]
+    },
+    {
       "at": "2026-10-26T14:59:00Z",
       "title": "Magic Top Bar",
       "items": [
