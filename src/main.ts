@@ -395,6 +395,13 @@ function setupViewer() {
       }
     }
   }
+  // \ belongs to the Magic Top Bar (ExtensionBar.vue). neuroglancer had it for
+  // its chunk statistics panel, which then opened whenever the bar was not
+  // taking the key (Ames 2026-10-26).
+  // The binding lives in neuroglancer's default map, a parent of the global one.
+  for (const map of [viewer.inputEventBindings.global, ...viewer.inputEventBindings.global.parents]) {
+    map.delete('backslash');
+  }
 
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
