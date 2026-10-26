@@ -709,7 +709,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <p>Neuroglancer is a connectomics proofreading platform made by Google that Pyr is built on. It draws the 2D images and the 3D cells you work on. Scientists also use it (without the fancy Pyr interface).</p>
               <p>Settings here bring back its original, and dare we say unintuitive, user interface elements. This section brings back legacy neuroglancer elements and advanced settings.</p>
             </div>
-            <p class="nge-settings-hint">Neuroglancer's own controls and panels, for players who know it from before.</p>
+            <p class="nge-settings-hint">Neuroglancer's own controls and panels.</p>
             <label class="nge-settings-toggle">
               <input type="checkbox" v-model="draftAnnotationGems" />
               <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
