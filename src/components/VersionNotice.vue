@@ -27,6 +27,13 @@ watch(() => version.newer, async (now, was) => {
   // The first newer version opens the panel. One after that changes nothing:
   // the player has already been told, and has the chip.
   if (!now || was) return;
+  // An update with no notes for players (marked [no player change]) gets only
+  // the chip: opening the panel then showed the same older notes again, as if
+  // they were new (Ames 2026-10-25: "it seems to be repeating").
+  try {
+    const { since } = await readChanges();
+    if (!since.length) { folded.value = true; return; }
+  } catch { /* open it as before */ }
   await nextTick();
   if (panelEl.value) runPanelTrace(panelEl.value);
   panelEl.value?.querySelector<HTMLButtonElement>('.nge-ver-go')?.focus({ preventScroll: true });
@@ -74,7 +81,8 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
         <div v-if="!changes" class="nge-ver-changes-note">Reading what changed.</div>
         <div v-else-if="!changes.length" class="nge-ver-changes-note">No notes were written for this update. It is likely a small fix.</div>
         <template v-else>
-          <div class="nge-ver-changes-head">{{ changesAreNew ? 'What changed' : 'Latest changes' }}</div>
+          <div class="nge-ver-changes-head">{{ changesAreNew ? 'What changed' : 'Earlier changes' }}</div>
+          <div v-if="!changesAreNew" class="nge-ver-changes-note">This update has no new notes: it is a fix behind the scenes. These came before it.</div>
           <div v-for="(c, i) in changes" :key="i" class="nge-ver-change">
             <div class="nge-ver-change-title">{{ c.title }}<span class="nge-ver-change-day">{{ dayOf(c.at) }}</span></div>
             <ul><li v-for="(item, j) in c.items" :key="j">{{ item }}</li></ul>

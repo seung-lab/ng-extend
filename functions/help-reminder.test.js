@@ -11,8 +11,9 @@ const T0 = Date.parse('2026-10-21T12:00:00Z');
 /** A small stand-in for the PostgREST helper: the shapes help-reminder.js uses. */
 function world() {
   const db = {
-    help_requests: [{id: REQ, user_id: asker, segment_id: '648518346353836607', resolved: false}],
-    help_responses: [{id: 's1', request_id: REQ, user_id: helper.id}],
+    help_requests: [{id: REQ, user_id: asker, segment_id: '648518346353836607', resolved: false,
+      issue_type: 'Merge error', note: 'Is this [branch](https://x.example) a merger?', created_at: '2026-10-24T15:00:00Z'}],
+    help_responses: [{id: 's1', request_id: REQ, user_id: helper.id, user_name: 'Celia', note: 'Yes, cut it at the fork.'}],
     notifications: [],
   };
   let nextId = 1;
@@ -46,7 +47,13 @@ test('a reply schedules one reminder for a day later, with the mark solved link'
   assert.equal(n.target_id, asker);
   assert.equal(n.send_at, new Date(T0 + DAY_MS).toISOString());
   assert.match(n.body, new RegExp(`\\[mark it solved\\]\\(#${mark(REQ)}\\)`));
-  assert.match(n.body, /about cell 648518346353836607/);
+  assert.match(n.body, /cell 648518346353836607/);
+  // Which request it was (annkri, report 247): the day, the issue, the note, and the reply.
+  assert.match(n.body, /from Oct 24/);
+  assert.match(n.body, /\*\*Merge error\*\*, cell 648518346353836607: "Is this branch\(https:\/\/x\.example\) a merger\?"/);
+  assert.match(n.body, /\*\*Reply from Celia:\*\* "Yes, cut it at the fork\."/);
+  // The player's note can not add a link of its own: only the mark solved link remains.
+  assert.equal((n.body.match(/\]\(/g) || []).length, 1);
   assert.doesNotMatch(n.title + n.body, /—|–/, 'no dashes in player copy');
 });
 

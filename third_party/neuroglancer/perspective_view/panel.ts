@@ -15,7 +15,7 @@
  */
 
 import {ngeHoverStyle} from 'neuroglancer/segmentation_display_state/frontend';
-import {NGE_HALO_SHELLS, NGE_OUTLINE_SHELLS} from 'neuroglancer/mesh/nge_hover';
+import {NGE_HALO_SHELLS, NGE_HOLO_SHELLS, NGE_OUTLINE_SHELLS} from 'neuroglancer/mesh/nge_hover';
 import 'neuroglancer/noselect.css';
 import './panel.css';
 
@@ -277,6 +277,8 @@ export class PerspectivePanel extends RenderedDataPanel {
       showSliceViewsLabel.appendChild(showSliceViewsCheckbox.element);
       this.element.appendChild(showSliceViewsLabel);
     }
+    // nge: the 3D view, for its lighter cursor (ng-override.css).
+    this.element.classList.add('nge-3d-panel');
     this.registerDisposer(viewer.orthographicProjection.changed.add(() => {
       this.projectionParameters.update();
       this.scheduleRedraw();
@@ -574,15 +576,17 @@ export class PerspectivePanel extends RenderedDataPanel {
     // Colour only: no picking, no depth or stencil writes, so nothing else
     // changes. The halo keeps the brightest shell at each pixel.
     const ngeStyle = ngeHoverStyle.value;
-    if (ngeStyle === 'outline' || ngeStyle === 'halo') {
+    // The hologram has the halo's glow around it too, in its own colour.
+    if (ngeStyle === 'outline' || ngeStyle === 'halo' || ngeStyle === 'hologram') {
       disablePicking();
       gl.depthMask(false);
       gl.stencilMask(0);
-      if (ngeStyle === 'halo') {
+      if (ngeStyle === 'halo' || ngeStyle === 'hologram') {
         gl.enable(WebGL2RenderingContext.BLEND);
         gl.blendEquation(WebGL2RenderingContext.MAX);
       }
-      const shells = ngeStyle === 'halo' ? NGE_HALO_SHELLS : NGE_OUTLINE_SHELLS;
+      const shells = ngeStyle === 'halo' ? NGE_HALO_SHELLS :
+          ngeStyle === 'hologram' ? NGE_HOLO_SHELLS : NGE_OUTLINE_SHELLS;
       for (const [renderLayer, attachment] of visibleLayers) {
         const drawShells = (renderLayer as any).ngeDrawShells;
         if (typeof drawShells === 'function' && !renderLayer.isTransparent) {

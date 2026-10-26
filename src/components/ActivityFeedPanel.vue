@@ -79,8 +79,8 @@ function actionClass(action: string): string {
 <style scoped>
 .nge-feed-shell {
   width: 480px;
-  max-width: 90vw;
-  max-height: 70vh;
+  max-width: calc(90 * var(--nge-vw, 1vw));
+  max-height: calc(70 * var(--nge-vh, 1vh));
   display: flex;
   flex-direction: column;
   font-family: 'Inter', 'Roboto', sans-serif;

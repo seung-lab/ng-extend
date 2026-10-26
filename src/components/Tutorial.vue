@@ -7,6 +7,7 @@ import { storeToRefs } from "pinia";
 import { useTutorialStore } from '../store-pyr';
 import { useProofreadingBackendStore } from '../store';
 import { supabase } from '../supabase';
+import { TUTORIAL_NAMES } from '../tutorial_edits';
 import { steps as steps1 } from '../tutorial-1';
 import { steps as steps2 } from '../tutorial-2';
 import { steps as steps3 } from '../tutorial-3';
@@ -15,14 +16,15 @@ import { steps as steps5 } from '../tutorial-cut';
 import { steps as steps6 } from '../tutorial-mec-tour';
 import { steps as steps7 } from '../tutorial-retina-tour';
 import { steps as steps8 } from '../tutorial-flywire-tour';
-import { steps as steps9, sandboxContinue, sandboxRestart } from '../merger-sandbox';
+import { steps as steps9, sandboxContinue, sandboxRestart, sandboxNext } from '../merger-sandbox';
+import { extensionSteps as steps13, extensionContinue, extensionRestart, extensionNext, EXTENSION_TUTORIAL } from '../extension-sandbox';
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
-import { getStartedFinished, reveal, runMoment, setTutorialBusy, SITE_TOUR, tutorialFinished, tutorialStepReveals, verifyStepIcons } from '../util/toolbar_staging';
+import { getStartedFinished, reveal, runMoment, setTutorialBusy, setTutorialOnScreen, SITE_TOUR, tutorialFinished, tutorialStepReveals, verifyStepIcons } from '../util/toolbar_staging';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
 // Mini Michelangelo art from Ames (2026-10-07).
@@ -33,7 +35,7 @@ import badgeCut from '../../static/badges/safety-scissors.png';
 
 const store = useTutorialStore();
 
-const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11 };
+const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: steps3, 4: steps4, 5: steps5, 6: steps6, 7: steps7, 8: steps8, 9: steps9, 10: steps10, 11: steps11, 13: steps13 };
 // The real lengths, for the landing's "is a tutorial under way" test in
 // store.ts (isUserInActiveTutorial), which cannot import the step lists.
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
@@ -48,6 +50,7 @@ const currentStep = computed(() => {
     if (store.activeTutorial === 7) return store.tutorialStep7;
     if (store.activeTutorial === 8) return store.tutorialStep8;
     if (store.activeTutorial === 9) return store.tutorialStep9;
+    if (store.activeTutorial === 13) return store.tutorialStep13;
     if (store.activeTutorial === 10) return store.tutorialStep10;
     if (store.activeTutorial === 11) return store.tutorialStep11;
     return store.tutorialStep4;
@@ -203,6 +206,13 @@ const next = (_auto?: unknown) => {
     if (isLastStep && tutorialNum === 9 && sandboxContinue()) return;
     // Its first box, shown to a player who has solved them all, starts over.
     if (!isLastStep && tutorialNum === 9 && sandboxRestart()) return;
+    // The Extension Sandbox works the same way.
+    if (isLastStep && tutorialNum === EXTENSION_TUTORIAL && extensionContinue()) return;
+    if (!isLastStep && tutorialNum === EXTENSION_TUTORIAL && extensionRestart()) return;
+    // Next pressed on a sandbox's working box checks the work and stays put
+    // until it is done. When the watch sees it done, it moves on by itself.
+    if (!isLastStep && _auto !== true && tutorialNum === 9 && sandboxNext()) return;
+    if (!isLastStep && _auto !== true && tutorialNum === EXTENSION_TUTORIAL && extensionNext()) return;
     // The test's last box: "Try again" starts over.
     if (isLastStep && tutorialNum === TEST_TUTORIAL && testContinue()) return;
     // Its first box, while someone else has the cell: join the line, or close.
@@ -214,7 +224,7 @@ const next = (_auto?: unknown) => {
         console.info(`[tutorial] finished tutorial ${tutorialNum}; step is now ${store.getTutorialStep()} of ${steps.value.length}`);
         // The sandbox records each merger as it is cut, not the box closing.
         // The sandbox and the test record themselves (the test on the server).
-        if (tutorialNum !== 9 && tutorialNum !== TEST_TUTORIAL) recordTutorialDone(tutorialNum);
+        if (tutorialNum !== 9 && tutorialNum !== EXTENSION_TUTORIAL && tutorialNum !== TEST_TUTORIAL) recordTutorialDone(tutorialNum);
         // Merge and Cut both finished brings the Cell Library (toolbar_staging.ts).
         tutorialFinished(tutorialNum);
         // Say so if anything puts a box back in the next few seconds.
@@ -246,7 +256,7 @@ const next = (_auto?: unknown) => {
     }
 };
 // Switching to another tutorial from the book menu also hands the cell back.
-const PRACTICE_TUTORIALS = [3, 5, 9];
+const PRACTICE_TUTORIALS = [3, 5, 9, 13];
 watch(() => store.activeTutorial, (now, before) => {
   if (PRACTICE_TUTORIALS.includes(before) && !PRACTICE_TUTORIALS.includes(now)) endPractice();
   // Leaving the test hands its cell back, unscored.
@@ -264,7 +274,6 @@ const back = () => { (window as any).__ngeStepPending = false; store.setTutorial
 // opened Retina. A tutorial found partway at load now waits behind a small
 // Continue / Exit card and loads nothing until you choose. Starting a
 // tutorial from the menu (step 0) needs no prompt.
-const TUTORIAL_NAMES: Record<number, string> = { 1: 'Get Started', 2: 'Advanced Interface', 3: 'Merge', 4: 'Site Tour', 5: 'Cut', 6: 'Meet the cells of MEC', 7: 'Meet the cells of the retina', 8: 'Meet the cells of the fly brain', 9: 'Merger Sandbox', 11: 'Proofreading Test' };
 // Top bar staging: a step that points at an icon (or names it in `reveals`)
 // brings it in, whichever tutorial gets there first. The Site Tour points at
 // every icon, so it skips the ones not yet received instead (site-tour.ts).
@@ -311,6 +320,8 @@ if (QUIET_TEST_HOST) {
     });
 }
 const quietOnLoad = computed(() => QUIET_TEST_HOST && !startedHere.value);
+// The hidden top bar stays down while a tutorial box is drawn (ExtensionBar.vue).
+setTutorialOnScreen(() => !quietOnLoad.value && !!activeStep.value);
 const resumeName = computed(() => TUTORIAL_NAMES[store.activeTutorial] ?? 'the tutorial');
 function continueTutorial() { resumeDecided.value = true; }
 function exitFromPrompt() { resumeDecided.value = true; exitIntro(); }
@@ -350,7 +361,7 @@ const exitIntro = () => {
         </div>
     </div>
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
-        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel"
+        :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
         v-on:next="next"
         v-on:back="back" v-on:exitIntro="exitIntro" />
     </template>

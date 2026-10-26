@@ -28,19 +28,24 @@ import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
-import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch } from '../util/pumpkin';
+import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
-// The pumpkin button (Ames 2026-10-20): on a patch cell it turns the
-// pumpkin off and on; anywhere else it offers a trip to the pumpkin patch.
+// The pumpkin button (Ames 2026-10-20): opens the field report card, which
+// hides or shows the pumpkins, goes to the patch, or hands out the hammer
+// (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
+// patch, smash the pumpkins"). It used to hide the pumpkins straight away on
+// a patch cell, so the card only ever showed on other datasets.
 const showPumpkinBtn = pumpkinSeason();
 const askPatch = ref(false);
 function pumpkinOff(): boolean { return pumpkinUi.here && useUserPreferencesStore().prefs.hidePumpkin === true; }
 function pumpkinTitle(): string {
   if (!pumpkinUi.here) return 'A rare cell type has been spotted';
-  return useUserPreferencesStore().prefs.hidePumpkin === true ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell';
+  return 'The pumpkin patch: hide, show or smash the pumpkins';
 }
-function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
+function onPumpkin() { askPatch.value = true; }
+function togglePatch() { askPatch.value = false; togglePumpkin(); }
 function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
+function smashPatch() { askPatch.value = false; smashPumpkins(); }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -544,7 +549,23 @@ watch([chatQuery, () => chatMessages.value.length, () => chatStore.loadingHistor
 });
 const searchingBack = computed(() => !!chatQuery.value && chatQuery.value.fromTime != null && chatStore.loadingHistory);
 /** What the list draws: everything, or only the matches while searching. */
-const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value));
+/** Announcements this player closed with their × (Ames 2026-10-23: "I want
+ *  to be able to X to delete these and the Today in Pyr update"). Hidden in
+ *  this browser for this player only: others still see them, and the
+ *  notification stays in the bell. Kept to the latest 200. */
+const HIDDEN_ANNOUNCE_KEY = 'nge-chat-hidden-announcements';
+const hiddenAnnouncements = ref<Set<number>>((() => {
+  try { return new Set<number>((JSON.parse(localStorage.getItem(HIDDEN_ANNOUNCE_KEY) || '[]') as unknown[]).map(Number).filter(Number.isFinite)); } catch { return new Set<number>(); }
+})());
+function hideAnnouncement(id: number | string | null | undefined) {
+  const n = Number(id);
+  if (!Number.isFinite(n)) return;
+  const next = new Set(hiddenAnnouncements.value); next.add(n);
+  hiddenAnnouncements.value = next;
+  try { localStorage.setItem(HIDDEN_ANNOUNCE_KEY, JSON.stringify([...next].slice(-200))); } catch { /* private window */ }
+}
+const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value)
+  .filter(m => !(m.type === 'message' && m.notificationId && hiddenAnnouncements.value.has(Number(m.notificationId)))));
 function openSearch() {
   searchOpen.value = true;
   if (collapsed.value) toggleCollapse();
@@ -909,7 +930,31 @@ function toggleMore(e: MouseEvent) {
   };
   document.addEventListener('pointerdown', away, true);
 }
-function togglePicker(id: string) { pickerMore.value = false; pickerFor.value = pickerFor.value === id ? null : id; }
+function togglePicker(id: string, e?: MouseEvent) {
+  pickerMore.value = false;
+  pickerFor.value = pickerFor.value === id ? null : id;
+  if (e && pickerFor.value) placeInlinePicker(e);
+}
+/** On an announcement the row of emoji opened to the left of the button and
+ *  ran off the chat's left edge, so the first ones could not be picked
+ *  (Nseraf, report 211). It now sits on the page, above the button (below
+ *  when there is no room), kept inside the window. */
+const inlinePickerPlace = ref<Record<string, string>>({});
+const PICK_W = 196, PICK_H = 32;
+function placeInlinePicker(e: MouseEvent) {
+  const btn = e.currentTarget as HTMLElement;
+  const at = btn.getBoundingClientRect();
+  // Kept inside the chat itself, so on a narrow chat the first emoji are not
+  // past its left edge (Nseraf, 2026-10-23); every message, not only
+  // announcements.
+  const box = btn.closest('.nge-chat-float')?.getBoundingClientRect();
+  const lo = Math.max(6, (box?.left ?? 0) + 4);
+  const hi = Math.min(window.innerWidth - 6, (box?.right ?? window.innerWidth) - 4) - PICK_W;
+  const left = Math.max(lo, Math.min(hi, at.right - PICK_W));
+  const above = at.top - PICK_H - 6;
+  const top = above >= 6 ? above : Math.min(window.innerHeight - PICK_H - 6, at.bottom + 6);
+  inlinePickerPlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` };
+}
 function react(id: string, emoji: string) {
   pickerFor.value = null;
   void chatStore.toggleReaction(id, emoji);
@@ -977,7 +1022,7 @@ function closePopovers(e: MouseEvent) {
 
 // ── Emoji for writing messages (Amy 2026-09-30), not just reactions ──
 const CHAT_EMOJI = [
-  '👋', '😊', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
+  '👋', '😊', '😉', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
   '👍', '👏', '🙌', '💪', '👀', '✨', '🔥', '💯', '🎉', '❤️',
   '🧠', '🔬', '🧬', '⚡', '👁️', '🐭', '🪰', '🐟', '🦉', '🐙',
   '🚀', '🌟', '🎯', '✅', '❌', '⚠️', '☕', '🍕', '🌈', '😴',
@@ -1008,6 +1053,12 @@ function isSelfMention(token: string): boolean {
   return isSelfMentionToken(token, backendStore.username, backendStore.userName);
 }
 
+/** An announcement's line, without the 📢 older ones carry in their text.
+ *  The card draws its own: the picture, or 📢 when there is none (Ames
+ *  2026-10-24). */
+function announceText(msg: ChatMessage): string {
+  return msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('').replace(/^\s*📢\s*/u, '');
+}
 /** Open the notification an announcement message refers to. */
 /** The 🗑 on chat messages is hidden for now (Ames 2026-09-28). Deleting still
  *  works server side; flip this to bring the button back. */
@@ -1306,7 +1357,7 @@ function toggleCollapse() {
         <div v-if="shownPin && !searchOpen" class="nge-chat-pin" role="note">
           <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to go to the message.'"
                   @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></span>{{ plainChatText(shownPin.text) }}</button>
-          <button v-if="backendStore.isAdmin" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
+          <button v-if="backendStore.showAdminUi" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
           <button type="button" class="nge-chat-pin-x" title="Hide this pin for me" aria-label="Hide this pin for me" @click.stop="hidePin">×</button>
         </div>
         <div class="nge-chat-messages-wrap">
@@ -1375,19 +1426,23 @@ function toggleCollapse() {
                        sits at the left edge (Ames 2026-10-11). -->
                   <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-msg-time">{{ msgTime(msg.dateTime) }}</span>
                   <img v-if="announcePicture(msg.notificationId)" class="nge-chat-announce-thumb" :src="announcePicture(msg.notificationId)" alt="" loading="lazy" />
-                  <span class="nge-chat-announce-text">{{ msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('') }}</span>
+                  <!-- 📢 only where there is no picture to mark it (Ames 2026-10-24). -->
+                  <span v-if="!announcePicture(msg.notificationId)" class="nge-chat-announce-icon" aria-hidden="true">📢</span>
+                  <span class="nge-chat-announce-text">{{ announceText(msg) }}</span>
                   <!-- Announcements take reactions like any message (Ames
                        2026-10-07). The picker sits in the row, beside Open,
                        and a click on it never opens the notification. -->
                   <span v-if="msg.id != null && isLoggedIn" class="nge-chat-react-add nge-chat-react-add--inline" @click.stop @keydown.enter.stop>
                     <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
-                            @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
-                    <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
+                            @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
+                    <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
                       <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
                       <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                     </span>
                   </span>
                   <span class="nge-chat-announce-cta">Open →</span>
+                  <button class="nge-chat-announce-hide" title="Hide this from your chat (it stays in your notifications)" aria-label="Hide this announcement"
+                          @click.stop="hideAnnouncement(msg.notificationId)" @keydown.enter.stop>×</button>
                   <div v-if="msg.id != null && Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row nge-chat-react-row--announce" @click.stop>
                     <button v-for="(list, emo) in reactionsOf(msg)" :key="emo" class="nge-chat-react"
                             :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
@@ -1484,17 +1539,17 @@ function toggleCollapse() {
                           :title="joinOffered.has(joinKey(msg)) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${msg.name}'s view and help, live. They choose whether to accept.`"
                           @click="joinHelp(msg)">{{ joinOffered.has(joinKey(msg)) ? '🤝 Offered' : '🤝 Join' }}</button>
                   <span v-if="msg.botLanguage" class="nge-chat-bot-lang">{{ msg.botLanguage }}</span>
-                  <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
+                  <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.showAdminUi || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
                           :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
                           @click.stop="deleteChatMessage(msg)">🗑</button>
                   <template v-if="msg.id != null && isLoggedIn">
                     <span class="nge-chat-react-add">
                       <button v-if="msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-reply-btn" @click.stop="startReply(msg)" title="Reply">↩</button>
-                      <button v-if="backendStore.isAdmin && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
+                      <button v-if="backendStore.showAdminUi && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
                               @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></button>
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
-                              @click.stop="togglePicker(String(msg.id))" title="React">☺+</button>
-                      <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker">
+                              @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
+                      <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
                         <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
                         <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                       </span>
@@ -1615,7 +1670,7 @@ function toggleCollapse() {
                  on a patch cell, a trip to the patch anywhere else. -->
             <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
                     @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
-            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" />
+            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" @toggle="togglePatch()" />
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
@@ -2116,7 +2171,14 @@ function toggleCollapse() {
 .nge-chat-react-add.nge-chat-react-add--inline { position: relative; top: auto; right: auto; flex: 0 0 auto; }
 .nge-chat-react-row--announce { flex: 1 0 100%; margin-top: 3px; }
 .nge-chat-announce-text { flex: 1; color: #d6e6ff; }
+.nge-chat-announce-hide {
+  flex: none; background: none; border: none; padding: 0 2px; margin-left: 2px;
+  color: rgba(214, 230, 255, 0.45); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.nge-chat-announce-hide:hover { color: #fff; }
 .nge-chat-announce-thumb {
+  /* a little more room before the words (Ames 2026-10-24) */
+  margin-right: 6px;
   flex: 0 0 auto; width: 46px; height: 46px; object-fit: cover; border-radius: 6px;
   background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(120, 170, 255, 0.3);
 }
@@ -2621,6 +2683,7 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
   z-index: 6;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
 }
+.nge-chat-react-picker.nge-chat-react-picker--placed { position: fixed; right: auto; z-index: 10000; }
 .nge-chat-react-picker button {
   background: none;
   border: none;

@@ -363,6 +363,7 @@ function makeRegisterSegmentWidgetEventHandlers(displayState: SegmentationDispla
     const id = tempStatedColor;
     id.tryParseString(idString);
     displayState.segmentSelectionState.set(id);
+    ngeListHover.value = true;
     if (!isWithinSelectionPanel(entryElement)) {
       displayState.selectSegment(id, false);
     }
@@ -378,6 +379,7 @@ function makeRegisterSegmentWidgetEventHandlers(displayState: SegmentationDispla
 
   const onMouseLeave = () => {
     displayState.segmentSelectionState.set(null);
+    ngeListHover.value = false;
   };
 
   const getEntryElement = (event: Event): HTMLElement => {
@@ -779,7 +781,7 @@ export type NgeHoverStyle = 'outline'|'halo'|'pulse'|'hologram'|'metallic'|'satu
  *  already is an existing player's, and keeps the classic fade. The settings
  *  store (store.ts) settles it, and corrects it from the account copy. */
 export function ngeDefaultHoverStyle(prefs: any): NgeHoverStyle {
-  return prefs && Object.keys(prefs).length || ngeBrowserUsedBefore() ? 'fade' : 'halo';
+  return prefs && Object.keys(prefs).length || ngeBrowserUsedBefore() ? 'fade' : 'spotlight';  // new players: Spotlight (Ames 2026-10-22)
 }
 /** Pyr was used in this browser before, even by a player who never saved a
  *  setting: they signed in here (the sign in token) or played a tutorial or
@@ -802,6 +804,10 @@ export function ngeParseHoverStyle(prefs: any): NgeHoverStyle {
 export const ngeHoverStyle = {value: ((): NgeHoverStyle => {
   try { return ngeParseHoverStyle(JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')); } catch { return 'pulse'; }
 })()};
+/** EyeWire II: the hovered cell was pointed at in a list (the segment list,
+ *  the merge queue), not in 3D. The Pulse look needs the mouse in 3D, so it
+ *  then shows the Saturate glow instead (Nseraf #198). */
+export const ngeListHover = {value: false};
 /** How far the halo has faded for zoom, 0 (all there) to 1 (gone); set each
  *  frame by mesh/frontend.ts. */
 export const ngeHaloFar = {value: 0};

@@ -123,6 +123,14 @@ jobs:
                 Referrer-Policy: strict-origin-when-cross-origin
                 Permissions-Policy: "camera=(), microphone=(), geolocation=()"
                 Content-Security-Policy: "object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://connectome.quest"
+            - url: /build-commit\.txt
+              static_files: static/build-commit.txt
+              upload: static/build-commit\.txt
+              secure: always
+              http_headers:
+                Access-Control-Allow-Origin: "*"
+                Cache-Control: no-store
+                X-Content-Type-Options: nosniff
             - url: /
               static_dir: static
               secure: always

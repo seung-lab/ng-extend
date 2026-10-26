@@ -18,10 +18,32 @@ const mark = id => `nge-help-solved=${id}`;
 /** PostgREST filter for notifications whose body holds this request's link. */
 const bodyHas = id => `body=like.${encodeURIComponent(`*${mark(id)}*`)}`;
 
-function reminderBody(segId) {
-  return `You got a reply on your help request${segId ? ` about cell ${String(segId).slice(0, 40)}` : ''}. `
-    + `If it answered your question, please [mark it solved](#${mark('ID')}) so helpers know. `
-    + 'If not, reply in the Help tab to keep the conversation going.';
+/** A player's words, quoted safely: one line, short, and with no brackets,
+ *  so a note can not make a link of its own in the reminder. */
+const quote = (text, max = 220) => {
+  const t = String(text || '').replace(/[\[\]<>]/g, '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
+};
+const dayOf = iso => {
+  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }); }
+  catch { return ''; }
+};
+
+/** The reminder says which request it is about (annkri, report 247: "add more
+ *  context to this message so i know what actually is in the help request"):
+ *  when it was asked, its issue, its cell and its note, and the reply. */
+function reminderBody(req, reply) {
+  const segId = req && req.segment_id ? String(req.segment_id).slice(0, 40) : '';
+  const day = req && req.created_at ? dayOf(req.created_at) : '';
+  const lines = [`You got a reply on your help request${day ? ` from ${day}` : ''}.`];
+  const about = [req && req.issue_type ? `**${quote(req.issue_type, 60)}**` : '', segId ? `cell ${segId}` : ''].filter(Boolean).join(', ');
+  const note = req ? quote(req.note) : '';
+  if (about || note) lines.push(`> ${about}${about && note ? ': ' : ''}${note ? `"${note}"` : ''}`);
+  const said = reply ? quote(reply.note) : '';
+  if (said) lines.push(`**Reply from ${quote(reply.user_name, 40) || 'a helper'}:** "${said}"`);
+  lines.push(`If it answered your question, please [mark it solved](#${mark('ID')}) so helpers know. `
+    + 'If not, reply in the Help tab to keep the conversation going.');
+  return lines.join('\n\n');
 }
 
 /**
@@ -32,17 +54,17 @@ function reminderBody(segId) {
 async function scheduleReminder({ sb, me, target, requestId, now = Date.now() }) {
   const id = String(requestId || '');
   if (!ID_RE.test(id)) return { scheduled: false, why: 'no request' };
-  const req = (await sb(`help_requests?id=eq.${id}&user_id=eq.${target}&select=id,segment_id,resolved&limit=1`))[0];
+  const req = (await sb(`help_requests?id=eq.${id}&user_id=eq.${target}&select=id,segment_id,resolved,note,issue_type,created_at&limit=1`))[0];
   if (!req) return { scheduled: false, why: 'not their request' };
   if (req.resolved) return { scheduled: false, why: 'already solved' };
   // Only someone who really replied schedules one.
-  const replied = await sb(`help_responses?request_id=eq.${id}&user_id=eq.${me.id}&select=id&limit=1`);
+  const replied = await sb(`help_responses?request_id=eq.${id}&user_id=eq.${me.id}&select=id,note,user_name&order=created_at.desc&limit=1`);
   if (!replied.length) return { scheduled: false, why: 'no reply from you' };
   const have = await sb(`notifications?target_type=eq.user&target_id=eq.${target}&${bodyHas(id)}&select=id&limit=1`);
   if (have.length) return { scheduled: false, why: 'already reminded' };
   const row = {
     title: '❓ Was your help request answered?',
-    body: reminderBody(req.segment_id).replace(mark('ID'), mark(id)),
+    body: reminderBody(req, replied[0]).replace(mark('ID'), mark(id)),
     target_type: 'user', target_id: target,
     send_at: new Date(now + DAY_MS).toISOString(),
     created_by: me.id,

@@ -18,3 +18,10 @@ export const NGE_HALO_SHELLS: NgeShell[] = [
   // border"): a slim bright line with a short soft edge.
   {widthPx: 1.2, alpha: 1}, {widthPx: 2.2, alpha: 0.42}, {widthPx: 3.4, alpha: 0.14},
 ];
+
+/** The hologram's glow: soft and wider than the halo, fading out, as light
+ *  spilling around it. */
+export const NGE_HOLO_SHELLS: NgeShell[] = [
+  {widthPx: 1.5, alpha: 0.6}, {widthPx: 3.5, alpha: 0.36}, {widthPx: 6, alpha: 0.2},
+  {widthPx: 9, alpha: 0.09},
+];

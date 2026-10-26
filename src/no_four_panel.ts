@@ -43,6 +43,14 @@ export function installNoFourPanel(viewer: any) {
   changed.add(check);
   check();
 
+  // The 2D image layer's tab shows and hides the 2D view (Ames 2026-10-22:
+  // "make clicking on 2D open/close the 2D split screen"), layer_bar.ts.
+  // With a 2D view on screen: 3D only. Without: the last split screen.
+  (window as any).ngeToggle2D = () => {
+    const name = layoutName(viewer);
+    viewer.layout.restoreState(name === '3d' ? lastSplit : '3d');
+  };
+
   // Touch screens: a tablet gets the desktop layout but has no Space key, so
   // the word buttons below are for any touch screen, not only a phone
   // (Nseraf, report 157: on a tablet "3D only" left no button to go back).

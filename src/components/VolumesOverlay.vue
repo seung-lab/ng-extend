@@ -215,7 +215,7 @@ function confirmSelection() {
 }
 
 .content {
-  max-width: 60vw;
+  max-width: calc(60 * var(--nge-vw, 1vw));
   display: grid;
   gap: 10px;
 }
@@ -229,7 +229,7 @@ function confirmSelection() {
 .volumes {
   display: grid;
   grid-gap: 5px;
-  max-height: 75vh;
+  max-height: calc(75 * var(--nge-vh, 1vh));
   overflow-y: auto;
 }
 

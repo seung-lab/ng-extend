@@ -31,6 +31,13 @@ const TABLE_DATASET = Object.freeze({
  *  a slow connection, and keeps old work done in other tools from being
  *  reported as play. */
 const MAX_OPERATION_AGE_MS = 15 * 60 * 1000;
+/** A report can be late when our server was down or did not answer: the
+ *  browser keeps it and sends it again (src/activity_outbox.ts). The player's
+ *  own edit, checked with the graph server as any other, still counts up to
+ *  this old, and its row is marked late so it can be audited (Ames
+ *  2026-10-24: "we should still count edits even if there is an outage").
+ *  Keep in step with LONGEST_KEPT in src/activity_outbox.ts. */
+const LATE_OPERATION_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 const text = (v, max, name) => {
   if (v == null) return null;
@@ -68,7 +75,7 @@ function cleanActivityRow(value) {
     metadata = {...value.metadata};
     // Set by the server only.
     delete metadata.verified; delete metadata.verified_by;
-    delete metadata.same_cell_as; delete metadata.lineage_checked;
+    delete metadata.same_cell_as; delete metadata.lineage_checked; delete metadata.late;
   }
   const dataset = value.dataset == null || value.dataset === '' ? 'eyewire_ii' : String(value.dataset);
   if (!/^[A-Za-z0-9_.-]{1,100}$/.test(dataset)) fail(400, 'Invalid dataset.');
@@ -99,6 +106,8 @@ function cleanActivityRow(value) {
 /**
  * Ask the graph server whether this split or merge happened, and whose it is.
  *   'verified'    it exists, succeeded, is this player's, and is recent
+ *                 (late: true when older than a live report, see
+ *                 LATE_OPERATION_AGE_MS)
  *   'rejected'    the graph server says otherwise: do not record it
  *   'unverified'  it could not be checked (no operation id from an older app
  *                 version, a graph server we do not ask, or no answer)
@@ -121,10 +130,10 @@ async function verifyGraphEdit(row, who, token, fetchImpl = fetch, now = Date.no
   if (String(d.user) !== String(who.caveId)) return {state: 'rejected', why: 'That operation is not yours.'};
   if (Number(d.operation_status) !== 0) return {state: 'rejected', why: 'That operation did not succeed.'};
   const at = Date.parse(String(d.timestamp || d.operation_ts || '').replace(' ', 'T'));
-  if (!Number.isFinite(at) || now - at > MAX_OPERATION_AGE_MS || at - now > 5 * 60 * 1000) return {state: 'rejected', why: 'That operation is not a current edit.'};
+  if (!Number.isFinite(at) || now - at > LATE_OPERATION_AGE_MS || at - now > 5 * 60 * 1000) return {state: 'rejected', why: 'That operation is not a current edit.'};
   const operation = Array.isArray(d.added_edges) ? 'merge' : Array.isArray(d.removed_edges) ? 'split' : null;
   if (!operation) return {state: 'rejected', why: 'That operation is not a split or a merge.'};
-  return {state: 'verified', operation};
+  return now - at > MAX_OPERATION_AGE_MS ? {state: 'verified', operation, late: true} : {state: 'verified', operation};
 }
 
 // Dataset name -> its graph table, for the datasets on a graph server the
@@ -224,4 +233,4 @@ function stripCounters(row) {
   return removed;
 }
 
-module.exports = {cleanActivityRow, verifyGraphEdit, graphTarget, lineageTarget, sameCellAs, stripCounters, stripDayCounters, DAY_COUNTERS, OPERATIONS, SERVER_COUNTERS, MAX_OPERATION_AGE_MS};
+module.exports = {cleanActivityRow, verifyGraphEdit, graphTarget, lineageTarget, sameCellAs, stripCounters, stripDayCounters, DAY_COUNTERS, OPERATIONS, SERVER_COUNTERS, MAX_OPERATION_AGE_MS, LATE_OPERATION_AGE_MS};

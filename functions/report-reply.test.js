@@ -238,7 +238,11 @@ test('the admin who asked gets a bell when the player answers, and only them', a
   assert.equal(bells.length, 1);
   assert.equal(bells[0].target_type, 'user'); assert.equal(bells[0].target_id, amy.id);
   assert.ok(bells[0].title.startsWith('💬 Reply to your question from'));
-  assert.match(bells[0].title, /Sam/); assert.equal(bells[0].body, 'The big one');
+  assert.match(bells[0].title, /Sam/);
+  // The reply, then the link that opens its report in triage (c3e90c92).
+  assert.equal(bells[0].body, `The big one
+
+#nge-triage-report=${T(1)}`);
   assert.equal(bells[0].reply_triage_id, undefined, 'the bell itself asks for nothing');
 });
 

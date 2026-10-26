@@ -17,7 +17,7 @@
 import 'neuroglancer/rendered_data_panel.css';
 import 'neuroglancer/noselect.css';
 
-import {Annotation} from 'neuroglancer/annotation';
+import {Annotation, DATA_BOUNDS_DESCRIPTION} from 'neuroglancer/annotation';
 import {getAnnotationTypeRenderHandler} from 'neuroglancer/annotation/type_handler';
 import {DisplayContext, RenderedPanel} from 'neuroglancer/display_context';
 import {NavigationState} from 'neuroglancer/navigation_state';
@@ -40,6 +40,39 @@ declare var NEUROGLANCER_SHOW_OBJECT_SELECTION_TOOLTIP: boolean|undefined;
 const tempVec3 = vec3.create();
 /** nge: screen pixels of finger travel per 2D slice (report 146). */
 const NGE_TOUCH_PX_PER_SLICE = 6;
+
+/** nge (Ames 2026-10-22): the mouse is on a dataset's bounding box (the
+ *  "Data Bounds" box drawn round the volume). A right click there used to
+ *  centre the view on the box, far from the cell; now it does nothing. */
+function ngeOnDataBounds(mouseState: any): boolean {
+  try {
+    const layer = mouseState.pickedAnnotationLayer, id = mouseState.pickedAnnotationId;
+    if (layer && id !== undefined) {
+      const ref = layer.source.getReference(id);
+      try { if (ref.value?.description === DATA_BOUNDS_DESCRIPTION) return true; } finally { ref.dispose(); }
+    }
+    // In 2D a right click goes to the spot under the mouse, picked or not:
+    // out past the data's edge there is nothing to go to (Ames 2026-10-22,
+    // it jumped far outside). Only outside counts: an earlier margin of 1% of
+    // each side kept players from right clicking cells near the edge
+    // (Ames 2026-10-23).
+    const bounds = (window as any).viewer?.coordinateSpace?.value?.bounds;
+    const pos = mouseState.position as Float32Array | undefined;
+    if (!bounds || !pos) return false;
+    const {lowerBounds, upperBounds} = bounds;
+    // Only along the directions the click moves the view (in an xy view, x
+    // and y): the slice you are on is not where you clicked, and near the
+    // first or last slice every right click would otherwise be refused.
+    const here = (window as any).viewer?.navigationState?.position?.value as Float32Array | undefined;
+    for (let i = 0; i < Math.min(3, pos.length, lowerBounds.length); ++i) {
+      const lo = lowerBounds[i], hi = upperBounds[i];
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) continue;
+      if (here && Math.abs(pos[i] - here[i]) < 1) continue;
+      if (pos[i] < lo || pos[i] > hi) return true;
+    }
+    return false;
+  } catch { return false; }
+}
 
 export interface RenderedDataViewerState extends ViewerState {
   inputEventMap: EventActionMap;
@@ -485,7 +518,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       }, () => {
         if (travelled > 3) return;
         const {mouseState} = this.viewer;
-        if (mouseState.updateUnconditionally()) this.navigationState.position.value = mouseState.position;
+        if (mouseState.updateUnconditionally() && !ngeOnDataBounds(mouseState)) this.navigationState.position.value = mouseState.position;
       });
     });
 
@@ -536,7 +569,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
 
     registerActionListener(element, 'move-to-mouse-position', () => {
       const {mouseState} = this.viewer;
-      if (mouseState.updateUnconditionally()) {
+      if (mouseState.updateUnconditionally() && !ngeOnDataBounds(mouseState)) {
         this.navigationState.position.value = mouseState.position;
       }
     });

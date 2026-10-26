@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
 import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
@@ -42,6 +43,7 @@ import HuntBegins from "components/HuntBegins.vue";
 import HuntOpening from "components/HuntOpening.vue";
 import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
+import BetaGate from "components/BetaGate.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
 import { undelete, undeleteCount } from "../util/undelete";
@@ -57,6 +59,7 @@ import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 
 import {loginSession, useLoginStore, useVolumesStore, useUserStatsStore, useSegmentAnnotationStore, useHelpRequestStore, useProofreadingQueueStore, useProofreadingBackendStore, useUserPreferencesStore, useDropdownListStore, useChatStore, useLayersStore} from '../store';
 import {currentSegLayerName, datasetDisplayName, datasetAbbrev, datasetSpeciesIcon, findDatasetBySegName, findDatasetByCanonical, canonicalDataset} from '../datasets';
+import { transitionDone } from '../util/dataset_transition';
 import {useTutorialStore} from '../store-pyr';
 import {storeToRefs as storeToRefsAnnot} from 'pinia';
 import {storeToRefs} from 'pinia';
@@ -120,14 +123,18 @@ document.addEventListener('animationend', (e) => {
 }, true);
 
 // Merger Sandbox examples (src/merger-sandbox.ts).
-import { SANDBOX_CELLS } from '../practice_pools';
+import { SANDBOX_CELLS, EXTENSION_CELLS } from '../practice_pools';
 import { sandboxDone } from '../merger-sandbox';
+import { extensionDone } from '../extension-sandbox';
 // The Proofreading Test (src/proofreading-test.ts): listed once the server
 // says a test is open; its line says passed or in use.
 import { testStatus } from '../proofreading-test';
 function startProofreadingTest() { document.dispatchEvent(new CustomEvent('nge:test-start')); }
 const sandboxCut = computed(() => SANDBOX_CELLS.filter(c => sandboxDone.value.includes(c.id)).length);
 function startNextSandbox() { document.dispatchEvent(new CustomEvent('nge:sandbox-next')); }
+// Extension Sandbox (extension-sandbox.ts), the same way.
+const extensionFinished = computed(() => EXTENSION_CELLS.filter(c => extensionDone.value.includes(c.id)).length);
+function startNextExtension() { document.dispatchEvent(new CustomEvent('nge:extsandbox-next')); }
 import { myAccess, loadMyAccess, accessStatusLabel, resumeReview } from '../access_request';
 import { datasetAccess } from '../util/dataset_access';
 const accessLabel = computed(() => datasetAccess('stroeh-mouse-retina') === 'edit' ? 'you have it' : accessStatusLabel(myAccess.value));
@@ -229,10 +236,22 @@ onMounted(() => {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    // ?: the dock opens on the list of every key (util/key_list.ts).
+    if (!typing && e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openKeyList();
+    }
     if (!typing && e.shiftKey && (e.key === 'T' || e.key === 't')) {
       e.preventDefault();
       e.stopImmediatePropagation();
       showTagMode.value = !showTagMode.value;
+    }
+    // \: the hidden top bar, down and up again (Settings: Magic Top Bar).
+    if (!typing && (e.code === 'Backslash' || e.key === '\\') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && barAutoHide.value) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      toggleBarPinned();
     }
     // Shift+L: the Cell Library (Nik 2026-10-09). Plain L is neuroglancer's
     // "recolour", so the library takes the shifted key, as tag mode does.
@@ -641,6 +660,14 @@ function searchCommands(q: string, limit = 6) {
 function runCommandById(id: string): boolean {
   return (cmdPalette.value as any)?.runCommandById?.(id) ?? false;
 }
+function listKeys() {
+  return (cmdPalette.value as any)?.listKeys?.() ?? [];
+}
+/** The Ask dock, open on the list of every key (the ? key and the menu). */
+function openKeyList() {
+  showAssistant.value = true;
+  document.dispatchEvent(new CustomEvent('nge:show-keys'));
+}
 
 /**
  * Ctrl+K / Cmd+K opens the Ask dock (previously the command palette).
@@ -773,12 +800,39 @@ watch(() => backendStore.userId, id => {
   if (!id || reopenedAfterSwitch) return;
   try {
     const want = JSON.parse(sessionStorage.getItem('nge_cl_after_switch') || 'null');
-    if (!want || Date.now() - (want.at || 0) > 120_000) return;
+    if (want && Date.now() - (want.at || 0) <= 120_000) {
+      reopenedAfterSwitch = true;
+      void reopenWhenReady(want.tab || 'help');
+      return;
+    }
+    // Open when the page was refreshed (Nseraf, report 232): back on the same
+    // tab. CellLibraryPanel left the note and puts the slim view back itself.
+    const was = JSON.parse(sessionStorage.getItem('nge_cl_on_refresh') || 'null');
+    if (!was || Date.now() - (was.at || 0) > 30 * 60_000) return;
     reopenedAfterSwitch = true;
-    cellLibraryInitialTab.value = want.tab || 'help';
-    showCellLibrary.value = true;
+    void reopenWhenReady(was.tab || 'mine');
   } catch { /* nothing to reopen */ }
 }, { immediate: true });
+/** Wait until the new dataset is on screen and no sign in screen is up
+ *  (Ames 2026-10-23: the library opened over Identity Verification, saying
+ *  "you are on another dataset"). Both have to hold for a moment, since the
+ *  data server's sign in comes a beat after its layer. Gives up after
+ *  10 minutes, leaving the library closed. */
+async function reopenWhenReady(tab: string) {
+  let steady = 0;
+  for (let i = 0; i < 1200 && steady < 3; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    const signIn = document.querySelector('.nge-login-blocker');
+    const ready = !!currentSegLayerName() && !(signIn && signIn.getClientRects().length);
+    steady = ready ? steady + 1 : 0;
+  }
+  if (steady < 3) return;
+  // After "Now entering" has played, never on top of it (Ames 2026-10-23).
+  await transitionDone();
+  if (showCellLibrary.value) return;
+  cellLibraryInitialTab.value = tab;
+  showCellLibrary.value = true;
+}
 const { tutorialStep } = storeToRefs(useTutorialStore());
 
 function logout(session: loginSession) {
@@ -804,7 +858,7 @@ interface ToolbarIcon {
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
 import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG, LEADERBOARD_SVG } from '../data/toolbar-icons';
-import { iconArrived, isStaged, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
+import { iconArrived, isStaged, isTutorialOnScreen, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
 import StagingAnnouncement from 'components/StagingAnnouncement.vue';
 import StagingTestPanel from 'components/StagingTestPanel.vue';
 
@@ -866,11 +920,14 @@ const toolbarActions: Record<string, ToolbarAction> = {
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount,
-                 adminBadge: () => backendStore.unreadAdminNotificationCount },
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : backendStore.unreadStaffNotificationCount),
+                 adminBadge: () => backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : 0 },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
+
+/** The phone bell's count: in player view, without admin and triage notes. */
+const mobileNotifCount = computed(() => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? 0 : backendStore.unreadStaffNotificationCount));
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => {
   return TOOLBAR_ICON_DEFS
@@ -977,45 +1034,153 @@ function onIconDrop(e: DragEvent, id: string) {
   prefsStore.save({ toolbarIcons: saved, toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected) });
 }
 
-function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
-  const viewer: any = (window as any)['viewer'];
-  if (!viewer) return;
 
-  // 1. Select the segmentation layer (required for tool keybindings)
-  try {
-    const segLayer = viewer.layerManager?.managedLayers?.find(
-      (x: any) => String(x.layer?.type || '').startsWith('segmentation'),   // by the layer's own type: class names are renamed in the production build
-    );
-    if (segLayer) {
-      viewer.selectedLayer.layer = segLayer;
-      viewer.selectedLayer.visible = true;
-    }
-  } catch { /* non-critical */ }
 
-  // 2. Dispatch keyboard shortcut to the viewer element where ng binds handlers.
-  // CUSTOM_BINDINGS map (in dev-server / build-prod): keyc → grapheneMulticutSegments,
-  // keym → grapheneMergeSegments, keyf → grapheneFindPath.
-  const keyMap = { multicut: 'c', merge: 'm', findPath: 'f' } as const;
-  const codeMap = { multicut: 'KeyC', merge: 'KeyM', findPath: 'KeyF' } as const;
-  const key = keyMap[toolType];
-  const eventInit: KeyboardEventInit = {
-    key, code: codeMap[toolType],
-    bubbles: true, cancelable: true,
-  };
-  // Try viewer.element first (where global inputEventBindings live), then fallback
-  const targets = [
-    viewer.element,
-    viewer.display?.container,
-    document.getElementById('neuroglancer-container'),
-  ].filter(Boolean);
-  // preventScroll: on a touch screen the page is taller than what shows (the
-  // browser bar), and a plain focus() slid it up, so the top bar went off
-  // screen for good (Nseraf, report 135, on a Galaxy Tab).
-  for (const el of targets) {
-    if (el instanceof HTMLElement) el.focus({ preventScroll: true });
-    el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
-  }
+// ── Magic Top Bar: the top bar hides until pointed at (Settings, Nik #243, Ames 2026-10-25) ──────────
+// Like a Mac's hidden menu bar: the bar tucks away above the page, the views
+// take the whole window, and the bar comes down over the top of them when the
+// mouse rests at the top edge (Ames: no strip, the buttons alone). It lies over
+// the views, so they never move as it comes and goes.
+// Never on a touch screen (no pointing), during a tutorial, or while a new
+// player's icons are still arriving (staging teaches through the bar).
+const canHover = ref(typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches);
+{
+  const mq = typeof window !== 'undefined' ? window.matchMedia?.('(hover: hover) and (pointer: fine)') : null;
+  mq?.addEventListener?.('change', e => { canHover.value = e.matches; });
 }
+const barAutoHide = computed(() => useUserPreferencesStore().prefs.hideTopBar === true
+  && canHover.value && !isMobileRef.value && !isTutorialOnScreen() && !isStaged());
+const barHover = ref(false);     // the bar has come down for the mouse
+const barPinned = ref(false);    // the \ key brought it down
+const barFocus = ref(false);     // typing in it (the position box)
+// A menu or panel opened from the bar keeps it down until it closes.
+const barMenuOpen = computed(() => showNotifications.value || showDatasetSelector.value || barFocus.value
+  || Object.values(dropdownStore.activeDropdowns).some(v => v !== undefined));
+const barShown = computed(() => !barAutoHide.value || barHover.value || barPinned.value || barMenuOpen.value);
+let barOpenTimer: ReturnType<typeof setTimeout> | null = null;
+let barCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let mouseOnBar = false;
+const BAR_OPEN_DELAY = 250;   // passing over the top edge does not open it
+const BAR_CLOSE_DELAY = 400;  // nor does slipping off the bar for a moment close it
+function clearBarTimers() {
+  if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+  if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+}
+// Where the mouse brings the bar down: the very top edge anywhere, and a band
+// along the top (the row of layer tabs) except over a layer tab, a button or a
+// box, so reaching for those never opens the bar.
+const TOP_EDGE = 3;
+const OPEN_BAND = 24;
+const NOT_A_BAR_SPOT = '.neuroglancer-layer-item, button, input, textarea, select, a, [role="button"], [contenteditable="true"]';
+function onTuckedMouseMove(e: MouseEvent) {
+  const t = e.target as HTMLElement | null;
+  const inBand = e.clientY <= TOP_EDGE || (e.clientY < OPEN_BAND && !t?.closest?.(NOT_A_BAR_SPOT));
+  if (!inBand) { if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; } return; }
+  if (barHover.value || barOpenTimer) return;
+  barOpenTimer = setTimeout(() => { barOpenTimer = null; barHover.value = true; }, BAR_OPEN_DELAY);
+}
+// The mouse left the page across the top edge (into the browser's own bar).
+function onTuckedMouseOut(e: MouseEvent) {
+  if (!e.relatedTarget && barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+}
+const barTucked = computed(() => barAutoHide.value && !barShown.value);
+watch(barTucked, on => {
+  if (on) {
+    window.addEventListener('mousemove', onTuckedMouseMove, { capture: true, passive: true });
+    document.addEventListener('mouseout', onTuckedMouseOut, true);
+  } else {
+    window.removeEventListener('mousemove', onTuckedMouseMove, { capture: true } as any);
+    document.removeEventListener('mouseout', onTuckedMouseOut, true);
+    if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+  }
+}, { immediate: true });
+function scheduleBarClose() {
+  if (barCloseTimer) clearTimeout(barCloseTimer);
+  barCloseTimer = setTimeout(() => { barCloseTimer = null; if (!mouseOnBar) barHover.value = false; }, BAR_CLOSE_DELAY);
+}
+// While the bar is down for the mouse, every move asks whether the mouse is
+// still on it (or on a menu inside it). Enter and leave events alone miss the
+// case of a bar that slid in under a mouse that had not moved.
+function onBarMouseMove(e: MouseEvent) {
+  const t = e.target as Node | null;
+  const bar = document.getElementById('extensionBar');
+  mouseOnBar = !!t && !!bar && bar.contains(t);
+  if (mouseOnBar) {
+    if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+    // Down for a menu or the key, and now pointed at: it stays while pointed at.
+    barHover.value = true;
+  } else if (barHover.value && !barCloseTimer) scheduleBarClose();
+}
+watch(() => barAutoHide.value && barShown.value, on => {
+  if (on) window.addEventListener('mousemove', onBarMouseMove, { capture: true, passive: true });
+  else { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); mouseOnBar = false; }
+});
+function onBarFocusIn(e: FocusEvent) {
+  const t = e.target as HTMLElement | null;
+  barFocus.value = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
+function onBarFocusOut() { barFocus.value = false; }
+// A menu closed with the mouse already elsewhere: the bar goes up shortly.
+watch(barMenuOpen, open => { if (!open && barHover.value && !mouseOnBar) scheduleBarClose(); });
+// Pinned by the key, the bar goes up again on the next press.
+function toggleBarPinned() {
+  if (!barAutoHide.value) return;
+  clearBarTimers();
+  if (barShown.value) { barPinned.value = false; barHover.value = false; }
+  else barPinned.value = true;
+}
+watch(barAutoHide, on => { if (!on) { clearBarTimers(); barHover.value = false; barPinned.value = false; } });
+// While the bar is up, the Pyr gem sits at the left end of the layer tab row
+// (Ames); it is drawn by CSS from this, and pointing at it brings the bar down.
+document.body.style.setProperty('--nge-pyr-gem', `url("${pyrIcon}")`);
+// A click on the gem brings the bar down at once.
+document.addEventListener('click', e => {
+  if (!barTucked.value) return;
+  const t = e.target as HTMLElement | null;
+  if (!t?.classList?.contains('neuroglancer-layer-panel')) return;
+  if (e.clientX - t.getBoundingClientRect().left > 40) return;
+  clearBarTimers();
+  barHover.value = true;
+});
+watch([barAutoHide, barShown], ([on, shown]) => {
+  document.body.classList.toggle('nge-bar-autohide', on);
+  document.body.classList.toggle('nge-bar-tucked', on && !shown);
+}, { immediate: true });
+
+// While the bar is up, your own unread notifications show as a dot in the
+// top right corner of the 3D view (Ames). Only the bell's personal count:
+// help requests, chat and the Admin tab are not about you. A click on the dot
+// opens the bell. With no 3D view on screen it sits in the window's top right corner.
+const tuckedNotifCount = computed(() => barTucked.value
+  ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount) : 0);
+let notifDot: HTMLButtonElement | null = null;
+let notifDotTimer: ReturnType<typeof setInterval> | null = null;
+function placeNotifDot() {
+  const n = tuckedNotifCount.value;
+  if (!n) { notifDot?.remove(); return; }
+  if (!notifDot) {
+    notifDot = document.createElement('button');
+    notifDot.type = 'button';
+    notifDot.className = 'nge-notif-dot';
+    notifDot.addEventListener('click', e => { e.stopPropagation(); showNotifications.value = true; });
+    // Clicks and drags on it must not reach the 3D view under it.
+    for (const t of ['pointerdown', 'mousedown', 'wheel']) notifDot.addEventListener(t, e => e.stopPropagation());
+  }
+  const bell = toolbarDefs.value.find(d => d.id === 'notif')?.svg ?? '';
+  notifDot.innerHTML = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
+  notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
+  // The 3D view is rebuilt when the layout changes, so look for it each time.
+  const panel = [...document.querySelectorAll<HTMLElement>('.nge-3d-panel')].find(p => p.offsetWidth > 0);
+  const home = panel ?? document.body;
+  notifDot.classList.toggle('nge-notif-dot--corner', !panel);
+  if (notifDot.parentElement !== home) home.appendChild(notifDot);
+}
+watch(tuckedNotifCount, n => {
+  placeNotifDot();
+  if (n && !notifDotTimer) notifDotTimer = setInterval(placeNotifDot, 1000);
+  if (!n && notifDotTimer) { clearInterval(notifDotTimer); notifDotTimer = null; }
+}, { immediate: true });
+onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); clearBarTimers(); if (notifDotTimer) clearInterval(notifDotTimer); notifDot?.remove(); });
 
 </script>
 
@@ -1026,7 +1191,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <achievement-toast />
   <staging-announcement />
   <!-- Test sites, and admins on the live site (util/toolbar_staging.ts). -->
-  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.isAdmin" />
+  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.showAdminUi" />
   <command-palette
     ref="cmdPalette"
     @open-profile="showProfile = true"
@@ -1060,6 +1225,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   <pyr-arcade v-if="showArcade" @hide="showArcade = false" />
   <volumes-overlay v-visible="showModal" @hide="showModal = false" />
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
+  <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
+  <beta-gate />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
@@ -1088,9 +1255,10 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     :ui-state="assistantUiState"
     :search-commands="searchCommands"
     :run-command-by-id="runCommandById"
+    :list-keys="listKeys"
     @hide="showAssistant = false"
   />
-  <div id="extensionBar">
+  <div id="extensionBar" @focusin="onBarFocusIn" @focusout="onBarFocusOut">
     <div class="ng-extend-logo">
       <!-- Click → hard refresh. Reloads the bundle from the server (skips
            the disk cache so a freshly-deployed JS hits the user without a
@@ -1210,7 +1378,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <button v-if="volumes.length" @click="showModal = true">Volumes ({{ volumes.length }})</button>
     <!-- 🔥 streak: its fire, its click and its card live in StreakChip.vue -->
     <!-- EyeWire Radio: bottom right, teleported to the body -->
-    <RadioPlayer v-if="login.sessions.length > 0" />
+    <RadioPlayer v-if="login.sessions.length > 0 && !useUserPreferencesStore().prefs.hideRadio" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
       <!-- The Hunt: only while one is announced, running or just over. -->
@@ -1268,6 +1436,12 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
       ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ icon.badge() }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
     </div>
 
+    <!-- Player view (Ames 2026-10-25): an admin seeing the game as players do.
+         Shown only while it is on; a click goes back to admin view. The dot
+         means admin or triage notifications are waiting. -->
+    <button v-if="backendStore.isAdmin && backendStore.playerView" type="button" class="nge-player-view-chip"
+            :title="backendStore.unreadStaffNotificationCount > 0 ? `Player view is on. ${backendStore.unreadStaffNotificationCount} admin notifications waiting. Click for admin view.` : 'Player view is on: admin things are hidden. Click for admin view.'"
+            @click="backendStore.setPlayerView(false)">Player view<span v-if="backendStore.unreadStaffNotificationCount > 0" class="nge-player-view-dot" aria-label="Admin notifications waiting"></span></button>
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     <!-- Phones: the leaderboard, where the layer side panel's sliders used to
          sit (Ames 2026-10-05). The side panel is a desktop tool; on a phone
@@ -1315,12 +1489,20 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
             <span class="nge-menu-num">4</span><span>Advanced Interface</span>
           </div>
         </li>
+        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
+             game. Number 5, straight after Advanced Interface (Ames
+             2026-10-23), the next step once the tutorials are done. -->
+        <li>
+          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
+            <span class="nge-menu-num">5</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+          </div>
+        </li>
         <!-- The Proofreading Test (Ames, 2026-10-10): one cell with several
              mistakes, scored by the server; a pass opens production. Shown
              once a test is registered and enabled. -->
         <li v-if="testStatus && testStatus.test">
           <div class="logoutButton button nge-menu-item" @click="startProofreadingTest(); closeHamburger()">
-            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '5' }}</span>
+            <span class="nge-menu-num">{{ testStatus.passed ? '✓' : '6' }}</span>
             <span>Proofreading Test (DO NOT TAKE, WIP){{ testStatus.passed ? ' (passed)' : testStatus.queue?.called_until ? ' (your turn)' : testStatus.queue?.position ? ` (in line, ${testStatus.queue.position})` : (testStatus.free === false && !testStatus.mine) ? ' (in use)' : '' }}</span>
           </div>
         </li>
@@ -1333,6 +1515,14 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li>
           <div class="logoutButton button nge-menu-item" @click="startNextSandbox(); closeHamburger()">
             <span class="nge-menu-num">{{ sandboxCut >= SANDBOX_CELLS.length ? '✓' : sandboxCut }}</span><span>Cut the mergers ({{ sandboxCut }} of {{ SANDBOX_CELLS.length }})</span>
+          </div>
+        </li>
+        <!-- Cells that stop too soon: merge the missing pieces back on
+             (Ames, 2026-10-24). -->
+        <li class="nge-menu-heading" @click.stop>Extension Sandbox</li>
+        <li>
+          <div class="logoutButton button nge-menu-item" @click="startNextExtension(); closeHamburger()">
+            <span class="nge-menu-num">{{ extensionFinished >= EXTENSION_CELLS.length ? '✓' : extensionFinished }}</span><span>Find the missing pieces ({{ extensionFinished }} of {{ EXTENSION_CELLS.length }})</span>
           </div>
         </li>
         <li class="nge-menu-heading" @click.stop>Just for fun</li>
@@ -1349,17 +1539,16 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
         <li class="nge-menu-heading" @click.stop>Learn more</li>
         <!-- The Proofreading Guide link was taken out (Ames 2026-10-16): the old
              guide no longer matches Pyr. -->
+        <!-- Laid out like the other rows, so it lines up on the left (Ames 2026-10-24). -->
         <li>
-          <div class="logoutButton button">
-            <span><a target="_blank" rel="noopener" href="https://forum.eyewire.org">Forum ↗</a></span>
-          </div>
+          <a class="logoutButton button nge-menu-item" target="_blank" rel="noopener" href="https://forum.eyewire.org" @click="closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">💬</span><span>Forum ↗</span>
+          </a>
         </li>
-        <!-- Retina access (Ames 2026-10-16): the Dataset Access form, in the
-             game. Last in the menu, where a player looks for what comes next. -->
-        <li class="nge-menu-heading" @click.stop>Edit access</li>
+        <!-- The same list of every key that ? opens (util/key_list.ts). -->
         <li>
-          <div class="logoutButton button nge-menu-item nge-menu-access" @click="openAccessPanel()">
-            <span class="nge-menu-num">✦</span><span>Ask for Edit Access{{ accessLabel ? ` (${accessLabel})` : '' }}</span>
+          <div class="logoutButton button nge-menu-item" @click="openKeyList(); closeHamburger()">
+            <span class="nge-menu-num nge-menu-num--icon">⌨️</span><span>Keyboard shortcuts</span>
           </div>
         </li>
       </template>
@@ -1405,7 +1594,7 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
     <button :class="{ 'nge-mnav--active': showNotifications }" data-mnav="alerts" @click="showNotifications = !showNotifications">
       <span class="nge-mnav-icon">🔔</span>
       <span class="nge-mnav-label">Notifs</span>
-      <span v-if="backendStore.unreadNotificationCount > 0" class="nge-mnav-badge">{{ backendStore.unreadNotificationCount }}</span>
+      <span v-if="mobileNotifCount > 0" class="nge-mnav-badge">{{ mobileNotifCount }}</span>
     </button>
     <button :class="{ 'nge-mnav--active': showMobileWelcome }" data-mnav="guide" @click="showMobileWelcome = true">
       <span class="nge-mnav-icon">✨</span>
@@ -1833,7 +2022,8 @@ function activateTool(toolType: 'multicut' | 'merge' | 'findPath') {
   box-shadow:
     0 0 0 1px rgba(100, 200, 255, 0.3),
     0 2px 12px rgba(100, 200, 255, 0.18);
-  transform: translateY(-1px);
+  /* and grows a touch, like a Mac's dock (Nseraf: "maybe 5% larger") */
+  transform: translateY(-1px) scale(1.05);
 }
 @media (prefers-reduced-motion: reduce) {
   .nge-icon-btn:hover { transform: none; }
@@ -1940,6 +2130,37 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
   box-shadow: 0 0 8px rgba(74, 208, 122, 0.55);
 }
 
+/* Player view chip (Ames 2026-10-25): only while an admin has it on. */
+.nge-player-view-chip,
+#extensionBar .nge-player-view-chip {
+  position: relative;
+  align-self: center;
+  margin: 0 6px;
+  padding: 2px 9px;
+  border: 1px solid #7ee0ff;
+  border-radius: 999px;
+  background: rgba(126, 224, 255, 0.12);
+  color: #bfefff;
+  height: 20px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nge-player-view-chip:hover { background: rgba(126, 224, 255, 0.24); color: #fff; }
+.nge-player-view-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5484d;
+  box-shadow: 0 0 0 2px #0b1220;
+}
+
 /* ── Right end of the bar: profile, burger, ? and the layer panel toggle ──
    These came from three places (our button, the dropdown, and neuroglancer's
    own icons moved into #ngFarRight) and each looked different: a filled
@@ -1977,7 +2198,7 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
   opacity: 1;
   background: rgba(100, 200, 255, 0.1) !important;
   box-shadow: 0 0 0 1px rgba(100, 200, 255, 0.3), 0 2px 12px rgba(100, 200, 255, 0.18);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.05);
 }
 /* Open menu / panel showing: the same active underline as the left row. */
 #extensionBar #hamburger.open > button,
@@ -2426,6 +2647,12 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 /* Numbered rows start at the left edge, so the numbers form one column
    (Ames, 2026-10-13). */
 #hamburger li:has(> .nge-menu-item) { justify-content: start; }
+/* Tighter rows (Ames 2026-10-24: "too spaced out"): the row and the button
+   inside it both had padding, 57px a row. And the menu scrolls when it is
+   taller than the window: a player could not reach the bottom items. */
+#hamburger li:has(> .logoutButton) { padding-top: 1px; padding-bottom: 1px; }
+#hamburger li .logoutButton { padding-top: 6px; padding-bottom: 6px; }
+#hamburger .dropdownMenu { max-height: calc(100vh - 44px); overflow-y: auto; overscroll-behavior: contain; }
 .nge-menu-num {
   display: inline-flex;
   align-items: center;
@@ -2458,4 +2685,72 @@ button.nge-hunt-pill.nge-hunt-pill--live:hover, button.nge-hunt-pill.nge-hunt-pi
 .nge-hunt-pill--live .nge-hunt-pill-word { color: #f5d142; }
 .nge-hunt-pill-time { font: 700 12px 'Orbitron', 'Inter', sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
 .nge-hunt-pill--live .nge-hunt-pill-time { color: #fff3c4; }
+
+/* ── Magic Top Bar: hidden until pointed at (Settings) ─────────────────────────
+   body.nge-bar-autohide: the bar leaves the page flow and lies over the top
+   of the views, which take the whole window, so nothing moves as it comes and
+   goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather
+   than a transform, so the bar's fixed position children (share toast) keep
+   the window as their frame. */
+body.nge-bar-autohide .ng-extend {
+  position: relative;
+  flex: 0 0 0;
+  height: 0;
+  /* No z-index here: every panel the bar opens is rendered in .ng-extend too,
+     and a stacking context would cap them all at this level. */
+}
+body.nge-bar-autohide #extensionBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 41;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: top 0.16s ease-out, box-shadow 0.16s;
+}
+body.nge-bar-autohide.nge-bar-tucked #extensionBar {
+  top: -64px;
+  box-shadow: none;
+  transition: top 0.2s ease-in, box-shadow 0.2s;
+}
+body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
+/* Room above the layer tabs once the bar is out of the way (Ames: they were
+   squished at the top), and the Pyr gem at the row's left end. */
+body.nge-bar-autohide .neuroglancer-layer-panel { padding-top: 6px !important; }
+body.nge-bar-autohide .neuroglancer-layer-panel::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 4px 0 2px;
+  background: var(--nge-pyr-gem) center / contain no-repeat;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.35));
+  cursor: pointer;
+}
+.nge-notif-dot {
+  position: absolute;
+  top: 8px;
+  right: 40px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border: none;
+  border-radius: 11px;
+  background: #7c4dff;
+  color: #fff;
+  font: 700 12px/22px 'Inter', 'Roboto', sans-serif;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(124, 77, 255, 0.6);
+  animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.nge-notif-dot:hover { background: #8f66ff; }
+.nge-notif-dot--corner { position: fixed; top: 6px; right: 12px; z-index: 40; }
+.nge-notif-dot-icon { display: inline-flex; align-items: center; }
+.nge-notif-dot-icon svg { width: 13px !important; height: 13px !important; }
 </style>

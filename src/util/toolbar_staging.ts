@@ -30,7 +30,8 @@
  * the moments above. Real tutorial steps reveal icons in that pretend state
  * too, so a tutorial can be played through as a new player would.
  */
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref, shallowRef, watch } from 'vue';
+import { getActivePinia } from 'pinia';
 import { supabase } from '../supabase';
 import { useProofreadingBackendStore, useUserPreferencesStore } from '../store';
 import { DATASETS } from '../datasets';
@@ -42,9 +43,10 @@ export { STAGE_MOMENTS, NEVER_AUTO, ALL_AUTO, TUTORIAL_REVEALS, checkTutorialWir
 export type { StageMoment } from '../data/toolbar-stages';
 
 
-/** Live site accounts created at or after this are staged: the deploy time
- *  (Ames said deploy, 2026-10-21). Everyone older keeps their top bar. */
-export const STAGING_SINCE = '2026-10-21T18:49:56Z';
+/** Live site accounts created at or after this are staged. Moved to the deploy
+ *  of the startup fix (Ames, 2026-10-22): accounts from before it were never
+ *  sorted and have had the full top bar, so they keep it. */
+export const STAGING_SINCE = '2026-10-22T13:25:00Z';
 
 export const IS_LIVE_SITE = typeof location !== 'undefined' && location.hostname.startsWith('eyewire-ii-community-dot-');
 /** The test panel exists on every test site, and for admins on the live site
@@ -295,6 +297,13 @@ export function siteTourShows(iconId: string): boolean {
  *  on screen, so edits made there do not count as your own. */
 let tutorialBusy: () => boolean = () => false;
 export function setTutorialBusy(fn: () => boolean) { tutorialBusy = fn; }
+/** Set by Tutorial.vue: whether a tutorial box (or its resume card) is drawn.
+ *  A tutorial in progress is not enough: a test site keeps it out of sight
+ *  until started from the menu. A ref, so a computed that asks before
+ *  Tutorial.vue has set it still updates (the hidden top bar asks). */
+const tutorialOnScreenFn = shallowRef<() => boolean>(() => false);
+export function setTutorialOnScreen(fn: () => boolean) { tutorialOnScreenFn.value = fn; }
+export function isTutorialOnScreen(): boolean { return tutorialOnScreenFn.value(); }
 
 /**
  * Get Started is over. Once its Achievement and the username question have
@@ -389,7 +398,11 @@ async function classify() {
   prefs().save({ toolbarStage: staged ? freshState() : { staged: false, revealed: [], visitDays: [], done: [] } } as any);
 }
 
-setTimeout(() => {
+// The stores need Pinia, which main.ts installs only once the page has loaded.
+// This file can run before that, so wait for it rather than reading the stores
+// too early (which threw on every live page load and skipped classify()).
+function startStaging() {
+  if (!getActivePinia()) { setTimeout(startStaging, 50); return; }
   if (IS_LIVE_SITE) {
     watch(() => [useProofreadingBackendStore().userId, (useUserPreferencesStore() as any).accountLoaded] as const,
       ([id, loaded]) => { if (id && loaded) classify().then(() => noteVisit()).catch(() => {}); }, { immediate: true });
@@ -402,4 +415,5 @@ setTimeout(() => {
     const s = current();
     if (s && !s.done.includes('production')) void momentWhenQuiet('production');
   }, { immediate: true });
-}, 0);
+}
+setTimeout(startStaging, 0);

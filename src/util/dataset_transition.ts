@@ -64,3 +64,12 @@ export function endDatasetTransition() {
   datasetTransition.resumed = false;
   try { sessionStorage.removeItem(KEY); } catch { /* ignore */ }
 }
+
+/** Resolves once no "Now entering" card is up (or after `maxMs`), so
+ *  whatever opens after a switch lands behind nothing and after the show. */
+export async function transitionDone(maxMs = 30000): Promise<void> {
+  const until = Date.now() + maxMs;
+  while (datasetTransition.current && Date.now() < until) {
+    await new Promise(r => setTimeout(r, 250));
+  }
+}

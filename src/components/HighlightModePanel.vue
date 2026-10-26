@@ -13,7 +13,8 @@ import { claimTouchTaps } from '../util/touch_tap';
 import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -53,6 +54,34 @@ function removeStyle(s: HighlightStyle) {
   saveHighlightStyles(styles.value);
   if (styleKey.value === s.key) styleKey.value = styles.value[0].key;
 }
+// ── The lab's MEC marks (Ames 2026-10-24) ─────────────────────────────────
+// On MEC the box also offers the lab's four marks: pick one, and one click
+// on a branch end drops it. Axon first, as the lab proofreaders work: mark
+// the AIS, color the axon, then mark its ends (Hits Edge can be found).
+const mec = ref(isMec());
+const labStyles = computed(() => (mec.value ? mecStyles() : []));
+/** Set where the server must not trace (MEC): the lab marks only, as points. */
+const noTrace = ref(traceOffReason());
+const allStyles = computed(() => [...labStyles.value, ...styles.value]);
+const labCounts = ref<Record<string, number>>(mecCounts());
+const hintOf = (key: string) => MEC_KINDS.find(k => k.key === key)?.hint ?? '';
+/** The cell clicked last: the one Color the axon and Find ends work on. */
+const lastRoot = ref<string | null>(null);
+if (mec.value) styleKey.value = sharedLabPick.value
+  || (!labCounts.value['mec:soma'] ? 'mec:soma' : !labCounts.value['mec:ais'] ? 'mec:ais' : 'mec:end');
+/** Where the soma mark is, for the hint under the chips. */
+const somaAt = ref<number[] | null>(somaXyz());
+/** The cell's starting point (the nucleus), when the Cell Library knows it. */
+const startAt = ref<number[] | null>(startXyz());
+async function confirmSoma() {
+  try {
+    const p = await confirmSomaAtStart();
+    refresh();
+    say(`Soma confirmed at the starting point, ${p.join(', ')}. Next: the AIS.`);
+    if (!labCounts.value['mec:ais']) styleKey.value = 'mec:ais';
+  } catch (e: any) { say(e?.message || 'Could not mark the soma.', true); }
+}
+function lookAtStart() { if (!goToStart()) say("Pyr doesn't know this cell's starting point.", true); }
 const first = ref<Pick | null>(null);
 /** Set while one more click is awaited, to say which side the soma is on. */
 const branchWay = ref<BranchWay | null>(null);
@@ -84,9 +113,11 @@ let traceOk = false;
 const bandDone = ref(false);
 /** What the finish says ("43 points"); it lands in the footer when the band closes. */
 const doneStat = ref('');
+/** A finish line of its own (Find ends says what it found), else "Highlight complete". */
+const doneText = ref('');
 const closeBand = () => {
   // The band's "Highlight complete" settles into the footer line as it closes.
-  if (bandDone.value) say('Highlight complete', false, doneStat.value);
+  if (bandDone.value) say(doneText.value || 'Highlight complete', false, doneText.value ? '' : doneStat.value);
   bandDone.value = false;
   bandOn.value = false;
   stopLoader();
@@ -147,6 +178,7 @@ async function setSlim(v: boolean) {
 const slimStep = computed(() => {
   if (messageBad.value && message.value) return message.value;
   if (branchWay.value) return isTouchRef.value ? 'Tap the soma' : 'Ctrl + click the soma';
+  if (labOn.value && !messageBad.value && !message.value) return `${isTouchRef.value ? 'Tap' : 'Ctrl + click'}: ${styleOf().label}`;
   if (first.value) return 'Now the end';
   if (message.value === 'Highlight complete') return stat.value ? `Done, ${stat.value}` : 'Done';
   return isTouchRef.value ? 'Tap a start point' : 'Ctrl + click';
@@ -204,8 +236,34 @@ const ctrlHeld = ref(false);
 watch([ctrlHeld, hHeld], () => document.body.classList.toggle('nge-highlight-armed', ctrlHeld.value || hHeld.value));
 
 function say(text: string, bad = false, count = '') { message.value = text; messageBad.value = bad; stat.value = count; }
-function refresh() { markCount.value = listHighlights().length; shown.value = highlightsShown(); }
-const styleOf = () => styles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
+function refresh() {
+  markCount.value = listHighlights().length;
+  shown.value = highlightsShown();
+  mec.value = isMec();
+  noTrace.value = traceOffReason();
+  if (mec.value) { labCounts.value = mecCounts(); somaAt.value = somaXyz(); startAt.value = startXyz(); }
+}
+// A lab mark is dropped as a point (one click), or highlighted as a stretch
+// in its color (Ames 2026-10-24: "an option to do this with highlight mode in
+// addition to annotation layers"). A stretch goes in a highlight layer of its
+// own, "True End highlight", so the lab's layer keeps only its points; a
+// stretch made with two clicks also drops the point at the second click.
+const LAB_AS_KEY = 'nge_highlight_lab_as';
+const labAs = ref<'point' | 'stretch'>((() => { try { return localStorage.getItem(LAB_AS_KEY) === 'stretch' ? 'stretch' : 'point'; } catch { return 'point'; } })());
+function setLabAs(v: 'point' | 'stretch') {
+  labAs.value = v;
+  try { localStorage.setItem(LAB_AS_KEY, v); } catch { /* private mode */ }
+}
+const picked = () => allStyles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
+/** The lab mark picked, when its marks are stretches. */
+const stretchKind = () => { const s = picked(); return s.lab && labAs.value === 'stretch' && !noTrace.value ? s : null; };
+const styleOf = (): HighlightStyle => {
+  const k = stretchKind();
+  return k ? { key: `${k.key}:hl`, label: k.label, layer: `${k.label} highlight`, color: k.color } : picked();
+};
+/** One click drops a mark: a lab point, or anywhere the server can't trace
+ *  (MEC), a highlight spot. */
+const labOn = computed(() => !!noTrace.value || (!!allStyles.value.find(s => s.key === styleKey.value)?.lab && labAs.value === 'point'));
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
 const TRACE_LIMIT_MS = 60000;
@@ -217,6 +275,28 @@ async function place(x: number, y: number) {
   const pick = pickUnderMouse();
   if ('error' in pick) { say(pick.error, true); return; }
   runParticleBurst(x, y, rgbOf(styleOf().color));
+  lastRoot.value = pick.root;
+  const style = styleOf();
+  if (!style.lab && noTrace.value) {
+    try { await addHighlightSpot(pick, style); refresh(); say(`${style.label} spot placed.`); }
+    catch (e: any) { say(e?.message || 'Could not place that spot.', true); }
+    return;
+  }
+  if (style.lab) {
+    try {
+      await addLabMark(pick, style);
+      const wasAis = style.key === 'mec:ais';
+      refresh();
+      if (style.key === 'mec:soma') {
+        say(`Soma marked at ${somaAt.value?.join(', ') ?? 'this point'}. Next: the AIS.`);
+        if (!labCounts.value['mec:ais']) styleKey.value = 'mec:ais';
+      } else if (wasAis && labCounts.value['mec:ais'] === 1) {
+        say('AIS marked. Next: Color the axon, then mark each of its ends.');
+        styleKey.value = 'mec:end';
+      } else say(`${style.label} marked.`);
+    } catch (e: any) { say(e?.message || 'Could not place that mark.', true); }
+    return;
+  }
   if (!first.value) {
     first.value = pick;
     try { showStartMarker(pick, styleOf()); } catch (e) { console.warn('[highlight] start marker failed:', e); }
@@ -235,7 +315,12 @@ async function place(x: number, y: number) {
   }
   first.value = null;
   try { showEndMarker(pick); } catch (e) { console.warn('[highlight] end marker failed:', e); }
-  await trace(wanted => addHighlight(a, pick, styleOf(), wanted), 'points');
+  const kind = stretchKind();
+  const ok = await trace(wanted => addHighlight(a, pick, styleOf(), wanted), 'points');
+  // A lab stretch ends at its mark: the point goes where the stretch ends.
+  if (ok && kind) {
+    try { await addLabMark(pick, kind); refresh(); } catch (e) { console.warn('[highlight] lab point failed:', e); }
+  }
 }
 
 // ── To soma, and Beyond ───────────────────────────────────────────────────
@@ -259,6 +344,21 @@ async function markBranch(way: BranchWay) {
   }
 }
 
+/** Color everything beyond the AIS: the axon. */
+async function colourAxon() {
+  if (busy.value) return;
+  await trace(async wanted => {
+    const n = await addAxonHighlight(workingRoot(lastRoot.value), wanted);
+    doneText.value = 'Axon colored. Now mark each of its ends.';
+    return n;
+  }, 'pieces');
+}
+// A lab mark is one click: a start point left from a stretch is dropped.
+watch(styleKey, () => { if (labOn.value && first.value && !busy.value) { first.value = null; branchWay.value = null; clearStartMarker(); } });
+// One picked lab mark for this box and the Cell Library's Marks.
+watch(styleKey, k => { const lab = k.startsWith('mec:') ? k : null; if (sharedLabPick.value !== lab) sharedLabPick.value = lab; }, { immediate: true });
+watch(sharedLabPick, k => { if (k && k !== styleKey.value) styleKey.value = k; });
+
 // The ask for the soma lights up as it arrives: one head of light laps its
 // border and a few sparks leave it, in the soma layer's amber. Once.
 const askEl = ref<HTMLElement | null>(null);
@@ -281,13 +381,14 @@ watch(branchWay, async way => {
  * 2026-10-02): give up after TRACE_LIMIT_MS, or when the player presses
  * Stop. `passSomaAsk` lets the "soma not known" answer through to the caller.
  */
-async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit: string, passSomaAsk = false) {
+async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit: string, passSomaAsk = false): Promise<boolean> {
   busy.value = true;
   say('');   // the band at the foot of the box says it is tracing
   let wanted = true;
   let timer = 0;
   let asked: NeedsSomaSide | null = null;
   let ok = false;
+  doneText.value = '';
   const gaveUp = new Promise<never>((_, reject) => {
     stopTrace = () => reject(new Error('Stopped. Nothing was marked.'));
     timer = window.setTimeout(() => reject(new Error('The server took too long. Nothing was marked. Try again, or pick two closer points.')), TRACE_LIMIT_MS);
@@ -298,7 +399,7 @@ async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit:
     doneStat.value = `${n.toLocaleString()} ${n === 1 ? unit.replace(/s$/, '') : unit}`;
     traceOk = n > 0;
     ok = traceOk;
-    if (!traceOk) say('Highlight complete', false, doneStat.value);
+    if (!traceOk) say(doneText.value || 'Highlight complete', false, doneText.value ? '' : doneStat.value);
   } catch (e: any) {
     if (passSomaAsk && e instanceof NeedsSomaSide) asked = e;
     else {
@@ -318,6 +419,7 @@ async function trace(job: (stillWanted: () => boolean) => Promise<number>, unit:
     refresh();
   }
   if (asked) throw asked;
+  return ok;
 }
 
 function isTypingTarget(e: Event): boolean {
@@ -384,8 +486,9 @@ function undo() {
   refresh();
 }
 function clearAll() {
-  if (!markCount.value) return;
-  if (!window.confirm(`Remove all ${markCount.value} highlight marks from this view?`)) return;
+  const n = listHighlights().filter(m => !m.style.lab).length;
+  if (!n) { say(markCount.value ? 'Clear all leaves the lab marks. Undo or the annotation list removes one.' : 'Nothing to clear.'); return; }
+  if (!window.confirm(`Remove all ${n} highlight marks from this view? The lab marks stay.`)) return;
   clearHighlights();
   first.value = null;
   clearStartMarker();
@@ -394,6 +497,8 @@ function clearAll() {
 }
 
 let stopLayerWatch = () => { /* set on mount */ };
+// Points placed by hand in the lab's layers count too.
+let countTimer: ReturnType<typeof setInterval> | undefined;
 // A touch screen has no Ctrl: while this box is open one tap places a point,
 // as Ctrl+click does (report 135). With Merge, Cut or Find Path open the tap
 // is theirs, as Ctrl+click is.
@@ -405,7 +510,8 @@ onMounted(() => {
   if (document.querySelector('.graphene-find-path')) exitGrapheneTool();
   refresh();
   stopTouchTaps = claimTouchTaps((x, y) => (editToolOpen() ? null : () => { void place(x, y); }));
-  stopLayerWatch = onLayersChanged(() => { shown.value = highlightsShown(); });
+  stopLayerWatch = onLayersChanged(() => { shown.value = highlightsShown(); refresh(); });
+  countTimer = setInterval(() => { if (mec.value || isMec()) refresh(); }, 1500);
   requestAnimationFrame(() => { if (panelEl.value) runPanelTrace(panelEl.value); });
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
@@ -418,6 +524,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopLayerWatch();
   stopTouchTaps();
+  if (countTimer) clearInterval(countTimer);
   window.removeEventListener('keydown', onKeyDown, true);
   window.removeEventListener('keyup', onKeyUp, true);
   window.removeEventListener('pointerdown', onPointerCapture, true);
@@ -443,7 +550,7 @@ onBeforeUnmount(() => {
         </button>
         <span class="nge-hl-dots" role="radiogroup" aria-label="Mark as">
           <button
-            v-for="s in styles" :key="s.key" type="button" role="radio" class="nge-hl-dot"
+            v-for="s in allStyles" :key="s.key" type="button" role="radio" class="nge-hl-dot"
             :class="{ 'nge-hl-dot--on': styleKey === s.key }" :style="{ '--hl': s.color }"
             :aria-checked="styleKey === s.key ? 'true' : 'false'" :title="s.label" :aria-label="s.label"
             @click="styleKey = s.key"
@@ -453,7 +560,7 @@ onBeforeUnmount(() => {
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--sm" type="button" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop</button>
-        <template v-if="first && !busy && !branchWay">
+        <template v-if="first && !busy && !branchWay && !labOn">
           <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
           <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
         </template>
@@ -470,7 +577,12 @@ onBeforeUnmount(() => {
         </button>
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
       </div>
-      <p class="nge-hl-how">
+      <p v-if="mec" class="nge-hl-how">
+        Pick a lab mark, then {{ isTouchRef ? 'tap' : 'Ctrl + click' }} the cell to drop it.
+        <template v-if="noTrace">Or pick a highlight color to mark a spot.<br><span class="nge-hl-dim">{{ noTrace }}</span></template>
+        <template v-else>Or pick a highlight color and mark a checked stretch.</template>
+      </p>
+      <p v-else class="nge-hl-how">
         <template v-if="isTouchRef">
           Tap where a checked stretch starts, then where it ends.
           After the first tap you can also mark <b>to the soma</b> or <b>beyond</b>.
@@ -480,6 +592,36 @@ onBeforeUnmount(() => {
           After the first click you can also mark <b>to the soma</b> or <b>beyond</b>.
         </template>
       </p>
+      <div v-if="mec" class="nge-hl-mec">
+        <div class="nge-hl-mec-head">
+          <span>Lab marks</span><span class="nge-hl-mec-sub">axon first</span>
+          <div v-if="!noTrace" class="nge-hl-switch nge-hl-mec-as" role="radiogroup" aria-label="Lab marks as" :data-on="labAs === 'point' ? 'show' : 'hide'"
+               title="Point: one click drops the lab's mark. Stretch: highlight a stretch in the mark's color, and its end gets the mark.">
+            <button type="button" role="radio" :aria-checked="labAs === 'point' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('point')">Point</button>
+            <button type="button" role="radio" :aria-checked="labAs === 'stretch' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('stretch')">Stretch</button>
+          </div>
+        </div>
+        <div class="nge-hl-styles" role="radiogroup" aria-label="Lab mark">
+          <span
+            v-for="s in labStyles" :key="s.key" role="radio" tabindex="0" :aria-checked="styleKey === s.key ? 'true' : 'false'"
+            class="nge-hl-style" :class="{ 'nge-hl-style--on': styleKey === s.key }" :style="{ '--hl': s.color }" :title="hintOf(s.key)"
+            @click="styleKey = s.key" @keydown.enter.prevent="styleKey = s.key" @keydown.space.prevent="styleKey = s.key"
+          >
+            <span class="nge-hl-swatch nge-hl-swatch--fixed"></span>
+            {{ s.label }}
+            <span class="nge-hl-mec-n" :aria-label="`${labCounts[s.key] ?? 0} placed`">{{ labCounts[s.key] ?? 0 }}</span>
+          </span>
+        </div>
+        <p class="nge-hl-mec-hint">{{ noTrace && !picked().lab ? 'A highlight color is picked: one click marks a spot.' : labOn && styleKey === 'mec:soma' && somaAt ? `Soma at ${somaAt.join(', ')}. Click again to move it.` : labOn ? hintOf(styleKey) : stretchKind() ? `${hintOf(styleKey)} Click where the stretch starts, then its end: the end gets the mark.` : 'A highlight color is picked: clicks mark a stretch.' }}</p>
+        <div v-if="styleKey === 'mec:soma' && startAt" class="nge-hl-mec-actions">
+          <button class="nge-hl-btn" type="button" title="Move the view to the cell's starting point, to see it is in the soma." @click="lookAtStart">Go to the starting point</button>
+          <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark on the starting point: the nucleus, inside the soma." @click="confirmSoma">{{ somaAt ? 'Back to the starting point' : 'Confirm soma here' }}</button>
+        </div>
+        <div v-else class="nge-hl-mec-actions">
+          <button v-if="!noTrace" class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
+                  :title="labCounts['mec:ais'] ? 'Color everything beyond the AIS, away from the soma: the axon.' : 'Mark the AIS first: the axon is everything beyond it.'">Color the axon</button>
+        </div>
+      </div>
       <div class="nge-hl-styles" role="radiogroup" aria-label="Mark as">
         <span
           v-for="s in styles" :key="s.key" role="radio" tabindex="0" :aria-checked="styleKey === s.key ? 'true' : 'false'"
@@ -512,7 +654,7 @@ onBeforeUnmount(() => {
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--main" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
-        <span v-else class="nge-hl-step">{{ isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
+        <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>
@@ -539,7 +681,7 @@ onBeforeUnmount(() => {
            count or two, quietly (Ames 2026-10-02). -->
       <div class="nge-hl-status">
         <span v-if="message" :class="{ 'nge-hl-bad': messageBad }">{{ message }}</span>
-        <span v-else-if="!busy && !bandOn" class="nge-hl-dim">{{ branchWay ? '' : first ? 'Start placed. Ctrl + click the end.' : 'No point placed yet.' }}</span>
+        <span v-else-if="!busy && !bandOn" class="nge-hl-dim">{{ branchWay ? '' : first ? 'Start placed. Ctrl + click the end.' : labOn ? 'One click drops the mark.' : 'No point placed yet.' }}</span>
         <span v-if="stat && !busy" class="nge-hl-stat">{{ stat }}</span>
         <span class="nge-hl-count">{{ markCount }} {{ markCount === 1 ? 'mark' : 'marks' }}</span>
       </div>
@@ -551,7 +693,7 @@ onBeforeUnmount(() => {
       </div>
       <!-- With one point placed: the way back to the soma, or everything
            beyond the point (Krzysztof Kruk's idea, 2026-10-09). -->
-      <div v-if="first && !busy && !branchWay" class="nge-hl-branch">
+      <div v-if="first && !busy && !branchWay && !labOn" class="nge-hl-branch">
         <span class="nge-hl-branch-label">From here</span>
         <button class="nge-hl-btn" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
         <button class="nge-hl-btn" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
@@ -675,6 +817,19 @@ onBeforeUnmount(() => {
 .nge-hl-add-name:focus { border-color: rgba(124, 255, 178, 0.6); }
 .nge-hl-add-error { flex-basis: 100%; font-size: 11px; color: #ff9aa8; }
 .nge-hl-actions { display: flex; gap: 6px; margin-top: 10px; }
+/* The lab's MEC marks: a section of its own above the highlight colors. */
+.nge-hl-mec { margin: 0 0 10px; padding: 8px 9px 9px; border-radius: 8px; background: rgba(77, 216, 240, 0.05); border: 1px solid rgba(77, 216, 240, 0.22); }
+.nge-hl-mec-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #a8eefa; }
+.nge-hl-mec-as { margin-left: auto; }
+.nge-hl-btn--ok { color: #2a2205; background: #ffd24d; border-color: #ffd24d; }
+.nge-hl-btn--ok:hover:not(:disabled) { background: #ffe07f; }
+.nge-hl-mec-sub { font: 500 11px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; color: rgba(200, 212, 228, 0.55); }
+.nge-hl-mec-n { min-width: 14px; text-align: right; font-variant-numeric: tabular-nums; color: rgba(220, 230, 245, 0.6); }
+.nge-hl-style--on .nge-hl-mec-n { color: #fff; }
+.nge-hl-swatch--fixed { width: 9px; height: 9px; border-radius: 50%; cursor: inherit; }
+.nge-hl-swatch--fixed:hover { outline: none; }
+.nge-hl-mec-hint { margin: 7px 0 0; min-height: 16px; font-size: 12px; line-height: 1.4; color: rgba(220, 230, 245, 0.72); }
+.nge-hl-mec-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .nge-hl-branch { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .nge-hl-branch-label { flex: 1; font-size: 13px; color: #b9c8da; }
 .nge-hl-branch .nge-hl-btn { font-size: 13px; }

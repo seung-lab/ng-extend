@@ -14,7 +14,7 @@ import reaperIcon from '../images/reaper-icon.png';
 // The ghost button (Halloween: util/spooky.ts). Everyone has it in Halloween
 // week; outside it, admins only, for trying it out.
 const backend = useProofreadingBackendStore();
-const showGhost = computed(() => spooky.season || backend.isAdmin);
+const showGhost = computed(() => spooky.season || backend.showAdminUi);
 
 // The bar can be dragged anywhere by its grip (Ames 2026-10-10: "I need to be
 // able to move the lantern box"). Its place is remembered in this browser;
@@ -91,7 +91,7 @@ function resetPlace() {
           <img :src="ghostIcon" alt="" draggable="false" />
         </button>
         <!-- The reaper is held back from players for now: admins only, to try him out. -->
-        <button v-if="backend.isAdmin" type="button" class="nge-lantern-ghost nge-lantern-ghost--reaper" title="Call the reaper (admins only, for testing)" aria-label="Call the reaper" @click="callTheReaper">
+        <button v-if="backend.showAdminUi" type="button" class="nge-lantern-ghost nge-lantern-ghost--reaper" title="Call the reaper (admins only, for testing)" aria-label="Call the reaper" @click="callTheReaper">
           <img :src="reaperIcon" alt="" draggable="false" />
         </button>
         <button v-if="spooky.on" type="button" class="nge-lantern-mini" title="Send them away" aria-label="Send them away" @click="shoo">shoo</button>

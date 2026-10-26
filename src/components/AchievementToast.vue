@@ -48,8 +48,28 @@ let toastId = 0;
 /** Hero badge — shown centered as a big celebration */
 const heroBadge = ref<Toast | null>(null);
 
+/** Settings: how much a completed cell or Quest, and an achievement, show
+ *  (toknow, report 239: "keep silent when submission and achievement
+ *  unlock"). Read each time, so a change applies to the next one. */
+function messagePref(key: 'cellCompleteMessage'): 'full' | 'small' | 'off' {
+  try {
+    const v = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}')[key];
+    return v === 'small' || v === 'off' ? v : 'full';
+  } catch { return 'full'; }
+}
+/** Settings, "Achievement celebration": on unless switched off. */
+function achievementCelebration(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').achievementCelebration !== false; } catch { return true; }
+}
+/** An achievement's confetti, only with the celebration on. */
+function badgeConfetti(intensity: number) {
+  if (achievementCelebration()) fireConfetti('gold', intensity);
+}
+
 function addToast(toast: Omit<Toast, 'id' | 'leaving'>) {
   const t: Toast = { ...toast, id: ++toastId, leaving: false };
+  // Celebration off: nothing on screen; it is still in the Trophy Case and the bell.
+  if (toast.type === 'badge' && !achievementCelebration()) return;
   // Badge unlocks get hero treatment
   if (toast.type === 'badge') {
     heroBadge.value = t;
@@ -139,7 +159,7 @@ onMounted(() => {
       icon: BADGE_IMAGE_MAP[BUILDING_BADGES[4]?.imageKey] || '🏅',
       isImage: !!BADGE_IMAGE_MAP[BUILDING_BADGES[4]?.imageKey],
     });
-    fireConfetti('gold', 1.5);
+    badgeConfetti(1.5);
   };
 });
 
@@ -165,7 +185,7 @@ watch(() => stats.value.editsAllTime, (newEdits) => {
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
-      fireConfetti('gold', 1.5);
+      badgeConfetti(1.5);
     }
   }
   // Edit milestones (round numbers) — confetti scales with milestone size
@@ -213,7 +233,7 @@ watch(() => stats.value.cellsSubmitted, (newCells) => {
         icon: imgUrl || '🏅',
         isImage: !!imgUrl,
       });
-      fireConfetti('gold', 1.5);
+      badgeConfetti(1.5);
     }
   }
   // Cell-completion milestone toasts removed — exploration badge hero popup
@@ -229,7 +249,7 @@ watch(() => stats.value.currentStreak, (newStreak) => {
   // store when the streak is saved); here, only the confetti, once, sized
   // by the largest milestone passed.
   const passed = streakMilestonesBetween(prevStreak, newStreak);
-  if (passed.length) fireConfetti('gold', passed[passed.length - 1] >= 30 ? 2 : 1);
+  if (passed.length) badgeConfetti(passed[passed.length - 1] >= 30 ? 2 : 1);
   prevStreak = newStreak;
 });
 
@@ -279,7 +299,7 @@ function settleLoyalty(days: number) {
   const img = rel ? new URL(rel, document.baseURI).href : '';
   if (claimCelebration(title)) {
     addToast({ type: 'badge', title: top.name, subtitle: top.description, icon: rel || '🏅', isImage: !!rel });
-    fireConfetti('gold', 1.5);
+    badgeConfetti(1.5);
   }
   if (LOYALTY_TEST_ONLY) return;
   backend.createSelfNotification({
@@ -306,6 +326,8 @@ document.addEventListener('nge:loyalty-days', onLoyaltyDays);
 function onQuestConfetti(e: Event) {
   const d = ((e as CustomEvent).detail || {}) as { origin?: { x: number; y: number } };
   const origin = d.origin && Number.isFinite(d.origin.x) && Number.isFinite(d.origin.y) ? d.origin : undefined;
+  // A Quest goes with completed cells in Settings: confetti only with the full message.
+  if (messagePref('cellCompleteMessage') !== 'full') return;
   console.info('[quests] confetti');
   fireConfetti('mono', 2.5, origin);
 }
@@ -319,6 +341,7 @@ let questCardTimer: ReturnType<typeof setTimeout> | null = null;
 function closeQuestCard() { questCard.value = null; if (questCardTimer) { clearTimeout(questCardTimer); questCardTimer = null; } }
 function onQuestComplete(e: Event) {
   const d = ((e as CustomEvent).detail || {}) as { index?: string; points?: number; done?: number };
+  if (messagePref('cellCompleteMessage') === 'off') return;
   questCard.value = { index: String(d.index || ''), points: Math.max(0, Number(d.points) || 0), done: Math.max(0, Number(d.done) || 0) };
   if (questCardTimer) clearTimeout(questCardTimer);
   questCardTimer = setTimeout(closeQuestCard, 7000);
@@ -423,7 +446,7 @@ watch(() => backend.notifications.length, () => {
         icon: notif.image_url || notif.thumbnail_url || '🏆',
         isImage: !!(notif.image_url || notif.thumbnail_url),
       });
-      fireConfetti('gold', 1.5);
+      badgeConfetti(1.5);
     }
   }
 });
@@ -448,7 +471,7 @@ watch(() => backend.pendingBadgeCelebration, (pending) => {
     icon: pending.imageUrl || '🏆',
     isImage: !!pending.imageUrl,
   });
-  fireConfetti('gold', 1.5);
+  badgeConfetti(1.5);
 });
 
 // ── Cell completion celebration ──
@@ -1237,7 +1260,7 @@ function playBatchChime() {
      1080 screen (Krzysztof #147); below the screenshot window (10040). */
   z-index: 10020;
   width: 520px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 32px);
   padding: 22px 28px 24px;
   box-sizing: border-box;
   display: flex;
@@ -1543,7 +1566,7 @@ function playBatchChime() {
     calc(var(--chip-pad-x) + 8px) 0, calc(var(--chip-pad-x) + 8px) 3px,
     calc(100% - 14px) 3px, 100% 17px, 100% 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
   position: fixed; top: 88px; left: 50%; transform: translateX(-50%); z-index: 100000;
-  display: inline-flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px); box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 10px; max-width: calc(100 * var(--nge-vw, 1vw) - 24px); box-sizing: border-box;
   padding: 11px 20px 8px 12px; border: 0; border-radius: 0; cursor: pointer;
   background: linear-gradient(180deg, var(--chip-trace) 0%, rgba(141, 240, 164, 0.8) 30%, rgba(141, 240, 164, 0.28) 72%, rgba(141, 240, 164, 0.05) 100%) no-repeat left bottom / 100% calc(100% - 3px);
   clip-path: var(--chip-cut);
@@ -1639,13 +1662,13 @@ function playBatchChime() {
 @keyframes nge-batch-particle-rise {
   0%   { transform: translateY(0)     translateX(0); opacity: 0; }
   6%   { opacity: 1; }
-  16%  { transform: translateY(-15vh) translateX(calc(var(--drift) * 22px)); }
-  30%  { transform: translateY(-30vh) translateX(calc(var(--drift) * -28px)); }
-  44%  { transform: translateY(-45vh) translateX(calc(var(--drift) * 32px)); }
-  58%  { transform: translateY(-60vh) translateX(calc(var(--drift) * -22px)); }
-  72%  { transform: translateY(-75vh) translateX(calc(var(--drift) * 26px)); }
-  86%  { transform: translateY(-90vh) translateX(calc(var(--drift) * -18px)); opacity: 1; }
-  100% { transform: translateY(-110vh) translateX(0); opacity: 0; }
+  16%  { transform: translateY(calc(-15 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * 22px)); }
+  30%  { transform: translateY(calc(-30 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * -28px)); }
+  44%  { transform: translateY(calc(-45 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * 32px)); }
+  58%  { transform: translateY(calc(-60 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * -22px)); }
+  72%  { transform: translateY(calc(-75 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * 26px)); }
+  86%  { transform: translateY(calc(-90 * var(--nge-vh, 1vh))) translateX(calc(var(--drift) * -18px)); opacity: 1; }
+  100% { transform: translateY(calc(-110 * var(--nge-vh, 1vh))) translateX(0); opacity: 0; }
 }
 
 /* Card */
@@ -1663,7 +1686,7 @@ function playBatchChime() {
     0 0 160px rgba(74, 158, 255, 0.18),
     0 20px 60px rgba(0,0,0,0.6);
   min-width: 380px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
   z-index: 2;
   animation: nge-batch-card-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -1925,7 +1948,7 @@ function playBatchChime() {
 .nge-batch-ray {
   position: absolute;
   width: 2px;
-  height: 140vh;
+  height: calc(140 * var(--nge-vh, 1vh));
   top: 50%;
   left: 50%;
   transform-origin: center;

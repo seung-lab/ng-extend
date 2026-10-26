@@ -544,9 +544,9 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 </template>
 
 <style scoped>
-.nge-blog { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 24px; overflow-y: auto; max-height: calc(90vh - 100px);
+.nge-blog { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 24px; overflow-y: auto; max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   /* A page width of its own: long lines of text must not stretch the profile window. */
-  width: min(900px, calc(100vw - 48px)); max-width: 100%; box-sizing: border-box;
+  width: min(900px, calc(100 * var(--nge-vw, 1vw) - 48px)); max-width: 100%; box-sizing: border-box;
   font-size: var(--nge-fs-base, 14px); color: #dce6f5; }
 .nge-blog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .nge-blog-head h3 { margin: 0 0 2px; font-size: 1.25em; color: #eaf6ff; }

@@ -121,10 +121,12 @@ function buildFrozenQueryBody(table: string, rootId: string): string {
 
 /** Try live query first (catches writes after the latest materialization),
  *  fall back to the materialized snapshot if live errors out. Returns the
- *  parsed row array, or [] if both paths fail. */
+ *  parsed row array, or null if both paths fail: "could not ask" is not "no
+ *  rows" (Nseraf #192: CAVE answered 500 to both, and every cell type
+ *  looked lost after an edit). */
 async function queryAnnotationsForRootId(
     caveServer: string, datastack: string,
-    table: string, rootId: string): Promise<any[]> {
+    table: string, rootId: string): Promise<any[] | null> {
   const nowIso = new Date().toISOString();
   // Live query — returns rows including post-materialization writes.
   try {
@@ -146,7 +148,7 @@ async function queryAnnotationsForRootId(
   }
   // Fallback: materialized snapshot at the latest version.
   const version = await getLatestMaterializedVersion(caveServer, datastack);
-  if (version === null) return [];
+  if (version === null) return null;
   try {
     const res = await fetch(
       `${caveServer}/materialize/api/v3/datastack/${datastack}/version/${version}/table/${table}/query?return_pyarrow=false`,
@@ -164,7 +166,7 @@ async function queryAnnotationsForRootId(
   } catch (e) {
     console.warn(`[lightbulb] materialized ${table} error:`, e);
   }
-  return [];
+  return null;
 }
 
 // ─── User attribution (interim — CAVE schemas don't have user_id) ──────────
@@ -215,6 +217,9 @@ export interface CellStatus {
   labeledBy?: string;
   /** User who marked the cell complete. */
   completedBy?: string;
+  /** CAVE could not be asked (both queries failed). Blank fields then mean
+   *  "not known", not "none": show that, and ask again later. */
+  unreachable?: boolean;
 }
 
 // ─── localStorage fallback for dev/testing ──────────────────────────────────
@@ -520,8 +525,10 @@ export async function getCellStatus(
   let caveAvailable = false;
 
   // Cell completion — live query first, materialized fallback.
-  const completionRows = await queryAnnotationsForRootId(
+  const completionGot = await queryAnnotationsForRootId(
     caveServer, datastack, cellStatusTable, rootId);
+  if (completionGot === null && cellStatusTable) status.unreachable = true;
+  const completionRows = completionGot ?? [];
   if (completionRows.length > 0) caveAvailable = true;
   // Match both legacy bare 'complete' and new 'complete|by:<user>' encoding.
   const completionHit = dsCfg.cellStatusSchema === 'proofreading_boolstatus_user'
@@ -546,8 +553,10 @@ export async function getCellStatus(
   }
 
   // Cell type — same hybrid path.
-  const cellTypeRows = await queryAnnotationsForRootId(
+  const cellTypeGot = await queryAnnotationsForRootId(
     caveServer, datastack, cellTypeTable, rootId);
+  if (cellTypeGot === null && cellTypeTable) status.unreachable = true;
+  const cellTypeRows = cellTypeGot ?? [];
   if (cellTypeRows.length > 0) caveAvailable = true;
   if (cellTypeRows.length > 0 && cellTypeSchema === 'bound_double_tag_user') {
     status.cellType = bancTypeLabel(cellTypeRows);
@@ -686,7 +695,7 @@ export async function setCellComplete(
     // kept in this browser (shown as -1) or nothing at all, and then the
     // mark was cleared here while CAVE kept it. Look the real one up first.
     if (!complete && (existingAnnotationId === undefined || existingAnnotationId < 0) && dsCfg.datastack && cellStatusTable) {
-      const rows = await queryAnnotationsForRootId(caveServer, dsCfg.datastack, cellStatusTable, rootId).catch(() => []);
+      const rows = (await queryAnnotationsForRootId(caveServer, dsCfg.datastack, cellStatusTable, rootId).catch(() => null)) ?? [];
       const hit = dsCfg.cellStatusSchema === 'proofreading_boolstatus_user' || dsCfg.cellStatusSchema === 'representative_point' ? undefined
         : rows.find((a: any) => typeof a.tag === 'string' && (a.tag === 'complete' || a.tag.startsWith('complete' + USER_DELIMITER)));
       if (hit && typeof hit.id === 'number' && hit.id >= 0) existingAnnotationId = hit.id;
@@ -1057,11 +1066,24 @@ export async function saveCellType(
       }
       // A waiting type removes the old one itself, once CAVE has the new one.
       if (res?.ok && existingAnnotationId !== undefined && existingAnnotationId >= 0) {
-        await fetch(baseUrl, {
+        // A failed removal used to be ignored, which left both types in CAVE
+        // and the old one could show again later. Tried again in the
+        // background; removing an id twice is harmless.
+        const oldId = existingAnnotationId;
+        const removeOld = () => fetch(baseUrl, {
           method: 'DELETE',
           headers: authHeaders(caveServer),
-          body: JSON.stringify({ annotation_ids: [existingAnnotationId] }),
-        }).catch(() => {});
+          body: JSON.stringify({ annotation_ids: [oldId] }),
+        }).then(r => r.ok || r.status === 404, () => false);
+        if (!await removeOld()) {
+          void (async () => {
+            for (const ms of [5_000, 20_000, 60_000]) {
+              await new Promise(r => setTimeout(r, ms));
+              if (await removeOld()) return;
+            }
+            console.warn('[lightbulb] the old cell type row could not be removed:', oldId);
+          })();
+        }
       }
       // Mirror to localStorage so the lightbulb shows the write immediately,
       // before the next materialization cron run.

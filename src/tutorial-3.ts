@@ -9,7 +9,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, groupProgress, practiceToolOn, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
@@ -64,6 +64,10 @@ async function pointsInState(stateUrl: string): Promise<number[][]> {
 const MERGE_HINT_STATES: Record<string, string> = {
   // First merge (dendrite): one point on the yellow piece, one on the purple.
   'b231f4e7-e9f3-4214-941f-975b8b25a237': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5193945751486464',
+  // Extension Sandbox cells (Ames, 2026-10-24).
+  '141062c3-e988-452f-84ed-fecc92652b87': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4744042558521344',
+  'f3dfed18-9592-46ed-8ca7-90310aea0d60': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600',
+  '63a057ed-ce08-4a6f-915d-eca29214e48c': 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5697630592040960',
 };
 
 /** Or the two spots themselves, in viewer voxels, where Ames gave them
@@ -74,7 +78,21 @@ const MERGE_HINT_POINTS: Record<string, number[][]> = {
   'a4bd2f76-67e9-4093-adc7-e670230d1577': [[75014, 62609, 638], [75114, 62629, 638]],
 };
 
-async function showWhereToClick(): Promise<boolean> {
+/**
+ * Bring the view in on the click spots (Ames, 2026-10-25: from the cell's own
+ * view the gems were giant and the join hard to see). Centres on them and
+ * zooms in by the given factors, 3D and 2D.
+ */
+function focusOn(pts: number[][], threeD: number, twoD: number) {
+  const v = getViewer();
+  if (!v || !pts.length) return;
+  const mid = [0, 1, 2].map(i => pts.reduce((a, p) => a + Number(p[i]), 0) / pts.length);
+  try { v.navigationState.position.value = Float32Array.from(mid); } catch { /* keep the view */ }
+  try { const z = v.perspectiveNavigationState.zoomFactor; z.value = z.value * threeD; } catch { /* keep the zoom */ }
+  try { const z = v.navigationState.zoomFactor; z.value = z.value * twoD; } catch { /* keep the zoom */ }
+}
+
+async function showWhereToClick(focus?: { threeD: number; twoD: number }): Promise<boolean> {
   const ex = currentPractice().example;
   let pts: number[][] = ex ? (MERGE_HINT_POINTS[ex.id] ?? []) : [];
   if (!pts.length && ex && MERGE_HINT_STATES[ex.id]) pts = await pointsInState(MERGE_HINT_STATES[ex.id]);
@@ -83,6 +101,7 @@ async function showWhereToClick(): Promise<boolean> {
   }
   if (!pts.length) pts = await pointsInState(STATE_MERGE_HINTS);
   if (!pts.length) return false;
+  if (focus) focusOn(pts, focus.threeD, focus.twoD);
   // Gems in the scene, like the cut hints: they sit on the cell and neurons
   // in front hide them. They are not pickable, so a Ctrl+click right on one
   // lands on the cell underneath. Flat pins if the layer cannot be added.
@@ -624,10 +643,13 @@ export function watchCutStep(want: 'red' | 'blue', waiting: string, need = 1) {
   waitingFor = null;
   helpWanted = true;
   const bar = useSplitMergeOverlayStore();
+  // The cut bar holds back "Now press G" until this many red points are in
+  // (SplitMergeOverlay.vue, moreRedWanted).
+  (window as any).__ngeCutRedNeed = want === 'red' ? need : 0;
   const tick = () => {
-    if (token !== practiceWatch) return;
+    if (token !== practiceWatch) { if (want === 'red') (window as any).__ngeCutRedNeed = 0; return; }
     const done = want === 'red' ? bar.redPointCount >= need : bar.activeGroup === 'blue';
-    if (done) { practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
+    if (done) { (window as any).__ngeCutRedNeed = 0; practiceWatch++; document.dispatchEvent(new CustomEvent('nge:tutorial-next')); return; }
     practiceStatus(waiting);
     setTimeout(tick, 300);
   };
@@ -641,6 +663,7 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   const token = ++practiceWatch;
   waitingFor = { token, wantMerged };
   let startRoot = '';
+  const startedAt = Date.now();
   watchEditErrors();
   lastEditError = null;
   helpWanted = true;
@@ -724,6 +747,24 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
       }
     }
     if (cutStage) { practiceStatus(cutStage, false, true); setTimeout(tick, 700); return; }
+    // A cell missing several pieces: say how many are back on.
+    if (wantMerged && !failed) {
+      const pr = await groupProgress();
+      if (token !== practiceWatch) return;
+      if (pr && pr.joined > 0 && pr.joined < pr.total) {
+        practiceStatus(`Good merge! ${pr.joined} of the ${pr.total} missing pieces ${pr.joined === 1 ? 'is' : 'are'} back on. Find the ${pr.total - pr.joined === 1 ? 'last one' : 'rest'}.`);
+        setTimeout(tick, 3000);
+        return;
+      }
+    }
+    // The tool is off (Esc, or the button): ask for it back, as How to Merge
+    // does, rather than waiting in silence.
+    // A few seconds' grace: the step turns the tool on itself as it opens.
+    if (!failed && Date.now() - startedAt > 4000 && !practiceToolOn()) {
+      practiceStatus(wantMerged ? 'Merge mode is off. Press M to turn it back on.' : 'Cut mode is off. Press C to turn it back on.');
+      setTimeout(tick, 1000);
+      return;
+    }
     practiceStatus(failed
       ? `That ${wantMerged ? 'merge' : 'cut'} didn't go through. The server said: "${failed}". `
         + (wantMerged
@@ -932,7 +973,7 @@ const FRIENDLY_TIPS: Record<string, string> = {
   '3D neurons': 'The 3D reconstruction of every cell in the images',
 };
 function friendlyLayerNames() {
-  const inTutorial = [3, 5, 9].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
+  const inTutorial = [3, 5, 9, 13].includes(useTutorialStore().activeTutorial) && !!document.querySelector('.introductionStepAnchor');
   // Which dataset is on screen decides the shown names. The Sandbox and the
   // tutorials say "2D EM" and "3D segmentation", the Retina "2D EM" and
   // "3D Retina Cells" (Ames 2026-10-06). Every other dataset says
@@ -988,6 +1029,22 @@ function friendlyLayerNames() {
   }
 }
 setInterval(() => { try { friendlyLayerNames(); } catch { /* store not ready yet */ } }, 1000);
+
+// Opening split screen redraws the layer tabs, and until the next tick they
+// showed the raw names ("img") for up to a second (Ames 2026-10-23). A
+// redrawn tab is renamed as it appears: mutation callbacks run before the
+// next paint, so the raw name is never seen.
+let renaming = false;
+new MutationObserver(records => {
+  if (renaming) return;
+  const tab = (n: Node) => n instanceof HTMLElement && (n.matches('.neuroglancer-layer-item, .neuroglancer-layer-item-label') || !!n.querySelector('.neuroglancer-layer-item'));
+  const touched = records.some(r => r.type === 'characterData'
+    ? !!r.target.parentElement?.closest('.neuroglancer-layer-item-label')
+    : Array.from(r.addedNodes).some(tab) || (r.target instanceof HTMLElement && r.target.matches('.neuroglancer-layer-item-label')));
+  if (!touched) return;
+  renaming = true;
+  try { friendlyLayerNames(); } catch { /* store not ready yet */ } finally { renaming = false; }
+}).observe(document.body, { childList: true, subtree: true, characterData: true });
 
 document.addEventListener('nge:tutorial-flash-seg-layer', () => {
   const chip = segLayerChip();
@@ -1219,7 +1276,7 @@ A <strong style="color:#60c060">merge</strong> joins two separate segments that 
   {
     title: "What a merge fixes",
     text: `
-This is an example. The yellow branch belongs to the purple cell, but the AI left it as its own segment. We will fix it in a moment.`,
+This is an example. The yellow branch belongs to the purple cell, but the AI left it out. We will fix it in a moment.`,
     position: MIDDLE,
     width: "560px",
     image: imgMergeExample,
@@ -1232,8 +1289,6 @@ This is an example. The yellow branch belongs to the purple cell, but the AI lef
     // A new player's Merge icon arrives here (util/toolbar_staging.ts).
     reveals: ['merge'],
     text: `
-Let's jump to an area that needs a merge. The purple ` + PART + ` behind this box is missing the yellow piece; the AI left it off. It is yours to practice on until the end of this tutorial.
-
 Press the **M** key to start the merge tool. The segmentation layer has to be selected for that. ` + INFO_LAYER + `
 
 You can also click the green Merge icon in the top bar. Once it's on, the merge tool appears at the bottom of the viewer.`,
@@ -1273,8 +1328,6 @@ With merge mode on:
 2. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 3. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
-The server connects the two. You'll see "trying..." and then "done", and the piece turns purple.
-
 The pink gems show where to click.`,
     position: OVER_3D,
     width: "400px",
@@ -1286,8 +1339,9 @@ The pink gems show where to click.`,
       // cells are taken again here, and the second merge must not be lost).
       if (!holdsSlot('b')) await beginPractice('merge_then_cut', 'start', { slot: 'b', show: false });
       // The first merge starts with the two click spots marked (Ames: "we
-      // want them to control click on each piece, easy peasy").
-      setTimeout(() => { showWhereToClick(); }, 1400);
+      // want them to control click on each piece, easy peasy"), and the view
+      // brought in close on them.
+      setTimeout(() => { showWhereToClick({ threeD: 0.3, twoD: 1 }); }, 1400);
       // The previous step said "press M"; if they pressed next instead,
       // the tool comes on anyway.
       setTimeout(() => ensureTool('merge'), 400);
@@ -1320,8 +1374,10 @@ Here is a different one: this time it's a ` + PART + `. The purple ` + PART + ` 
 3. **Ctrl+Click** the purple ` + PART + `, close to where the piece should join it.
 4. Press **Submit merge** on the bar at the bottom, or press **Enter**.
 
-The pink gems show where to click. You'll see "trying..." and then "done", and the piece turns purple.`,
-    position: OVER_3D,
+The pink gems show where to click.`,
+    // Low on the 3D side: the view is centred on the join, and the box at
+    // the top sat right over the cell (Ames, 2026-10-25).
+    position: { element: ".neuroglancer-layer-group-viewer > div:nth-child(2)", x: 0.75, y: 0.82 },
     width: "420px",
     onEnter: async () => {
       closeSidePanel();
@@ -1335,8 +1391,9 @@ The pink gems show where to click. You'll see "trying..." and then "done", and t
       await beginPractice('merge_then_cut', 'start', { slot: 'b' });
       watchPractice(true, 'Waiting for your merge: Ctrl+click yellow, Ctrl+click purple, Submit merge.', '', { advance: true });
       setTimeout(() => ensureTool('merge'), 400);
-      // The spots are shown from the start, as on the first merge.
-      setTimeout(() => { showWhereToClick(); }, 1400);
+      // The spots are shown from the start, as on the first merge, with the
+      // view brought in close.
+      setTimeout(() => { showWhereToClick({ threeD: 0.4, twoD: 0.5 }); }, 1400);
     },
   },
 
@@ -1344,13 +1401,13 @@ The pink gems show where to click. You'll see "trying..." and then "done", and t
   {
     title: "Merge success, again!",
     text: `
-Two for two. The piece is part of the ` + PART + ` now.
+Two for two! The missing ` + PART + ` branch has been reconnected.
 
-A few things worth knowing:
+**Merge tips:**
 
-- Not sure two pieces belong together? The **2D panel** on the left shows the raw electron microscope slices. Scroll through them at the join for context the 3D can't give you.
-- If a merge fails, try clicking at a slightly different spot on each piece.
-- Merged the wrong piece? There is no undo key. Fix it with a <strong style="color:#e06060">cut</strong> between the two pieces, which the Cut tutorial teaches.`,
+* Not sure two pieces belong together? This **2D panel** shows the original electron microscope slices. Page through them for context the 3D can't give you.
+* If a merge fails, try clicking at a slightly different spot on each piece.
+* Merged the wrong piece? There is no undo key. Fix it with a <strong style="color:#e06060">cut</strong> between the two pieces, which the Cut Tutorial teaches.`,
     position: OVER_2D,
     width: "420px",
     onEnter: celebrateStep,

@@ -27,7 +27,7 @@ import {PerspectivePanel} from 'neuroglancer/perspective_view/panel';
 import {PerspectiveViewReadyRenderContext, PerspectiveViewRenderContext, PerspectiveViewRenderLayer} from 'neuroglancer/perspective_view/render_layer';
 import {ThreeDimensionalRenderLayerAttachmentState, update3dRenderLayerAttachment} from 'neuroglancer/renderlayer';
 import {forEachVisibleSegment, getObjectKey} from 'neuroglancer/segmentation_display_state/base';
-import {forEachVisibleSegmentToDraw, ngeHaloFar, ngeHoverStyle, ngePulseColor, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
+import {forEachVisibleSegmentToDraw, ngeHaloFar, ngeHoverStyle, ngeListHover, ngePulseColor, registerRedrawWhenSegmentationDisplayState3DChanged, SegmentationDisplayState3D, SegmentationLayerSharedObject} from 'neuroglancer/segmentation_display_state/frontend';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {Borrowed, RefCounted} from 'neuroglancer/util/disposable';
 import {getFrustrumPlanes, mat3, mat3FromMat4, mat4, scaleMat3Output, vec3, vec4} from 'neuroglancer/util/geom';
@@ -183,9 +183,14 @@ const NGE_SHELL_DEPTH_BIAS = 0.004;
 const NGE_SHELL_NORMAL_STEP = 20;
 const ngeShellColor = new Float32Array(4);
 /** The rim colour: a light tint of the cell's own colour. */
+/** The hologram's colour: the pulse colour if one is chosen, else cyan. */
+function ngeHoloRgb(): ArrayLike<number> {
+  return ngePulseColor.value ?? NGE_HOLO_CYAN;
+}
+const NGE_HOLO_CYAN = [0.36, 0.86, 1.0];
 function ngeShellColorFor(color: Float32Array|number[], alpha: number) {
   const a = color[3] || 1;
-  const rgb = ngeGlowColor(color);
+  const rgb = ngeHoverStyle.value === 'hologram' ? ngeHoloRgb() : ngeGlowColor(color);
   // Times alpha: the halo keeps the brightest shell at each pixel (MAX blending).
   // It does not breathe (Ames 2026-10-20: "I don't like the breathing").
   const fade = ngeHoverStyle.value === 'halo' ? ngeHaloFade : 1;
@@ -208,6 +213,7 @@ let ngePulseRunning = false;
  *  many pixels a 1 um branch covers: full from about 12 px up. */
 let ngeHaloZoom = 1;
 let ngeHaloFade = 1;
+let ngeHoloStepNm = 64;
 function ngeUpdateHaloZoom(projectionParameters: any) {
   const viewer: any = (window as any).viewer;
   const info = projectionParameters.displayDimensionRenderInfo;
@@ -221,6 +227,8 @@ function ngeUpdateHaloZoom(projectionParameters: any) {
   // Gone when a branch is about 3 px across, where Saturate's colour takes over.
   ngeHaloFade = Math.max(0, Math.min(1, (branchPx - 3) / 14));
   ngeHaloFar.value = 1 - ngeHaloFade;
+  // The hologram's dots: about 14 px apart, in power of two steps of nm.
+  ngeHoloStepNm = Math.pow(2, Math.round(Math.log2(Math.max(1, 14 * viewNm / Math.max(1, projectionParameters.height)))));
 }
 /** The main pass's hover mode for the cell under the mouse: 1 the pulse,
  *  2 the halo's rim of light on the cell's own edges (colour in uNgeRim). */
@@ -228,12 +236,14 @@ let ngeRimGl: {gl: GL, shader: ShaderProgram}|null = null;
 function ngeHoverGlowMode(color: Float32Array|number[]) {
   const style = ngeHoverStyle.value;
   if ((style === 'hologram' || style === 'metallic') && ngeRimGl) {
-    // The glow: a light tint of the cell's own colour.
-    const rgb = ngeGlowColor(color);
+    // Metallic glows in a light tint of the cell's own colour; the hologram
+    // is one colour of light, whatever the cell's.
+    const rgb = style === 'hologram' ? ngeHoloRgb() : ngeGlowColor(color);
     ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), rgb[0], rgb[1], rgb[2], 1);
     return style === 'metallic' ? 6 : 5;
   }
-  if (style === 'saturate' && ngeRimGl) {
+  // Pulse, pointed at from a list: no mouse in 3D to start a ring from.
+  if ((style === 'saturate' || (style === 'pulse' && ngeListHover.value)) && ngeRimGl) {
     ngeRimGl.gl.uniform4f(ngeRimGl.shader.uniform('uNgeRim'), 0, 0, 0, 0.25);
     return 4;
   }
@@ -360,6 +370,7 @@ export class MeshShaderManager {
     ngeRimGl = {gl, shader};
     const {projectionParameters} = renderContext;
     ngeUpdateHaloZoom(projectionParameters);
+    gl.uniform1f(shader.uniform('uNgeHoloStep'), ngeHoloStepNm);
     gl.uniform2f(shader.uniform('uNgeViewport'), projectionParameters.width, projectionParameters.height);
     ngePulsePrepare(projectionParameters);
     gl.uniform3fv(shader.uniform('uNgePulseScale'), ngePulseScale);
@@ -529,6 +540,26 @@ export class MeshShaderManager {
         builder.addUniform('highp vec4', 'uNgePulseColor');
         builder.addUniform('highp vec4', 'uNgeRim');
         builder.addVarying('highp vec4', 'vNgeHolo');
+        builder.addVarying('highp vec3', 'vNgeHoloPos');
+        builder.addVarying('highp vec3', 'vNgeHoloN');
+        builder.addUniform('highp float', 'uNgeHoloStep');
+        // Scattered soft dots (Ames 2026-10-22: "not so weirdly a grid ... a
+        // little offset, farther apart, much farther"): each grid cell holds
+        // one dot at a random spot in it, about two cells in three, smoothed
+        // by its size on screen.
+        builder.addFragmentCode(`
+highp float ngeHoloHash(highp vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+highp float ngeHoloDot(highp vec2 p) {
+  highp vec2 cell = floor(p);
+  highp vec2 at = vec2(ngeHoloHash(cell), ngeHoloHash(cell + 17.3)) * 0.6 + 0.2;
+  highp float d = length(fract(p) - at);
+  highp float aa = fwidth(d) * 1.2;
+  highp float on = step(0.5, ngeHoloHash(cell + 41.9));
+  return on * (1.0 - smoothstep(0.06 - aa, 0.06 + aa, d));
+}
+`);
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
@@ -577,6 +608,8 @@ float absCosAngle = abs(dot(normal, uLightDirection.xyz));
 float lightingFactor = absCosAngle + uLightDirection.w;
 vColor = vec4(lightingFactor * uColor.rgb, uColor.a);
 vNgeHolo = vec4(0.0);
+vNgeHoloPos = vec3(0.0);
+vNgeHoloN = vec3(0.0, 0.0, 1.0);
 if (uNgeGlow > 4.5) {
   // EyeWire II hover hologram (Ames 2026-10-21: the real wireframe was too
   // slow; "a hologram effect ... or an inner glow?"): a dark body glowing from
@@ -586,6 +619,10 @@ if (uNgeGlow > 4.5) {
   highp float holoFacing = holoLen > 0.0 ? abs(dot(normal, uLightDirection.xyz / holoLen)) : 1.0;
   // .z: 1 Metallic (uNgeGlow 6), 0 Hologram (5).
   vNgeHolo = vec4(1.0 - holoFacing, lightingFactor, uNgeGlow > 5.5 ? 1.0 : 0.0, 1.0);
+  // The dots' grid: positions in nm, in steps that keep the dots about 14 px
+  // apart (uNgeHoloStep, a power of two, so they do not crawl as you zoom).
+  vNgeHoloPos = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale / uNgeHoloStep;
+  vNgeHoloN = normalMultiplier * origNormal;
 } else if (uNgeGlow > 3.5) {
   // EyeWire II hover 'saturate', lit from within (Ames 2026-10-20: a colour
   // already at full strength cannot get richer): the shading flattens toward
@@ -695,13 +732,21 @@ if (vNgeHolo.w > 0.5) {
     highp vec3 metalBody = uColor.rgb * (0.18 + 0.18 * vNgeHolo.y);
     emit(vec4(min(metalBody + uNgeRim.rgb * uColor.a * (0.12 + 1.3 * metalRim), vec3(1.0)), uColor.a), uPickID);
   } else {
-    // Hologram: the first one (2026-10-20), which read as a hologram, with its
-    // scanlines standing still and half as many (Ames 2026-10-21: "you had it
-    // better before the one with the bars ... maybe with fewer scan lines").
-    highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 2.0);
-    highp float holoScan = smoothstep(0.7, 1.0, 0.5 + 0.5 * sin(gl_FragCoord.y * 0.45));
-    highp vec3 holoBody = uColor.rgb * (0.2 + 0.2 * vNgeHolo.y);
-    emit(vec4(min(holoBody + uNgeRim.rgb * uColor.a * (0.95 * holoRim + 0.22 * holoScan), vec3(1.0)), uColor.a), uPickID);
+    // Hologram, made of light (Ames 2026-10-22, from her pictures: a cyan
+    // chameleon, a globe of light). One colour whatever the cell's own (cyan,
+    // or the pulse colour; uNgeRim), a bright evenly lit body, edges burning
+    // toward white, and a fine sprinkle of small dots fixed to the surface
+    // (dots on the three planes, blended by the normal, as in Ames's
+    // scifi-ui hologram). The glow around it is the halo pass, in cyan.
+    highp float holoRim = pow(clamp(vNgeHolo.x, 0.0, 1.0), 2.2);
+    highp vec3 holoW = abs(normalize(vNgeHoloN));
+    holoW = holoW * holoW;
+    holoW /= max(holoW.x + holoW.y + holoW.z, 1e-6);
+    highp float holoDots = ngeHoloDot(vNgeHoloPos.yz) * holoW.x + ngeHoloDot(vNgeHoloPos.xz) * holoW.y + ngeHoloDot(vNgeHoloPos.xy) * holoW.z;
+    highp vec3 holoC = uNgeRim.rgb;
+    highp vec3 holoBody = holoC * (0.32 + 0.18 * vNgeHolo.y);
+    highp vec3 holoEdge = mix(holoC, vec3(1.0), 0.55) * 1.25 * holoRim;
+    emit(vec4(min(holoBody + holoEdge + holoC * 0.5 * holoDots, vec3(1.0)) * uColor.a, uColor.a), uPickID);
   }
 } else {
   emit(vColor, uPickID);

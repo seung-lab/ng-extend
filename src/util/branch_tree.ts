@@ -184,3 +184,48 @@ export function branchSegments(graph: BranchGraph, from: string, ref: string, wa
   if (!segments.length) throw new Error('The server has no positions for that part of the cell.');
   return { segments, pieces };
 }
+
+/** Every piece whose way back to `ref` passes through `from` (`from` too):
+ *  the far side of a click. For MEC, the far side of the AIS is the axon. */
+export function piecesBeyond(graph: BranchGraph, from: string, ref: string): Set<string> {
+  const adj = neighbours(graph);
+  const parent = shortestWaysBack(graph, adj, ref);
+  const out = new Set<string>();
+  if (!parent.has(from) || from === ref) return out;
+  const children = new Map<string, string[]>();
+  for (const [n, p] of parent) if (p != null) { const l = children.get(p); if (l) l.push(n); else children.set(p, [n]); }
+  const stack = [from];
+  while (stack.length) {
+    const n = stack.pop()!;
+    out.add(n);
+    for (const c of children.get(n) ?? []) stack.push(c);
+  }
+  return out;
+}
+
+/**
+ * Branch ends that run into the edge of the data: the pieces at the tip of a
+ * branch (one neighbour or none) within `marginNm` of a face of the volume.
+ * `bounds` is [[x, y, z] low, [x, y, z] high] in nanometres, the rule the Hunt
+ * judges "edge of the dataset" by (5 um there). Tips closer than `joinNm` to
+ * one already found are the same place. Nearest the face first.
+ * `only`: look at these pieces alone (the axon).
+ */
+export function edgeEnds(graph: BranchGraph, bounds: number[][], marginNm = 5000, joinNm = 3000,
+                         only?: Set<string>): number[][] {
+  const adj = neighbours(graph);
+  const [lo, hi] = bounds;
+  const tips: { p: number[]; d: number }[] = [];
+  for (const [id, p] of graph.points) {
+    if ((adj.get(id)?.length ?? 0) > 1 || (only && !only.has(id))) continue;
+    const d = Math.min(p[0] - lo[0], hi[0] - p[0], p[1] - lo[1], hi[1] - p[1], p[2] - lo[2], hi[2] - p[2]);
+    if (d <= marginNm) tips.push({ p, d });
+  }
+  tips.sort((a, b) => a.d - b.d);
+  const out: number[][] = [];
+  for (const t of tips) {
+    if (out.some(q => Math.hypot(q[0] - t.p[0], q[1] - t.p[1], q[2] - t.p[2]) < joinNm)) continue;
+    out.push(t.p);
+  }
+  return out;
+}

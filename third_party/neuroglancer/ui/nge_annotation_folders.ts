@@ -108,9 +108,13 @@ function packHex(hex: string) {
 
 /** Give every annotation its folder's color, or the layer's (0). */
 export function applyFolderPaint(source: AnnotationSource, folders: SegmentFolders) {
-  if (!source.properties.some(isNgeColorProperty)) return;
   const home = new Map<string, string>();
   for (const f of folders.value) for (const id of f.ids) if (!home.has(id)) home.set(id, f.id);
+  // Annotations in a hidden folder (or one inside it) are not drawn.
+  const hidden = new Set<string>();
+  for (const [id, f] of home) if (folders.isHidden(f)) hidden.add(id);
+  source.ngeSetHidden(hidden);
+  if (!source.properties.some(isNgeColorProperty)) return;
   const colors = new Map<string, number>();
   for (const a of source) {
     const hex = paintFor(folders, home.get(a.id));
@@ -136,6 +140,13 @@ export function followFolderPaint(source: AnnotationSource, folders: SegmentFold
   };
   const a = folders.changed.add(schedule);
   const b = source.changed.add(schedule);
+  // An annotation placed while a folder is chosen goes into it (report 225).
+  const c = source.childAdded.add(annotation => {
+    const target = folders.activeFolder;
+    if (target === undefined || !folders.value.some(f => f.id === target)) return;
+    if (folders.folderOf(annotation.id)) return;
+    folders.move([annotation.id], target);
+  });
   schedule();
-  return () => { a(); b(); };
+  return () => { a(); b(); c(); };
 }

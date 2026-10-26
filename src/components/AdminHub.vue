@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import imgNurroBravo from '../images/bravo-nurro.png';
 import { secureWrite } from '../secure_write';
 import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
 import {renderSafeMarkdown} from '../util/safe_markdown';
+import {withVideoEmbeds} from '../util/video_embeds';
 import {htmlToMarkdown, htmlHasFormatting} from '../util/html_to_markdown';
 import {supabase} from '../supabase';
 import RollUp from 'components/RollUp.vue';
@@ -31,6 +33,7 @@ import nurroSuccess from '../../static/nurro/nurro-success.png';
 import {loadRepoStats, type RepoStats} from '../util/repo_stats';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
+import TutorialEditsTab from 'components/TutorialEditsTab.vue';
 import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
@@ -40,8 +43,8 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts' | 'tutorialEdits'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits'
     ? props.initialSubTab
     : 'notifications');
 
@@ -79,12 +82,26 @@ async function loadPilot() {
   pilotRows.value = data || [];
   void loadPilotNames(pilotRows.value.map(m => m.email)).catch(() => { /* the emails still show */ });
 }
+const pilotNote = ref('');
+/** Several emails at once, separated by commas, spaces or new lines (Ames
+ *  2026-10-22). Anything that is not an email address is left in the box,
+ *  and said so, and the rest are added. */
 async function invitePilot() {
-  pilotBusy.value = true; pilotError.value = '';
-  const {error} = await supabase.from('pilot_members').upsert({email:pilotEmail.value.trim().toLowerCase(),enabled:true},{onConflict:'email'});
-  if(error) pilotError.value=error.message;
-  else {pilotEmail.value='';await loadPilot();}
-  pilotBusy.value=false;
+  pilotError.value = ''; pilotNote.value = '';
+  const words = pilotEmail.value.split(/[\s,;]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+  const good = [...new Set(words.filter(w => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(w)))];
+  const bad = words.filter(w => !good.includes(w));
+  if (!good.length) { pilotError.value = bad.length ? `Not an email address: ${bad.join(', ')}` : 'Type at least one email address.'; return; }
+  pilotBusy.value = true;
+  const {error} = await supabase.from('pilot_members').upsert(good.map(email => ({email, enabled: true})), {onConflict:'email'});
+  if (error) pilotError.value = error.message;
+  else {
+    pilotEmail.value = bad.join(', ');
+    pilotNote.value = `Added ${good.length} tester${good.length === 1 ? '' : 's'}.`;
+    if (bad.length) pilotError.value = `Not added, not an email address: ${bad.join(', ')}`;
+    await loadPilot();
+  }
+  pilotBusy.value = false;
 }
 async function setPilot(email:string,enabled:boolean) {
   const {error} = await supabase.from('pilot_members').update({enabled}).eq('email',email);
@@ -325,6 +342,9 @@ function applyTriageFocus() {
 // you click one. "?triage=board" in the address opens straight into it, which
 // is what the "New tab" link uses.
 const triageBoard = ref(!!props.standalone);
+/** The To do board's mark (TodoBoard.vue has the same), apart from the
+ *  clipboard that means Copy. */
+const TODO_ICON = '<svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const boardUrl = `${window.location.origin}${window.location.pathname}?triage=board`;
 /** The game itself, on this same site. */
 const gameUrl = `${window.location.origin}${window.location.pathname}`;
@@ -369,7 +389,7 @@ const triageGroups = computed(() => {
   const defs: { key: TriageGroupKey; icon: string; title: string; hint: string; empty: string; closed: boolean }[] = [
     { key: 'decide', icon: '📥', title: 'Needs your decision', hint: 'Approve or dismiss', empty: 'Triage zero. Nicely done.', closed: false },
     { key: 'progress', icon: '🛠', title: 'In progress', hint: 'By hand, building, or waiting on a test', empty: 'Nothing on the bench.', closed: false },
-    { key: 'todo', icon: '📋', title: 'On the To do board', hint: 'Reports planned there', empty: 'No reports on the To do board.', closed: true },
+    { key: 'todo', icon: '☑', title: 'On the To do board', hint: 'Reports planned there', empty: 'No reports on the To do board.', closed: true },
     { key: 'later', icon: '💡', title: 'Ideas for later', hint: 'Good ideas, not now', empty: 'No ideas put by.', closed: true },
     { key: 'done', icon: '✅', title: 'Done', hint: 'Shipped or handled', empty: 'Nothing closed yet.', closed: true },
     { key: 'dismissed', icon: '🗂', title: 'Dismissed', hint: 'Stopped or turned down', empty: 'Nothing turned down.', closed: true },
@@ -586,6 +606,25 @@ function toggleFold(key: TriageGroupKey) {
 /** Folded right now. While searching nothing is folded, so a match in Done
  *  or Dismissed is not hidden. */
 const isFolded = (key: TriageGroupKey) => triageFolded.value[key] && !triageWords.value.length;
+// Triage zero: when the last report under Needs your decision is handled,
+// a party (Ames 2026-10-23: "some celebration when Triage reached zero").
+// Only when it goes from some to none while you watch, never on load.
+const zeroParty = ref(0);
+const decideCount = computed(() => triageGroups.value.find(g => g.key === 'decide')?.rows.length ?? -1);
+let hadDecisions = false;
+watch(decideCount, (n, before) => {
+  if (triageLoading.value) return;
+  if (n > 0) { hadDecisions = true; return; }
+  if (n === 0 && hadDecisions && (before ?? 0) > 0) {
+    hadDecisions = false;
+    zeroParty.value = Date.now();
+    setTimeout(() => { if (Date.now() - zeroParty.value >= 5900) zeroParty.value = 0; }, 6000);
+  }
+});
+const ZERO_BITS = Array.from({ length: 70 }, (_, i) => ({
+  left: (i * 37) % 100, delay: (i % 14) * 0.09, dur: 2.4 + (i % 7) * 0.35, rot: (i * 53) % 360,
+  color: ['#4f8cff', '#2ec4b6', '#f5c542', '#ff6fae', '#38bdf8'][i % 5], wide: i % 3 === 0,
+}));
 const boardColumns = computed(() => triageGroups.value.map(g => (isFolded(g.key) ? '46px' : 'minmax(0, 1fr)')).join(' '));
 
 // ── In progress, by hand ──
@@ -923,29 +962,12 @@ function reporterComposer(row: TriageRow): Composer {
  *  The quote is the whole submission, as the card shows it (the report's full
  *  message once loaded, else the stored excerpt), never cut short: Ames was
  *  pasting the rest in by hand every time (2026-10-12). */
+// Just the report's title (Ames 2026-10-25: "make the default text ...
+// 'you reported: <TITLE>' and that is all"); the rest is hers to write.
 function draftReporterUpdate(row: TriageRow): string {
-  const t = fullTextOf(row).trim();
-  const q = t ? `You reported: "${t}".` : 'Thanks for your report.';
-  if (row.status === 'done' || row.impl_state === 'deployed') {
-    // Same wording as the bridge's fixedNote: thanks, their words, what was built.
-    const fix = String(row.result_note || row.impl_summary || '')
-      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
-      .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
-      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '')
-      // "QUESTION: ..." is Claude asking the approver, not a fix: never sent on.
-      .replace(/^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:[\s\S]*$/i, '');
-    const thanks = t ? `Thank you for submitting: "${t}".` : 'Thank you for your report.';
-    return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
-  }
-  if (row.status === 'dismissed') {
-    return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
-  }
-  if (row.status === 'approved') {
-    return isBuildable(row)
-      ? `${q} Thanks! The team accepted it and a fix is in the works. We'll let you know when it's live.`
-      : `${q} Thanks! The team reviewed it and is following up.`;
-  }
-  return `${q} Thanks! The team has it and is looking into it now.`;
+  const title = String(reporterOf(row)?.title || '').replace(/\*\*/g, '').trim()
+    || fullTextOf(row).split('\n')[0].replace(/\*\*/g, '').trim().slice(0, 140);
+  return title ? `You reported: "${title}"\n\n` : '';
 }
 
 function closeReporterDraft(row: TriageRow) {
@@ -1118,6 +1140,63 @@ function relTime(iso: string): string {
  *  with that same text as its note, so there is no second question to answer
  *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
  *  not be sent, the report is left where it is. */
+// ── Duplicates ──
+const DUP_MARK = /^Same as #(\d+) ([0-9a-f-]{36})/;
+/** The report this one is a duplicate of, if it is one. */
+const dupOf = (r: TriageRow): string | null => String(r.approver_note || '').match(DUP_MARK)?.[2] || null;
+/** The duplicates closed into this report. */
+const dupsOf = (r: TriageRow) => triageRows.value.filter(x => dupOf(x) === r.id);
+const dupNotice = ref('');
+watch(dupNotice, v => { if (v) setTimeout(() => { if (dupNotice.value === v) dupNotice.value = ''; }, 6000); });
+const dupDraft = ref<Record<string, string>>({});
+async function markDuplicate(row: TriageRow) {
+  const n = Number(String(dupDraft.value[row.id] || '').replace(/[^0-9]/g, ''));
+  const mainId = Object.entries(triageNumbers.value).find(([, num]) => num === n)?.[0];
+  if (!n || !mainId) { triageError.value = `There is no report #${dupDraft.value[row.id] || ''} on the board.`; return; }
+  if (mainId === row.id) { triageError.value = 'A report cannot be the same as itself.'; return; }
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    const by = backend.userName || backend.userEmail || 'admin';
+    await secureWrite('triage.update', { id: row.id, fields: {
+      status: 'dismissed',
+      approver_note: `Same as #${n} ${mainId}: grouped by ${by}. Its reporter hears when #${n} is updated.`,
+      reviewed_by: by, reviewed_at: new Date().toISOString(),
+      ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
+    } });
+    delete dupDraft.value[row.id];
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+/** Tell the reporters of this card's duplicates too: a plain note, no reply box. */
+async function notifyDuplicates(row: TriageRow, text: string, art: Record<string, string>) {
+  const dups = dupsOf(row).filter(d => d.source === 'site_issue' && d.source_id);
+  if (!dups.length) return 0;
+  const { supabase } = await import('../supabase');
+  const { data } = await supabase.from('site_issues').select('id,user_id').in('id', dups.map(d => d.source_id));
+  const main = reporterOf(row)?.title || '';
+  let told = 0;
+  const seen = new Set<string>();
+  for (const issue of data || []) {
+    if (!issue.user_id || seen.has(issue.user_id)) continue;
+    seen.add(issue.user_id);
+    try {
+      await secureWrite('notification.insert', { row: {
+        title: '💬 An update on your report',
+        body: `${text}${main ? `\n\n(Others reported this too, as "${main}".)` : ''}`,
+        ...art, target_type: 'user', target_id: issue.user_id, send_at: new Date().toISOString(),
+      } });
+      told++;
+    } catch { /* one missed note does not stop the rest */ }
+  }
+  return told;
+}
+
 async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false, andLater = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
@@ -1157,6 +1236,9 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       target_id: userId,
       send_at: new Date().toISOString(),
     } });
+    // Everyone who reported the same thing hears too (never asked to reply).
+    const toldDups = await notifyDuplicates(row, text, art).catch(() => 0);
+    if (toldDups) dupNotice.value = `Also sent to ${toldDups} other ${toldDups === 1 ? 'person' : 'people'} who reported the same thing.`;
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
@@ -1245,7 +1327,8 @@ const notifBody = ref('');
 // lists and links; a few buttons wrap the selection; a preview shows the
 // result as players will see it.
 const notifBodyEl = ref<HTMLTextAreaElement | null>(null);
-const notifPreview = computed(() => renderSafeMarkdown(notifBody.value, true));
+// Video links play in the preview as they will in the bell (util/video_embeds.ts).
+const notifPreview = computed(() => withVideoEmbeds(renderSafeMarkdown(notifBody.value, true)));
 /** A text box the format buttons act on: the Notifications body, or a
  *  card's "Update submitter" box (Ames 2026-10-16: her numbered list to
  *  Nseraf lost its numbers, so that box got the same buttons and preview). */
@@ -1415,8 +1498,8 @@ function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
  */
 function notifCategory(n: any): string {
   const t = n.title || '';
-  if (t.includes('Weekly Champions')) return 'weeklyChampions';
-  if (t.includes('Week in Science')) return 'weeklyRecap';
+  if (t.includes('Weekly Champions') || t.includes('Monthly Champions')) return 'weeklyChampions';
+  if (t.includes('Week in Science') || t.includes('Month in Science')) return 'weeklyRecap';
   if (t.includes('Response to your help request')) return 'helpResponse';
   if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
@@ -1425,10 +1508,10 @@ function notifCategory(n: any): string {
 
 const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'announcement',    label: 'Announcements' },
-  { key: 'weeklyChampions', label: 'Weekly champions' },
+  { key: 'weeklyChampions', label: 'Weekly and monthly champions' },
   { key: 'customBadge',     label: 'Custom badges' },
   { key: 'personalBadge',   label: 'Personal badges' },
-  { key: 'weeklyRecap',     label: 'Weekly recaps' },
+  { key: 'weeklyRecap',     label: 'Weekly and monthly recaps' },
   { key: 'helpResponse',    label: 'Help replies' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
@@ -1455,7 +1538,11 @@ function categoryCount(key: string): number {
   return backend.adminNotifications.filter((n: any) => notifCategory(n) === key).length;
 }
 
-const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n)));
+/** The automatic "Was your help request answered?" a day after a reply
+ *  (functions/help-reminder.js): Ames trusts them and does not need them in
+ *  Scheduled (2026-10-24). They still send, and show once sent. */
+const isHelpReminder = (n: any) => n?.target_type === 'user' && String(n?.body ?? '').includes('#nge-help-solved=');
+const scheduledNotifs = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'scheduled' && isCategoryVisible(n) && !isHelpReminder(n)));
 const activeNotifs    = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'active'   && isCategoryVisible(n)));
 const expiredNotifs   = computed(() => backend.adminNotifications.filter(n => notifStage(n) === 'expired'  && isCategoryVisible(n)));
 
@@ -1572,8 +1659,14 @@ const hasDraft = computed(() =>
 watch([notifTitle, notifBody, notifTargetType, notifTargetId,
        notifPostToChat, notifSendAt, notifExpiresAt], saveDraft);
 
+/** A title is always needed; words only when there is no picture. A title
+ *  and a picture is a note of its own, shown big (Ames 2026-10-24: the
+ *  button stayed grey with no body text). */
+const notifHasPicture = computed(() => !!notifImageFile.value || (editingId.value != null && !!editingImageUrl.value));
+const notifReady = computed(() => !!notifTitle.value.trim() && (!!notifBody.value.trim() || notifHasPicture.value));
+
 async function sendNotification() {
-  if (!notifTitle.value.trim() || !notifBody.value.trim()) return;
+  if (!notifReady.value) return;
   const editing = editingId.value != null;
   notifSteps.value = [
     ...(notifImageFile.value ? [{ key: 'image' as NotifStep, label: 'Uploading the image' }] : []),
@@ -2228,7 +2321,11 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tests' }" @click="adminSubTab = 'tests'" title="Every Proofreading Test try: the score, what was missed, and the player's cell">Test tries</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'hunts' }" @click="adminSubTab = 'hunts'" title="Timed merger hunts, with gold, silver and bronze Achievements">Hunts</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tutorialEdits' }" @click="adminSubTab = 'tutorialEdits'" title="Tutorial boxes admins reworded, and suggestions waiting for approval">Tutorial edits</button>
     </div>
+
+    <!-- ── Tutorial edits (Ames 2026-10-25): the pencil on a tutorial box ── -->
+    <TutorialEditsTab v-if="adminSubTab === 'tutorialEdits'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
@@ -2262,10 +2359,11 @@ function practiceWhen(iso: string | null) {
       <h2>Pilot testers</h2>
       <p>Invited testers can claim cells, use practice cells, sync Sheets, and contribute to the site. Existing administrators already have access.</p>
       <form @submit.prevent="invitePilot">
-        <label for="nge-pilot-email">Tester’s sign-in email</label>
-        <input id="nge-pilot-email" v-model="pilotEmail" type="email" required autocomplete="off" placeholder="tester@example.com" />
-        <button type="submit" :disabled="pilotBusy">{{ pilotBusy ? 'Saving…' : 'Add tester' }}</button>
+        <label for="nge-pilot-email">Testers’ sign-in emails, separated by commas</label>
+        <input id="nge-pilot-email" v-model="pilotEmail" type="text" required autocomplete="off" spellcheck="false" placeholder="tester@example.com, another@example.com" />
+        <button type="submit" :disabled="pilotBusy">{{ pilotBusy ? 'Saving…' : 'Add testers' }}</button>
       </form>
+      <p v-if="pilotNote" role="status">{{ pilotNote }}</p>
       <p v-if="pilotError" role="alert">{{ pilotError }}</p>
       <p v-if="!pilotRows.length">No additional testers invited yet.</p>
       <div v-else class="nge-pilot-find">
@@ -2373,7 +2471,7 @@ function practiceWhen(iso: string | null) {
           <button type="button" class="nge-admin-action-btn" @click="notifImageFile = null">Remove</button>
         </div>
         <div class="nge-admin-row">
-          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifTitle.trim() || !notifBody.trim()" @click="sendNotification">
+          <button class="nge-admin-primary-btn" :disabled="notifSending || !notifReady" @click="sendNotification">
             <span v-if="notifSent">✓ Saved!</span>
             <span v-else-if="notifSending">{{ notifSteps.find(x => x.key === notifSendStage)?.label || 'Sending' }}…</span>
             <span v-else-if="editingId != null">Save Changes</span>
@@ -2661,7 +2759,7 @@ function practiceWhen(iso: string | null) {
                   :title="triageBoard ? 'Back to the list in the Admin Hub (Esc)' : 'Fill the window: one column per section'">{{ triageBoard ? '✕ Close board' : '▦ Board view' }}</button>
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <button class="nge-admin-action-btn nge-triage-todo-open" @click="openTodoBoard"
-                  title="The admins' own planning board: To do, Doing, Done">📋 To do board</button>
+                  title="The admins' own planning board: To do, Doing, Done"><span v-html="TODO_ICON"></span>To do board</button>
           <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
             <!-- Level: one for every 25 reports closed. The ring fills toward the next. -->
             <div class="nge-hud-level" :class="{ 'nge-hud-level--up': triageCheer?.levelUp }"
@@ -2756,6 +2854,15 @@ function practiceWhen(iso: string | null) {
           reporter. Approving a fix sends it to Claude, who posts a preview in
           the Slack thread for you to test before anything goes live.
         </div>
+        <div v-if="zeroParty" :key="zeroParty" class="nge-zero-party" role="status" @click="zeroParty = 0">
+            <i v-for="(c, i) in ZERO_BITS" :key="i" class="nge-zero-bit" :class="{ 'nge-zero-bit--wide': c.wide }"
+               :style="{ left: c.left + '%', background: c.color, animationDelay: c.delay + 's', animationDuration: c.dur + 's', '--r': c.rot + 'deg' }"></i>
+            <div class="nge-zero-card">
+              <img :src="nurroConfetti" alt="" />
+              <div class="nge-zero-title">Triage zero!</div>
+              <div class="nge-zero-sub">Every report handled. Nurro is so proud of you.</div>
+            </div>
+          </div>
         <Transition name="nge-triage-cheer">
           <div v-if="triageCheer" :key="triageCheer.key" class="nge-triage-cheer" :class="`nge-triage-cheer--${triageCheer.kind}`" role="status">
             <span class="nge-triage-cheer-ring" aria-hidden="true"></span>
@@ -2764,6 +2871,7 @@ function practiceWhen(iso: string | null) {
           </div>
         </Transition>
         <div v-if="triageError" class="nge-admin-error">⚠ {{ triageError }}</div>
+        <div v-if="dupNotice" class="nge-admin-ok">✓ {{ dupNotice }}</div>
         <div v-if="triageLoading && !triageRows.length" class="nge-admin-hint">Loading…</div>
         <div v-else-if="!triageRows.length" class="nge-admin-hint">
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
@@ -2792,6 +2900,9 @@ function practiceWhen(iso: string | null) {
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
+            <span v-if="dupOf(row)" class="nge-triage-dup-badge" :title="'Grouped into report #' + (triageNumbers[dupOf(row) || ''] || '')">Same as #{{ triageNumbers[dupOf(row) || ''] || '?' }}</span>
+            <span v-if="dupsOf(row).length" class="nge-triage-dup-badge nge-triage-dup-badge--main"
+                  :title="'Also reported by ' + dupsOf(row).map(d => (reporterOf(d)?.name || 'someone') + ' (#' + (triageNumbers[d.id] || '?') + ')').join(', ')">+{{ dupsOf(row).length }} same</span>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
             <span v-if="row.admin_notes?.length" class="nge-triage-impl nge-triage-notes-chip" :title="`${row.admin_notes.length} note${row.admin_notes.length === 1 ? '' : 's'} from admins`">📝 {{ row.admin_notes.length }}</span>
             <span v-if="isAwaitingReply(row)" class="nge-triage-rec nge-triage-rec--waiting"
@@ -2818,7 +2929,15 @@ function practiceWhen(iso: string | null) {
             <button class="nge-triage-console-btn" @click="toggleIssueConsole(row)">
               {{ issueConsole[row.id] === undefined ? '🖥 Console messages' : issueConsoleOpen[row.id] ? '▾ Console messages' : '▸ Console messages' }}
             </button>
-            <pre v-if="issueConsoleOpen[row.id]" class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
+            <!-- Copy the whole log (Ames 2026-10-21: "we need a copy button for console logs"). -->
+            <button v-if="issueConsoleOpen[row.id] && issueConsole[row.id]" class="nge-triage-console-btn" title="Copy all the console messages"
+                    @click.stop="copyText(issueConsole[row.id] || '')">{{ copied === issueConsole[row.id] ? '✓ Copied' : '📋 Copy' }}</button>
+            <div v-if="issueConsoleOpen[row.id]" class="nge-triage-console-wrap">
+              <!-- Also on the log itself, where the eye is (Ames 2026-10-23: "I need a copy console logs button"). -->
+              <button v-if="issueConsole[row.id]" class="nge-triage-console-copy" title="Copy all the console messages"
+                      @click.stop="copyText(issueConsole[row.id] || '')">{{ copied === issueConsole[row.id] ? '✓ Copied' : '📋 Copy logs' }}</button>
+              <pre class="nge-triage-console-log">{{ issueConsole[row.id] || 'No console messages were attached to this report.' }}</pre>
+            </div>
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
           <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale"><template v-for="(pt, pi) in linkParts(row.rationale)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
@@ -2901,7 +3020,7 @@ function practiceWhen(iso: string | null) {
                     @click="markInProgress(row)">▶ In progress</button>
             <button v-if="row.status === 'proposed' || isByHand(row) || isLater(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
                     title="A bigger job to plan. Puts a card for it on the To do board and moves this report under On the To do board. The robot does not build it and nothing is sent to the reporter."
-                    @click="sendToTodoBoard(row)">📋 To do</button>
+                    @click="sendToTodoBoard(row)"><span v-html="TODO_ICON"></span>To do</button>
             <button v-if="row.status === 'proposed' || isByHand(row) || isTodo(row)" class="nge-admin-action-btn" :disabled="triageActing === row.id"
                     title="A good idea, but not now. Moves the card to Ideas for later. The robot does not build it and nothing is sent to the reporter."
                     @click="markInProgress(row, true)">💡 Later</button>
@@ -2962,6 +3081,8 @@ function practiceWhen(iso: string | null) {
                   <button v-if="u.console_lines" type="button" class="nge-triage-chip" @click="toggleReplyConsole(u.notification_id)">
                     {{ replyConsoleOpen[u.notification_id] ? '▾' : '▸' }} Console messages ({{ u.console_lines }})
                   </button>
+                  <button v-if="u.console_lines && replyConsoleOpen[u.notification_id] && replyConsole[u.notification_id]" type="button" class="nge-triage-chip" title="Copy all the console messages"
+                          @click="copyText(replyConsole[u.notification_id] || '')">{{ copied === replyConsole[u.notification_id] ? '✓ Copied' : '📋 Copy' }}</button>
                   <span v-if="u.dataset" class="nge-triage-chip nge-triage-chip--plain">{{ u.dataset }}{{ u.build ? ' · ' + u.build : '' }}</span>
                 </div>
                 <pre v-if="u.console_lines && replyConsoleOpen[u.notification_id]" class="nge-triage-reply-console">{{ replyConsole[u.notification_id] === undefined ? 'Loading…' : (replyConsole[u.notification_id] ?? 'These messages are no longer stored.') }}</pre>
@@ -3042,9 +3163,18 @@ function practiceWhen(iso: string | null) {
             </template>
             <button v-else class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
+            <!-- Duplicates (Ames 2026-10-26): close this one into another report. -->
+            <form v-if="!dupOf(row)" class="nge-triage-dup" @submit.prevent="markDuplicate(row)" @click.stop>
+              <label>Same as #<input v-model="dupDraft[row.id]" inputmode="numeric" size="4" placeholder="231" aria-label="Report number this duplicates" @keydown.stop @keyup.stop @keypress.stop /></label>
+              <button type="submit" class="nge-admin-action-btn" :disabled="!dupDraft[row.id] || triageActing === row.id"
+                      title="Close this report as a duplicate. Its reporter hears whenever you update the other report.">Group</button>
+            </form>
           </div>
         </div>
-        <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">{{ g.empty }}</div>
+        <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
+          <img v-if="g.key === 'decide'" :src="imgNurroBravo" alt="" class="nge-triage-zero-nurro" />
+          <div>{{ g.empty }}</div>
+        </div>
         </template>
         </div>
         </div>
@@ -3197,6 +3327,8 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
    #vueMain > * ul { list-style: none; padding: 0 }, outranks these and
    stripped the bullets here, though not in the real notification. */
 .nge-admin-fmtpreview-body :deep(p) { margin: 0 0 0.7em; }
+.nge-admin-fmtpreview-body :deep(.nge-notif-video) { position: relative; width: 100%; max-width: 420px; aspect-ratio: 16 / 9; margin: 4px 0 6px; border-radius: 8px; overflow: hidden; background: #000; }
+.nge-admin-fmtpreview-body :deep(.nge-notif-video iframe), .nge-admin-fmtpreview-body :deep(.nge-notif-video video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .nge-admin-fmtpreview-body :deep(p:last-child) { margin-bottom: 0; }
 .nge-admin-fmtpreview-body :deep(strong) { color: #eef4fb; font-weight: 650; }
 .nge-admin-fmtpreview-body :deep(em) { font-style: normal; font-weight: 500; color: rgba(110, 220, 255, 0.9); }
@@ -3430,7 +3562,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-admin-modal {
   width: 340px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 32px);
   padding: 18px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(8, 10, 20, 0.98), rgba(12, 16, 28, 0.98));
@@ -4354,8 +4486,14 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 /* ── The To do board's column and button (Ames 2026-10-19) ── */
 .nge-triage-board .nge-triage-col--todo { border-top: 3px solid #7c9cff; }
 .nge-triage-light .nge-triage-col--todo { border-top-color: #4a63d6; }
-.nge-triage-todo-open { color: #b3c4ff; border-color: rgba(124, 156, 255, 0.45); }
-.nge-triage-light .nge-triage-todo-open { color: #2c3f9e; border-color: #b8c4f2; }
+/* The way to the To do board: a bright pill (Ames 2026-10-23: "more fun"). */
+.nge-triage-todo-open, .nge-triage-light .nge-triage-todo-open {
+  color: #fff !important; font-weight: 700; border: none !important;
+  background: linear-gradient(90deg, #4f8cff, #2ec4b6 60%, #f5c542) !important;
+  box-shadow: 0 2px 10px rgba(46, 140, 220, 0.35); transition: transform 0.15s, box-shadow 0.15s;
+}
+.nge-triage-todo-open:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(46, 140, 220, 0.45); }
+.nge-triage-todo-open .nge-todo-icon { color: #fff; }
 /* The To do board fills the board's window. */
 .nge-triage-board > .nge-todo { flex: 1 1 auto; }
 </style>
@@ -4389,4 +4527,34 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-triage-view-btn { text-decoration: none; display: inline-flex; align-items: center; margin-right: 6px; }
 .nge-triage-preview-toggle { margin-left: auto; }
 .nge-triage-preview-toggle[aria-pressed="true"] { border-color: rgba(79, 207, 255, 0.7); }
+.nge-todo-icon { color: #7c9cff; vertical-align: -2px; margin-right: 5px; }
+/* Triage zero: Nurro cheers (Ames 2026-10-23: "use nurro on triage zero"). */
+/* Bigger, and a slow float up and back (Ames 2026-10-23: "bigger, slower"). */
+.nge-triage-zero-nurro { display: block; width: 300px; height: 300px; object-fit: contain; margin: 10px auto 6px; animation: nge-zero-bob 8s ease-in-out infinite; }
+@keyframes nge-zero-bob { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-14px) rotate(-2deg); } }
+@media (prefers-reduced-motion: reduce) { .nge-triage-zero-nurro { animation: none; } }
+.nge-triage-console-wrap { position: relative; flex-basis: 100%; }
+.nge-triage-console-copy { position: sticky; float: right; top: 6px; margin: 6px 8px -34px 0; z-index: 1; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  font: 600 12px Inter, system-ui, sans-serif; color: #fff; background: #4f8cff; border: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+.nge-triage-console-copy:hover { background: #3a74e8; }
+/* Triage zero party. */
+.nge-zero-party { position: fixed; inset: 0; z-index: 10070; pointer-events: auto; overflow: hidden; display: grid; place-items: center; background: rgba(255, 255, 255, 0.35); animation: nge-zero-fade 6s ease-out forwards; cursor: pointer; }
+@keyframes nge-zero-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.nge-zero-bit { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation-name: nge-zero-fall; animation-timing-function: cubic-bezier(.3,.6,.5,1); animation-fill-mode: both; }
+.nge-zero-bit--wide { width: 14px; height: 8px; border-radius: 50%; }
+@keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(calc(110 * var(--nge-vh, 1vh))) rotate(calc(var(--r) * 3)); } }
+.nge-zero-card { text-align: center; padding: 20px 34px 24px; border-radius: 20px; background: #ffffff; border: 2px solid #f5c542;
+  box-shadow: 0 20px 50px rgba(40, 70, 140, 0.22), 0 0 30px rgba(245, 197, 66, 0.3); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes nge-zero-pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.nge-zero-card img { width: 220px; height: 220px; object-fit: contain; animation: nge-zero-bob 8s ease-in-out infinite; }
+.nge-zero-title { font: 800 40px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.04em;
+  color: #2f6fe0; }
+.nge-zero-sub { margin-top: 6px; color: #3a4a66; font: 600 16px Inter, system-ui, sans-serif; }
+@media (prefers-reduced-motion: reduce) { .nge-zero-bit { display: none; } .nge-zero-card, .nge-zero-card img { animation: none; } }
+/* Duplicates. */
+.nge-triage-dup { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 12.5px; color: #62738c; }
+.nge-triage-dup input { width: 52px; margin-left: 2px; padding: 3px 6px; border-radius: 6px; border: 1px solid #c3d3ec; font: inherit; }
+.nge-triage-dup-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: #fde7f1; color: #b0306f; margin-left: 4px; }
+.nge-triage-dup-badge--main { background: #e6f6f4; color: #11766c; }
+.nge-admin-ok { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #e6f6ee; color: #1d7038; font-size: 13px; }
 </style>

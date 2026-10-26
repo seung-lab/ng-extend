@@ -7,6 +7,8 @@ import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
 import { secureWrite } from './secure_write';
+import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
+import { trackSave } from './save_status';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -1023,24 +1025,43 @@ export interface UserPreferences {
    *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
    *  distracting from the workflow"). */
   cellCompleteMessage?: 'full' | 'small' | 'off';
+  /** Settings, "Achievement celebration" (toknow, report 239; Ames
+   *  2026-10-25). False: no card and no confetti when one is earned; it is
+   *  still in the Trophy Case and the bell. */
+  achievementCelebration?: boolean;
+  /** Settings: every notification in one list instead of My Pyr and Pyr
+   *  Updates (Ames 2026-10-25). */
+  notifOneList?: boolean;
+  /** Settings, "Show Today in Pyr": false keeps the daily update out of the
+   *  bell (Ames 2026-10-25). */
+  showDailyDigest?: boolean;
   /** 2D image detail: 1 full (default), 2 half, 4 quarter, as neuroglancer's
    *  render scale target for image layers. Coarser loads far less on a slow
    *  connection (Krzysztof 2026-10-15). Saved views never set it; only this. */
   imageDetail?: 1 | 2 | 4;
+  /** Where the 2D images load from (Ames 2026-10-22): 'auto' (the default)
+   *  times both copies once and uses the faster, or the player picks the
+   *  Americas or Asia. See src/util/image_source.ts. */
+  imageSource?: 'auto' | 'americas' | 'asia';
   /** Keep your display settings (opacity, layout...) when the Cell Library
    *  loads a cell's view. Defaults to true (Amy 2026-09-30). */
   keepDisplayOnJump?: boolean;
-  /** How the cell under the mouse is shown (wolfryder101 #181): 'halo' (new players), 'fade' (the classic look, existing players), 'pulse', 'hologram' ('wireframe' before), 'saturate', 'spotlight' or 'none'. */
+  /** How the cell under the mouse is shown (wolfryder101 #181): 'spotlight' (new players), 'fade' (the classic look, existing players), 'pulse', 'hologram' ('wireframe' before), 'saturate', 'spotlight' or 'none'. */
   hoverStyle?: 'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'wireframe' | 'saturate' | 'spotlight' | 'fade' | 'none';
-  /** Set when hoverStyle was given (a new player's halo), not chosen; the
+  /** Set when hoverStyle was given (a new player's spotlight), not chosen; the
    *  account copy can still say they were here before. Local only. */
   hoverStyleAuto?: boolean;
   /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
   pulseColor?: string;
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
-   *  selects, right click hides (Ames 2026-10-06). */
+   *  selects, right click hides (Ames 2026-10-06). It also sets the number
+   *  keys: on, 1 to 9 show and hide layers; off, a number makes its layer the
+   *  active one and Shift + the number shows or hides it (Ames 2026-10-24). */
   classicLayerClicks?: boolean;
+  /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
+   *  Defaults to false: it shows. */
+  hideRadio?: boolean;
   /** Show how many steps Undelete can bring back, as a badge on its icon.
    *  Defaults to false: the icon alone (Ames 2026-10-07). */
   undeleteCounter?: boolean;
@@ -1090,6 +1111,19 @@ export interface UserPreferences {
   /** Calm screen: no animations or glows in the interface (src/util/calm.ts,
    *  annkri #144, Ames 2026-10-16). Defaults to false. */
   calmScreen?: boolean;
+  /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
+   *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
+  cursorXL?: boolean;
+  /** Large text: Pyr's windows and the layer side panel drawn a fifth bigger
+   *  (body.nge-large-text, src/large_text.css; Ames 2026-10-25, for older
+   *  players). Defaults to false. */
+  largeText?: boolean;
+  /** The top bar hides until the mouse comes to the top edge of the window
+   *  (ExtensionBar.vue, Nik #243, Ames 2026-10-25). Defaults to false. */
+  hideTopBar?: boolean;
+  /** Advanced: a click on the 2D image layer's tab opens its side panel, as
+   *  in neuroglancer. Off (default): it shows or hides the 2D view. */
+  imageLayerPanel?: boolean;
   /** Auto-show open scout tags on cells even when tag mode is closed.
    *  Defaults to true (ambient dots on); tag mode always shows them. */
   showScoutTags?: boolean;
@@ -1120,7 +1154,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
       // setting later does not make a new player look like an old one.
       if (!prefs.value.hoverStyle) {
         prefs.value.hoverStyle = ngeDefaultHoverStyle(stored);
-        if (prefs.value.hoverStyle === 'halo') prefs.value.hoverStyleAuto = true;
+        if (prefs.value.hoverStyle === 'spotlight') prefs.value.hoverStyleAuto = true;
         localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
       }
     } catch { /* ignore parse errors */ }
@@ -1138,7 +1172,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'hoverStyle', 'pulseColor', 'toolbarStage'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'showDailyDigest'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1208,7 +1242,31 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
     } catch (e) { console.warn('[prefs] could not read your saved settings:', e); }
   }
 
+  /** Flag and bio live on the public profile row, and this browser keeps a
+   *  copy that the profile and Settings show. A browser new to the player
+   *  started with an empty copy, so the country and bio looked deleted
+   *  (AzureJay, report 229, first sign in on Firefox), and saving Settings
+   *  there would have blanked them for real. The row's values fill the copy. */
+  let profilePulledFor = '';
+  async function pullProfile(userId: string) {
+    if (!userId || profilePulledFor === userId) return;
+    try {
+      const { data, error } = await supabase.from('users').select('flag, bio').eq('id', userId).maybeSingle();
+      if (error || !data) return;
+      profilePulledFor = userId;
+      const flag = typeof (data as any).flag === 'string' ? (data as any).flag : '';
+      const bio = typeof (data as any).bio === 'string' ? (data as any).bio : '';
+      let changed = false;
+      if (flag && prefs.value.flag !== flag) { prefs.value.flag = flag; changed = true; }
+      if (bio && prefs.value.bio !== bio) { prefs.value.bio = bio; changed = true; }
+      if (changed) localStorage.setItem(PREFS_KEY, JSON.stringify(prefs.value));
+    } catch (e) { console.warn('[prefs] could not read your profile:', e); }
+  }
+
   load(); // hydrate from localStorage on store init
+  // The cursor size follows the setting, on every computer the account uses.
+  watch(() => prefs.value.cursorXL === true, on => { document.body?.classList.toggle('nge-cursor-xl', on); }, { immediate: true });
+  watch(() => prefs.value.largeText === true, on => { document.body?.classList.toggle('nge-large-text', on); }, { immediate: true });
   // The renderer reads the hover style and pulse colour from these.
   watch(() => [prefs.value.hoverStyle, prefs.value.pulseColor], () => {
     ngeHoverStyle.value = ngeParseHoverStyle(prefs.value);
@@ -1224,7 +1282,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // Once signed in, the account's copy wins over this browser's.
   // Deferred a tick: the backend store may itself read these prefs while it
   // is being set up, and two stores creating each other would recurse.
-  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) pullFromAccount(String(id)); }, { immediate: true }), 0);
+  setTimeout(() => watch(() => useProofreadingBackendStore().userId, id => { if (id) { pullFromAccount(String(id)); void pullProfile(String(id)); } }, { immediate: true }), 0);
   return { prefs, save, resetToDefaults, accountLoaded };
 });
 
@@ -1876,7 +1934,10 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
   load();
   subscribe();
 
-  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe };
+  /** A request the Help tab should open on and show (a reply notification's
+   *  "Open in Help tab", Ames 2026-10-24). CellLibraryPanel clears it. */
+  const focusId = ref<string | null>(null);
+  return { requests, pending, add, resolve, addResponse, remove, refreshPending, load, subscribe, unsubscribe, focusId };
 });
 
 // ── Issue Tags (Scout tags) ────────────────────────────────────────────────
@@ -3607,16 +3668,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     userName.value = displayName;
     console.info('[backend] syncUser called for', email);
     try {
-      // Try to find existing user by email
-      const { data: existing, error: selectErr } = await supabase
-        .from('users')
-        .select('id, username')
-        .eq('middleauth_email', email)
-        .single();
-
-      if (selectErr && selectErr.code !== 'PGRST116') {
+      // Find the player's row by email. A failed read (server busy, too many
+      // requests, a network blip) used to fall through to "create a new
+      // user", which failed too, and left the whole visit without a profile:
+      // chat said "Log in to chat" to a signed in player (Ames 2026-10-25).
+      // Now a failed read is tried again, and only a real "no row" creates one.
+      let existing: { id: string; username?: string | null } | null = null;
+      for (let attempt = 0; ; attempt++) {
+        const { data, error: selectErr } = await supabase
+          .from('users')
+          .select('id, username')
+          .eq('middleauth_email', email)
+          .single();
         // PGRST116 = "no rows returned" (expected for new users)
-        console.warn('[backend] syncUser SELECT error:', selectErr.message);
+        if (!selectErr || selectErr.code === 'PGRST116') { existing = data as any; break; }
+        console.warn(`[backend] syncUser SELECT error (try ${attempt + 1}):`, selectErr.message);
+        if (attempt >= 5) throw new Error('Could not read your profile: ' + selectErr.message);
+        await new Promise(r => setTimeout(r, [2000, 5000, 10000, 20000, 40000][attempt]));
+        if (userEmail.value !== email) return;   // signed in as someone else meanwhile
       }
 
       if (existing) {
@@ -3740,16 +3809,143 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // ── Task management ───────────────────────────────────────────────────
   /** Load tasks for a dataset, with optional status filter. */
   // Incremental sync (Amy 2026-09-28: "don't go through thousands of rows each
-  // time"). The first load of a dataset pages through every task once; after
-  // that only rows whose updated_at moved are fetched and merged in. Every
-  // claim, release, completion and expiry bumps updated_at (pilot_task_action,
-  // expire_stale_assignments), so a claim or release costs one tiny query.
+  // time"). After the first load of a dataset only rows whose updated_at moved
+  // are fetched and merged in. Every claim, release, completion and expiry
+  // bumps updated_at (pilot_task_action, expire_stale_assignments), so a claim
+  // or release costs one tiny query.
+  //
+  // A dataset of more than WHOLE_LIST_MAX tasks is paged (Ames 2026-10-25):
+  // Retina's 16,000+ rows (17 reads, 10 MB) were pulled by every player who
+  // opened the Cell Library while its database sat at full CPU. Such a dataset
+  // loads the player's own tasks in full, the first TASK_PAGE available ones,
+  // and the tab counts from count queries. Load more, search, tab switches and
+  // findTasks fetch the rest as they are needed.
   let tasksSyncedDataset = '';
   let tasksSyncedAt = '';
+
+  /** A task row names a cell. One with a blank id showed as an empty first
+   *  entry in MEC's Cell Library (Krzysztof Kruk, report 223), and Claim a
+   *  new cell could pick it. */
+  const hasCellId = (t: ProofreadingTask) => /^[1-9]\d*$/.test(String(t.segment_id ?? '').trim());
+  /** hasCellId, as a server filter. */
+  const CELL_ID_RE = '^ *[1-9][0-9]* *$';
+  const TASK_PAGE = 100;
+  const WHOLE_LIST_MAX = 1000;
+  /** Load more asks again for a few rows it already has, so a row that left
+   *  the tab meanwhile does not push one past the page edge unseen. */
+  const PAGE_OVERLAP = 10;
+  type TaskTab = 'available' | 'claimed' | 'completed' | 'all';
+  const TAB_STATUSES: Record<TaskTab, string[] | null> = {
+    available: ['pending'], claimed: ['assigned', 'in_progress'], completed: ['completed'], all: null,
+  };
+  const freshPages = (): Record<TaskTab, { next: number; done: boolean }> => ({
+    available: { next: 0, done: false }, claimed: { next: 0, done: false },
+    completed: { next: 0, done: false }, all: { next: 0, done: false },
+  });
+  /** True when `tasks` holds only part of the dataset (see above). */
+  const tasksPaged = ref(false);
+  /** Server counts per tab while paged, else null. */
+  const taskCounts = ref<Record<TaskTab, number> | null>(null);
+  /** How far each tab has been read from the server while paged. */
+  const taskPages = ref(freshPages());
+  const loadingMore = ref<TaskTab | null>(null);
+  /** The player whose own tasks are loaded in full. */
+  let tasksMineFor = '';
+
+  /** List order. A paged list puts the sheet's cells first, as the sheet
+   *  backed Cell Library does, so its first page holds cells from the sheet. */
+  const sheetRank = (t: ProofreadingTask) => (t.source_sheet_url ? 0 : 1);
+  function taskOrder(a: ProofreadingTask, b: ProofreadingTask): number {
+    return (tasksPaged.value ? sheetRank(a) - sheetRank(b) || String(a.source_sheet_url ?? '').localeCompare(String(b.source_sheet_url ?? '')) : 0)
+      || (b.priority ?? 0) - (a.priority ?? 0)
+      || String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id;
+  }
+  function orderedQuery(q: any) {
+    return q.order('source_sheet_url', { ascending: true, nullsFirst: false })
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+  }
+  /** One tab's rows of a dataset, cells with an ID only. */
+  function tabQuery(dataset: string, tab: TaskTab, select = '*', opts?: { count?: 'exact'; head?: boolean }) {
+    let q: any = supabase.from('proofreading_tasks').select(select, opts)
+      .eq('dataset', dataset).filter('segment_id', 'match', CELL_ID_RE);
+    const st = TAB_STATUSES[tab];
+    if (st) q = st.length === 1 ? q.eq('status', st[0]) : q.in('status', st);
+    return q;
+  }
+  async function countTab(dataset: string, tab: TaskTab): Promise<number> {
+    const { count, error: e } = await tabQuery(dataset, tab, 'id', { count: 'exact', head: true });
+    if (e) throw e;
+    return count ?? 0;
+  }
+  async function refreshTaskCounts(dataset: string) {
+    const tabs: TaskTab[] = ['available', 'claimed', 'completed', 'all'];
+    const got = await Promise.all(tabs.map(t => countTab(dataset, t)));
+    if (dataset !== tasksSyncedDataset || !tasksPaged.value) return;
+    taskCounts.value = Object.fromEntries(tabs.map((t, i) => [t, got[i]])) as Record<TaskTab, number>;
+  }
+  /** Merge rows into `tasks`: a known row is replaced, a new one added in order. */
+  function mergeTasks(rows: ProofreadingTask[]) {
+    const ok = rows.filter(hasCellId);
+    if (!ok.length) return;
+    const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
+    const next = tasks.value.slice();
+    let added = false;
+    for (const r of ok) {
+      const i = byId.get(r.id);
+      if (i === undefined) { byId.set(r.id, next.length); next.push(r); added = true; } else next[i] = r;
+    }
+    if (added) next.sort(taskOrder);
+    tasks.value = next;
+  }
+  /** The player's own tasks in a dataset (claimed, completed), all of them. */
+  async function fetchMyTasks(dataset: string): Promise<ProofreadingTask[]> {
+    const out: ProofreadingTask[] = [];
+    for (let from = 0; from <= 20_000; from += 1000) {
+      const { data, error: e } = await supabase.from('proofreading_tasks').select('*')
+        .eq('dataset', dataset).eq('assigned_to', userId.value).order('id', { ascending: true })
+        .range(from, from + 999);
+      if (e) throw e;
+      out.push(...((data ?? []) as ProofreadingTask[]));
+      if ((data ?? []).length < 1000) break;
+    }
+    return out;
+  }
+  /** Every row of a dataset, 1,000 a read (the API's cap), AT_ONCE reads at once. */
+  async function fetchWholeList(dataset: string, statusFilter?: string, AT_ONCE = 4): Promise<ProofreadingTask[]> {
+    const PAGE = 1000;
+    const page = async (from: number) => {
+      let query = supabase
+        .from('proofreading_tasks')
+        .select('*')
+        .eq('dataset', dataset)
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (statusFilter) query = query.eq('status', statusFilter);
+      const { data, error: fetchErr } = await query;
+      if (fetchErr) throw fetchErr;
+      return (data ?? []) as ProofreadingTask[];
+    };
+    const all: ProofreadingTask[] = [];
+    for (let from = 0; from <= 50_000; from += PAGE * AT_ONCE) {
+      const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE)));
+      for (const g of got) all.push(...g);
+      if (got.some(g => g.length < PAGE)) break;
+    }
+    return all;
+  }
 
   async function loadTasks(dataset: string = currentDatasetTag(), statusFilter?: string, opts: { full?: boolean } = {}) {
     if (!statusFilter && !opts.full && dataset === tasksSyncedDataset && tasksSyncedAt) {
       try {
+        // Signed in since the list loaded: bring in the player's own cells.
+        if (tasksPaged.value && userId.value && tasksMineFor !== userId.value) {
+          mergeTasks(await fetchMyTasks(dataset));
+          tasksMineFor = userId.value;
+        }
         const { data, error: fetchErr } = await supabase
           .from('proofreading_tasks')
           .select('*')
@@ -3758,21 +3954,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           .order('updated_at', { ascending: true })
           .limit(1000);
         if (fetchErr) throw fetchErr;
-        const rows = (data ?? []) as ProofreadingTask[];
-        if (rows.length < 1000) {
-          const byId = new Map(tasks.value.map((t, i) => [t.id, i] as [number, number]));
-          const next = tasks.value.slice();
-          let added = false;
-          for (const r of rows) {
-            const i = byId.get(r.id);
-            if (i === undefined) { next.push(r); added = true; } else next[i] = r;
-            if (r.updated_at > tasksSyncedAt) tasksSyncedAt = r.updated_at;
+        const fetched = (data ?? []) as ProofreadingTask[];
+        if (fetched.length < 1000) {
+          const since = tasksSyncedAt;
+          for (const r of fetched) if (r.updated_at > tasksSyncedAt) tasksSyncedAt = r.updated_at;
+          // A paged list takes changes to rows it holds, and rows that are
+          // now the player's. Other rows stay unloaded; the counts follow.
+          const known = new Set(tasks.value.map(t => t.id));
+          mergeTasks(tasksPaged.value
+            ? fetched.filter(r => known.has(r.id) || (!!userId.value && r.assigned_to === userId.value))
+            : fetched);
+          // The read starts at the newest change already seen, so that row
+          // comes back every time: only a later one changes the counts.
+          if (tasksPaged.value && fetched.some(r => r.updated_at > since)) {
+            await refreshTaskCounts(dataset).catch((e: any) => console.warn('[backend] task counts not refreshed:', e?.message));
           }
-          if (added) {
-            next.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)
-              || String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id);
-          }
-          if (rows.length) tasks.value = next;
           return;
         }
         // Too much changed since the last sync: fall through to a full load.
@@ -3783,55 +3979,107 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loading.value = true;
     error.value = '';
     try {
-      // Page through everything: the API returns at most 1,000 rows per read,
-      // and Retina has 2,300+ tasks, so new claims (the newest ids) were cut off
-      // and never showed in My Cells (Amy 2026-09-28).
-      const PAGE = 1000;
-      // Retina has 16,000+ tasks (17 pages, ~10 MB), and My Cells waited for
-      // all of them (Ames 2026-10-01: "my cells take a long time to load").
-      // On the first load of a dataset, show the player's own cells at once,
-      // then fetch the rest four pages at a time instead of one by one.
-      if (!statusFilter && dataset !== tasksSyncedDataset && userId.value) {
-        const { data: mine } = await supabase
-          .from('proofreading_tasks').select('*')
-          .eq('dataset', dataset).eq('assigned_to', userId.value)
-          .order('priority', { ascending: false })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .limit(PAGE);
-        if (mine) tasks.value = mine as ProofreadingTask[];
-      }
-      const page = async (from: number) => {
-        let query = supabase
-          .from('proofreading_tasks')
-          .select('*')
-          .eq('dataset', dataset)
-          .order('priority', { ascending: false })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (statusFilter) query = query.eq('status', statusFilter);
-        const { data, error: fetchErr } = await query;
-        if (fetchErr) throw fetchErr;
-        return (data ?? []) as ProofreadingTask[];
-      };
-      const all: ProofreadingTask[] = [];
-      const AT_ONCE = 4;
-      for (let from = 0; from <= 50_000; from += PAGE * AT_ONCE) {
-        const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE)));
-        for (const g of got) all.push(...g);
-        if (got.some(g => g.length < PAGE)) break;
-      }
-      tasks.value = all;
-      if (!statusFilter) {
+      if (statusFilter) {
+        tasks.value = (await fetchWholeList(dataset, statusFilter)).filter(hasCellId);
+      } else {
+        const total = await countTab(dataset, 'all');
+        if (total <= WHOLE_LIST_MAX) {
+          const all = await fetchWholeList(dataset, undefined, 1);
+          tasksPaged.value = false;
+          taskCounts.value = null;
+          tasks.value = all.filter(hasCellId);
+          tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
+        } else {
+          // The newest change before anything is read: the next sync starts there.
+          const { data: newest, error: markErr } = await supabase.from('proofreading_tasks').select('updated_at')
+            .eq('dataset', dataset).order('updated_at', { ascending: false }).limit(1);
+          if (markErr) throw markErr;
+          const me = userId.value;
+          const [mine, firstPage, claimed, completed] = await Promise.all([
+            me ? fetchMyTasks(dataset) : Promise.resolve([] as ProofreadingTask[]),
+            orderedQuery(tabQuery(dataset, 'available', '*', { count: 'exact' })).range(0, TASK_PAGE - 1),
+            countTab(dataset, 'claimed'),
+            countTab(dataset, 'completed'),
+          ]);
+          if (firstPage.error) throw firstPage.error;
+          const rows = (firstPage.data ?? []) as ProofreadingTask[];
+          tasksPaged.value = true;
+          taskPages.value = { ...freshPages(), available: { next: rows.length, done: rows.length < TASK_PAGE } };
+          taskCounts.value = { available: firstPage.count ?? rows.length, claimed, completed, all: total };
+          tasks.value = [];
+          mergeTasks([...mine, ...rows]);
+          tasksMineFor = me;
+          tasksSyncedAt = String(newest?.[0]?.updated_at ?? '');
+        }
         tasksSyncedDataset = dataset;
-        tasksSyncedAt = all.reduce((m, t) => (t.updated_at > m ? t.updated_at : m), '');
       }
     } catch (e: any) {
       error.value = e.message || 'Failed to load tasks';
       console.warn('[backend] loadTasks error:', e.message);
     }
     loading.value = false;
+  }
+
+  /** Paged list: read the next page of one tab. Returns how many rows were new. */
+  async function loadMoreTasks(tab: TaskTab, dataset: string = currentDatasetTag()): Promise<number> {
+    if (!tasksPaged.value || dataset !== tasksSyncedDataset || loadingMore.value) return 0;
+    const p = taskPages.value[tab];
+    if (p.done) return 0;
+    loadingMore.value = tab;
+    try {
+      const from = Math.max(0, p.next - PAGE_OVERLAP);
+      const want = p.next - from + TASK_PAGE;
+      const { data, error: e } = await orderedQuery(tabQuery(dataset, tab)).range(from, from + want - 1);
+      if (e) throw e;
+      const rows = (data ?? []) as ProofreadingTask[];
+      const before = tasks.value.length;
+      mergeTasks(rows);
+      taskPages.value = { ...taskPages.value, [tab]: { next: from + rows.length, done: rows.length < want } };
+      return tasks.value.length - before;
+    } catch (e: any) {
+      console.warn('[backend] loadMoreTasks error:', e?.message);
+      return 0;
+    } finally {
+      loadingMore.value = null;
+    }
+  }
+
+  /** Paged list: fetch the tasks of these cells, and with `text`, the tasks
+   *  whose cell ID, final ID or notes contain it (the Cell Library search). */
+  async function findTasks(dataset: string, segIds: string[], text = ''): Promise<void> {
+    if (!tasksPaged.value || dataset !== tasksSyncedDataset) return;
+    const known = new Set(tasks.value.map(t => String(t.segment_id)));
+    const want = [...new Set(segIds.map(s => String(s || '').trim()))].filter(s => /^\d+$/.test(s) && !known.has(s)).slice(0, 300);
+    const reads: PromiseLike<any>[] = [];
+    for (let i = 0; i < want.length; i += 100) {
+      reads.push(supabase.from('proofreading_tasks').select('*').eq('dataset', dataset).in('segment_id', want.slice(i, i + 100)));
+    }
+    const term = text.replace(/[^\w #.-]/g, '').trim();
+    if (term.length >= 3) {
+      const like = `"*${term}*"`;
+      reads.push(orderedQuery(tabQuery(dataset, 'all'))
+        .or(`segment_id.ilike.${like},final_segment_id.ilike.${like},notes.ilike.${like}`).limit(TASK_PAGE));
+    }
+    if (!reads.length) return;
+    const got = await Promise.all(reads);
+    const rows: ProofreadingTask[] = [];
+    for (const g of got) {
+      if (g.error) { console.warn('[backend] findTasks error:', g.error.message); continue; }
+      rows.push(...((g.data ?? []) as ProofreadingTask[]));
+    }
+    mergeTasks(rows);
+  }
+
+  /** Paged list: the available cells that follow `task` in list order (Claim
+   *  this + next N from a search). */
+  async function loadAvailableAfter(task: ProofreadingTask, n: number): Promise<void> {
+    if (!tasksPaged.value || task.dataset !== tasksSyncedDataset) return;
+    let q: any = orderedQuery(tabQuery(task.dataset, 'available'))
+      .eq('priority', task.priority ?? 0).gte('created_at', task.created_at);
+    q = task.source_sheet_url ? q.eq('source_sheet_url', task.source_sheet_url) : q.is('source_sheet_url', null);
+    const { data, error: e } = await q.limit(n + 1);
+    if (e) { console.warn('[backend] loadAvailableAfter error:', e.message); return; }
+    mergeTasks((data ?? []) as ProofreadingTask[]);
   }
 
   /** Player scripts (window.eyewire) hear about claims, releases and completions. */
@@ -3884,7 +4132,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         await syncCellToSheet('release', String(mine.segment_id), undefined, (mine as any).dataset)
           .catch((e: any) => console.warn('[backend] sheet not updated on release:', e?.message));
       }
-      await taskAction('release', { id: taskId });
+      // A server that is busy or down is asked again: a failed release used
+      // to leave the cell claimed while the menu said it was released.
+      for (let attempt = 0; ; attempt++) {
+        try { await trackSave(taskAction('release', { id: taskId })); break; }
+        catch (e: any) {
+          if (attempt >= 3 || !serverMayRecover(e) || Number(e?.status) === 401) throw e;
+          await new Promise(r => setTimeout(r, 1000 * 2 ** attempt + Math.random() * 500));
+        }
+      }
       tellScripts('release', taskId);
 
       await logEdit({ operation: 'release_task', task_id: taskId });
@@ -3963,6 +4219,49 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * yet (the server answers counted: false). In both, the counters are
    * updated from here as they always were.
    */
+  /** Send one activity row, waiting out the server's "Please wait". */
+  async function sendActivity(row: Record<string, any>): Promise<any> {
+    for (let attempt = 0; ; attempt++) {
+      try { return await secureWrite('activity.log', { row }); }
+      catch (e: any) {
+        if (attempt >= 3 || !/please wait/i.test(e?.message ?? '')) throw e;
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1) + Math.random() * 1000));
+      }
+    }
+  }
+
+  /** The server recorded a row and answered with the counters: show them. */
+  function applyServerCounts(result: any) {
+    // The server's numbers are the numbers.
+    useUserStatsStore().setStats({
+      editsAllTime: result.total_edits ?? 0,
+      mergesAllTime: result.total_merges ?? 0,
+      splitsAllTime: result.total_splits ?? 0,
+      cellsSubmitted: result.cells_completed ?? 0,
+      currentStreak: result.current_streak ?? 0,
+      longestStreak: result.longest_streak ?? 0,
+      ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
+      ...(typeof result.total_days === 'number' ? { totalDays: result.total_days } : {}),
+    });
+    if (result.recorded) {
+      celebrateDays(result.days_before, result.total_days, false);
+      if ((result.current_streak ?? 0) !== (result.streak_before ?? 0)) sendStreakMilestone(result.current_streak).catch(() => {});
+      if ((result.edits_before ?? 0) < 3 && (result.total_edits ?? 0) >= 3) sendThirdEditThanks().catch(() => {});
+    }
+  }
+
+  // Rows the server did not take wait in this browser and go out later,
+  // only under the sign in of the player who made them.
+  startActivityOutbox({
+    currentUser: () => userId.value,
+    send: row => sendActivity(row),
+    onRecorded: (result, row) => {
+      if (!result?.counted || !userId.value) return;
+      document.dispatchEvent(new CustomEvent('nge:edit-logged', { detail: { operation: row.operation } }));
+      applyServerCounts(result);
+    },
+  });
+
   async function logEdit(entry: EditLogEntry) {
     try {
       const uid = entry.user_id ?? userId.value;
@@ -3979,6 +4278,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         metadata: entry.metadata ?? null,
         dataset: entry.dataset ?? currentDatasetTag(),
         success: entry.success ?? true,
+        // The server records a row once per key, so this row can be sent
+        // again after a failure without counting twice. A split or merge is
+        // keyed by its graph operation id instead (activity-policy.js).
+        ...(entry.operation === 'split' || entry.operation === 'merge' ? {} : { op_key: newOpKey() }),
       };
       let result: any = null;
       try {
@@ -3986,20 +4289,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // the same moment (a batch of up to 20 merges finishing together). It
         // was refused before anything was written, so sending it again cannot
         // count an edit twice. Without this the edit was simply never counted.
-        for (let attempt = 0; ; attempt++) {
-          try { result = await secureWrite('activity.log', { row: logRow }); break; }
-          catch (e: any) {
-            if (attempt >= 3 || !/please wait/i.test(e?.message ?? '')) throw e;
-            await new Promise(r => setTimeout(r, 1500 * (attempt + 1) + Math.random() * 1000));
-          }
-        }
+        result = await trackSave(sendActivity(logRow));
       } catch (e: any) {
         if (!/unknown action/i.test(e?.message ?? '')) {
-          console.warn('[backend] activity not recorded:', e?.message);
+          // The server is down or did not answer: the edit waits in this
+          // browser and is sent again (activity_outbox.ts). It used to be
+          // dropped here with only this console line, so the split or merge
+          // was in CAVE but never counted (save failures audit, 2026-10-23).
+          if (serverMayRecover(e) && queueActivity(uid, logRow)) {
+            console.warn('[backend] activity not recorded yet, will retry:', e?.message);
+          } else {
+            console.warn('[backend] activity not recorded:', e?.message);
+          }
           return;
         }
         // A server from before this change: the plain insert it expects.
-        supabase.from('edit_log').insert({ ...logRow, user_id: uid }).then(
+        const { op_key: _key, ...plain } = logRow as any;
+        supabase.from('edit_log').insert({ ...plain, user_id: uid }).then(
           ({ error }) => { if (error) console.warn('[backend] edit_log insert failed:', error.message); },
           () => {},
         );
@@ -4011,22 +4317,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       document.dispatchEvent(new CustomEvent('nge:edit-logged', { detail: { operation: op } }));
 
       if (result?.counted) {
-        // The server's numbers are the numbers.
-        useUserStatsStore().setStats({
-          editsAllTime: result.total_edits ?? 0,
-          mergesAllTime: result.total_merges ?? 0,
-          splitsAllTime: result.total_splits ?? 0,
-          cellsSubmitted: result.cells_completed ?? 0,
-          currentStreak: result.current_streak ?? 0,
-          longestStreak: result.longest_streak ?? 0,
-          ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
-          ...(typeof result.total_days === 'number' ? { totalDays: result.total_days } : {}),
-        });
-        if (result.recorded) {
-          celebrateDays(result.days_before, result.total_days, false);
-          if ((result.current_streak ?? 0) !== (result.streak_before ?? 0)) sendStreakMilestone(result.current_streak).catch(() => {});
-          if ((result.edits_before ?? 0) < 3 && (result.total_edits ?? 0) >= 3) sendThirdEditThanks().catch(() => {});
-        }
+        applyServerCounts(result);
         return;
       }
 
@@ -5012,7 +5303,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     activeTaskId.value = task.id;
     const released = await releaseTask();
     activeTaskId.value = prevActive;
-    if (!released) return false;
+    if (!released) {
+      // The answer may have been lost on the way back after the release went
+      // through: ask what the cell's state is now.
+      try { await loadTasks(); } catch { return false; }
+      const stillMine = tasks.value.some(t => t.id === task.id && t.assigned_to === userId.value &&
+        (t.status === 'assigned' || t.status === 'in_progress'));
+      if (!stillMine) error.value = '';
+      return !stillMine;
+    }
     await loadTasks();
     return true;
   }
@@ -5054,6 +5353,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     try { if (isAdmin.value) localStorage.setItem(known, '1'); else localStorage.removeItem(known); } catch { /* storage blocked */ }
     if (isAdmin.value) console.info('[backend] Admin access granted for', email);
   }
+
+  /** Player view (Ames 2026-10-25): an admin sees the game as a player does.
+   *  Display only: isAdmin, and everything the server allows, stay the same.
+   *  Interface that only admins see asks showAdminUi instead of isAdmin.
+   *  Remembered per browser. */
+  const PLAYER_VIEW_KEY = 'nge-player-view';
+  const playerView = ref((() => { try { return localStorage.getItem(PLAYER_VIEW_KEY) === '1'; } catch { return false; } })());
+  function setPlayerView(on: boolean) {
+    playerView.value = on;
+    try { if (on) localStorage.setItem(PLAYER_VIEW_KEY, '1'); else localStorage.removeItem(PLAYER_VIEW_KEY); } catch { /* storage blocked */ }
+  }
+  const showAdminUi = computed(() => isAdmin.value && !playerView.value);
 
   // ── Notifications ─────────────────────────────────────────────────────
 
@@ -5102,13 +5413,28 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const pendingBadgeCelebration = ref<{ title: string; body: string; imageUrl: string } | null>(null);
   const pendingCellCelebration = ref<{ totalCells: number; imageUrl: string; batchCount?: number; segId?: string } | null>(null);
 
+  /** Read, or a Pyr Update (sent to everyone) more than 5 days old: those
+   *  count as read, so the daily updates do not pile up as unread (Ames
+   *  2026-10-25). Nothing is saved for them. */
+  const UPDATE_STALE_MS = 5 * 24 * 60 * 60 * 1000;
+  function notifRead(n: Notification): boolean {
+    if (notificationReads.value.has(n.id)) return true;
+    if (n.target_type === 'user') return false;
+    const at = Date.parse(String((n as any).send_at || (n as any).created_at || ''));
+    return Number.isFinite(at) && Date.now() - at > UPDATE_STALE_MS;
+  }
   const unreadNotificationCount = computed(() =>
-    notifications.value.filter(n => !notificationReads.value.has(n.id)).length
+    notifications.value.filter(n => !notifRead(n)).length
   );
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
-    notifications.value.filter(n => !notificationReads.value.has(n.id) && notifKind(n.title, isAdmin.value) === 'admin').length
+    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) === 'admin').length
+  );
+  /** Unread in the bell's Admin and Triage tabs together: the dot on the
+   *  Player view chip, so admin alerts still show while those tabs are hidden. */
+  const unreadStaffNotificationCount = computed(() =>
+    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) !== 'main').length
   );
 
   // The bell used to ask for the 50 newest notifications in full, twice a
@@ -5156,7 +5482,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .from('notifications')
       .select('*')
       .lte('send_at', now)
-      .order('created_at', { ascending: false })
+      .order('send_at', { ascending: false })
       .limit(newOnly ? 50 : notifLimit.value);
     if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
@@ -5178,14 +5504,32 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
 
     if (!newOnly) {
-      // Load read + dismissed status together (both live on notification_reads).
-      const { data: reads } = await supabase
-        .from('notification_reads')
-        .select('notification_id, dismissed')
-        .eq('user_id', userId.value);
-      notificationReads.value = new Set((reads || []).map((r: any) => r.notification_id));
-      notificationDismissals.value = new Set(
-        (reads || []).filter((r: any) => r.dismissed).map((r: any) => r.notification_id));
+      // Read + dismissed status together (both live on notification_reads),
+      // for just the notifications this feed can show: the page just read,
+      // and the ones delivered before (kept below). It used to read every
+      // row a player had, and the gateway sends at most 500, so a player with
+      // more lost the rest to "unread" (report 212).
+      const wanted = [...new Set([...(allNotifs as any[]).map(n => Number(n.id)),
+        ...(useUserPreferencesStore().prefs.notifDelivered || [])])].filter(Number.isInteger).slice(0, 450);
+      const reads: any[] = [];
+      let readsFailed = false;
+      if (wanted.length) {
+        const { data, error } = await supabase
+          .from('notification_reads')
+          .select('notification_id, dismissed')
+          .eq('user_id', userId.value)
+          .in('notification_id', wanted);
+        if (error || !data) readsFailed = true;
+        else reads.push(...data);
+      }
+      // A read that failed (the server busy for a moment) used to empty the
+      // list, and everything already read came back as unread (toknow,
+      // report 212: the reads were all saved on the server). Keep what this
+      // tab knows and add what did come back.
+      const ids = reads.map((r: any) => r.notification_id);
+      const gone = reads.filter((r: any) => r.dismissed).map((r: any) => r.notification_id);
+      notificationReads.value = readsFailed ? new Set([...notificationReads.value, ...ids]) : new Set(ids);
+      notificationDismissals.value = readsFailed ? new Set([...notificationDismissals.value, ...gone]) : new Set(gone);
     }
 
     // "Stop sending at" is a deadline for DELIVERY, not for the notification
@@ -5197,7 +5541,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const prefsStore = useUserPreferencesStore();
     const delivered = new Set<number>([...(prefsStore.prefs.notifDelivered || []), ...notificationReads.value]);
     const groupIds = notifGroupIds;
-    const mine = (n: Notification) => !notificationDismissals.value.has(n.id) && (
+    // Settings, "Show Today in Pyr" off: the daily update stays out of the bell.
+    const hideDigest = prefsStore.prefs.showDailyDigest === false;
+    const mine = (n: Notification) => !notificationDismissals.value.has(n.id)
+      && !(hideDigest && n.target_type !== 'user' && String(n.title || '').startsWith('Today in Pyr')) && (
       n.target_type === 'all'
       || (n.target_type === 'user' && n.target_id === userId.value)
       || (n.target_type === 'group' && groupIds.includes(n.target_id || '')));
@@ -5206,7 +5553,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // New ones join the feed in front of what is already there.
     const current = newOnly
       ? [...due.filter(n => !notifications.value.some(o => o.id === n.id)), ...notifications.value]
-          .sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)))
+          .sort((a: any, b: any) => String(b.send_at || b.created_at).localeCompare(String(a.send_at || a.created_at)))
       : due;
 
     // Delivered ones that have since stopped: the server leaves those out of
@@ -5218,7 +5565,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (kept.length && !newOnly) {
       const { data: older } = await supabase.from('notifications').select('*').in('id', kept).lte('send_at', now);
       for (const n of (older || []) as Notification[]) if (mine(n)) current.push(n);
-      current.sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)));
+      current.sort((a: any, b: any) => String(b.send_at || b.created_at).localeCompare(String(a.send_at || a.created_at)));
     }
     notifications.value = current;
 
@@ -5294,9 +5641,24 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     patch(notifications.value);
   }
 
+  // Read in one tab is read in the others (report 212: with two Pyr tabs
+  // open, the other tab kept showing what had been read as unread).
+  const readsChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('pyr-notif-reads') : null;
+  if (readsChannel) readsChannel.onmessage = (e: MessageEvent) => {
+    const m = e.data || {};
+    if (m.user !== userId.value || !Array.isArray(m.ids)) return;
+    const set = m.dismissed ? notificationDismissals : notificationReads;
+    for (const id of m.ids) if (typeof id === 'number') set.value.add(id);
+    if (m.dismissed) notifications.value = notifications.value.filter(n => !m.ids.includes(n.id));
+  };
+  function tellOtherTabs(ids: number[], dismissed = false) {
+    if (ids.length) try { readsChannel?.postMessage({ user: userId.value, ids, dismissed }); } catch { /* closed */ }
+  }
+
   async function markNotificationRead(notifId: number) {
     if (!userId.value) return;
     notificationReads.value.add(notifId);
+    tellOtherTabs([notifId]);
     await supabase.from('notification_reads').insert({
       notification_id: notifId,
       user_id: userId.value,
@@ -5311,6 +5673,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     for (const n of unread) {
       notificationReads.value.add(n.id);
     }
+    tellOtherTabs(unread.map(n => n.id));
     // Batch insert (ignore conflicts)
     const rows = unread.map(n => ({ notification_id: n.id, user_id: userId.value }));
     if (rows.length > 0) {
@@ -5377,7 +5740,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try {
         const chatStore = useChatStore();
         if (chatStore.connected || chatStore.polling) {
-          chatStore.sendMessage(`📢 ${data.title}`, newNotifId);
+          chatStore.sendMessage(data.title, newNotifId);
           // Record that the announcement already went out, so the every-10-min
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
           // Only mark it when we actually sent: if chat was offline we couldn't
@@ -5430,7 +5793,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: n.id })).claimed; }
       catch (claimErr: any) { console.warn('[admin] claim chat announcement failed:', claimErr?.message); continue; }
       if (claimed) {
-        chatStore.sendMessage(`📢 ${n.title}`, n.id);
+        chatStore.sendMessage(n.title, n.id);
       }
     }
   }
@@ -5529,6 +5892,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notificationDismissals.value.add(notifId);
     notifications.value = notifications.value.filter(n => n.id !== notifId);
     if (!userId.value) return;
+    tellOtherTabs([notifId], true);
     const { error } = await supabase.from('notification_reads').upsert({
       notification_id: notifId,
       user_id: userId.value,
@@ -5554,6 +5918,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (!visible.length) return;
     for (const n of visible) notificationDismissals.value.add(n.id);
     notifications.value = pick ? notifications.value.filter(n => !pick.has(n.id)) : [];
+    tellOtherTabs(visible.map(n => n.id), true);
     const rows = visible.map(n => ({
       notification_id: n.id,
       user_id: userId.value,
@@ -6037,6 +6402,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
     leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
+    tasksPaged, taskCounts, taskPages, loadingMore, loadMoreTasks, findTasks, loadAvailableAfter,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
     importFromGoogleSheet, syncStats, saveProfileFields, loadUserStats, loadUserProfile, loadLeaderboard, loadWeeklyPodium,
     // Point-in-space claims
@@ -6045,9 +6411,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     liveRoots, refreshLiveRoots, anchorClaimAt,
     MAX_CLAIMS, claimLimitFor,
     // Admin Hub
-    isAdmin, checkAdmin, isBlogAuthor,
+    isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, unreadNotificationCount, unreadAdminNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,

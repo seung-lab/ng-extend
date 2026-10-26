@@ -4,7 +4,7 @@
   "private": true,
   "description": "Test of a vite project that depends on Neuroglancer.",
   "scripts": {
-    "postinstall": "node scripts/patch-bundle-config.js && node scripts/patch-esbuild-loaders.js",
+    "postinstall": "node scripts/patch-bundle-config.js && node scripts/patch-esbuild-loaders.js && node scripts/patch-live-server-nocache.js",
     "generate-code": "node ./node_modules/neuroglancer/config/generate_code.js",
     "build-min": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
     "build": "node ./node_modules/neuroglancer/config/esbuild-cli.js --config=min",
@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
-    "dompurify": "3.4.16",
+    "dompurify": "^3.4.17",
     "marked": "^15.0.7",
     "modern-screenshot": "^4.7.0",
     "neuroglancer": "github:seung-lab/neuroglancer#737a902c8740ff37500ba0f2f658beacbbdd7c5a",

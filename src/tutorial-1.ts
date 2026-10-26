@@ -1,5 +1,4 @@
 import { Step, useTutorialStore } from "./store-pyr";
-import { RESOURCES_MENU_SVG } from "./data/toolbar-icons";
 import { ngePointScale } from "neuroglancer/annotation/point";
 import { defaultCredentialsManager } from "neuroglancer/credentials_provider/default_manager";
 import { responseJson } from "neuroglancer/util/http_request";
@@ -15,7 +14,6 @@ import imgSandboxExplosion from './images/sandbox-explosion.jpg';
 import imgInspectorNurro from './images/inspector-nurro-2.png';
 import imgNurroSuccessTiny from './images/nurro-success-tutorial-tiny.png';
 import imgBravoNurro from './images/bravo-nurro.png';
-import imgRikaSuccess from './images/rika-success.png';
 import imgTutorialFinal from './images/ng-tutorial-final-image.png';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -84,7 +82,13 @@ async function keepOneAnnotation(targetState: string) {
       if (!src) continue;
       for (const a of src) {
         const p = (a as any).point;
-        if (!p || p.length < 3) continue;
+        if (!p || p.length < 3) {
+          // Not a point (an ellipsoid drew a flat yellow blob over the
+          // branch end, Ames 2026-10-24): it goes.
+          const ref = src.getReference((a as any).id);
+          try { src.delete(ref); } finally { ref.dispose(); }
+          continue;
+        }
         found.push({ src, id: (a as any).id, d: Math.hypot((p[0] - c[0]) * 4, (p[1] - c[1]) * 4, (p[2] - c[2]) * 40) });
       }
     }
@@ -99,6 +103,107 @@ async function keepOneAnnotation(targetState: string) {
   }
 }
 const STATE_AT_ANNOTATION = 'middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760';
+
+/**
+ * A small mouse with one part lit, like the Eyewire 1 instructions (Ames,
+ * 2026-10-24: some players are not sure what right-click means). Sits at the
+ * left of the line it explains.
+ */
+function mouse(part: 'left' | 'right' | 'wheel'): string {
+  const lit = '#e8eef5', line = '#aeb9c7';
+  const left = part === 'left' ? `<path d="M20 4 A16 16 0 0 0 4 20 L4 22 L20 22 Z" fill="${lit}"/>` : '';
+  const right = part === 'right' ? `<path d="M20 4 A16 16 0 0 1 36 20 L36 22 L20 22 Z" fill="${lit}"/>` : '';
+  const wheel = `<rect x="17.5" y="8" width="5" height="10" rx="2.5" fill="${part === 'wheel' ? lit : 'none'}" stroke="${line}" stroke-width="1.4"/>`;
+  return `<span class="nge-tut-mouse" aria-hidden="true"><svg viewBox="0 0 40 56" width="30" height="42">${left}${right}`
+    + `<rect x="4" y="4" width="32" height="48" rx="16" fill="none" stroke="${line}" stroke-width="1.4"/>`
+    + `<line x1="4" y1="22" x2="36" y2="22" stroke="${line}" stroke-width="1.4"/><line x1="20" y1="4" x2="20" y2="22" stroke="${line}" stroke-width="1.4"/>${wheel}</svg></span>`;
+}
+
+/** Remove annotation points from this session's copy of the view (the saved
+ *  view is not changed). Used where a view carries points the step does not
+ *  need: two near-identical ones read as one doubled dot. */
+async function dropPoints(match: (p: number[]) => boolean) {
+  await new Promise(r => setTimeout(r, 1500)); // the step's own view has to finish loading
+  try {
+    for (const ml of getViewer()?.layerManager?.managedLayers ?? []) {
+      if ((ml.layer?.constructor as any)?.type !== 'annotation') continue;
+      const src = ml.layer.localAnnotations;
+      if (!src) continue;
+      const gone: string[] = [];
+      for (const a of src) { const pt = (a as any).point; if (pt && pt.length >= 3 && match([...pt].map(Number))) gone.push((a as any).id); }
+      for (const id of gone) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }
+    }
+  } catch (e) { console.warn('[tutorial] could not drop the extra points:', e); }
+}
+/** The pair of points at the end of the cut branch (z 545 and 546): on the
+ *  steps about the continuation they doubled up on screen (Ames, 2026-10-24). */
+const AT_DEFECT_END = (p: number[]) => Math.abs(p[2] - 545.5) < 1.6 && Math.abs(p[0] - 65634) < 40 && Math.abs(p[1] - 49706) < 40;
+
+/** The 2D EM tab pulses while a step asks for it (Ames, 2026-10-24: "2D EM
+ *  tab at the top" meant nothing until you could see it). */
+let tabPulse: ReturnType<typeof setInterval> | null = null;
+function tut1Style() {
+  if (!document.getElementById('nge-tut1-style')) {
+    const st = document.createElement('style');
+    st.id = 'nge-tut1-style';
+    st.textContent = `
+      .nge-tut-pulse-tab { animation: nge-tut-tab 1.2s ease-in-out infinite !important; border-radius: 4px; }
+      @keyframes nge-tut-tab { 0%, 100% { box-shadow: 0 0 0 0 rgba(126, 224, 255, 0); } 50% { box-shadow: 0 0 0 3px rgba(126, 224, 255, 0.85), 0 0 14px rgba(126, 224, 255, 0.6); } }
+      .nge-tut-mouse { float: left; margin: 2px 12px 4px 0; line-height: 0; }`;
+    document.head.appendChild(st);
+  }
+}
+// At load: the mouse pictures need it from the first box that shows one.
+tut1Style();
+function pulse2DTab() {
+  tut1Style();
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  if (tabPulse) clearInterval(tabPulse);
+  tabPulse = setInterval(() => {
+    const tab = [...document.querySelectorAll('.neuroglancer-layer-item')].find(el => /2D EM|\bimg\b/i.test((el as HTMLElement).querySelector('[data-nge-label]')?.getAttribute('data-nge-label') ?? (el as HTMLElement).textContent ?? '')) as HTMLElement | undefined;
+    const here = store.activeTutorial === tutorial && store.getTutorialStep() === step;
+    document.querySelectorAll('.nge-tut-pulse-tab').forEach(el => { if (!here || el !== tab) el.classList.remove('nge-tut-pulse-tab'); });
+    if (!here) { clearInterval(tabPulse!); tabPulse = null; return; }
+    tab?.classList.add('nge-tut-pulse-tab');
+  }, 400);
+}
+
+/**
+ * No merging or cutting during Get Started (Ames, 2026-10-24): the lesson's
+ * neuron is shared, and a merge on it breaks the steps for everyone after.
+ * M, C and the Merge and Cut buttons do nothing while a Get Started box is up,
+ * and the box says why. The Merge tutorial is where editing starts.
+ */
+function getStartedUp(): boolean {
+  return useTutorialStore().activeTutorial === 1 && !!document.querySelector('.introductionStepAnchor');
+}
+function lockedNote() {
+  const chip = document.querySelector('.introductionStepAnchor .chip .html') as HTMLElement | null;
+  if (!chip || chip.querySelector('.nge-tut-locked')) return;
+  const note = document.createElement('p');
+  note.className = 'nge-hud-note nge-tut-locked';
+  note.textContent = 'Editing tools are off during Get Started, so the lesson stays the same for everyone. You will merge for real in the Merge tutorial, next.';
+  chip.appendChild(note);
+  setTimeout(() => note.remove(), 6000);
+}
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || !getStartedUp()) return;
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key !== 'm' && e.key !== 'M' && e.key !== 'c' && e.key !== 'C') return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  lockedNote();
+}, true);
+document.addEventListener('click', (e) => {
+  if (!getStartedUp()) return;
+  const icon = (e.target as HTMLElement | null)?.closest?.('[data-icon-id="merge"], [data-icon-id="split"]');
+  if (!icon) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  lockedNote();
+}, true);
 
 /** Remove a segment from the first segmentation layer.
  *  The visible set lives in segmentationGroupState in this neuroglancer;
@@ -158,6 +263,29 @@ function advanceWhenSegmentAdded() {
       }
     }, 400);
   }, 2500);
+}
+
+/** Move on once the view goes from 3D only to split screen, whichever way:
+ *  SPACE, or a click on the 2D EM tab (Ames 2026-10-22: the tab now shows
+ *  and hides the 2D view). SPACE already moves on by itself (spaceAdvances). */
+function advanceWhenSplit() {
+  const store = useTutorialStore();
+  const tutorial = store.activeTutorial, step = store.getTutorialStep();
+  const here = () => store.activeTutorial === tutorial && store.getTutorialStep() === step;
+  const layout = () => { try { const j = getViewer()?.layout?.toJSON?.(); return typeof j === 'string' ? j : (j?.type ?? ''); } catch { return ''; } };
+  // Let the step's own view load first (it opens in 3D only).
+  setTimeout(() => {
+    let was = layout();
+    const timer = setInterval(() => {
+      if (!here()) { clearInterval(timer); return; }
+      const now = layout();
+      if (was === '3d' && now !== '3d' && now) {
+        clearInterval(timer);
+        setTimeout(() => { if (here()) document.dispatchEvent(new CustomEvent('nge:tutorial-next')); }, 600);
+      }
+      was = now;
+    }, 300);
+  }, 2000);
 }
 
 /** Close the viewer's side panels through neuroglancer's own state, so they
@@ -276,7 +404,7 @@ export const steps: Step[] = [
   {
     title: `Welcome to Pyr!`,
     text: `
-Pyr is a community of researchers, citizen scientists, and engineers from around the world working to map the brain. This tutorial will teach you the basics of navigating the interactive 3D neuron realm.
+Pyr is a global community of researchers, citizen scientists, and engineers working to map the brain.
 
 Together, we're exploring uncharted neural territory and transforming neuroscience. Join us!`,
     image:
@@ -289,9 +417,9 @@ Together, we're exploring uncharted neural territory and transforming neuroscien
   //2 + image 2
   {
     text: `
-We are finding out how neurons connect to each other and which paths signals take through the brain. That map of every neuron and every connection is called a connectome. New to it? <a href="https://connectome.quest/atlas/" target="_blank" rel="noopener">Connectome 101</a> explains it, in a new tab.
+A connectomics dataset starts with a brain! It is imaged at nanoscale and reconstructed in 3D using a mix of AI and human insight.
 
-To create a connectomics dataset, we start with a brain. It is sectioned, imaged at nanoscale, and reconstructed in 3D using a mix of human insight and AI.`,
+The map of every neuron and its connections is called a connectome. Learn more with <a href="https://connectome.quest/atlas/" target="_blank" rel="noopener">Connectome 101</a>.`,
     position: MIDDLE,
     image:
       imgSegmentation,
@@ -300,9 +428,7 @@ To create a connectomics dataset, we start with a brain. It is sectioned, imaged
   //4
   {
     text: `
-Connectomics allows us to see all the way down to the synaptic connections between neurons.
-
-Although AI reconstructions are impressive, there are still many mistakes. The AI misses huge branches and fuses cells together. That's why we need YOU!
+Although AI reconstructions are impressive, there are still many mistakes. That's why we need YOU!
 
 The flexibility and big-picture thinking of the human mind enables humans to solve problems when the AI gets stuck. Ready to get started?`,
     position: MIDDLE,
@@ -314,7 +440,7 @@ The flexibility and big-picture thinking of the human mind enables humans to sol
   //5 -- this is the box that #1 jumps to if user clicks to skip to commands
   {
     text: `
-Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The sandbox uses data from the MICrONS project. The cell behind this box is a pyramidal neuron from mouse visual cortex.
+Welcome to the Sandbox! This is a place to play and get acquainted with neurons and the software used to map them. The cell behind this box is a pyramidal neuron from mouse visual cortex.
 
 **This is a spare copy of the data, made for learning. Nothing you do here can hurt the real data, so explore freely!**`,
     position: MIDDLE,
@@ -327,16 +453,16 @@ Welcome to the Sandbox! This is a place to play and get acquainted with neurons 
   //6 - gif reuse 3D click+ drag
   {
     text: `
-This is a 3D neuron that has been mapped by AI. 
+This is a 3D neuron that has been mapped by AI.
 
-CLICK + DRAG to rotate it.
+${mouse('left')}**CLICK + DRAG** to rotate it.
 
 This box won't go away when you click outside it.`,
     position: OVER_3D,
   },
   //7 - zoom in 3D: SCROLL
   {
-    text: `SCROLL to zoom in and out.`,
+    text: `${mouse('wheel')}**SCROLL** to zoom in and out.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/4662970274545664",
@@ -367,9 +493,9 @@ This box won't go away when you click outside it.`,
   },
   //8a - right click
   {
-    text: `Right click on the neuron to re-center your view.
+    text: `${mouse('right')}**RIGHT-CLICK** on the neuron to re-center your view.
 
-RIGHT-DRAG to slide the view around.`,
+**RIGHT-DRAG** to slide the view around.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5527767895506944",
@@ -417,15 +543,18 @@ It missed a branch. Let's see if we can find it.`,
   //11 - this tries to get user to bring up split screen - we need to default to split vs 4 panel view. otherwise need to add anoter box to get them to split view - ng link middleauth+https://global.daf-apis.com/nglstate/api/v1/5325932265996288
 
   {
-    text: `Hit SPACE to bring up a split screen view that reveals the electron microscope image data from which these neurons were reconstructed.`,
+    text: `Press **SPACE** to bring up a split screen view: the electron microscope images these neurons were reconstructed from.
+
+You can also click the **2D EM** tab, glowing at the top left.`,
     position: OVER_3D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/6606861248757760",
     spaceAdvances: true,
+    onEnter: () => { advanceWhenSplit(); pulse2DTab(); },
   },
   //12 - over 2D - EM cross section view
   {
-    text: `This is an electron microscope (EM) image of the brain. A stack of such images creates a 3D volume. The neuron branch is highlighted in the cross section.`,
+    text: `This is an electron microscope (EM) image of the brain. A stack of such images creates a 3D volume. The neuron branch is visible in the cross section.`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
@@ -434,7 +563,7 @@ It missed a branch. Let's see if we can find it.`,
   // offers a 4 panel view, see no_four_panel.ts, so the step is gone.)
   //13 - gif
   {
-    text: `Press COMMA and PERIOD to step through the EM slices. You can also hover your mouse over EM and scroll through images.
+    text: `Press **COMMA** and **PERIOD**, or **Q** and **W**, to step through the EM slices. You can also hover your mouse over the EM and **SCROLL** through the images.
 
 Don't worry if you lose the neuron. The Next button in this section resets this view.`,
     position: OVER_2D,
@@ -443,14 +572,14 @@ Don't worry if you lose the neuron. The Next button in this section resets this 
   },
   //14 - 2D control + scroll gif
   {
-    text: `Hold your cursor over black and white EM and CTRL + Scroll to zoom in and out`,
+    text: `${mouse('wheel')}Hold your cursor over the black and white EM and press **CTRL + SCROLL** to zoom in and out.`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
   },
   //15 - 2D right click center gif
   {
-    text: `Right click to recenter`,
+    text: `${mouse('right')}**RIGHT-CLICK** to recenter.`,
     position: OVER_2D,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5220308702199808",
@@ -478,7 +607,9 @@ Hit next to reveal the answer.`,
     position: MIDDLE,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5250067188416512",
-    onEnter: () => { bigPoints(); advanceWhenSegmentAdded(); },
+    // Normal size points (3x read as excessive here) and not the pair at the
+    // branch end, which showed as one doubled dot (Ames, 2026-10-24).
+    onEnter: () => { advanceWhenSegmentAdded(); void dropPoints(AT_DEFECT_END); },
   },
   //20 - Nurro swoop! - new NG state with extension added middleauth+https://global.daf-apis.com/nglstate/api/v1/5190220459802624
   {
@@ -492,18 +623,7 @@ Hit next to reveal the answer.`,
       imgBravoNurro,
     state:
       "middleauth+https://global.daf-apis.com/nglstate/api/v1/5114308439572480",
-  },
-  {
-    text: `Now you know the basics! Next, learn to join pieces that belong together in the new <strong style="color:#60c060">Merge</strong> tutorial.
-
-**If you already know how to merge branches, please DO NOT merge this branch, because it will break the tutorial 😉**`,
-    // Starts through the same gate as the book menu, which offers a place
-    // in line when the practice cells are in use.
-    html: `<button class="nge-hud-btn nge-hud-btn--go" style="margin-top:4px"`
-      + ` onclick="document.dispatchEvent(new CustomEvent('nge:tutorial-start',{detail:{id:3}}))">Try the Merge tutorial</button>`,
-    image:
-      imgRikaSuccess,
-    position: OVER_3D,
+    onEnter: () => { void dropPoints(AT_DEFECT_END); },
   },
   {
     text: `Check out this top right menu for guides, tutorials, and more resources.`,
@@ -573,12 +693,18 @@ Hit next to reveal the answer.`,
   },
   {
     // Links open a new tab, so the learner is not taken away from the app.
-    text: `Citizen scientists: when you are ready to map real neurons in Pyr, choose <strong>Ask for Edit Access</strong> in the <span class="nge-tut-burger">${RESOURCES_MENU_SVG}</span> hamburger menu. <a href="https://connectome.quest/blog/post.html?p=how-to-unlock-edit-access-in-pyr" target="_blank" rel="noopener">How access works ↗</a>
+    title: `You've finished Get Started!`,
+    text: `<span class="nge-done-lead">Now you know the basics. Ready to fix your first mistake?</span>
 
-Questions? Email <a href="mailto:support@eyewire.org">support@eyewire.org</a>.
+The **Merge** tutorial walks you through joining a branch the AI cut off, on a cell in the Sandbox. It is a real edit, made by you.
 
+Questions? Email <a href="mailto:support@eyewire.ai">support@eyewire.ai</a>.
 
 Thanks for being a part of the neuroscience community. For Science!`,
+    // The button finishes Get Started (its Achievement counts) and Merge
+    // starts by itself (toolbar_staging getStartedFinished). Ames 2026-10-21:
+    // "there should be a button to start Merge".
+    nextLabel: 'Start Merge',
     position: MIDDLE,
     image:
       imgTutorialFinal,

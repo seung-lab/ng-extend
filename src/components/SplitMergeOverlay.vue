@@ -8,14 +8,37 @@ import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
+import { getBaseObjectColor, ngeListHover } from 'neuroglancer/segmentation_display_state/frontend';
 
 // Hovering a segment in the Merge Queue lights it up in the 2D and 3D views
 // and in the segment list, the way neuroglancer's own merge list does (Nik,
 // 2026-10-08). It sets the viewer's hovered segment, nothing more.
+/** A queued cell's chip in its colour in the views and the segment list
+ *  (Nseraf #198: "have the merge queue items' colours correspond to the
+ *  colours in SegID panel"). Dark text on a light colour, light on dark. */
+function segChipStyle(id: string): Record<string, string> {
+  try {
+    const ds = (currentSegLayer()?.layer as any)?.displayState;
+    if (!ds || !/^\d+$/.test(id)) return {};
+    const c = getBaseObjectColor(ds, Uint64.parseString(id), new Float32Array(4));
+    const [r, g, b] = [c[0], c[1], c[2]].map(v => Math.round(Math.max(0, Math.min(1, v)) * 255));
+    const light = 0.299 * r + 0.587 * g + 0.114 * b > 150;
+    return { background: `rgb(${r}, ${g}, ${b})`, color: light ? '#08121c' : '#ffffff' };
+  } catch { return {}; }
+}
+/** Right click on a queued cell: go to it, as a right click in the segment
+ *  list does (Nseraf #198). */
+function jumpToSegment(id: string) {
+  try {
+    if (!/^\d+$/.test(id)) return;
+    (currentSegLayer()?.layer as any)?.displayState?.moveToSegment?.(Uint64.parseString(id));
+  } catch { /* the layer went away */ }
+}
 function hoverSegment(id: string | null) {
   try {
     const state = (currentSegLayer()?.layer as any)?.displayState?.segmentSelectionState;
     if (!state) return;
+    ngeListHover.value = !!id;
     if (id && /^\d+$/.test(id)) state.set(Uint64.parseString(id));
     else state.set(null);
   } catch { /* the layer went away */ }
@@ -48,14 +71,30 @@ const isRedActive = computed(() => store.activeGroup === 'red');
 // colour (Ames, 2026-10-07). The G key and the hint keep pulsing until the
 // colour is switched.
 const needsSwap = computed(() => isMulticut.value && !store.pendingClose
-  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red');
+  && store.redPointCount > 0 && store.bluePointCount === 0 && store.activeGroup === 'red'
+  && !moreRedWanted.value);
 // The large "Press G" prompt is for learners only: it shows while a step of
 // the Merge, Cut or Merger Sandbox tutorial is up (Ames, 2026-10-08). Outside
 // a tutorial the lit G key on the bar is the only nudge, and it holds still.
 const tutorialStore = useTutorialStore();
+/** A tutorial box is on screen now. The saved step alone said "in the Cut
+ *  tutorial" for good once a player left it partway, so the big "Now press
+ *  G" banner and the learning styles showed during real cuts (Nseraf,
+ *  Ames 2026-10-22: "we gotta do something about that giant G"). */
+const tutorialOnScreen = ref(false);
+/** Red points a tutorial step still waits for before it asks for G
+ *  (tutorial-3.ts watchCutStep sets window.__ngeCutRedNeed). The Cut
+ *  tutorial wants two, and "Now press G" came up after the first (annkri,
+ *  report 217). */
+const cutRedNeed = ref(0);
+setInterval(() => {
+  tutorialOnScreen.value = !!document.querySelector('.introductionStep');
+  cutRedNeed.value = Number((window as any).__ngeCutRedNeed) || 0;
+}, 300);
+const moreRedWanted = computed(() => tutorialOnScreen.value && store.redPointCount < cutRedNeed.value);
 const inPracticeTutorial = computed(() => {
   const step = tutorialStore.getTutorialStep();
-  return [3, 5, 9].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
+  return tutorialOnScreen.value && [3, 5, 9, 13].includes(tutorialStore.activeTutorial) && step >= 0 && step < 12;
 });
 const groupPulse = ref(false);
 let groupPulseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -98,6 +137,7 @@ const contextHint = computed(() => {
   const touch = isTouchRef.value;
   if (isMulticut.value && !store.pendingClose) {
     if (totalPoints.value === 0) return touch ? 'Tap supervoxels to mark them' : 'Ctrl+Click on supervoxels to mark them';
+    if (moreRedWanted.value) return touch ? 'Tap another red point' : 'Ctrl+Click another red point';
     if (store.redPointCount > 0 && store.bluePointCount === 0) return touch ? 'Tap Blue, then tap the other side' : 'Press G to swap to Blue group, then Ctrl+Click';
     if (store.redPointCount > 0 && store.bluePointCount > 0) return touch ? 'Ready to submit' : 'Ready to submit. Press Enter';
     return touch ? 'Tap to add more points' : 'Ctrl+Click to add more points';
@@ -431,11 +471,11 @@ function cancelTool() {
         <div class="nge-smo-merge-panel-list">
           <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
             <span class="nge-smo-merge-num">{{ i + 1 }}.</span>
-            <span class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this segment up in the views"
-                  @mouseenter="hoverSegment(pair[0])" @mouseleave="hoverSegment(null)">{{ pair[0] }}</span>
+            <span class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[0])" title="Hover to light this segment up in the views. Right click to go to it."
+                  @mouseenter="hoverSegment(pair[0])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[0])">{{ pair[0] }}</span>
             <span v-if="pair[1]" class="nge-smo-merge-arrow">⇄</span>
-            <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this segment up in the views"
-                  @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)">{{ pair[1] }}</span>
+            <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[1])" title="Hover to light this segment up in the views. Right click to go to it."
+                  @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[1])">{{ pair[1] }}</span>
             <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
             <!-- why it failed, in the server's words, on a line of its own -->
@@ -1427,6 +1467,9 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
 .nge-smo-merge-grip { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 0; color: rgb(166 255 214 / .45); }
 .nge-smo-merge-row { padding: 5px 10px; }
 .nge-smo-seg-id { font-size: 11px; color: #a9efcf; padding: 1px 4px; }
+/* In the cell's own colour, like its row in the segment list (Nseraf #198). */
+.nge-smo-seg-id--colored { border-radius: 4px; padding: 1px 6px; font-weight: 600; cursor: pointer; }
+.nge-smo-seg-id--colored:hover { outline: 1.5px solid rgba(255, 255, 255, 0.85); outline-offset: 1px; }
 .nge-smo-merge-num { font-variant-numeric: tabular-nums; }
 .nge-smo-merge-remove { color: #ff8a8a; border-radius: 4px; }
 .nge-smo-merge-status {

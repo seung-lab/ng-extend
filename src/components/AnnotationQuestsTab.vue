@@ -224,6 +224,35 @@ async function take(r: QuestRow) {
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
+/** How many more cells "Claim next" would take: up to the limit, as many as are open. */
+const nextRoom = computed(() => Math.min(QUEST_CLAIM_LIMIT - mine.value.length, available.value.length));
+/** Claim the next open cells in the sheet's order, up to the limit, in one
+ *  press (toknow, report 213). A cell someone else took a moment ago is
+ *  passed over for the one after it. The first one claimed opens. */
+async function takeNext() {
+  const want = nextRoom.value;
+  if (want <= 0 || busy.value) return;
+  busy.value = 'next'; error.value = ''; message.value = '';
+  const got: QuestRow[] = [];
+  let problem = '';
+  try {
+    for (const r of available.value.slice(0, want + 5)) {
+      if (got.length >= want) break;
+      try { await claimQuest(r.segmentId); got.push(r); }
+      catch (e: any) { problem = e?.message || String(e); }
+    }
+    if (got.length) {
+      current.value = got[0].segmentId;
+      await openCell(got[0]);
+      const names = got.map(r => r.index || r.segmentId).join(', ');
+      message.value = got.length === 1
+        ? `${names} is yours. Mark what you find in its layers, then press Submit.`
+        : `${names} are yours. ${got[0].index || 'The first'} is open. Mark what you find in its layers, then press Submit.`;
+    } else error.value = problem || 'No cell could be claimed. Try again.';
+    await load();
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 async function letGo(r: QuestRow) {
   busy.value = r.segmentId; error.value = ''; message.value = '';
   try {
@@ -373,7 +402,10 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         </template>
 
         <!-- Open: nobody's yet -->
-        <div class="nge-aq-section">Open <span class="nge-aq-count">{{ available.length }}</span></div>
+        <div class="nge-aq-section">Open <span class="nge-aq-count">{{ available.length }}</span>
+          <button v-if="nextRoom > 0" class="nge-aq-btn nge-aq-btn--take nge-aq-btn--next" :disabled="!!busy" @click="takeNext"
+                  :title="`Claim the next ${nextRoom === 1 ? 'open cell' : nextRoom + ' open cells'} in the list. The first one opens.`">{{ busy === 'next' ? 'Claiming…' : `Claim next ${nextRoom}` }}</button>
+        </div>
         <div v-if="!available.length" class="nge-aq-empty nge-aq-empty--tight">Every cell is taken or done.</div>
         <div v-for="r in available" :key="r.segmentId" class="nge-aq-row" :class="{ 'nge-aq-row--current': current === r.segmentId }">
           <div class="nge-aq-row-left">
@@ -581,6 +613,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq-btn--jump:hover { color: #bbf; }
 .nge-aq-btn--take { border-color: rgba(68, 170, 102, 0.25); color: #4a6; }
 .nge-aq-btn--take:hover:not(:disabled) { background: rgba(68, 170, 102, 0.12); }
+/* "Claim next 3": in the Open heading, at its right end, in the buttons' own face */
+.nge-aq-btn--next { margin-left: auto; padding: 3px 10px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 0; text-transform: none; }
 .nge-aq-btn--submit { border-color: rgba(68, 170, 255, 0.25); color: #4af; }
 .nge-aq-btn--submit:hover { background: rgba(68, 170, 255, 0.12); }
 .nge-aq-btn--submit-open { background: rgba(68, 170, 255, 0.16); border-color: rgba(68, 170, 255, 0.55); }

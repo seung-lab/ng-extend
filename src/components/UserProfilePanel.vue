@@ -201,14 +201,30 @@ const profileSpecialBadges = computed(() => {
   return backendStore.mySpecialBadges;
 });
 
-// Player assists — help requests resolved by current user
-const helpStore = useHelpRequestStore();
-const playerAssists = computed(() => {
-  if (viewingOtherUser.value) return 0;
-  const name = backendStore.userName || backendStore.userEmail?.split('@')[0];
-  if (!name) return 0;
-  return helpStore.requests.filter(r => r.resolved && r.resolvedByName === name && inScope(r.dataset)).length;
-});
+// Assists (Ames 2026-10-24): other players' help requests you replied to,
+// one each however many replies you wrote; your own requests do not count.
+// It used to count requests solved under your NAME among the 200 newest.
+// Read from help_responses, per account, a number only, for whichever
+// player's profile is open (Ames: "I see it in my profile but not in Nik's").
+const assistRequests = ref<{ id: string; dataset: string | null }[]>([]);
+async function loadAssists(uid: string) {
+  const { data: replies } = await supabase.from('help_responses').select('request_id').eq('user_id', uid).limit(5000);
+  const ids = [...new Set((replies ?? []).map((r: any) => r.request_id).filter(Boolean))] as string[];
+  const out: { id: string; dataset: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await supabase.from('help_requests').select('id,user_id,dataset').in('id', ids.slice(i, i + 100));
+    for (const r of (data ?? []) as any[]) if (r.user_id !== uid) out.push({ id: r.id, dataset: r.dataset ?? null });
+  }
+  if (assistsFor.value === uid) assistRequests.value = out;
+}
+const assistsFor = computed(() => props.viewUserId || backendStore.userId || '');
+watch(assistsFor, uid => {
+  assistRequests.value = [];
+  if (uid) void loadAssists(uid).catch(() => { /* stays empty */ });
+}, { immediate: true });
+/** Every dataset, on your profile and on anyone else's, like the
+ *  annotations beside it. */
+const playerAssists = computed(() => assistRequests.value.length);
 
 // ── Local state ───────────────────────────────────────────────────────────────
 const closing        = ref(false);
@@ -333,6 +349,10 @@ onMounted(() => {
     // Back from reviewing an access request in the view (AccessReviewBar).
     activeTab.value = 'adminHub';
     adminInitialSubTab.value = 'access';
+  } else if (props.initialTab === 'tutorialEdits' && !viewingOtherUser.value) {
+    // From a "Tutorial edit to approve" notification.
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'tutorialEdits';
   }
 });
 
@@ -1461,7 +1481,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           @click="activeTab = 'settings'"
         >⚙️ Settings</button>
         <button
-          v-if="!viewingOtherUser && backendStore.isAdmin"
+          v-if="!viewingOtherUser && backendStore.showAdminUi"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"
@@ -1993,7 +2013,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-profile-stat-label">You Fixed</div>
                 <div class="nge-profile-stat-val" style="color: #9d9;"><RollUp :value="tagsIFixed.length" /></div>
               </div>
-              <div class="nge-profile-stat-col" title="Cells where you helped answer another player's request">
+              <div class="nge-profile-stat-col" title="Other players' help requests you replied to, one each, on every dataset">
                 <div class="nge-profile-stat-label">Assists</div>
                 <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
               </div>
@@ -2014,11 +2034,15 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             </template>
             <template v-else>
-            <div class="nge-profile-section-label">▌ Annotations</div>
+            <div class="nge-profile-section-label">▌ Annotations and Assists</div>
             <div class="nge-profile-stat-row" style="margin-bottom: 12px;">
               <div class="nge-profile-stat-col" title="Points, lines and boxes this player has placed in annotation layers, on every dataset">
-                <div class="nge-profile-stat-label">All Time</div>
+                <div class="nge-profile-stat-label">Annotations</div>
                 <div class="nge-profile-stat-val" style="color: #c9a0ff; text-shadow: 0 0 14px rgba(201, 160, 255, 0.35);"><RollUp :value="annotationsPlaced" /></div>
+              </div>
+              <div class="nge-profile-stat-col" title="Other players' help requests this player replied to, one each, on every dataset">
+                <div class="nge-profile-stat-label">Assists</div>
+                <div class="nge-profile-stat-val" style="color: #7f8;"><RollUp :value="playerAssists" /></div>
               </div>
             </div>
             </template>
@@ -2781,45 +2805,45 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
      ModalOverlay's overlay-content is overflow: visible; the hard cap plus
      overflow hidden means nothing can render past the shell edge, and each
      tab body scrolls internally. */
-  max-height: min(90vh, calc(100vh - 32px));
+  max-height: min(calc(90 * var(--nge-vh, 1vh)), calc(100 * var(--nge-vh, 1vh) - 32px));
   overflow: hidden;
   transition: width 0.25s ease;
 }
 .nge-profile-shell--trophy {
-  width: 85vw;
+  width: calc(85 * var(--nge-vw, 1vw));
   max-width: 1200px;
 }
 .nge-profile-shell--admin {
   width: 720px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
 }
 /* Give Week in Science a real, consistent width instead of letting the shell
    shrink to the recap's old fixed content width (which read as a tiny box). */
 .nge-profile-shell--week {
   /* Wide enough for the recap's three columns to fit without scrolling. */
   width: 1180px;
-  max-width: 94vw;
+  max-width: calc(94 * var(--nge-vw, 1vw));
 }
 .nge-profile-shell--dstats {
   /* Wide enough for the three columns of dataset stats. */
   width: 1180px;
-  max-width: 94vw;
+  max-width: calc(94 * var(--nge-vw, 1vw));
 }
 .nge-profile-body--dstats {
   display: block;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow-y: auto;
 }
 .nge-profile-shell--datasets {
   width: 640px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
 }
 .nge-profile-shell--settings {
   /* Full profile size with three columns (Ames 2026-09-29). */
   width: 1120px;
-  max-width: 94vw;
-  height: min(760px, calc(100vh - 32px));
+  max-width: calc(94 * var(--nge-vw, 1vw));
+  height: min(760px, calc(100 * var(--nge-vh, 1vh) - 32px));
 }
 .nge-profile-body--settings {
   flex-direction: column;
@@ -2837,7 +2861,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* More datasets: one toggle row per optional volume */
 /* A block, not the profile body's row: as a row its title, intro and
    toggles sat side by side in thin columns. */
-.nge-profile-body.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: 38vh; overflow-y: auto; }
+.nge-profile-body.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: calc(38 * var(--nge-vh, 1vh)); overflow-y: auto; }
 .nge-ds-more-title { font-size: 0.78em; letter-spacing: 0.12em; text-transform: uppercase; color: #8fb8e8; font-weight: 700; margin-bottom: 4px; }
 .nge-ds-more-intro { font-size: 0.86em; color: #9fb0c8; line-height: 1.45; margin-bottom: 10px; }
 .nge-ds-more-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
@@ -3822,7 +3846,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
 .nge-profile-viz-badge-icon--large { width: 240px; height: 240px; max-width: 100%; }
 /* Sized to the window, so the silver favorites and the streak chart fit under it. */
-.nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, 25vh); height: min(220px, 25vh); }
+.nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, calc(25 * var(--nge-vh, 1vh))); height: min(220px, calc(25 * var(--nge-vh, 1vh))); }
 .nge-profile-viz-panel { max-width: 100%; box-sizing: border-box; }
 .nge-profile-viz-badge-name,
 .nge-profile-viz-badge-desc { max-width: 100%; overflow-wrap: break-word; padding: 0 10px; box-sizing: border-box; }
@@ -3947,7 +3971,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 .nge-cell-list-scroll {
   /* As tall as the window allows, so the column never needs its own scroll. */
-  max-height: max(52px, min(200px, calc(90vh - 580px)));
+  max-height: max(52px, min(200px, calc(90 * var(--nge-vh, 1vh) - 580px)));
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -4117,7 +4141,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-body--week {
   display: block;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow-y: auto;
 }
 
@@ -4133,7 +4157,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   display: flex;
   flex-direction: column;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow: hidden;
 }
 .nge-profile-body--admin > :deep(.nge-admin-hub) {
@@ -4145,7 +4169,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-trophy-scroll {
   overflow-y: auto;
   padding: 16px 24px 24px;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
 }
@@ -4408,13 +4432,13 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 @media (hover: none), (pointer: coarse) { .nge-trophy-track-move { opacity: 1; } }
 
 @media (min-width: 901px) {
-  body:not(.nge-mobile) .nge-profile-shell--trophy { width: 97vw; max-width: none; height: 94vh; max-height: 94vh; }
+  body:not(.nge-mobile) .nge-profile-shell--trophy { width: calc(97 * var(--nge-vw, 1vw)); max-width: none; height: calc(94 * var(--nge-vh, 1vh)); max-height: calc(94 * var(--nge-vh, 1vh)); }
   body:not(.nge-mobile) .nge-profile-body--trophy > .nge-trophy-scroll {
     display: grid; grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
     overflow: hidden; padding: 0;
   }
   body:not(.nge-mobile) .nge-trophy-side {
-    --trophy-icon: min(300px, 24vw, 38vh);
+    --trophy-icon: min(300px, calc(24 * var(--nge-vw, 1vw)), calc(38 * var(--nge-vh, 1vh)));
     overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
     padding: 28px 22px 22px; border-right: 1px solid rgba(74, 158, 255, 0.1);
   }
@@ -4635,8 +4659,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   animation: ngeSectionRollIn 0.18s ease-out;
 }
 .nge-special-modal {
-  width: min(720px, 92vw);
-  max-height: 80vh;
+  width: min(720px, calc(92 * var(--nge-vw, 1vw)));
+  max-height: calc(80 * var(--nge-vh, 1vh));
   background: linear-gradient(135deg, rgba(8, 12, 24, 0.98), rgba(12, 18, 32, 0.97));
   border: 1px solid rgba(74, 158, 255, 0.25);
   border-radius: 12px;
@@ -4730,8 +4754,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(90vw, 420px);
-  height: min(90vw, 420px);
+  width: min(calc(90 * var(--nge-vw, 1vw)), 420px);
+  height: min(calc(90 * var(--nge-vw, 1vw)), 420px);
   transform: translate(-50%, -62%);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(53, 181, 255, 0.28) 0%, rgba(53, 181, 255, 0.08) 45%, transparent 70%);
@@ -4742,8 +4766,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(74vw, 340px);
-  height: min(74vw, 340px);
+  width: min(calc(74 * var(--nge-vw, 1vw)), 340px);
+  height: min(calc(74 * var(--nge-vw, 1vw)), 340px);
   transform: translate(-50%, -62%);
   border-radius: 50%;
   border: 1px solid rgba(53, 181, 255, 0.55);
@@ -4753,8 +4777,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   pointer-events: none;
 }
 .nge-badge-zoom-img {
-  width: min(64vw, 300px);
-  height: min(64vw, 300px);
+  width: min(calc(64 * var(--nge-vw, 1vw)), 300px);
+  height: min(calc(64 * var(--nge-vw, 1vw)), 300px);
   object-fit: contain;
   margin-bottom: 6px;
   filter: drop-shadow(0 0 24px rgba(100, 180, 255, 0.55));
@@ -4831,16 +4855,16 @@ body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
    shell instead. Test page: experimental-UI/components/profile.html.
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
-  width: 100vw;
-  height: 100vh;
+  width: calc(100 * var(--nge-vw, 1vw));
+  height: calc(100 * var(--nge-vh, 1vh));
   /* ng-override sizes every overlay to its content (min-width: max-content):
      here that is about 1340 px, so on a narrower window the profile spilled
      off both sides with its close button out of sight (Celia, report 171,
      2026-10-19). The frame is the window; the Overview scrolls inside it. */
   min-width: 0 !important;
   /* ng-override caps every modal at 100vw - 24px, with !important */
-  max-width: 100vw !important;
-  max-height: 100vh !important;
+  max-width: calc(100 * var(--nge-vw, 1vw)) !important;
+  max-height: calc(100 * var(--nge-vh, 1vh)) !important;
   border-radius: 0;
   box-sizing: border-box;
 }
@@ -4854,7 +4878,7 @@ body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
   width: 100%;
   max-width: none;
   height: 100%;
-  max-height: 100vh;
+  max-height: calc(100 * var(--nge-vh, 1vh));
 }
 .nge-profile-modal .nge-profile-col--main { flex: 1 1 0; min-width: 0; }
 .nge-profile-modal .nge-profile-col--right  { flex: 0 1 420px; min-width: 300px; }
@@ -5088,11 +5112,14 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 /* ── No scroll on the Overview (Ames 2026-10-11) ──────────────────────────
    The three rows take their natural height, the last row takes what is
    left, and the list scrolls inside its own box. Phones keep scrolling as
-   one page (mobile.css). */
-body:not(.nge-mobile) .nge-profile-col--main { overflow: hidden; display: flex; flex-direction: column; }
+   one page (mobile.css). On a short screen the last row keeps room for the
+   Scout report and several cells, and the Overview scrolls instead of
+   cutting them off (Ames 2026-10-24: "keep in mind smaller screens, we may
+   have to enable scroll"). Tall screens never see a scrollbar. */
+body:not(.nge-mobile) .nge-profile-col--main { overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
 body:not(.nge-mobile) .nge-track-rows { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
 body:not(.nge-mobile) .nge-track-row { flex: none; }
-body:not(.nge-mobile) .nge-track-row--rest { flex: 1 1 0; min-height: 0; }
+body:not(.nge-mobile) .nge-track-row--rest { flex: 1 1 0; min-height: 240px; }
 body:not(.nge-mobile) .nge-track-row--rest > .nge-track-stats { display: flex; flex-direction: column; min-height: 0; }
 body:not(.nge-mobile) .nge-track-row--rest .nge-profile-section--cells { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 body:not(.nge-mobile) .nge-track-row--rest .nge-cell-list { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: 0; }
@@ -5231,7 +5258,7 @@ body.nge-mobile .nge-track-achievements { padding-left: 0; border-left: none; }
 /* A number that can not be read says so; it is never shown as zero. */
 .nge-profile-stat-unavailable { font-size: 0.82em; color: rgba(200, 215, 240, 0.55); }
 
-/* ══ Calm screen (body.nge-calm; Settings > User Interface, off by default) ══
+/* ══ Calm screen (body.nge-calm; Settings > Screen, off by default) ══
    Annkri (#144): "too many glowing / bright elements stealing focus ... it
    gets too much and strenuous to look at over time". The base in
    ng-override.css already stops every animation and transition and clears
@@ -5307,7 +5334,7 @@ body.nge-calm .nge-profile-windows :deep(.nge-effort-span.is-on) { color: #e6eef
 /* the Scout report's numbers in one colour (inline colours otherwise) */
 body.nge-calm .nge-profile-stat-row--scout .nge-profile-stat-val { color: #d8dde8 !important; }
 /* the favourite, the brightest thing on the page, a size down */
-body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, 18vh); height: min(150px, 18vh); }
+body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, calc(18 * var(--nge-vh, 1vh))); height: min(150px, calc(18 * var(--nge-vh, 1vh))); }
 /* the streak's flame and count sit still in the plain colours */
 body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 </style>

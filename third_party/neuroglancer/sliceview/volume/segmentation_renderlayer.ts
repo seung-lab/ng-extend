@@ -252,7 +252,8 @@ uint64_t getMappedObjectId(uint64_t value) {
       float ngeGrey = dot(ngeColor, vec3(0.299, 0.587, 0.114));
       ngeColor = clamp((vec3(ngeGrey) + (ngeColor - vec3(ngeGrey)) * 1.35) * 1.02, 0.0, 1.0);
     }
-    alpha = min(1.0, max(alpha, 0.35) + 0.35);
+    // Opacity stays the layer's own (Render tab), not raised (a player
+    // 2026-10-22: the hovered cell in 2D was too opaque).
   }
   emit(vec4(ngeColor, alpha));
 `;

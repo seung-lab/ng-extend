@@ -15,6 +15,10 @@ import { ref, shallowRef, computed, nextTick, onMounted, onUnmounted } from 'vue
 import { secureWrite } from '../secure_write';
 import { secureUpload } from '../secure_upload';
 import { renderSafeMarkdown } from '../util/safe_markdown';
+import { useProofreadingBackendStore } from '../store';
+import imgNurroHome from '../images/nurro-at-home600.png';
+import imgNurroBravo from '../images/bravo-nurro.png';
+import imgNurroWhere from '../images/wheres-nurro.png';
 
 const props = defineProps<{ light?: boolean; focusId?: string | null; reportNumbers?: Record<string, number>; standalone?: boolean }>();
 const emit = defineEmits<{ (e: 'back'): void }>();
@@ -57,6 +61,11 @@ async function load() {
     if (data?.installed === false) { notInstalled.value = true; return; }
     cards.value = data.cards || [];
     people.value = data.people || [];
+    if (pendingFocus) {
+      const c = cards.value.find(x => x.id === pendingFocus);
+      pendingFocus = null;
+      if (c) openUp(c);
+    }
     if (openId.value && !cards.value.some(c => c.id === openId.value)) openId.value = null;
   } catch (e: any) {
     error.value = e?.message ?? String(e);
@@ -71,7 +80,7 @@ const initialOf = (id: string | null) => (nameOf(id) || '?').slice(0, 1).toUpper
 const doneOld = (c: Card) => c.list === 'done' && !!c.done_at && Date.now() - Date.parse(c.done_at) > DONE_DAYS * 864e5;
 const columns = computed(() => LISTS.map(l => {
   const byDue = (a: Card, b: Card) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.rank - b.rank;
-  const all = cards.value.filter(c => c.list === l.key).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
+  const all = cards.value.filter(c => c.list === l.key && (!mineOnly.value || isMine(c))).sort(l.key === 'todo' && todoByDue.value ? byDue : (a, b) => a.rank - b.rank);
   const rows = l.key === 'done' && !showAllDone.value ? all.filter(c => !doneOld(c)) : all;
   return { ...l, rows, hidden: all.length - rows.length };
 }));
@@ -96,12 +105,231 @@ const ago = (iso: string) => {
 // A tag is "@" and the person's Pyr name, picked from a list as you type.
 // Only names newly added to a text tag anyone, so editing old notes never
 // pings people twice.
-const tagsIn = (text: string) => people.value.filter(p => text.includes('@' + p.name)).map(p => p.id);
+// An @ tag is the person's full Pyr name (the picker writes that) or just
+// their first name, typed by hand, any case (Ames 2026-10-22: "@Marissa" and
+// "@Celia" typed in the notes tagged nobody).
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// What the admins call each other, beside their Pyr names (Ames
+// 2026-10-22: Marissa's Pyr name is "M Sorek", so "@Mar" found no one).
+// The same people functions/todos.js pings in Slack.
+const NICKNAMES: [RegExp, string[]][] = [
+  [/^(amy|ames)\b|^amy/i, ['Amy', 'Ames']],
+  [/^celia/i, ['Celia']],
+  [/^(marissa|m sorek|sorek)/i, ['Marissa', 'Sorek']],
+];
+function namesOf(p: Person): string[] {
+  const full = String(p.name || '').trim();
+  if (!full) return [];
+  const out = [full, full.split(/\s+/)[0]];
+  for (const [re, nick] of NICKNAMES) if (re.test(full)) out.push(...nick);
+  // A one letter first name ("M Sorek") is too easy to type by chance.
+  return [...new Set(out)].filter(n => n.length > 1);
+}
+const tagsIn = (text: string) => people.value.filter(p => {
+  const names = namesOf(p);
+  if (!names.length) return false;
+  const re = new RegExp(`(^|[^\\w@])@(${names.map(escapeRe).join('|')})(?![\\w])`, 'i');
+  return re.test(text);
+}).map(p => p.id);
 const newTags = (before: string, after: string) => { const old = new Set(tagsIn(before)); return tagsIn(after).filter(id => !old.has(id)); };
+/** This board's own address, to keep or share (Ames 2026-10-22). */
+const boardLink = `${window.location.origin}${window.location.pathname}?triage=board&todo`;
+/** One card's own address: opens the board on that card (Ames 2026-10-23). */
+const cardLink = (c: Card) => `${boardLink}=${c.id}`;
+const linkCopied = ref<string | null>(null);
+async function copyCardLink(c: Card) {
+  const url = cardLink(c);
+  try { await navigator.clipboard.writeText(url); linkCopied.value = c.id; setTimeout(() => { linkCopied.value = null; }, 1600); }
+  catch { window.prompt('The link to this card:', url); }
+}
+// ── People: colors, checklist owners, waiting on, Mine (Ames 2026-10-22) ──
+const PERSON_COLORS = ['#4f8cff', '#2ec4b6', '#f5c542', '#ff6fae', '#38bdf8', '#7c9cff', '#14b8a6'];
+const colorOf = (id: string | null | undefined) => {
+  const i = people.value.findIndex(p => p.id === id);
+  return PERSON_COLORS[(i < 0 ? 0 : i) % PERSON_COLORS.length];
+};
+const firstName = (name: string) => {
+  for (const [re, nick] of NICKNAMES) if (re.test(name)) return nick[0];
+  return String(name || '').split(/\s+/)[0];
+};
+/** Whose a checklist item is: the first admin tagged in it. */
+function itemOwner(text: string): Person | null {
+  const ids = tagsIn(text);
+  return ids.length ? people.value.find(p => p.id === ids[0]) || null : null;
+}
+const itemName = (text: string) => itemOwner(text)?.name || '';
+const itemColor = (text: string) => colorOf(itemOwner(text)?.id);
+/** Ticks per person, for items that have an owner. */
+function perPerson(c: Card): { id: string; name: string; done: number; all: number }[] {
+  const out = new Map<string, { id: string; name: string; done: number; all: number }>();
+  for (const it of c.checklist) {
+    const p = itemOwner(it.text);
+    if (!p) continue;
+    const row = out.get(p.id) || { id: p.id, name: p.name, done: 0, all: 0 };
+    row.all++; if (it.done) row.done++;
+    out.set(p.id, row);
+  }
+  return [...out.values()];
+}
+/** Who still has items to tick, while the card is not done. */
+const waitingOn = (c: Card) => c.list === 'done' ? [] : perPerson(c).filter(r => r.done < r.all);
+/** You, among the board's people: by your Pyr name, or a nickname. */
+const backend: any = useProofreadingBackendStore();
+const myId = computed(() => {
+  const me = String(backend.userName || '').trim().toLowerCase();
+  const mail = String(backend.userEmail || '').toLowerCase();
+  if (!me && !mail) return null;
+  const hit = people.value.find(p => p.name.toLowerCase() === me)
+    || people.value.find(p => namesOf(p).some(n => n.toLowerCase() === me.split(/\s+/)[0] || (mail && mail.startsWith(n.toLowerCase()))));
+  return hit?.id || null;
+});
+function isMine(c: Card): boolean {
+  const id = myId.value;
+  if (!id) return true;
+  if (c.owner_id === id) return true;
+  if (c.checklist.some(it => tagsIn(it.text).includes(id))) return true;
+  return tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
+}
+const MINE_KEY = 'nge-todo-mine';
+const mineOnly = ref((() => { try { return localStorage.getItem(MINE_KEY) === '1'; } catch { return false; } })());
+function toggleMine() {
+  mineOnly.value = !mineOnly.value;
+  try { localStorage.setItem(MINE_KEY, mineOnly.value ? '1' : '0'); } catch { /* storage blocked */ }
+}
+
+// ── Quick add: a title and Enter makes a card at the bottom of To do ──
+const quick = ref('');
+async function quickAdd() {
+  const title = quick.value.trim();
+  if (!title || busy.value) return;
+  busy.value = true;
+  try {
+    const { card } = await secureWrite<any>('todo.save', { fields: { title, notes: '', list: 'todo' }, tagIds: tagsIn(title) });
+    if (card) put(card);
+    quick.value = '';
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  } finally {
+    busy.value = false;
+  }
+}
+
+// ── Nurro cheers a card into Done ──
+const nurroCheer = ref('');
+let cheerTimer = 0;
+function cheer(c: Card) {
+  const who = c.owner_id ? firstName(nameOf(c.owner_id)) : '';
+  nurroCheer.value = `Done! ${c.title}${who ? `. Nice work, ${who}!` : ''}`;
+  window.clearTimeout(cheerTimer);
+  cheerTimer = window.setTimeout(() => { nurroCheer.value = ''; }, 3500);
+}
+
+// ── Numbers ──
+const stats = computed(() => {
+  const week = Date.now() - 7 * 864e5;
+  const doneWeek = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= week);
+  const byPerson = people.value.map(p => ({ id: p.id, name: firstName(p.name), n: doneWeek.filter(c => c.owner_id === p.id).length }))
+    .filter(x => x.n).sort((a, b) => b.n - a.n);
+  const month = Date.now() - 30 * 864e5;
+  const spans = cards.value.filter(c => c.list === 'done' && c.done_at && Date.parse(c.done_at) >= month && c.created_at)
+    .map(c => (Date.parse(c.done_at!) - Date.parse(c.created_at)) / 864e5).filter(d => d >= 0);
+  return {
+    todo: cards.value.filter(c => c.list === 'todo').length,
+    doing: cards.value.filter(c => c.list === 'doing').length,
+    doneWeek: doneWeek.length,
+    late: cards.value.filter(c => isOverdue(c)).length,
+    avgDays: spans.length ? Math.round(spans.reduce((a, b) => a + b, 0) / spans.length * 10) / 10 : null,
+    byPerson,
+  };
+});
+
+// ── Test site and live: what each card's builds are doing ──
+// A test site link says whether that site serves its branch's newest commit,
+// and the card says Live once that commit is in the live branch (GitHub,
+// public, read without a key and cached). A card shipped straight to live
+// is marked by hand: Mark live writes "✓ Live" and the day in its status.
+type BuildState = { state: 'current' | 'building' | 'live' | 'unknown'; word: string; title: string; url: string };
+const builds = ref<Record<string, BuildState>>({});
+const LIVE_BRANCH = 'eyewire-ii-community';
+const REPO = 'seung-lab/ng-extend';
+const CACHE_MS = 10 * 60 * 1000;
+function cached<T>(key: string): T | undefined {
+  try { const v = JSON.parse(sessionStorage.getItem(key) || 'null'); if (v && Date.now() - v.at < CACHE_MS) return v.data; } catch { /* none */ }
+  return undefined;
+}
+function keep(key: string, data: unknown) { try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data })); } catch { /* full */ } }
+async function gh(path: string): Promise<any> {
+  const key = 'nge-gh:' + path;
+  const hit = cached<any>(key);
+  if (hit !== undefined) return hit;
+  const r = await fetch(`https://api.github.com/repos/${REPO}/${path}`, { headers: { Accept: 'application/vnd.github+json' } });
+  if (!r.ok) throw new Error(`GitHub ${r.status}`);
+  const data = await r.json();
+  keep(key, data);
+  return data;
+}
+function branchOf(url: string): string | null {
+  const m = url.match(/^https:\/\/([a-z0-9-]+)-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com/);
+  return m && m[1] !== LIVE_BRANCH ? m[1] : null;
+}
+async function checkBuild(url: string) {
+  const branch = branchOf(url);
+  if (!branch || builds.value[url]) return;
+  builds.value = { ...builds.value, [url]: { state: 'unknown', word: '🧪 …', title: 'Checking the test site', url } };
+  let served = '';
+  try {
+    const base = url.match(/^https:\/\/[^/]+/)![0];
+    served = (await (await fetch(`${base}/build-commit.txt?x=${Date.now()}`)).text()).trim().slice(0, 40);
+  } catch { served = ''; }
+  let state: BuildState;
+  try {
+    if (!/^[0-9a-f]{40}$/.test(served)) throw new Error('no stamp');
+    const cmp = await gh(`compare/${served}...${LIVE_BRANCH}`);
+    if (cmp.status === 'identical' || cmp.status === 'ahead') {
+      state = { state: 'live', word: '✓ In live', title: `Its build (${served.slice(0, 8)}) is in the live site`, url };
+    } else {
+      // The site's branch may have moved on (the test site checked against the branch's head).
+      let head = '';
+      try { head = (await gh(`branches/${encodeURIComponent(branch)}`)).commit.sha; } catch { /* branch gone: a renamed test branch */ }
+      state = !head || head === served
+        ? { state: 'current', word: '🧪 Test site current', title: `Serving ${served.slice(0, 8)}, the newest on ${branch}`, url }
+        : { state: 'building', word: '🧪 Building', title: `Serving ${served.slice(0, 8)}; ${branch} is at ${head.slice(0, 8)}`, url };
+    }
+  } catch {
+    state = { state: 'unknown', word: '🧪 Test site', title: 'Could not read what this test site serves', url };
+  }
+  builds.value = { ...builds.value, [url]: state };
+}
+function testLinks(c: Card) { return (c.links || []).filter(l => branchOf(l.url)); }
+function buildBadges(c: Card): BuildState[] {
+  return testLinks(c).map(l => { void checkBuild(l.url); return builds.value[l.url]; }).filter(Boolean).filter(b => b.state !== 'live');
+}
+function isLive(c: Card): boolean {
+  if (/^✓\s*Live\b/.test(c.status || '')) return true;
+  const links = testLinks(c);
+  return links.length > 0 && links.every(l => builds.value[l.url]?.state === 'live');
+}
+async function markLive(c: Card) {
+  const day = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  await save(c, { status: `✓ Live ${day}` });
+}
+
+/** A click on a list's header folds it, unless it was on one of its buttons. */
+function onHeadClick(e: MouseEvent, key: string) {
+  if ((e.target as HTMLElement | null)?.closest?.('button, a, input, select')) return;
+  toggleFold(key);
+}
+// A comment about one checklist item starts with that item, quoted.
+const commentEl = ref<HTMLTextAreaElement | null>(null);
+function commentOn(text: string) {
+  const quote = `Re: "${text.length > 80 ? text.slice(0, 79) + '…' : text}" `;
+  comment.value = quote + comment.value.replace(/^Re: "[^"]*" /, '');
+  void nextTick(() => { const el = commentEl.value; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); el.scrollIntoView({ block: 'center' }); } });
+}
 const mention = shallowRef<{ el: HTMLTextAreaElement | HTMLInputElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
 const mentionMatches = computed(() => {
   const q = (mention.value?.query || '').toLowerCase();
-  return people.value.filter(p => p.name.toLowerCase().includes(q)).slice(0, 6);
+  return people.value.filter(p => namesOf(p).some(n => n.toLowerCase().includes(q))).slice(0, 6);
 });
 function onMentionInput(e: Event, set: (v: string) => void) {
   const el = e.target as HTMLTextAreaElement;
@@ -221,6 +449,7 @@ async function moveTo(c: Card, list: ListKey, rank?: number) {
     closeReport = window.confirm(`Also close ${reportLabel(c.triage_id).toLowerCase()}? It moves to Done on the triage board and its Slack thread is told.`);
   }
   await save(c, fields, closeReport ? { closeReport: true } : {});
+  if (list === 'done' && fields.list === 'done') cheer(c);
 }
 
 // ── The open card ──
@@ -239,13 +468,8 @@ function openUp(c: Card) {
   editStatus.value = c.status || '';
   linkDraft.value = null;
 }
-if (props.focusId) {
-  const stop = setInterval(() => {
-    const c = cards.value.find(x => x.id === props.focusId);
-    if (c) { openUp(c); clearInterval(stop); }
-    else if (!loading.value) clearInterval(stop);
-  }, 200);
-}
+// The card a link names opens as soon as the cards are in.
+let pendingFocus = props.focusId || null;
 async function saveTitle(c: Card) {
   const t = editTitle.value.trim();
   if (!t || t === c.title) { editTitle.value = c.title; return; }
@@ -436,14 +660,37 @@ function toggleTodoSort() {
   todoByDue.value = !todoByDue.value;
   try { localStorage.setItem(SORT_KEY, todoByDue.value ? 'due' : 'order'); } catch { /* not remembered */ }
 }
-// Done folds to a narrow strip (Ames 2026-10-21: "a way to collapse Done").
+// Any list folds to a narrow strip (Ames 2026-10-21: "a way to collapse
+// Done"; 2026-10-23: "why can't I collapse To Do").
 const FOLD_KEY = 'nge_todo_done_folded_v1';
-const doneFolded = ref((() => { try { return localStorage.getItem(FOLD_KEY) === '1'; } catch { return false; } })());
-function toggleDoneFold() {
-  doneFolded.value = !doneFolded.value;
-  try { localStorage.setItem(FOLD_KEY, doneFolded.value ? '1' : '0'); } catch { /* not remembered */ }
+const FOLDS_KEY = 'nge_todo_folded_v2';
+const folded = ref<Record<string, boolean>>((() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FOLDS_KEY) || 'null');
+    if (saved && typeof saved === 'object') return saved;
+    return { done: localStorage.getItem(FOLD_KEY) === '1' };
+  } catch { return {}; }
+})());
+const isFolded = (key: string) => !!folded.value[key];
+function toggleFold(key: string) {
+  // Never all three: the last open list stays open.
+  if (!folded.value[key] && LISTS.filter(l => !folded.value[l.key]).length <= 1) return;
+  folded.value = { ...folded.value, [key]: !folded.value[key] };
+  try { localStorage.setItem(FOLDS_KEY, JSON.stringify(folded.value)); } catch { /* not remembered */ }
 }
-const listColumns = computed(() => (doneFolded.value ? 'minmax(0, 1fr) minmax(0, 1fr) 44px' : 'repeat(3, minmax(0, 1fr))'));
+const listColumns = computed(() => LISTS.map(l => (folded.value[l.key] ? '44px' : 'minmax(0, 1fr)')).join(' '));
+const LIST_ICONS: Record<string, string> = { todo: '🎯', doing: '⚡', done: '🏆' };
+/** The start of a card's notes, as plain words, for its face. */
+function excerpt(notes: string): string {
+  return String(notes || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`>#]+/g, '')
+    .replace(/^\s*(?:[-•]|\d+\.)\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^(.{0,260})(\s.*)?$/, (m, head, rest) => head + (rest ? '…' : ''));
+}
 
 // Formatting in notes, as in the reply box: bold, bullets, numbers. Notes
 // show through renderSafeMarkdown, never as raw HTML.
@@ -500,12 +747,34 @@ async function cardToChecklist(c: Card) {
 }
 /** Notes with formatting and lit @tags; renderSafeMarkdown escapes the rest. */
 function notesHtml(text: string) {
-  let html = renderSafeMarkdown(text, true);
-  for (const p of [...people.value].sort((a, b) => b.name.length - a.name.length)) {
-    const esc = ('@' + p.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    html = html.split(esc).join(`<b class="nge-todo-tag">${esc}</b>`);
+  const html = renderSafeMarkdown(text, true);
+  const tags = [...people.value].map(p => '@' + p.name).filter(t => t.length > 1).sort((a, b) => b.length - a.length);
+  if (!tags.length || !tags.some(t => text.includes(t))) return html;
+  // Mark the @names in the text only, never inside a link's address or title.
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  const walker = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  for (const node of nodes) {
+    const s = node.data;
+    if (!tags.some(tag => s.includes(tag))) continue;
+    const frag = document.createDocumentFragment();
+    let i = 0, from = 0;
+    while (i < s.length) {
+      const tag = tags.find(x => s.startsWith(x, i));
+      if (!tag) { i++; continue; }
+      if (i > from) frag.append(s.slice(from, i));
+      const b = document.createElement('b');
+      b.className = 'nge-todo-tag';
+      b.textContent = tag;
+      frag.append(b);
+      i += tag.length; from = i;
+    }
+    if (from < s.length) frag.append(s.slice(from));
+    node.replaceWith(frag);
   }
-  return html;
+  return t.innerHTML;
 }
 
 // Images on a card: added with the button, pasted, or dropped on the notes.
@@ -561,6 +830,35 @@ function onKey(e: KeyboardEvent) {
   else connectOpen.value = false;
 }
 onMounted(() => document.addEventListener('keydown', onKey));
+// A pasted image goes wherever you are (Ames 2026-10-23: "I want to be able
+// to paste an image as well"): the card that is open (from its comment box,
+// checklist or anywhere on it), the card being added, or, on the board
+// itself, a new card in To do holding the picture, opened so you can name it.
+// The notes boxes handle their own paste (onNotesPaste), so they are skipped.
+async function onPagePaste(e: ClipboardEvent) {
+  if ((e.target as HTMLElement | null)?.closest?.('[data-nge-notes-paste]')) return;
+  const files = imageFiles(e);
+  if (!files.length) return;
+  e.preventDefault();
+  if (openCard.value) { await addImages(files, openCard.value); return; }
+  if (adding.value) { await addImages(files, 'new'); return; }
+  if (busy.value) return;
+  busy.value = true;
+  try {
+    const day = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const { card } = await secureWrite<any>('todo.save', { fields: { title: `Pasted picture, ${day}`, notes: '', list: 'todo' } });
+    if (!card) return;
+    put(card);
+    const c = cards.value.find(x => x.id === card.id);
+    if (c) { await addImages(files, c); openUp(c); }
+  } catch (err: any) {
+    error.value = err?.message ?? String(err);
+  } finally {
+    busy.value = false;
+  }
+}
+onMounted(() => document.addEventListener('paste', onPagePaste));
+onUnmounted(() => document.removeEventListener('paste', onPagePaste));
 onUnmounted(() => document.removeEventListener('keydown', onKey));
 </script>
 
@@ -568,24 +866,41 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
   <div class="nge-todo" :class="{ 'nge-todo--light': light }">
     <div class="nge-todo-head">
       <button class="nge-todo-btn" @click="emit('back')" title="Back to the triage board">← Triage</button>
-      <span class="nge-todo-heading">📋 To do board</span>
-      <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack.</span>
+      <span class="nge-todo-heading nge-todo-heading--home" title="Back to the board" @click="openId = null"><svg class="nge-todo-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> To do board</span>
+      <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
+      <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
+              :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★ Mine' : '☆ Mine' }}</button>
       <button class="nge-todo-btn" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
     </div>
+    <div v-if="!openCard && !notInstalled" class="nge-todo-stats" aria-label="Board numbers">
+      <img :src="imgNurroHome" alt="" class="nge-todo-nurro" />
+      <div class="nge-todo-stat nge-todo-stat--todo"><b>{{ stats.todo }}</b><span>to do</span></div>
+      <div class="nge-todo-stat nge-todo-stat--doing"><b>{{ stats.doing }}</b><span>doing</span></div>
+      <div class="nge-todo-stat nge-todo-stat--done"><b>{{ stats.doneWeek }}</b><span>done this week</span></div>
+      <div class="nge-todo-stat nge-todo-stat--late" v-if="stats.late"><b>{{ stats.late }}</b><span>overdue</span></div>
+      <div class="nge-todo-stat" v-if="stats.avgDays !== null"><b>{{ stats.avgDays }}</b><span>days to done, on average</span></div>
+      <div class="nge-todo-stat nge-todo-stat--people" v-if="stats.byPerson.length">
+        <span v-for="p in stats.byPerson" :key="p.id" class="nge-todo-personstat" :style="{ '--pc': colorOf(p.id) }">{{ p.name }} <b>{{ p.n }}</b></span>
+        <span class="nge-todo-stat-word">done this week</span>
+      </div>
+    </div>
+    <div v-if="nurroCheer" class="nge-todo-cheer" role="status"><img :src="imgNurroBravo" alt="" /><span>{{ nurroCheer }}</span></div>
     <div v-if="error" class="nge-todo-error" role="alert">⚠ {{ error }} <button class="nge-todo-x" @click="error = ''" aria-label="Close">×</button></div>
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
-      <div class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
-        <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': col.key === 'done' && doneFolded }]"
+      <div v-if="!openCard" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
+        <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
-          <button v-if="col.key === 'done' && doneFolded" type="button" class="nge-todo-rail" title="Open Done" @click="toggleDoneFold">
-            <span class="nge-todo-list-title">{{ col.title }}</span><span class="nge-todo-count">{{ col.rows.length }}</span>
+          <button v-if="isFolded(col.key)" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
+            <span class="nge-todo-list-icon">{{ LIST_ICONS[col.key] }}</span><span class="nge-todo-list-title">{{ col.title }}</span><span class="nge-todo-count">{{ col.rows.length }}</span>
           </button>
           <template v-else>
-          <header class="nge-todo-list-head">
-            <button v-if="col.key === 'done'" type="button" class="nge-todo-mini nge-todo-fold" title="Fold Done away" @click="toggleDoneFold">◂</button>
+          <header class="nge-todo-list-head nge-todo-list-head--fold" :title="'Click to fold ' + col.title + ' away'"
+                  @click="onHeadClick($event, col.key)">
+            <button type="button" class="nge-todo-mini nge-todo-fold" :title="'Fold ' + col.title + ' away'" @click="toggleFold(col.key)">◂</button>
+            <span class="nge-todo-list-icon">{{ LIST_ICONS[col.key] }}</span>
             <span class="nge-todo-list-title">{{ col.title }}</span>
             <span class="nge-todo-count">{{ col.rows.length }}</span>
             <span v-if="col.key === 'todo' && sizeSummary.length" class="nge-todo-sizes" title="Sizes waiting in To do">
@@ -596,6 +911,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                     @click="toggleTodoSort">{{ todoByDue ? '⇅ By due day' : '⇅ My order' }}</button>
           </header>
 
+          <form v-if="col.key === 'todo'" class="nge-todo-quick" @submit.prevent="quickAdd">
+            <input v-model="quick" class="nge-todo-input" maxlength="200" placeholder="Quick add: type and press Enter" aria-label="Quick add a card"
+                   @input="onMentionInput($event, v => quick = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop />
+          </form>
           <div v-if="col.key !== 'done'" class="nge-todo-add">
             <button v-if="adding !== col.key" class="nge-todo-btn nge-todo-add-btn" @click="adding = col.key; draft = newDraft(); linkDraft = null">＋ Add a card</button>
             <form v-else class="nge-todo-form" @submit.prevent="addCard(col.key)">
@@ -612,7 +931,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               </div>
               <textarea :ref="setDraftNotesEl" v-model="draft.notes" class="nge-todo-input" rows="4" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                         @input="onMentionInput($event, v => draft.notes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
-                        @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
+                        data-nge-notes-paste @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
               <ul v-if="draft.checklist.length" class="nge-todo-check">
                 <li v-for="(it, i) in draft.checklist" :key="i"><label><input type="checkbox" disabled /> <span>{{ it.text }}</span></label>
                   <button type="button" class="nge-todo-mini" aria-label="Remove" @click="draft.checklist.splice(i, 1)">×</button></li>
@@ -663,22 +982,31 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
             </div>
             <div class="nge-todo-card-title">{{ c.title }}</div>
+            <div v-if="isLive(c) || buildBadges(c).length" class="nge-todo-badges" @click.stop>
+              <span v-if="isLive(c)" class="nge-todo-badge nge-todo-badge--live" :title="c.status || 'Its test site build is in the live site'">✓ Live</span>
+              <span v-for="b in buildBadges(c)" :key="b.url" class="nge-todo-badge" :class="'nge-todo-badge--' + b.state" :title="b.title">{{ b.word }}</span>
+            </div>
             <div v-if="c.status" class="nge-todo-card-status">{{ c.status }}</div>
+            <div v-if="excerpt(c.notes)" class="nge-todo-card-excerpt">{{ excerpt(c.notes) }}</div>
             <div v-if="(c.links || []).length" class="nge-todo-links" @click.stop>
               <a v-for="(l, i) in c.links" :key="i" class="nge-todo-linkchip" :href="l.url" target="_blank" rel="noopener noreferrer" :title="l.url" draggable="false">{{ linkIcon(l) }} {{ linkWord(l) }}</a>
             </div>
             <div class="nge-todo-card-meta">
-              <span v-if="c.size" class="nge-todo-size nge-todo-size--on" :title="SIZE_WORDS[c.size]">{{ c.size }}</span>
+              
               <span v-if="c.due_on" class="nge-todo-chip" :class="{ 'nge-todo-chip--late': isOverdue(c) }" :title="'Due ' + c.due_on">{{ dueWords(c.due_on) }}</span>
-              <span v-if="c.checklist.length" class="nge-todo-chip" :class="{ 'nge-todo-chip--all': checkCount(c).done === checkCount(c).all }" title="Checklist">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
+              <span v-if="c.checklist.length && !perPerson(c).length" class="nge-todo-chip" :class="{ 'nge-todo-chip--all': checkCount(c).done === checkCount(c).all }" title="Checklist">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
+              <span v-for="pp in perPerson(c)" :key="pp.id" class="nge-todo-chip nge-todo-chip--person" :class="{ 'nge-todo-chip--all': pp.done === pp.all }"
+                    :style="{ '--pc': colorOf(pp.id) }" :title="`${pp.name}: ${pp.done} of ${pp.all} done`">{{ firstName(pp.name) }} {{ pp.done }}/{{ pp.all }}</span>
               <span v-if="(c.images || []).length" class="nge-todo-chip" title="Images">🖼 {{ c.images.length }}</span>
               <span v-if="c.comments.length" class="nge-todo-chip" title="Comments">💬 {{ c.comments.length }}</span>
               <span v-if="c.triage_id" class="nge-todo-chip" title="Made from a player report">{{ reportLabel(c.triage_id) }}</span>
-              <span v-if="c.owner_id" class="nge-todo-avatar" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
+              <span v-if="c.owner_id" class="nge-todo-avatar" :style="{ background: colorOf(c.owner_id) }" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
             </div>
+            <div class="nge-todo-card-by">{{ c.owner_id ? nameOf(c.owner_id) : (c.created_by || '') }}<template v-if="c.updated_at"> · {{ ago(c.updated_at) }}</template></div>
+            <div v-if="waitingOn(c).length" class="nge-todo-waiting">Waiting on {{ waitingOn(c).map(p => firstName(p.name)).join(', ') }}</div>
           </article>
           <div v-if="dropAt?.list === col.key && !dropAt.id" class="nge-todo-drop-end"></div>
-          <div v-if="!col.rows.length && !loading" class="nge-todo-list-empty">{{ col.empty }}</div>
+          <div v-if="!col.rows.length && !loading" class="nge-todo-list-empty"><img :src="imgNurroWhere" alt="" class="nge-todo-nurro-empty" />{{ mineOnly ? 'Nothing of yours here.' : col.empty }}</div>
           <button v-if="col.key === 'done' && (col.hidden || showAllDone)" class="nge-todo-btn nge-todo-more" @click="showAllDone = !showAllDone">
             {{ showAllDone ? `Hide finished more than ${DONE_DAYS} days ago` : `Show ${col.hidden} finished more than ${DONE_DAYS} days ago` }}
           </button>
@@ -725,13 +1053,34 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </ol>
       </aside>
 
-      <!-- The open card: a narrow panel at the side, the lists stay in view. -->
-      <aside v-if="openCard" class="nge-todo-panel" :key="openCard.id" aria-label="Card">
+      <!-- Focus view (Ames 2026-10-22: "why not have the card I clicked expand
+           and the work there?"): the open card takes the middle of the
+           screen, and the lists shrink to a strip of titles on the left, so
+           another card is still one click away. Esc or Board goes back. -->
+      <nav v-if="openCard" class="nge-todo-strip" aria-label="All cards">
+        <section v-for="col in columns" :key="col.key" class="nge-todo-strip-list">
+          <div class="nge-todo-strip-head nge-todo-heading--home" title="Back to the board" @click="openId = null">{{ col.title }} <span class="nge-todo-count">{{ col.rows.length }}</span></div>
+          <button v-for="c in col.rows" :key="c.id" type="button" class="nge-todo-strip-card" :class="{ 'nge-todo-strip-card--on': c.id === openId }"
+                  :aria-current="c.id === openId ? 'true' : undefined" @click="openUp(c)">
+            <span class="nge-todo-strip-title">{{ c.title }}</span>
+            <span class="nge-todo-strip-meta">
+              
+              <span v-if="c.checklist.length">☑ {{ checkCount(c).done }}/{{ checkCount(c).all }}</span>
+              <span v-if="c.due_on" :class="{ 'nge-todo-strip-late': isOverdue(c) }">{{ dueWords(c.due_on) }}</span>
+              <span v-if="c.owner_id" class="nge-todo-avatar nge-todo-avatar--small">{{ initialOf(c.owner_id) }}</span>
+            </span>
+          </button>
+          <div v-if="!col.rows.length" class="nge-todo-strip-empty">{{ col.empty }}</div>
+        </section>
+      </nav>
+      <div v-if="openCard" class="nge-todo-focus">
+      <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card">
         <div class="nge-todo-panel-top">
+          <button type="button" class="nge-todo-btn" title="Back to the board (Esc)" @click="openId = null">← Board</button>
+          <button type="button" class="nge-todo-btn nge-todo-cardlink" :title="cardLink(openCard)" @click="copyCardLink(openCard)">{{ linkCopied === openCard.id ? '✓ Link copied' : '🔗 Copy link to this card' }}</button>
           <select class="nge-todo-select" :value="openCard.list" aria-label="List" @change="onListChange(openCard, $event)">
             <option v-for="l in LISTS" :key="l.key" :value="l.key">{{ l.title }}</option>
           </select>
-          <button class="nge-todo-x" @click="openId = null" aria-label="Close" title="Close (Esc)">×</button>
         </div>
         <input ref="titleEl" v-model="editTitle" class="nge-todo-input nge-todo-title-edit" maxlength="200" aria-label="Title" title="Click to edit the title"
                @input="onMentionInput($event, v => editTitle = v)" @keydown="onTitleKey"
@@ -755,6 +1104,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 
         <input v-model="editStatus" class="nge-todo-input nge-todo-status-input" maxlength="200" placeholder="Status, in a line (optional)" aria-label="Status"
                @keydown.stop @keydown.enter="blurOf($event)" @keyup.stop @keypress.stop @blur="saveStatus(openCard)" />
+        <div class="nge-todo-row">
+          <button v-if="!isLive(openCard)" type="button" class="nge-todo-btn nge-todo-live-btn" title="Shipped straight to the live site: say so on the card" @click="markLive(openCard)">✓ Mark live</button>
+          <span v-for="b in testLinks(openCard).map(l => builds[l.url]).filter(Boolean)" :key="b.url" class="nge-todo-badge" :class="'nge-todo-badge--' + b.state" :title="b.title">{{ b.word }}</span>
+        </div>
         <div class="nge-todo-field">
           <span class="nge-todo-label">Due</span>
           <input type="date" class="nge-todo-select" :value="openCard.due_on || ''" aria-label="Due day" @change="onDueChange(openCard, $event)" />
@@ -789,7 +1142,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </div>
           <textarea ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                     @input="onMentionInput($event, v => editNotes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
-                    @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
+                    data-nge-notes-paste @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
           <div class="nge-todo-row">
             <button class="nge-todo-btn nge-todo-btn--primary" @click="saveNotes(openCard); notesEditing = false">Save notes</button>
             <button class="nge-todo-btn" @click="editNotes = openCard.notes; notesEditing = false">Cancel</button>
@@ -810,8 +1163,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <div class="nge-todo-label">Checklist<template v-if="openCard.checklist.length"> · {{ checkCount(openCard).done }}/{{ checkCount(openCard).all }}</template></div>
         <ul class="nge-todo-check">
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done }">
-            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
-            <button class="nge-todo-mini" title="Make this its own card in To do" @click="itemToCard(openCard, i)">↗ Card</button>
+            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it.text)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it.text) }" :title="'For ' + itemName(it.text)">{{ itemName(it.text).slice(0, 1).toUpperCase() }}</span> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+            <button class="nge-todo-mini" title="Comment on this item" @click="commentOn(it.text)">💬 Comment</button>
             <button class="nge-todo-mini" title="Remove this item" aria-label="Remove" @click="removeItem(openCard, i)">×</button>
           </li>
         </ul>
@@ -826,7 +1179,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}</div>
           <div class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
         </div>
-        <textarea v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
+        <textarea ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
                   @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
         <div class="nge-todo-row">
           <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
@@ -837,6 +1190,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button class="nge-todo-btn nge-todo-delete" @click="deleteCard(openCard)">Delete card</button>
         </div>
       </aside>
+      </div>
     </div>
 
     <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden @change="onPicked" />
@@ -905,6 +1259,30 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-rail .nge-todo-list-title { writing-mode: vertical-rl; }
 .nge-todo-fold, .nge-todo-sort { font-size: 12px; }
 .nge-todo-sort { margin-left: auto; }
+/* Focus view: a strip of titles, and the open card in the middle. */
+.nge-todo-strip {
+  flex: 0 0 clamp(200px, calc(15 * var(--nge-vw, 1vw)), 280px); min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
+}
+.nge-todo-strip-list { display: flex; flex-direction: column; gap: 3px; }
+.nge-todo-strip-head { font-size: 11.5px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 4px; display: flex; gap: 6px; align-items: center; }
+.nge-todo-strip-card {
+  text-align: left; font: inherit; cursor: pointer; padding: 6px 8px; border-radius: 6px;
+  background: transparent; border: 1px solid transparent; color: var(--text); display: flex; flex-direction: column; gap: 3px;
+}
+.nge-todo-strip-card:hover { background: var(--card); border-color: var(--line); }
+.nge-todo-strip-card--on { background: var(--card-hi); border-color: var(--accent); }
+.nge-todo-strip-title { font-size: 12.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.nge-todo-strip-meta { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
+.nge-todo-strip-meta:empty { display: none; }
+.nge-todo-strip-late { color: #ff8b8b; }
+.nge-todo--light .nge-todo-strip-late { color: #b4231a; }
+.nge-todo-strip-empty { font-size: 11.5px; color: var(--dim); padding: 2px 8px; }
+.nge-todo-avatar--small { width: 16px; height: 16px; font-size: 9.5px; margin-left: 0; }
+.nge-todo-focus { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; justify-content: center; }
+.nge-todo-panel.nge-todo-panel--focus { flex: 1 1 auto; max-width: 920px; width: 100%; padding: 18px 22px; }
+.nge-todo-panel--focus .nge-todo-panel-top { justify-content: flex-start; gap: 10px; }
+.nge-todo-panel--focus .nge-todo-title-edit { font-size: 18px; }
 .nge-todo-key {
   font: 12px/1.45 'Consolas', 'SF Mono', monospace; word-break: break-all; user-select: all;
   padding: 8px 10px; border-radius: 6px; border: 1px solid var(--accent); background: var(--card-hi);
@@ -1014,6 +1392,8 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
   .nge-todo-body { flex-direction: column; }
   .nge-todo-lists { grid-template-columns: 1fr; }
   .nge-todo-panel { flex-basis: auto; max-width: none; }
+  /* A narrow screen gives the card all of it. */
+  .nge-todo-strip { display: none; }
 }
 </style>
 
@@ -1027,4 +1407,99 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-mention li { padding: 5px 9px; border-radius: 5px; cursor: pointer; }
 .nge-todo-mention--pick, .nge-todo-mention li:hover { background: #5b7cf0; color: #fff; }
 .nge-todo-mention--light { background: #fff; border-color: #c9d2f2; color: #18212f; }
+/* The To do board's own mark: a blue checked box, apart from the clipboard
+   that means Copy everywhere else (Ames 2026-10-22). */
+.nge-todo-icon { color: #7c9cff; vertical-align: -2px; margin-right: 4px; }
+/* Round 2 (Ames 2026-10-22): blues, teal, golden yellow and pink. */
+.nge-todo { --blue: #4f8cff; --teal: #2ec4b6; --gold: #f5c542; --pink: #ff6fae; --sky: #38bdf8; }
+.nge-todo-list--todo { border-top: 3px solid var(--blue); }
+.nge-todo-list--doing { border-top: 3px solid var(--teal); }
+.nge-todo-list--done { border-top: 3px solid var(--gold) !important; }
+.nge-todo-list--todo .nge-todo-list-title { color: var(--blue); }
+.nge-todo-list--doing .nge-todo-list-title { color: var(--teal); }
+.nge-todo-list--done .nge-todo-list-title { color: var(--gold); }
+.nge-todo-list--todo .nge-todo-count { background: rgba(79, 140, 255, 0.2); }
+.nge-todo-list--doing .nge-todo-count { background: rgba(46, 196, 182, 0.2); }
+.nge-todo-list--done .nge-todo-count { background: rgba(245, 197, 66, 0.22); }
+.nge-todo-list--todo .nge-todo-card { border-left: 3px solid rgba(79, 140, 255, 0.55); }
+.nge-todo-list--doing .nge-todo-card { border-left: 3px solid rgba(46, 196, 182, 0.6); }
+.nge-todo-list--done .nge-todo-card { border-left: 3px solid rgba(245, 197, 66, 0.55); }
+.nge-todo-size--on { color: #fff !important; }
+.nge-todo-card-meta .nge-todo-size--on { border: none; }
+.nge-todo-size--on:is([title^="Small"]) { background: var(--teal); }
+.nge-todo-size--on:is([title^="Medium"]) { background: var(--blue); }
+.nge-todo-size--on:is([title^="Large"]) { background: var(--pink); }
+.nge-todo-chip--person { color: var(--pc); border-color: color-mix(in srgb, var(--pc) 55%, transparent); }
+.nge-todo-chip--person.nge-todo-chip--all { background: color-mix(in srgb, var(--pc) 18%, transparent); }
+.nge-todo-waiting { margin-top: 5px; font-size: 11.5px; font-weight: 600; color: var(--pink); }
+.nge-todo-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+.nge-todo-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--line); color: var(--dim); }
+.nge-todo-badge--live { color: #0b1a12; background: #5ee8a8; border-color: #5ee8a8; }
+.nge-todo-badge--current { color: var(--teal); border-color: color-mix(in srgb, var(--teal) 60%, transparent); }
+.nge-todo-badge--building { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
+.nge-todo-live-btn { color: #5ee8a8; }
+.nge-todo-mine--on { border-color: var(--gold) !important; color: var(--gold); }
+.nge-todo-quick { margin: 0 0 8px; }
+.nge-todo-quick .nge-todo-input { width: 100%; box-sizing: border-box; border-color: rgba(79, 140, 255, 0.45); }
+.nge-todo-stats { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: linear-gradient(90deg, rgba(79, 140, 255, 0.08), rgba(46, 196, 182, 0.06), rgba(255, 111, 174, 0.06)); }
+.nge-todo-nurro { width: 38px; height: 38px; object-fit: contain; }
+.nge-todo-stat { display: flex; align-items: baseline; gap: 5px; font-size: 12px; color: var(--dim); padding: 0 8px; border-right: 1px solid var(--line); }
+.nge-todo-stat:last-child { border-right: none; }
+.nge-todo-stat b { font-size: 18px; color: var(--text); }
+.nge-todo-stat--todo b { color: var(--blue); }
+.nge-todo-stat--doing b { color: var(--teal); }
+.nge-todo-stat--done b { color: var(--gold); }
+.nge-todo-stat--late b { color: var(--pink); }
+.nge-todo-personstat { color: var(--pc); font-weight: 600; margin-right: 6px; }
+.nge-todo-personstat b { font-size: 14px; color: var(--pc); }
+.nge-todo-stat-word { color: var(--dim); }
+.nge-todo-cheer { position: fixed; right: 24px; bottom: 24px; z-index: 10060; display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px;
+  border-radius: 12px; background: #0f1626; border: 1px solid var(--gold); color: #fff; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  animation: nge-todo-cheer-in 0.35s ease-out; }
+.nge-todo-cheer img { width: 54px; height: 54px; object-fit: contain; }
+@keyframes nge-todo-cheer-in { from { transform: translateY(20px) scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+.nge-todo-list-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.nge-todo-nurro-empty { width: 54px; height: 54px; object-fit: contain; opacity: 0.85; }
+/* Round 3 (Ames 2026-10-23): cards like the triage board's, and more fun. */
+/* Wide lists show their cards two across, as the triage board does. */
+.nge-todo-list:not(.nge-todo-list--folded) { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: 10px; align-content: start; }
+.nge-todo-list:not(.nge-todo-list--folded) > :not(.nge-todo-card) { grid-column: 1 / -1; }
+.nge-todo-card { padding: 12px 14px; border-radius: 12px; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; }
+.nge-todo-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(46, 90, 200, 0.18); }
+.nge-todo-card-title { font-size: 16.5px; font-weight: 700; line-height: 1.3; margin-right: 44px; }
+.nge-todo-card-excerpt {
+  margin-top: 6px; font-size: 13.5px; line-height: 1.45; color: var(--text); opacity: 0.85;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nge-todo-card-by { margin-top: 8px; font-size: 12px; color: var(--dim); }
+.nge-todo-list-icon { font-size: 15px; }
+.nge-todo-list-title { font-size: 16px; }
+.nge-todo-rail { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.nge-todo-list--doing { background: linear-gradient(180deg, rgba(46, 196, 182, 0.07), var(--col) 140px); }
+.nge-todo-list--todo { background: linear-gradient(180deg, rgba(79, 140, 255, 0.07), var(--col) 140px); }
+.nge-todo-list--done { background: linear-gradient(180deg, rgba(245, 197, 66, 0.08), var(--col) 140px); }
+.nge-todo-head { padding: 8px 12px; border-radius: 12px;
+  background: linear-gradient(90deg, rgba(79, 140, 255, 0.14), rgba(46, 196, 182, 0.12) 45%, rgba(245, 197, 66, 0.1) 75%, rgba(255, 111, 174, 0.12)); }
+.nge-todo-heading { font-size: 19px; }
+.nge-todo-nurro { width: 52px; height: 52px; animation: nge-todo-bob 6s ease-in-out infinite; }
+/* A gentle breath, no tilt (Ames 2026-10-23: "more subtle animation"). */
+@keyframes nge-todo-bob { 50% { transform: translateY(-1.5px); } }
+@media (prefers-reduced-motion: reduce) { .nge-todo-nurro { animation: none; } .nge-todo-card:hover { transform: none; } }
+/* Round 4 (Ames 2026-10-23). */
+.nge-todo-list-head--fold { cursor: pointer; }
+.nge-todo-list-head--fold:hover .nge-todo-list-title { text-decoration: underline; text-underline-offset: 3px; }
+.nge-todo-nurro-empty { width: 110px; height: 110px; }
+.nge-todo-nurro { width: 64px; height: 64px; }
+/* An open card reads at a comfortable size: it was 13px and below. */
+.nge-todo-panel--focus { font-size: 16px; }
+.nge-todo-panel--focus .nge-todo-title-edit { font-size: 22px; font-weight: 700; }
+.nge-todo-panel--focus .nge-todo-notes, .nge-todo-panel--focus .nge-todo-md { font-size: 16px; line-height: 1.55; }
+.nge-todo-panel--focus .nge-todo-label { font-size: 13px; }
+.nge-todo-panel--focus .nge-todo-check li, .nge-todo-panel--focus .nge-todo-check label { font-size: 15.5px; }
+.nge-todo-panel--focus .nge-todo-input, .nge-todo-panel--focus .nge-todo-select, .nge-todo-panel--focus .nge-todo-btn { font-size: 14.5px; }
+.nge-todo-panel--focus .nge-todo-comment-by { font-size: 13px; }
+.nge-todo-panel.nge-todo-panel--focus { max-width: 1040px; }
+.nge-todo-heading--home { cursor: pointer; }
+.nge-todo-heading--home:hover { text-decoration: underline; text-underline-offset: 4px; }
 </style>

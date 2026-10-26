@@ -5,11 +5,13 @@ import {addPastedSegments, segmentLabels, segmentLabelsChanged, setPlaceCellLoad
 import {StatusMessage} from 'neuroglancer/status';
 import {cellAtCrosshair, supervoxelAtPlace} from '../util/crosshair_cell';
 import {getPcgInfo} from './pcg_service';
+import {openCellHistory} from '../util/cell_history';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes, cellTypeLabel} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
+import {completeStatusesFor, CANT_COMPLETE, marksProofread} from '../sheet_sync';
 import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
 
 /** The name Pyr shows for a cell: its type, with its classification. */
@@ -34,11 +36,23 @@ setPlaceCellLoader(async (group: any) => {
   const direct = place.length ? await supervoxelAtPlace(place) : null;
   if (mine !== placeLoad) return;
   if (direct) found = { position: place.slice(0, 3).map(Math.round) as [number, number, number], supervoxel: direct, root: direct === '0' ? null : await getRootFromSupervoxel(direct) };
-  for (let i = 0; !found && i < 30; ++i) {
-    await new Promise(r => setTimeout(r, 500));
-    if (mine !== placeLoad) return;  // a newer paste took over
-    const f = await cellAtCrosshair();
-    if (f.supervoxel) found = f;
+  // Otherwise the 2D view has to load that spot. In 3D only there was none,
+  // so nothing ever loaded and the paste did nothing (Ames 2026-10-24, MEC,
+  // whose stored segmentation can not be read directly). Open split screen
+  // for the look, and go back to 3D only after.
+  const viewer: any = (window as any).viewer;
+  const layoutOf = () => { try { const j = viewer?.layout?.toJSON?.(); return typeof j === 'string' ? j : (j?.type ?? ''); } catch { return ''; } };
+  const opened2D = !found && layoutOf() === '3d' && typeof (window as any).ngeToggle2D === 'function';
+  if (opened2D) (window as any).ngeToggle2D();
+  try {
+    for (let i = 0; !found && i < 30; ++i) {
+      await new Promise(r => setTimeout(r, 500));
+      if (mine !== placeLoad) return;  // a newer paste took over
+      const f = await cellAtCrosshair();
+      if (f.supervoxel) found = f;
+    }
+  } finally {
+    if (opened2D && layoutOf() !== '3d') (window as any).ngeToggle2D();
   }
   if (!found || !found.supervoxel) {
     StatusMessage.showTemporaryMessage('Nothing has loaded at that place yet. Look at the 2D view, then paste again.', 4000);
@@ -83,6 +97,15 @@ function inLabelScope() {
     labelAsked.clear();
   }
 }
+/** A cell whose type could not be looked up is asked about again later: the
+ *  segment list asks for every unnamed row it shows when the labels change. */
+const LABEL_RETRY_MS = 30000;
+let labelRetryTimer: ReturnType<typeof setTimeout> | null = null;
+function retryLabelLater(id: string) {
+  labelAsked.delete(id);
+  if (labelRetryTimer) return;
+  labelRetryTimer = setTimeout(() => { labelRetryTimer = null; segmentLabelsChanged.dispatch(); }, LABEL_RETRY_MS);
+}
 setSegmentLabelRequester(ids => {
   inLabelScope();
   const todo = ids.filter(id => !labelAsked.has(id) && !segmentLabels.has(id)).slice(0, 300);
@@ -94,12 +117,17 @@ setSegmentLabelRequester(ids => {
     while (next < todo.length) {
       const id = todo[next++];
       try {
-        const label = cellLabel(await getCellStatus(server, id));
+        const status = await getCellStatus(server, id);
+        const label = cellLabel(status);
         if (label && currentSegLayerName() === labelScope) {
           segmentLabels.set(id, label);
           segmentLabelsChanged.dispatch();
+        } else if (status?.unreachable) {
+          // CAVE could not be asked: ask again in a while, rather than leave
+          // the cell looking untyped for the rest of the session (Nseraf #192).
+          retryLabelLater(id);
         }
-      } catch { /* that cell stays unnamed */ }
+      } catch { retryLabelLater(id); }
     }
   };
   for (let i = 0; i < 4; ++i) void worker();
@@ -269,9 +297,22 @@ export class ButtonService {
       } else {
         this._paint(button, null);
       }
+      // CAVE could not be asked (Nseraf #192: 500s right after an edit made
+      // every type look lost): ask again in a while, while the row is shown.
+      if (status?.unreachable) this._retryButtonStatus(button, localServerURL, segmentIDString);
     } catch {
       this._paint(button, null);
+      this._retryButtonStatus(button, localServerURL, segmentIDString);
     }
+  }
+
+  private _retryButtonStatus(button: HTMLButtonElement, localServerURL: string, segmentIDString: string, delayMs = 30000) {
+    const tries = Number(button.dataset.ngeStatusTries || '0');
+    if (tries >= 6) return;
+    button.dataset.ngeStatusTries = String(tries + 1);
+    setTimeout(() => {
+      if (button.isConnected) void this._refreshButtonStatus(button, localServerURL, segmentIDString);
+    }, delayMs);
   }
 
   /**
@@ -547,8 +588,9 @@ export class ButtonService {
           }
           statusLine.textContent = progressText();
           if (!toggleBtn.disabled) toggleBtn.textContent = st?.isComplete ? 'Unmark Proofread' : 'Mark as Proofread';
+          showCant();
           if (st?.cellType && !select.value) select.value = st.cellType;
-          if (typeLine) typeLine.textContent = st?.cellType || 'No type yet';
+          if (typeLine) typeLine.textContent = st?.cellType || (st?.unreachable ? "Couldn't reach the lab's server to check. Try again in a minute." : 'No type yet');
           showLabType();
           showTitle();
           showLabDone();
@@ -573,7 +615,38 @@ export class ButtonService {
         : 'This dataset has no proofread list yet, so there is nothing to mark here.';
       completionSection.appendChild(note);
     }
+    // The Δ menu's own Can't complete (Ames 2026-10-22): the same completion
+    // as Mark as Proofread, with "Can't Complete" already chosen in its form.
+    // Only where the cell's sheet has that status, and only while unfinished.
+    const CANT = CANT_COMPLETE;
+    const cantBtn = document.createElement('button');
+    cantBtn.type = 'button';
+    cantBtn.classList.add('nge-lb-section-button', 'nge-lb-cant-btn');
+    cantBtn.textContent = "Can't complete";
+    cantBtn.title = "This cell can't be finished: say why in the next step. It is recorded as Can't Complete in the cell sheet and counts as your completed cell, but the cell is not marked proofread.";
+    // Only for a cell in the Cell Library's sheet (Ames 2026-10-22: "only
+    // available on cells in the sheet"), found the way Mark as Proofread
+    // finds it, including by an older ID after edits. Hidden until known.
+    let inSheet = false;
+    const showCant = () => {
+      const can = inSheet && !cachedStatus?.isComplete && completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT) && toggleBtn.style.display !== 'none';
+      cantBtn.style.display = can ? '' : 'none';
+    };
+    if (completeStatusesFor(currentSegLayerName()).some(o => o.value === CANT)) {
+      planMenuCompletion(segmentIDString).then(p => {
+        inSheet = !p.blocked && !!p.row && needsCompletionDetails(p);
+        if (cantBtn.isConnected) showCant();
+      }).catch(() => { /* stays hidden */ });
+    }
+    let forcedStatus = '';
+    cantBtn.addEventListener('click', () => {
+      if (toggleBtn.disabled || cachedStatus?.isComplete) return;
+      forcedStatus = CANT;
+      toggleBtn.click();
+    });
     toggleBtn.addEventListener('click', async () => {
+      const preset = forcedStatus;
+      forcedStatus = '';
       toggleBtn.disabled = true;
       toggleBtn.textContent = 'Saving…';
       const willBeComplete = !(cachedStatus?.isComplete ?? false);
@@ -592,14 +665,37 @@ export class ButtonService {
       // Library's own form does, before anything is written (annkri
       // 2026-10-06). Cancel leaves the cell untouched.
       let details: CompletionDetails = {};
+      // Can't complete needs the sheet's form; without it this would be a
+      // plain Mark as Proofread.
+      if (preset && !needsCompletionDetails(plan)) {
+        statusLine.textContent = "Can't complete is for cells in the Cell Library's sheet. This one is not in it.";
+        toggleBtn.textContent = 'Mark as Proofread';
+        toggleBtn.disabled = false;
+        return;
+      }
       if (plan && needsCompletionDetails(plan)) {
-        const asked = await askCompletionDetails(plan.dataset, plan.row?.index || '');
+        const asked = await askCompletionDetails(plan.dataset, plan.row?.index || '', preset);
         if (!asked) {
           toggleBtn.textContent = 'Mark as Proofread';
           toggleBtn.disabled = false;
           return;
         }
         details = asked;
+      }
+      // Can't Complete: no proofread mark in CAVE (sheet_sync.ts); the claim
+      // ends, counts as completed, and the sheet records it with the note.
+      if (willBeComplete && plan?.row && !marksProofread(details.status)) {
+        statusLine.textContent = "Writing Can't Complete to the sheet…";
+        try {
+          statusLine.textContent = "Can't Complete, not marked proofread. " + await finishMenuCompletion(plan, details);
+        } catch (e: any) {
+          statusLine.textContent = e?.message || 'The sheet could not be updated.';
+        }
+        document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: segmentIDString, status: 'released' } }));
+        toggleBtn.textContent = 'Mark as Proofread';
+        toggleBtn.disabled = false;
+        showCant();
+        return;
       }
       // plan.cellRoot: opened on a MEC nucleus, so the cell around it is marked.
       const ok = await setCellComplete(
@@ -646,9 +742,12 @@ export class ButtonService {
         toggleBtn.textContent = !localServerURL ? 'No CAVE server configured' : 'Error, try again';
       }
       toggleBtn.disabled = false;
+      showCant();
       showLabDone();
     });
     completionSection.appendChild(toggleBtn);
+    completionSection.appendChild(cantBtn);
+    showCant();
     const labDoneNote = document.createElement('div');
     labDoneNote.classList.add('nge-lb-readonly-note');
     labDoneNote.textContent = 'The lab has already proofread this cell, so there is nothing to mark here.';
@@ -905,6 +1004,26 @@ export class ButtonService {
     });
     colorSection.appendChild(resetColorBtn);
 
+    // ── Watch it grow (Nseraf, triage #194) ─────────────────────────────
+    // The cell's edits on a slider, shown in 3D. Proofreading datasets only:
+    // the history comes from the chunked graph.
+    const historySection = document.createElement('div');
+    historySection.classList.add('nge-lb-section');
+    const historyTitle = document.createElement('div');
+    historyTitle.classList.add('nge-lb-section-title');
+    historyTitle.textContent = 'History';
+    const historyBtn = document.createElement('button');
+    historyBtn.type = 'button';
+    historyBtn.classList.add('nge-lb-section-button', 'nge-lb-history-btn');
+    historyBtn.textContent = '▶ Watch it grow';
+    historyBtn.title = 'Step through every edit of this cell in the 3D view, with who made it and when. Has a play button for recordings.';
+    historyBtn.addEventListener('click', () => {
+      contextMenu.hide();
+      openCellHistory(segmentIDString);
+    });
+    historySection.append(historyTitle, historyBtn);
+    const hasHistory = !!getPcgInfo();
+
     // ── Section 4: Claim Cell ────────────────────────────────────────────
     const claimSection = document.createElement('div');
     claimSection.classList.add('nge-lb-section');
@@ -1018,7 +1137,14 @@ export class ButtonService {
         releaseBtn.addEventListener('click', async () => {
           releaseBtn.disabled = true;
           releaseBtn.textContent = 'Releasing…';
-          await backend.releaseBySegment(segmentIDString);
+          const released = await backend.releaseBySegment(segmentIDString);
+          if (!released) {
+            // Said "Released" before even when the server refused or did not
+            // answer, and the cell stayed claimed (save failures audit).
+            releaseBtn.textContent = "Couldn't release, try again";
+            releaseBtn.disabled = false;
+            return;
+          }
           releaseBtn.textContent = '✓ Released';
           claimStatus.textContent = 'Available';
           this._resetSegmentColor(segmentIDString);
@@ -1211,7 +1337,9 @@ export class ButtonService {
       exploreSection.append(exploreTitle, exploreNote);
       menu.append(br(), exploreSection, br(), colorSection, br());
     } else {
-      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection, colorSection, br(), claimSection, br(), helpSection, br());
+      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection, colorSection, br());
+      if (hasHistory) menu.append(historySection, br());
+      menu.append(claimSection, br(), helpSection, br());
     }
     return contextMenu;
   }

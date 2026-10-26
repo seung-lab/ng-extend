@@ -70,7 +70,7 @@ function onClick(e: MouseEvent) {
     <template v-if="!editing">
       <ol v-if="isList" :class="listClass"><li v-for="(s, i) in steps" :key="i" v-html="s"></li></ol>
       <div v-else :class="textClass" v-html="paragraph"></div>
-      <div v-if="backend.isAdmin" class="nge-edtext-admin">
+      <div v-if="backend.showAdminUi" class="nge-edtext-admin">
         <span v-if="savedNote" class="nge-edtext-note">{{ savedNote }}</span>
         <button type="button" class="nge-edtext-btn" title="Change this text for everyone. Admins only." @click.stop="startEdit">Edit</button>
       </div>

@@ -1116,16 +1116,28 @@ function clientIp(req) {
 }
 
 // Atomically check+increment the per-IP windows. Returns {ok} or {ok:false,scope}.
-async function rateLimit(req, loggedIn, prefix = "a") {
+async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
   // Browser login flags do not establish identity. Keep the anonymous tier.
   // Quest list reads (Krzysztof #159, #161, 2026-10-17): a quest player reads
   // the list about five times a cell, and the anonymous 60 a day ran out by
   // mid-day. The list is served from the server's five minute copy, so these
   // reads cost the sheet nothing; they get limits of their own.
   const QUEST_READS = prefix === "read:quests";
-  const tier = prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
+  // Players: 60 a minute, 5,000 a day (Ames 2026-10-24: "players don't need
+  // that high of a limit"). Admins get the bigger allowance below.
+  // Admins get far more room (Ames 2026-10-24: "you can give me a higher
+  // allowance than regular users"): triage, the To do board and tests add up.
+  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
-  const refs = [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
+  // Signed in writes count per person only (Ames 2026-10-24: "Please wait
+  // before sending another change" on the triage board and the Cell
+  // Library). Every signed in write used to bump one shared "global" counter
+  // too, in the same transaction: one Firestore document written by every
+  // player's every save, far past the one write a second a document takes,
+  // so busy moments made transactions fail, and a failure read as "slow down".
+  const perPersonOnly = loggedIn && prefix.startsWith("write:");
+  const refs = perPersonOnly ? [db.collection("guide_ratelimit").doc(prefix+":"+id)]
+    : [db.collection("guide_ratelimit").doc(prefix+":"+id), db.collection("guide_ratelimit").doc(prefix+":global")];
   try {
     return await db.runTransaction(async tx => {
       const snapshots = await Promise.all(refs.map(ref=>tx.get(ref)));
@@ -1135,14 +1147,20 @@ async function rateLimit(req, loggedIn, prefix = "a") {
         const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : {perMin:60,perDay:1500}) : tier;
         const minute=now-(d.minStart||0)>=60000, day=now-(d.dayStart||0)>=86400000;
         const minCount=minute?0:(d.minCount||0), dayCount=day?0:(d.dayCount||0);
-        if(minCount>=limits.perMin || dayCount>=limits.perDay) return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
+        if(minCount>=limits.perMin || dayCount>=limits.perDay) {
+          console.warn("[rateLimit] limited", prefix, i ? "global" : "person", dayCount>=limits.perDay ? "day" : "minute", minCount, dayCount);
+          return {ok:false,scope:dayCount>=limits.perDay?"day":"minute"};
+        }
         next.push({minStart:minute?now:d.minStart,minCount:minCount+1,dayStart:day?now:d.dayStart,dayCount:dayCount+1});
       }
       refs.forEach((ref,i)=>tx.set(ref,next[i]));
       return {ok:true};
     });
   } catch(e) {
-    console.error("[rateLimit] unavailable");
+    // The counter could not be read or written. A signed in write goes
+    // through rather than telling a player to wait for nothing.
+    console.error("[rateLimit] unavailable", prefix, e && e.message);
+    if (perPersonOnly) return {ok:true,scope:"unchecked"};
     return {ok:false,scope:"unavailable"};
   }
 }
@@ -1446,10 +1464,15 @@ async function postCorrectionReview(token, entry) {
 // (#citsci_feedback) and keeps a durable Firestore record in `site_issues`.
 const ISSUE_CATEGORIES = ["Bug", "Idea", "Data problem", "Other"];
 const ISSUE_EMOJI = {
-  "Bug": ":beetle:", "Idea": ":bulb:", "Data problem": ":warning:", "Other": ":speech_balloon:",
+  "Bug": ":beetle:", "Idea": ":bulb:", "Data problem": ":warning:", "Other": ":speech_balloon:", "Beta access": ":key:",
 };
 
-async function postIssueToSlack(token, issue) {
+// Slack reads <...> as a mention or a link and & as an entity: a report's
+// own words must never ping a channel or hide a link (Ames 2026-10-24).
+const slackText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+async function postIssueToSlack(token, raw) {
+  const issue = { ...raw, title: raw.title && slackText(raw.title), message: raw.message && slackText(raw.message),
+    user: raw.user && slackText(raw.user), dataset: raw.dataset && slackText(raw.dataset), url: raw.url && slackText(raw.url) };
   try {
     const channel = await resolveReviewChannel(token);
     if (!channel) { console.error("[issue] review channel not found"); return; }
@@ -1778,11 +1801,15 @@ exports.ewSecureWrite = onRequest(
     }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to EyeWire II again, then retry." }); return; }
-    if (!(await rateLimit({ip:who.email}, true, "write:secure")).ok) return res.status(429).json({error:"Please wait before sending another change."});
+    // Which actions are called, and by whom (a hash, never the email), so a
+    // runaway caller shows in the logs (Ames hit 5,000 in a day, 2026-10-24).
+    console.log("[secureWrite] call", String(action).slice(0, 40), crypto.createHash("sha256").update(String(who.email)).digest("hex").slice(0, 8));
     const sb = ewSb(ewServiceKey.value().trim()); // a pasted key can carry a stray newline
     try {
       const ctx = await pilotContext(sb,who);
       const {me,isAdmin} = ctx;
+      // Checked once we know whether this is an admin, who gets a bigger allowance.
+      if (!(await rateLimit({ip:who.email}, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({error:"Please wait before sending another change."});
       if(action === "pilot.status") return res.json({ok:true,data:{invited:!!(isAdmin||ctx.isPilot),admin:isAdmin}});
       requirePilot(ctx);
       const needAdmin = () => { if (!isAdmin) throw ewErr(403, "Admins only"); };
@@ -2142,10 +2169,11 @@ exports.ewProofreadingTest = onRequest(
     if (typeof action !== "string" || !action.startsWith("test.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to EyeWire II again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait before sending another change." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
-      const { me } = await pilotContext(sb, who);
+      const { me, isAdmin: limitAdmin } = await pilotContext(sb, who);
+      // After we know who it is: admins get the bigger allowance (2026-10-24).
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!limitAdmin)).ok) return res.status(429).json({ error: "Please wait before sending another change." });
       const { handle: testHandle } = require("./proofreading-test");
       const data = await testHandle({ action, args, who, me, io: {
         fetch, caveToken: ewCaveToken.value().trim(), sb,
@@ -2202,10 +2230,11 @@ exports.ewReportReply = onRequest(
     if (typeof action !== "string" || !action.startsWith("reply.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
       const { me, isAdmin } = await pilotContext(sb, who);
+      // After we know who it is: admins get the bigger allowance (Ames hit it sending a reply, 2026-10-24).
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then send it again." });
       const data = await require("./report-reply").handle(action, args, { sb, me, isAdmin,
         wake: () => wakeWorkflow("slack-triage-bridge.yml", "report reply") });
       res.json({ ok: true, data });
@@ -2222,7 +2251,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-16-access-request-11";
+const EW_ACCESS_CODE_VERSION = "2026-10-24-beta-access-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2266,21 +2295,30 @@ exports.ewAccessRequest = onRequest(
     if (typeof action !== "string" || !action.startsWith("access.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
-    if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
     const sb = ewSb(ewServiceKey.value().trim());
     try {
-      const { me, isAdmin } = await pilotContext(sb, who);
+      const { me, isAdmin, isPilot } = await pilotContext(sb, who);
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
       const note = (userIds, title, body, image) => {
         const rows = userIds.map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500), target_type: "user",
           ...(image ? { image_url: image, thumbnail_url: image } : {}),
           target_id: id, send_at: new Date().toISOString(), created_by: (me && me.id) || null }));
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
-      const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin,
+      const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
+        // Beta access requests post like any report (Ames 2026-10-24).
+        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
           // A reviewer testing with their own request is told too (Ames 2026-10-16).
+          await note(people.map((p) => p.id), title, body, image);
+        },
+        // Beta access requests reach every admin (Ames 2026-10-24).
+        notifyAdmins: async ({ title, body, image }) => {
+          const emails = (await sb("admins?select=email")).map((r) => String(r.email || "").replace(/[",()]/g, "")).filter(Boolean);
+          if (!emails.length) return;
+          const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(emails.map((e) => `"${e}"`).join(",")) + ")");
           await note(people.map((p) => p.id), title, body, image);
         },
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
@@ -2419,7 +2457,7 @@ exports.ewCommunityData = onRequest(
         }
       }
       if (plan.method !== "GET" && plan.method !== "HEAD") {
-        const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table);
+        const quota = await rateLimit({ip:who.email}, true, "write:"+plan.table, !!isAdmin);
         if (!quota.ok) throw ewErr(429,"Please wait before sending another change.");
       }
       // Counted activity is recorded by the server, never written as a number

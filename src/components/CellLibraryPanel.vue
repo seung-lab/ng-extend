@@ -27,7 +27,7 @@ import {
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
-import { syncCellToSheet, completeStatusesFor } from '../sheet_sync';
+import { syncCellToSheet, completeStatusesFor, marksProofread } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
@@ -35,9 +35,13 @@ import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
+import RetinaCastTab from './RetinaCastTab.vue';
+import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
+import { ensureMecLayers } from '../util/mec_layers';
+import MecMarkStatus from './MecMarkStatus.vue';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
@@ -51,6 +55,7 @@ import { applyShowcaseWhenLoaded } from '../showcase';
 import { datasetHasTour, startDatasetTour } from '../dataset_tour';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import ScreenshotDialog from './ScreenshotDialog.vue';
+import { useDragBox } from '../util/drag_box';
 
 const props = defineProps<{ initialTab?: string }>();
 const emit = defineEmits({ hide: null });
@@ -147,7 +152,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -372,7 +377,9 @@ const cells = computed(() => {
         liveSegId: null as string | null,
       }));
 
-    return [...sheetCells, ...extraTasks];
+    // A paged list (Retina) holds only some of the tasks: the sheet rows it
+    // shows are the ones whose task is loaded, so Load more adds to the list.
+    return [...(backend.tasksPaged ? sheetCells.filter(c => c.taskId != null) : sheetCells), ...extraTasks];
   }
 
   // Fallback: use Supabase tasks directly
@@ -448,9 +455,72 @@ const shownCells = computed(() => filteredCells.value.slice(0, rowsShown.value))
 
 const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
 
-const availableCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'pending').length);
-const completedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'completed').length);
-const claimedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
+const isClaimedStatus = (s: string) => s === 'assigned' || s === 'in_progress';
+/** A paged list counts on the server. A sheet hold ("WIP", "Complete" by
+ *  hand) moves an available cell to Claimed or Completed here, so the loaded
+ *  cells that are held move between the server's counts the same way. */
+const heldShift = computed(() => {
+  const status = new Map(backend.tasks.map(t => [t.id, t.status] as [number, string]));
+  let claimed = 0, completed = 0;
+  for (const c of datasetScopedCells.value) {
+    if (c.taskId == null || status.get(c.taskId) !== 'pending' || c.status === 'pending') continue;
+    if (c.status === 'completed') completed++; else if (isClaimedStatus(c.status)) claimed++;
+  }
+  return { claimed, completed };
+});
+const serverCounts = computed(() => (backend.tasksPaged ? backend.taskCounts : null));
+const availableCount = computed(() => serverCounts.value
+  ? Math.max(0, serverCounts.value.available - heldShift.value.claimed - heldShift.value.completed)
+  : datasetScopedCells.value.filter(c => c.status === 'pending').length);
+const completedCount = computed(() => serverCounts.value
+  ? serverCounts.value.completed + heldShift.value.completed
+  : datasetScopedCells.value.filter(c => c.status === 'completed').length);
+const claimedCount = computed(() => serverCounts.value
+  ? serverCounts.value.claimed + heldShift.value.claimed
+  : datasetScopedCells.value.filter(c => isClaimedStatus(c.status)).length);
+const allCount = computed(() => serverCounts.value ? serverCounts.value.all : datasetScopedCells.value.length);
+
+// ── Paged list (Retina): Load more, tabs and search reach the server ─────
+/** The server tab behind a cell tab; My Cells is always loaded in full. */
+const PAGED_TABS: Record<string, 'available' | 'claimed' | 'completed' | 'all'> = {
+  available: 'available', claimed: 'claimed', completed: 'completed', all: 'all',
+};
+const pagedTab = computed(() => (backend.tasksPaged ? PAGED_TABS[filter.value] ?? null : null));
+/** More of this tab is on the server than is loaded. */
+const serverHasMore = computed(() => !!pagedTab.value && !backend.taskPages[pagedTab.value].done);
+const tabTotal = computed(() => {
+  switch (filter.value) {
+    case 'available': return availableCount.value;
+    case 'claimed': return claimedCount.value;
+    case 'completed': return completedCount.value;
+    case 'all': return allCount.value;
+    default: return filteredCells.value.length;
+  }
+});
+async function loadMore() {
+  if (filteredCells.value.length > shownCells.value.length) { rowsShown.value += ROWS_STEP; return; }
+  const tab = pagedTab.value;
+  if (!tab) return;
+  await backend.loadMoreTasks(tab);
+  rowsShown.value = Math.max(rowsShown.value, filteredCells.value.length);
+}
+// A tab opened for the first time reads its first page.
+watch(pagedTab, tab => { if (tab && backend.taskPages[tab].next === 0) void backend.loadMoreTasks(tab); });
+// A search asks the server for cells that are not loaded: the sheet rows
+// whose number, notes or name match, and tasks whose IDs or notes do.
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(search, q => {
+  if (searchTimer) clearTimeout(searchTimer);
+  if (!backend.tasksPaged || !q.trim()) return;
+  searchTimer = setTimeout(() => {
+    const term = q.trim().toLowerCase();
+    const segIds = queue.items.filter(i =>
+      i.segId.includes(term) || (i.index || '').toLowerCase().includes(term) ||
+      (i.notes || '').toLowerCase().includes(term) || (history.getNickname(i.segId) || '').toLowerCase().includes(term),
+    ).slice(0, 300).map(i => i.segId);
+    void backend.findTasks(currentDatasetTag(), segIds, term);
+  }, 350);
+});
 
 // ── Dataset labels for the empty-Available prompt ────────────────────
 /** Friendly label of the dataset currently in the viewer. */
@@ -533,9 +603,23 @@ if (!workingSet) setTimeout(() => { if (!workingSet && !otherTabCount()) working
 function setWorkingTask(id: number | null) {
   workingTaskId = id;
   workingSet = true;
+  // An MEC cell opens with the lab's AIS, True End, Can't Fix and Hits Edge layers.
+  if (id) ensureMecLayers();
   try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
   try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
 }
+// The cast shows its cells over the player's view: the claim being worked on
+// is saved first and stops being the open one, so a cast cell is never saved
+// into it, and Back to my view makes it the open one again.
+setCastClaimHooks({
+  async leave() {
+    const id = workingTaskId;
+    if (!(await leaveCurrentWork(null))) return false;
+    if (id) setWorkingTask(null);
+    return id;
+  },
+  reopen(id) { setWorkingTask(id); },
+});
 /** Save the view to the claim being worked on. False = stay put. */
 async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
   const id = workingTaskId;
@@ -552,6 +636,8 @@ async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
 // dataset switch or opening a link would lose anything unsaved (Ames).
 const savingView = ref<number | null>(null);
 const savedViewAt = ref<Record<number, number>>({});
+/** The MEC claim in view: its lab marks show under its row (MecMarkStatus). */
+const showsMecMarks = (cell: CellRow) => canonicalDataset(cell.dataset) === 'pni_mec' && isWorkingClaim(cell) && cell.status !== 'completed';
 const isWorkingClaim = (cell: CellRow) =>
   !!cell.taskId && isMyClaim(cell) && (cell.taskId === workingTaskId || cell.segId === jumpedSegId.value);
 async function saveClaimView(cell: CellRow) {
@@ -758,6 +844,16 @@ async function batchClaim() {
   const room = heldHere(await backend.loadMyActiveClaims());
   const n = backend.claimLimitFor() - room.length;
   if (n <= 0) { showClaimLimit(room); return; }
+  // A paged list reads the cells to claim first: the ones after a searched
+  // cell, or more of Available when the loaded part has too few.
+  if (backend.tasksPaged) {
+    const start = batchStart.value;
+    const startTask = start?.taskId != null ? backend.tasks.find(t => t.id === start.taskId) : undefined;
+    if (startTask) await backend.loadAvailableAfter(startTask, n);
+    else if (!search.value.trim()) {
+      for (let i = 0; i < 5 && batchCandidates.value.length < n && !backend.taskPages.available.done; i++) await backend.loadMoreTasks('available');
+    }
+  }
   const picks = batchCandidates.value.slice(0, n);
   if (!picks.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
   batchClaiming.value = { done: 0, total: picks.length };
@@ -860,26 +956,9 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 
 // ── How the cell ended (Nseraf 2026-09-30) ─────────────────────────────────
 // Retina's sheet has four endings and the form could only write "Complete".
-// The proofreader picks one; the last pick is offered again next time, since
-// most cells in a session end the same way. A dataset with one ending shows
-// no choice.
-const STATUS_KEY = 'nge_cl_complete_status';
-function rememberedStatus(cell: CellRow): string {
-  const options = completeStatusesFor(cell.dataset);
-  if (!options.length) return '';
-  try {
-    const last = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}')[canonicalDataset(cell.dataset)];
-    if (options.some(o => o.value === last)) return last;
-  } catch { /* nothing remembered */ }
-  return '';   // first time: no default, the choice is the proofreader's
-}
-function rememberStatus(cell: CellRow, status: string) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}');
-    all[canonicalDataset(cell.dataset)] = status;
-    localStorage.setItem(STATUS_KEY, JSON.stringify(all));
-  } catch { /* private mode */ }
-}
+// The proofreader picks one, every time: the last pick used to be offered
+// again, and went in by mistake (toknow, report 237). A dataset with one
+// ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
@@ -910,7 +989,9 @@ async function prefillCellType(root: string) {
 
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
-  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
+  // No ending picked to start with: the last one carried over, and a player
+  // who forgot to change it sent the wrong one (toknow, report 237).
+  completing.value = { key: cellKey(cell), link: '', notes: '', status: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
     cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '', correcting: false };
   void runCrosshairCheck(cell).then(() => {
     const root = completing.value?.check?.root;
@@ -1023,7 +1104,6 @@ async function submitComplete(cell: CellRow) {
       // The player's type, to the sheet's "CitSci Suggested Type" (Celia).
       cellType: type || undefined,
     });
-    if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
     // Straight on to your next claim; with none left, the slim bar offers a
     // new one (Ames 2026-10-21; it used to open the full library).
@@ -1041,13 +1121,17 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
   // the claim: the server only syncs a completed claim.
-  const cavePromise = writeCaveCompletion(cell, done);
+  // Can't Complete: the claim ends, it counts as the player's completed cell
+  // and the sheet says so, but the cell is not marked proofread in CAVE
+  // (sheet_sync.ts marksProofread).
+  const proofread = marksProofread(done.status);
+  const cavePromise = proofread ? writeCaveCompletion(cell, done) : Promise.resolve(true);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Write completion to the source sheet, including the Final Link.
   syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;
-  if (!loggedViaCave) {
+  if (!loggedViaCave && proofread) {
     // Log as mark_complete for stats (CAVE write didn't record it)
     await backend.logEdit({ operation: 'mark_complete', task_id: cell.taskId });
   }
@@ -1055,7 +1139,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'completed' } }));
   void backend.loadTasks();  // incremental, in the background
   // Celebration!
-  triggerCellCelebration(done.finalSegId);
+  if (proofread) triggerCellCelebration(done.finalSegId);
 }
 
 async function writeCaveCompletion(cell: CellRow, done: { finalSegId: string; coords: string }): Promise<boolean> {
@@ -1192,9 +1276,46 @@ onMounted(() => watch([pendingCompleteRequest, datasetScopedCells, () => backend
 }, { immediate: true }));
 // ── Help request helpers ────────────────────────────────────────────
 const showResolved = ref(false);
+/** Open on one request and bring it into view: a help notification's "Open
+ *  in Help tab" names it (helpStore.focusId, Ames 2026-10-24). */
+async function focusHelpRequest(id: string) {
+  filter.value = 'help';
+  if (!helpStore.requests.some(r => r.id === id)) { try { await helpStore.load(); } catch { /* said below */ } }
+  const req = helpStore.requests.find(r => r.id === id);
+  if (!req) { flashJumpError('That help request is no longer there.'); return; }
+  if (helpScope.value === 'mine' && !isMineReq(req)) helpScope.value = 'all';
+  if (req.resolved) showResolved.value = true;
+  else {
+    // Its group stays open, also when the dataset on screen is learned a
+    // moment later and the other groups fold for the first time.
+    const key = canonicalDataset(req.dataset || '') || req.dataset || '';
+    if (key) { autoFolded.add(key); collapsedDatasets.value.delete(key); }
+  }
+  activeHelpId.value = id;
+  for (let i = 0; i < 30; i++) {
+    await nextTick();
+    const el = document.querySelector(`.nge-cl-panel [data-help-id="${id}"]`);
+    if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    await new Promise(r => setTimeout(r, 150));
+  }
+}
+onMounted(() => watch(() => helpStore.focusId, id => {
+  if (!id) return;
+  helpStore.focusId = null;
+  void focusHelpRequest(id);
+}, { immediate: true }));
 const activeHelpId = ref<string | null>(null);
 const pendingHelp = computed(() => helpStore.requests.filter(r => !r.resolved));
-const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
+/** Everyone's requests or only yours (Ames 2026-10-24: "a way to see my help
+ *  requests vs all"). Remembered in this browser. The Help tab's number
+ *  stays everyone's open requests. */
+const HELP_SCOPE_KEY = 'nge_cl_help_scope';
+const helpScope = ref<'all' | 'mine'>((() => { try { return localStorage.getItem(HELP_SCOPE_KEY) === 'mine' ? 'mine' : 'all'; } catch { return 'all'; } })());
+watch(helpScope, v => { try { localStorage.setItem(HELP_SCOPE_KEY, v); } catch { /* private window */ } });
+const isMineReq = (r: HelpRequest) => !!backend.userId && r.userId === backend.userId;
+const myOpenHelpCount = computed(() => pendingHelp.value.filter(isMineReq).length);
+const scopedPendingHelp = computed(() => helpScope.value === 'mine' ? pendingHelp.value.filter(isMineReq) : pendingHelp.value);
+const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved && (helpScope.value === 'all' || isMineReq(r))));
 
 // ── Dataset grouping for pending help requests ──────────────────────
 // `activeDataset` holds the segmentation-layer name currently in the viewer.
@@ -1203,6 +1324,10 @@ const resolvedHelp = computed(() => helpStore.requests.filter(r => r.resolved));
 // requests are tucked under a collapsible header so they don't disappear.
 const activeDataset = ref('');
 const collapsedDatasets = ref<Set<string>>(new Set());
+/** Groups already folded once. Another dataset's group starts folded, but
+ *  only the first time: refolding on every recompute undid opening it (the
+ *  header's own toggle, and a notification's jump to a request in it). */
+const autoFolded = new Set<string>();
 
 interface HelpDatasetGroup {
   dataset: string;
@@ -1218,7 +1343,7 @@ const pendingHelpByDataset = computed<HelpDatasetGroup[]>(() => {
   const currentRaw = activeDataset.value;
   const currentKey = canonicalDataset(currentRaw);
 
-  for (const req of pendingHelp.value) {
+  for (const req of scopedPendingHelp.value) {
     // Treat empty/missing dataset as belonging to the current viewer dataset.
     const raw = req.dataset || currentRaw || 'Unknown';
     const key = canonicalDataset(raw) || raw;
@@ -1244,7 +1369,8 @@ const pendingHelpByDataset = computed<HelpDatasetGroup[]>(() => {
     const isCurr = !currentKey && firstFallback;
     firstFallback = false;
     result.push({ dataset: key, label: g.label, isCurrent: isCurr, requests: g.requests });
-    if (currentKey && key !== currentKey && !collapsedDatasets.value.has(key)) {
+    if (currentKey && key !== currentKey && !autoFolded.has(key)) {
+      autoFolded.add(key);
       collapsedDatasets.value.add(key);
     }
   }
@@ -1518,6 +1644,13 @@ function getCurrentDatasetName(): string {
 }
 
 async function submitNewHelp() {
+  // A request says what is wrong, in words or a picture. An empty note sent
+  // on a stray Enter put "New help request from Nseraf (Unsure)" in chat
+  // while he was replying to someone else (2026-10-24).
+  if (!newHelpNote.value.trim() && !newHelpScreenshotUrl.value) {
+    newHelpError.value = 'Say what looks wrong first, or attach a screenshot.';
+    return;
+  }
   // The cell is whatever is selected in the viewer; the link is the view.
   // Either one is enough to find the problem (Amy 2026-09-29).
   const selected = (newHelpSegId.value.trim() || getActiveSegId()).trim();
@@ -1623,6 +1756,30 @@ async function submitResponse(req: HelpRequest, andResolve = false) {
   helpStore.refreshPending();
 }
 
+// ── Pop-out: one help request in its own window ─────────────────────
+// The list packs every request, its links and its buttons into one box, so
+// the question itself got lost (annkri, report #227, 2026-10-24). The ⧉
+// button opens just that request in a box of its own that can be moved and
+// resized. It lives in the game, not a browser window, so Jump still flies
+// the view. It is remembered for this tab, so a dataset switch (which
+// reloads the page) brings it back.
+const POPOUT_KEY = 'nge_help_popout';
+const popoutEl = ref<HTMLElement | null>(null);
+const poppedHelpId = ref<string | null>((() => { try { return sessionStorage.getItem(POPOUT_KEY); } catch { return null; } })());
+const poppedReq = computed(() => helpStore.requests.find(r => r.id === poppedHelpId.value) ?? null);
+const { dragging: popoutDragging, posStyle: popoutPosStyle, startDrag: startPopoutDrag } = useDragBox('nge_help_popout_pos', popoutEl);
+function popOutReq(req: HelpRequest) {
+  poppedHelpId.value = req.id;
+  try { sessionStorage.setItem(POPOUT_KEY, req.id); } catch { /* private window */ }
+}
+function closePopout() {
+  if (respondingTo.value === poppedHelpId.value) respondingTo.value = null;
+  poppedHelpId.value = null;
+  try { sessionStorage.removeItem(POPOUT_KEY); } catch { /* private window */ }
+}
+// Closing the library closes the pop-out too (it uses the library's buttons).
+onBeforeUnmount(() => { try { sessionStorage.removeItem(POPOUT_KEY); } catch { /* */ } });
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -1677,6 +1834,14 @@ function rememberAfterSwitch(reqId?: string, tab: string = 'help') {
   try { sessionStorage.setItem(AFTER_SWITCH_KEY, JSON.stringify({ tab, reqId: reqId || null, at: Date.now() })); } catch { /* private window */ }
 }
 function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY); } catch { /* */ } }
+/** Asked for a tab while already open (the Switch Dataset window's chips on
+ *  the dataset on screen): go to it. */
+function onOpenAsked(e: Event) {
+  const tab = (e as CustomEvent).detail?.tab;
+  if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+}
+onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
+onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
 function isOnDataset(raw: string | undefined | null): boolean {
   return !raw || canonicalDataset(raw) === canonicalDataset(getCurrentDatasetName() || activeDataset.value);
 }
@@ -1771,6 +1936,9 @@ watch(teamsHere, here => { if (!here && filter.value === 'teams') filter.value =
  *  says so and offers the switch (Ames 2026-10-13: "it's not clear that my
  *  tasks don't show up until I realize I'm in the wrong dataset"). */
 const questsHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === QUEST_DATASET);
+/** The cast of the retina (Ames 2026-10-24): one example of each cell type,
+ *  on the Retina only. */
+const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
 /** The quests' dataset as the top bar names it, "Retina" (Ames 2026-10-13:
  *  "this should say Switch to Retina"; its longer name reads "EyeWire II"). */
@@ -2013,7 +2181,7 @@ function jumpToAiTag(tag: IssueTag) {
 
 /** Who may close a help request: the player who asked, and admins. */
 function canResolve(req: HelpRequest): boolean {
-  return backend.isAdmin || (!!req.userId && req.userId === backend.userId);
+  return backend.showAdminUi || (!!req.userId && req.userId === backend.userId);
 }
 /** A note longer than its two shown lines gets a Show more button. */
 function noteIsLong(note: string): boolean {
@@ -2305,6 +2473,8 @@ const ALL_CL_TABS: { key: string; label: string }[] = [
   { key: 'links',     label: 'My Links' },
   // Annotation Quests (Ames 2026-10-12): shown on datasets that have one.
   { key: 'quests',    label: 'Quests' },
+  // The cast of the retina (Ames 2026-10-24): Retina only.
+  { key: 'cast',      label: 'Meet the cells' },
 ];
 /** Hidden by default (still in the gear picker): the tab bar was cropping
  *  at 9 tabs, and Completed is the least-visited (Amy 2026-08-17). */
@@ -2320,6 +2490,11 @@ const visibleTabs = ref<string[]>((() => {
       if (!localStorage.getItem('nge_cl_tabs_teams_added_v1')) {
         localStorage.setItem('nge_cl_tabs_teams_added_v1', '1');
         if (!saved.includes('teams')) { saved.push('teams'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
+      }
+      // Cast arrived 2026-10-24: a tab list saved before then gets it once.
+      if (!localStorage.getItem('nge_cl_tabs_cast_added_v1')) {
+        localStorage.setItem('nge_cl_tabs_cast_added_v1', '1');
+        if (!saved.includes('cast')) { saved.push('cast'); localStorage.setItem(CL_TABS_KEY, JSON.stringify(saved)); }
       }
       // Quests arrived 2026-10-12: a tab list saved before then gets it once.
       if (!localStorage.getItem('nge_cl_tabs_quests_added_v1')) {
@@ -2485,12 +2660,23 @@ function collapseToCurrent() {
 }
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
 const nextAvailableCell = computed(() => datasetScopedCells.value.find(c => c.status === 'pending') ?? null);
+/** A paged list may hold no available cell yet while the server has more. */
+const canClaimNew = computed(() => !!nextAvailableCell.value || (backend.tasksPaged && !backend.taskPages.available.done));
+/** The top available cell, reading more of the paged list when the loaded
+ *  part has none left (all claimed meanwhile, or held in the sheet). */
+async function findNextAvailable(): Promise<CellRow | null> {
+  for (let i = 0; i < 5 && !nextAvailableCell.value && backend.tasksPaged && !backend.taskPages.available.done; i++) {
+    await backend.loadMoreTasks('available');
+  }
+  return nextAvailableCell.value;
+}
 const claimingNew = ref(false);
 async function claimNewCell() {
-  const cell = nextAvailableCell.value;
-  if (!cell || claimingNew.value) return;
+  if (!canClaimNew.value || claimingNew.value) return;
   claimingNew.value = true;
   try {
+    const cell = await findNextAvailable();
+    if (!cell) return;
     await claimCell(cell);
     await nextTick();
     // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
@@ -2544,6 +2730,52 @@ function expandAndStay() {
   setSlimMode(false);
   expandFull();
 }
+
+// ── Back as it was after a refresh (Nseraf, report 232) ─────────────────
+// F5, Ctrl+F5, Pyr's gem or "Reload now": the library comes back open, on
+// the same tab, slimmed to the same cell. The note lives in this tab only
+// (sessionStorage), is written as the page goes, and is dropped when the
+// library is closed, so a closed library stays closed. ExtensionBar reads
+// it to reopen the library; the slim part is restored here.
+const REFRESH_KEY = 'nge_cl_on_refresh';
+function rememberForRefresh() {
+  try {
+    sessionStorage.setItem(REFRESH_KEY, JSON.stringify({
+      tab: filter.value, slimSeg: slimSeg.value, slimEmpty: slimEmpty.value, at: Date.now(),
+    }));
+  } catch { /* private window */ }
+}
+window.addEventListener('pagehide', rememberForRefresh);
+onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', rememberForRefresh);
+  try { sessionStorage.removeItem(REFRESH_KEY); } catch { /* */ }
+});
+onMounted(async () => {
+  let want: { slimSeg?: string | null; slimEmpty?: boolean; at?: number } | null = null;
+  try { want = JSON.parse(sessionStorage.getItem(REFRESH_KEY) || 'null'); } catch { want = null; }
+  try { sessionStorage.removeItem(REFRESH_KEY); } catch { /* */ }
+  if (!want || Date.now() - (want.at || 0) > 30 * 60_000) return;
+  if (want.slimEmpty) {
+    slimEmpty.value = true;
+    await nextTick();
+    clampPanelPos();
+    return;
+  }
+  if (!want.slimSeg) return;
+  // The cells load after the panel opens: wait for that one to be listed.
+  // A paged list may not hold it: ask for it once the list is in.
+  let asked = false;
+  for (let i = 0; i < 60; i++) {
+    if (datasetScopedCells.value.some(c => c.segId === want!.slimSeg)) {
+      slimSeg.value = want.slimSeg;
+      await nextTick();
+      clampPanelPos();
+      return;
+    }
+    if (!asked && backend.tasksPaged && !backend.loading) { asked = true; void backend.findTasks(currentDatasetTag(), [want.slimSeg]); }
+    await new Promise(r => setTimeout(r, 500));
+  }
+});
 async function collapseTo(cell: CellRow | null) {
   if (cell ? slimSeg.value === cell.segId : slimEmpty.value) return;
   const el = panelEl.value;
@@ -2702,12 +2934,16 @@ const panelStyle = computed(() => ({
                 Claimed <b>{{ claimedCount }}</b>
               </button>
               <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'" title="Every cell in this dataset">
-                All <b>{{ datasetScopedCells.length }}</b>
+                All <b>{{ allCount }}</b>
               </button>
               <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
               <button v-if="tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
                       :title="questsHere ? 'Annotation quests: mark the cilia on a starburst amacrine cell, without completing it. The number is the cells open to claim.' : 'Annotation quests are on Retina for now'">
                 Quests <b v-if="questsHere && questState.loaded">{{ questOpenCount() }}</b>
+              </button>
+              <button v-if="castHere && tabShown('cast')" :class="{ active: filter === 'cast', 'nge-cl-cast-tab': true }" @click="filter = 'cast'"
+                      title="One example cell of each retinal type, to turn in 3D, alone or all together">
+                Meet the cells <b>{{ CAST.length }}</b>
               </button>
               <button v-if="tabShown('completed')" :class="{ active: filter === 'completed' }" @click="filter = 'completed'">
                 Completed <b>{{ completedCount }}</b>
@@ -2753,7 +2989,7 @@ const panelStyle = computed(() => ({
         </div>
 
         <!-- Search (not shown on Help / Links tabs) -->
-        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams'" class="nge-cl-search">
+        <div v-if="filter !== 'help' && filter !== 'links' && filter !== 'tags' && filter !== 'ai' && filter !== 'teams' && filter !== 'cast'" class="nge-cl-search">
           <input
             v-model="search"
             placeholder="Search by ID, name, or notes..."
@@ -2899,11 +3135,17 @@ const panelStyle = computed(() => ({
             <div v-if="newHelpError" class="nge-cl-help-create-err">{{ newHelpError }}</div>
           </div>
 
-          <!-- Pending help requests -->
-          <div v-if="pendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
-            No help requests yet. Use the box above to submit one.
+          <!-- Everyone's requests or only yours -->
+          <div v-if="isLoggedIn" class="nge-cl-help-scope" role="group" aria-label="Which help requests to show">
+            <button type="button" :class="{ active: helpScope === 'all' }" :aria-pressed="helpScope === 'all' ? 'true' : 'false'" @click="helpScope = 'all'">All requests <b>{{ pendingHelp.length }}</b></button>
+            <button type="button" :class="{ active: helpScope === 'mine' }" :aria-pressed="helpScope === 'mine' ? 'true' : 'false'" @click="helpScope = 'mine'">Mine <b>{{ myOpenHelpCount }}</b></button>
           </div>
-          <div v-else-if="pendingHelp.length === 0" class="nge-cl-no-results">No pending requests</div>
+
+          <!-- Pending help requests -->
+          <div v-if="scopedPendingHelp.length === 0 && resolvedHelp.length === 0" class="nge-cl-empty">
+            {{ helpScope === 'mine' ? 'You have no help requests. Use the box above to ask for help.' : 'No help requests yet. Use the box above to submit one.' }}
+          </div>
+          <div v-else-if="scopedPendingHelp.length === 0" class="nge-cl-no-results">{{ helpScope === 'mine' ? 'None of your requests are open' : 'No pending requests' }}</div>
 
           <div
             v-for="group in pendingHelpByDataset"
@@ -2937,6 +3179,7 @@ const panelStyle = computed(() => ({
               <div
                 v-for="req in group.requests"
                 :key="req.id"
+                :data-help-id="req.id"
                 class="nge-cl-help-item"
                 :class="{
                   'nge-cl-help-item--active': activeHelpId === req.id,
@@ -2970,6 +3213,9 @@ const panelStyle = computed(() => ({
                     </div>
                   </div>
                   <div class="nge-cl-row-actions">
+                    <button class="nge-cl-btn nge-cl-btn--jump nge-cl-btn--popout" :class="{ 'nge-cl-btn--jump-active': poppedHelpId === req.id }"
+                            title="Open this request in its own window, easy to read" aria-label="Open in its own window"
+                            @click="popOutReq(req)">⧉</button>
                     <button
                       class="nge-cl-btn nge-cl-btn--jump"
                       @click="jumpToReq(req)"
@@ -3007,7 +3253,7 @@ const panelStyle = computed(() => ({
             </div>
 
             <!-- Inline response form (below existing thread) -->
-            <div v-if="respondingTo === req.id" class="nge-cl-response-form">
+            <div v-if="respondingTo === req.id && poppedHelpId !== req.id" class="nge-cl-response-form">
               <textarea
                 v-model="responseNote"
                 placeholder="Write your response... (Enter to submit, Shift+Enter for newline)"
@@ -3071,7 +3317,9 @@ const panelStyle = computed(() => ({
             <div
               v-for="req in resolvedHelp"
               :key="req.id"
+              :data-help-id="req.id"
               class="nge-cl-help-item"
+              :class="{ 'nge-cl-help-item--active': activeHelpId === req.id }"
             >
               <div class="nge-cl-row nge-cl-row--done">
                 <div class="nge-cl-row-left">
@@ -3088,6 +3336,9 @@ const panelStyle = computed(() => ({
                   </div>
                 </div>
                 <div class="nge-cl-row-actions">
+                  <button class="nge-cl-btn nge-cl-btn--jump nge-cl-btn--popout" :class="{ 'nge-cl-btn--jump-active': poppedHelpId === req.id }"
+                          title="Open this request in its own window, easy to read" aria-label="Open in its own window"
+                          @click="popOutReq(req)">⧉</button>
                   <button class="nge-cl-btn nge-cl-btn--jump" @click="jumpToReq(req)" title="Jump to segment">↗</button>
                   <button class="nge-cl-btn nge-cl-btn--release" @click="removeReq(req)" title="Remove">×</button>
                 </div>
@@ -3141,6 +3392,11 @@ const panelStyle = computed(() => ({
             <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
                     title="Switch this view to the quests' dataset">Switch to {{ questDatasetName }}</button>
           </div>
+        </div>
+
+        <!-- ═══ CAST TAB (one example of each retinal cell type) ═══ -->
+        <div v-else-if="filter === 'cast' && castHere" class="nge-cl-list">
+          <retina-cast-tab />
         </div>
 
         <!-- ═══ TAGS TAB (Scout tags: mergers / missing branches) ═══ -->
@@ -3542,11 +3798,11 @@ const panelStyle = computed(() => ({
           </button>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
-            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!nextAvailableCell || claimingNew || !isLoggedIn"
+            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
                     :title="!isLoggedIn ? 'Sign in to claim cells'
-                      : nextAvailableCell ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
+                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
                       : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
-                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : nextAvailableCell ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
+                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : canClaimNew ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
           </div>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
@@ -3578,6 +3834,18 @@ const panelStyle = computed(() => ({
 
             <!-- Right: actions -->
             <div class="nge-cl-row-actions">
+              <!-- Save view comes first: it shows on the claim being worked on
+                   only, so the buttons after it stay put on every row (toknow,
+                   report 236). -->
+              <button
+                v-if="isWorkingClaim(cell)"
+                class="nge-cl-btn nge-cl-btn--saveview"
+                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
+                :disabled="savingView === cell.taskId"
+                @click="saveClaimView(cell)"
+                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
+              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
                 :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
@@ -3591,15 +3859,6 @@ const panelStyle = computed(() => ({
                 :disabled="claiming.has(cellKey(cell))"
                 @click="claimCell(cell)"
               ><span v-if="claiming.has(cellKey(cell))" class="nge-cl-spin" />{{ claiming.has(cellKey(cell)) ? 'Claiming…' : 'Claim' }}</button>
-
-              <button
-                v-if="isWorkingClaim(cell)"
-                class="nge-cl-btn nge-cl-btn--saveview"
-                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
-                :disabled="savingView === cell.taskId"
-                @click="saveClaimView(cell)"
-                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
-              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
 
               <button
                 v-if="isMyClaim(cell) && teamsHere && teamsOnDataset(cell.dataset) && cell.status !== 'completed'"
@@ -3626,10 +3885,15 @@ const panelStyle = computed(() => ({
             </div>
           </div>
 
+          <!-- MEC: the lab marks on the cell in view, one line that opens
+               into a checklist (Ames 2026-10-24). In the Complete form
+               instead while that is open. -->
+          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" />
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell</div>
+            <MecMarkStatus v-if="showsMecMarks(cell)" start-open class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
               <div class="nge-cl-complete-statuses" role="radiogroup" aria-label="How did it end?">
@@ -3712,9 +3976,9 @@ const panelStyle = computed(() => ({
             </div>
           </div>
           </template>
-          <div v-if="!slimCell && filteredCells.length > shownCells.length" class="nge-cl-more">
-            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ filteredCells.length.toLocaleString() }}. Search finds any of them.</span>
-            <button class="nge-cl-btn" @click="rowsShown += ROWS_STEP">Show {{ Math.min(ROWS_STEP, filteredCells.length - shownCells.length) }} more</button>
+          <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
+            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ Math.max(tabTotal, filteredCells.length).toLocaleString() }}. Search finds any of them.</span>
+            <button class="nge-cl-btn" :disabled="!!backend.loadingMore" @click="loadMore"><span v-if="backend.loadingMore" class="nge-cl-spin" />{{ backend.loadingMore ? 'Loading…' : 'Load more' }}</button>
           </div>
         </div>
 
@@ -3732,6 +3996,95 @@ const panelStyle = computed(() => ({
 
       </div>
     </Transition>
+  </Teleport>
+
+  <!-- One help request in its own window (⧉ on a request; annkri, #227). -->
+  <Teleport to="body">
+    <div v-if="poppedHelpId" ref="popoutEl" class="nge-cl-popout" :class="{ 'nge-cl-popout--dragging': popoutDragging }"
+         :style="popoutPosStyle" role="dialog" aria-label="Help request">
+      <div class="nge-cl-popout-head" title="Drag to move" @pointerdown="startPopoutDrag">
+        <span class="nge-cl-title">HELP REQUEST</span>
+        <button class="nge-cl-close" title="Close this window" aria-label="Close" @click="closePopout">×</button>
+      </div>
+      <div v-if="!poppedReq" class="nge-cl-popout-body nge-cl-popout-muted">
+        {{ helpStore.requests.length ? 'This help request is no longer in the list.' : 'Loading…' }}
+      </div>
+      <div v-else class="nge-cl-popout-body">
+        <div class="nge-cl-popout-who">
+          <b>{{ poppedReq.userName || 'A player' }}</b> asked {{ relativeTime(poppedReq.createdAt) }}
+          <span class="nge-cl-badge nge-cl-status--help" :class="{ 'nge-cl-badge--live': isLiveHelp(poppedReq) }">{{ poppedReq.issueType }}</span>
+          <span v-if="poppedReq.resolved" class="nge-cl-popout-solved">✓ Solved{{ poppedReq.resolvedByName ? ' by ' + poppedReq.resolvedByName : '' }}</span>
+        </div>
+        <div class="nge-cl-popout-cell">
+          <span v-if="poppedReq.segId" class="nge-cl-row-name" @click="copyId(poppedReq.segId)" :title="'Click to copy ' + poppedReq.segId">
+            Cell {{ poppedReq.segId }}<span v-if="copiedId === poppedReq.segId" class="nge-cl-copied">copied</span>
+          </span>
+          <span v-if="poppedReq.dataset" class="nge-cl-popout-muted">{{ datasetHeading(poppedReq.dataset) }}</span>
+        </div>
+        <div v-if="poppedReq.note" class="nge-cl-popout-question">{{ poppedReq.note }}</div>
+        <div v-else class="nge-cl-popout-question nge-cl-popout-muted">They did not write a question.</div>
+        <a v-if="poppedReq.screenshotUrl" :href="poppedReq.screenshotUrl" target="_blank" rel="noopener"
+           class="nge-cl-popout-shot" title="Open the full picture">
+          <img :src="poppedReq.screenshotUrl" alt="Their picture" />
+        </a>
+        <div class="nge-cl-popout-links">
+          <a v-if="poppedReq.viewUrl" class="nge-cl-response-link" href="#" @click.prevent="openResponseUrl(poppedReq.viewUrl)"
+             title="Load the view they were looking at">↗ Open their view</a>
+          <span v-if="poppedReq.annotationLayer" class="nge-cl-response-layer">📐 {{ poppedReq.annotationLayer === 'All annotation layers' ? poppedReq.annotationLayer : (poppedReq.annotationLayer.includes(', ') ? 'Layers: ' : 'Layer: ') + poppedReq.annotationLayer }}</span>
+        </div>
+
+        <div class="nge-cl-popout-actions">
+          <button class="nge-cl-btn" @click="jumpToReq(poppedReq)" title="Fly the view to this cell">↗ Jump to the cell</button>
+          <button v-if="!poppedReq.resolved" class="nge-cl-btn" @click="toggleResponseForm(poppedReq.id)">{{ respondingTo === poppedReq.id ? 'Cancel reply' : '💬 Reply' }}</button>
+          <button v-if="teamAllowed && !poppedReq.resolved && isLiveHelp(poppedReq) && poppedReq.userId && poppedReq.userId !== backend.userId" class="nge-cl-btn nge-cl-btn--join"
+                  :disabled="offeredTo.has(poppedReq.id)" @click="offerToJoin(poppedReq)">{{ offeredTo.has(poppedReq.id) ? 'Offered' : 'Join' }}</button>
+          <button v-if="!poppedReq.resolved && canResolve(poppedReq)" class="nge-cl-btn nge-cl-btn--complete" @click="resolveReq(poppedReq)"
+                  :title="poppedReq.userId === backend.userId ? 'Your question is answered: move it to Resolved for everyone' : 'Close this request for everyone: it moves to Resolved'">Mark solved</button>
+        </div>
+
+        <div v-if="respondingTo === poppedReq.id" class="nge-cl-response-form nge-cl-popout-form">
+          <textarea
+            v-model="responseNote"
+            placeholder="Write your reply... (Enter to send, Shift+Enter for a new line)"
+            class="nge-cl-response-textarea"
+            rows="3"
+            @keydown.stop @keyup.stop @keypress.stop
+            @keydown.enter.exact.prevent="submitResponse(poppedReq)"
+          ></textarea>
+          <div class="nge-cl-response-url-row">
+            <input v-model="responseUrl" placeholder="Neuroglancer state URL (optional)" class="nge-cl-response-input" @keydown.stop @keyup.stop @keypress.stop />
+            <button class="nge-cl-btn nge-cl-btn--copy-state" @click="copyCurrentState" title="Copy current viewer state URL">📋 State</button>
+          </div>
+          <select v-if="getAnnotationLayers().length > 0" v-model="responseAnnotationLayer" class="nge-cl-response-input">
+            <option value="">Select annotation layer (optional)</option>
+            <option v-for="layer in getAnnotationLayers()" :key="layer" :value="layer">{{ layer }}</option>
+          </select>
+          <button v-if="!responseScreenshotUrl" class="nge-cl-btn nge-cl-help-shot-btn" @click="showResponseScreenshotDialog = true"
+                  title="Attach a screenshot of the current view">📷 Attach screenshot</button>
+          <div v-else class="nge-cl-help-shot-preview">
+            <img :src="responseScreenshotUrl" alt="Reply screenshot" />
+            <button class="nge-cl-help-shot-remove" @click="clearResponseScreenshot" title="Remove screenshot">×</button>
+          </div>
+          <button class="nge-cl-btn nge-cl-btn--submit-response" :disabled="!responseNote.trim() && !responseScreenshotUrl"
+                  @click="submitResponse(poppedReq)">Send reply</button>
+          <button v-if="canResolve(poppedReq)" class="nge-cl-btn nge-cl-btn--submit-response nge-cl-btn--resolve"
+                  :disabled="!responseNote.trim() && !responseScreenshotUrl"
+                  title="Send the reply and move the request to Resolved for everyone"
+                  @click="submitResponse(poppedReq, true)">Reply and mark solved</button>
+        </div>
+
+        <div class="nge-cl-popout-replies-title">{{ poppedReq.responses?.length ? (poppedReq.responses.length === 1 ? '1 reply' : poppedReq.responses.length + ' replies') : 'No replies yet' }}</div>
+        <div v-for="resp in poppedReq.responses || []" :key="resp.id" class="nge-cl-popout-reply">
+          <div class="nge-cl-response-label">💬 {{ resp.userName || 'Reply' }}<span v-if="resp.resolved"> · solved it</span></div>
+          <div v-if="resp.note" class="nge-cl-popout-reply-text">{{ resp.note }}</div>
+          <a v-if="resp.url" class="nge-cl-response-link" @click.prevent="openResponseUrl(resp.url)" href="#">↗ View linked state</a>
+          <span v-if="resp.annotationLayer" class="nge-cl-response-layer">📐 Layer: {{ resp.annotationLayer }}</span>
+          <a v-if="resp.screenshotUrl" :href="resp.screenshotUrl" target="_blank" rel="noopener" class="nge-cl-popout-shot" title="Open the full picture">
+            <img :src="resp.screenshotUrl" alt="Reply picture" />
+          </a>
+        </div>
+      </div>
+    </div>
   </Teleport>
 
   <!-- Cross-dataset jump confirmation modal -->
@@ -3815,7 +4168,7 @@ const panelStyle = computed(() => ({
   position: fixed;
   z-index: 10010;
   width: 480px;
-  max-height: 70vh;
+  max-height: calc(70 * var(--nge-vh, 1vh));
   display: flex;
   flex-direction: column;
   /* scifi-ui .holopanel surface: dark gradient, soft rim, lit inset line.
@@ -4243,6 +4596,8 @@ const panelStyle = computed(() => ({
 .nge-cl-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* Complete form: link + crosshairs check (Amy 2026-09-28) */
+/* The marks checklist sits flush in the Complete form. */
+.nge-cl-complete-marks { padding: 0 0 6px; }
 .nge-cl-complete {
   margin: 2px 6px 8px;
   padding: 10px 12px;
@@ -4484,8 +4839,10 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.15);
   border-radius: 6px;
   background: rgba(10, 10, 30, 0.6);
-  color: #ccd;
-  font-size: 0.76em;
+  color: #dde4f0;
+  /* readable in a narrow panel (Ames 2026-10-24: "this text is way too small") */
+  font-size: 14px;
+  line-height: 1.45;
   font-family: inherit;
   resize: vertical;
   outline: none;
@@ -4500,8 +4857,8 @@ const panelStyle = computed(() => ({
   border: 1px solid rgba(120, 140, 255, 0.12);
   border-radius: 5px;
   background: rgba(10, 10, 30, 0.5);
-  color: #ccd;
-  font-size: 0.72em;
+  color: #dde4f0;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -4519,7 +4876,7 @@ const panelStyle = computed(() => ({
   min-width: 0;
 }
 .nge-cl-btn--copy-state {
-  font-size: 0.68em;
+  font-size: 13px;
   padding: 4px 8px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -4528,7 +4885,8 @@ const panelStyle = computed(() => ({
   align-self: flex-end;
   border-color: rgba(68, 170, 102, 0.25);
   color: #4a6;
-  padding: 5px 12px;
+  padding: 6px 14px;
+  font-size: 14px;
 }
 .nge-cl-btn--submit-response:hover { background: rgba(68, 170, 102, 0.12); }
 .nge-cl-btn--submit-response:disabled {
@@ -4892,6 +5250,17 @@ select.nge-cl-complete-type:hover {
 .nge-cl-tabgroup--cells { flex: 1 1 100%; }
 .nge-cl-tabgroup-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--grp); opacity: 0.85; }
 .nge-cl-tabgroup-row { display: flex; gap: 4px; flex-wrap: wrap; }
+/* Help: All requests or Mine, a small two way switch above the list. */
+.nge-cl-help-scope { display: inline-flex; margin: 10px 12px 2px; border: 1px solid rgba(100, 200, 255, 0.28); border-radius: 7px; overflow: hidden; }
+.nge-cl-help-scope button {
+  background: transparent; border: 0; padding: 5px 12px; cursor: pointer;
+  font: 600 12.5px 'Inter', 'Segoe UI', sans-serif; color: rgba(200, 225, 255, 0.7);
+  transition: background 0.15s, color 0.15s;
+}
+.nge-cl-help-scope button + button { border-left: 1px solid rgba(100, 200, 255, 0.28); }
+.nge-cl-help-scope button b { margin-left: 4px; color: #64c8ff; font-weight: 600; }
+.nge-cl-help-scope button:hover { color: #e6f4ff; background: rgba(100, 200, 255, 0.08); }
+.nge-cl-help-scope button.active { color: #fff; background: rgba(100, 200, 255, 0.18); }
 .nge-cl-tabgroup-head { display: flex; align-items: center; gap: 10px; }
 /* Dataset links (MEC): small HUD labels, a diamond marker each, a thin
    divider between, glow and a sweeping underline on hover (Ames: "not very
@@ -5427,7 +5796,7 @@ select.nge-cl-complete-type:hover {
   border-radius: 10px;
   padding: 22px 24px;
   width: 460px;
-  max-width: 92vw;
+  max-width: calc(92 * var(--nge-vw, 1vw));
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
               0 0 40px rgba(245, 166, 35, 0.08) inset;
   color: #e0e0e0;
@@ -5612,7 +5981,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-topbar .nge-cl-title { margin-right: auto; }
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
 .nge-cl-caret { margin-right: 10px; }
-.nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
+.nge-cl-panel--slim { max-height: calc(100 * var(--nge-vh, 1vh) - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
@@ -5673,4 +6042,48 @@ select.nge-cl-complete-type:hover {
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) { padding-right: 46px; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > :not(.nge-cl-row):not(.nge-cl-slim-expand):not(.nge-cl-slim-next):not(.nge-cl-slim-icon) { margin-right: -46px; }
 .nge-cl-panel--slim .nge-cl-list:has(> .nge-cl-slim-next) > .nge-cl-complete { margin-right: -46px; }
+
+/* ── Pop-out: one help request in its own window (#227) ── */
+.nge-cl-popout {
+  position: fixed; right: 520px; top: 80px; z-index: 10011;
+  width: 420px; height: 520px; min-width: 300px; min-height: 220px;
+  max-width: calc(100 * var(--nge-vw, 1vw) - 16px); max-height: calc(100 * var(--nge-vh, 1vh) - 56px);
+  resize: both; overflow: hidden; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  background: linear-gradient(158deg, rgba(15, 18, 24, 0.97) 0%, rgba(6, 10, 18, 0.98) 100%);
+  border: 1px solid rgba(74, 150, 224, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 0 60px rgba(74, 150, 224, 0.06), inset 0 1px 0 rgba(196, 228, 255, 0.10);
+  backdrop-filter: blur(10px) saturate(1.2);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--nge-fs-base);
+  color: #ccd;
+}
+.nge-cl-popout-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: rgba(30, 30, 60, 0.9);
+  border-bottom: 1px solid rgba(120, 140, 255, 0.08);
+  cursor: grab; user-select: none; touch-action: none; flex: none;
+}
+.nge-cl-popout--dragging .nge-cl-popout-head { cursor: grabbing; }
+.nge-cl-popout-body { flex: 1; overflow-y: auto; padding: 12px 16px 16px; }
+.nge-cl-popout-muted { color: #889; font-size: 13px; }
+.nge-cl-popout-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; color: #aab; }
+.nge-cl-popout-who b { color: #eef; }
+.nge-cl-popout-solved { color: #7f8; font-size: 13px; }
+.nge-cl-popout-cell { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-top: 6px; }
+.nge-cl-popout-question {
+  margin: 12px 0 4px; padding: 10px 12px;
+  font-size: 16px; line-height: 1.5; color: #eef; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: rgba(74, 150, 224, 0.08); border-left: 3px solid rgba(74, 150, 224, 0.6); border-radius: 6px;
+}
+.nge-cl-popout-shot { display: block; margin-top: 8px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.12); }
+.nge-cl-popout-shot img { display: block; width: 100%; height: auto; max-height: 360px; object-fit: contain; background: #000; }
+.nge-cl-popout-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.nge-cl-popout-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(120, 140, 255, 0.1); }
+.nge-cl-popout-form { margin-top: 10px; padding: 0; }
+.nge-cl-popout-replies-title { margin-top: 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #889; }
+.nge-cl-popout-reply { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); font-size: 14px; }
+.nge-cl-popout-reply-text { color: #dde; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 960px) { .nge-cl-popout { right: 8px; } }
 </style>

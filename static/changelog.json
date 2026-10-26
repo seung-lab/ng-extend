@@ -2,6 +2,743 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T15:00:24Z",
+      "title": "Highlights take far less room",
+      "items": [
+        "A highlight now saves as a few smooth lines instead of hundreds of tiny ones, so a saved view with lots of highlights is up to a hundred times smaller and always fits.",
+        "Highlights you made before are made smaller the same way when you open them; they look and work as before."
+      ]
+    },
+    {
+      "at": "2026-10-26T14:59:00Z",
+      "title": "Magic Top Bar",
+      "items": [
+        "A new switch in Settings, under Screen: Magic Top Bar. The views get the whole window, and the top bar comes down when you move the mouse to the top edge or press the \\ key.",
+        "While the bar is hidden, your unread notifications show as a small bell in the corner of the 3D view, and the Pyr gem sits at the left of the layer tabs.",
+        "Top bar icons now grow a little when you point at them.",
+        "Thanks to Nik for both ideas."
+      ]
+    },
+    {
+      "at": "2026-10-26T14:26:16Z",
+      "title": "Your cell keeps its highlights",
+      "items": [
+        "The cell you are working on now saves its own view as you go (a little after you stop, and when you leave the tab), so reopening it brings back all your highlights, even after a reload."
+      ]
+    },
+    {
+      "at": "2026-10-26T01:39:04Z",
+      "title": "Your Month in Science and Monthly Champions",
+      "items": [
+        "On the 1st of each month you get Your Month in Science in My Pyr: your edits, cells completed, achievements, best streak and your place for the month that just ended.",
+        "Opening it shows that whole month in your profile, counted on US Eastern time like the weekly one.",
+        "Monthly Champions arrives in Pyr Updates on the 1st, with the month's top editors and top cell completers."
+      ]
+    },
+    {
+      "at": "2026-10-26T01:00:00Z",
+      "title": "Neater pumpkin card buttons",
+      "digest": "minor",
+      "items": [
+        "The buttons on the pumpkin card now line up, edge to edge."
+      ]
+    },
+    {
+      "at": "2026-10-25T23:40:36Z",
+      "title": "Your Week in Science counts every edit",
+      "items": [
+        "Busy weeks and months showed far too few edits in Your Week in Science (one player saw 24 for a month of over 20,000). It now counts all of them, and cells completed the way the leaderboard does.",
+        "Opening the Sunday Your Week in Science notification now shows that week, not the new one, and every week and month runs on US Eastern time, like the notification."
+      ]
+    },
+    {
+      "at": "2026-10-25T23:40:36Z",
+      "title": "Your share of the week, never 0%",
+      "digest": "minor",
+      "items": [
+        "Your Week in Science shows a small share of the community's edits as 0.1% or under 0.1%, instead of 0%."
+      ]
+    },
+    {
+      "at": "2026-10-25T22:54:00Z",
+      "title": "Smaller hint gems",
+      "items": [
+        "The gems that show where to click in the tutorials and sandboxes are about half the size they were."
+      ]
+    },
+    {
+      "at": "2026-10-25T22:45:00Z",
+      "title": "A tidier Merge tutorial",
+      "items": [
+        "The Merge tutorial is shorter to read, and both merges bring the view in close on the spots to click.",
+        "If you switch merge mode off partway, the box asks you to press M to turn it back on.",
+        "On the second merge the box sits low, so it no longer covers the cell."
+      ]
+    },
+    {
+      "at": "2026-10-25T22:34:00Z",
+      "title": "Pumpkins that grow, and another round",
+      "digest": "minor",
+      "items": [
+        "The Sandbox pumpkins now grow in over their cells once the cells have loaded, and the hammer bar counts them in while they grow.",
+        "When every pumpkin is smashed, the bar offers Again? to grow them back for another round."
+      ]
+    },
+    {
+      "at": "2026-10-25T22:22:00Z",
+      "title": "The Cell Library opens faster",
+      "items": [
+        "On Retina the Cell Library now loads the first 100 cells of a tab, with a Load more button at the bottom for the next 100, instead of every cell at once. My Cells still shows all of your cells.",
+        "The tab counts, Claim a new cell, Claim 10 and the search still cover every cell in the dataset."
+      ]
+    },
+    {
+      "at": "2026-10-25T22:05:00Z",
+      "title": "Watch a cell grow",
+      "items": [
+        "The Δ menu has a Watch it grow button. It opens a slider through every edit of the cell, oldest first, and shows the cell as it was at each one in the 3D view, including branches that were still separate pieces before they were joined on.",
+        "Each step says whether pieces were joined or cut off, who did it and when. The piece joined on shows in yellow and a piece cut off in red, so small edits stand out. Edits by lab members who are not Pyr players show as unknown.",
+        "Press Play to step through on its own, at the speed you choose, for screen recordings. Closing the panel shows today's cell again.",
+        "A bit cut out of another merger and joined on later shows on its own before it joins, without the rest of that merger.",
+        "A cell with hundreds of edits shows 150 of them, spread evenly from first to last."
+      ]
+    },
+    {
+      "at": "2026-10-25T22:04:00Z",
+      "title": "Photo mode: sharper recordings, MP4 and GIF, fades",
+      "items": [
+        "Record spin in photo mode now keeps the thin branches of cells, which used to come out dotted or missing, most of all with a whole class on screen.",
+        "Recordings are saved as MP4, which plays in VLC and most other players, or as a small looping GIF for the forum.",
+        "Photo mode can turn the cell left and right or over the top.",
+        "Speed changes are gradual, and you choose how many seconds they take.",
+        "Fade in and Fade out make the cells appear or disappear slowly, and a recording follows what you do while it turns."
+      ]
+    },
+    {
+      "at": "2026-10-25T21:57:09Z",
+      "title": "My Pyr and Pyr Updates",
+      "items": [
+        "The bell has two tabs: My Pyr for what was sent to you (replies, achievements, your week, your results), and Pyr Updates for news for everyone. It opens on the tab with the newest unread one.",
+        "Pyr Updates older than 5 days count as read, so the daily updates do not pile up, and Mark all read clears both tabs.",
+        "In Settings: Show all notifications in one list, and Show Today in Pyr daily updates."
+      ]
+    },
+    {
+      "at": "2026-10-25T21:53:00Z",
+      "title": "A tidier pumpkin card, and a wink",
+      "digest": "minor",
+      "items": [
+        "The pumpkin button in chat now always opens the pumpkin card, with Hide the pumpkin, Go to the patch, and Smash the pumpkins.",
+        "The chat emoji list has a wink."
+      ]
+    },
+    {
+      "at": "2026-10-25T21:44:00Z",
+      "title": "Smash the pumpkins",
+      "items": [
+        "Grab a hammer and smash the Sandbox pumpkins: press Ctrl+K and type smash, or use Smash the pumpkins on the pumpkin card.",
+        "Each pumpkin you hit breaks into pieces. Once they are smashed they stay off until you press the pumpkin button in chat."
+      ]
+    },
+    {
+      "at": "2026-10-25T21:23:00Z",
+      "title": "A note on neuroglancer's old controls",
+      "digest": "minor",
+      "items": [
+        "In Settings, the switch for neuroglancer's controls button now says that its list is out of date for Pyr, and where to find Pyr's own keyboard shortcuts."
+      ]
+    },
+    {
+      "at": "2026-10-25T21:13:58Z",
+      "title": "Help reminders say which request",
+      "items": [
+        "The Was your help request answered? note now shows what you asked, on which cell, and the reply, with buttons to mark it solved and to open the helper's view."
+      ]
+    },
+    {
+      "at": "2026-10-25T21:10:00Z",
+      "title": "Tidier Settings, Large text, and a fourth pumpkin",
+      "items": [
+        "Settings are sorted into small boxes by topic: 3D looks, Screen, Jumping and views, 2D images, and Chat and notifications. Every setting works as before.",
+        "A new Neuroglancer box gathers the switches that bring back neuroglancer's own controls. Click its (i) to read what neuroglancer is.",
+        "A new Large text switch in Settings, under Screen, makes the text in Pyr's windows, the Cell Library, the bell and the side panel bigger.",
+        "A fourth jack o' lantern has appeared in the Sandbox pumpkin patch, and the pumpkin card has a Hide the pumpkin button."
+      ]
+    },
+    {
+      "at": "2026-10-25T19:31:51Z",
+      "title": "A note while the servers are down",
+      "digest": "minor",
+      "items": [
+        "While our data server is down, a note at the top says so. Merging and cutting still work."
+      ]
+    },
+    {
+      "at": "2026-10-25T19:06:48Z",
+      "title": "Chat no longer asks you to log in when you are",
+      "items": [
+        "If the server was busy for a moment when you signed in, Pyr now tries again for your profile, instead of leaving chat saying Log in to chat until you reloaded."
+      ]
+    },
+    {
+      "at": "2026-10-25T18:55:05Z",
+      "title": "Pick how each cell ended",
+      "items": [
+        "Completing a cell no longer starts with your last answer to How did it end? picked. You choose each time, so a wrong one cannot slip through."
+      ]
+    },
+    {
+      "at": "2026-10-25T18:55:05Z",
+      "title": "Clearer annotation tools",
+      "items": [
+        "In an annotation layer, the Pyr gem comes first, the box, line, ellipse and polyline sit on a line of their own under the points, and the tool you pick is the one lit up."
+      ]
+    },
+    {
+      "at": "2026-10-25T18:51:00Z",
+      "title": "My Cells buttons stay in place",
+      "items": [
+        "In My Cells, Save view now comes first, so the jump, Release and Complete buttons sit in the same place on every row."
+      ]
+    },
+    {
+      "at": "2026-10-25T17:53:54Z",
+      "title": "Cell & Quest celebration switch",
+      "items": [
+        "In Settings, the cell and Quest message is now one switch, Cell & Quest celebration, beside Achievement celebration. Both are on unless you turn them off."
+      ]
+    },
+    {
+      "at": "2026-10-25T17:43:48Z",
+      "title": "Annotation folders keep your place",
+      "items": [
+        "Opening, closing or hiding an annotation folder no longer throws the list down to the bottom; it stays where you were."
+      ]
+    },
+    {
+      "at": "2026-10-25T17:43:48Z",
+      "title": "Merge and cut stay open through a refresh",
+      "items": [
+        "If merge or cut was open when you refreshed, it opens again once the cell has loaded, with your points still there."
+      ]
+    },
+    {
+      "at": "2026-10-25T17:43:48Z",
+      "title": "Quieter celebrations, if you like",
+      "items": [
+        "Settings has a new Achievement celebration switch. Turn it off and achievements no longer pop up with a card and confetti; they are still in your Trophy Case and the bell.",
+        "Submitting a Quest cell now follows the When I complete a cell or a Quest setting, so Nothing really means nothing."
+      ]
+    },
+    {
+      "at": "2026-10-25T16:49:00Z",
+      "title": "No stray glow on cells",
+      "items": [
+        "Points in a Soma, True End, Can't Fix or Hits Edge layer no longer glow on the cell outside MEC. On Retina they showed as a colored patch, as if highlighted."
+      ]
+    },
+    {
+      "at": "2026-10-25T13:21:11Z",
+      "title": "The Lantern bar stays behind your profile",
+      "items": [
+        "Lantern's bar, and the Highlight, Batch and Quests boxes, now tuck behind the profile and the other full-screen windows instead of showing on top of them."
+      ]
+    },
+    {
+      "at": "2026-10-25T00:30:00Z",
+      "title": "Marks open on MEC claims",
+      "items": [
+        "Marks under your MEC claim in the Cell Library are open from the start. Close them and they stay closed in this browser."
+      ]
+    },
+    {
+      "at": "2026-10-25T00:21:00Z",
+      "title": "Number keys pick a layer",
+      "items": [
+        "A number key, 1 to 9, now makes that layer the active one, and Shift + the number shows or hides it. Each layer tab says its keys when you point at it.",
+        "Classic Layers (Click to hide) in Settings puts both back the old way: a click or a number hides or shows a layer.",
+        "Settings can hide the EyeWire Radio speaker in the corner."
+      ]
+    },
+    {
+      "at": "2026-10-25T00:21:00Z",
+      "title": "Mark MEC cells for the lab",
+      "items": [
+        "Under the MEC cell you are working on, the Cell Library has Marks: pick Soma, AIS, True End, Can't Fix or Hits Edge and Ctrl + click the cell to place it, and see what is placed and what is still missing.",
+        "In Marks, a lab layer's number key picks its mark, so you can switch marks without clicking.",
+        "The soma is quick: the starting point is the nucleus, so Go to the starting point, check it is in the soma, and Confirm soma here.",
+        "Highlight opens on MEC too, with the same lab marks, and your highlight colors mark spots: one click, and the spot glows on the cell in its color.",
+        "When you complete an MEC cell, the Complete form lists the marks, and the lab's sheet gets how many of each you placed."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:19:00Z",
+      "title": "Sandboxes keep your progress on a cell",
+      "items": [
+        "In the Merger and Extension Sandboxes, pressing Next before you are done now says what is left and keeps your work. It used to put the cell back, so a half finished cell had to be done again.",
+        "The Extension Sandbox starts with the easy cell, one merge, before the one that needs two."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:07:00Z",
+      "title": "The Cell Library comes back after a refresh, and tidier Find Path boxes",
+      "items": [
+        "Refresh the page with the Cell Library open and it opens again on the same tab, still slimmed to the cell you were on.",
+        "In Find Path, the start and end points each sit on one short line, labelled source and target."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:01:05Z",
+      "title": "The merge and cut bar no longer covers the Segments list",
+      "items": [
+        "While merging or cutting, the side panel ends above the tool bar, so the last cells in the Segments list can be reached."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:01:05Z",
+      "title": "Your country and bio follow you to a new browser",
+      "items": [
+        "Sign in on a browser you have not used before and your profile shows your country and bio, instead of looking empty."
+      ]
+    },
+    {
+      "at": "2026-10-24T23:01:05Z",
+      "title": "The Selection box stays shut while you merge and cut",
+      "items": [
+        "Placing merge and cut points no longer throws the Selection box open (it often said Annotation not found). It still opens for your own annotation layers."
+      ]
+    },
+    {
+      "at": "2026-10-24T22:22:00Z",
+      "title": "Open a help request in its own window",
+      "digest": "minor",
+      "items": [
+        "In the Cell Library, the new pop out button on a help request opens it in its own window, so the question is easy to read.",
+        "The window shows who asked, the cell, the question, their picture and every reply, with buttons to reply, jump to the cell and mark it solved.",
+        "Drag the window by its top bar and resize it from its corner. It remembers where you put it.",
+        "Thanks to annkri for the idea."
+      ]
+    },
+    {
+      "at": "2026-10-24T20:38:54Z",
+      "title": "Annotation folders you can place into and hide",
+      "digest": "minor",
+      "items": [
+        "Click the target on an annotation folder and every annotation you place goes into that folder. Click it again to stop.",
+        "Click a folder's eye to hide its annotations in the 2D and 3D views, handy for a part of a big cell you are finished with. They stay in the list, dimmed.",
+        "Thanks to annkri for the idea."
+      ]
+    },
+    {
+      "at": "2026-10-24T20:06:48Z",
+      "title": "Find Path stops when you close it",
+      "items": [
+        "Closing Find Path stops a path still being traced. A path that takes too long now gives up after a minute or so (a minute and a half with Precision mode) and says what to try, instead of tracing forever."
+      ]
+    },
+    {
+      "at": "2026-10-24T19:58:09Z",
+      "title": "Pasted coordinates find the cell in 3D only",
+      "items": [
+        "Paste coordinates into the Segments box while only the 3D view is showing, and the cell there loads: split screen opens for a moment to look, then goes back."
+      ]
+    },
+    {
+      "at": "2026-10-24T19:21:01Z",
+      "title": "Team up is resting for now",
+      "items": [
+        "Team up and the Teams tab are put away for now."
+      ]
+    },
+    {
+      "at": "2026-10-24T19:07:36Z",
+      "title": "MEC cells come with their layers",
+      "items": [
+        "Claim an MEC cell and it opens with the AIS, True End, Can't Fix and Hits Edge layers ready, and the Cell Library's instructions for MEC are in the game."
+      ]
+    },
+    {
+      "at": "2026-10-24T17:11:00Z",
+      "title": "Edits count after an outage",
+      "items": [
+        "If the Pyr server is down for a while, your splits and merges from that time still count once it is back, for up to three days."
+      ]
+    },
+    {
+      "at": "2026-10-24T17:09:28Z",
+      "title": "A tighter menu that scrolls",
+      "items": [
+        "The menu is tighter, and it scrolls when your window is too short to show all of it.",
+        "MEC's Cell Library no longer starts with an empty entry.",
+        "Announcements in chat no longer start with a megaphone; they have their picture."
+      ]
+    },
+    {
+      "at": "2026-10-24T17:04:00Z",
+      "title": "A ninth merger, a harder one",
+      "items": [
+        "The Merger Sandbox has a ninth merger: two branches crossing in an X, with no clear border between them."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:46:00Z",
+      "title": "Meet the cells of the retina",
+      "digest": "headline",
+      "items": [
+        "New in the Cell Library on Retina: Meet the cells, one example of each of the 117 cell types identified in the Eyewire II dataset, most common first.",
+        "Click a type to see its cell alone in 3D and turn it, or show a whole class, or all 117, together in their places in the retina, each type in its own color.",
+        "Each class comes with a short note on what it does, and Back to my view puts your own view back."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:45:00Z",
+      "title": "Claim buttons only where you can claim",
+      "digest": "minor",
+      "items": [
+        "In Switch Dataset, the Available cells, Quests and My cells buttons now show only on datasets where you can claim cells."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:41:52Z",
+      "title": "The window you click comes to the front",
+      "items": [
+        "Click into chat and it comes in front of the Cell Library; click the Cell Library and it comes back in front. The same goes for the other floating windows."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:18:00Z",
+      "title": "Pyr is invite only for now",
+      "digest": "minor",
+      "items": [
+        "Players who are not in the beta yet see a short form after signing in, where they can ask to join with their name, email and an optional note."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:17:00Z",
+      "title": "A third cell in the Extension Sandbox",
+      "items": [
+        "The Extension Sandbox has a new easy cell: an axon to extend by one piece. The black spill cell is now third."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:04:39Z",
+      "title": "Bigger text when replying to a help request",
+      "digest": "minor",
+      "items": [
+        "In the Cell Library's Help tab, the box where you write a reply, the view link box and their buttons now use larger, easier to read text."
+      ]
+    },
+    {
+      "at": "2026-10-24T16:01:00Z",
+      "title": "A clearer Get Started tutorial",
+      "items": [
+        "Get Started has new wording, the key and mouse actions in bold, and a small mouse picture showing which button to use.",
+        "The 2D EM tab glows when the tutorial asks you to open it, and the hint points no longer show twice.",
+        "Merge and Cut are switched off during Get Started, so the lesson stays the same for everyone. It now ends with a clear finish and the Merge tutorial.",
+        "The burger menu opens in front of the tutorial box.",
+        "The Extension Sandbox has a second cell: extending a branch through a black spill."
+      ]
+    },
+    {
+      "at": "2026-10-24T15:45:00Z",
+      "title": "The Extension Sandbox, and an eighth merger",
+      "digest": "headline",
+      "items": [
+        "New in the burger menu: the Extension Sandbox. Each cell stops too soon, with the rest of it left behind as separate pieces. Find where it ends early and merge the missing pieces back on.",
+        "The Merger Sandbox has an eighth merger to cut."
+      ]
+    },
+    {
+      "at": "2026-10-24T15:26:51Z",
+      "title": "Help replies take you to the request, and Assists",
+      "digest": "minor",
+      "items": [
+        "Open in Help tab on a reply to your help request now opens that request, highlighted, even when it is on another dataset.",
+        "The Help tab has All requests and Mine, so you can see just your own requests.",
+        "Assists on a profile now counts the other players' help requests you replied to, one each, and shows on every player's profile.",
+        "On a short screen the profile Overview scrolls instead of cutting off the Scout Report and your cells."
+      ]
+    },
+    {
+      "at": "2026-10-24T14:01:30Z",
+      "title": "Cut tutorial waits for both red points",
+      "items": [
+        "In the Cut tutorial, Now press G comes up once both red points are placed, as the step asks, not after the first."
+      ]
+    },
+    {
+      "at": "2026-10-24T13:35:29Z",
+      "title": "No empty help requests",
+      "items": [
+        "A help request needs a few words or a screenshot before it is sent, so a stray Enter in the help box no longer posts an empty request to chat."
+      ]
+    },
+    {
+      "at": "2026-10-24T11:52:00Z",
+      "title": "Straight to the work from Switch Dataset",
+      "digest": "minor",
+      "items": [
+        "In Switch Dataset, the Retina, MEC and Sandbox cards now have buttons that take you straight to Available cells, your own cells or Quests. One click switches if needed and opens the Cell Library on that tab, after you are signed in and the dataset is on screen."
+      ]
+    },
+    {
+      "at": "2026-10-24T11:52:00Z",
+      "title": "Picture notes show the picture big",
+      "digest": "minor",
+      "items": [
+        "A notification with just a title and a picture now shows the title on top and the picture across the whole window, like a video note."
+      ]
+    },
+    {
+      "at": "2026-10-23T21:02:58Z",
+      "title": "Today in Pyr counts what players did",
+      "items": [
+        "The daily Today in Pyr note now shows how many edits players made and how many cells they completed since the last one, under the picture."
+      ]
+    },
+    {
+      "at": "2026-10-23T20:30:24Z",
+      "title": "Split screen opens without a flash",
+      "items": [
+        "Opening split screen from the 2D tab no longer flashes a grey panel, and the layer tabs keep their names instead of blinking to img for a moment. The 2D view's background is black now, like the 3D view's."
+      ]
+    },
+    {
+      "at": "2026-10-23T20:23:25Z",
+      "title": "Chat emoji fit a narrow chat",
+      "items": [
+        "Reacting in chat: the row of emoji opens above the button and stays inside the chat, so on a narrow chat the first ones are no longer cut off."
+      ]
+    },
+    {
+      "at": "2026-10-23T20:17:21Z",
+      "title": "Old notifications stay read",
+      "items": [
+        "Notifications you had already read were showing as unread again since this afternoon. They are read again, and reading one in one Pyr tab now marks it read in your other tabs too."
+      ]
+    },
+    {
+      "at": "2026-10-23T20:06:02Z",
+      "title": "Claim the next 3 Quest cells at once",
+      "items": [
+        "Quests: a Claim next 3 button in the Open list claims the next open cells in one press, up to the 3 you can hold, and opens the first."
+      ]
+    },
+    {
+      "at": "2026-10-23T18:21:33Z",
+      "title": "Clearer layer tabs, and four fixes",
+      "items": [
+        "The selected layer tab is filled in more strongly, with its name in bold, so you can tell at a glance which one you are on.",
+        "Ask for Edit Access is now number 5 in the menu, straight after Advanced Interface.",
+        "Reacting to an announcement in chat: the row of emoji no longer runs off the left edge of the chat.",
+        "Notifications you had read no longer come back as unread.",
+        "Screenshot, whole screen: when drawing the page takes too long, the window now asks you to press Capture screen instead of failing with an error."
+      ]
+    },
+    {
+      "at": "2026-10-23T18:21:33Z",
+      "title": "Saves that fail are tried again",
+      "items": [
+        "When the server does not answer, your splits, merges, completions and cell types now wait in your browser and are sent again until they go through, even after a reload. A small note at the bottom of the screen says Couldn't save, retrying, and then Saved.",
+        "Release Claim in the cell menu now says so when the release did not go through, instead of saying Released."
+      ]
+    },
+    {
+      "at": "2026-10-23T18:13:40Z",
+      "title": "Every key in one list",
+      "items": [
+        "Press ? (or type keys in the Ctrl+K box) to see every key in Pyr, grouped as Moving around, Editing, Tools and Panels. Click one to try it. The menu has it too, under Keyboard shortcuts.",
+        "Commands found with Ctrl+K show their key on the right."
+      ]
+    },
+    {
+      "at": "2026-10-23T18:04:39Z",
+      "title": "Videos in notifications: Watch on YouTube",
+      "digest": "minor",
+      "items": [
+        "Under a video in a notification, the link now says Watch on YouTube (or Vimeo, or Google Drive) instead of the web address, and opens in a new tab."
+      ]
+    },
+    {
+      "at": "2026-10-23T14:28:17Z",
+      "title": "Q and W step through slices",
+      "items": [
+        "The slice keys are now Q (back) and W (forward), not Z and X: Z is snap again, as it always was."
+      ]
+    },
+    {
+      "at": "2026-10-23T14:20:12Z",
+      "title": "Shift+Delete removes a cell",
+      "items": [
+        "Point at a cell, in the 2D or 3D view or in the segment list, and press Shift+Delete to remove it from your list, as its trash button does. Ctrl+Z brings it back."
+      ]
+    },
+    {
+      "at": "2026-10-23T14:07:03Z",
+      "title": "Scheduled notifications show up",
+      "items": [
+        "A notification the team wrote ahead of time now appears at the top of your bell when it goes out, with its picture in chat, instead of being lost further down."
+      ]
+    },
+    {
+      "at": "2026-10-23T14:07:03Z",
+      "title": "Hide announcements in chat",
+      "items": [
+        "Announcements in chat, like Today in Pyr, have an × to hide them from your chat. They stay in your notifications."
+      ]
+    },
+    {
+      "at": "2026-10-23T14:07:03Z",
+      "title": "Z and X step through slices",
+      "items": [
+        "Press Z and X to step back and forward one slice at a time, as COMMA and PERIOD do, so you can keep your other hand on the trackpad or mouse."
+      ]
+    },
+    {
+      "at": "2026-10-23T14:07:03Z",
+      "title": "EyeWire Radio plays in one tab at a time",
+      "items": [
+        "With Pyr open in several tabs, only one plays EyeWire Radio. A new tab stays quiet while another is playing, and turning the radio on in a tab moves the music there."
+      ]
+    },
+    {
+      "at": "2026-10-23T13:52:35Z",
+      "title": "Right click works right up to the edge of the data",
+      "items": [
+        "In the 2D view, a right click on a cell near the edge of the dataset moves you there again. Only clicks outside the data are ignored."
+      ]
+    },
+    {
+      "at": "2026-10-23T13:52:35Z",
+      "title": "Videos play inside notifications",
+      "items": [
+        "A notification with a video link (YouTube, Vimeo, Google Drive or a video file) now plays the video right inside it when you open it."
+      ]
+    },
+    {
+      "at": "2026-10-22T21:20:24Z",
+      "title": "A steadier bottom of the screen in cut mode",
+      "items": [
+        "When several messages come up in a row, as cut and merge errors can, only the newest shows, so the bars and the legend at the bottom stay where they are.",
+        "The big \"Now press G\" prompt in cut mode only shows during the Cut tutorial, not in your own cutting."
+      ]
+    },
+    {
+      "at": "2026-10-22T21:00:39Z",
+      "title": "Merge and cut mode carry on to your next cell",
+      "items": [
+        "With merge or cut mode on, moving to your next cell (after completing one, claiming one, or a jump) used to leave the mode on screen but not working until you switched it off and on. It now works straight away in the new cell."
+      ]
+    },
+    {
+      "at": "2026-10-22T20:56:14Z",
+      "title": "A clearer middle for the cursor",
+      "items": [
+        "The target cursor's lines now stay outside its circle, so only a small dot sits over what you are looking at."
+      ]
+    },
+    {
+      "at": "2026-10-22T16:12:13Z",
+      "title": "Tutorials mention the 2D EM tab",
+      "items": [
+        "Get Started and Advanced Interface now say you can click the 2D EM tab, as well as press SPACE, to open the split screen."
+      ]
+    },
+    {
+      "at": "2026-10-22T16:04:41Z",
+      "title": "The 2D EM tab shows and hides 2D",
+      "items": [
+        "Clicking the 2D EM tab at the top now switches the 2D view on and off: split screen or 3D only. Right click still turns the layer on and off. Its side panel is under Settings, Advanced."
+      ]
+    },
+    {
+      "at": "2026-10-22T16:04:41Z",
+      "title": "Right clicks stay inside the data",
+      "items": [
+        "A right click in the 2D view on the box around a dataset, or out past it, no longer moves you there. Inside the data, a right click still moves the view to that spot."
+      ]
+    },
+    {
+      "at": "2026-10-22T15:58:50Z",
+      "title": "The hovered cell in 2D keeps your opacity",
+      "items": [
+        "With the new 3D Hover looks, the cell under your mouse in 2D no longer turns almost solid: it keeps the opacity set in the Render tab."
+      ]
+    },
+    {
+      "at": "2026-10-22T15:50:00Z",
+      "title": "2D images from Asia",
+      "items": [
+        "Players in Asia can load the 2D images for EyeWire II, MEC and the Sandbox from a copy hosted in Asia, which is much faster there.",
+        "Settings has a new choice, 2D images load from: Automatic, Americas or Asia. Automatic checks once which copy is faster for you and uses it.",
+        "If your 2D images keep loading slowly and the Asia copy would be faster, Pyr offers to switch."
+      ]
+    },
+    {
+      "at": "2026-10-22T15:20:10Z",
+      "title": "Can't Complete no longer marks a cell proofread",
+      "items": [
+        "Can't Complete no longer marks the cell proofread for the lab. It still ends your claim, counts as your completed cell, and records Can't Complete with your note in the cell sheet.",
+        "The Can't complete button in the Δ menu shows only on cells that are in the Cell Library's sheet."
+      ]
+    },
+    {
+      "at": "2026-10-22T14:40:34Z",
+      "title": "Can't complete in the Δ menu",
+      "items": [
+        "The Δ menu of a Cell Library cell has a Can't complete button under Mark as Proofread. It opens the usual form with Can't Complete already chosen, so you only add why."
+      ]
+    },
+    {
+      "at": "2026-10-22T14:19:18Z",
+      "title": "A friendlier Merge Queue",
+      "items": [
+        "In merge mode, each cell in the Merge Queue is shown in its own colour, as in the segment list.",
+        "Hovering a cell in the Merge Queue lights it up in the views, and right clicking it takes you to it.",
+        "With the Pulse hover look, a cell you point at in the segment list or the Merge Queue now glows in 3D."
+      ]
+    },
+    {
+      "at": "2026-10-22T14:11:12Z",
+      "title": "A smaller cursor on a laptop",
+      "items": [
+        "On a laptop or a smaller window, the target cursor is a size smaller, so it does not cover the cell. Extra large cursor in Settings keeps its size."
+      ]
+    },
+    {
+      "at": "2026-10-22T13:59:25Z",
+      "title": "3D Hover: a new Hologram",
+      "items": [
+        "Hologram now turns the cell into cyan light, or your pulse colour: a bright body glowing brightest at its edges, a fine sprinkle of dots and a soft glow around it, instead of dark stripes.",
+        "New players now start with Spotlight. If you were already playing, your look stays as it was."
+      ]
+    },
+    {
+      "at": "2026-10-22T13:45:17Z",
+      "title": "A target cursor",
+      "items": [
+        "A new cursor over the 2D and 3D views: a white target with a dark edge that is easy to spot on the EM images, and a little lighter over 3D. On a big screen, Settings has an Extra large cursor.",
+        "Right clicking the box drawn around a dataset no longer moves you to that box."
+      ]
+    },
+    {
+      "at": "2026-10-22T13:16:11Z",
+      "title": "Straight on to Merge",
+      "digest": "minor",
+      "items": [
+        "Get Started ends with a Start Merge button.",
+        "Leaving a tutorial reminds you that all the tutorials live in the hamburger menu."
+      ]
+    },
+    {
+      "at": "2026-10-22T00:48:24Z",
+      "title": "Cell types come back after a server hiccup",
+      "items": [
+        "When the lab's server has a hiccup, cell types no longer look lost: Pyr keeps asking every 30 seconds and shows them again once the server answers.",
+        "The Δ menu says when it could not reach the lab's server to check a cell's type, instead of saying the cell has no type."
+      ]
+    },
+    {
       "at": "2026-10-22T00:05:00Z",
       "title": "Slim view: claim your next cell from the bar",
       "items": [

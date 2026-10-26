@@ -438,6 +438,7 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foo
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-foot button.next { padding: 6px 12px !important; font-size: 11px !important; min-width: 0 !important; }
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) button.exit { top: 15px !important; }
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .title,
+body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-tut-pencil,
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-readout,
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .progressBarContainer,
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-count em { display: none !important; }
@@ -498,3 +499,8 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-sbx-node
 /* Slim bar: no grip mark (the six dots at the top left). The bar can still
    be dragged from anywhere on it, as every tutorial box can. */
 body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-drag { display: none !important; }
+
+/* The burger menu opened from a tutorial box comes up in front of the box,
+   not behind it (Ames, 2026-10-24, Get Started's menu step). */
+body:has(#hamburger.open) .introductionStepAnchor { z-index: 2 !important; }
+body:has(#hamburger.open) #hamburger .dropdownMenu { z-index: 1000 !important; }

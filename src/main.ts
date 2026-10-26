@@ -1,4 +1,6 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startClaimAutosave } from './util/claim_autosave';
+import { startImageSource } from './util/image_source';
 import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
 import { startImageLoadingHint } from './util/image_loading_hint';
@@ -6,6 +8,7 @@ import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
+import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
@@ -14,10 +17,13 @@ import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startTabs } from './util/tabs';
+import { showOutageBanner } from './util/outage_banner';
+import { startPanelFront } from './util/panel_front';
 import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
 import { startViewerPerf } from './util/viewer_perf';
 import { startThreeDControls } from './util/three_d_controls';
+import { startKeepToolAcrossViews } from './util/keep_tool_across_views';
 import { startCutPreview } from './util/cut_preview';
 import { hideCellsOfKind, showHiddenCells, type HideResult, type CellKind } from './util/hide_completed';
 import GrowingCell from 'components/GrowingCell.vue';
@@ -77,6 +83,8 @@ import {verifyObject, verifyObjectProperty, verifyString} from 'neuroglancer/uti
 import {getLayerScales} from "./widgets/widget_utils";
 import {registerFreeRotateCubeAnnotationTool} from "./widgets/free_rotate_cube_annotation";
 import pyrIconUrl from './images/pyr-icon.png';
+// The triage page's own gem, gold and pink, so its tab stands apart from the game's (Ames 2026-10-23).
+import pyrTriageIconUrl from './images/pyr-icon-triage.png';
 import {clearStaleCutPoints} from './util/stale_cut_points';
 
 declare var NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string|undefined;
@@ -140,7 +148,7 @@ function injectNeuronFavicon() {
   const link = document.createElement('link');
   link.rel = 'icon';
   link.type = 'image/png';
-  link.href = pyrIconUrl;
+  link.href = isTriagePage() ? pyrTriageIconUrl : pyrIconUrl;
   document.head.appendChild(link);
   // Also set the page title (neuroglancer's bindTitle keeps it, see
   // third_party/neuroglancer/ui/title.ts)
@@ -179,6 +187,8 @@ window.addEventListener('DOMContentLoaded', () => {
   startCalm();
   // Other Pyr tabs in this browser, and a notice if the views stop drawing.
   startTabs();
+  showOutageBanner();
+  startPanelFront();
   startContextLostNotice();
   // P over a cell in 3D: it sends a ring of light along itself.
   startPulseKey();
@@ -192,6 +202,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const viewer = setupViewer();
   // const viewer = setupDefaultViewer();
   initializeWithViewer(viewer);
+  // Where the 2D images load from (Americas or Asia), and the slow 2D note.
+  startImageSource(viewer);
   loadVolumes(viewer);
   installShowcase();
   runPendingDatasetTour();
@@ -402,6 +414,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startClaimAutosave(viewer);
   // The active quest's annotations, saved to that quest cell as they change.
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
@@ -410,8 +423,11 @@ function setupViewer() {
   startSpooky(viewer);
   startPumpkin(viewer);
   startInvalidSegmentWatch(viewer);
+  recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
+  // Merge or cut mode keeps working in a view loaded in place (Nseraf #203).
+  startKeepToolAcrossViews();
   startCloseGuard();
   // Saves that waited for CAVE while it was down go out once it is back.
   startCaveOutbox();
@@ -1032,9 +1048,11 @@ function observeSplitMergeTools() {
         const points = sub.querySelectorAll('.graphene-merge-segments-point');
         const pair: string[] = [];
         points.forEach(pt => {
-          // Segment ID is in the text of the widget (first line of the double-line entry)
-          const text = (pt.textContent || '').trim().split('\n')[0].trim();
-          if (text) pair.push(text);
+          // The segment ID is the long number in the widget's text. The text
+          // can carry more than the number, and then hovering the queue lit
+          // nothing up (Nseraf #198): keep the number alone.
+          const id = (pt.textContent || '').match(/\d{6,20}/)?.[0];
+          if (id) pair.push(id);
         });
         if (pair.length > 0) {
           segments.push(pair);

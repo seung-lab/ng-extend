@@ -94,7 +94,7 @@
   bottom: 7px;
   z-index: 60;
   flex: none;
-  max-width: 40vw;
+  max-width: calc(40 * var(--nge-vw, 1vw));
   padding: 2px 8px;
   border-radius: 5px;
   background: rgba(4, 8, 18, 0.75);
@@ -116,6 +116,10 @@ label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-b
 body.nge-radio-on label.perspective-panel-show-slice-views { right: 46px; bottom: calc(10px + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
+/* The merge and cut bar runs the full width of the window and covered the
+   foot of the side panels, the last cells of the Segments list among them
+   (Ames 2026-10-24). While it is open the panels end above it. */
+body.nge-tool-bar-open .neuroglancer-side-panel { padding-bottom: calc(var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); box-sizing: border-box; }
 .neuroglancer-mouse-position-widget:empty {
   display: none;
 }
@@ -358,9 +362,12 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
   /* reaches the shape's very top, so the trace is the only top edge */
   inset: 3px 1px 1px 1px;
   clip-path: polygon(4px 0, calc(100% - 9px) 0, 100% 10px, 100% 100%, 6.4px 100%, 0 calc(100% - 6.4px), 0 5.2px);
-  background: linear-gradient(180deg, #1c3a66, #0d1d3a 70%);
+  /* a stronger fill, so the selected tab reads at a glance (player request,
+     Ames 2026-10-23); it was close to the others' */
+  background: linear-gradient(180deg, #3a72c0, #1f4580 80%);
 }
-.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #f2f8ff; }
+.neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label { color: #ffffff; font-weight: 700 !important; text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8); }
+body.nge-friendly-layers .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-label[data-nge-label]::after { font-weight: 700 !important; }
 .neuroglancer-layer-item[data-selected=true] .neuroglancer-layer-item-number { background: #7ee0ff !important; color: #04101f !important; }
 /* a layer that answers clicks: no box inside the box, the name carries a small lit point */
 .neuroglancer-layer-item[data-pick="true"] .neuroglancer-layer-item-label {
@@ -385,7 +392,7 @@ body.nge-friendly-layers .neuroglancer-layer-item-label[data-nge-label]::after {
 .neuroglancer-layer-item[data-tinted="true"] .neuroglancer-layer-item-number { background: var(--nge-layer-color) !important; color: #05080f !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true] { background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 55%, #ffffff) 0%, var(--nge-layer-color) 34%, transparent 96%) !important; }
 .neuroglancer-layer-item[data-tinted="true"][data-selected=true]::before {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 30%, #101c34), color-mix(in srgb, var(--nge-layer-color) 12%, #0a1326) 70%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--nge-layer-color) 70%, #101c34), color-mix(in srgb, var(--nge-layer-color) 44%, #0a1326) 80%);
 }
 /* ── The selected tab's edge is a circuit trace (Ames 2026-10-06, after her
       own chip drawings) ────────────────────────────────────────────────────
@@ -1246,8 +1253,8 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
    defeated per-panel clamps (the old Settings bug). Glow via box-shadow is
    not clipped by overflow, so the holo treatment survives. */
 .nge-overlay.modal.overlay-content {
-  max-height: calc(100vh - 24px) !important;
-  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100 * var(--nge-vh, 1vh) - 24px) !important;
+  max-width: calc(100 * var(--nge-vw, 1vw) - 24px) !important;
   overflow: auto !important;
   box-sizing: border-box;
 }
@@ -1287,6 +1294,15 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
   backdrop-filter: blur(6px);
   color: #dce9fb;
   font: 500 12.5px/1.4 'Inter', 'Roboto', sans-serif;
+}
+/* Only the newest plain message shows (Nseraf: in cut and merge mode the
+   errors stacked up line after line, and the bar, the cut bar and the
+   TODO / PROOFREAD legend all rose with them; "They should stay
+   stationary"). A line with a newer shown plain line after it is hidden.
+   !important: neuroglancer shows each line with an inline display: block,
+   which beat this rule (Ames 2026-10-23: still four lines). */
+#statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status):has(~ li:not(.neuroglancer-tool-status):not(.nge-fp-status):not([style*="display: none"])) {
+  display: none !important;
 }
 #statusContainer li:not(.neuroglancer-tool-status):not(.nge-fp-status)::before {
   content: '';
@@ -1515,7 +1531,7 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
    scrolls when everything will not fit. */
 .neuroglancer-segment-display-tab { overflow-y: auto !important; }
 .nge-seg-list--folder, .nge-seg-list--pasted { flex: 0 1 auto !important; max-height: 220px !important; }
-.nge-seg-list-group--inview > .neuroglancer-segment-list { flex: 1 1 auto !important; min-height: min(320px, 45vh); }
+.nge-seg-list-group--inview > .neuroglancer-segment-list { flex: 1 1 auto !important; min-height: min(320px, calc(45 * var(--nge-vh, 1vh))); }
 
 /* the heading's icons keep their place while hidden, so nothing on the
    heading moves when the pointer comes over it (Ames 2026-10-14) */
@@ -1632,7 +1648,7 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
   display: flex; align-items: center; justify-content: center;
 }
 .nge-confirm {
-  min-width: 300px; max-width: min(420px, calc(100vw - 32px));
+  min-width: 300px; max-width: min(420px, calc(100 * var(--nge-vw, 1vw) - 32px));
   padding: 18px 20px 16px; border-radius: 12px;
   background: linear-gradient(180deg, rgba(18, 28, 50, 0.98), rgba(10, 16, 30, 0.98));
   border: 1px solid rgba(140, 180, 235, 0.3);
@@ -1772,7 +1788,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .nge-confirm-buttons--choices { flex-wrap: wrap; }
 .nge-seg-list-group--folder .nge-h-hover .nge-seg-remove-all { display: none !important; }
 
-.nge-confirm:has(.nge-confirm-buttons--choices) { max-width: min(560px, calc(100vw - 32px)); }
+.nge-confirm:has(.nge-confirm-buttons--choices) { max-width: min(560px, calc(100 * var(--nge-vw, 1vw) - 32px)); }
 
 /* Heading buttons: room between them, lined up against the right edge (the
    ungroup cross ends where + Folder ends); the eye stays where it is. */
@@ -2056,3 +2072,38 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .neuroglancer-layer-list-panel-item input[type="checkbox"] { accent-color: #42d5ec; margin: 0; cursor: pointer; }
 .neuroglancer-layer-list-panel-item .neuroglancer-icon { opacity: 0.75; }
 .neuroglancer-layer-list-panel-item .neuroglancer-icon:hover { opacity: 1; }
+
+/* ── The cursor over the 2D and 3D views: a target (Nseraf #196: "I sometimes
+   'lose' the cursor, especially when over 2D"; Ames 2026-10-22: like
+   EyeWire's, a circle, four short lines at its edges and a dot in the
+   middle, with "a slightly cool scifi vibe"; the lines stay outside the circle,
+   so only the dot is in the middle). White with a bold black edge,
+   so it stays clear on busy EM. 40 px suits a laptop's smaller views; 56 px
+   with Settings > Extra large cursor, for a big screen.
+   Tools that set their own cursor still win (their rules are !important). */
+.neuroglancer-rendered-data-panel {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cg stroke='%23000' stroke-width='4.80' stroke-opacity='.9'%3E%3Ccircle cx='20.0' cy='20.0' r='10.80'/%3E%3Cpath d='M20.0 2.40V7.55M20.0 32.45V37.60M2.40 20.0H7.55M32.45 20.0H37.60'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='2.10' stroke-opacity='1'%3E%3Ccircle cx='20.0' cy='20.0' r='10.80'/%3E%3Cpath d='M20.0 2.40V7.55M20.0 32.45V37.60M2.40 20.0H7.55M32.45 20.0H37.60'/%3E%3C/g%3E%3C/g%3E%3Ccircle cx='20.0' cy='20.0' r='2.30' fill='%23000' fill-opacity='.9'/%3E%3Ccircle cx='20.0' cy='20.0' r='1.40' fill='%23fff'/%3E%3C/svg%3E") 20 20, crosshair;
+}
+/* Settings > "Extra large cursor": a size up, for a big screen. */
+body.nge-cursor-xl .neuroglancer-rendered-data-panel {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cg stroke='%23000' stroke-width='5.60' stroke-opacity='.9'%3E%3Ccircle cx='28.0' cy='28.0' r='15.12'/%3E%3Cpath d='M28.0 2.80V10.98M28.0 45.02V53.20M2.80 28.0H10.98M45.02 28.0H53.20'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='2.60' stroke-opacity='1'%3E%3Ccircle cx='28.0' cy='28.0' r='15.12'/%3E%3Cpath d='M28.0 2.80V10.98M28.0 45.02V53.20M2.80 28.0H10.98M45.02 28.0H53.20'/%3E%3C/g%3E%3C/g%3E%3Ccircle cx='28.0' cy='28.0' r='2.60' fill='%23000' fill-opacity='.9'/%3E%3Ccircle cx='28.0' cy='28.0' r='1.70' fill='%23fff'/%3E%3C/svg%3E") 28 28, crosshair;
+}
+/* Over 3D, a lighter one (Ames 2026-10-22: "less bold look when over 3D"):
+   the 3D background is plain black, so lighter lines than over the EM. */
+.nge-3d-panel.neuroglancer-rendered-data-panel {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cg stroke='%23000' stroke-width='3.60' stroke-opacity='.7'%3E%3Ccircle cx='20.0' cy='20.0' r='10.80'/%3E%3Cpath d='M20.0 1.80V7.75M20.0 32.25V38.20M1.80 20.0H7.75M32.25 20.0H38.20'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='1.70' stroke-opacity='1'%3E%3Ccircle cx='20.0' cy='20.0' r='10.80'/%3E%3Cpath d='M20.0 1.80V7.75M20.0 32.25V38.20M1.80 20.0H7.75M32.25 20.0H38.20'/%3E%3C/g%3E%3C/g%3E%3Ccircle cx='20.0' cy='20.0' r='2.20' fill='%23000' fill-opacity='.7'/%3E%3Ccircle cx='20.0' cy='20.0' r='1.30' fill='%23fff'/%3E%3C/svg%3E") 20 20, crosshair;
+}
+body.nge-cursor-xl .nge-3d-panel.neuroglancer-rendered-data-panel {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cg stroke='%23000' stroke-width='4.30' stroke-opacity='.7'%3E%3Ccircle cx='28.0' cy='28.0' r='15.12'/%3E%3Cpath d='M28.0 2.15V11.23M28.0 44.77V53.85M2.15 28.0H11.23M44.77 28.0H53.85'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='2.10' stroke-opacity='1'%3E%3Ccircle cx='28.0' cy='28.0' r='15.12'/%3E%3Cpath d='M28.0 2.15V11.23M28.0 44.77V53.85M2.15 28.0H11.23M44.77 28.0H53.85'/%3E%3C/g%3E%3C/g%3E%3Ccircle cx='28.0' cy='28.0' r='2.50' fill='%23000' fill-opacity='.7'/%3E%3Ccircle cx='28.0' cy='28.0' r='1.60' fill='%23fff'/%3E%3C/svg%3E") 28 28, crosshair;
+}
+/* A smaller window (a laptop): the target at 30 px, so it does not hide
+   the cell (Ames 2026-10-22: "a bit too large on a smaller screen"). The
+   Extra large setting is a choice, and keeps its size. */
+@media (max-width: 1799px) {
+  body:not(.nge-cursor-xl) .neuroglancer-rendered-data-panel {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cg stroke='%23000' stroke-width='4.20' stroke-opacity='.9'%3E%3Ccircle cx='15.0' cy='15.0' r='8.10'/%3E%3Cpath d='M15.0 2.10V5.40M15.0 24.60V27.90M2.10 15.0H5.40M24.60 15.0H27.90'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='1.80' stroke-opacity='1'%3E%3Ccircle cx='15.0' cy='15.0' r='8.10'/%3E%3Cpath d='M15.0 2.10V5.40M15.0 24.60V27.90M2.10 15.0H5.40M24.60 15.0H27.90'/%3E%3C/g%3E%3C/g%3E%3Ccircle cx='15.0' cy='15.0' r='2.10' fill='%23000' fill-opacity='.9'/%3E%3Ccircle cx='15.0' cy='15.0' r='1.20' fill='%23fff'/%3E%3C/svg%3E") 15 15, crosshair;
+  }
+  body:not(.nge-cursor-xl) .nge-3d-panel.neuroglancer-rendered-data-panel {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cg stroke='%23000' stroke-width='3.00' stroke-opacity='.7'%3E%3Ccircle cx='15.0' cy='15.0' r='8.10'/%3E%3Cpath d='M15.0 1.50V5.60M15.0 24.40V28.50M1.50 15.0H5.60M24.40 15.0H28.50'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='1.40' stroke-opacity='1'%3E%3Ccircle cx='15.0' cy='15.0' r='8.10'/%3E%3Cpath d='M15.0 1.50V5.60M15.0 24.40V28.50M1.50 15.0H5.60M24.40 15.0H28.50'/%3E%3C/g%3E%3C/g%3E%3Ccircle cx='15.0' cy='15.0' r='2.00' fill='%23000' fill-opacity='.7'/%3E%3Ccircle cx='15.0' cy='15.0' r='1.10' fill='%23fff'/%3E%3C/svg%3E") 15 15, crosshair;
+  }
+}

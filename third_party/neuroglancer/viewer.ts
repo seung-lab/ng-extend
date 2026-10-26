@@ -292,7 +292,9 @@ export class Viewer extends RefCounted implements ViewerState {
   showPerspectiveSliceViews = new TrackableBoolean(true, true);
   visibleLayerRoles = allRenderLayerRoles();
   showDefaultAnnotations = new TrackableBoolean(true, true);
-  crossSectionBackgroundColor = new TrackableRGB(vec3.fromValues(0.5, 0.5, 0.5));
+  // Black, not neuroglancer's mid grey: opening split screen flashed a grey
+  // 2D panel until the first EM tiles arrived (Ames 2026-10-23).
+  crossSectionBackgroundColor = new TrackableRGB(vec3.fromValues(0, 0, 0));
   perspectiveViewBackgroundColor = new TrackableRGB(vec3.fromValues(0, 0, 0));
   scaleBarOptions = new TrackableScaleBarOptions();
   partialViewport = new TrackableWindowedViewport();
@@ -734,6 +736,20 @@ export class Viewer extends RefCounted implements ViewerState {
         const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
         if (layer !== undefined) {
           layer.pickEnabled = !layer.pickEnabled;
+        }
+      });
+      this.bindAction(`nge-number-layer-${i}`, () => {
+        const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
+        if (layer === undefined) return;
+        let classic = false;
+        // Classic Layers in Settings: the number keys go back with the clicks.
+        try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true; } catch { /* default */ }
+        if (classic) {
+          layer.setVisible(!layer.visible);
+        } else {
+          // The same as a left click on its tab: the active layer, its panel open.
+          this.selectedLayer.layer = layer;
+          this.selectedLayer.visible = true;
         }
       });
       this.bindAction(`select-layer-${i}`, () => {

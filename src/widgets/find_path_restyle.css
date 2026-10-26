@@ -161,6 +161,48 @@ body.nge-fp-found .graphene-find-path > .neuroglancer-icon:first-child { animati
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
+/* The site-wide annotation row look (annotations_restyle.css: two lines, a
+   coloured left edge, its own type mark) reaches these rows too and made
+   each chip tall with two markers (Ames 2026-10-24: "styling is off"). Here
+   a chip is one line: the dot, the numbers, then the name. */
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 0 10px 0 22px !important;
+  box-shadow: none;
+  font: 500 11px/16px 'JetBrains Mono', 'Consolas', monospace !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry > *,
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-coordinate { flex-shrink: 0; }
+.graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry + .neuroglancer-annotation-list-entry { margin-top: 0; }
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-icon { display: none !important; }
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-coordinate {
+  color: rgba(214, 232, 250, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+.graphene-find-path .find-path-annotations .neuroglancer-annotation-description {
+  margin: 0 0 0 2px;
+  font: 400 12px/16px 'Inter', 'Roboto', sans-serif !important;
+  color: rgba(234, 220, 255, 0.72);
+}
+/* The row's buttons sit in the line, not over the text. Clicking the chip
+   already jumps, so only the x stays. */
+.graphene-find-path .find-path-annotations .nge-ann-row-actions {
+  position: static !important;
+  transform: none !important;
+  visibility: visible;
+  margin-left: 2px;
+}
+.graphene-find-path .find-path-annotations .nge-ann-row-jump { display: none !important; }
+.graphene-find-path .find-path-annotations .nge-ann-row-actions > .neuroglancer-icon {
+  width: 18px; min-width: 18px; height: 18px; min-height: 18px; line-height: 18px; font-size: 13px;
+}
+.graphene-find-path .find-path-annotations .nge-ann-row-actions > .neuroglancer-icon > svg { width: 14px; height: 14px; }
 .graphene-find-path .find-path-annotations > .neuroglancer-annotation-list-entry:hover {
   border-color: rgba(200, 164, 255, 0.7);
   background: rgba(40, 26, 70, 0.85) !important;
