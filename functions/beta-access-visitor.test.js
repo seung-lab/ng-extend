@@ -102,3 +102,54 @@ test('in the game, both emails when they differ', async () => {
   assert.ok(state.bells[0].body.includes('Sign in email: sam\\@work'));
   assert.ok(!/Their note/.test(state.bells[0].body));
 });
+
+// ── 2026-10-26, later: EyeWire username and rank, waking the board, sorting ──
+test('EyeWire username and rank are optional, checked, and on the report and the bell', async () => {
+  const {state, io} = world();
+  let woke = 0; io.wake = async () => { woke++; };
+  await visitorBeta(visitor({eyewireUsername: 'neuron_fan', eyewireRank: 'Scythe'}), io);
+  assert.match(state.site_issues[0].message, /EyeWire username: neuron_fan/);
+  assert.match(state.site_issues[0].message, /EyeWire rank: Scythe/);
+  assert.ok(state.bells[0].body.includes('EyeWire username: neuron\\_fan'));
+  assert.ok(state.bells[0].body.includes('EyeWire rank: Scythe'));
+  assert.equal(woke, 1, 'the triage board is woken');
+  await assert.rejects(visitorBeta(visitor({email: 'b@example.org', eyewireUsername: '<b>x</b>'}), io), /letters, numbers/);
+  await assert.rejects(visitorBeta(visitor({email: 'c@example.org', eyewireRank: '[x](http://evil.example)'}), io), /letters, numbers/);
+  await assert.rejects(visitorBeta(visitor({email: 'd@example.org', eyewireRank: 'x'.repeat(41)}), io), /too long/);
+  const {state: s2, io: io2} = world();
+  await visitorBeta(visitor(), io2);
+  assert.ok(!/EyeWire/.test(s2.site_issues[0].message), 'nothing said when left empty');
+});
+
+test('in the game too: EyeWire fields, and the board is woken', async () => {
+  const {state, io} = world();
+  let woke = 0;
+  await handle('access.beta', {name: 'Sam', email: 'sam@example.org', eyewireUsername: 'sam1', eyewireRank: 'Mentor'},
+    {...io, wake: async () => { woke++; }, me: {id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000009'}, who: {email: 'sam@example.org'}});
+  assert.match(state.site_issues[0].message, /EyeWire username: sam1\nEyeWire rank: Mentor/);
+  assert.equal(woke, 1);
+});
+
+test('a board that cannot be woken does not fail the request', async () => {
+  const {state, io} = world();
+  io.wake = async () => { throw new Error('github down'); };
+  assert.deepEqual(await visitorBeta(visitor(), io), {requested: true});
+  assert.equal(state.site_issues.length, 1);
+});
+
+test('admins sort requests: listed, removed, back to waiting; players cannot', async () => {
+  const store = {};
+  const marks = {all: async () => ({...store}), set: async (e, v) => { if (v) store[e] = v; else delete store[e]; }};
+  const io = {marks, isAdmin: true, who: {email: 'amy@example.org'}};
+  let out = await handle('access.betaMark', {email: 'Vic@Example.org', mark: 'listed'}, io);
+  assert.equal(out['vic@example.org'].mark, 'listed');
+  assert.equal(out['vic@example.org'].by, 'amy@example.org');
+  out = await handle('access.betaMark', {email: 'vic@example.org', mark: 'removed'}, io);
+  assert.equal(out['vic@example.org'].mark, 'removed');
+  out = await handle('access.betaMark', {email: 'vic@example.org', mark: 'waiting'}, io);
+  assert.deepEqual(out, {});
+  await assert.rejects(handle('access.betaMark', {email: 'vic@example.org', mark: 'banana'}, io), /Unknown mark/);
+  await assert.rejects(handle('access.betaMark', {email: 'not an email', mark: 'listed'}, io), /email/);
+  await assert.rejects(handle('access.betaMark', {email: 'vic@example.org', mark: 'listed'}, {...io, isAdmin: false}), /Admins only/);
+  await assert.rejects(handle('access.betaMarks', {}, {...io, isAdmin: false}), /Admins only/);
+});
