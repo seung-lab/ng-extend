@@ -2518,7 +2518,10 @@ exports.ewCommunityData = onRequest(
       headers.Accept = input.accept === "application/vnd.pgrst.object+json" ? input.accept : "application/json";
       const preferences = ["return=representation"];
       if (String(input.prefer).includes("count=exact")) preferences.push("count=exact");
-      if (["notification_reads","user_group_members","chat_presence","user_settings","user_views",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
+      // An upsert replaces the row with that key. Without this a second save of a site text (Admin
+      // edits of instructions, Tutorial edits) is a plain insert and fails on the existing key
+      // (Ames 2026-10-26, saving the Hunt's instructions again: "Not saved").
+      if (["notification_reads","user_group_members","chat_presence","user_settings","user_views","site_texts",...Object.keys(pilotConflicts)].includes(plan.table) && plan.method === "POST" && plan.query.has("on_conflict")) preferences.push("resolution=merge-duplicates");
       headers.Prefer = preferences.join(",");
       if (typeof input.range === "string" && /^\d+-\d+$/.test(input.range)) {
         const [from,to] = input.range.split("-").map(Number);
