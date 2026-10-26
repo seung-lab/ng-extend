@@ -860,7 +860,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
   .nge-hunt-scan { display: none; }
   .nge-hunt-pip { transition: none; }
 }
-:global(body.nge-calm) .nge-hunt, :global(body.nge-calm) .nge-hunt-pop,
-:global(body.nge-calm) .nge-hunt-news, :global(body.nge-calm) .nge-hunt-done { animation: none !important; }
-:global(body.nge-calm) .nge-hunt-scan { display: none; }
+:global(body.nge-calm .nge-hunt), :global(body.nge-calm .nge-hunt-pop),
+:global(body.nge-calm .nge-hunt-news), :global(body.nge-calm .nge-hunt-done) { animation: none !important; }
+:global(body.nge-calm .nge-hunt-scan) { display: none; }
 </style>
