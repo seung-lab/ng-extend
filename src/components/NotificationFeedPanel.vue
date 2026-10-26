@@ -338,11 +338,6 @@ function openDetail(notif: any) {
   }
   // The Proofreading Test (Ames 2026-10-21): an admin's note of a result
   // opens Admin Hub > Test tries; "Your turn" opens the test itself.
-  if (accessTitle.startsWith('📋 Tutorial edit to approve') && backend.isAdmin) {
-    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
-    emit('hide');
-    return;
-  }
   if (accessTitle.startsWith('Proofreading Test: ') && backend.isAdmin) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tests' } }));
     emit('hide');
@@ -393,6 +388,14 @@ function closeDetail() {
 const helpSolvedNote = ref('');
 async function onDetailBodyClick(e: MouseEvent) {
   const a = (e.target as HTMLElement | null)?.closest?.('a') as HTMLAnchorElement | null;
+  // A tutorial edit to approve: its before and after show here, and this
+  // link opens Admin Hub > Tutorial edits (tutorial_edits.ts).
+  if (a?.getAttribute('href') === '#nge-tutorial-edits') {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
+    emit('hide');
+    return;
+  }
   const m = a?.getAttribute('href')?.match(/^#nge-help-solved=([0-9a-f-]{1,40})$/i);
   if (!m) return;
   e.preventDefault();
