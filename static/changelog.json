@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-26T17:15:50Z",
+      "at": "2026-10-26T17:17:26Z",
       "title": "Fixes to reviewing access requests",
       "items": [
         "Reviewing an access request: the points now show on every example you jump to, and clicking a point takes you to it instead of off into empty space.",
