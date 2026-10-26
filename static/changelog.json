@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T23:20:49Z",
+      "title": "Hunt fixes",
+      "digest": "minor",
+      "items": [
+        "The Hunt countdown now shows seconds, so you can see it running.",
+        "Click \"missed\" under your gem dots to see every gem that missed, go to each one, and tell the admins if one is on a real problem.",
+        "Going back a page in your browser no longer fills the console with errors while the cells load."
+      ]
+    },
+    {
       "at": "2026-10-26T22:39:21Z",
       "title": "Tell the admins about a problem the Hunt missed",
       "items": [
