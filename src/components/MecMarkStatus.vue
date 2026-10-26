@@ -12,7 +12,7 @@
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer } from '../util/mec_marks';
-import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick } from '../util/highlight';
+import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick, addEdgeMarks, workingRoot, autoEdgeNews, undoHighlight } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
 // Open unless the player closed it (Ames 2026-10-24: "make the Marks open by
@@ -32,8 +32,16 @@ const message = ref('');
 const bad = ref(false);
 let lastRoot: string | null = null;
 
+let newsShown = '';
+/** Share done of a search for the edge (Find, or Pyr's own), or null. */
+const autoLooking = ref<number | null>(null);
+const looking = ref<number | null>(null);
 function read() {
   counts.value = mecCounts(); soma.value = somaState(); hasStart.value = !!startXyz();
+  // The search on its own, while it runs.
+  autoLooking.value = autoEdgeNews.looking;
+  // Hits Edge placed on their own: said here too, once.
+  if (autoEdgeNews.last && autoEdgeNews.last !== newsShown) { newsShown = autoEdgeNews.last; say(newsShown); }
 }
 function say(text: string, isBad = false) { message.value = text; bad.value = isBad; }
 
@@ -109,6 +117,26 @@ async function place() {
   } catch (e: any) { say(e?.message || 'Could not place that mark.', true); }
 }
 
+async function findEdges() {
+  if (busy.value) return;
+  busy.value = true;
+  looking.value = 0;
+  say('');
+  try {
+    const r = await addEdgeMarks(workingRoot(lastRoot), () => true, (done, total) => { looking.value = total ? done / total : 0; });
+    read();
+    const had = r.already ? ` ${r.already} already marked.` : '';
+    say(r.added ? `Added ${r.added} Hits Edge ${r.added === 1 ? 'mark' : 'marks'}.${had} Check each one.`
+      : `Nothing new reaches the edge of the data.${had}`);
+  } catch (e: any) { say(e?.message || 'Could not look for the edge.', true); }
+  finally { busy.value = false; looking.value = null; }
+}
+/** Take back the newest mark: one click, or the whole batch Find placed. */
+function undoLast() {
+  say(undoHighlight() ? 'Removed the last mark.' : 'Nothing to undo.');
+  read();
+}
+
 async function confirmSoma() {
   try { const p = await confirmSomaAtStart(); read(); say(`Soma confirmed at the starting point, ${p.join(', ')}.`); }
   catch (e: any) { say(e?.message || 'Could not mark the soma.', true); }
@@ -178,14 +206,22 @@ onBeforeUnmount(() => {
         <div v-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
       </div>
       <div class="nge-mms-foot">
-        <span class="nge-mms-msg" :class="{ 'nge-mms-msg--bad': bad }" role="status">{{ message || "The lab's sheet gets these counts when you complete the cell." }}</span>
+        <button type="button" class="nge-mms-btn" :disabled="busy || autoLooking !== null" @click="findEdges"
+                title="Mark Hits Edge wherever the cell reaches the end of the data, from the lab's image mask.">Find ends at the edge</button>
+        <button type="button" class="nge-mms-btn" :disabled="busy" @click="undoLast"
+                title="Remove the newest mark. All the Hits Edge marks one search placed go together.">Undo</button>
+        <span v-if="looking !== null || autoLooking !== null" class="nge-mms-progress" role="status">
+          <span class="nge-mms-bar"><span :style="{ width: Math.round(((looking ?? autoLooking) ?? 0) * 100) + '%' }"></span></span>
+          Looking for the edge of the data, {{ Math.round(((looking ?? autoLooking) ?? 0) * 100) }}%
+        </span>
+        <span v-else class="nge-mms-msg" :class="{ 'nge-mms-msg--bad': bad }" role="status">{{ message || "The lab's sheet gets these counts when you complete the cell." }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.nge-mms { margin: 0; padding: 4px 12px 6px 28px; font: 11.5px/1.35 'Inter', 'Segoe UI', sans-serif; color: rgba(220, 230, 245, 0.75); }
+.nge-mms { margin: 0; padding: 5px 12px 7px 28px; font: 13px/1.4 'Inter', 'Segoe UI', sans-serif; color: rgba(220, 230, 245, 0.75); }
 .nge-mms-head {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: 100%; padding: 3px 0; border: 0; background: none;
   cursor: pointer; text-align: left; font: inherit; color: inherit;
@@ -196,15 +232,15 @@ onBeforeUnmount(() => {
 .nge-mms--open .nge-mms-caret { transform: rotate(90deg); }
 .nge-mms-title { font-weight: 600; color: rgba(220, 230, 245, 0.9); }
 .nge-mms-chip { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nge-mms i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--k); flex-shrink: 0; }
+.nge-mms i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--k); flex-shrink: 0; }
 .nge-mms-chip--none { color: rgba(200, 212, 228, 0.42); }
 .nge-mms-chip--none i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--k); }
 .nge-mms-body { margin: 4px 0 2px; padding: 7px 8px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); }
-.nge-mms-key { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.22); font: 600 9.5px 'JetBrains Mono', 'Consolas', monospace; color: rgba(230, 238, 250, 0.75); }
+.nge-mms-key { margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.22); font: 600 11px 'JetBrains Mono', 'Consolas', monospace; color: rgba(230, 238, 250, 0.75); }
 .nge-mms-how { margin: 0 0 5px; color: rgba(200, 212, 228, 0.6); }
 .nge-mms-list { display: flex; flex-direction: column; gap: 1px; }
 .nge-mms-row {
-  display: grid; grid-template-columns: 10px 96px 1fr; align-items: baseline; gap: 6px; width: 100%;
+  display: grid; grid-template-columns: 10px 112px 1fr; align-items: baseline; gap: 7px; width: 100%;
   padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer;
   text-align: left; font: inherit; color: inherit;
 }
@@ -214,15 +250,19 @@ onBeforeUnmount(() => {
 .nge-mms-sub { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 3px 6px 6px 22px; color: rgba(220, 230, 245, 0.7); }
 .nge-mms-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .nge-mms-btn {
-  padding: 4px 9px; border-radius: 6px; cursor: pointer; font: 600 11px 'Inter', sans-serif;
+  padding: 5px 11px; border-radius: 6px; cursor: pointer; font: 600 12.5px 'Inter', sans-serif;
   color: #cfe6ff; background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.3);
 }
 .nge-mms-btn:hover:not(:disabled) { background: rgba(74, 158, 255, 0.2); }
 .nge-mms-btn:disabled { opacity: 0.45; cursor: default; }
 .nge-mms-btn--ok { color: #2a2205; background: #ffd24d; border-color: #ffd24d; }
 .nge-mms-btn--ok:hover:not(:disabled) { background: #ffe07f; }
+.nge-mms-progress { display: inline-flex; align-items: center; gap: 7px; flex: 1; min-width: 160px; font-size: 12.5px; color: rgba(220, 230, 245, 0.8); }
+.nge-mms-bar { position: relative; flex: 0 0 70px; height: 4px; border-radius: 2px; background: rgba(255, 154, 60, 0.18); overflow: hidden; }
+.nge-mms-bar > span { position: absolute; inset: 0 auto 0 0; background: #ff9a3c; transition: width 0.3s ease; }
+@media (prefers-reduced-motion: reduce) { .nge-mms-bar > span { transition: none; } }
 .nge-mms-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 7px; }
-.nge-mms-msg { flex: 1; min-width: 140px; font-size: 11px; color: rgba(200, 212, 228, 0.55); }
+.nge-mms-msg { flex: 1; min-width: 140px; font-size: 12.5px; color: rgba(200, 212, 228, 0.62); }
 .nge-mms-msg--bad { color: #ff9aa8; }
 @media (prefers-reduced-motion: reduce) { .nge-mms-caret { transition: none; } }
 </style>

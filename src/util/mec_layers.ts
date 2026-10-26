@@ -18,13 +18,48 @@ export const MEC_LAYERS: { name: string; color: string }[] = [
   { name: 'Hits Edge 🟠', color: '#ff9a3c' },
 ];
 
+/** "True End" and "True End 🟢" are the same layer: letters only, any case.
+ *  So is "Can't Fix 🔴3": neuroglancer numbers a layer added under a name
+ *  already taken, and such copies piled up, Can't Fix 1 to 4 (Ames
+ *  2026-10-26: "when i claim new cells its making new layers"). */
+export const mecLayerKey = (n: string) => String(n).replace(/\d+\s*$/, '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+
+/** Fold copies of one of the four into one layer: their points move to the
+ *  copy with the most, the others go, and the one kept takes the plain name.
+ *  A copy whose points have not loaded yet is left for the next look. */
+function mergeCopies(viewer: any): void {
+  for (const { name } of MEC_LAYERS) {
+    const copies = (viewer.layerManager.managedLayers as any[]).filter(l => !l.archived && mecLayerKey(l.name) === mecLayerKey(name));
+    if (copies.length < 2) continue;
+    const size = (l: any) => { let n = 0; try { for (const _ of l.layer?.localAnnotations ?? []) n++; } catch { /* none */ } return n; };
+    if (copies.some(l => !l.layer?.localAnnotations)) continue;
+    copies.sort((a, b) => size(b) - size(a));
+    const [keep, ...rest] = copies;
+    const dst = keep.layer.localAnnotations;
+    const ids = new Set<string>();
+    for (const a of dst) ids.add(String(a.id));
+    for (const dup of rest) {
+      for (const a of dup.layer.localAnnotations) {
+        if (ids.has(String(a.id))) continue;
+        ids.add(String(a.id));
+        dst.add({ ...a }, true).dispose();
+      }
+      viewer.layerManager.removeManagedLayer(dup);
+    }
+    if (keep.name !== name && !viewer.layerManager.getLayerByName(name)) {
+      keep.name = name;
+      viewer.layerManager.layersChanged.dispatch();
+    }
+  }
+}
+
 function addMissing(): void {
   const viewer: any = (window as any).viewer;
-  const managed: any[] = viewer?.layerManager?.managedLayers ?? [];
   if (!viewer?.layerSpecification) return;
   if (currentDatasetTag() !== 'pni_mec') return;
-  // "True End" and "True End 🟢" are the same layer: letters only, any case.
-  const key = (n: string) => String(n).replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  mergeCopies(viewer);
+  const managed: any[] = viewer?.layerManager?.managedLayers ?? [];
+  const key = mecLayerKey;
   const have = new Set(managed.filter(l => !l.archived).map(l => key(l.name)));
   for (const { name, color } of MEC_LAYERS) {
     if (have.has(key(name))) continue;
@@ -40,5 +75,5 @@ function addMissing(): void {
 /** Add any of the four that the view lacks, once the cell's view has loaded
  *  (a start link replaces the layers, so look again a little later). */
 export function ensureMecLayers(): void {
-  for (const ms of [1200, 4000]) setTimeout(() => { try { addMissing(); } catch (e) { console.warn('[mec layers]', e); } }, ms);
+  for (const ms of [1200, 4000, 9000]) setTimeout(() => { try { addMissing(); } catch (e) { console.warn('[mec layers]', e); } }, ms);
 }

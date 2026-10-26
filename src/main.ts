@@ -33,7 +33,7 @@ import { installTouchTap } from './util/touch_tap';
 import { Uint64 as Uint64ForUndelete } from 'neuroglancer/util/uint64';
 import { isMobileRef as phoneRef } from './util/mobile';
 import { installScriptApi } from './script_api';
-import { startHighlightTint } from './util/highlight';
+import { startHighlightTint, startAutoEdgeMarks } from './util/highlight';
 import {createApp, nextTick, watch} from 'vue';
 import {createPinia} from 'pinia';
 import {installConsoleBuffer} from './util/console_buffer';
@@ -470,6 +470,7 @@ function setupViewer() {
     },
   });
   startHighlightTint(viewer);
+  startAutoEdgeMarks();
   viewer.registerDisposer(bindTitle(viewer.title));
 
   bindDefaultCopyHandler(viewer);
