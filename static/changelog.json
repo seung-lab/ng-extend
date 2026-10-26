@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T17:03:01Z",
+      "title": "Gems and points back to their normal size",
+      "items": [
+        "Some players had every gem and annotation point drawn extra large, from an old size setting that is no longer in Settings. That old setting no longer applies; each annotation layer's Size slider sets its own points.",
+        "Thanks to Celia for reporting it."
+      ]
+    },
+    {
       "at": "2026-10-26T16:58:38Z",
       "title": "Minimize the Merge Queue",
       "items": [
