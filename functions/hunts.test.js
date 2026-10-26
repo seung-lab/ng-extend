@@ -174,6 +174,7 @@ function fakeDb() {
     upsertBadge: async (row) => { let b = s.badges.find((x) => x.slug === row.slug); if (b) Object.assign(b, clone(row)); else { b = { id: s.seq++, ...clone(row) }; s.badges.push(b); } return clone(b); },
     held: async (ids) => new Set(s.awards.filter((a) => ids.includes(a.badge_id)).map((a) => `${a.badge_id}:${a.user_id}`)),
     award: async (rows) => { for (const r of rows) if (!s.awards.some((a) => a.badge_id === r.badge_id && a.user_id === r.user_id)) s.awards.push(clone(r)); },
+    badgeHolders: async (id) => s.awards.filter((a) => a.badge_id === id).map((a) => ({ user_id: a.user_id })),
   };
   return db;
 }
@@ -695,6 +696,114 @@ test('Count it: an admin turns a hunter\'s miss on a real error into a place in 
   assert.deepEqual(h.db._s.subs.map((x) => x.found), [1, 1]);   // both get it
   await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: run.drops[0].id }, admin), /already found/);
   await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'nope' }, admin), /not in this hunter/);
+  // Laser Eyes (Ames 2026-10-26): both finders get this Hunt's, once, with a bell note each.
+  assert.equal(after.laser, 2);
+  const laser = h.db._s.badges.find((b) => b.slug === `hunt-${d.id}-laser`);
+  assert.ok(laser && laser.name === 'Pinky Hunt: Laser Eyes' && /\/hunt\/laser\.png$/.test(laser.image_url), JSON.stringify(laser));
+  assert.deepEqual(h.db._s.awards.filter((a) => a.badge_id === laser.id).map((a) => a.user_id).sort(), [P1.id, P2.id].sort());
+  assert.equal(h.bell.filter((n) => /Laser Eyes/.test(n.title)).length, 2);
+  // A second place the key missed in the same Hunt: no second Laser Eyes for the same hunters.
+  await dropAll(d.id, [pt(30000, 30000, 100)], h.ctx(P1, at(63)));
+  const run2 = await H.huntAction('hunt.run', { id: d.id, user_id: P1.id }, admin);
+  const again = await H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: run2.drops.find((x) => !x.hit).id }, h.ctx(ADMIN, at(64), true));
+  assert.equal(again.laser, 0);
+  assert.equal(h.db._s.awards.filter((a) => a.badge_id === laser.id).length, 2);
+  assert.equal(h.bell.filter((n) => /Laser Eyes/.test(n.title)).length, 2);
+});
+
+test('places with an area: a gem anywhere inside an ellipsoid, along a line or in a box counts, within the tolerance (Ames 2026-10-26)', async () => {
+  const ell = [1000, 1000, 1000, 'merge', { r: [6000, 6000, 600] }];
+  assert.equal(H.placeDist(ell, [6000, 1000, 1000]), 0);                         // inside, 5 µm from the middle
+  assert.ok(Math.abs(H.placeDist(ell, [9000, 1000, 1000]) - 2000) < 1);          // 2 µm beyond its edge
+  const line = [5000, 0, 0, 'cut', { a: [0, 0, 0], b: [10000, 0, 0] }];
+  assert.equal(H.placeDist(line, [8000, 0, 0]), 0);
+  assert.equal(H.placeDist(line, [8000, 1500, 0]), 1500);
+  const box = [5000, 5000, 500, 'merge', { lo: [0, 0, 0], hi: [10000, 10000, 1000] }];
+  assert.equal(H.placeDist(box, [9000, 9000, 500]), 0);
+  assert.equal(H.placeDist(box, [12000, 5000, 500]), 2000);
+  assert.equal(H.placeDist([0, 0, 0, 'cut'], [3000, 4000, 0]), 5000);            // a point, as before
+  // Read from a key layer: ellipsoid, line and box annotations, in voxels (4, 4, 40 nm).
+  const layerOf = (annotations) => ({ type: 'annotation', source: 'local://annotations', annotations });
+  const places = H.layerPlaces(layerOf([
+    { type: 'ellipsoid', id: 'e', center: [100, 100, 10], radii: [1000, 500, 5] },
+    { type: 'line', id: 'l', pointA: [0, 0, 0], pointB: [100, 0, 0] },
+    { type: 'axis_aligned_bounding_box', id: 'b', pointA: [10, 20, 3], pointB: [0, 0, 1] },
+    { type: 'point', id: 'p', point: [1, 2, 3] }]), DIMS);
+  assert.deepEqual(places, [
+    { nm: [400, 400, 400], shape: { r: [4000, 2000, 200] } },
+    { nm: [200, 0, 0], shape: { a: [0, 0, 0], b: [400, 0, 0] } },
+    { nm: [20, 40, 80], shape: { lo: [0, 0, 40], hi: [40, 80, 120] } },
+    { nm: [4, 8, 120] }]);
+  // A Hunt whose key has a wide place: a gem 4 µm from its middle counts (a point would need 3 µm).
+  const h = harness();
+  const draft = await H.huntAction('hunt.save', { fields: { title: 'Wide Hunt', dataset: 'pinky_nf_v2', cells: [{ root: '648518346350533705' }], tolerance_nm: 3000,
+    announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)) },
+    key: { layers: [{ layer: layerOf([{ type: 'ellipsoid', id: 'w', center: [5000, 5000, 100], radii: [2000, 2000, 50] }]), kind: 'merge' }], dims: DIMS }, view: VIEW, status: 'draft' }, h.ctx(ADMIN, at(0), true));
+  await H.huntAction('hunt.save', { id: draft.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const hit = await H.huntAction('hunt.drop', { id: draft.id, kind: 'merge', layer: layer([{ ...pt(6750, 5000, 100), id: 'w1' }]), dims: DIMS }, h.ctx(P1, at(50)));
+  assert.equal(hit.drop.hit, true);   // 7 µm from the middle, inside the 8 µm ellipsoid
+});
+
+test('a hunter reports a missed gem as a real problem: the admins hear, the editor lists it, Count it makes it count (Ames 2026-10-26)', async () => {
+  const h = harness();
+  h.db.adminUserIds = async () => [ADMIN.id];
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(20000, 20000, 100), id: 'r1' }]), dims: DIMS }, h.ctx(P1, at(60)));
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(1000, 1000, 100), id: 'r2' }]), dims: DIMS }, h.ctx(P1, at(61)));
+  await assert.rejects(H.huntAction('hunt.report', { id: d.id, drop_id: 'r2' }, h.ctx(P1, at(62))), /found a problem already/);
+  await assert.rejects(H.huntAction('hunt.report', { id: d.id, drop_id: 'r1' }, h.ctx(P2, at(62))), /not in your Hunt/);
+  const r = await H.huntAction('hunt.report', { id: d.id, drop_id: 'r1' }, h.ctx(P1, at(62)));
+  assert.equal(r.reported, true);
+  assert.deepEqual(h.bell.map((n) => [n.user_id, n.title]), [[ADMIN.id, '🔎 Hunt report: Pinky Hunt']]);
+  assert.match(h.bell[0].body, /^nseraf says their gem is on a real merger the answers missed, at 20000, 20000, 100\./);
+  assert.equal((await H.huntAction('hunt.report', { id: d.id, drop_id: 'r1' }, h.ctx(P1, at(63)))).again, true);
+  assert.equal(h.bell.length, 1);                                   // once
+  const you = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(64)))).hunts[0].you;
+  assert.deepEqual(you.drops.filter((x) => x.rep).map((x) => x.id), ['r1']);
+  await assert.rejects(H.huntAction('hunt.reports', { id: d.id }, h.ctx(P1, at(64))), /Admins only/);
+  const list = await H.huntAction('hunt.reports', { id: d.id }, h.ctx(ADMIN, at(64), true));
+  assert.deepEqual(list.reports.map((x) => [x.name, x.drop_id, x.k]), [['nseraf', 'r1', 'cut']]);
+  // Count it: it counts for them, Laser Eyes, and it leaves the list.
+  const c = await H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'r1' }, h.ctx(ADMIN, at(65), true));
+  assert.equal(c.laser, 1);
+  assert.equal(h.db._s.subs[0].found, 2);
+  assert.deepEqual((await H.huntAction('hunt.reports', { id: d.id }, h.ctx(ADMIN, at(66), true))).reports, []);
+  // Not real: dismissed, off the list, and their box knows it was checked.
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'merge', layer: layer([{ ...pt(30000, 30000, 300), id: 'r3' }]), dims: DIMS }, h.ctx(P1, at(67)));
+  await H.huntAction('hunt.report', { id: d.id, drop_id: 'r3' }, h.ctx(P1, at(68)));
+  const left = await H.huntAction('hunt.dismiss_report', { id: d.id, user_id: P1.id, drop_id: 'r3' }, h.ctx(ADMIN, at(69), true));
+  assert.deepEqual(left.reports, []);
+  const you2 = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(70)))).hunts[0].you;
+  assert.deepEqual(you2.drops.filter((x) => x.rep_no).map((x) => x.id), ['r3']);
+});
+
+test('Add a place the key missed, by its coordinates and kind: everyone judged again, Laser Eyes to whoever finds it (Ames 2026-10-26)', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  // P1 put an Extend gem on a missing extension the key does not have, at [20000, 20000, 100] voxels = [80000, 80000, 4000] nm.
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'merge', layer: layer([{ ...pt(20000, 20000, 100), id: 'x1' }]), dims: DIMS }, h.ctx(P1, at(60)));
+  const admin = h.ctx(ADMIN, at(62), true);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000, 4000], kind: 'merge' }, h.ctx(P2, at(62))), /Admins only/);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000], kind: 'merge' }, admin), /x, y and z/);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000, 4000], kind: 'edge' }, admin), /merger \(Cut\) or a missing extension/);
+  const r = await H.huntAction('hunt.add_place', { id: d.id, nm: [80100, 80000, 4000], kind: 'merge' }, admin);
+  assert.deepEqual([r.target_count, r.laser], [4, 1]);
+  assert.deepEqual(h.db._s.keys[d.id].slice(-1)[0], [80100, 80000, 4000, 'merge']);
+  assert.equal(h.db._s.subs[0].found, 1);
+  assert.equal(h.bell.filter((n) => /Laser Eyes/.test(n.title)).length, 1);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000, 4000], kind: 'merge' }, admin), /already has a place there/);
+  // A merger nobody has a gem on: in the key, no Laser Eyes yet.
+  const r2 = await H.huntAction('hunt.add_place', { id: d.id, nm: [200000, 200000, 8000], kind: 'cut' }, admin);
+  assert.deepEqual([r2.target_count, r2.laser], [5, 0]);
+  // A wide face the key marked with a point: a size makes that place bigger, and the gem near it now counts.
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(51500, 50000, 200), id: 'c9' }]), dims: DIMS }, h.ctx(P2, at(63)));
+  assert.equal(h.db._s.subs.find((x) => x.user_id === P2.id).found, 0);   // 6 µm from the point: a miss
+  const big = await H.huntAction('hunt.add_place', { id: d.id, nm: [200000, 200000, 8000], kind: 'cut', radius_nm: 8000 }, admin);
+  assert.deepEqual([big.enlarged, big.target_count, big.laser], [true, 5, 0]);
+  assert.deepEqual(h.db._s.keys[d.id].slice(-1)[0], [200000, 200000, 8000, 'cut', { r: [8000, 8000, 8000] }]);
+  assert.equal(h.db._s.subs.find((x) => x.user_id === P2.id).found, 1);
 });
 
 test('before The Hunt is launched, a Hunt set for everyone stays admins only: hidden from players, every note and the results to admins, never chat', async () => {

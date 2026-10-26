@@ -17,7 +17,7 @@ import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../ut
 import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, meshEdgeSpots, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
 import { fromEdits, forgetFromEdits } from '../util/hunt_from_edits';
-import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
+import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
 
 type Tier = 'gold' | 'silver' | 'bronze';
@@ -40,6 +40,7 @@ interface AdminHunt {
 }
 interface BoardRow { rank: number; name: string; user_id: string; found: number; at: string; gems: number; tier: Tier | null }
 interface RunGem { id: string; at: number[] | null; hit: boolean; k: 'cut' | 'merge' | null }
+interface Report { user_id: string; name: string; drop_id: string; k: 'cut' | 'merge' | null; at: number[] | null; t: string | null }
 
 const TIERS: Tier[] = ['gold', 'silver', 'bronze'];
 const TIER_WORD: Record<Tier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
@@ -200,6 +201,7 @@ async function open(h: AdminHunt) {
     cellRows.value = []; setCells(full.cells || []);
     autoRead.value = false;   // a saved key stays until a link is opened
     scan();
+    void loadReports(full);
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -242,8 +244,17 @@ function keyLink(full: any): string {
   const xyz = ['x', 'y', 'z'];
   if (!xyz.every(a => Array.isArray(dims[a]) && Number(dims[a][0]) > 0)) return '';
   const toVox = (p: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(p[i]) / (Number(dims[a][0]) * 1e9); });
-  const layerOf = (name: string, pts: number[][]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
-    annotations: pts.map((p, i) => ({ type: 'point', id: `${name.toLowerCase()}-${i}`, point: toVox(p) })) });
+  const scaleOf = (r: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(r[i]) / (Number(dims[a][0]) * 1e9); });
+  // A place with an area comes back as its ellipsoid, line or box (Ames 2026-10-26).
+  const annotationOf = (p: any, id: string) => {
+    const s = p[4];
+    if (s && Array.isArray(s.r)) return { type: 'ellipsoid', id, center: toVox(p), radii: scaleOf(s.r) };
+    if (s && Array.isArray(s.a)) return { type: 'line', id, pointA: toVox(s.a), pointB: toVox(s.b) };
+    if (s && Array.isArray(s.lo)) return { type: 'axis_aligned_bounding_box', id, pointA: toVox(s.lo), pointB: toVox(s.hi) };
+    return { type: 'point', id, point: toVox(p) };
+  };
+  const layerOf = (name: string, pts: any[]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
+    annotations: pts.map((p, i) => annotationOf(p, `${name.toLowerCase()}-${i}`)) });
   const cuts = targets.filter(t => t[3] !== 'merge'), merges = targets.filter(t => t[3] === 'merge'), edges: number[][] = full.edges || [];
   const layers = [...(view.layers || []),
     ...(cuts.length ? [layerOf('Mergers', cuts)] : []), ...(merges.length ? [layerOf('Extensions', merges)] : []), ...(edges.length ? [layerOf('edge', edges)] : [])];
@@ -479,6 +490,26 @@ async function showRun(b: BoardRow) {
   catch (e: any) { error.value = e?.message || String(e); }
 }
 function goToGem(d: RunGem) { if (d.at) goToSoma(d.at.slice(0, 3)); }
+
+// Gems hunters say are on a real problem the answers missed (Ames 2026-10-26): check each, then Count it or Not real.
+const reports = ref<Report[]>([]);
+async function loadReports(h: AdminHunt) {
+  reports.value = [];
+  if (!h?.id || (h as any).status !== 'scheduled') return;
+  try { reports.value = (await huntCall<{ reports: Report[] }>('hunt.reports', { id: h.id })).reports || []; } catch { /* the list is a help */ }
+}
+async function countReport(r: Report) {
+  await countIt({ user_id: r.user_id } as BoardRow, { id: r.drop_id, at: r.at, hit: false, k: r.k });
+}
+async function dismissReport(r: Report) {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  busy.value = 'dismiss'; error.value = ''; message.value = '';
+  try {
+    reports.value = (await huntCall<{ reports: Report[] }>('hunt.dismiss_report', { id: h.id, user_id: r.user_id, drop_id: r.drop_id })).reports || [];
+    message.value = `Not counted: ${r.name}'s report is off the list, and their Hunt box says it was checked.`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 async function countIt(b: BoardRow, d: RunGem) {
   const h = editing.value; if (!h?.id || busy.value) return;
   busy.value = 'count'; error.value = ''; message.value = '';
@@ -487,6 +518,37 @@ async function countIt(b: BoardRow, d: RunGem) {
     busy.value = '';
     await open(r);
     message.value = `Counted: the key has ${r.target_count} places now. ${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
+
+// A place the key missed, by its coordinates (Ames 2026-10-26: "I want to be able to add coords for missing cut
+// or merge and label them as merge or cut"): x, y, z as the coordinate bar shows them, or the crosshair.
+const addAt = ref<{ x: number | ''; y: number | ''; z: number | ''; kind: 'cut' | 'merge'; size: number | '' }>({ x: '', y: '', z: '', kind: 'cut', size: '' });
+function addFromCrosshair() {
+  const p = crosshairXyz();
+  if (p) addAt.value = { ...addAt.value, x: p[0], y: p[1], z: p[2] };
+}
+async function addPlace() {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  const v = [addAt.value.x, addAt.value.y, addAt.value.z].map(Number);
+  error.value = ''; message.value = '';
+  if (v.some(n => !Number.isFinite(n)) || [addAt.value.x, addAt.value.y, addAt.value.z].some(n => n === '')) { error.value = 'Give x, y and z, or use the crosshair.'; return; }
+  if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) { error.value = 'Open the Hunt on its dataset first (Open the link above), so the coordinates are its own.'; return; }
+  const scales = (window as any).viewer?.coordinateSpace?.value?.scales;
+  if (!scales || scales.length < 3) { error.value = 'The viewer is not ready yet. Try again in a moment.'; return; }
+  const nm = v.map((n, i) => n * Number(scales[i]) * 1e9);
+  busy.value = 'add';
+  try {
+    const size = Number(addAt.value.size) || 0;
+    const r = await huntCall<any>('hunt.add_place', { id: h.id, nm, kind: addAt.value.kind, radius_nm: size > 0 ? size * 500 : 0 });
+    busy.value = '';
+    await open(r);
+    const what = addAt.value.kind === 'merge' ? 'missing extension' : 'merger';
+    const after = `${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed`
+      + `${r.laser ? `, and ${r.laser} ${r.laser === 1 ? 'hunter' : 'hunters'} got Laser Eyes` : ''}.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+    message.value = r.enlarged ? `Made the ${what} there bigger: ${size} µm across. ${after}` : `Added a ${what}${size ? ` ${size} µm across` : ''}: the key has ${r.target_count} places now. ${after}`;
+    addAt.value = { x: '', y: '', z: '', kind: addAt.value.kind, size: '' };
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -550,6 +612,21 @@ async function duplicate() {
           <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.2 2.3l2.5 2.5-7.9 7.9-3.1.6.6-3.1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
         </label>
       </div>
+
+      <!-- Reported by hunters (Ames 2026-10-26): at the top, so a report during a Hunt is seen at once -->
+      <fieldset v-if="reports.length" class="nge-hunts-group nge-hunts-reports" :disabled="!!busy">
+        <legend>Reported by hunters ({{ reports.length }})</legend>
+        <p class="nge-hunts-help">Each hunter says their gem is on a real problem the answers missed. Go there and look: <b>Count it</b> puts it in the key, judges everyone again and gives Laser Eyes; <b>Not real</b> takes it off this list.</p>
+        <ul class="nge-hunts-gems">
+          <li v-for="r in reports" :key="r.user_id + r.drop_id" class="nge-hunts-gem--miss">
+            <span><b>{{ r.name }}</b>: {{ r.k === 'merge' ? 'Extend' : 'Cut' }} gem</span>
+            <span class="nge-hunts-muted">{{ (r.at || []).slice(0, 3).map((v) => Math.round(v)).join(', ') }}</span>
+            <button class="nge-hunts-btn nge-hunts-btn--small" :disabled="!r.at" title="Move the view to this gem" @click.stop="goToGem({ id: r.drop_id, at: r.at, hit: false, k: r.k })">Go there</button>
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="A real error the answers missed: add it to the key, judge everyone again, Laser Eyes" @click.stop="countReport(r)">Count it</button>
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="Not a problem the answers missed: off the list" @click.stop="dismissReport(r)">Not real</button>
+          </li>
+        </ul>
+      </fieldset>
 
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
@@ -734,6 +811,26 @@ async function duplicate() {
         <button class="nge-hunts-btn nge-hunts-btn--danger" :disabled="!!busy" @click="asking = 'delete'">Delete</button>
       </div>
 
+      <!-- A place the key missed, by its coordinates (Ames 2026-10-26) -->
+      <fieldset v-if="!isNew && scheduled" class="nge-hunts-group nge-hunts-addplace" :disabled="!!busy">
+        <legend>A place the key missed</legend>
+        <p class="nge-hunts-help">A real merger or missing extension the key does not have: put the crosshair on it (or type x, y, z as the coordinate bar shows them), say which it is, and add it. For a wide face, give it a size: a gem anywhere in it counts, and at a place the key has already, that place is made bigger. (In the key layers themselves, an ellipsoid, line or box works the same way.) Everyone is judged again, and each hunter whose gem finds it gets <b>Laser Eyes</b>. A hunter's own gem on it can also be counted below with <b>Count it</b>.</p>
+        <div class="nge-hunts-addrow">
+          <input v-model.number="addAt.x" type="number" class="nge-hunts-input" placeholder="x" aria-label="x" />
+          <input v-model.number="addAt.y" type="number" class="nge-hunts-input" placeholder="y" aria-label="y" />
+          <input v-model.number="addAt.z" type="number" class="nge-hunts-input" placeholder="z" aria-label="z" />
+          <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="addFromCrosshair">Use the crosshair</button>
+        </div>
+        <div class="nge-hunts-addrow">
+          <label class="nge-hunts-addsize" title="For a wide face or a long stretch: a gem anywhere within this ball counts. At a place the key has already, it makes that place this big.">Size <input v-model.number="addAt.size" type="number" min="0" max="200" step="0.5" class="nge-hunts-input" placeholder="a point" /> µm across</label>
+          <select v-model="addAt.kind" class="nge-hunts-input" aria-label="Which kind">
+            <option value="cut">Merger (Cut)</option>
+            <option value="merge">Missing extension (Extend)</option>
+          </select>
+          <button class="nge-hunts-btn" :disabled="!!busy" @click="addPlace">{{ busy === 'add' ? 'Adding…' : 'Add to the key' }}</button>
+        </div>
+      </fieldset>
+
       <!-- Results -->
       <fieldset v-if="board.length" class="nge-hunts-group">
         <legend>Hunters ({{ board.length }})</legend>
@@ -842,6 +939,13 @@ async function duplicate() {
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
 .nge-hunts-answers { margin-top: 8px; }
+.nge-hunts-reports { border-color: rgba(95, 227, 245, 0.55); box-shadow: 0 0 14px rgba(95, 227, 245, 0.12); }
+.nge-hunts-addrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nge-hunts-addrow input.nge-hunts-input { width: 92px; }
+.nge-hunts-addsize { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: #cfdcef; white-space: nowrap; }
+.nge-hunts-addsize input.nge-hunts-input { width: 74px; }
+.nge-hunts-addsize, .nge-hunts-addsize input { text-transform: none; }
+.nge-hunts-addrow select.nge-hunts-input { width: auto; flex: 1; min-width: 180px; }
 .nge-hunts-resultshours { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .nge-hunts-resultshours .nge-hunts-input { width: 72px; }
 .nge-hunts-startrow { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; }

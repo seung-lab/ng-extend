@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen, reportGem, reportedOf,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -76,6 +76,16 @@ onUnmounted(() => { if (gemTimer) clearInterval(gemTimer); });
 
 // A new hunt in the panel (or a switch between a test run and the real one) starts clean.
 watch(() => `${hunt.value?.id ?? ''}:${hunt.value?.test ? 'test' : ''}`, () => { error.value = ''; });
+
+/** "It's real": a missed gem told to the admins (Ames 2026-10-26). */
+const reporting = ref('');
+const canReport = (cls: string, id: string | undefined) => !!id && cls === 'miss' && !hunt.value?.test && phase.value !== 'announced';
+async function report(id: string) {
+  const h = hunt.value; if (!h || reporting.value) return;
+  reporting.value = id; error.value = '';
+  try { await reportGem(h, id); } catch (e: any) { error.value = e?.message || String(e); }
+  finally { reporting.value = ''; }
+}
 
 /** The answers on the cells, once the Hunt is over (Ames 2026-10-26). */
 const answersShown = ref(false);
@@ -150,7 +160,7 @@ function wordsFor(n: any) {
 /** The answers before the newest, so a quick second gem never hides the first one's answer. */
 const earlier = computed(() => {
   void huntState.now;
-  return huntState.log.slice(1, 3).filter(n => Date.now() - n.at < 60000).map(n => ({ at: n.at, ...wordsFor(n) }));
+  return huntState.log.slice(1, 3).filter(n => Date.now() - n.at < 60000).map(n => ({ at: n.at, id: n.id, ...wordsFor(n) }));
 });
 /** Your clock: from your first open of the Hunt; it stops at your last find once you are done. */
 const yourTime = computed(() => {
@@ -422,9 +432,22 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span class="nge-hunt-news-head">{{ newsLine.head }}</span>
             <span class="nge-hunt-news-text">{{ newsLine.text }}</span>
             <button v-if="newsLine.other && kinds.includes(newsLine.other)" class="nge-hunt-news-switch" @click="choose(newsLine.other)">Switch to {{ KIND[newsLine.other].word }}</button>
+            <!-- Sure it's real? Tell the admins (Ames 2026-10-26: "a 'found an unlabeled cut/merge' type button") -->
+            <template v-if="news && canReport(newsLine.cls, news.id)">
+              <span v-if="reportedOf(hunt, news.id) === 'sent'" class="nge-hunt-report-done">Sent to the admins. If it is real, it counts for you, with Laser Eyes.</span>
+              <span v-else-if="reportedOf(hunt, news.id) === 'no'" class="nge-hunt-report-done">An admin checked it: not one the answers missed.</span>
+              <button v-else class="nge-hunt-report" :disabled="reporting === news.id" title="Your gem is on a real merger or missing extension that the Hunt's answers do not have: an admin checks it, and if it is real it counts for you." @click="report(news.id)">
+                {{ reporting === news.id ? 'Sending…' : "It's real: tell the admins" }}
+              </button>
+            </template>
           </div>
           <ul v-if="earlier.length && !mini" class="nge-hunt-log" aria-label="Your answers before">
-            <li v-for="e in earlier" :key="e.at" :class="[`nge-hunt-log--${e.cls}`, { 'nge-hunt-log--ext': e.ext }]"><b>{{ e.head }}</b> {{ e.text }}</li>
+            <li v-for="e in earlier" :key="e.at" :class="[`nge-hunt-log--${e.cls}`, { 'nge-hunt-log--ext': e.ext }]"><b>{{ e.head }}</b> {{ e.text }}
+              <template v-if="canReport(e.cls, e.id)">
+                <span v-if="reportedOf(hunt, e.id)" class="nge-hunt-report-tag">{{ reportedOf(hunt, e.id) === 'no' ? 'checked' : 'reported' }}</span>
+                <button v-else class="nge-hunt-report nge-hunt-report--small" :disabled="reporting === e.id" @click="report(e.id)">It's real</button>
+              </template>
+            </li>
           </ul>
 
           <!-- Done -->
@@ -500,6 +523,10 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           </span>
           <span class="nge-hunt-medalmini" title="Speed: the fastest to find them all (or the most, if nobody finds all), from your first open of the Hunt. One try.">
             <img src="hunt/fastest-128.png" alt="" /><b class="nge-hunt-tierword--speed">Speed</b><small>fastest</small>
+          </span>
+          <!-- Laser Eyes (Ames 2026-10-26): find a real problem the answer key missed -->
+          <span class="nge-hunt-medalmini" title="Laser Eyes: find a real problem the answer key missed. The admins check it, and it counts for you.">
+            <img src="hunt/laser-128.png" alt="" /><b class="nge-hunt-tierword--laser">Laser Eyes</b><small>key missed</small>
           </span>
         </div>
         <p v-if="!hunt.test" class="nge-hunt-fine">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
@@ -863,6 +890,13 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-log--already b { color: #9fd0ff; }
 .nge-hunt-log--refused b { color: #ffb3b3; }
 .nge-hunt-answersbtn { width: 100%; }
+.nge-hunt-report { align-self: flex-start; margin-top: 6px; padding: 4px 10px; border-radius: 8px; cursor: pointer; font: 600 11.5px 'Inter', sans-serif;
+  background: rgba(95, 227, 245, 0.08); border: 1px solid rgba(95, 227, 245, 0.55); color: #c9f6ff; }
+.nge-hunt-report:hover:not(:disabled), .nge-hunt-report:focus-visible { background: rgba(95, 227, 245, 0.18); color: #fff; }
+.nge-hunt-report:disabled { opacity: 0.6; cursor: default; }
+.nge-hunt-report--small { margin: 0 0 0 6px; padding: 1px 7px; font-size: 10.5px; }
+.nge-hunt-report-done { display: block; margin-top: 5px; font: 11.5px 'Inter', sans-serif; color: #9fe9f5; }
+.nge-hunt-report-tag { margin-left: 6px; font: 10.5px 'Inter', sans-serif; color: #9fe9f5; }
 .nge-hunt-answersnote { margin: -2px 0 0; text-align: center; font: 12px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.8); }
 .nge-hunt-congrats { padding: 10px 12px; border-radius: 10px; text-align: center; background: radial-gradient(120% 120% at 50% 0%, rgb(var(--hn-gold) / 0.16), rgb(var(--hn-accent) / 0.05) 70%); border: 1px solid rgb(var(--hn-gold) / 0.55); animation: ngeHuntHit 0.7s cubic-bezier(0.2, 1.5, 0.4, 1); }
 .nge-hunt-congrats-head { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px 0 2px; }
@@ -879,6 +913,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-mymedal--gold { border-color: rgb(var(--hn-gold) / 0.75); box-shadow: 0 0 18px rgb(var(--hn-gold) / 0.2); }
 .nge-hunt-mymedal--speed b { color: #7fd8ff; }
 .nge-hunt-tierword--speed { color: #7fd8ff !important; text-shadow: 0 0 8px rgba(127, 216, 255, 0.35); }
+.nge-hunt-tierword--laser { color: #5fe3f5 !important; text-shadow: 0 0 8px rgba(95, 227, 245, 0.35); white-space: nowrap; }
 .nge-hunt-speedmark { width: 18px; height: 18px; object-fit: contain; flex: none; }
 
 /* Calm screen and reduced motion: the same box, still. */
