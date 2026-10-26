@@ -1059,7 +1059,8 @@ export function keyCandidates(): KeyCandidate[] {
   try {
     const layers: any[] = viewer()?.state?.toJSON?.()?.layers ?? [];
     return layers.filter(l => l && l.type === 'annotation')
-      .map(l => ({ name: String(l.name), points: (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && a.type === 'point').length }))
+      // Points, and places with an area: ellipsoids, lines and boxes (Ames 2026-10-26).
+      .map(l => ({ name: String(l.name), points: (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && ['point', 'ellipsoid', 'line', 'axis_aligned_bounding_box'].includes(a.type)).length }))
       .filter(c => c.points > 0).sort((a, b) => b.points - a.points);
   } catch { return []; }
 }

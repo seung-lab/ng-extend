@@ -215,8 +215,17 @@ function keyLink(full: any): string {
   const xyz = ['x', 'y', 'z'];
   if (!xyz.every(a => Array.isArray(dims[a]) && Number(dims[a][0]) > 0)) return '';
   const toVox = (p: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(p[i]) / (Number(dims[a][0]) * 1e9); });
-  const layerOf = (name: string, pts: number[][]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
-    annotations: pts.map((p, i) => ({ type: 'point', id: `${name.toLowerCase()}-${i}`, point: toVox(p) })) });
+  const scaleOf = (r: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(r[i]) / (Number(dims[a][0]) * 1e9); });
+  // A place with an area comes back as its ellipsoid, line or box (Ames 2026-10-26).
+  const annotationOf = (p: any, id: string) => {
+    const s = p[4];
+    if (s && Array.isArray(s.r)) return { type: 'ellipsoid', id, center: toVox(p), radii: scaleOf(s.r) };
+    if (s && Array.isArray(s.a)) return { type: 'line', id, pointA: toVox(s.a), pointB: toVox(s.b) };
+    if (s && Array.isArray(s.lo)) return { type: 'axis_aligned_bounding_box', id, pointA: toVox(s.lo), pointB: toVox(s.hi) };
+    return { type: 'point', id, point: toVox(p) };
+  };
+  const layerOf = (name: string, pts: any[]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
+    annotations: pts.map((p, i) => annotationOf(p, `${name.toLowerCase()}-${i}`)) });
   const cuts = targets.filter(t => t[3] !== 'merge'), merges = targets.filter(t => t[3] === 'merge'), edges: number[][] = full.edges || [];
   const layers = [...(view.layers || []),
     ...(cuts.length ? [layerOf('Mergers', cuts)] : []), ...(merges.length ? [layerOf('Extensions', merges)] : []), ...(edges.length ? [layerOf('edge', edges)] : [])];
@@ -454,7 +463,7 @@ async function countIt(b: BoardRow, d: RunGem) {
 
 // A place the key missed, by its coordinates (Ames 2026-10-26: "I want to be able to add coords for missing cut
 // or merge and label them as merge or cut"): x, y, z as the coordinate bar shows them, or the crosshair.
-const addAt = ref<{ x: number | ''; y: number | ''; z: number | ''; kind: 'cut' | 'merge' }>({ x: '', y: '', z: '', kind: 'cut' });
+const addAt = ref<{ x: number | ''; y: number | ''; z: number | ''; kind: 'cut' | 'merge'; size: number | '' }>({ x: '', y: '', z: '', kind: 'cut', size: '' });
 function addFromCrosshair() {
   const p = crosshairXyz();
   if (p) addAt.value = { ...addAt.value, x: p[0], y: p[1], z: p[2] };
@@ -470,13 +479,15 @@ async function addPlace() {
   const nm = v.map((n, i) => n * Number(scales[i]) * 1e9);
   busy.value = 'add';
   try {
-    const r = await huntCall<any>('hunt.add_place', { id: h.id, nm, kind: addAt.value.kind });
+    const size = Number(addAt.value.size) || 0;
+    const r = await huntCall<any>('hunt.add_place', { id: h.id, nm, kind: addAt.value.kind, radius_nm: size > 0 ? size * 500 : 0 });
     busy.value = '';
     await open(r);
     const what = addAt.value.kind === 'merge' ? 'missing extension' : 'merger';
-    message.value = `Added a ${what}: the key has ${r.target_count} places now. ${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed`
+    const after = `${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed`
       + `${r.laser ? `, and ${r.laser} ${r.laser === 1 ? 'hunter' : 'hunters'} got Laser Eyes` : ''}.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
-    addAt.value = { x: '', y: '', z: '', kind: addAt.value.kind };
+    message.value = r.enlarged ? `Made the ${what} there bigger: ${size} µm across. ${after}` : `Added a ${what}${size ? ` ${size} µm across` : ''}: the key has ${r.target_count} places now. ${after}`;
+    addAt.value = { x: '', y: '', z: '', kind: addAt.value.kind, size: '' };
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -726,7 +737,7 @@ async function duplicate() {
       <!-- A place the key missed, by its coordinates (Ames 2026-10-26) -->
       <fieldset v-if="!isNew && scheduled" class="nge-hunts-group nge-hunts-addplace" :disabled="!!busy">
         <legend>A place the key missed</legend>
-        <p class="nge-hunts-help">A real merger or missing extension the key does not have: put the crosshair on it (or type x, y, z as the coordinate bar shows them), say which it is, and add it. Everyone is judged again, and each hunter whose gem finds it gets <b>Laser Eyes</b>. A hunter's own gem on it can also be counted below with <b>Count it</b>.</p>
+        <p class="nge-hunts-help">A real merger or missing extension the key does not have: put the crosshair on it (or type x, y, z as the coordinate bar shows them), say which it is, and add it. For a wide face, give it a size: a gem anywhere in it counts, and at a place the key has already, that place is made bigger. (In the key layers themselves, an ellipsoid, line or box works the same way.) Everyone is judged again, and each hunter whose gem finds it gets <b>Laser Eyes</b>. A hunter's own gem on it can also be counted below with <b>Count it</b>.</p>
         <div class="nge-hunts-addrow">
           <input v-model.number="addAt.x" type="number" class="nge-hunts-input" placeholder="x" aria-label="x" />
           <input v-model.number="addAt.y" type="number" class="nge-hunts-input" placeholder="y" aria-label="y" />
@@ -734,6 +745,7 @@ async function duplicate() {
           <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="addFromCrosshair">Use the crosshair</button>
         </div>
         <div class="nge-hunts-addrow">
+          <label class="nge-hunts-addsize" title="For a wide face or a long stretch: a gem anywhere within this ball counts. At a place the key has already, it makes that place this big.">Size <input v-model.number="addAt.size" type="number" min="0" max="200" step="0.5" class="nge-hunts-input" placeholder="a point" /> µm across</label>
           <select v-model="addAt.kind" class="nge-hunts-input" aria-label="Which kind">
             <option value="cut">Merger (Cut)</option>
             <option value="merge">Missing extension (Extend)</option>
@@ -852,6 +864,9 @@ async function duplicate() {
 .nge-hunts-answers { margin-top: 8px; }
 .nge-hunts-addrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .nge-hunts-addrow input.nge-hunts-input { width: 92px; }
+.nge-hunts-addsize { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: #cfdcef; white-space: nowrap; }
+.nge-hunts-addsize input.nge-hunts-input { width: 74px; }
+.nge-hunts-addsize, .nge-hunts-addsize input { text-transform: none; }
 .nge-hunts-addrow select.nge-hunts-input { width: auto; flex: 1; min-width: 180px; }
 .nge-hunts-resultshours { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .nge-hunts-resultshours .nge-hunts-input { width: 72px; }

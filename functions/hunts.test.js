@@ -711,6 +711,39 @@ test('Count it: an admin turns a hunter\'s miss on a real error into a place in 
   assert.equal(h.bell.filter((n) => /Laser Eyes/.test(n.title)).length, 2);
 });
 
+test('places with an area: a gem anywhere inside an ellipsoid, along a line or in a box counts, within the tolerance (Ames 2026-10-26)', async () => {
+  const ell = [1000, 1000, 1000, 'merge', { r: [6000, 6000, 600] }];
+  assert.equal(H.placeDist(ell, [6000, 1000, 1000]), 0);                         // inside, 5 µm from the middle
+  assert.ok(Math.abs(H.placeDist(ell, [9000, 1000, 1000]) - 2000) < 1);          // 2 µm beyond its edge
+  const line = [5000, 0, 0, 'cut', { a: [0, 0, 0], b: [10000, 0, 0] }];
+  assert.equal(H.placeDist(line, [8000, 0, 0]), 0);
+  assert.equal(H.placeDist(line, [8000, 1500, 0]), 1500);
+  const box = [5000, 5000, 500, 'merge', { lo: [0, 0, 0], hi: [10000, 10000, 1000] }];
+  assert.equal(H.placeDist(box, [9000, 9000, 500]), 0);
+  assert.equal(H.placeDist(box, [12000, 5000, 500]), 2000);
+  assert.equal(H.placeDist([0, 0, 0, 'cut'], [3000, 4000, 0]), 5000);            // a point, as before
+  // Read from a key layer: ellipsoid, line and box annotations, in voxels (4, 4, 40 nm).
+  const layerOf = (annotations) => ({ type: 'annotation', source: 'local://annotations', annotations });
+  const places = H.layerPlaces(layerOf([
+    { type: 'ellipsoid', id: 'e', center: [100, 100, 10], radii: [1000, 500, 5] },
+    { type: 'line', id: 'l', pointA: [0, 0, 0], pointB: [100, 0, 0] },
+    { type: 'axis_aligned_bounding_box', id: 'b', pointA: [10, 20, 3], pointB: [0, 0, 1] },
+    { type: 'point', id: 'p', point: [1, 2, 3] }]), DIMS);
+  assert.deepEqual(places, [
+    { nm: [400, 400, 400], shape: { r: [4000, 2000, 200] } },
+    { nm: [200, 0, 0], shape: { a: [0, 0, 0], b: [400, 0, 0] } },
+    { nm: [20, 40, 80], shape: { lo: [0, 0, 40], hi: [40, 80, 120] } },
+    { nm: [4, 8, 120] }]);
+  // A Hunt whose key has a wide place: a gem 4 µm from its middle counts (a point would need 3 µm).
+  const h = harness();
+  const draft = await H.huntAction('hunt.save', { fields: { title: 'Wide Hunt', dataset: 'pinky_nf_v2', cells: [{ root: '648518346350533705' }], tolerance_nm: 3000,
+    announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)) },
+    key: { layers: [{ layer: layerOf([{ type: 'ellipsoid', id: 'w', center: [5000, 5000, 100], radii: [2000, 2000, 50] }]), kind: 'merge' }], dims: DIMS }, view: VIEW, status: 'draft' }, h.ctx(ADMIN, at(0), true));
+  await H.huntAction('hunt.save', { id: draft.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const hit = await H.huntAction('hunt.drop', { id: draft.id, kind: 'merge', layer: layer([{ ...pt(6750, 5000, 100), id: 'w1' }]), dims: DIMS }, h.ctx(P1, at(50)));
+  assert.equal(hit.drop.hit, true);   // 7 µm from the middle, inside the 8 µm ellipsoid
+});
+
 test('Add a place the key missed, by its coordinates and kind: everyone judged again, Laser Eyes to whoever finds it (Ames 2026-10-26)', async () => {
   const h = harness();
   const d = await makeHunt(h);
@@ -730,6 +763,13 @@ test('Add a place the key missed, by its coordinates and kind: everyone judged a
   // A merger nobody has a gem on: in the key, no Laser Eyes yet.
   const r2 = await H.huntAction('hunt.add_place', { id: d.id, nm: [200000, 200000, 8000], kind: 'cut' }, admin);
   assert.deepEqual([r2.target_count, r2.laser], [5, 0]);
+  // A wide face the key marked with a point: a size makes that place bigger, and the gem near it now counts.
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'cut', layer: layer([{ ...pt(51500, 50000, 200), id: 'c9' }]), dims: DIMS }, h.ctx(P2, at(63)));
+  assert.equal(h.db._s.subs.find((x) => x.user_id === P2.id).found, 0);   // 6 µm from the point: a miss
+  const big = await H.huntAction('hunt.add_place', { id: d.id, nm: [200000, 200000, 8000], kind: 'cut', radius_nm: 8000 }, admin);
+  assert.deepEqual([big.enlarged, big.target_count, big.laser], [true, 5, 0]);
+  assert.deepEqual(h.db._s.keys[d.id].slice(-1)[0], [200000, 200000, 8000, 'cut', { r: [8000, 8000, 8000] }]);
+  assert.equal(h.db._s.subs.find((x) => x.user_id === P2.id).found, 1);
 });
 
 test('before The Hunt is launched, a Hunt set for everyone stays admins only: hidden from players, every note and the results to admins, never chat', async () => {

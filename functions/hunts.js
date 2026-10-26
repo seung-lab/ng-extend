@@ -95,6 +95,63 @@ function layerPoints(layer, dims) {
 }
 function layerPointsNm(layer, dims) { return layerPoints(layer, dims).map((p) => p.nm); }
 
+/**
+ * The places of one key layer, each [x, y, z] in nm (its middle) and, for a place with an area, its shape
+ * (Ames 2026-10-26: "large surface area missed extensions or merge origins - this is marked but the hunt
+ * didn't credit players bc the surface area is too large"): an ellipsoid { r: radii }, a line { a, b } or a
+ * box { lo, hi }, all in nm. A gem counts within the tolerance of the shape, so anywhere inside it.
+ */
+function layerPlaces(layer, dims) {
+  if (!layer || typeof layer !== 'object') fail(400, 'No annotation layer was sent.');
+  let src = layer.source;
+  if (Array.isArray(src)) src = src[0];
+  const t = src && typeof src === 'object' ? src.transform : null;
+  if (t && !isIdentity(t.matrix)) fail(400, 'This layer is moved by a transform. Mark the places in a plain annotation layer.');
+  const axes = axisScales((t && t.outputDimensions) || dims);
+  let ix = ['x', 'y', 'z'].map((n) => axes.findIndex((a) => a.name === n));
+  if (ix.some((i) => i < 0)) ix = [0, 1, 2];
+  const nm = (v) => (Array.isArray(v) ? ix.map((i) => Math.round(Number(v[i]) * axes[i].nmPer)) : null);
+  const ok = (p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+  const out = [];
+  for (const a of Array.isArray(layer.annotations) ? layer.annotations : []) {
+    if (!a || typeof a !== 'object') continue;
+    if (a.type === 'point') { const p = nm(a.point); if (ok(p)) out.push({ nm: p }); continue; }
+    if (a.type === 'ellipsoid') {
+      const c = nm(a.center), r = nm(a.radii);
+      if (ok(c) && ok(r)) out.push({ nm: c, shape: { r: r.map((v) => Math.max(1, Math.abs(v))) } });
+      continue;
+    }
+    if (a.type === 'line' || a.type === 'axis_aligned_bounding_box') {
+      const A = nm(a.pointA), B = nm(a.pointB);
+      if (!ok(A) || !ok(B)) continue;
+      const mid = A.map((v, i) => Math.round((v + B[i]) / 2));
+      out.push({ nm: mid, shape: a.type === 'line' ? { a: A, b: B } : { lo: A.map((v, i) => Math.min(v, B[i])), hi: A.map((v, i) => Math.max(v, B[i])) } });
+    }
+  }
+  return out;
+}
+
+/** How far a gem is from a place: from its point, or from its shape (0 inside it). */
+function placeDist(t, p) {
+  const s = t && t[4];
+  if (s && typeof s === 'object') {
+    if (Array.isArray(s.r)) {
+      const q = [0, 1, 2].map((i) => (p[i] - t[i]) / Math.max(1, s.r[i]));
+      const n = Math.hypot(q[0], q[1], q[2]);
+      if (n <= 1) return 0;
+      return dist([0, 1, 2].map((i) => t[i] + (q[i] / n) * Math.max(1, s.r[i])), p);
+    }
+    if (Array.isArray(s.a) && Array.isArray(s.b)) {
+      const ab = [0, 1, 2].map((i) => s.b[i] - s.a[i]), ap = [0, 1, 2].map((i) => p[i] - s.a[i]);
+      const L = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+      const u = L ? Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / L)) : 0;
+      return dist([0, 1, 2].map((i) => s.a[i] + u * ab[i]), p);
+    }
+    if (Array.isArray(s.lo) && Array.isArray(s.hi)) return Math.hypot(...[0, 1, 2].map((i) => Math.max(s.lo[i] - p[i], 0, p[i] - s.hi[i])));
+  }
+  return dist(t, p);
+}
+
 // ── Scoring ───────────────────────────────────────────────────────────────
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -122,7 +179,7 @@ function keyTargets(key) {
   for (const part of parts) {
     if (part && part.kind === 'edge') continue;
     const kind = part && part.kind === 'merge' ? 'merge' : 'cut';
-    for (const pt of layerPointsNm(part && part.layer, key.dims)) out.push([pt[0], pt[1], pt[2], kind]);
+    for (const pl of layerPlaces(part && part.layer, key.dims)) out.push(pl.shape ? [pl.nm[0], pl.nm[1], pl.nm[2], kind, pl.shape] : [pl.nm[0], pl.nm[1], pl.nm[2], kind]);
   }
   return out;
 }
@@ -192,7 +249,7 @@ function match(targets, points, toleranceNm) {
   const tol = Number(toleranceNm) > 0 ? Number(toleranceNm) : DEFAULT_TOLERANCE_NM;
   const T = Array.isArray(targets) ? targets : [];
   const P = Array.isArray(points) ? points : [];
-  const reach = T.map((t) => P.map((p, pi) => [dist(t, p), pi]).filter(([d]) => d <= tol)
+  const reach = T.map((t) => P.map((p, pi) => [placeDist(t, p), pi]).filter(([d]) => d <= tol)
     .sort((a, b) => a[0] - b[0]).map(([, pi]) => pi));
   const owner = new Array(P.length).fill(-1);
   const tryTarget = (ti, seen) => {
@@ -209,7 +266,7 @@ function match(targets, points, toleranceNm) {
   let close = 0;
   P.forEach((p, pi) => {
     if (owner[pi] >= 0) return;
-    if (T.some((t, ti) => !foundTargets.has(ti) && dist(t, p) <= 2 * tol)) close++;
+    if (T.some((t, ti) => !foundTargets.has(ti) && placeDist(t, p) <= 2 * tol)) close++;
   });
   return { found, close, hit: T.map((t, ti) => foundTargets.has(ti)) };
 }
@@ -224,7 +281,7 @@ function testDetail(targets, points, toleranceNm) {
   const P = Array.isArray(points) ? points : [];
   const m = match(T, P, toleranceNm);
   return T.map((t, ti) => {
-    const near = P.length ? Math.min(...P.map((p) => dist(t, p))) : null;
+    const near = P.length ? Math.min(...P.map((p) => placeDist(t, p))) : null;
     return { kind: kindOf(t), found: m.hit[ti], nearest_um: near == null ? null : Math.round(near / 100) / 10 };
   });
 }
@@ -395,7 +452,7 @@ function judgeDrop(targets, drops, nm, tol, kind) {
   const taken = new Set(drops.filter((d) => d.hit >= 0).map((d) => d.hit));
   let hit = -1, best = Infinity, already = false, nearest = Infinity, other = null;
   targets.forEach((t, i) => {
-    const d = dist(t, nm);
+    const d = placeDist(t, nm);
     const mine = !kind || kindOf(t) === kind;
     if (!taken.has(i) && mine) nearest = Math.min(nearest, d);
     if (d > tol) return;
@@ -539,11 +596,17 @@ function notificationRows(h) {
 
 const LINES = {
   fastest: 'You spotted them all first. Takes one to know one.',
-  gold: 'Two cells walked into a bar, and you told them apart.',
-  silver: 'So close to gold, you could merge with it.',
-  bronze: 'Every merger you spot is one less cell living a double life.',
+  // Celia's lines (2026-10-26). Gold has two: each Hunt takes one (lineFor).
+  gold: ['Legend of the hidden merger.', 'You have 24/24 karat vision!'],
+  silver: 'Scientists praise you, werewolves fear you!',
+  bronze: 'Splitting + merging = one strong alloy!',
   laser: 'Nothing gets past those eyes, not even the answer key.',
 };
+/** A medal's line: one of its lines, the same for every winner of one Hunt. */
+function lineFor(tier, h) {
+  const l = LINES[tier];
+  return Array.isArray(l) ? l[posInt(h && h.id) % l.length] : l;
+}
 
 /** The special Achievement for one tier of one hunt. */
 function badgeRow(h, tier, th, site) {
@@ -558,7 +621,7 @@ function badgeRow(h, tier, th, site) {
   return {
     slug: `hunt-${h.id}-${tier}`,
     name: `${h.title}: ${TIER_NAME[tier]}`.slice(0, 80),
-    description: `${TIER_NAME[tier]} in ${h.title}: ${count}. ${LINES[tier]}`.slice(0, 300),
+    description: `${TIER_NAME[tier]} in ${h.title}: ${count}. ${lineFor(tier, h)}`.slice(0, 300),
     image_url: art, thumbnail_url: thumb, created_by: h.created_by || null,
   };
 }
@@ -922,17 +985,34 @@ async function addPlaceAction(args, ctx) {
   const nm = Array.isArray(args && args.nm) ? args.nm.slice(0, 3).map(Number) : [];
   if (nm.length !== 3 || !nm.every((v) => Number.isFinite(v) && Math.abs(v) < 1e10)) fail(400, 'Give x, y and z.');
   if (args.kind !== 'cut' && args.kind !== 'merge') fail(400, 'Say whether it is a merger (Cut) or a missing extension (Extend).');
-  return addPlace(h, nm, args.kind, ctx);
+  const radius = Math.max(0, Math.min(Number(args.radius_nm) || 0, 100000));
+  return addPlace(h, nm, args.kind, ctx, radius);
 }
 
-/** Into the key at nm, of kind; every run judged again; Laser Eyes to whoever now finds it. */
-async function addPlace(h, nm, kind, ctx) {
+/**
+ * Into the key at nm, of kind; every run judged again; Laser Eyes to whoever now finds it. With a radius it is a
+ * sphere, and at a place of that kind the key has already, it makes that place bigger instead (a wide face the
+ * key marked with a point: Ames 2026-10-26), with no Laser Eyes: the place was in the key all along.
+ */
+async function addPlace(h, nm, kind, ctx, radius = 0) {
   const { db } = ctx;
   const targets = await db.key(h.id);
-  if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
   const tol = tolOf(h);
-  if (targets.some((t) => dist(t, nm) <= tol / 4)) fail(409, 'The key already has a place there.');
-  const next = [...targets, [nm[0], nm[1], nm[2], kind === 'merge' ? 'merge' : 'cut']];
+  const k = kind === 'merge' ? 'merge' : 'cut';
+  const place = radius > 0 ? [nm[0], nm[1], nm[2], k, { r: [radius, radius, radius] }] : [nm[0], nm[1], nm[2], k];
+  if (radius > 0) {
+    const same = targets.findIndex((t) => kindOf(t) === k && placeDist(t, nm) <= tol);
+    if (same >= 0) {
+      const next = targets.map((t, i) => (i === same ? place : t));
+      await db.setKey(h.id, next);
+      const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
+      const r = await rescore({ id: h.id }, ctx);
+      return { ...(await adminView(row, ctx)), counted: true, enlarged: true, rescored: r.rescored, changed: r.changed, laser: 0 };
+    }
+  }
+  if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
+  if (targets.some((t) => placeDist(t, nm) <= tol / 4)) fail(409, 'The key already has a place there. Give it a size to make that place bigger.');
+  const next = [...targets, place];
   await db.setKey(h.id, next);
   const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
   const r = await rescore({ id: h.id }, ctx);
@@ -1453,5 +1533,5 @@ module.exports = {
   huntAction, restDb, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM, resultsHours,
-  keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM,
+  keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM, placeDist, layerPlaces,
 };
