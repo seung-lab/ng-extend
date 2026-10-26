@@ -3160,12 +3160,6 @@ function practiceWhen(iso: string | null) {
             </template>
             <button v-else class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
-            <!-- Duplicates (Ames 2026-10-26): close this one into another report. -->
-            <form v-if="!dupOf(row)" class="nge-triage-dup" @submit.prevent="markDuplicate(row)" @click.stop>
-              <label>Same as #<input v-model="dupDraft[row.id]" inputmode="numeric" size="4" placeholder="231" aria-label="Report number this duplicates" @keydown.stop @keyup.stop @keypress.stop /></label>
-              <button type="submit" class="nge-admin-action-btn" :disabled="!dupDraft[row.id] || triageActing === row.id"
-                      title="Close this report as a duplicate. Its reporter hears whenever you update the other report.">Group</button>
-            </form>
           </div>
         </div>
         <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
