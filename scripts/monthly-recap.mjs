@@ -12,7 +12,9 @@
  *
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/monthly-recap.mjs
  * Env: RECAP_MONTH=YYYY-MM (default: last month), RECAP_DRY=true (print
- * only), RECAP_CORRECT=true (rewrite the month's cards already sent).
+ * only), RECAP_CORRECT=true (rewrite the month's cards already sent),
+ * RECAP_TEST_TO=<user ids, comma separated> (send only their cards, titled "(test)",
+ * so the month's real card still goes out on the 1st).
  */
 
 import { readFileSync } from 'node:fs';
@@ -54,7 +56,8 @@ async function main() {
   // Places: rank among everyone who edited, and everyone who completed a cell.
   const editRank = new Map(ranked(activity, 'total').map((x, i) => [x.user_id, i + 1]));
   const cellRank = new Map(ranked(cells, 'count').map((x, i) => [x.user_id, i + 1]));
-  const recipients = [...new Set([...editRank.keys(), ...cellRank.keys()])];
+  const testTo = (process.env.RECAP_TEST_TO || '').split(',').map(x => x.trim()).filter(Boolean);
+  const recipients = [...new Set([...editRank.keys(), ...cellRank.keys()])].filter(uid => !testTo.length || testTo.includes(uid));
   if (!recipients.length) { console.log('No activity this month, no recaps to send.'); return; }
 
   const users = new Map();
@@ -66,7 +69,7 @@ async function main() {
     for (const u of rows) users.set(u.id, u);
   }
 
-  const title = `✨ Your Month in Science: ${month.label}`;
+  const title = `✨ Your Month in Science: ${month.label}${testTo.length ? ' (test)' : ''}`;
   const cards = recipients.map(uid => {
     const a = activity.get(uid) ?? { merges: 0, splits: 0, total: 0, times: [] };
     const c = cells.get(uid)?.count ?? 0;
@@ -106,7 +109,8 @@ async function main() {
   const correct = process.env.RECAP_CORRECT === 'true';
   let sent;
   try {
-    sent = await db.getAll(`notifications?select=id,target_id&target_type=eq.user&title=eq.${encodeURIComponent(title)}`, 'id.asc');
+    // A test card is always sent, however many tests came before it.
+    sent = testTo.length ? [] : await db.getAll(`notifications?select=id,target_id&target_type=eq.user&title=eq.${encodeURIComponent(title)}`, 'id.asc');
   } catch (e) {
     if (!dry) throw e;
     // A dry run with a read only key can not see notifications.

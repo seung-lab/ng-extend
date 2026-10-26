@@ -14,7 +14,8 @@
  *
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/monthly-champions.mjs
  * Env: RECAP_MONTH=YYYY-MM (default: last month), RECAP_DRY=true (print
- * only), RECAP_CORRECT=true (rewrite the month's broadcast in place).
+ * only), RECAP_CORRECT=true (rewrite the month's broadcast in place),
+ * RECAP_TEST_TO=<user ids, comma separated> (send it to each of them, titled "(test)").
  */
 
 import { monthRange, supabaseClient, monthActivity, monthCells, ranked } from './recap-month.mjs';
@@ -40,7 +41,8 @@ async function main() {
   const ids = [...new Set([...editors, ...completers].map(r => r.user_id))];
   const names = new Map((await db.get(`users?select=id,display_name&id=in.(${ids.join(',')})`)).map(u => [u.id, u.display_name || 'Anonymous']));
 
-  const title = `🏆 Monthly Champions, ${month.label}`;
+  const testTo = (process.env.RECAP_TEST_TO || '').split(',').map(x => x.trim()).filter(Boolean);
+  const title = `🏆 Monthly Champions, ${month.label}${testTo.length ? ' (test)' : ''}`;
   const body = [
     `🎉 **Big congratulations to ${month.label}'s champions!**`,
     ``,
@@ -57,7 +59,7 @@ async function main() {
   const dry = process.env.RECAP_DRY === 'true';
   let existing;
   try {
-    existing = await db.get(`notifications?select=id,body&target_type=eq.all&title=eq.${encodeURIComponent(title)}&limit=1`);
+    existing = testTo.length ? [] : await db.get(`notifications?select=id,body&target_type=eq.all&title=eq.${encodeURIComponent(title)}&limit=1`);
   } catch (e) {
     if (!dry) throw e;
     console.log(`(could not read the broadcasts already sent: ${String(e.message).slice(0, 80)})`);
@@ -74,9 +76,8 @@ async function main() {
     console.log(`[champions] Corrected the saved broadcast for ${month.label}.`);
     return;
   }
-  await db.send('POST', 'notifications', {
-    title, body, target_type: 'all', target_id: null, send_at: new Date().toISOString(), post_to_chat: false,
-  });
+  const row = { title, body, target_type: 'all', target_id: null, send_at: new Date().toISOString(), post_to_chat: false };
+  await db.send('POST', 'notifications', testTo.length ? testTo.map(id => ({ ...row, target_type: 'user', target_id: id })) : row);
   console.log(`[champions] Posted ${title}: ${editors.length} editors, ${completers.length} completers.`);
 }
 
