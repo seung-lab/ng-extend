@@ -19,6 +19,7 @@ const json = (b, status = 200) => ({ status, contentType: 'application/json', bo
 const results = [];
 const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail !== undefined ? ' : ' + JSON.stringify(detail).slice(0, 300) : '')); };
 
+const { handle } = require('../functions/access-request');
 // What functions/access-request.js writes, in its three shapes.
 const ISSUES = [
   { id: 'i4', user_name: 'Sophia Sterling', title: 'Beta access request from Sophia Sterling', url: null, created_at: '2026-10-26T15:00:00Z',
@@ -26,7 +27,7 @@ const ISSUES = [
   { id: 'i3', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-26T14:00:00Z',
     message: 'Vic Visitor asks to join the Pyr beta, from connectome.quest.\nEmail they gave: vic@example.org. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.\nThey agreed to the community principles.' },
   { id: 'i2', user_name: 'Gus Game', title: 'Beta access request from Gus Game', url: null, created_at: '2026-10-25T10:00:00Z',
-    message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.' },
+    message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.\nEyeWire username: gus_ew\nEyeWire rank: Scythe' },
   { id: 'i1', user_name: 'Tess Tester', title: 'Beta access request from Tess Tester', url: null, created_at: '2026-10-24T10:00:00Z',
     message: 'Tess Tester asks to join the Pyr beta.\nEmail: tess@example.org. To let them in, add this one under Admin Hub, Pilot testers.' },
   { id: 'i0', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-20T10:00:00Z',
@@ -45,6 +46,16 @@ const ISSUES = [
   await context.route(/supabase\.co/, r => r.fulfill(json([])));
   // Registered first: Playwright tries the last registered route first.
   await context.route(/cloudfunctions\.net|run\.app/, r => r.fulfill(json({ ok: true, data: { invited: true } })));
+  // Add to list and Remove request, answered by the real rules over a stand-in store.
+  const store = {};
+  const marks = { all: async () => ({ ...store }), set: async (e, v) => { if (v) store[e] = v; else delete store[e]; } };
+  await context.route(/ewAccessRequest/, async r => {
+    let i = {}; try { i = r.request().postDataJSON() || {}; } catch (e) {}
+    const { action, token, ...args } = i;
+    if (action === 'access.betaStatus') return r.fulfill(json({ ok: true, data: { invited: true } }));
+    try { r.fulfill(json({ ok: true, data: await handle(action, args, { marks, isAdmin: true, who: { email: 'amy@example.org' } }) })); }
+    catch (e) { r.fulfill(json({ error: e.message }, e.status || 500)); }
+  });
   const upserts = [];
   const envelope = (body) => json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await context.route(/ewCommunityData/, r => {
@@ -92,11 +103,34 @@ const ISSUES = [
     check('Let them in adds that email to the pilot testers', upserts.length === 1 && upserts[0].email === 'vic@example.org' && upserts[0].enabled === true, upserts);
     const after = await page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
     check('then they leave the waiting list', after.length === 2 && !after.some(r => /Vic/.test(r)), after);
-    await page.check('.nge-beta-req-all input');
-    await page.waitForTimeout(300);
-    const all = await page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
+    const rowsNow = () => page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
+    const view = async (label) => { await page.click(`.nge-beta-views button:has-text("${label}")`); await page.waitForTimeout(300); };
+    check('EyeWire username and rank show', /EyeWire: gus_ew, Scythe/.test(after.find(r => /Gus/.test(r)) || ''), after);
+    // Add to list: off the waiting page, onto On the list, kept by the server.
+    await page.click('.nge-beta-req li:has-text("Gus") >> text=Add to list');
+    await page.waitForTimeout(600);
+    check('Add to list takes them off Waiting', !(await rowsNow()).some(r => /Gus/.test(r)));
+    check('and keeps them in the database list', store['gus@work.example'] && store['gus@work.example'].mark === 'listed', store);
+    await view('On the list');
+    check('On the list shows them, with Let them in', (await rowsNow()).some(r => /Gus/.test(r) && /Let them in/.test(r)));
+    // Remove request.
+    await view('Waiting');
+    await page.click('.nge-beta-req li:has-text("Sophia") >> text=Remove request');
+    await page.waitForTimeout(600);
+    check('Remove request takes them off Waiting', !(await rowsNow()).some(r => /Sophia/.test(r)) && store['sophia@example.org'] && store['sophia@example.org'].mark === 'removed');
+    await view('Removed');
+    check('Removed shows them', (await rowsNow()).some(r => /Sophia/.test(r)));
+    await page.click('.nge-beta-req li:has-text("Sophia") >> text=Back to waiting');
+    await page.waitForTimeout(600);
+    await view('Waiting');
+    check('Back to waiting brings them back', (await rowsNow()).some(r => /Sophia/.test(r)) && !store['sophia@example.org']);
+    const counts = (await page.innerText('.nge-beta-views')).replace(/\s+/g, ' ');
+    check('the tabs count each list', /Waiting 1/.test(counts) && /On the list 1/.test(counts) && /Let in 2/.test(counts) && /Removed 0/.test(counts), counts);
+    await page.screenshot({ path: path.join(OUT, 'beta-requests-sorted.png'), clip: { x: box.x, y: box.y, width: box.width, height: Math.min(700, box.height) } });
+    await view('Let in');
+    const all = await rowsNow();
     const vic = all.find(r => /Vic/.test(r)) || '';
-    check('Show already let in: Vic says In, with Email them', /\bIn\b/.test(vic) && /Email them/.test(vic), all);
+    check('Let in: Vic says In, with Email them', /\bIn\b/.test(vic) && /Email them/.test(vic), all);
     const mail = await page.$eval('.nge-beta-req-mail', a => a.getAttribute('href')).catch(() => '');
     check('Email them is addressed to them and has no dashes', /^mailto:/.test(mail) && !/%E2%80%93|%E2%80%94/i.test(mail), mail.slice(0, 120));
     const text = await page.innerText('.nge-pilot-admin');

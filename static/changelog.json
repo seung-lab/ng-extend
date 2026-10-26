@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T19:53:00Z",
+      "title": "Tell us your EyeWire name when you ask to join",
+      "digest": "minor",
+      "items": [
+        "When you ask to join Pyr, you can now add your EyeWire username and rank if you played EyeWire."
+      ]
+    },
+    {
       "at": "2026-10-26T19:40:34Z",
       "title": "Reviewing access requests: two more",
       "items": [

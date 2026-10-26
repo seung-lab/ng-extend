@@ -27,6 +27,9 @@ const requested = ref(false);
 const name = ref('');
 const email = ref('');
 const note = ref('');
+// Both optional (Ames 2026-10-26: "eyewire username, Eyewire rank").
+const ewName = ref('');
+const ewRank = ref('');
 const sending = ref(false);
 const error = ref('');
 const panelEl = ref<HTMLElement | null>(null);
@@ -57,12 +60,16 @@ watch(() => backend.userId, id => { if (id) void check(id); else { show.value = 
 // caught here; the server checks again and is the one that counts.
 const NAME_OK = /^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u;
 const EMAIL_OK = /^[^\s@<>()\[\],;:"]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+const EW_NAME_OK = /^[A-Za-z0-9_.\- ]+$/;
+const EW_RANK_OK = /^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u;
 function problem(): string {
   const n = name.value.trim(), e = email.value.trim();
   if (!n) return 'Please add your name.';
   if (!NAME_OK.test(n)) return 'Your name can have letters, spaces, periods, apostrophes and hyphens only.';
   if (!e) return 'Please add your email.';
   if (!EMAIL_OK.test(e)) return 'That email does not look right.';
+  if (ewName.value.trim() && !EW_NAME_OK.test(ewName.value.trim())) return 'An EyeWire username has letters, numbers, dots, dashes and underscores only.';
+  if (ewRank.value.trim() && !EW_RANK_OK.test(ewRank.value.trim())) return 'An EyeWire rank has letters, numbers and spaces only.';
   return '';
 }
 async function request() {
@@ -72,7 +79,8 @@ async function request() {
   sending.value = true;
   try {
     const r = await secureWrite<{ invited?: boolean; requested?: boolean }>('access.beta', {
-      name: name.value.trim(), email: email.value.trim(), note: note.value.trim() || undefined });
+      name: name.value.trim(), email: email.value.trim(), note: note.value.trim() || undefined,
+      eyewireUsername: ewName.value.trim() || undefined, eyewireRank: ewRank.value.trim() || undefined });
     if (r?.invited) { show.value = false; betaGate.value = 'in'; return; }
     requested.value = true;
   } catch (e: any) {
@@ -110,9 +118,19 @@ onUnmounted(() => window.removeEventListener('keydown', swallow, true));
           <input id="nge-beta-name" v-model="name" class="nge-beta-field" type="text" maxlength="80" autocomplete="name" @input="error = ''" />
           <label class="nge-beta-label" for="nge-beta-email">Your email</label>
           <input id="nge-beta-email" v-model="email" class="nge-beta-field" type="email" maxlength="254" autocomplete="email" @input="error = ''" />
+          <div class="nge-beta-pair">
+            <div>
+              <label class="nge-beta-label" for="nge-beta-ewname">EyeWire username <span>(optional)</span></label>
+              <input id="nge-beta-ewname" v-model="ewName" class="nge-beta-field" type="text" maxlength="60" autocomplete="off" spellcheck="false" @input="error = ''" />
+            </div>
+            <div>
+              <label class="nge-beta-label" for="nge-beta-ewrank">EyeWire rank <span>(optional)</span></label>
+              <input id="nge-beta-ewrank" v-model="ewRank" class="nge-beta-field" type="text" maxlength="40" autocomplete="off" @input="error = ''" />
+            </div>
+          </div>
           <label class="nge-beta-label" for="nge-beta-note">Anything you'd like us to know? <span>(optional)</span></label>
           <textarea id="nge-beta-note" v-model="note" class="nge-beta-note" rows="2" maxlength="500"
-                    placeholder="Where you heard about Pyr, or your EyeWire username"></textarea>
+                    placeholder="Where you heard about Pyr"></textarea>
           <button class="nge-beta-btn" :disabled="sending" @click="request">{{ sending ? 'Sending...' : 'Request beta access' }}</button>
           <p v-if="error" class="nge-beta-error" role="alert">{{ error }}</p>
         </template>
@@ -214,6 +232,8 @@ onUnmounted(() => window.removeEventListener('keydown', swallow, true));
   border: 1px solid rgba(100, 200, 255, 0.28); border-radius: 6px;
 }
 .nge-beta-field { min-height: 0; height: 38px; resize: none; margin-bottom: 12px; }
+.nge-beta-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .nge-beta-pair { grid-template-columns: 1fr; gap: 0; } }
 .nge-beta-note:focus, .nge-beta-field:focus { outline: none; border-color: rgba(100, 200, 255, 0.7); box-shadow: 0 0 0 2px rgba(79, 207, 255, 0.15); }
 .nge-beta-note::placeholder { color: rgba(190, 210, 240, 0.4); }
 /* The one action, in the Dataset Stats button's voice, filled. */

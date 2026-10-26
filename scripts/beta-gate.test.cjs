@@ -89,11 +89,20 @@ async function player(browser, status) {
     const err2 = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
     check('an empty name says so, and nothing is sent', /add your name/.test(err2) && !p.calls.some(c => c.action === 'access.beta'), err2);
     await p.page.fill('#nge-beta-name', "Zoë O'Brien");
-    await p.page.fill('#nge-beta-note', 'My EyeWire name is tester1');
+    // EyeWire username and rank, optional (Ames 2026-10-26); a bad one is caught here.
+    await p.page.fill('#nge-beta-ewname', '<b>tester1</b>');
+    await p.page.click('.nge-beta-btn');
+    await p.page.waitForTimeout(300);
+    const err3 = await p.page.$eval('.nge-beta-error', el => el.innerText).catch(() => '');
+    check('a bad EyeWire username says so, and nothing is sent', /EyeWire username/.test(err3) && !p.calls.some(c => c.action === 'access.beta'), err3);
+    await p.page.fill('#nge-beta-ewname', 'tester1');
+    await p.page.fill('#nge-beta-ewrank', 'Scythe');
+    await p.page.fill('#nge-beta-note', 'Heard about it on the forum');
     await p.page.click('.nge-beta-btn');
     await p.page.waitForSelector('.nge-beta-text--done', { timeout: 5000 }).catch(() => {});
     const sent = p.calls.filter(c => c.action === 'access.beta');
-    check('Request beta access sends one request: name, email and note', sent.length === 1 && sent[0].name === "Zoë O'Brien" && sent[0].email === 'new@example.org' && sent[0].note === 'My EyeWire name is tester1', sent);
+    check('Request beta access sends one request: name, email, EyeWire username and rank, note', sent.length === 1 && sent[0].name === "Zoë O'Brien" && sent[0].email === 'new@example.org'
+      && sent[0].eyewireUsername === 'tester1' && sent[0].eyewireRank === 'Scythe' && sent[0].note === 'Heard about it on the forum', sent);
     const done = (await p.page.innerText('.nge-beta-panel')).replace(/\s+/g, ' ');
     check('then it thanks them, signs off, and offers no button', /Thanks for requesting early access to map the brain/.test(done) && /The Pyr \(pronounced "peer"\) team at Princeton University/.test(done) && !(await p.page.$('.nge-beta-btn')), done.slice(0, 200));
     const links = await p.page.$$eval('.nge-beta-links a', as => as.map(a => a.href));
