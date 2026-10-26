@@ -1935,7 +1935,8 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   box-shadow:
     0 0 0 1px rgba(100, 200, 255, 0.3),
     0 2px 12px rgba(100, 200, 255, 0.18);
-  transform: translateY(-1px);
+  /* and grows a touch, like a Mac's dock (Nseraf: "maybe 5% larger") */
+  transform: translateY(-1px) scale(1.05);
 }
 @media (prefers-reduced-motion: reduce) {
   .nge-icon-btn:hover { transform: none; }
