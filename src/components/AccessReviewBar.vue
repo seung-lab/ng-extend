@@ -9,11 +9,14 @@
  * answer from the Admin Hub (AccessRequestsTab).
  */
 import { ref, computed, watch } from 'vue';
-import { reviewing, reviewAccessItem, openExample, flyTo, backToRequests, pointName, type AccessItem } from '../access_request';
+import { reviewing, reviewAccessItem, openExample, flyTo, flyToPoint, backToRequests, exitReview, pointName, type AccessItem } from '../access_request';
 import { useDragBox } from '../util/drag_box';
 
 const boxEl = ref<HTMLElement | null>(null);
-const { dragging, posStyle, startDrag } = useDragBox('nge_access_review_pos', boxEl);
+const { pos, dragging, posStyle, startDrag } = useDragBox('nge_access_review_pos', boxEl);
+// Never past the bottom of the window, wherever it was dragged (Celia D, 258:
+// "box expands past display window when too many points are added").
+const boxStyle = computed(() => ({ ...posStyle.value, ...(pos.value ? { maxHeight: `calc(100vh - ${Math.round(pos.value.y) + 12}px)` } : {}) }));
 const busy = ref(false);
 const error = ref('');
 const feedback = ref('');
@@ -71,10 +74,12 @@ function go(step: number) {
 </script>
 
 <template>
-  <div v-if="request && item" ref="boxEl" class="nge-arv" :class="{ 'nge-arv--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Review an access request">
+  <div v-if="request && item" ref="boxEl" class="nge-arv" :class="{ 'nge-arv--dragging': dragging }" :style="boxStyle" role="dialog" aria-label="Review an access request">
     <div class="nge-arv-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-arv-title">{{ request.player_name || request.email }}</span>
       <span class="nge-arv-pos">{{ item.kind === 'cut' ? 'Cut' : 'Merge' }} {{ item.slot }} · {{ index + 1 }} of {{ items.length }}</span>
+      <button class="nge-arv-x" title="Stop reviewing: close this box and take the points away" aria-label="Stop reviewing"
+              @pointerdown.stop @click="saveNote(); exitReview()">×</button>
     </div>
     <p class="nge-arv-how">
       {{ item.kind === 'cut' ? 'Two cells wrongly joined: red and blue points mark where the player would cut.' : 'One cell wrongly broken in two: each merge joins its point a to its point b.' }}
@@ -88,7 +93,7 @@ function go(step: number) {
     </div>
     <div v-if="points.length" class="nge-arv-pts">
       <div v-for="p in points" :key="p.key" class="nge-arv-pt">
-        <button class="nge-arv-fly" :class="`nge-arv-fly--${p.color}`" title="Fly to this point" @click="flyTo(p.position)">
+        <button class="nge-arv-fly" :class="`nge-arv-fly--${p.color}`" title="Fly to this point" @click="flyToPoint(p.position)">
           <span class="nge-arv-dot"></span>{{ p.n }}
         </button>
         <button class="nge-arv-mark" :class="{ 'nge-arv-mark--good': item.point_marks?.[p.key] === 'good' }" :disabled="busy || !canMark" @click="markPoint(p.key, 'good')">good</button>
@@ -136,7 +141,9 @@ function go(step: number) {
 .nge-arv-quote { margin: 6px 0; padding: 4px 8px; border-left: 2px solid rgba(255, 255, 255, 0.3); border-radius: 0; white-space: pre-wrap; }
 .nge-arv-all { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
 .nge-arv-all span { flex: 1; color: rgba(220, 230, 245, 0.8); }
-.nge-arv-pts { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.nge-arv-pts { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-height: 30vh; overflow-y: auto; padding-right: 4px; }
+.nge-arv-x { font: inherit; font-size: 20px; line-height: 1; padding: 0 4px; margin-left: 4px; background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
+.nge-arv-x:hover { color: #fff; }
 .nge-arv-pt { display: flex; align-items: center; gap: 6px; }
 .nge-arv-fly { flex: 1; display: inline-flex; align-items: center; gap: 6px; font: inherit; color: #dce6f5; background: none; border: none; cursor: pointer; text-align: left; padding: 2px 0; }
 .nge-arv-fly:hover { text-decoration: underline; text-underline-offset: 3px; }

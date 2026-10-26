@@ -8,7 +8,7 @@
  * Logic: src/access_request.ts.
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, resetAccess, flyTo,
+import { ACCESS_SLOTS, myAccess, loadMyAccess, viewContents, whyNot, saveExample, removeExample, submitAccess, withdrawAccess, resetAccess, flyToPoint,
   type AccessKind, type AccessItem } from '../access_request';
 import { openStartLink } from '../util/start_link';
 import { pointName } from '../access_request';
@@ -230,7 +230,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
             <div v-if="openKey === kind + row.s" class="nge-acc-marks">
               <p v-if="row.it.feedback" class="nge-acc-quote">{{ row.it.feedback }}</p>
               <button v-for="p in pointList(row.it)" :key="p.key" class="nge-acc-pt" :class="`nge-acc-pt--${p.color}`"
-                      title="Fly to this point" @click="flyTo(p.position)">
+                      title="Fly to this point" @click="flyToPoint(p.position)">
                 <span class="nge-acc-dot"></span>{{ p.n }}<span v-if="p.mark" class="nge-acc-ptmark" :class="`nge-acc-ptmark--${p.mark}`">{{ p.mark }}</span>
               </button>
             </div>
