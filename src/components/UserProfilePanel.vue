@@ -847,24 +847,24 @@ const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earn
 // gold / silver / bronze are special badges that count up, so user can win gold multiple times
 // and it shows the # times, not repeating the same badge". Each Hunt gives its own Achievements
 // (slug hunt-<id>-<medal>); here they are one tile per medal, with how many times it was won.
-const HUNT_MEDAL = /^hunt-(\d+)-(gold|silver|bronze|fastest)$/;
+const HUNT_MEDAL = /^hunt-(\d+)-(gold|silver|bronze|fastest|laser)$/;
 // Monthly Champions places (scripts/monthly-champions.mjs, Ames 2026-10-26):
 // slug month-YYYY-MM-<edits|cells>-<place>; cups for edits, neuron awards for cells.
 const MONTH_MEDAL = /^month-\d{4}-\d{2}-(edits|cells)-(gold|silver|bronze)$/;
 // Pyr Year Champions (every Sep 28): slug year-<n>-<edits|cells>-<place>.
 const YEAR_MEDAL = /^year-\d+-(edits|cells)-(gold|silver|bronze)$/;
 type MonthMedal = `${'month' | 'year'}-${'edits' | 'cells'}-${'gold' | 'silver' | 'bronze'}`;
-type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest' | MonthMedal;
+type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest' | 'laser' | MonthMedal;
 const MEDAL_ORDER: HuntMedal[] = ['year-edits-gold', 'year-cells-gold', 'year-edits-silver', 'year-cells-silver', 'year-edits-bronze', 'year-cells-bronze',
   'month-edits-gold', 'month-cells-gold', 'month-edits-silver', 'month-cells-silver', 'month-edits-bronze', 'month-cells-bronze',
-  'gold', 'silver', 'bronze', 'fastest'];
-const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed',
+  'gold', 'silver', 'bronze', 'fastest', 'laser'];
+const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed', laser: 'Laser Eyes',
   'month-edits-gold': 'Gold', 'month-edits-silver': 'Silver', 'month-edits-bronze': 'Bronze',
   'month-cells-gold': 'Gold', 'month-cells-silver': 'Silver', 'month-cells-bronze': 'Bronze',
   'year-edits-gold': 'Gold', 'year-edits-silver': 'Silver', 'year-edits-bronze': 'Bronze',
   'year-cells-gold': 'Gold', 'year-cells-silver': 'Silver', 'year-cells-bronze': 'Bronze' };
 /** Under a medal in the Trophy Case: what it is for, when the picture alone does not say. */
-const MEDAL_SUB: Record<HuntMedal, string> = { gold: '', silver: '', bronze: '', fastest: 'the fastest',
+const MEDAL_SUB: Record<HuntMedal, string> = { gold: '', silver: '', bronze: '', fastest: 'the fastest', laser: 'what the key missed',
   'month-edits-gold': 'monthly edits', 'month-edits-silver': 'monthly edits', 'month-edits-bronze': 'monthly edits',
   'month-cells-gold': 'monthly cells', 'month-cells-silver': 'monthly cells', 'month-cells-bronze': 'monthly cells',
   'year-edits-gold': 'Pyr year, edits', 'year-edits-silver': 'Pyr year, edits', 'year-edits-bronze': 'Pyr year, edits',
@@ -894,7 +894,7 @@ const competitionMedals = computed<MedalTile[]>(() => MEDAL_ORDER.map((tier) => 
 /** The Hunt (or month) a medal was won in: its Achievement is named "<Hunt title>: Gold"
  *  or "October 2026 Top Editors: Gold". */
 function huntTitleOf(a: any): string {
-  return String(a?.badge?.name || '').replace(/:\s*(Gold|Silver|Bronze|Fastest)\s*$/i, '').trim() || 'a Hunt';
+  return String(a?.badge?.name || '').replace(/:\s*(Gold|Silver|Bronze|Fastest|Laser Eyes)\s*$/i, '').trim() || 'a Hunt';
 }
 function medalTooltip(m: MedalTile): string {
   const head = `${MEDAL_WORD[m.tier]}${MEDAL_SUB[m.tier] ? `, ${MEDAL_SUB[m.tier]}` : ''}: won ${m.count === 1 ? 'once' : `${m.count} times`}`;

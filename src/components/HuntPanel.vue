@@ -501,6 +501,10 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           <span class="nge-hunt-medalmini" title="Speed: the fastest to find them all (or the most, if nobody finds all), from your first open of the Hunt. One try.">
             <img src="hunt/fastest-128.png" alt="" /><b class="nge-hunt-tierword--speed">Speed</b><small>fastest</small>
           </span>
+          <!-- Laser Eyes (Ames 2026-10-26): find a real problem the answer key missed -->
+          <span class="nge-hunt-medalmini" title="Laser Eyes: find a real problem the answer key missed. The admins check it, and it counts for you.">
+            <img src="hunt/laser-128.png" alt="" /><b class="nge-hunt-tierword--laser">Laser Eyes</b><small>key missed</small>
+          </span>
         </div>
         <p v-if="!hunt.test" class="nge-hunt-fine">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
       </div>
@@ -879,6 +883,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-mymedal--gold { border-color: rgb(var(--hn-gold) / 0.75); box-shadow: 0 0 18px rgb(var(--hn-gold) / 0.2); }
 .nge-hunt-mymedal--speed b { color: #7fd8ff; }
 .nge-hunt-tierword--speed { color: #7fd8ff !important; text-shadow: 0 0 8px rgba(127, 216, 255, 0.35); }
+.nge-hunt-tierword--laser { color: #5fe3f5 !important; text-shadow: 0 0 8px rgba(95, 227, 245, 0.35); white-space: nowrap; }
 .nge-hunt-speedmark { width: 18px; height: 18px; object-fit: contain; flex: none; }
 
 /* Calm screen and reduced motion: the same box, still. */

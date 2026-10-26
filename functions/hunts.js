@@ -542,6 +542,7 @@ const LINES = {
   gold: 'Two cells walked into a bar, and you told them apart.',
   silver: 'So close to gold, you could merge with it.',
   bronze: 'Every merger you spot is one less cell living a double life.',
+  laser: 'Nothing gets past those eyes, not even the answer key.',
 };
 
 /** The special Achievement for one tier of one hunt. */
@@ -726,6 +727,7 @@ async function huntAction(action, args, ctx) {
     case 'hunt.duplicate': needAdmin(); return duplicate(args, ctx);
     case 'hunt.run': needAdmin(); return adminRun(args, ctx);
     case 'hunt.count_it': needAdmin(); return countIt(args, ctx);
+    case 'hunt.add_place': needAdmin(); return addPlaceAction(args, ctx);
     case 'hunt.test': needAdmin(); return testOpen(args, ctx);
     case 'hunt.test_drop': needAdmin(); return testDrop(args, ctx);
     default: fail(400, 'Unknown Hunt action.');
@@ -907,15 +909,35 @@ async function countIt(args, ctx) {
   const d = drops.find((x) => x.id === String(args.drop_id || ''));
   if (!d) fail(404, 'That gem is not in this hunter\'s run.');
   if (d.hit >= 0) fail(409, 'That gem already found a problem.');
+  return addPlace(h, d.nm, d.k, ctx);
+}
+
+/**
+ * A place the key missed, added by an admin from its coordinates (Ames 2026-10-26: "I want to be able to add
+ * coords for missing cut or merge and label them as merge or cut"): into the key, everyone judged again, and
+ * Laser Eyes to each hunter whose gem now finds it.
+ */
+async function addPlaceAction(args, ctx) {
+  const h = await getHunt(ctx.db, args && args.id);
+  const nm = Array.isArray(args && args.nm) ? args.nm.slice(0, 3).map(Number) : [];
+  if (nm.length !== 3 || !nm.every((v) => Number.isFinite(v) && Math.abs(v) < 1e10)) fail(400, 'Give x, y and z.');
+  if (args.kind !== 'cut' && args.kind !== 'merge') fail(400, 'Say whether it is a merger (Cut) or a missing extension (Extend).');
+  return addPlace(h, nm, args.kind, ctx);
+}
+
+/** Into the key at nm, of kind; every run judged again; Laser Eyes to whoever now finds it. */
+async function addPlace(h, nm, kind, ctx) {
+  const { db } = ctx;
   const targets = await db.key(h.id);
   if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
   const tol = tolOf(h);
-  if (targets.some((t) => dist(t, d.nm) <= tol / 4)) fail(409, 'The key already has a place there.');
-  const next = [...targets, [d.nm[0], d.nm[1], d.nm[2], d.k === 'merge' ? 'merge' : 'cut']];
+  if (targets.some((t) => dist(t, nm) <= tol / 4)) fail(409, 'The key already has a place there.');
+  const next = [...targets, [nm[0], nm[1], nm[2], kind === 'merge' ? 'merge' : 'cut']];
   await db.setKey(h.id, next);
   const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
   const r = await rescore({ id: h.id }, ctx);
-  return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed };
+  const laser = await awardLaserEyes(row || h, next.length - 1, ctx);
+  return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed, laser: laser.length };
 }
 
 /** A copy of a hunt, as a draft: its key, view, cells, words and settings; no notes, no answers. */
@@ -1020,6 +1042,41 @@ async function finalize(h, ctx, { force = false } = {}) {
   }
   // Chat hears the results once, in the results post (postResults), not a line per winner.
   return { awarded: winners.length, fresh: fresh.length, ...counts };
+}
+
+/** Laser Eyes for this Hunt (Ames 2026-10-26): a problem the answer key missed, found. Ames's mask. */
+function laserBadgeRow(h, site) {
+  return {
+    slug: `hunt-${h.id}-laser`,
+    name: `${h.title}: Laser Eyes`.slice(0, 80),
+    description: `Laser Eyes in ${h.title}: a problem the answer key missed, found. ${LINES.laser}`.slice(0, 300),
+    image_url: `${site}/hunt/laser.png`, thumbnail_url: `${site}/hunt/laser-128.png`, created_by: h.created_by || null,
+  };
+}
+
+/**
+ * Laser Eyes to everyone whose gem found a place Count it just added (Ames 2026-10-26: "use this
+ * achievement for anyone who found a missing hunt cut or extension, and it increments - max award one
+ * time per hunt"): one Achievement per Hunt, given once to each finder; the profile counts them up.
+ */
+async function awardLaserEyes(h, index, ctx) {
+  const { db, notify } = ctx;
+  if (!db.allSubmissions || !db.upsertBadge || !db.award) return [];
+  const runs = await db.allSubmissions(h.id);
+  const finders = [...new Set(runs.filter((r) => Array.isArray(r.points) && !r.points.some((p) => Array.isArray(p))
+    && normalizeDrops(r.points).some((d) => d.hit === index)).map((r) => r.user_id))];
+  if (!finders.length) return [];
+  const badge = await db.upsertBadge(laserBadgeRow(h, ctx.site || ''));
+  const had = new Set(db.badgeHolders ? (await db.badgeHolders(badge.id)).map((r) => r.user_id) : []);
+  const fresh = finders.filter((u) => !had.has(u));
+  if (!fresh.length) return [];
+  await db.award(fresh.map((u) => ({ badge_id: badge.id, user_id: u, awarded_by: (ctx.me && ctx.me.id) || null,
+    reason: `Found a problem the answer key missed in ${h.title}` })));
+  if (notify) {
+    await notify(fresh.map((u) => ({ user_id: u, title: `🏅 New Achievement: ${badge.name}`,
+      body: `You earned the "${badge.name}" award! ${badge.description}`, image: badge.image_url })));
+  }
+  return fresh;
 }
 
 /** The speed award's Achievement for this hunt (its own; the cheetah art, or a picture set for it). */
@@ -1388,6 +1445,7 @@ function restDb(sb) {
       return new Set(rows.map((r) => `${r.badge_id}:${r.user_id}`));
     },
     award: (rows) => (rows.length ? sb('special_badge_awards?on_conflict=badge_id,user_id', { method: 'POST', headers: merge, body: JSON.stringify(rows) }) : []),
+    badgeHolders: (badgeId) => sb(`special_badge_awards?badge_id=eq.${posInt(badgeId)}&select=user_id&limit=10000`),
   };
 }
 

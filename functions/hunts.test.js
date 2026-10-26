@@ -174,6 +174,7 @@ function fakeDb() {
     upsertBadge: async (row) => { let b = s.badges.find((x) => x.slug === row.slug); if (b) Object.assign(b, clone(row)); else { b = { id: s.seq++, ...clone(row) }; s.badges.push(b); } return clone(b); },
     held: async (ids) => new Set(s.awards.filter((a) => ids.includes(a.badge_id)).map((a) => `${a.badge_id}:${a.user_id}`)),
     award: async (rows) => { for (const r of rows) if (!s.awards.some((a) => a.badge_id === r.badge_id && a.user_id === r.user_id)) s.awards.push(clone(r)); },
+    badgeHolders: async (id) => s.awards.filter((a) => a.badge_id === id).map((a) => ({ user_id: a.user_id })),
   };
   return db;
 }
@@ -695,6 +696,40 @@ test('Count it: an admin turns a hunter\'s miss on a real error into a place in 
   assert.deepEqual(h.db._s.subs.map((x) => x.found), [1, 1]);   // both get it
   await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: run.drops[0].id }, admin), /already found/);
   await assert.rejects(H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: 'nope' }, admin), /not in this hunter/);
+  // Laser Eyes (Ames 2026-10-26): both finders get this Hunt's, once, with a bell note each.
+  assert.equal(after.laser, 2);
+  const laser = h.db._s.badges.find((b) => b.slug === `hunt-${d.id}-laser`);
+  assert.ok(laser && laser.name === 'Pinky Hunt: Laser Eyes' && /\/hunt\/laser\.png$/.test(laser.image_url), JSON.stringify(laser));
+  assert.deepEqual(h.db._s.awards.filter((a) => a.badge_id === laser.id).map((a) => a.user_id).sort(), [P1.id, P2.id].sort());
+  assert.equal(h.bell.filter((n) => /Laser Eyes/.test(n.title)).length, 2);
+  // A second place the key missed in the same Hunt: no second Laser Eyes for the same hunters.
+  await dropAll(d.id, [pt(30000, 30000, 100)], h.ctx(P1, at(63)));
+  const run2 = await H.huntAction('hunt.run', { id: d.id, user_id: P1.id }, admin);
+  const again = await H.huntAction('hunt.count_it', { id: d.id, user_id: P1.id, drop_id: run2.drops.find((x) => !x.hit).id }, h.ctx(ADMIN, at(64), true));
+  assert.equal(again.laser, 0);
+  assert.equal(h.db._s.awards.filter((a) => a.badge_id === laser.id).length, 2);
+  assert.equal(h.bell.filter((n) => /Laser Eyes/.test(n.title)).length, 2);
+});
+
+test('Add a place the key missed, by its coordinates and kind: everyone judged again, Laser Eyes to whoever finds it (Ames 2026-10-26)', async () => {
+  const h = harness();
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  // P1 put an Extend gem on a missing extension the key does not have, at [20000, 20000, 100] voxels = [80000, 80000, 4000] nm.
+  await H.huntAction('hunt.drop', { id: d.id, kind: 'merge', layer: layer([{ ...pt(20000, 20000, 100), id: 'x1' }]), dims: DIMS }, h.ctx(P1, at(60)));
+  const admin = h.ctx(ADMIN, at(62), true);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000, 4000], kind: 'merge' }, h.ctx(P2, at(62))), /Admins only/);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000], kind: 'merge' }, admin), /x, y and z/);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000, 4000], kind: 'edge' }, admin), /merger \(Cut\) or a missing extension/);
+  const r = await H.huntAction('hunt.add_place', { id: d.id, nm: [80100, 80000, 4000], kind: 'merge' }, admin);
+  assert.deepEqual([r.target_count, r.laser], [4, 1]);
+  assert.deepEqual(h.db._s.keys[d.id].slice(-1)[0], [80100, 80000, 4000, 'merge']);
+  assert.equal(h.db._s.subs[0].found, 1);
+  assert.equal(h.bell.filter((n) => /Laser Eyes/.test(n.title)).length, 1);
+  await assert.rejects(H.huntAction('hunt.add_place', { id: d.id, nm: [80000, 80000, 4000], kind: 'merge' }, admin), /already has a place there/);
+  // A merger nobody has a gem on: in the key, no Laser Eyes yet.
+  const r2 = await H.huntAction('hunt.add_place', { id: d.id, nm: [200000, 200000, 8000], kind: 'cut' }, admin);
+  assert.deepEqual([r2.target_count, r2.laser], [5, 0]);
 });
 
 test('before The Hunt is launched, a Hunt set for everyone stays admins only: hidden from players, every note and the results to admins, never chat', async () => {

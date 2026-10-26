@@ -15,7 +15,7 @@ import { renderSafeMarkdown } from '../util/safe_markdown';
 import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
 import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, meshEdgeSpots, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
-import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
+import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
 
 type Tier = 'gold' | 'silver' | 'bronze';
@@ -452,6 +452,35 @@ async function countIt(b: BoardRow, d: RunGem) {
   finally { busy.value = ''; }
 }
 
+// A place the key missed, by its coordinates (Ames 2026-10-26: "I want to be able to add coords for missing cut
+// or merge and label them as merge or cut"): x, y, z as the coordinate bar shows them, or the crosshair.
+const addAt = ref<{ x: number | ''; y: number | ''; z: number | ''; kind: 'cut' | 'merge' }>({ x: '', y: '', z: '', kind: 'cut' });
+function addFromCrosshair() {
+  const p = crosshairXyz();
+  if (p) addAt.value = { ...addAt.value, x: p[0], y: p[1], z: p[2] };
+}
+async function addPlace() {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  const v = [addAt.value.x, addAt.value.y, addAt.value.z].map(Number);
+  error.value = ''; message.value = '';
+  if (v.some(n => !Number.isFinite(n)) || [addAt.value.x, addAt.value.y, addAt.value.z].some(n => n === '')) { error.value = 'Give x, y and z, or use the crosshair.'; return; }
+  if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) { error.value = 'Open the Hunt on its dataset first (Open the link above), so the coordinates are its own.'; return; }
+  const scales = (window as any).viewer?.coordinateSpace?.value?.scales;
+  if (!scales || scales.length < 3) { error.value = 'The viewer is not ready yet. Try again in a moment.'; return; }
+  const nm = v.map((n, i) => n * Number(scales[i]) * 1e9);
+  busy.value = 'add';
+  try {
+    const r = await huntCall<any>('hunt.add_place', { id: h.id, nm, kind: addAt.value.kind });
+    busy.value = '';
+    await open(r);
+    const what = addAt.value.kind === 'merge' ? 'missing extension' : 'merger';
+    message.value = `Added a ${what}: the key has ${r.target_count} places now. ${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed`
+      + `${r.laser ? `, and ${r.laser} ${r.laser === 1 ? 'hunter' : 'hunters'} got Laser Eyes` : ''}.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+    addAt.value = { x: '', y: '', z: '', kind: addAt.value.kind };
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
+
 // Duplicate (Ames 2026-10-21: "let me duplicate a hunt on the test server for during testing"):
 // a draft with the same key, view, cells, words and settings, and no notes or answers.
 async function duplicate() {
@@ -694,6 +723,25 @@ async function duplicate() {
         <button class="nge-hunts-btn nge-hunts-btn--danger" :disabled="!!busy" @click="asking = 'delete'">Delete</button>
       </div>
 
+      <!-- A place the key missed, by its coordinates (Ames 2026-10-26) -->
+      <fieldset v-if="!isNew && scheduled" class="nge-hunts-group nge-hunts-addplace" :disabled="!!busy">
+        <legend>A place the key missed</legend>
+        <p class="nge-hunts-help">A real merger or missing extension the key does not have: put the crosshair on it (or type x, y, z as the coordinate bar shows them), say which it is, and add it. Everyone is judged again, and each hunter whose gem finds it gets <b>Laser Eyes</b>. A hunter's own gem on it can also be counted below with <b>Count it</b>.</p>
+        <div class="nge-hunts-addrow">
+          <input v-model.number="addAt.x" type="number" class="nge-hunts-input" placeholder="x" aria-label="x" />
+          <input v-model.number="addAt.y" type="number" class="nge-hunts-input" placeholder="y" aria-label="y" />
+          <input v-model.number="addAt.z" type="number" class="nge-hunts-input" placeholder="z" aria-label="z" />
+          <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="addFromCrosshair">Use the crosshair</button>
+        </div>
+        <div class="nge-hunts-addrow">
+          <select v-model="addAt.kind" class="nge-hunts-input" aria-label="Which kind">
+            <option value="cut">Merger (Cut)</option>
+            <option value="merge">Missing extension (Extend)</option>
+          </select>
+          <button class="nge-hunts-btn" :disabled="!!busy" @click="addPlace">{{ busy === 'add' ? 'Adding…' : 'Add to the key' }}</button>
+        </div>
+      </fieldset>
+
       <!-- Results -->
       <fieldset v-if="board.length" class="nge-hunts-group">
         <legend>Hunters ({{ board.length }})</legend>
@@ -802,6 +850,9 @@ async function duplicate() {
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
 .nge-hunts-answers { margin-top: 8px; }
+.nge-hunts-addrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nge-hunts-addrow input.nge-hunts-input { width: 92px; }
+.nge-hunts-addrow select.nge-hunts-input { width: auto; flex: 1; min-width: 180px; }
 .nge-hunts-resultshours { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .nge-hunts-resultshours .nge-hunts-input { width: 72px; }
 .nge-hunts-startrow { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; }
