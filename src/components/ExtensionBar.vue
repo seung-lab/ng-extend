@@ -242,7 +242,7 @@ onMounted(() => {
       e.stopImmediatePropagation();
       showTagMode.value = !showTagMode.value;
     }
-    // \: the hidden top bar, down and up again (Settings: Hide the top bar).
+    // \: the hidden top bar, down and up again (Settings: Magic Top Bar).
     if (!typing && (e.code === 'Backslash' || e.key === '\\') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && barAutoHide.value) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -966,7 +966,7 @@ function onIconDrop(e: DragEvent, id: string) {
 
 
 
-// ── Hide the top bar until pointed at (Settings, Nik #243, Ames 2026-10-25) ──────────
+// ── Magic Top Bar: the top bar hides until pointed at (Settings, Nik #243, Ames 2026-10-25) ──────────
 // Like a Mac's hidden menu bar: the bar tucks away above the page, the views
 // take the whole window, and the bar comes down over the top of them when the
 // mouse rests at the top edge (Ames: no strip, the buttons alone). It lies over
@@ -2580,7 +2580,7 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 /* The Site Tour's compass sits in the same circle as the numbers. */
 .nge-menu-num--icon { font-size: 10px; line-height: 1; }
 
-/* ── Hide the top bar until pointed at (Settings) ─────────────────────────
+/* ── Magic Top Bar: hidden until pointed at (Settings) ─────────────────────────
    body.nge-bar-autohide: the bar leaves the page flow and lies over the top
    of the views, which take the whole window, so nothing moves as it comes and
    goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather

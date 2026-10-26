@@ -186,11 +186,11 @@ function buildActions(): PaletteItem[] {
   });
   items.push({
     id: 'hide-top-bar',
-    label: 'Hide the top bar until I point at it',
-    description: 'On or off. While on, move the mouse to the top edge, or press the \\ key, to bring the bar down',
+    label: 'Magic Top Bar',
+    description: 'On or off. Hides the top bar until you move the mouse to the top edge, or press the \\ key',
     category: 'action',
     icon: '▔',
-    aliases: ['top bar', 'toolbar', 'auto hide', 'autohide', 'hide bar', 'full screen', 'more room'],
+    aliases: ['magic', 'hide the top bar', 'top bar', 'toolbar', 'auto hide', 'autohide', 'hide bar', 'full screen', 'more room'],
     action: () => { const p = useUserPreferencesStore(); p.save({ hideTopBar: p.prefs.hideTopBar !== true }); },
   });
   items.push({

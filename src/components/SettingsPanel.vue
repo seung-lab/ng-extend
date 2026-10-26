@@ -617,7 +617,7 @@ const props = defineProps<{ embedded?: boolean }>();
             </label>
             <label class="nge-settings-toggle" title="The top bar tucks away, so the views get the whole window. Move the mouse to the top edge to bring it back, or press the \ key. Your unread notifications show as a small bell in the corner of the 3D view. It stays put on a touch screen, during a tutorial, and while new icons are still arriving.">
               <input type="checkbox" v-model="draftHideTopBar" />
-              <span class="nge-settings-toggle-label">Hide the top bar until I point at it</span>
+              <span class="nge-settings-toggle-label">Magic Top Bar</span>
             </label>
             <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
               <input type="checkbox" v-model="draftSegShowId" />
