@@ -1118,7 +1118,7 @@ export interface UserPreferences {
    *  (body.nge-large-text, src/large_text.css; Ames 2026-10-25, for older
    *  players). Defaults to false. */
   largeText?: boolean;
-  /** The top bar hides until the mouse points at the strip left at the top
+  /** The top bar hides until the mouse comes to the top edge of the window
    *  (ExtensionBar.vue, Nik #243, Ames 2026-10-25). Defaults to false. */
   hideTopBar?: boolean;
   /** Advanced: a click on the 2D image layer's tab opens its side panel, as

@@ -187,7 +187,7 @@ function buildActions(): PaletteItem[] {
   items.push({
     id: 'hide-top-bar',
     label: 'Hide the top bar until I point at it',
-    description: 'On or off. While on, point at the thin strip at the top, or press the \\ key, to bring the bar down',
+    description: 'On or off. While on, move the mouse to the top edge, or press the \\ key, to bring the bar down',
     category: 'action',
     icon: '▔',
     aliases: ['top bar', 'toolbar', 'auto hide', 'autohide', 'hide bar', 'full screen', 'more room'],

@@ -615,7 +615,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftLargeText" />
               <span class="nge-settings-toggle-label">Large text</span>
             </label>
-            <label class="nge-settings-toggle" title="The top bar tucks away into a thin strip, so the views get more room. Point at the strip to bring the bar down, or press the \ key. The counts on its icons (replies, help requests, chat) still show on the strip. It stays put on a touch screen, during a tutorial, and while new icons are still arriving.">
+            <label class="nge-settings-toggle" title="The top bar tucks away, so the views get the whole window. Move the mouse to the top edge to bring it back, or press the \ key. Your unread notifications show as a small bell in the corner of the 3D view. It stays put on a touch screen, during a tutorial, and while new icons are still arriving.">
               <input type="checkbox" v-model="draftHideTopBar" />
               <span class="nge-settings-toggle-label">Hide the top bar until I point at it</span>
             </label>

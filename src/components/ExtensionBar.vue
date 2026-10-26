@@ -967,9 +967,10 @@ function onIconDrop(e: DragEvent, id: string) {
 
 
 // ── Hide the top bar until pointed at (Settings, Nik #243, Ames 2026-10-25) ──────────
-// Like a Mac's hidden menu bar: the bar tucks away above a thin strip and comes
-// down over the top of the views when the mouse rests on the strip. The strip
-// keeps a place in the page, so the views never move as the bar comes and goes.
+// Like a Mac's hidden menu bar: the bar tucks away above the page, the views
+// take the whole window, and the bar comes down over the top of them when the
+// mouse rests at the top edge (Ames: no strip, the buttons alone). It lies over
+// the views, so they never move as it comes and goes.
 // Never on a touch screen (no pointing), during a tutorial, or while a new
 // player's icons are still arriving (staging teaches through the bar).
 const canHover = ref(typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches);
@@ -989,22 +990,21 @@ const barShown = computed(() => !barAutoHide.value || barHover.value || barPinne
 let barOpenTimer: ReturnType<typeof setTimeout> | null = null;
 let barCloseTimer: ReturnType<typeof setTimeout> | null = null;
 let mouseOnBar = false;
-const BAR_OPEN_DELAY = 250;   // passing over the strip does not open it
+const BAR_OPEN_DELAY = 250;   // passing over the top edge does not open it
 const BAR_CLOSE_DELAY = 400;  // nor does slipping off the bar for a moment close it
 function clearBarTimers() {
   if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
   if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
 }
-// Where the mouse brings the bar down: the strip, and a band just under it
-// (Ames: the strip alone was too thin to find), except over a layer tab, a
-// button or a box, so reaching for those never opens the bar.
-const STRIP_H = 12;
-const OPEN_BAND = STRIP_H + 18;
+// Where the mouse brings the bar down: the very top edge anywhere, and a band
+// along the top (the row of layer tabs) except over a layer tab, a button or a
+// box, so reaching for those never opens the bar.
+const TOP_EDGE = 3;
+const OPEN_BAND = 24;
 const NOT_A_BAR_SPOT = '.neuroglancer-layer-item, button, input, textarea, select, a, [role="button"], [contenteditable="true"]';
 function onTuckedMouseMove(e: MouseEvent) {
   const t = e.target as HTMLElement | null;
-  const onStrip = !!t?.closest?.('.nge-bar-strip');
-  const inBand = onStrip || (e.clientY < OPEN_BAND && !t?.closest?.(NOT_A_BAR_SPOT));
+  const inBand = e.clientY <= TOP_EDGE || (e.clientY < OPEN_BAND && !t?.closest?.(NOT_A_BAR_SPOT));
   if (!inBand) { if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; } return; }
   if (barHover.value || barOpenTimer) return;
   barOpenTimer = setTimeout(() => { barOpenTimer = null; barHover.value = true; }, BAR_OPEN_DELAY);
@@ -1024,8 +1024,6 @@ watch(barTucked, on => {
     if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
   }
 }, { immediate: true });
-// A click on the strip brings the bar down at once.
-function onStripClick() { if (barAutoHide.value) { clearBarTimers(); barHover.value = true; } }
 function scheduleBarClose() {
   if (barCloseTimer) clearTimeout(barCloseTimer);
   barCloseTimer = setTimeout(() => { barCloseTimer = null; if (!mouseOnBar) barHover.value = false; }, BAR_CLOSE_DELAY);
@@ -1036,7 +1034,7 @@ function scheduleBarClose() {
 function onBarMouseMove(e: MouseEvent) {
   const t = e.target as Node | null;
   const bar = document.getElementById('extensionBar');
-  mouseOnBar = !!t && !!bar && (bar.contains(t) || !!(t as HTMLElement).closest?.('.nge-bar-strip'));
+  mouseOnBar = !!t && !!bar && bar.contains(t);
   if (mouseOnBar) {
     if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
     // Down for a menu or the key, and now pointed at: it stays while pointed at.
@@ -1070,7 +1068,7 @@ watch([barAutoHide, barShown], ([on, shown]) => {
 // While the bar is up, your own unread notifications show as a dot in the
 // top right corner of the 3D view (Ames). Only the bell's personal count:
 // help requests, chat and the Admin tab are not about you. A click on the dot
-// opens the bell. With no 3D view on screen it sits at the right of the strip.
+// opens the bell. With no 3D view on screen it sits in the window's top right corner.
 const tuckedNotifCount = computed(() => barTucked.value
   ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount) : 0);
 let notifDot: HTMLButtonElement | null = null;
@@ -1091,9 +1089,8 @@ function placeNotifDot() {
   notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
   // The 3D view is rebuilt when the layout changes, so look for it each time.
   const panel = [...document.querySelectorAll<HTMLElement>('.nge-3d-panel')].find(p => p.offsetWidth > 0);
-  const home = panel ?? document.querySelector<HTMLElement>('.nge-bar-strip');
-  if (!home) return;
-  notifDot.classList.toggle('nge-notif-dot--strip', !panel);
+  const home = panel ?? document.body;
+  notifDot.classList.toggle('nge-notif-dot--corner', !panel);
   if (notifDot.parentElement !== home) home.appendChild(notifDot);
 }
 watch(tuckedNotifCount, n => {
@@ -1172,10 +1169,6 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     :list-keys="listKeys"
     @hide="showAssistant = false"
   />
-  <div v-if="barAutoHide" class="nge-bar-strip" :class="{ 'nge-bar-strip--hidden': barShown }"
-       title="The top bar. Point here, or press the \ key, to bring it down."
-       @click="onStripClick">
-  </div>
   <div id="extensionBar" @focusin="onBarFocusIn" @focusout="onBarFocusOut">
     <div class="ng-extend-logo">
       <!-- Click → hard refresh. Reloads the bundle from the server (skips
@@ -2577,14 +2570,14 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 
 /* ── Hide the top bar until pointed at (Settings) ─────────────────────────
    body.nge-bar-autohide: the bar leaves the page flow and lies over the top
-   of the views; a 12px strip keeps its place, so nothing moves as it comes and
+   of the views, which take the whole window, so nothing moves as it comes and
    goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather
    than a transform, so the bar's fixed position children (share toast) keep
    the window as their frame. */
 body.nge-bar-autohide .ng-extend {
   position: relative;
-  flex: 0 0 12px;
-  height: 12px;
+  flex: 0 0 0;
+  height: 0;
   /* No z-index here: every panel the bar opens is rendered in .ng-extend too,
      and a stacking context would cap them all at this level. */
 }
@@ -2604,19 +2597,6 @@ body.nge-bar-autohide.nge-bar-tucked #extensionBar {
   transition: top 0.2s ease-in, box-shadow 0.2s;
 }
 body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
-.nge-bar-strip {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 12px;
-  z-index: 40;
-  background: linear-gradient(to bottom, rgba(18, 30, 54, 0.98), rgba(9, 15, 28, 0.98));
-  border-bottom: 1px solid rgba(110, 170, 255, 0.3);
-  box-sizing: border-box;
-  cursor: pointer;
-}
-.nge-bar-strip:hover { background: linear-gradient(to bottom, rgba(28, 46, 80, 0.98), rgba(14, 24, 44, 0.98)); }
 .nge-notif-dot {
   position: absolute;
   top: 8px;
@@ -2637,7 +2617,7 @@ body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
   animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .nge-notif-dot:hover { background: #8f66ff; }
-.nge-notif-dot--strip { top: 0; right: 12px; height: 18px; line-height: 18px; }
+.nge-notif-dot--corner { position: fixed; top: 6px; right: 12px; z-index: 40; }
 .nge-notif-dot-icon { display: inline-flex; align-items: center; }
 .nge-notif-dot-icon svg { width: 13px !important; height: 13px !important; }
 </style>
