@@ -132,8 +132,19 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let ticker: ReturnType<typeof setInterval> | null = null;
 let loadPromise: Promise<void> | null = null;
 
+/**
+ * Never on the Princeton Tracers' address (Ames 2026-10-19: "we don't mix paid and volunteers"): paid
+ * tracers must not hunt beside the volunteers or on their board. Their build comes from its own branch;
+ * this keeps the Hunt away when live is merged into it (the same test as its src/edition.ts).
+ */
+const TRACERS_HERE = (() => {
+  try { return location.hostname.startsWith('princeton-tracers-dot-') || new URLSearchParams(location.search).has('tracers'); }
+  catch { return false; }
+})();
+
 /** The hunts this player can see. One small call; again at each announcement, start and end. */
 export function loadHunts(): Promise<void> {
+  if (TRACERS_HERE) return Promise.resolve();
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     huntState.loading = true;

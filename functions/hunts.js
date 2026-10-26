@@ -40,7 +40,7 @@ const TITLE_PREFIX = '🔎 The Hunt';
  * setting says: players never see it, and no note or results post reaches them or chat.
  * (2026-10-22: the first "test" Hunt, made before test-site Hunts were forced admins only,
  * posted its results to every player's chat; Ames: "players are still getting these".)
- * At launch, functions/index.js passes huntPublic: true.
+ * Launched 2026-10-26: functions/index.js passes huntPublic: true.
  */
 const adminsOnly = (h, ctx) => !(ctx && ctx.huntPublic === true) || !!(h && h.admins_only);
 const DAY = 86400000;

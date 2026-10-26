@@ -2350,7 +2350,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-23-hunt-14";
+const EW_HUNT_CODE_VERSION = "2026-10-26-hunt-15-launch";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
@@ -2383,9 +2383,9 @@ exports.ewHunt = onRequest(
       const hunts = require("./hunts");
       const data = await hunts.huntAction(action, args, {
         db: hunts.restDb(sb), me, isAdmin, now: new Date(), site, testSite: !liveSite,
-        // Not launched yet: every Hunt is admins only, and nothing reaches players or chat
-        // (Ames 2026-10-22). Set to true when The Hunt goes live in the game.
-        huntPublic: false,
+        // Launched (Ames 2026-10-26, "Hunt to live, open to players"): a Hunt reaches every
+        // player unless it is set admins only (every Hunt saved from a test site is).
+        huntPublic: true,
         notify: async (rows) => {
           const out = rows.map((r) => ({ title: String(r.title).slice(0, 120), body: String(r.body).slice(0, 1500), target_type: "user",
             target_id: r.user_id, send_at: new Date().toISOString(), ...(r.image ? { image_url: r.image, thumbnail_url: r.image } : {}),
