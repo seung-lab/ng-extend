@@ -2796,6 +2796,26 @@ registerLegacyTool(
 // The same two things Find Path does, without its single source/target state:
 // what is under the cursor, and the path through a cell between two picks.
 
+/** A position in a graphene layer's own coordinates (as a SegmentSelection,
+ *  the cut and merge points, keeps it) in the viewer's global coordinates,
+ *  matched axis by axis by name. Undefined until the layer has loaded. Where
+ *  the view's voxel size differs from the data's, the raw position lands far
+ *  from the cell (Celia D, report 258: "it jumps you to outerspace"). */
+export function ngeGrapheneLayerToGlobal(
+    layer: SegmentationUserLayer, position: ArrayLike<number>,
+    global: {rank: number, names: readonly string[], scales: Float64Array}): Float32Array|undefined {
+  const sub = getGraphLoadedSubsource(layer);
+  if (sub === undefined) return undefined;
+  const input = sub.loadedDataSource.transform.inputSpace.value;
+  const out = new Float32Array(global.rank);
+  for (let g = 0; g < global.rank; ++g) {
+    const i = input.names.indexOf(global.names[g]);
+    if (i < 0 || i >= position.length || !global.scales[g]) return undefined;
+    out[g] = position[i] * input.scales[i] / global.scales[g];
+  }
+  return out;
+}
+
 /** The cell under the cursor on a graphene layer: its root and the position
  *  in the layer's own coordinates. Undefined when the cursor is not on a
  *  visible cell. */

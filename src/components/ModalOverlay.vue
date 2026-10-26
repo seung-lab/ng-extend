@@ -96,6 +96,10 @@ body:has(.nge-overlay-blocker) .nge-lantern,
 body:has(.nge-overlay-blocker) .nge-hl-panel,
 body:has(.nge-overlay-blocker) .nge-bp-panel,
 body:has(.nge-overlay-blocker) .nge-quest-board,
+/* And Merge and Cut mode: the Merge Queue showed over the profile and the
+   bug report box (KrzysztofKruk, report 255). */
+body:has(.nge-overlay-blocker) .nge-smo-merge-panel,
+body:has(.nge-overlay-blocker) .nge-split-merge-overlay,
 /* Phones dock chat as a sheet at z-index 950 (mobile.css); a window opened
    from chat (a profile, Nurro's page) has to land on top of it too. */
 body.nge-mobile:has(.nge-overlay-blocker) .nge-chat-float {

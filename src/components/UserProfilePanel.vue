@@ -30,6 +30,12 @@ import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, c
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import goldCup from '../../static/images/champions/gold-cup.png';
+import silverCup from '../../static/images/champions/silver-cup.png';
+import bronzeCup from '../../static/images/champions/bronze-cup.png';
+import goldAward from '../../static/images/champions/gold-award.png';
+import silverAward from '../../static/images/champions/silver-award.png';
+import bronzeAward from '../../static/images/champions/bronze-award.png';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -836,13 +842,28 @@ const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earn
 // and it shows the # times, not repeating the same badge". Each Hunt gives its own Achievements
 // (slug hunt-<id>-<medal>); here they are one tile per medal, with how many times it was won.
 const HUNT_MEDAL = /^hunt-(\d+)-(gold|silver|bronze|fastest)$/;
-type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest';
-const MEDAL_ORDER: HuntMedal[] = ['gold', 'silver', 'bronze', 'fastest'];
-const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed' };
-/** Under a medal in the Trophy Case: only the Speed award says what it is for. */
-const MEDAL_SUB: Record<HuntMedal, string> = { gold: '', silver: '', bronze: '', fastest: 'the fastest' };
+// Monthly Champions places (scripts/monthly-champions.mjs, Ames 2026-10-26):
+// slug month-YYYY-MM-<edits|cells>-<place>; cups for edits, neuron awards for cells.
+const MONTH_MEDAL = /^month-\d{4}-\d{2}-(edits|cells)-(gold|silver|bronze)$/;
+type MonthMedal = `month-${'edits' | 'cells'}-${'gold' | 'silver' | 'bronze'}`;
+type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest' | MonthMedal;
+const MEDAL_ORDER: HuntMedal[] = ['month-edits-gold', 'month-cells-gold', 'month-edits-silver', 'month-cells-silver', 'month-edits-bronze', 'month-cells-bronze',
+  'gold', 'silver', 'bronze', 'fastest'];
+const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed',
+  'month-edits-gold': 'Gold', 'month-edits-silver': 'Silver', 'month-edits-bronze': 'Bronze',
+  'month-cells-gold': 'Gold', 'month-cells-silver': 'Silver', 'month-cells-bronze': 'Bronze' };
+/** Under a medal in the Trophy Case: what it is for, when the picture alone does not say. */
+const MEDAL_SUB: Record<HuntMedal, string> = { gold: '', silver: '', bronze: '', fastest: 'the fastest',
+  'month-edits-gold': 'monthly edits', 'month-edits-silver': 'monthly edits', 'month-edits-bronze': 'monthly edits',
+  'month-cells-gold': 'monthly cells', 'month-cells-silver': 'monthly cells', 'month-cells-bronze': 'monthly cells' };
+const MONTH_ART: Record<string, string> = {
+  'month-edits-gold': goldCup, 'month-edits-silver': silverCup, 'month-edits-bronze': bronzeCup,
+  'month-cells-gold': goldAward, 'month-cells-silver': silverAward, 'month-cells-bronze': bronzeAward };
 function huntMedalOf(a: any): HuntMedal | null {
-  const m = HUNT_MEDAL.exec(String(a?.badge?.slug || ''));
+  const slug = String(a?.badge?.slug || '');
+  const mm = MONTH_MEDAL.exec(slug);
+  if (mm) return `month-${mm[1]}-${mm[2]}` as HuntMedal;
+  const m = HUNT_MEDAL.exec(slug);
   return m ? (m[2] as HuntMedal) : null;
 }
 /** The Special Awards that are not Hunt medals (those are under Competitions). */
@@ -853,7 +874,8 @@ const competitionMedals = computed<MedalTile[]>(() => MEDAL_ORDER.map((tier) => 
     .sort((x: any, y: any) => (Date.parse(y.awarded_at) || 0) - (Date.parse(x.awarded_at) || 0));
   return { tier, count: awards.length, awards, latest: awards[0] ?? null };
 }).filter((m) => m.count > 0));
-/** The Hunt a medal was won in: its Achievement is named "<Hunt title>: Gold". */
+/** The Hunt (or month) a medal was won in: its Achievement is named "<Hunt title>: Gold"
+ *  or "October 2026 Top Editors: Gold". */
 function huntTitleOf(a: any): string {
   return String(a?.badge?.name || '').replace(/:\s*(Gold|Silver|Bronze|Fastest)\s*$/i, '').trim() || 'a Hunt';
 }
@@ -864,7 +886,7 @@ function medalTooltip(m: MedalTile): string {
   return [head, ...lines, ...more].join('\n');
 }
 /** Ames's medal art, the same for every Hunt (the cheetah for Speed). */
-const medalArt = (m: MedalTile) => `hunt/${m.tier}-128.png`;
+const medalArt = (m: MedalTile) => MONTH_ART[m.tier] ?? `hunt/${m.tier}-128.png`;
 const medalSelected = (m: MedalTile) => !!selectedSpecialBadge.value && m.awards.some((a: any) => a.id === selectedSpecialBadge.value.id);
 function onMedalClick(m: MedalTile) { if (m.latest) onSpecialBadgeClick(m.latest); }
 /** For a medal won more than once, the Hunts it was won in, under its picture. */

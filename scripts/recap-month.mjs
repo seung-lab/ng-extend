@@ -87,11 +87,12 @@ export function supabaseClient() {
     if (!res.ok) throw new Error(`HEAD ${path}: ${res.status}`);
     return Number((res.headers.get('content-range') || '').split('/')[1]);
   };
-  const send = async (method, path, body) => {
+  const send = async (method, path, body, prefer = 'return=minimal') => {
     const res = await fetch(`${url}/rest/v1/${path}`, {
-      method, headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify(body),
+      method, headers: { ...headers, Prefer: prefer }, body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
+    return prefer.includes('return=representation') ? res.json() : null;
   };
   return { get, getAll, count, send };
 }

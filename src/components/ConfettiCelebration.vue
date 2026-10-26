@@ -13,6 +13,9 @@ import { isCalm } from '../util/calm';
 import { ref, onMounted, onUnmounted } from 'vue';
 import { isMobileRef } from '../util/mobile';
 
+/** inline: stay where it is placed instead of covering the whole page, so a
+ *  panel can sit in front of it (the Champions cards, Ames 2026-10-26). */
+const props = defineProps<{ inline?: boolean }>();
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
 let animFrame = 0;
@@ -37,6 +40,7 @@ const PALETTES: Record<string, string[]> = {
   purple:  ['#CE93D8', '#AB47BC', '#9C27B0', '#E1BEE7', '#7B1FA2', '#BA68C8', '#D500F9'],
   cyan:    ['#00c8ff', '#00e5ff', '#4dd0e1', '#80deea', '#00acc1', '#26c6da', '#b2ebf2'],
   rainbow: ['#ff0000', '#ff7700', '#ffff00', '#00ff00', '#0077ff', '#8800ff', '#ff00ff'],
+  champions: ['#4a9eff', '#00c8ff', '#9b6bff', '#c58bff', '#ffd35a', '#ffe680', '#7b5cff'],
 };
 
 interface Particle {
@@ -328,11 +332,11 @@ defineExpose({ trigger, sparkle });
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="props.inline">
     <canvas
       ref="canvasRef"
       class="nge-confetti-canvas"
-      :class="{ 'nge-confetti-canvas--under': underUI }"
+      :class="{ 'nge-confetti-canvas--under': underUI, 'nge-confetti-canvas--inline': props.inline }"
     />
   </Teleport>
 </template>
@@ -348,4 +352,6 @@ defineExpose({ trigger, sparkle });
 }
 /* Sparkle-only runs: below the mobile welcome sheet (10500), above the rest. */
 .nge-confetti-canvas--under { z-index: 10400; }
+/* Inline: the bottom layer of whatever holds it. */
+.nge-confetti-canvas--inline { z-index: 0; }
 </style>

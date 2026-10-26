@@ -8,12 +8,12 @@
  * Targets `notifications.target_type = 'all'` — surfaces in every
  * user's notification feed and (optionally) chat.
  *
- * Runs via GitHub Actions cron (Monday 00:10 UTC, 5 min after the
- * weekly-winners snapshot) or manually:
+ * Runs via GitHub Actions cron (Monday just after midnight US Eastern,
+ * after the weekly-winners snapshot) or manually:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-leaderboard-broadcast.mjs
  */
 
-import { topCompleters } from './weekly-completions.mjs';
+import { weekRange, topCompleters, topEditors } from './weekly-completions.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -47,58 +47,21 @@ async function supabasePost(path, row) {
 }
 
 // ── Week range ──────────────────────────────────────────────────────
-/** Returns [mondayStartISO, mondayStartLabel, sundayEndLabel] for the
- *  most recently completed Monday→Sunday week. */
+/** The most recently completed Monday to Sunday week on US Eastern time
+ *  (weekly-completions.mjs weekRange), with its label. It was UTC. */
 function lastCompletedWeek() {
-  const now = new Date();
-  // Most recent Monday at 00:00 UTC
-  const dow = now.getUTCDay() || 7; // Sun → 7
-  const thisMonday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (dow - 1)));
-  const lastMonday = new Date(thisMonday); lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
-  const lastSunday = new Date(thisMonday); lastSunday.setUTCDate(thisMonday.getUTCDate() - 1);
-  const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  return {
-    startISO: lastMonday.toISOString(),
-    endISO: thisMonday.toISOString(),
-    // "Sep 21 to Sep 27, 2026". No en dash: Amy's copy rules forbid em and en
-    // dashes anywhere user facing, and the detail view parses this label.
-    label: `${fmt(lastMonday)} to ${fmt(lastSunday)}, ${lastSunday.getUTCFullYear()}`,
-  };
+  const w = weekRange();
+  const [y, m, d] = w.weekStart.split('-').map(Number);
+  const fmt = (dd) => new Date(Date.UTC(y, m - 1, dd)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const sunYear = new Date(Date.UTC(y, m - 1, d + 6)).getUTCFullYear();
+  // "Sep 21 to Sep 27, 2026". No en dash: Amy's copy rules forbid em and en
+  // dashes anywhere user facing, and the detail view parses this label.
+  return { ...w, label: `${fmt(d)} to ${fmt(d + 6)}, ${sunYear}` };
 }
 
 // ── Aggregations ────────────────────────────────────────────────────
-/** Top N editors by split+merge count from edit_log. */
-async function topEditors(startISO, endISO, n = 10) {
-  // edit_log can be large — stream by user, group client-side. For a
-  // typical week this is small enough to pull in one or two pages.
-  // Filter to split/merge so it matches the leaderboard view.
-  // A page at a time: the server returns at most 1,000 rows a request, so
-  // "limit=200000" quietly stopped at 1,000 and the week's champions were
-  // picked from a sliver of it (found with Nseraf's report 250).
-  const rows = [];
-  for (let from = 0; from < 1000000; from += 1000) {
-    const page = await supabaseGet(
-      `edit_log?select=user_id,operation` +
-      `&timestamp=gte.${encodeURIComponent(startISO)}` +
-      `&timestamp=lt.${encodeURIComponent(endISO)}` +
-      `&operation=in.(split,merge)` +
-      `&order=timestamp.asc&offset=${from}&limit=1000`,
-    );
-    rows.push(...page);
-    if (page.length < 1000) break;
-  }
-  const counts = new Map();
-  for (const r of rows) {
-    if (!r.user_id) continue;
-    counts.set(r.user_id, (counts.get(r.user_id) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, n)
-    .map(([user_id, count]) => ({ user_id, count }));
-}
-
-// Top completers: scripts/weekly-completions.mjs, shared with the saved podium.
+// Top editors and completers: scripts/weekly-completions.mjs, shared with
+// the saved podium.
 
 /** Resolve user_ids to display names. */
 async function resolveNames(userIds) {
@@ -133,7 +96,7 @@ async function main() {
 
   const [editorsRaw, completersRaw] = await Promise.all([
     // The top twenty of each: the podium takes three, the rest scroll.
-    topEditors(week.startISO, week.endISO, 20),
+    topEditors(supabaseGet, week.startISO, week.endISO, 20),
     topCompleters(supabaseGet, week.startISO, week.endISO, 20),
   ]);
 
@@ -146,7 +109,7 @@ async function main() {
   const names = await resolveNames(allIds);
 
   const body = [
-    `🎉 **Big congratulations to this week's champions!**`,
+    `🎉 **Big Congratulations! Thanks for contributing to neuroscience!**`,
     ``,
     `**Top Editors**`,
     formatList(editorsRaw, names, 'edit', 'edits'),

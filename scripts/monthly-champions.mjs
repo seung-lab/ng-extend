@@ -21,6 +21,46 @@
 import { monthRange, supabaseClient, monthActivity, monthCells, ranked } from './recap-month.mjs';
 
 const db = supabaseClient();
+const ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/champions';
+const PLACES = ['gold', 'silver', 'bronze'];
+const PLACE_WORD = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
+const PLACE_NTH = { gold: '1st', silver: '2nd', bronze: '3rd' };
+
+/** The month's top three for edits and for cells become Achievements, the
+ *  way a Hunt gives its medals (functions/hunts.js): one Special Award per
+ *  month and place, so the profile's Competitions shelf counts them (Ames
+ *  2026-10-26: cups for edits, neuron awards for cells). Each new winner gets
+ *  a New Achievement card. Safe to run again: an award held is not given or
+ *  announced twice. */
+async function giveMonthlyAwards(month, lists, names, dry) {
+  const key = `${month.y}-${String(month.m + 1).padStart(2, '0')}`;
+  for (const { metric, rows, art, what, unit } of lists) {
+    for (const [i, r] of rows.slice(0, 3).entries()) {
+      const place = PLACES[i];
+      const badge = {
+        slug: `month-${key}-${metric}-${place}`,
+        name: `${month.label} ${what}: ${PLACE_WORD[place]}`,
+        description: `${PLACE_NTH[place]} for ${metric === 'edits' ? 'edits' : 'cells completed'} in ${month.label}.`,
+        image_url: `${ART}/${place}-${art}.png`,
+        thumbnail_url: `${ART}/${place}-${art}.png`,
+      };
+      const reason = `${PLACE_NTH[place]} in ${month.label} with ${r.count.toLocaleString('en-US')} ${unit}`;
+      console.log(`[awards] ${badge.name}: ${names.get(r.user_id) || r.user_id} (${reason})`);
+      if (dry) continue;
+      const [saved] = await db.send('POST', 'special_badges?on_conflict=slug', badge, 'resolution=merge-duplicates,return=representation');
+      const held = await db.get(`special_badge_awards?select=id&badge_id=eq.${saved.id}&user_id=eq.${r.user_id}&limit=1`);
+      if (held.length) continue;
+      await db.send('POST', 'special_badge_awards?on_conflict=badge_id,user_id',
+        [{ badge_id: saved.id, user_id: r.user_id, awarded_by: null, reason }], 'resolution=ignore-duplicates,return=minimal');
+      await db.send('POST', 'notifications', {
+        title: `🏅 New Achievement: ${badge.name}`,
+        body: `You earned the "${badge.name}" award! ${reason}. Thank you for mapping the brain with us.`,
+        image_url: badge.image_url, thumbnail_url: badge.thumbnail_url,
+        target_type: 'user', target_id: r.user_id, send_at: new Date().toISOString(), post_to_chat: false,
+      });
+    }
+  }
+}
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 function formatList(rows, names, one, many) {
@@ -42,9 +82,16 @@ async function main() {
   const names = new Map((await db.get(`users?select=id,display_name&id=in.(${ids.join(',')})`)).map(u => [u.id, u.display_name || 'Anonymous']));
 
   const testTo = (process.env.RECAP_TEST_TO || '').split(',').map(x => x.trim()).filter(Boolean);
+  // Awards first, and never on a test run (they are real Achievements).
+  if (!testTo.length) {
+    await giveMonthlyAwards(month, [
+      { metric: 'edits', rows: editors, art: 'cup', what: 'Top Editors', unit: 'edits' },
+      { metric: 'cells', rows: completers, art: 'award', what: 'Top Completers', unit: 'cells' },
+    ], names, process.env.RECAP_DRY === 'true');
+  }
   const title = `🏆 Monthly Champions, ${month.label}${testTo.length ? ' (test)' : ''}`;
   const body = [
-    `🎉 **Big congratulations to ${month.label}'s champions!**`,
+    `🎉 **Big Congratulations! Thanks for contributing to neuroscience!**`,
     ``,
     `**Top Editors**`,
     formatList(editors, names, 'edit', 'edits'),
