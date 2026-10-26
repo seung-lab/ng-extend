@@ -97,6 +97,8 @@ function choose(k: GemKind) {
   try { (document.querySelector('.neuroglancer-rendered-data-panel') as HTMLElement | null)?.focus(); } catch { /* optional */ }
 }
 /** "Ctrl + Click drops a cut gem, for mergers. Press 3 to switch to Cut." (Ames 2026-10-26: "add in tooltip that you can press 3 or 4"). */
+/** Gems used that found nothing (a gem on a place found already, or at the edge, uses none). */
+const missed = computed(() => Math.max(0, (run.value?.gems_used ?? 0) - (run.value?.found ?? 0)));
 function kindTitle(k: GemKind) {
   const key = huntState.keys[k];
   return `Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}.${key ? ` Press ${key} to switch to ${KIND[k].word}.` : ''}`;
@@ -342,10 +344,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               <span class="nge-hunt-read-val"><b :key="'f' + run.found" class="nge-hunt-pop">{{ run.found }}</b><i>/{{ run.of }}</i></span>
             </div>
             <div class="nge-hunt-read">
+              <!-- Gems LEFT, "of" the total, so it never reads as a score beside Found (Ames 2026-10-26, Nseraf #259: "8+4= more than 8") -->
               <span class="nge-hunt-read-label">Gems</span>
-              <span class="nge-hunt-read-val"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i>/{{ run.budget }}</i></span>
+              <span class="nge-hunt-read-val"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><i> of {{ run.budget }}</i></span>
               <span v-if="huntState.waiting" class="nge-hunt-read-sub">{{ huntState.waiting }} waiting</span>
-              <span v-else-if="run.gems_left === 0" class="nge-hunt-read-sub">none left</span>
+              <span v-else class="nge-hunt-read-sub">{{ run.gems_left === 0 ? 'none left' : 'left' }}</span>
             </div>
             <!-- The medal stays a secret until the end (Ames 2026-10-21: "do we want to reveal what achievement they have before they win it?"); the clock shows instead. -->
             <div class="nge-hunt-read" title="Your clock started when you first opened the Hunt, and runs once">
@@ -358,6 +361,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           <div v-if="pips.length && !mini" class="nge-hunt-pips" :style="{ '--pips': pips.length }" :title="`${run.gems_left} of ${run.budget} gems left`" aria-hidden="true">
             <span v-for="(used, i) in pips" :key="i" class="nge-hunt-pip" :class="{ 'nge-hunt-pip--used': used }"></span>
           </div>
+          <!-- Where the used gems went, so found, missed and left add up to the total -->
+          <p v-if="!mini && run.gems_used > 0" class="nge-hunt-used">{{ run.gems_used }} {{ run.gems_used === 1 ? 'gem' : 'gems' }} used: {{ run.found }} right, {{ missed }} missed</p>
 
           <div v-if="!run.done" class="nge-hunt-controls">
             <div v-if="kinds.length > 1" class="nge-hunt-kinds" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
@@ -654,6 +659,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-tierword--bronze { color: #d9a77c !important; text-shadow: 0 0 8px rgba(217, 167, 124, 0.3); }
 
 /* ── Chances: one gem a pip ── */
+.nge-hunt-used { margin: -4px 0 0; text-align: center; font: 11.5px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.7); }
 .nge-hunt-pips { display: grid; grid-template-columns: repeat(var(--pips, 10), minmax(0, 1fr)); justify-items: center; align-items: center; gap: 3px 0; padding: 0 2px; }
 .nge-hunt-pip {
   width: 9px; height: 11px; background: rgb(var(--hn-gold)); clip-path: polygon(15% 32%, 35% 0, 65% 0, 85% 32%, 50% 100%);
