@@ -998,7 +998,7 @@ function clearBarTimers() {
 // Where the mouse brings the bar down: the strip, and a band just under it
 // (Ames: the strip alone was too thin to find), except over a layer tab, a
 // button or a box, so reaching for those never opens the bar.
-const STRIP_H = 12;
+const STRIP_H = 16;
 const OPEN_BAND = STRIP_H + 18;
 const NOT_A_BAR_SPOT = '.neuroglancer-layer-item, button, input, textarea, select, a, [role="button"], [contenteditable="true"]';
 function onTuckedMouseMove(e: MouseEvent) {
@@ -2568,14 +2568,14 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 
 /* ── Hide the top bar until pointed at (Settings) ─────────────────────────
    body.nge-bar-autohide: the bar leaves the page flow and lies over the top
-   of the views; a 12px strip keeps its place, so nothing moves as it comes and
+   of the views; a 16px strip keeps its place, so nothing moves as it comes and
    goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather
    than a transform, so the bar's fixed position children (share toast) keep
    the window as their frame. */
 body.nge-bar-autohide .ng-extend {
   position: relative;
-  flex: 0 0 12px;
-  height: 12px;
+  flex: 0 0 16px;
+  height: 16px;
   /* No z-index here: every panel the bar opens is rendered in .ng-extend too,
      and a stacking context would cap them all at this level. */
 }
@@ -2600,7 +2600,7 @@ body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
   top: 0;
   left: 0;
   right: 0;
-  height: 12px;
+  height: 16px;
   z-index: 40;
   background: linear-gradient(to bottom, rgba(18, 30, 54, 0.98), rgba(9, 15, 28, 0.98));
   border-bottom: 1px solid rgba(110, 170, 255, 0.3);
@@ -2611,29 +2611,29 @@ body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
 .nge-strip-counts {
   position: absolute;
   top: 0;
-  right: 10px;
-  height: 11px;
+  right: 12px;
+  height: 20px;
   display: flex;
   gap: 4px;
 }
 .nge-strip-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  height: 11px;
-  padding: 0 5px 0 3px;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px 0 6px;
   box-sizing: border-box;
-  border-radius: 6px;
+  border-radius: 10px;
   background: #7c4dff;
   color: #fff;
-  font: 700 9px/11px 'Inter', 'Roboto', sans-serif;
+  font: 700 12px/20px 'Inter', 'Roboto', sans-serif;
   white-space: nowrap;
   box-shadow: 0 0 6px rgba(124, 77, 255, 0.55);
   animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.nge-strip-badge-icon { display: inline-flex; align-items: center; font-size: 9px; line-height: 1; }
-.nge-strip-badge-icon svg { width: 9px !important; height: 9px !important; vertical-align: 0; }
-.nge-strip-badge-icon img { width: 9px; height: 9px; object-fit: contain; }
+.nge-strip-badge-icon { display: inline-flex; align-items: center; font-size: 12px; line-height: 1; }
+.nge-strip-badge-icon svg { width: 12px !important; height: 12px !important; vertical-align: 0; }
+.nge-strip-badge-icon img { width: 12px; height: 12px; object-fit: contain; }
 .nge-strip-badge--chat { background: #4ad07a; color: #06170d; box-shadow: 0 0 6px rgba(74, 208, 122, 0.55); }
 .nge-strip-badge--mention { background: #f5b942; color: #241600; }
 </style>
