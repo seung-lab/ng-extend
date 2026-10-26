@@ -673,7 +673,9 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
     ends = edgeEnds(graph, bounds, EDGE_NM, 3000, only);
   } else if (isMec()) {
     // MEC's data is not a box: the lab's image mask says where it ends.
-    const spots = await maskEdgeSpots(root, [bounds[0][2], bounds[1][2]], 2000, 2000, 20, stillWanted, onProgress);
+    // 6 um: the segmentation stops a few um inside the imaged area (cell #1289
+    // ended at y 2330 um, the image a few um further on, Ames 2026-10-26).
+    const spots = await maskEdgeSpots(root, [bounds[0][2], bounds[1][2]], 6000, 2000, 20, stillWanted, onProgress);
     if (!spots.loaded) throw new Error("This cell's 3D mesh isn't loaded yet. Show the cell in 3D and try again.");
     ends = spots.spots;
   } else {
