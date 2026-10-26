@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T01:39:04Z",
+      "title": "Your Month in Science and Monthly Champions",
+      "items": [
+        "On the 1st of each month you get Your Month in Science in My Pyr: your edits, cells completed, achievements, best streak and your place for the month that just ended.",
+        "Opening it shows that whole month in your profile, counted on US Eastern time like the weekly one.",
+        "Monthly Champions arrives in Pyr Updates on the 1st, with the month's top editors and top cell completers."
+      ]
+    },
+    {
       "at": "2026-10-26T01:00:00Z",
       "title": "Neater pumpkin card buttons",
       "digest": "minor",

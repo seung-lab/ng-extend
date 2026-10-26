@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {pendingAnnotations} from '../util/annotation_counter';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { recapWeekStart, weekPeriodET, monthStartET } from '../util/recap_week';
+import { recapWeekStart, recapMonth, weekPeriodET, monthPeriodET, monthStartET } from '../util/recap_week';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import RollUp from 'components/RollUp.vue';
@@ -22,8 +22,12 @@ const props = defineProps<{ embedded?: boolean }>();
 
 // ── The week shown: the one a recap notification is about, or this week ──
 // (util/recap_week.ts). Everything weekly below counts from start up to end.
-const period = computed(() => weekPeriodET(recapWeekStart.value));
-onUnmounted(() => { recapWeekStart.value = null; });
+// The monthly recap notification shows a whole month the same way ("My
+// Month in Science", Ames 2026-10-25): every count below then spans it.
+const isMonth = computed(() => !!recapMonth.value);
+const period = computed(() => recapMonth.value ? monthPeriodET(recapMonth.value) : weekPeriodET(recapWeekStart.value));
+const span = computed(() => isMonth.value ? 'this month' : 'this week');
+onUnmounted(() => { recapWeekStart.value = null; recapMonth.value = null; });
 
 // ── Week date range label: "Feb 23 to Mar 1, 2026" ───────────────────────
 const weekRange = computed<string>(() => period.value.label);
@@ -79,14 +83,22 @@ onMounted(async () => {
     // and splits are counted by the server below. Reading every row of the
     // month stopped at the server's 1,000-row cap, so a busy player's month
     // showed 24 edits where the log had 20,750 (Nseraf, report 250).
-    const { data, error } = await supabase.from('edit_log')
-      .select('operation, timestamp, success, metadata')
-      .eq('user_id', uid)
-      .in('operation', ['annotate', 'mark_complete', 'complete_task', 'unmark_complete'])
-      .gte('timestamp', weekStart.toISOString())
-      .lt('timestamp', weekEnd.toISOString())
-      .limit(1000);
-    if (error || !data) return;
+    // A page at a time: a month of a busy player's completions and
+    // annotations is more than one 1,000-row read.
+    const data: any[] = [];
+    for (let from = 0; from < 50000; from += 1000) {
+      const { data: page, error } = await supabase.from('edit_log')
+        .select('operation, timestamp, success, metadata')
+        .eq('user_id', uid)
+        .in('operation', ['annotate', 'mark_complete', 'complete_task', 'unmark_complete'])
+        .gte('timestamp', weekStart.toISOString())
+        .lt('timestamp', weekEnd.toISOString())
+        .order('timestamp').order('id')
+        .range(from, from + 999);
+      if (error || !page) return;
+      data.push(...page);
+      if (page.length < 1000) break;
+    }
     const week: [number, number] = [0, 0];
     const month: [number, number] = [0, 0];
     // Cells completed this week: one per cell, and a cell un-marked after
@@ -308,7 +320,7 @@ function jumpToCell(segId: string) {
         <div class="nge-recap-hero">
           <!-- "My" when shown inside your own profile, "Your" when it appears
                as a standalone toast/panel addressed to the reader. -->
-          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} Week in Science</div>
+          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} {{ isMonth ? 'Month' : 'Week' }} in Science</div>
           <div class="nge-recap-hero-daterange">{{ weekRange }}</div>
         </div>
 
@@ -316,7 +328,7 @@ function jumpToCell(segId: string) {
         <div class="nge-recap-big-stat nge-recap-trio">
           <div class="nge-recap-trio-col">
             <div class="nge-recap-big-number"><RollUp :value="shown.editsThisWeek" /></div>
-            <div class="nge-recap-big-label">edits this week</div>
+            <div class="nge-recap-big-label">edits {{ span }}</div>
             <div class="nge-recap-big-sub">
               {{ shown.mergesThisWeek.toLocaleString() }} merges
               + {{ shown.splitsThisWeek.toLocaleString() }} splits
@@ -325,12 +337,12 @@ function jumpToCell(segId: string) {
           <div class="nge-recap-trio-col">
             <div class="nge-recap-big-number nge-recap-big-number--cells"><RollUp :value="cellsCompletedWeek" /></div>
             <div class="nge-recap-big-label">cell{{ cellsCompletedWeek === 1 ? '' : 's' }} completed</div>
-            <div class="nge-recap-big-sub">this week</div>
+            <div class="nge-recap-big-sub">{{ span }}</div>
           </div>
           <div class="nge-recap-trio-col">
             <div class="nge-recap-big-number nge-recap-big-number--ann"><RollUp :value="annotationsWeek" /></div>
             <div class="nge-recap-big-label">annotation{{ annotationsWeek === 1 ? '' : 's' }} placed</div>
-            <div class="nge-recap-big-sub">this week</div>
+            <div class="nge-recap-big-sub">{{ span }}</div>
           </div>
         </div>
 
@@ -357,7 +369,7 @@ function jumpToCell(segId: string) {
         </div>
 
         <!-- Month summary -->
-        <div class="nge-recap-section nge-recap-month">
+        <div class="nge-recap-section nge-recap-month" v-if="!isMonth">
           <div class="nge-recap-section-label">{{ monthLabel }}</div>
           <div class="nge-recap-month-grid">
             <div class="nge-recap-month-cell">

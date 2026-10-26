@@ -7,7 +7,7 @@ import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesSto
 import { secureWrite } from '../secure_write';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
-import { recapWeekStart, weekFromRecapTitle } from '../util/recap_week';
+import { recapWeekStart, recapMonth, weekFromRecapTitle, monthFromRecapTitle } from '../util/recap_week';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
@@ -310,6 +310,15 @@ function openDetail(notif: any) {
   if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Week in Science')) {
     // The week the recap is about, not the week now (Nseraf, report 250).
     recapWeekStart.value = weekFromRecapTitle(notif.title || '');
+    recapMonth.value = null;
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
+    emit('hide');
+    return;
+  }
+  // The monthly recap opens the same tab switched to its month.
+  if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Month in Science')) {
+    recapMonth.value = monthFromRecapTitle(notif.title || '');
+    recapWeekStart.value = null;
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'weekInScience' } }));
     emit('hide');
     return;
@@ -678,12 +687,12 @@ function cleanCopy(text: string): string {
    detail view falls back to the ordinary Markdown rendering. */
 interface ChampEntry { rank: number; name: string; count: string; unit: string }
 interface ChampSection { label: string; entries: ChampEntry[]; empty: boolean }
-interface ChampionsView { range: string; intro: string; sections: ChampSection[]; outro: string }
+interface ChampionsView { kind: string; range: string; intro: string; sections: ChampSection[]; outro: string }
 
 const CHAMP_MEDALS = ['🥇', '🥈', '🥉'];
 const CHAMP_HEAD_RE = /^(?:\*\*([^*]+?)\*\*:?|#{1,4}\s+(.+))$/;
 const CHAMP_ENTRY_RE = /^(🥇|🥈|🥉|\d{1,3}\.)\s*\*\*(.+?)\*\*\s*(?:[–—:,-]\s*)?(\d[\d,.]*)\s*(.*)$/u;
-const CHAMP_EMPTY_RE = /^[_*\s]*no activity this week[_*\s.!]*$/i;
+const CHAMP_EMPTY_RE = /^[_*\s]*no activity this (?:week|month)[_*\s.!]*$/i;
 
 /** Bold markers and a wrapping _emphasis_ off, dashes cleaned. Gentle on
  *  purpose: a display name like "amy_r_s" keeps its underscores. */
@@ -697,9 +706,11 @@ function stripMd(text: string): string {
 
 function parseChampions(notif: any): ChampionsView | null {
   const title = String(notif?.title || '');
-  if (!/weekly champions/i.test(title)) return null;
+  // Weekly, or Monthly from scripts/monthly-champions.mjs (same body shape).
+  const kind = /monthly champions/i.test(title) ? 'Monthly Champions' : 'Weekly Champions';
+  if (!/(weekly|monthly) champions/i.test(title)) return null;
   try {
-    const range = cleanCopy(title.replace(/^[\s\S]*?weekly champions/i, ''))
+    const range = cleanCopy(title.replace(/^[\s\S]*?(weekly|monthly) champions/i, ''))
       .replace(/^[\s,:;·|-]+/, '')
       .trim();
 
@@ -747,6 +758,7 @@ function parseChampions(notif: any): ChampionsView | null {
     if (sections.some(s => !s.label || (s.entries.length === 0 && !s.empty))) return null;
 
     return {
+      kind,
       range,
       intro: stripMd(intro.join(' ')),
       sections,
@@ -952,8 +964,8 @@ function padRank(rank: number): string {
                   <header class="nge-champs-head">
                     <div class="nge-champs-emblem" aria-hidden="true">🏆</div>
                     <div class="nge-champs-head-text">
-                      <div class="nge-champs-kicker">Weekly Champions</div>
-                      <h2 class="nge-champs-range">{{ champions.range || 'This week' }}</h2>
+                      <div class="nge-champs-kicker">{{ champions.kind }}</div>
+                      <h2 class="nge-champs-range">{{ champions.range || (champions.kind === 'Monthly Champions' ? 'This month' : 'This week') }}</h2>
                     </div>
                   </header>
                   <p v-if="champions.intro" class="nge-champs-intro">{{ champions.intro }}</p>

@@ -12,6 +12,9 @@ import { ref } from 'vue';
 export interface Ymd { y: number; m: number; d: number; }   // m: 0 = January
 /** The Monday of the week to show, as an ET calendar date, or null for this week. */
 export const recapWeekStart = ref<Ymd | null>(null);
+/** The month to show instead of a week ("My Month in Science"), set by the
+ *  monthly recap notification (scripts/monthly-recap.mjs); null shows a week. */
+export const recapMonth = ref<{ y: number; m: number } | null>(null);
 
 const TZ = 'America/New_York';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -62,4 +65,20 @@ export function weekFromRecapTitle(title: string): Ymd | null {
   const startMonth = MONTHS.indexOf(m[1]), endMonth = MONTHS.indexOf(m[3]);
   if (startMonth < 0 || endMonth < 0) return null;
   return { y: Number(m[5]) - (startMonth > endMonth ? 1 : 0), m: startMonth, d: Number(m[2]) };
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** A calendar month in ET: the 1st 00:00 up to the next 1st, like the
+ *  monthly recap (scripts/recap-month.mjs), and its label "October 2026". */
+export function monthPeriodET({ y, m }: { y: number; m: number }) {
+  return { start: etMidnight({ y, m, d: 1 }), end: etMidnight({ y: m === 11 ? y + 1 : y, m: (m + 1) % 12, d: 1 }), label: `${MONTH_NAMES[m]} ${y}` };
+}
+
+/** "✨ Your Month in Science: October 2026" → { y: 2026, m: 9 }. */
+export function monthFromRecapTitle(title: string): { y: number; m: number } | null {
+  const hit = String(title || '').match(/Month in Science:?\s*([A-Z][a-z]+) (\d{4})/);
+  if (!hit) return null;
+  const m = MONTH_NAMES.indexOf(hit[1]);
+  return m < 0 ? null : { y: Number(hit[2]), m };
 }
