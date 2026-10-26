@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T16:58:38Z",
+      "title": "Minimize the Merge Queue",
+      "items": [
+        "The Merge Queue has a minimize button: it folds into the Merge Mode bar as Merge Queue with the number of pairs, and one click opens it again. It stays minimized after a reload and on other datasets.",
+        "Merge and Cut mode now stay behind your profile, Submit an issue and other full windows instead of showing on top of them.",
+        "Thanks to Krzysztof for both ideas."
+      ]
+    },
+    {
       "at": "2026-10-26T15:34:00Z",
       "title": "A warmer welcome while you wait to join",
       "items": [
