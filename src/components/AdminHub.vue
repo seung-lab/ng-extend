@@ -107,7 +107,59 @@ async function setPilot(email:string,enabled:boolean) {
   const {error} = await supabase.from('pilot_members').update({enabled}).eq('email',email);
   if(error) pilotError.value=error.message; else await loadPilot();
 }
-watch(adminSubTab,t=>{if(t==='pilot')loadPilot();});
+// ── Beta requests (Ames 2026-10-26: "Where should I see the access request?
+//    Can you grant me a button that adds their email to the pilot tester
+//    list?"). Every Beta access report (functions/access-request.js, from the
+//    game or connectome.quest), newest first, with Let them in. The email to
+//    add is read from the server's own lines of the report, never the note.
+type BetaRequest = { id: string; name: string; email: string; note: string; site: boolean; at: string };
+const betaRequests = ref<BetaRequest[]>([]);
+const betaError = ref('');
+const betaBusy = ref('');
+const betaShowAll = ref(false);
+function parseBetaRequest(r: any): BetaRequest | null {
+  const lines = String(r.message || '').split('\n');
+  const noteAt = lines.findIndex(l => l.startsWith('Their note: '));
+  const head = noteAt < 0 ? lines : lines.slice(0, noteAt);
+  const pick = (label: string) => {
+    for (const l of head) {
+      const m = l.match(new RegExp('^' + label + ': ([^\\s]+@[^\\s]+?)\\.?(?:\\s|$)'));
+      if (m) return m[1].toLowerCase();
+    }
+    return '';
+  };
+  // In the game, the sign in email is the one that counts; from the site, the one they gave.
+  const email = pick('Sign in email') || pick('Email') || pick('Email they gave');
+  if (!email) return null;
+  const note = noteAt < 0 ? '' : lines.slice(noteAt).join('\n').replace(/^Their note: /, '');
+  return { id: r.id, name: r.user_name || '', email, note, site: /connectome\.quest/.test(String(r.url || '') + String(r.title || '')), at: r.created_at };
+}
+async function loadBetaRequests() {
+  betaError.value = '';
+  const { data, error } = await supabase.from('site_issues').select('id,user_name,title,message,url,created_at')
+    .eq('category', 'Beta access').order('created_at', { ascending: false }).limit(300);
+  if (error) { betaError.value = error.message; return; }
+  const seen = new Set<string>();
+  betaRequests.value = ((data || []) as any[]).map(parseBetaRequest)
+    .filter((r): r is BetaRequest => !!r && !seen.has(r.email) && !!seen.add(r.email));
+}
+const pilotEnabled = computed(() => new Set(pilotRows.value.filter(m => m.enabled).map(m => m.email.toLowerCase())));
+const betaWaiting = computed(() => betaRequests.value.filter(r => !pilotEnabled.value.has(r.email)));
+const betaShown = computed(() => betaShowAll.value ? betaRequests.value : betaWaiting.value);
+async function letBetaIn(r: BetaRequest) {
+  betaBusy.value = r.email; betaError.value = '';
+  const { error } = await supabase.from('pilot_members').upsert([{ email: r.email, enabled: true }], { onConflict: 'email' });
+  if (error) betaError.value = error.message; else await loadPilot();
+  betaBusy.value = '';
+}
+/** An email to tell them, ready to send from the admin's own mail. */
+function betaMailto(r: BetaRequest) {
+  const first = r.name.split(' ')[0] || 'there';
+  const body = `Hi ${first},\n\nYou're in! Thanks for asking to map the brain with us. Sign in to Pyr with this email address (${r.email}) here:\n\nhttps://connectome.quest/play/\n\nThe Pyr (pronounced "peer") team at Princeton University`;
+  return `mailto:${encodeURIComponent(r.email)}?subject=${encodeURIComponent("You're in: Pyr early access")}&body=${encodeURIComponent(body)}`;
+}
+const betaWhen = (at: string) => { try { return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
+watch(adminSubTab,t=>{if(t==='pilot'){loadPilot();void loadBetaRequests();}},{immediate:true});
 
 // ── Feedback triage ──────────────────────────────────────────────────────────
 // A scheduled agent reads incoming feedback (site_issues, client_errors) and
@@ -2356,6 +2408,28 @@ function practiceWhen(iso: string | null) {
 
     <!-- ── Notifications ── -->
     <section v-if="adminSubTab === 'pilot'" class="nge-pilot-admin">
+      <h2>Beta requests</h2>
+      <p>People who asked to join, in the game or on connectome.quest. Let them in adds their email to Pilot testers below; then email them so they know.</p>
+      <p v-if="betaError" role="alert">{{ betaError }}</p>
+      <p v-if="!betaShown.length" class="nge-beta-req-empty">{{ betaRequests.length ? 'Everyone who asked is in.' : 'No requests yet.' }}</p>
+      <ul v-else class="nge-beta-req">
+        <li v-for="r in betaShown" :key="r.id">
+          <span>
+            <b class="nge-pilot-name">{{ r.name || 'No name' }}</b> · {{ r.email }}
+            <i class="nge-beta-req-meta">{{ betaWhen(r.at) }}{{ r.site ? ', from connectome.quest' : ', in the game' }}</i>
+            <span v-if="r.note" class="nge-beta-req-note">{{ r.note }}</span>
+          </span>
+          <template v-if="pilotEnabled.has(r.email)">
+            <em class="nge-beta-req-in">In</em>
+            <a class="nge-beta-req-mail" :href="betaMailto(r)">Email them</a>
+          </template>
+          <button v-else :disabled="betaBusy === r.email" @click="letBetaIn(r)">{{ betaBusy === r.email ? 'Adding…' : 'Let them in' }}</button>
+        </li>
+      </ul>
+      <label v-if="betaRequests.length > betaWaiting.length" class="nge-beta-req-all">
+        <input v-model="betaShowAll" type="checkbox" /> Show the {{ betaRequests.length - betaWaiting.length }} already let in
+      </label>
+
       <h2>Pilot testers</h2>
       <p>Invited testers can claim cells, use practice cells, sync Sheets, and contribute to the site. Existing administrators already have access.</p>
       <form @submit.prevent="invitePilot">
@@ -4512,6 +4586,14 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 .nge-pilot-name { font-weight:700; color:#fff; }
 .nge-pilot-noname { font-style:normal; color:#93a1b3; }
 .nge-pilot-admin button { cursor:pointer; }
+.nge-beta-req li { align-items:flex-start; padding:10px 12px; margin:10px 0; border:1px solid rgba(116,133,154,0.45); border-radius:8px; background:rgba(21,36,52,0.55); }
+.nge-beta-req-meta { display:block; font-style:normal; color:#93a1b3; font-size:0.9rem; }
+.nge-beta-req-note { display:block; margin-top:4px; color:#d6deea; white-space:pre-wrap; overflow-wrap:anywhere; }
+.nge-beta-req-in { font-style:normal; color:#7ee0a0; font-weight:700; align-self:center; }
+.nge-beta-req-mail { color:#7ec8ff; align-self:center; }
+.nge-beta-req-empty { color:#b6c2d1; }
+.nge-pilot-admin .nge-beta-req-all { display:flex; gap:8px; align-items:center; flex-basis:auto; color:#b6c2d1; font-size:0.95rem; margin-bottom:24px; }
+.nge-pilot-admin .nge-beta-req-all input { flex:0 0 auto; }
 .nge-outbox-line { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.86em; line-height: 1.5;
   background: rgba(74, 150, 224, 0.08); border: 1px solid rgba(74, 150, 224, 0.25); }
 .nge-triage-link { color: #7ec8ff; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; cursor: pointer; }

@@ -1,0 +1,115 @@
+// Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26: "Where should I
+// see the access request? Can you grant me a button that adds their email to
+// the pilot tester list?"), headless.
+// Build:  node scripts/build-prod.js
+// Serve:  python -m http.server 3561 --directory dist/min
+// Run:    node scripts/beta-requests.test.cjs [shots dir]
+// Checks: every Beta access report is listed once per email, newest first,
+// with the right email (the sign in email from the game, the given one from
+// connectome.quest, never one typed in a note); Let them in adds that email
+// to pilot_members and the row then says In with Email them; someone already
+// a tester is not listed as waiting. Every server call is answered here.
+const path = require('path');
+const { chromium } = require('C:/Users/amyle/hidden-worlds/node_modules/playwright');
+const CHROME = 'C:/Users/amyle/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe';
+const OUT = process.argv[2] || __dirname;
+const PORT = process.env.PORT || 3561;
+const HIDE_CSS = '.nge-login-blocker, .nge-login-modal, .nge-mw-blocker { display: none !important; }';
+const json = (b, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(b) });
+const results = [];
+const check = (name, ok, detail) => { results.push(!!ok); console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail !== undefined ? ' : ' + JSON.stringify(detail).slice(0, 300) : '')); };
+
+// What functions/access-request.js writes, in its three shapes.
+const ISSUES = [
+  { id: 'i4', user_name: 'Sophia Sterling', title: 'Beta access request from Sophia Sterling', url: null, created_at: '2026-10-26T15:00:00Z',
+    message: 'Sophia Sterling asks to join the Pyr beta.\nEmail: sophia@example.org. To let them in, add this one under Admin Hub, Pilot testers.\nTheir note: Sign in email: evil@example.org. please' },
+  { id: 'i3', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-26T14:00:00Z',
+    message: 'Vic Visitor asks to join the Pyr beta, from connectome.quest.\nEmail they gave: vic@example.org. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.\nThey agreed to the community principles.' },
+  { id: 'i2', user_name: 'Gus Game', title: 'Beta access request from Gus Game', url: null, created_at: '2026-10-25T10:00:00Z',
+    message: 'Gus Game asks to join the Pyr beta.\nEmail they gave: gus@home.example\nSign in email: gus@work.example. To let them in, add this one under Admin Hub, Pilot testers.' },
+  { id: 'i1', user_name: 'Tess Tester', title: 'Beta access request from Tess Tester', url: null, created_at: '2026-10-24T10:00:00Z',
+    message: 'Tess Tester asks to join the Pyr beta.\nEmail: tess@example.org. To let them in, add this one under Admin Hub, Pilot testers.' },
+  { id: 'i0', user_name: 'Vic Visitor', title: 'Beta access request from Vic Visitor (connectome.quest)', url: 'https://connectome.quest/access.html', created_at: '2026-10-20T10:00:00Z',
+    message: 'Vic Visitor asks to join the Pyr beta, from connectome.quest.\nEmail they gave: vic@example.org. They have not signed in to Pyr yet.' },
+];
+
+(async () => {
+  const pilot = [{ email: 'tess@example.org', enabled: true }];
+  const browser = await chromium.launch({ headless: true, executablePath: CHROME, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+  await context.addInitScript(() => {
+    const token = { tokenType: 'Bearer', accessToken: 'test-token', url: 'https://global.daf-apis.com/sticky_auth', appUrls: [] };
+    try { localStorage.setItem('auth_token_v2_https://global.daf-apis.com/sticky_auth', JSON.stringify(token)); } catch (e) {}
+  });
+  await context.route(/global\.daf-apis\.com|global\.brain-wire-test\.org|microns-daf\.com/, r => r.abort());
+  await context.route(/supabase\.co/, r => r.fulfill(json([])));
+  // Registered first: Playwright tries the last registered route first.
+  await context.route(/cloudfunctions\.net|run\.app/, r => r.fulfill(json({ ok: true, data: { invited: true } })));
+  const upserts = [];
+  const envelope = (body) => json({ status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await context.route(/ewCommunityData/, r => {
+    let i = {}; try { i = r.request().postDataJSON() || {}; } catch (e) {}
+    if (i.table === 'site_issues' && i.method === 'GET') {
+      const q = new URLSearchParams(i.query);
+      return r.fulfill(envelope(q.get('category') === 'eq.Beta access' ? ISSUES : []));
+    }
+    if (i.table === 'pilot_members' && i.method === 'GET') return r.fulfill(envelope(pilot));
+    if (i.table === 'pilot_members' && i.method === 'POST') {
+      for (const row of [].concat(i.body)) { upserts.push(row); const hit = pilot.find(p => p.email === row.email); if (hit) Object.assign(hit, row); else pilot.push({ ...row }); }
+      return r.fulfill(envelope([]));
+    }
+    return r.fulfill(envelope([]));
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e).slice(0, 200)));
+  try {
+    await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+    await page.waitForFunction(() => { const a = document.querySelector('#app'); return !!(a && a.__vue_app__ && window.viewer); }, null, { timeout: 90000 });
+    await page.addStyleTag({ content: HIDE_CSS });
+    await page.evaluate(() => {
+      const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia;
+      const login = pinia._s.get('login');
+      if (login && login.sessions.length === 0) login.sessions.push({ name: 'Ames', email: 'amy@example.org', hostname: 'test' });
+      const pb = pinia._s.get('proofreadingBackend');
+      pb.userId = 'u-admin'; pb.userName = 'Ames'; pb.username = 'amy'; pb.userEmail = 'amy@example.org'; pb.isAdmin = true;
+    });
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'pilot' } })));
+    await page.waitForSelector('.nge-beta-req li', { timeout: 15000 });
+    await page.waitForTimeout(600);
+    const rows = await page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
+    check('three waiting, newest first, one row per email', rows.length === 3 && /Sophia/.test(rows[0]) && /Vic/.test(rows[1]) && /Gus/.test(rows[2]), rows);
+    check('the game request shows the email from the server line, not the note', /sophia@example\.org/.test(rows[0]) && !/· evil@/.test(rows[0]), rows[0]);
+    check('the note is shown', /please/.test(rows[0]));
+    check('a site request says so', /from connectome\.quest/.test(rows[1]) && /vic@example\.org/.test(rows[1]));
+    check('two emails: the sign in one is listed', /gus@work\.example/.test(rows[2]));
+    check('someone already a tester is not waiting', !rows.some(r => /Tess/.test(r)));
+    const box = await page.locator('.nge-pilot-admin').boundingBox();
+    await page.screenshot({ path: path.join(OUT, 'beta-requests.png'), clip: { x: box.x, y: box.y, width: box.width, height: Math.min(700, box.height) } });
+    await page.click('.nge-beta-req li >> nth=1 >> text=Let them in');
+    await page.waitForTimeout(800);
+    check('Let them in adds that email to the pilot testers', upserts.length === 1 && upserts[0].email === 'vic@example.org' && upserts[0].enabled === true, upserts);
+    const after = await page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
+    check('then they leave the waiting list', after.length === 2 && !after.some(r => /Vic/.test(r)), after);
+    await page.check('.nge-beta-req-all input');
+    await page.waitForTimeout(300);
+    const all = await page.$$eval('.nge-beta-req li', ls => ls.map(l => l.innerText.replace(/\s+/g, ' ')));
+    const vic = all.find(r => /Vic/.test(r)) || '';
+    check('Show already let in: Vic says In, with Email them', /\bIn\b/.test(vic) && /Email them/.test(vic), all);
+    const mail = await page.$eval('.nge-beta-req-mail', a => a.getAttribute('href')).catch(() => '');
+    check('Email them is addressed to them and has no dashes', /^mailto:/.test(mail) && !/%E2%80%93|%E2%80%94/i.test(mail), mail.slice(0, 120));
+    const text = await page.innerText('.nge-pilot-admin');
+    check('no dashes in the words', !/[\u2013\u2014]/.test(text));
+    check('no page errors', errors.filter(e => !/Failed to fetch/.test(e)).length === 0, errors.slice(0, 3));
+  } catch (e) {
+    check('the test ran to the end', false, String(e).slice(0, 400));
+    await page.screenshot({ path: path.join(OUT, 'beta-requests-fail.png') }).catch(() => {});
+    console.log(await page.evaluate(() => (document.querySelector('.nge-pilot-admin') || document.querySelector('.nge-profile-shell') || document.body).innerText.slice(0, 600)).catch(() => ''));
+  } finally {
+    await browser.close();
+  }
+  const failed = results.filter(x => !x).length;
+  console.log(`\n${results.length - failed} of ${results.length} checks passed`);
+  process.exit(failed ? 1 : 0);
+})();

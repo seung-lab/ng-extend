@@ -342,6 +342,13 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
+  // A beta access request opens Admin Hub > Pilot testers, where Beta
+  // requests has Let them in (Ames 2026-10-26).
+  if (accessTitle.startsWith('🔑 Beta access request') && backend.isAdmin) {
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'pilot' } }));
+    emit('hide');
+    return;
+  }
   // The Proofreading Test (Ames 2026-10-21): an admin's note of a result
   // opens Admin Hub > Test tries; "Your turn" opens the test itself.
   if (accessTitle.startsWith('Proofreading Test: ') && backend.isAdmin) {
