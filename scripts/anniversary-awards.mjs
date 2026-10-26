@@ -73,10 +73,21 @@ async function main() {
   }
   if (!due.length) { console.log('[birthday] Nobody has a Pyr birthday to celebrate yet.'); return; }
 
-  const badges = new Map();
+  // What is already held, in two reads instead of one per player per year
+  // (Ames 2026-10-26: a normal day should cost next to nothing).
+  const badges = new Map((await db.getAll('special_badges?select=id,slug&slug=like.anniversary-*', 'id.asc'))
+    .map(b => [Number(b.slug.split('-')[1]), b.id]));
+  const held = new Set();
+  if (badges.size) {
+    const nOf = new Map([...badges].map(([n, id]) => [id, n]));
+    for (const a of await db.getAll(`special_badge_awards?select=badge_id,user_id&badge_id=in.(${[...badges.values()].join(',')})`, 'id.asc')) {
+      held.add(`${a.user_id}|${nOf.get(a.badge_id)}`);
+    }
+  }
   let given = 0;
   for (const u of due) {
     for (let n = 1; n <= u.years; n++) {
+      if (held.has(`${u.id}|${n}`)) continue;
       const badge = badgeFor(n);
       if (dry) { console.log(`[birthday] would give ${badge.name} to ${u.display_name || u.id} (joined ${etDay(u.created_at)}): ${cheerFor(u.id, n)}`); continue; }
       if (!badges.has(n)) {
@@ -84,8 +95,6 @@ async function main() {
         badges.set(n, saved.id);
       }
       const id = badges.get(n);
-      const held = await db.get(`special_badge_awards?select=id&badge_id=eq.${id}&user_id=eq.${u.id}&limit=1`);
-      if (held.length) continue;
       await db.send('POST', 'special_badge_awards?on_conflict=badge_id,user_id',
         [{ badge_id: id, user_id: u.id, awarded_by: null, reason: `Joined Pyr on ${etDay(u.created_at)}` }], 'resolution=ignore-duplicates,return=minimal');
       await db.send('POST', 'notifications', {
