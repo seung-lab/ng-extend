@@ -13,7 +13,7 @@
  * colour the axon (everything beyond the AIS), then mark each of its ends.
  */
 import { currentDatasetTag } from '../datasets';
-import { MEC_LAYERS } from './mec_layers';
+import { MEC_LAYERS, mecLayerKey } from './mec_layers';
 import { useProofreadingBackendStore } from '../store';
 import { Uint64 } from 'neuroglancer/util/uint64';
 
@@ -44,7 +44,7 @@ export const isMec = () => currentDatasetTag() === 'pni_mec';
 
 /** "True End" and "True End 🟢" are the same layer: letters only, any case
  *  (the same rule mec_layers.ts uses to avoid making a second one). */
-export const layerKey = (name: string) => String(name).replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+export const layerKey = mecLayerKey;
 /** Only on MEC: Retina cells open with layers of the same names (Soma, True
  *  End, Can't Fix, Hits Edge), which made their points glow there too
  *  (Ames 2026-10-25: "the annotation highlight thing is showing on all cells"). */
