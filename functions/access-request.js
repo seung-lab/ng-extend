@@ -396,6 +396,8 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
 //   access.beta        a player not on the list: send the request.
 const BETA_CATEGORY = 'Beta access';
 const BETA_BELL = '🔑 Beta access request';
+// Clicking the bell opens Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26).
+const LET_IN = 'Click this note, then Let them in.';
 async function betaRequested(sb, me) {
   if (!me) return false;
   const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id) + '&select=id&limit=1');
@@ -449,8 +451,8 @@ async function beta(a, io) {
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
   const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
-    + (same ? `Email: ${mdText(signIn)}\n\nTo let them in, add this email under Admin Hub, Pilot testers.`
-      : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}\n\nTo let them in, add the sign in email under Admin Hub, Pilot testers.`)
+    + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
+    + `\n\n${LET_IN}`
     + noteForBell(note);
   // Every admin's Admin tab (Ames 2026-10-24: "yes to all admins").
   try { await (io.notifyAdmins || io.notifyReviewers)({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
@@ -493,7 +495,7 @@ async function visitorBeta(args, io) {
   const title = `Beta access request from ${name} (${SITE})`.slice(0, 120);
   const url = `https://${SITE}/access.html`;
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, url, user_id: null, user_name: name}])});
-  const bell = `${mdText(name)} asks to join the Pyr beta, from ${mdText(SITE)}.\n\nEmail they gave: ${mdText(email)}\n\nThey have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.`
+  const bell = `${mdText(name)} asks to join the Pyr beta, from ${mdText(SITE)}.\n\nEmail they gave: ${mdText(email)}\n\nThey have not signed in to Pyr yet. ${LET_IN} Then email them to sign in with this address.`
     + noteForBell(note);
   try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name, url}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
