@@ -1139,6 +1139,63 @@ function relTime(iso: string): string {
  *  with that same text as its note, so there is no second question to answer
  *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
  *  not be sent, the report is left where it is. */
+// ── Duplicates ──
+const DUP_MARK = /^Same as #(\d+) ([0-9a-f-]{36})/;
+/** The report this one is a duplicate of, if it is one. */
+const dupOf = (r: TriageRow): string | null => String(r.approver_note || '').match(DUP_MARK)?.[2] || null;
+/** The duplicates closed into this report. */
+const dupsOf = (r: TriageRow) => triageRows.value.filter(x => dupOf(x) === r.id);
+const dupNotice = ref('');
+watch(dupNotice, v => { if (v) setTimeout(() => { if (dupNotice.value === v) dupNotice.value = ''; }, 6000); });
+const dupDraft = ref<Record<string, string>>({});
+async function markDuplicate(row: TriageRow) {
+  const n = Number(String(dupDraft.value[row.id] || '').replace(/[^0-9]/g, ''));
+  const mainId = Object.entries(triageNumbers.value).find(([, num]) => num === n)?.[0];
+  if (!n || !mainId) { triageError.value = `There is no report #${dupDraft.value[row.id] || ''} on the board.`; return; }
+  if (mainId === row.id) { triageError.value = 'A report cannot be the same as itself.'; return; }
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    const by = backend.userName || backend.userEmail || 'admin';
+    await secureWrite('triage.update', { id: row.id, fields: {
+      status: 'dismissed',
+      approver_note: `Same as #${n} ${mainId}: grouped by ${by}. Its reporter hears when #${n} is updated.`,
+      reviewed_by: by, reviewed_at: new Date().toISOString(),
+      ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
+    } });
+    delete dupDraft.value[row.id];
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+/** Tell the reporters of this card's duplicates too: a plain note, no reply box. */
+async function notifyDuplicates(row: TriageRow, text: string, art: Record<string, string>) {
+  const dups = dupsOf(row).filter(d => d.source === 'site_issue' && d.source_id);
+  if (!dups.length) return 0;
+  const { supabase } = await import('../supabase');
+  const { data } = await supabase.from('site_issues').select('id,user_id').in('id', dups.map(d => d.source_id));
+  const main = reporterOf(row)?.title || '';
+  let told = 0;
+  const seen = new Set<string>();
+  for (const issue of data || []) {
+    if (!issue.user_id || seen.has(issue.user_id)) continue;
+    seen.add(issue.user_id);
+    try {
+      await secureWrite('notification.insert', { row: {
+        title: '💬 An update on your report',
+        body: `${text}${main ? `\n\n(Others reported this too, as "${main}".)` : ''}`,
+        ...art, target_type: 'user', target_id: issue.user_id, send_at: new Date().toISOString(),
+      } });
+      told++;
+    } catch { /* one missed note does not stop the rest */ }
+  }
+  return told;
+}
+
 async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false, andLater = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
@@ -1178,6 +1235,9 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       target_id: userId,
       send_at: new Date().toISOString(),
     } });
+    // Everyone who reported the same thing hears too (never asked to reply).
+    const toldDups = await notifyDuplicates(row, text, art).catch(() => 0);
+    if (toldDups) dupNotice.value = `Also sent to ${toldDups} other ${toldDups === 1 ? 'person' : 'people'} who reported the same thing.`;
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
@@ -2808,6 +2868,7 @@ function practiceWhen(iso: string | null) {
           </div>
         </Transition>
         <div v-if="triageError" class="nge-admin-error">⚠ {{ triageError }}</div>
+        <div v-if="dupNotice" class="nge-admin-ok">✓ {{ dupNotice }}</div>
         <div v-if="triageLoading && !triageRows.length" class="nge-admin-hint">Loading…</div>
         <div v-else-if="!triageRows.length" class="nge-admin-hint">
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
@@ -2836,6 +2897,9 @@ function practiceWhen(iso: string | null) {
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
+            <span v-if="dupOf(row)" class="nge-triage-dup-badge" :title="'Grouped into report #' + (triageNumbers[dupOf(row) || ''] || '')">Same as #{{ triageNumbers[dupOf(row) || ''] || '?' }}</span>
+            <span v-if="dupsOf(row).length" class="nge-triage-dup-badge nge-triage-dup-badge--main"
+                  :title="'Also reported by ' + dupsOf(row).map(d => (reporterOf(d)?.name || 'someone') + ' (#' + (triageNumbers[d.id] || '?') + ')').join(', ')">+{{ dupsOf(row).length }} same</span>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
             <span v-if="row.admin_notes?.length" class="nge-triage-impl nge-triage-notes-chip" :title="`${row.admin_notes.length} note${row.admin_notes.length === 1 ? '' : 's'} from admins`">📝 {{ row.admin_notes.length }}</span>
             <span v-if="isAwaitingReply(row)" class="nge-triage-rec nge-triage-rec--waiting"
@@ -3096,6 +3160,12 @@ function practiceWhen(iso: string | null) {
             </template>
             <button v-else class="nge-admin-action-btn nge-triage-reporter-open" @click="reporterDrafts[row.id] = draftReporterUpdate(row)"
                     title="Draft a notification to the person who reported this. You can edit it before sending, or not send it.">✉ Update submitter</button>
+            <!-- Duplicates (Ames 2026-10-26): close this one into another report. -->
+            <form v-if="!dupOf(row)" class="nge-triage-dup" @submit.prevent="markDuplicate(row)" @click.stop>
+              <label>Same as #<input v-model="dupDraft[row.id]" inputmode="numeric" size="4" placeholder="231" aria-label="Report number this duplicates" @keydown.stop @keyup.stop @keypress.stop /></label>
+              <button type="submit" class="nge-admin-action-btn" :disabled="!dupDraft[row.id] || triageActing === row.id"
+                      title="Close this report as a duplicate. Its reporter hears whenever you update the other report.">Group</button>
+            </form>
           </div>
         </div>
         <div v-if="triageBoard && !g.rows.length && !isFolded(g.key)" class="nge-triage-col-empty">
@@ -4478,4 +4548,10 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
   color: #2f6fe0; }
 .nge-zero-sub { margin-top: 6px; color: #3a4a66; font: 600 16px Inter, system-ui, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .nge-zero-bit { display: none; } .nge-zero-card, .nge-zero-card img { animation: none; } }
+/* Duplicates. */
+.nge-triage-dup { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 12.5px; color: #62738c; }
+.nge-triage-dup input { width: 52px; margin-left: 2px; padding: 3px 6px; border-radius: 6px; border: 1px solid #c3d3ec; font: inherit; }
+.nge-triage-dup-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: #fde7f1; color: #b0306f; margin-left: 4px; }
+.nge-triage-dup-badge--main { background: #e6f6f4; color: #11766c; }
+.nge-admin-ok { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #e6f6ee; color: #1d7038; font-size: 13px; }
 </style>

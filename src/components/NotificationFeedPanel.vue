@@ -632,8 +632,14 @@ const digestStats = computed(() => {
   const m = String(n.body || '').match(DIGEST_STATS);
   return m ? { edits: m[1], cells: m[2], editsOne: m[1] === '1', cellsOne: m[2] === '1' } : null;
 });
+/** A player's reply names its report: the bell opens that card on the triage board. */
+const TRIAGE_MARK = /\s*#nge-triage-report=([0-9a-f-]{36})\s*$/i;
+const triageReportId = computed(() => String(openNotif.value?.body ?? '').match(TRIAGE_MARK)?.[1] ?? '');
+function openTriageReport() {
+  window.open(`${window.location.origin}${window.location.pathname}?triage=board&report=${triageReportId.value}`, '_blank', 'noopener');
+}
 const detailBody = computed(() => {
-  const body = String(openNotif.value?.body ?? '');
+  const body = String(openNotif.value?.body ?? '').replace(TRIAGE_MARK, '');
   return digestStats.value ? body.replace(DIGEST_STATS, '') : body;
 });
 function onPictureLoad(e: Event) {
@@ -644,7 +650,7 @@ watch(openNotif, () => { pictureWide.value = false; });
 
 /** Markdown stripped to plain text, for the compact card preview line. */
 function plainText(text: string): string {
-  return (text || '')
+  return (text || '').replace(/\s*#nge-triage-report=[0-9a-f-]{36}\s*$/i, '')
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.+?)\*/g, '$1')
     .replace(/_(.+?)_/g, '$1')
@@ -1119,6 +1125,9 @@ function padRank(rank: number): string {
                     </div>
                     <div v-if="replyError" class="nge-notif-reply-error" role="alert">{{ replyError }}</div>
                   </template>
+                </div>
+                <div v-if="triageReportId" class="nge-notif-reminder-actions">
+                  <button class="nge-notif-open-help" @click="openTriageReport">Open this report in triage ↗</button>
                 </div>
                 <div v-if="reminderId" class="nge-notif-reminder-actions">
                   <button class="nge-notif-open-help nge-notif-solve" :disabled="!!reminderReq?.resolved || helpSolvedNote.startsWith('Marked solved')"
