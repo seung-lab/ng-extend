@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -121,6 +121,7 @@ function wordsFor(n: any) {
   if (n.result === 'already') return { cls: 'already', head: 'Found already', text: 'You found that one before. No gem used.' };
   if (n.result === 'edge') return { cls: 'edge', head: 'Edge of the dataset', text: 'The branch leaves the data here. No gem used.' };
   if (n.result === 'refused') return { cls: 'refused', head: 'No gem dropped', text: n.text || '' };
+  if (n.result === 'kept') return { cls: 'already', head: 'Checked gems stay', text: 'That gem is back. Once a gem is checked it stays on the cell.' };
   if (n.other) return { cls: 'miss', head: 'Wrong gem', text: `Something is there, but it needs ${n.other === 'merge' ? 'an extension' : 'a cut'}.` };
   return { cls: 'miss', head: 'Not there', text: 'No problem at that spot.' };
 }
@@ -144,6 +145,7 @@ const newsLine = computed(() => {
   if (n.result === 'already') return { cls: 'already', head: 'Found already', text: 'You found that one before. No gem used.' };
   if (n.result === 'edge') return { cls: 'edge', head: 'Edge of the dataset', text: 'The branch leaves the data here. No gem used.' };
   if (n.result === 'refused') return { cls: 'refused', head: 'No gem dropped', text: n.text || '' };
+  if (n.result === 'kept') return { cls: 'already', head: 'Checked gems stay', text: 'That gem is back. Once a gem is checked it stays on the cell.' };
   const w = wordsFor(n);
   const near = n.nearest_um != null && hunt.value?.test ? ` The nearest ${n.gem === 'merge' ? 'missing extension' : 'merger'} is ${n.nearest_um} µm away (tolerance ${hunt.value.tolerance_um} µm).` : '';
   return { ...w, text: w.text + near, other: n.other || null };
@@ -317,6 +319,9 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <button v-if="!huntPrefs.auto" class="nge-hunt-submit nge-hunt-submit--slim" :class="{ 'nge-hunt-submit--alone': kinds.length < 2 }" :disabled="!huntState.waiting" :title="huntState.waiting ? '' : 'Drop gems, then submit'" @click="submitWaiting">
               {{ huntState.waiting ? `Submit ${huntState.waiting}` : 'Submit' }}
             </button>
+            <button v-if="!huntPrefs.auto" class="nge-hunt-takeback nge-hunt-takeback--slim" :disabled="!huntState.waiting" title="Take back your last gem (not sent yet)" aria-label="Take back your last gem" @click="takeBackGem">
+              <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M6 4L3 7l3 3M3.5 7H10a3 3 0 0 1 0 6H8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
           </div>
           <button v-if="!opened" class="nge-hunt-btn nge-hunt-btn--primary nge-hunt-btn--slim" :disabled="!!busy" @click="go">
             {{ busy === 'go' ? 'Opening…' : onDataset ? 'Open the Hunt' : `Open on ${datasetName}` }}
@@ -368,9 +373,16 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               <span class="nge-hunt-switch-track" aria-hidden="true"><span class="nge-hunt-switch-knob"></span></span>
               <span class="nge-hunt-switch-text">Check each gem as it lands</span>
             </label>
-            <button v-if="!huntPrefs.auto" class="nge-hunt-submit" :disabled="!huntState.waiting" @click="submitWaiting">
-              {{ huntState.waiting ? `Submit ${huntState.waiting} ${huntState.waiting === 1 ? 'gem' : 'gems'}` : 'Drop gems, then submit' }}
-            </button>
+            <div v-if="!huntPrefs.auto" class="nge-hunt-submitrow">
+              <button class="nge-hunt-submit" :disabled="!huntState.waiting" @click="submitWaiting">
+                {{ huntState.waiting ? `Submit ${huntState.waiting} ${huntState.waiting === 1 ? 'gem' : 'gems'}` : 'Drop gems, then submit' }}
+              </button>
+              <!-- A gem dropped by mistake comes off before Submit (Ames 2026-10-26, from Celia) -->
+              <button class="nge-hunt-takeback" :disabled="!huntState.waiting" title="Take back your last gem (not sent yet)" @click="takeBackGem">
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M6 4L3 7l3 3M3.5 7H10a3 3 0 0 1 0 6H8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Take back
+              </button>
+            </div>
           </div>
           <!-- The cells glow teal where they run out of the data; off if it distracts (Ames 2026-10-23) -->
           <label v-if="opened && hunt?.bounds_nm" class="nge-hunt-switch nge-hunt-switch--edge" title="On: the cells glow teal where they run out of the data. An Extend gem there is the edge of the dataset and uses no gem.">
@@ -441,6 +453,17 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
       <div v-if="howOpen && phase !== 'ended' && !mini" class="nge-hunt-howpanel">
         <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
         <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" />
+        <!-- What the colors mean (Ames 2026-10-26): the gems' own colors, and the glow on a cell -->
+        <div class="nge-hunt-key" aria-label="What the colors mean">
+          <span v-for="k in GEM_KEY" :key="k.words" class="nge-hunt-keyitem">
+            <svg v-for="c in k.colors" :key="c" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" :fill="c"/></svg>
+            {{ k.words }}
+          </span>
+          <span v-if="hunt.bounds_nm" class="nge-hunt-keyitem nge-hunt-keyitem--wide">
+            <i class="nge-hunt-keyglow" :style="{ '--edge': EDGE_COLOR }" aria-hidden="true"></i>
+            A teal glow on a cell: the data ends there. An Extend gem there costs nothing.
+          </span>
+        </div>
         <div class="nge-hunt-medalrow" aria-label="Medals">
           <span v-for="t in TIERS" :key="t" class="nge-hunt-medalmini" :title="`${TIER_WORD[t]}: ${needShort(t)}`">
             <img :src="medalArt(t)" alt="" /><b :class="`nge-hunt-tierword--${t}`">{{ TIER_WORD[t] }}</b><small>{{ needShort(t) }}</small>
@@ -552,6 +575,20 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-slim-read i { font-style: normal; font-size: 11px; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-slim-read small { margin-left: 5px; font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
 .nge-hunt-slim-time { margin-left: auto; font: 600 11px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.7); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nge-hunt-submitrow { display: flex; gap: 6px; }
+.nge-hunt-submitrow .nge-hunt-submit { flex: 1; min-width: 0; }
+.nge-hunt-takeback { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 9px; cursor: pointer;
+  background: rgba(4, 8, 18, 0.55); border: 1px solid rgb(var(--hn-accent) / 0.45); color: rgb(var(--hn-line) / 0.85); font: 600 12px 'Inter', sans-serif; }
+.nge-hunt-takeback:hover:not(:disabled), .nge-hunt-takeback:focus-visible { color: #fff; border-color: rgb(var(--hn-cyan) / 0.8); }
+.nge-hunt-takeback:disabled { opacity: 0.4; cursor: default; }
+.nge-hunt-takeback--slim { padding: 5px 7px; border-radius: 8px; }
+/* The color key, under the instructions */
+.nge-hunt-key { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 8px 2px 2px; border-top: 1px solid rgb(var(--hn-accent) / 0.18); font: 11.5px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.8); }
+.nge-hunt-keyitem { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.nge-hunt-keyitem svg { flex: none; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6)); }
+.nge-hunt-keyitem--wide { white-space: normal; grid-column: 1 / -1; align-items: flex-start; }
+.nge-hunt-keyitem--wide .nge-hunt-keyglow { margin-top: 5px; }
+.nge-hunt-keyglow { flex: none; width: 18px; height: 7px; border-radius: 4px; background: var(--edge); box-shadow: 0 0 6px var(--edge); }
 .nge-hunt-submit--slim { flex: 1 1 auto; min-width: 0; padding: 5px 10px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-hunt-btn--slim { flex: none; padding: 6px 10px; font-size: 11.5px; }
 .nge-hunt-slim-done { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
