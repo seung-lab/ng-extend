@@ -49,13 +49,13 @@ export type { StageMoment } from '../data/toolbar-stages';
 export const STAGING_SINCE = '2026-10-22T13:25:00Z';
 
 export const IS_LIVE_SITE = typeof location !== 'undefined' && location.hostname.startsWith('eyewire-ii-community-dot-');
-/** The test panel exists on every test site, and for admins on the live site
- *  (Ames 2026-10-21: an admin's own account is never staged, so this is how
- *  they see a new player's top bar there). */
+/** The test panel exists on test sites only. It was on the live site for
+ *  admins too (2026-10-21) until Ames took it off (2026-10-26: the GMs do not
+ *  use it, and a pretend new player left on there kept Magic Top Bar from
+ *  hiding). A pretend player left on in a live browser is ignored. */
 export const STAGING_TEST_AVAILABLE = !IS_LIVE_SITE;
 export function stagingTestAllowed(): boolean {
-  if (STAGING_TEST_AVAILABLE) return true;
-  try { return !!(useProofreadingBackendStore() as any).isAdmin; } catch { return false; }
+  return STAGING_TEST_AVAILABLE;
 }
 
 // ── State ───────────────────────────────────────────────────────────────────

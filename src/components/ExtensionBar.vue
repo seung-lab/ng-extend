@@ -1190,8 +1190,8 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- <annotation-panel /> --> <!-- Hidden: users pick cells from Cell Library instead -->
   <achievement-toast />
   <staging-announcement />
-  <!-- Test sites, and admins on the live site (util/toolbar_staging.ts). -->
-  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.showAdminUi" />
+  <!-- Test sites only (util/toolbar_staging.ts). -->
+  <staging-test-panel v-if="STAGING_TEST_AVAILABLE" />
   <command-palette
     ref="cmdPalette"
     @open-profile="showProfile = true"
