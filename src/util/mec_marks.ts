@@ -309,6 +309,62 @@ export function cellMeshLoad(root: string): { pieces: number; loaded: number } {
   const { pieces, loaded } = cellVertices(root);
   return { pieces, loaded };
 }
+/** How much of the (2w+1)-pixel square around (x, y) the mask says is empty,
+ *  reading every `step`th pixel; beyond the mask's own sides counts as empty. */
+function emptyShare(tiles: Map<string, Uint8Array | null>, x: number, y: number, w: number, step: number): number {
+  const { tile, size } = MEC_IMAGE_MASK;
+  let empty = 0, all = 0;
+  for (let wy = y - w; wy <= y + w; wy += step) for (let wx = x - w; wx <= x + w; wx += step) {
+    all++;
+    if (wx < 0 || wy < 0 || wx >= size[0] || wy >= size[1]) { empty++; continue; }
+    const t = tiles.get(`${Math.floor(wx / tile)},${Math.floor(wy / tile)}`);
+    if (t && t[(wy % tile) * tile + (wx % tile)] === 0) empty++;
+  }
+  return all ? empty / all : 0;
+}
+
+/**
+ * For checking from the console: each Hits Edge mark in view, and what the
+ * mask says around it (its section, the nearest empty pixel, and how empty
+ * the 8 um and 40 um squares around that pixel are). Ames runs
+ * JSON.stringify(await __ngeMecEdgeWhy()) and sends the result.
+ */
+async function edgeWhy() {
+  const { resNm, tile, size } = MEC_IMAGE_MASK;
+  const out: any[] = [];
+  const edge = mecLayers().get(MEC_EDGE);
+  for (const ann of edge?.layer?.localAnnotations ?? []) {
+    if (ann.type !== 0 || !ann.point) continue;
+    // Points are in the viewer's units (16, 16, 45 nm on MEC); the mask is 512, 512, 45.
+    let scales = [16, 16, 45];
+    try { scales = Array.from((window as any).viewer.coordinateSpace.value.scales as ArrayLike<number>).map(v => v / 1e-9); } catch { /* default */ }
+    const nm = [0, 1, 2].map(i => ann.point[i] * scales[i]);
+    const px = Math.floor(nm[0] / resNm[0]), py = Math.floor(nm[1] / resNm[1]), z = Math.round(nm[2] / resNm[2]);
+    const tiles = new Map<string, Uint8Array | null>();
+    for (const dx of [-60, 0, 60]) for (const dy of [-60, 0, 60]) {
+      const tx = Math.floor((px + dx) / tile), ty = Math.floor((py + dy) / tile), k = `${tx},${ty}`;
+      if (!tiles.has(k) && tx >= 0 && ty >= 0) tiles.set(k, await maskTile(tx, ty, z));
+    }
+    let near: number[] | null = null;
+    for (let d = 0; d <= 20 && !near; d++) for (let dy = -d; dy <= d && !near; dy++) for (let dx = -d; dx <= d; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== d) continue;
+      const x = px + dx, y = py + dy;
+      if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) { near = [x, y]; break; }
+      const t = tiles.get(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
+      if (t && t[(y % tile) * tile + (x % tile)] === 0) { near = [x, y]; break; }
+    }
+    out.push({
+      um: nm.map(v => +(v / 1000).toFixed(1)), section: z, sectionInMask: !!tiles.get(`${Math.floor(px / tile)},${Math.floor(py / tile)}`),
+      nearestEmptyUm: near ? +(Math.hypot(near[0] - px, near[1] - py) * resNm[0] / 1000).toFixed(1) : null,
+      empty8um: near ? +emptyShare(tiles, near[0], near[1], 8, 1).toFixed(2) : null,
+      empty40um: near ? +emptyShare(tiles, near[0], near[1], 40, 2).toFixed(2) : null,
+      by: String(ann.description ?? ''),
+    });
+  }
+  return out;
+}
+try { (window as any).__ngeMecEdgeWhy = edgeWhy; } catch { /* no window */ }
+
 /** Every vertex of a cell's meshes on screen, in nanometres, and how much of
  *  the cell has loaded. */
 function cellVertices(root: string): { verts: Float32Array[]; pieces: number; loaded: number } {
@@ -368,12 +424,13 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
   const r = Math.ceil(reachNm / resNm[0]);
   const sections = [...bySection.keys()];
   // A few sections at a time, so the tiles in hand stay few.
-  // The mask has small holes inside the tissue (56 near one cell, up to about
-  // 63 pixels): a 0 counts only when the 8 um square around it is mostly
-  // empty, as it is past the real edge (at least 40% there, about half as a
-  // rule; the holes reached 26%, measured 2026-10-26). Ames: "it marked a ton
-  // of points inside".
-  const W = 8, EMPTY = 0.35;
+  // The mask has holes inside the tissue (56 small ones near one cell, and
+  // larger patches, Ames: "it marked a ton of points inside", then "no" to
+  // 8 um). A 0 counts only when the 40 um square around it is mostly empty, as
+  // it is past the real edge: there 47% at least and about half as a rule, in
+  // the holes 26% at most (section 4667, 2026-10-26). Read every 2nd pixel.
+  const W = 40, STEP = 2, EMPTY = 0.38;
+  const outside = new Map<string, boolean>();
   for (let at = 0; at < sections.length; at += 3) {
     onProgress?.(at, sections.length);
     if (!stillWanted()) return out;
@@ -393,7 +450,7 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
       const need = new Set<string>();
       for (const b of list) {
         const px = Math.floor(b.x / resNm[0]), py = Math.floor(b.y / resNm[1]);
-        for (const x of [px - r - W, px + r + W]) for (const y of [py - r - W, py + r + W]) {
+        for (const x of [px - r - W, px, px + r + W]) for (const y of [py - r - W, py, py + r + W]) {
           if (x >= 0 && y >= 0 && x < size[0] && y < size[1]) need.add(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
         }
       }
@@ -409,14 +466,13 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
           if (!t) continue;   // nothing known here
           if (t[(y % tile) * tile + (x % tile)] !== 0) continue;
           // Is this the outside, or a hole in the tissue?
-          let empty = 0, all = 0;
-          for (let wy = y - W; wy <= y + W; wy++) for (let wx = x - W; wx <= x + W; wx++) {
-            all++;
-            if (wx < 0 || wy < 0 || wx >= size[0] || wy >= size[1]) { empty++; continue; }
-            const tw = tiles.get(`${Math.floor(wx / tile)},${Math.floor(wy / tile)}`);
-            if (tw && tw[(wy % tile) * tile + (wx % tile)] === 0) empty++;
+          const ok = `${s},${x},${y}`;
+          let isOut = outside.get(ok);
+          if (isOut === undefined) {
+            isOut = emptyShare(tiles, x, y, W, STEP) >= EMPTY;
+            outside.set(ok, isOut);
           }
-          if (empty / all >= EMPTY) { touches = true; break; }
+          if (isOut) { touches = true; break; }
         }
         if (touches) b.edge = true;
       }
