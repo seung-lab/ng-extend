@@ -2111,7 +2111,7 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
   opacity: 1;
   background: rgba(100, 200, 255, 0.1) !important;
   box-shadow: 0 0 0 1px rgba(100, 200, 255, 0.3), 0 2px 12px rgba(100, 200, 255, 0.18);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.05);
 }
 /* Open menu / panel showing: the same active underline as the left row. */
 #extensionBar #hamburger.open > button,
