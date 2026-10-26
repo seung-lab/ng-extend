@@ -429,7 +429,7 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
   // 8 um). A 0 counts only when the 40 um square around it is mostly empty, as
   // it is past the real edge: there 47% at least and about half as a rule, in
   // the holes 26% at most (section 4667, 2026-10-26). Read every 2nd pixel.
-  const W = 40, STEP = 2, EMPTY = 0.38;
+  const W = 40, STEP = 2, EMPTY = 0.38, AGREE = 10;
   const outside = new Map<string, boolean>();
   for (let at = 0; at < sections.length; at += 3) {
     onProgress?.(at, sections.length);
@@ -437,9 +437,9 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
     await Promise.all(sections.slice(at, at + 3).map(async s => {
       const list = bySection.get(s)!;
       // The nearest section the mask has, up to five either way.
-      const tileOf = async (tx: number, ty: number) => {
+      const tileOf = async (tx: number, ty: number, at = s) => {
         for (const d of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5]) {
-          const z = s + d;
+          const z = at + d;
           if (z < 0 || z >= size[2]) continue;
           const t = await maskTile(tx, ty, z);
           if (t) return t;
@@ -456,12 +456,13 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
       }
       const tiles = new Map<string, Uint8Array | null>();
       await Promise.all([...need].map(async k => { const [tx, ty] = k.split(',').map(Number); tiles.set(k, await tileOf(tx, ty)); }));
+      const found: { b: (typeof list)[number]; x: number; y: number }[] = [];
       for (const b of list) {
         const px = Math.floor(b.x / resNm[0]), py = Math.floor(b.y / resNm[1]);
-        let touches = false;
+        let touches: number[] | false = false;
         for (let dy = -r; dy <= r && !touches; dy++) for (let dx = -r; dx <= r; dx++) {
           const x = px + dx, y = py + dy;
-          if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) { touches = true; break; }
+          if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) { touches = [Math.max(0, Math.min(x, size[0] - 1)), Math.max(0, Math.min(y, size[1] - 1))]; break; }
           const t = tiles.get(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
           if (!t) continue;   // nothing known here
           if (t[(y % tile) * tile + (x % tile)] !== 0) continue;
@@ -472,9 +473,28 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
             isOut = emptyShare(tiles, x, y, W, STEP) >= EMPTY;
             outside.set(ok, isOut);
           }
-          if (isOut) { touches = true; break; }
+          if (isOut) { touches = [x, y]; break; }
         }
-        if (touches) b.edge = true;
+        if (touches) found.push({ b, x: touches[0], y: touches[1] });
+      }
+      // A damaged section can be mostly empty inside the tissue (section 5480
+      // is 93% empty at one soma, Ames: "nope", a line of marks across a cell
+      // at one depth). The real edge stays from section to section: the same
+      // place must look like the outside AGREE sections above and below too.
+      for (const f of found) {
+        let agree = true;
+        for (const at of [s - AGREE, s + AGREE]) {
+          if (at < 0 || at >= size[2]) continue;
+          const near = new Map<string, Uint8Array | null>();
+          for (const x of [f.x - W, f.x + W]) for (const y of [f.y - W, f.y + W]) {
+            if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) continue;
+            const k = `${Math.floor(x / tile)},${Math.floor(y / tile)}`;
+            if (!near.has(k)) near.set(k, await tileOf(Math.floor(x / tile), Math.floor(y / tile), at));
+          }
+          if (![...near.values()].some(Boolean)) continue;   // nothing known there
+          if (emptyShare(near, f.x, f.y, W, STEP) < EMPTY) { agree = false; break; }
+        }
+        if (agree) f.b.edge = true;
       }
     }));
   }
