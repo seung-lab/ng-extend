@@ -339,7 +339,8 @@ function cellVertices(root: string): { verts: Float32Array[]; pieces: number; lo
  * nanometres. `pieces`/`loaded`: the cell's mesh pieces in all, and on hand.
  */
 export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, reachNm = 2000, binNm = 2000, everySections = 20,
-                                    stillWanted: () => boolean = () => true): Promise<{ spots: number[][]; pieces: number; loaded: number }> {
+                                    stillWanted: () => boolean = () => true,
+                                    onProgress?: (done: number, total: number) => void): Promise<{ spots: number[][]; pieces: number; loaded: number }> {
   const { verts, pieces, loaded } = cellVertices(root);
   const out = { spots: [] as number[][], pieces, loaded };
   if (!loaded) return out;
@@ -367,7 +368,14 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
   const r = Math.ceil(reachNm / resNm[0]);
   const sections = [...bySection.keys()];
   // A few sections at a time, so the tiles in hand stay few.
+  // The mask has small holes inside the tissue (56 near one cell, up to about
+  // 63 pixels): a 0 counts only when the 8 um square around it is mostly
+  // empty, as it is past the real edge (at least 40% there, about half as a
+  // rule; the holes reached 26%, measured 2026-10-26). Ames: "it marked a ton
+  // of points inside".
+  const W = 8, EMPTY = 0.35;
   for (let at = 0; at < sections.length; at += 3) {
+    onProgress?.(at, sections.length);
     if (!stillWanted()) return out;
     await Promise.all(sections.slice(at, at + 3).map(async s => {
       const list = bySection.get(s)!;
@@ -385,7 +393,7 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
       const need = new Set<string>();
       for (const b of list) {
         const px = Math.floor(b.x / resNm[0]), py = Math.floor(b.y / resNm[1]);
-        for (const x of [px - r, px + r]) for (const y of [py - r, py + r]) {
+        for (const x of [px - r - W, px + r + W]) for (const y of [py - r - W, py + r + W]) {
           if (x >= 0 && y >= 0 && x < size[0] && y < size[1]) need.add(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
         }
       }
@@ -399,7 +407,16 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
           if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) { touches = true; break; }
           const t = tiles.get(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
           if (!t) continue;   // nothing known here
-          if (t[(y % tile) * tile + (x % tile)] === 0) { touches = true; break; }
+          if (t[(y % tile) * tile + (x % tile)] !== 0) continue;
+          // Is this the outside, or a hole in the tissue?
+          let empty = 0, all = 0;
+          for (let wy = y - W; wy <= y + W; wy++) for (let wx = x - W; wx <= x + W; wx++) {
+            all++;
+            if (wx < 0 || wy < 0 || wx >= size[0] || wy >= size[1]) { empty++; continue; }
+            const tw = tiles.get(`${Math.floor(wx / tile)},${Math.floor(wy / tile)}`);
+            if (tw && tw[(wy % tile) * tile + (wx % tile)] === 0) empty++;
+          }
+          if (empty / all >= EMPTY) { touches = true; break; }
         }
         if (touches) b.edge = true;
       }

@@ -2,11 +2,11 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-26T15:36:00Z",
+      "at": "2026-10-26T17:19:00Z",
       "title": "Hits Edge found for you on MEC",
       "items": [
         "Pyr now marks Hits Edge on its own wherever an MEC cell reaches the end of the imaged data, using the lab's image mask, once the cell has loaded in 3D. Check each one.",
-        "Find ends at the edge in Marks looks again, for example after you extend a branch."
+        "Find ends at the edge in Marks looks again, with a bar showing how far it has got, and Undo in Marks takes back the newest mark, or every mark one search placed."
       ]
     },
     {

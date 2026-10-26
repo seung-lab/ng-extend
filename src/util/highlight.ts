@@ -643,7 +643,8 @@ export async function addAxonHighlight(root: string, stillWanted: () => boolean 
  * already marked Hits Edge are left alone. All the new marks are one mark
  * for Undo. Returns what was added and what was there already.
  */
-export async function addEdgeMarks(root: string, stillWanted: () => boolean = () => true):
+export async function addEdgeMarks(root: string, stillWanted: () => boolean = () => true,
+                                   onProgress?: (done: number, total: number) => void):
     Promise<{ added: number; already: number; axonOnly: boolean; fromMesh?: boolean; closestNm?: number }> {
   const viewer = viewerOf();
   const managedSeg = currentSegLayer();
@@ -672,7 +673,7 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
     ends = edgeEnds(graph, bounds, EDGE_NM, 3000, only);
   } else if (isMec()) {
     // MEC's data is not a box: the lab's image mask says where it ends.
-    const spots = await maskEdgeSpots(root, [bounds[0][2], bounds[1][2]], 2000, 2000, 20, stillWanted);
+    const spots = await maskEdgeSpots(root, [bounds[0][2], bounds[1][2]], 2000, 2000, 20, stillWanted, onProgress);
     if (!spots.loaded) throw new Error("This cell's 3D mesh isn't loaded yet. Show the cell in 3D and try again.");
     ends = spots.spots;
   } else {
@@ -1070,7 +1071,9 @@ export function startHighlightTint(viewer: any) {
 // checks each one.
 const edgeLooked = new Set<string>();
 let edgeLoadSeen: { root: string; loaded: number } | null = null;
-export const autoEdgeNews = { last: '' };
+/** What the search on its own is doing, for Marks to show: `looking` is
+ *  the share done (0 to 1) while it runs, else null. */
+export const autoEdgeNews = { last: '', looking: null as number | null };
 let autoBusy = false;
 async function autoEdgeTick() {
   if (autoBusy || !isMec() || !startXyz()) return;
@@ -1085,12 +1088,13 @@ async function autoEdgeTick() {
   edgeLooked.add(root);
   autoBusy = true;
   try {
-    const r = await addEdgeMarks(root);
+    autoEdgeNews.looking = 0;
+    const r = await addEdgeMarks(root, () => true, (done, total) => { autoEdgeNews.looking = total ? done / total : 0; });
     if (!r.added) return;
     autoEdgeNews.last = `Pyr marked ${r.added} ${r.added === 1 ? 'place' : 'places'} where this cell reaches the edge of the data. Check each one.`;
     StatusMessage.showTemporaryMessage(autoEdgeNews.last, 9000);
   } catch (e) { console.warn('[highlight] Hits Edge on its own failed:', e); }
-  finally { autoBusy = false; }
+  finally { autoBusy = false; autoEdgeNews.looking = null; }
 }
 /** Call once the viewer exists. */
 export function startAutoEdgeMarks() {

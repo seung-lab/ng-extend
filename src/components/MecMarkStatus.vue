@@ -12,7 +12,7 @@
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer } from '../util/mec_marks';
-import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick, addEdgeMarks, workingRoot, autoEdgeNews } from '../util/highlight';
+import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick, addEdgeMarks, workingRoot, autoEdgeNews, undoHighlight } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
 // Open unless the player closed it (Ames 2026-10-24: "make the Marks open by
@@ -33,8 +33,13 @@ const bad = ref(false);
 let lastRoot: string | null = null;
 
 let newsShown = '';
+/** Share done of a search for the edge (Find, or Pyr's own), or null. */
+const autoLooking = ref<number | null>(null);
+const looking = ref<number | null>(null);
 function read() {
   counts.value = mecCounts(); soma.value = somaState(); hasStart.value = !!startXyz();
+  // The search on its own, while it runs.
+  autoLooking.value = autoEdgeNews.looking;
   // Hits Edge placed on their own: said here too, once.
   if (autoEdgeNews.last && autoEdgeNews.last !== newsShown) { newsShown = autoEdgeNews.last; say(newsShown); }
 }
@@ -115,15 +120,21 @@ async function place() {
 async function findEdges() {
   if (busy.value) return;
   busy.value = true;
-  say('Looking for the edge of the data...');
+  looking.value = 0;
+  say('');
   try {
-    const r = await addEdgeMarks(workingRoot(lastRoot));
+    const r = await addEdgeMarks(workingRoot(lastRoot), () => true, (done, total) => { looking.value = total ? done / total : 0; });
     read();
     const had = r.already ? ` ${r.already} already marked.` : '';
     say(r.added ? `Added ${r.added} Hits Edge ${r.added === 1 ? 'mark' : 'marks'}.${had} Check each one.`
       : `Nothing new reaches the edge of the data.${had}`);
   } catch (e: any) { say(e?.message || 'Could not look for the edge.', true); }
-  finally { busy.value = false; }
+  finally { busy.value = false; looking.value = null; }
+}
+/** Take back the newest mark: one click, or the whole batch Find placed. */
+function undoLast() {
+  say(undoHighlight() ? 'Removed the last mark.' : 'Nothing to undo.');
+  read();
 }
 
 async function confirmSoma() {
@@ -195,9 +206,15 @@ onBeforeUnmount(() => {
         <div v-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
       </div>
       <div class="nge-mms-foot">
-        <button type="button" class="nge-mms-btn" :disabled="busy" @click="findEdges"
-                title="Mark Hits Edge wherever the cell reaches the end of the data, from the lab's image mask.">{{ busy ? 'Looking...' : 'Find ends at the edge' }}</button>
-        <span class="nge-mms-msg" :class="{ 'nge-mms-msg--bad': bad }" role="status">{{ message || "The lab's sheet gets these counts when you complete the cell." }}</span>
+        <button type="button" class="nge-mms-btn" :disabled="busy || autoLooking !== null" @click="findEdges"
+                title="Mark Hits Edge wherever the cell reaches the end of the data, from the lab's image mask.">Find ends at the edge</button>
+        <button type="button" class="nge-mms-btn" :disabled="busy" @click="undoLast"
+                title="Remove the newest mark. All the Hits Edge marks one search placed go together.">Undo</button>
+        <span v-if="looking !== null || autoLooking !== null" class="nge-mms-progress" role="status">
+          <span class="nge-mms-bar"><span :style="{ width: Math.round(((looking ?? autoLooking) ?? 0) * 100) + '%' }"></span></span>
+          Looking for the edge of the data, {{ Math.round(((looking ?? autoLooking) ?? 0) * 100) }}%
+        </span>
+        <span v-else class="nge-mms-msg" :class="{ 'nge-mms-msg--bad': bad }" role="status">{{ message || "The lab's sheet gets these counts when you complete the cell." }}</span>
       </div>
     </div>
   </div>
@@ -240,6 +257,10 @@ onBeforeUnmount(() => {
 .nge-mms-btn:disabled { opacity: 0.45; cursor: default; }
 .nge-mms-btn--ok { color: #2a2205; background: #ffd24d; border-color: #ffd24d; }
 .nge-mms-btn--ok:hover:not(:disabled) { background: #ffe07f; }
+.nge-mms-progress { display: inline-flex; align-items: center; gap: 7px; flex: 1; min-width: 160px; font-size: 11px; color: rgba(220, 230, 245, 0.75); }
+.nge-mms-bar { position: relative; flex: 0 0 70px; height: 4px; border-radius: 2px; background: rgba(255, 154, 60, 0.18); overflow: hidden; }
+.nge-mms-bar > span { position: absolute; inset: 0 auto 0 0; background: #ff9a3c; transition: width 0.3s ease; }
+@media (prefers-reduced-motion: reduce) { .nge-mms-bar > span { transition: none; } }
 .nge-mms-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 7px; }
 .nge-mms-msg { flex: 1; min-width: 140px; font-size: 11px; color: rgba(200, 212, 228, 0.55); }
 .nge-mms-msg--bad { color: #ff9aa8; }
