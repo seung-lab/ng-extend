@@ -10,12 +10,13 @@ import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
-import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
+import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 import { isTouchRef } from './mobile';
+import { StatusMessage } from 'neuroglancer/status';
 
 export interface HighlightStyle {
   key: string; label: string; layer: string; color: string;
@@ -640,6 +641,11 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
       only = piecesBeyond(graph, from, ref);
     }
     ends = edgeEnds(graph, bounds, EDGE_NM, 3000, only);
+  } else if (isMec()) {
+    // MEC's data is not a box: the lab's image mask says where it ends.
+    const spots = await maskEdgeSpots(root, [bounds[0][2], bounds[1][2]], 2000, 2000, 20, stillWanted);
+    if (!spots.loaded) throw new Error("This cell's 3D mesh isn't loaded yet. Show the cell in 3D and try again.");
+    ends = spots.spots;
   } else {
     const spots = meshEdgeSpots([root], bounds, EDGE_NM);
     if (!spots.loaded) throw new Error("This cell's 3D mesh isn't loaded yet. Show the cell in 3D and try again.");
@@ -1001,3 +1007,40 @@ export function startHighlightTint(viewer: any) {
   scan();
 }
 
+// ── Hits Edge, found on its own (Ames 2026-10-24: "I thought it was
+// supposed to auto detect when it reaches the edge of the dataset"; back
+// 2026-10-26 with the lab's image mask) ────────────────────────────────────
+// While an MEC claim is open and its cell is the one on screen, Pyr waits for
+// the cell's 3D mesh to finish loading, then marks Hits Edge wherever it
+// reaches the end of the data (addEdgeMarks). Once per cell id per page: an
+// edit gives the cell a new id, so a grown branch is looked at again, and
+// spots already marked are never marked twice. The player is told, and
+// checks each one.
+const edgeLooked = new Set<string>();
+let edgeLoadSeen: { root: string; loaded: number } | null = null;
+export const autoEdgeNews = { last: '' };
+let autoBusy = false;
+async function autoEdgeTick() {
+  if (autoBusy || !isMec() || !startXyz()) return;
+  let root: string;
+  try { root = workingRoot(); } catch { return; }
+  if (edgeLooked.has(root)) return;
+  const { pieces, loaded } = cellMeshLoad(root);
+  // Loaded, and no more pieces came in since the last look.
+  const steady = pieces > 0 && loaded === pieces && edgeLoadSeen?.root === root && edgeLoadSeen.loaded === loaded;
+  edgeLoadSeen = { root, loaded };
+  if (!steady) return;
+  edgeLooked.add(root);
+  autoBusy = true;
+  try {
+    const r = await addEdgeMarks(root);
+    if (!r.added) return;
+    autoEdgeNews.last = `Pyr marked ${r.added} ${r.added === 1 ? 'place' : 'places'} where this cell reaches the edge of the data. Check each one.`;
+    StatusMessage.showTemporaryMessage(autoEdgeNews.last, 9000);
+  } catch (e) { console.warn('[highlight] Hits Edge on its own failed:', e); }
+  finally { autoBusy = false; }
+}
+/** Call once the viewer exists. */
+export function startAutoEdgeMarks() {
+  setInterval(() => { void autoEdgeTick(); }, 4000);
+}

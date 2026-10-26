@@ -269,3 +269,160 @@ export function meshEdgeSpots(roots: string[], bounds: number[][] | null, margin
   out.spots = out.spots.slice(0, 200);
   return out;
 }
+
+// ── The edge of MEC's data, from the lab's image mask (Ames 2026-10-26: "got
+// a mask!", "tissue mask / resin mask") ──────────────────────────────────────
+// MEC's imaged area is not a box: a cell was cut off at y 2333.2 um, and the
+// image mask there ends at y 2331.6 um, inside a segmentation box reaching
+// 2380.9 um. The mask (the lab's alignment mask, 512 x 512 x 45 nm, one byte a
+// voxel, 1 where there is image and 0 where there is none) is served from the
+// lab's own server, gzipped, one 2048 x 2048 tile of a section per file
+// (about 10 to 35 kB). A section missing from it is not "no image": the
+// nearest section that is there is read instead. The resin mask in the same
+// view (where there is no tissue) is not used: the end of the image is where a
+// branch can't be followed any further.
+export const MEC_IMAGE_MASK = {
+  base: 'https://c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/masks/v2/warped_match_offsets_512nm/512_512_45',
+  resNm: [512, 512, 45],
+  tile: 2048,
+  size: [10240, 10240, 9949],
+};
+const maskTiles = new Map<string, Promise<Uint8Array | null>>();
+/** One tile of one section: the bytes, or null when the mask has none. */
+function maskTile(tx: number, ty: number, z: number): Promise<Uint8Array | null> {
+  const { base, tile, size } = MEC_IMAGE_MASK;
+  const key = `${tx},${ty},${z}`;
+  let p = maskTiles.get(key);
+  if (!p) {
+    const x0 = tx * tile, y0 = ty * tile;
+    const url = `${base}/${x0}-${Math.min(x0 + tile, size[0])}_${y0}-${Math.min(y0 + tile, size[1])}_${z}-${z + 1}`;
+    p = fetch(url).then(async r => (r.ok ? new Uint8Array(await r.arrayBuffer()) : null)).catch(() => null);
+    maskTiles.set(key, p);
+    // Each tile is 4 MB unpacked: keep only the last few.
+    if (maskTiles.size > 12) maskTiles.delete(maskTiles.keys().next().value as string);
+  }
+  return p;
+}
+
+/** How much of a cell's mesh has loaded: its pieces in all, and on hand. */
+export function cellMeshLoad(root: string): { pieces: number; loaded: number } {
+  const { pieces, loaded } = cellVertices(root);
+  return { pieces, loaded };
+}
+/** Every vertex of a cell's meshes on screen, in nanometres, and how much of
+ *  the cell has loaded. */
+function cellVertices(root: string): { verts: Float32Array[]; pieces: number; loaded: number } {
+  const out = { verts: [] as Float32Array[], pieces: 0, loaded: 0 };
+  const u = new Uint64();
+  if (!u.tryParseString(root)) return out;
+  const key = `${u.low},${u.high}`;
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    if (ml?.layer?.type !== 'segmentation') continue;
+    for (const rl of ml.layer.renderLayers ?? []) {
+      const src = rl?.source;
+      if (!src?.fragmentSource?.chunks || !src?.chunks || typeof src.getFragmentKey !== 'function') continue;
+      for (const fid of src.chunks.get(key)?.fragmentIds ?? []) {
+        out.pieces++;
+        const vp: Float32Array | undefined = src.fragmentSource.chunks.get(src.getFragmentKey(key, fid).key)?.meshData?.vertexPositions;
+        if (vp) { out.loaded++; out.verts.push(vp); }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Where a cell reaches the end of MEC's data: the parts of its mesh within
+ * reachNm of a place the image mask says has no image (in the section the
+ * part is in, read every `everySections`), or within EDGE_NM of the top or
+ * bottom of the stack. Neighbouring parts are one place: one spot each, in
+ * nanometres. `pieces`/`loaded`: the cell's mesh pieces in all, and on hand.
+ */
+export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, reachNm = 2000, binNm = 2000, everySections = 20,
+                                    stillWanted: () => boolean = () => true): Promise<{ spots: number[][]; pieces: number; loaded: number }> {
+  const { verts, pieces, loaded } = cellVertices(root);
+  const out = { spots: [] as number[][], pieces, loaded };
+  if (!loaded) return out;
+  const { resNm, tile, size } = MEC_IMAGE_MASK;
+  // The cell in 2 um parts: the middle of each part's vertices.
+  const bins = new Map<string, { n: number; x: number; y: number; z: number; i: number; j: number; k: number; edge?: boolean }>();
+  for (const vp of verts) {
+    for (let p = 0; p + 2 < vp.length; p += 3) {
+      const x = vp[p], y = vp[p + 1], z = vp[p + 2];
+      const i = Math.floor(x / binNm), j = Math.floor(y / binNm), k = Math.floor(z / binNm);
+      const bk = `${i},${j},${k}`;
+      const b = bins.get(bk);
+      if (b) { b.n++; b.x += x; b.y += y; b.z += z; } else bins.set(bk, { n: 1, x, y, z, i, j, k });
+    }
+  }
+  // Group the parts by the mask section that is read for them.
+  const bySection = new Map<number, typeof bins extends Map<string, infer B> ? B[] : never>();
+  for (const b of bins.values()) {
+    b.x /= b.n; b.y /= b.n; b.z /= b.n;
+    if (zBoundsNm && (b.z - zBoundsNm[0] <= EDGE_NM || zBoundsNm[1] - b.z <= EDGE_NM)) { b.edge = true; continue; }
+    const s = Math.round(b.z / resNm[2] / everySections) * everySections;
+    const list = bySection.get(s);
+    if (list) list.push(b); else bySection.set(s, [b]);
+  }
+  const r = Math.ceil(reachNm / resNm[0]);
+  const sections = [...bySection.keys()];
+  // A few sections at a time, so the tiles in hand stay few.
+  for (let at = 0; at < sections.length; at += 3) {
+    if (!stillWanted()) return out;
+    await Promise.all(sections.slice(at, at + 3).map(async s => {
+      const list = bySection.get(s)!;
+      // The nearest section the mask has, up to five either way.
+      const tileOf = async (tx: number, ty: number) => {
+        for (const d of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5]) {
+          const z = s + d;
+          if (z < 0 || z >= size[2]) continue;
+          const t = await maskTile(tx, ty, z);
+          if (t) return t;
+        }
+        return null;
+      };
+      // The tiles this section needs, fetched first, then every part checked.
+      const need = new Set<string>();
+      for (const b of list) {
+        const px = Math.floor(b.x / resNm[0]), py = Math.floor(b.y / resNm[1]);
+        for (const x of [px - r, px + r]) for (const y of [py - r, py + r]) {
+          if (x >= 0 && y >= 0 && x < size[0] && y < size[1]) need.add(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
+        }
+      }
+      const tiles = new Map<string, Uint8Array | null>();
+      await Promise.all([...need].map(async k => { const [tx, ty] = k.split(',').map(Number); tiles.set(k, await tileOf(tx, ty)); }));
+      for (const b of list) {
+        const px = Math.floor(b.x / resNm[0]), py = Math.floor(b.y / resNm[1]);
+        let touches = false;
+        for (let dy = -r; dy <= r && !touches; dy++) for (let dx = -r; dx <= r; dx++) {
+          const x = px + dx, y = py + dy;
+          if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) { touches = true; break; }
+          const t = tiles.get(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
+          if (!t) continue;   // nothing known here
+          if (t[(y % tile) * tile + (x % tile)] === 0) { touches = true; break; }
+        }
+        if (touches) b.edge = true;
+      }
+    }));
+  }
+  // Touching parts are one place: its spot is the middle of their parts.
+  const seen = new Set<string>();
+  for (const [bk, b0] of bins) {
+    if (!b0.edge || seen.has(bk)) continue;
+    seen.add(bk);
+    let n = 0, sx = 0, sy = 0, sz = 0;
+    const queue = [b0];
+    while (queue.length) {
+      const b = queue.pop()!;
+      n++; sx += b.x; sy += b.y; sz += b.z;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dk = -1; dk <= 1; dk++) {
+        const nk = `${b.i + di},${b.j + dj},${b.k + dk}`;
+        const nb = bins.get(nk);
+        if (nb?.edge && !seen.has(nk)) { seen.add(nk); queue.push(nb); }
+      }
+    }
+    out.spots.push([Math.round(sx / n), Math.round(sy / n), Math.round(sz / n)]);
+  }
+  out.spots = out.spots.slice(0, 100);
+  return out;
+}
