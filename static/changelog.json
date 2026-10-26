@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-26T15:34:00Z",
+      "title": "A warmer welcome while you wait to join",
+      "items": [
+        "If Pyr is still invite only for you, the music no longer starts behind the waiting screen.",
+        "After you ask to join, the waiting screen thanks you and suggests things to do meanwhile: play EyeWire, or learn about the brain on connectome.quest.",
+        "You can now ask to join Pyr from connectome.quest too, without signing in first."
+      ]
+    },
+    {
       "at": "2026-10-26T15:22:00Z",
       "title": "Easier to read Help tab",
       "items": [
