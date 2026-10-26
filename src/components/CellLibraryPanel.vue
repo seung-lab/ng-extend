@@ -4743,15 +4743,15 @@ const panelStyle = computed(() => ({
   align-items: center;
   gap: 6px;
   padding: 10px 12px 6px;
-  font-size: 0.72em;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #667;
+  color: #8b97ad;
   cursor: pointer;
   user-select: none;
 }
-.nge-cl-help-resolved-header:hover { color: #889; }
+.nge-cl-help-resolved-header:hover { color: #c9d3e6; }
 .nge-cl-help-resolved-arrow {
   display: inline-block;
   transition: transform 0.15s;
@@ -5722,8 +5722,8 @@ select.nge-cl-complete-type:hover {
   background: rgba(120, 140, 255, 0.08);
 }
 .nge-cl-help-ds-arrow {
-  font-size: 0.7em;
-  color: #667;
+  font-size: 10px;
+  color: #8b97ad;
   display: inline-block;
   transition: transform 0.15s;
   width: 8px;
@@ -5732,15 +5732,14 @@ select.nge-cl-complete-type:hover {
 .nge-cl-help-ds-arrow--collapsed {
   transform: rotate(-90deg);
 }
+/* Readable at a glance (Ames 2026-10-26: "this text is too small"). */
 .nge-cl-help-ds-name {
-  font-family: ui-monospace, 'Cascadia Code', monospace;
-  font-size: 0.78em;
-  font-weight: 600;
-  color: #bcd;
+  font: 600 13px/1.3 'Inter', system-ui, sans-serif;
+  color: #dce6f5;
   flex: 1;
 }
 .nge-cl-help-ds-tag {
-  font-size: 0.62em;
+  font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -5757,14 +5756,14 @@ select.nge-cl-complete-type:hover {
   border: 1px solid rgba(245, 166, 35, 0.18);
   color: rgba(245, 166, 35, 0.85);
 }
-.nge-cl-help-ds-switch { cursor: pointer; font: inherit; }
+.nge-cl-help-ds-switch { cursor: pointer; font-family: inherit; font-size: 11px; }
 .nge-cl-help-ds-switch:hover {
   background: rgba(245, 166, 35, 0.22);
   border-color: rgba(245, 166, 35, 0.5);
   color: #ffd27a;
 }
 .nge-cl-help-ds-count {
-  font-size: 0.7em;
+  font-size: 11px;
   font-weight: 700;
   color: #889;
   background: rgba(255, 255, 255, 0.06);
