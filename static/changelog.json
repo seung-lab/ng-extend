@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-26T19:33:05Z",
+      "at": "2026-10-26T19:40:34Z",
       "title": "Reviewing access requests: two more",
       "items": [
         "Pointing at or clicking a point in the 2D or 3D view lights up that point in the review box's list.",
@@ -11,7 +11,7 @@
       ]
     },
     {
-      "at": "2026-10-26T19:30:01Z",
+      "at": "2026-10-26T19:40:34Z",
       "title": "Calm screen no longer blanks the page",
       "items": [
         "With Calm screen on in Settings, Pyr opened to a black page since the Hunt arrived. It now opens as it should, with the Hunt's effects calmed.",
