@@ -280,9 +280,11 @@ export function countdown(iso: string | null | undefined): string {
   const ms = Math.max(0, Date.parse(iso || '') - huntState.now);
   if (!Number.isFinite(ms)) return '';
   const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
-  return `${m}m ${String(sec).padStart(2, '0')}s`;
+  // To the second, so it is seen to run (Ames 2026-10-26: "hunt needs a countdown to the second").
+  const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
+  if (d > 0) return `${d}d ${String(h).padStart(2, '0')}h ${mm}m ${ss}s`;
+  if (h > 0) return `${h}h ${mm}m ${ss}s`;
+  return `${m}m ${ss}s`;
 }
 
 /** A moment in the player's own time zone. */

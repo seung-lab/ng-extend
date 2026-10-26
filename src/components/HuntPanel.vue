@@ -77,6 +77,9 @@ onUnmounted(() => { if (gemTimer) clearInterval(gemTimer); });
 // A new hunt in the panel (or a switch between a test run and the real one) starts clean.
 watch(() => `${hunt.value?.id ?? ''}:${hunt.value?.test ? 'test' : ''}`, () => { error.value = ''; });
 
+/** The player's missed gems, newest first, for the list under the gem dots. */
+const missedOpen = ref(false);
+const missedGems = computed(() => ((run.value as any)?.drops ?? []).filter((d: any) => !d.hit).slice().reverse() as { id: string; at: number[] | null; k: 'cut' | 'merge' | null }[]);
 /** "It's real": a missed gem told to the admins (Ames 2026-10-26). */
 const reporting = ref('');
 const canReport = (cls: string, id: string | undefined) => !!id && cls === 'miss' && !hunt.value?.test && phase.value !== 'announced';
@@ -392,7 +395,19 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span v-for="(used, i) in pips" :key="i" class="nge-hunt-pip" :class="{ 'nge-hunt-pip--used': used }"></span>
           </div>
           <!-- Where the used gems went, so found, missed and left add up to the total -->
-          <p v-if="!mini && run.gems_used > 0" class="nge-hunt-used">{{ run.gems_used }} {{ run.gems_used === 1 ? 'gem' : 'gems' }} used: {{ run.found }} right, {{ missed }} missed</p>
+          <p v-if="!mini && run.gems_used > 0" class="nge-hunt-used">{{ run.gems_used }} {{ run.gems_used === 1 ? 'gem' : 'gems' }} used: {{ run.found }} right,
+            <button v-if="missedGems.length && !hunt.test" class="nge-hunt-missedlink" :aria-expanded="missedOpen" title="Your missed gems: go to each, and tell the admins if one is on a real problem" @click="missedOpen = !missedOpen">{{ missed }} missed {{ missedOpen ? '▴' : '▾' }}</button>
+            <template v-else>{{ missed }} missed</template></p>
+          <!-- Every missed gem, any time (Ames 2026-10-26: "where should I see 'not there'?"): go there, and It's real -->
+          <ul v-if="missedOpen && !mini && missedGems.length" class="nge-hunt-missedlist" aria-label="Your missed gems">
+            <li v-for="(g, i) in missedGems" :key="g.id">
+              <span class="nge-hunt-missed-n">{{ i + 1 }}</span>
+              <span class="nge-hunt-missed-kind">{{ g.k === 'merge' ? 'Extend' : 'Cut' }} gem</span>
+              <button class="nge-hunt-missed-go" :disabled="!g.at" @click="goToSoma((g.at || []).slice(0, 3))">Go there</button>
+              <span v-if="reportedOf(hunt, g.id)" class="nge-hunt-report-tag">{{ reportedOf(hunt, g.id) === 'no' ? 'checked' : 'reported' }}</span>
+              <button v-else class="nge-hunt-report nge-hunt-report--small" :disabled="reporting === g.id" title="Your gem is on a real merger or missing extension that the Hunt's answers do not have: an admin checks it, and if it is real it counts for you." @click="report(g.id)">It's real</button>
+            </li>
+          </ul>
 
           <div v-if="!run.done" class="nge-hunt-controls">
             <div v-if="kinds.length > 1" class="nge-hunt-kinds" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
@@ -526,7 +541,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           </span>
           <!-- Laser Eyes (Ames 2026-10-26): find a real problem the answer key missed -->
           <span class="nge-hunt-medalmini" title="Laser Eyes: find a real problem the answer key missed. The admins check it, and it counts for you.">
-            <img src="hunt/laser-128.png" alt="" /><b class="nge-hunt-tierword--laser">Laser Eyes</b><small>key missed</small>
+            <img src="hunt/laser-128.png" alt="" /><b class="nge-hunt-tierword--laser">Laser<br />Eyes</b><small>key missed</small>
           </span>
         </div>
         <p v-if="!hunt.test" class="nge-hunt-fine">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
@@ -855,7 +870,16 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-medalrow { display: flex; gap: 4px; margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(66, 213, 236, 0.18); }
 .nge-hunt-medalmini { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0; text-align: center; }
 .nge-hunt-medalmini img { width: 30px; height: 30px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
-.nge-hunt-medalmini b { font: 700 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
+.nge-hunt-medalmini b { font: 700 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+.nge-hunt-medalmini b.nge-hunt-tierword--laser { white-space: normal; line-height: 1.1; }
+.nge-hunt-missedlink { padding: 0; border: none; background: none; cursor: pointer; font: inherit; color: #9fe9f5; text-decoration: underline dotted; text-underline-offset: 3px; }
+.nge-hunt-missedlink:hover, .nge-hunt-missedlink:focus-visible { color: #fff; }
+.nge-hunt-missedlist { list-style: none; margin: -2px 0 0; padding: 4px 6px; max-height: 170px; overflow-y: auto; border: 1px solid rgb(var(--hn-accent) / 0.2); border-radius: 8px; background: rgba(4, 8, 18, 0.45); }
+.nge-hunt-missedlist li { display: flex; align-items: center; gap: 6px; padding: 3px 0; font: 11.5px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.85); }
+.nge-hunt-missed-n { width: 18px; text-align: right; color: rgb(var(--hn-line) / 0.5); font-variant-numeric: tabular-nums; }
+.nge-hunt-missed-kind { flex: 1; }
+.nge-hunt-missed-go { padding: 1px 7px; border-radius: 6px; cursor: pointer; font: 600 10.5px 'Inter', sans-serif; background: rgba(4, 8, 18, 0.6); border: 1px solid rgb(var(--hn-accent) / 0.45); color: rgb(var(--hn-line) / 0.9); }
+.nge-hunt-missed-go:hover:not(:disabled) { color: #fff; border-color: rgb(var(--hn-cyan) / 0.8); }
 .nge-hunt-medalmini small { font-size: 10px; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-desc--how { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(66, 213, 236, 0.18); font-size: 12.5px; }
 
