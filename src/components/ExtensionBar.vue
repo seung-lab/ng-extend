@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { activateGrapheneTool as activateTool } from '../widgets/graphene_tool_utils';
 import { QUIET_TEST_HOST } from '../util/test_host';
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from "vue";
+import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import VolumesOverlay from "components/VolumesOverlay.vue";
 import DropdownList from "components/DropdownList.vue";
 import UserProfilePanel from "components/UserProfilePanel.vue";
@@ -1071,32 +1071,23 @@ watch([barAutoHide, barShown], ([on, shown]) => {
 // help request is not missed while the bar is up.
 interface StripBadge { id: string; label: string; count: number; mention: boolean; svg?: string; img?: string; emoji?: string }
 const stripBadges = ref<StripBadge[]>([]);
-const stripBadgesX = ref(0);
 const badgeSig = computed(() => visibleToolbar.value
   .map(i => `${i.id}:${i.badge?.() ?? 0}:${i.adminBadge?.() ?? 0}`).join('|') + (chatMentionPending.value ? '!' : ''));
 function placeStripBadges() {
   if (!barAutoHide.value) { stripBadges.value = []; return; }
   // Each count with its own icon beside it (Ames: bare numbers read as
-  // "rogue numbers"), side by side, roughly under where those icons sit.
+  // "rogue numbers"), side by side in the top right corner (Ames).
   const out: StripBadge[] = [];
-  const xs: number[] = [];
   for (const icon of visibleToolbar.value) {
     const count = (icon.badge?.() ?? 0) + (icon.adminBadge?.() ?? 0);
     const mention = icon.id === 'chat' && !!chatMentionPending.value;
     if (count <= 0 && !mention) continue;
-    const r = document.querySelector<HTMLElement>(`#extensionBar [data-icon-id="${icon.id}"]`)?.getBoundingClientRect();
-    if (r && r.width) xs.push(r.left + r.width / 2);
     out.push({ id: icon.id, label: icon.label, count, mention, svg: icon.svg, img: icon.img, emoji: icon.emoji });
   }
-  const mid = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : window.innerWidth - 160;
-  const half = out.length * 22 + 8;
-  stripBadgesX.value = Math.min(Math.max(mid, half + 8), window.innerWidth - half - 8);
   stripBadges.value = out;
 }
-watch([badgeSig, barAutoHide], () => nextTick(placeStripBadges), { immediate: true });
-const onBarResize = () => placeStripBadges();
-onMounted(() => window.addEventListener('resize', onBarResize));
-onUnmounted(() => { window.removeEventListener('resize', onBarResize); window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); clearBarTimers(); });
+watch([badgeSig, barAutoHide], placeStripBadges, { immediate: true });
+onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); clearBarTimers(); });
 
 </script>
 
@@ -1170,7 +1161,7 @@ onUnmounted(() => { window.removeEventListener('resize', onBarResize); window.re
   <div v-if="barAutoHide" class="nge-bar-strip" :class="{ 'nge-bar-strip--hidden': barShown }"
        title="The top bar. Point here, or press the \ key, to bring it down."
        @click="onStripClick">
-    <div v-if="!barShown && stripBadges.length" class="nge-strip-counts" :style="{ left: stripBadgesX + 'px' }">
+    <div v-if="!barShown && stripBadges.length" class="nge-strip-counts">
       <span v-for="b in stripBadges" :key="b.id" class="nge-strip-badge"
             :class="{ 'nge-strip-badge--chat': b.id === 'chat', 'nge-strip-badge--mention': b.mention && !b.count }"
             :title="b.count ? `${b.label}: ${b.count}` : `${b.label}: someone mentioned you`"><span class="nge-strip-badge-icon"><span v-if="b.svg" v-html="b.svg"></span><img v-else-if="b.img" :src="b.img" alt="" /><template v-else>{{ b.emoji }}</template></span>{{ b.count || '@' }}</span>
@@ -2616,25 +2607,12 @@ body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
   box-sizing: border-box;
   cursor: pointer;
 }
-/* A small notch in the middle says "something is up here". */
-.nge-bar-strip::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 4px;
-  width: 40px;
-  height: 3px;
-  margin-left: -20px;
-  border-radius: 2px;
-  background: rgba(160, 200, 255, 0.5);
-}
 .nge-bar-strip:hover { background: linear-gradient(to bottom, rgba(28, 46, 80, 0.98), rgba(14, 24, 44, 0.98)); }
-.nge-bar-strip--hidden::after { display: none; }
 .nge-strip-counts {
   position: absolute;
   top: 0;
+  right: 10px;
   height: 11px;
-  transform: translateX(-50%);
   display: flex;
   gap: 4px;
 }
