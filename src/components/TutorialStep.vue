@@ -4,6 +4,9 @@ import { useLayersStore, setStateRewriter } from 'src/store';
 import { marked } from 'marked';
 import { RESOURCES_MENU_SVG } from '../data/toolbar-icons';
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
+import { useProofreadingBackendStore } from '../store';
+import { liveEdit, loadSiteTexts, wordsToHtml } from '../tutorial_edits';
+import TutorialEditDialog from 'components/TutorialEditDialog.vue';
 
 const layerStore = useLayersStore();
 
@@ -44,7 +47,19 @@ const props = defineProps<{
     totalSteps: number,
     /** "Part 1 of 4 · Mark what you see": stepIndex and totalSteps then count within it. */
     partLabel?: string,
+    /** The box's place in its whole tutorial, for its saved rewording (tutorial_edits.ts). */
+    boxIndex?: number,
 }>();
+
+// Admins reword a box with the pencil (Ames 2026-10-25). An approved edit
+// shows in place of the code's title and words.
+const backend = useProofreadingBackendStore();
+void loadSiteTexts();
+const tutorialNum = tutorialStore.activeTutorial;
+const savedEdit = computed(() => props.boxIndex == null ? null : liveEdit(tutorialNum, props.boxIndex, props.step));
+const shownTitle = computed(() => savedEdit.value ? savedEdit.value.title : computedStep.value.title);
+const shownHtml = computed(() => savedEdit.value ? wordsToHtml(savedEdit.value.words, savedEdit.value.kind) : computedStep.value.html);
+const editing = ref(false);
 
 const emit = defineEmits<{
     next: [],
@@ -433,6 +448,7 @@ function viewerToolActive(): boolean {
 }
 
 function onKeyDown(e: KeyboardEvent) {
+    if (editing.value) return;
     const tag = (document.activeElement as HTMLElement)?.tagName;
     const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable;
     if ((e.code === 'Enter' || e.code === 'Space') && viewerToolActive()) return;
@@ -627,9 +643,10 @@ async function onHtmlClick(e: MouseEvent) {
                     <span class="nge-chip-readout"><template v-if="partLabel">{{ partLabel }} · </template>{{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(totalSteps).padStart(2, '0') }}</span>
                 </div>
                 <button class="exit" @click="inExitConfirm = true">×</button>
-                <div class="title" v-if="computedStep.title">
+                <button v-if="backend.showAdminUi && boxIndex != null" type="button" class="nge-tut-pencil" title="Edit the words of this box (admins)" aria-label="Edit this box" @click="editing = true"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.6 12 2.5 13.5 4 10.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
+                <div class="title" v-if="shownTitle">
                   <span v-if="computedStep.titleIcon" class="title-icon" v-html="computedStep.titleIcon"></span>
-                  <span v-for="(char, i) in [...computedStep.title]" :key="i"
+                  <span v-for="(char, i) in [...shownTitle]" :key="i"
                     class="title-letter"
                     :style="{ animationDelay: (computedStep.modal ? i * 0.06 : Math.min(i * 0.015, 0.18)) + 's' }"
                   >{{ char === ' ' ? '\u00A0' : char }}</span>
@@ -637,7 +654,7 @@ async function onHtmlClick(e: MouseEvent) {
                 <video v-if="computedStep.video" width="350" height="242.81" autoplay loop muted playsinline
                     :src="computedStep.video"></video>
                 <img class="image" v-if="computedStep.image" :src="computedStep.image">
-                <div class="html" v-if="computedStep.html" v-html="computedStep.html" @click="onHtmlClick" @mouseover="onHtmlOver"></div>
+                <div class="html" v-if="shownHtml" v-html="shownHtml" @click="onHtmlClick" @mouseover="onHtmlOver"></div>
                 <div class="nge-chip-foot">
                     <div class="buttonContainer">
                         <button v-if="!computedStep.first" @click="$emit('back')" class="back">back</button>
@@ -661,6 +678,7 @@ async function onHtmlClick(e: MouseEvent) {
                 </div>
             </div>
         </div>
+        <TutorialEditDialog v-if="editing && boxIndex != null" :tutorial="tutorialNum" :box="boxIndex" :step="step" @close="editing = false" />
         <div v-if="computedStep.floatingImage" class="floatingImageRise">
             <img class="floatingImageSway" :src="computedStep.floatingImage">
         </div>
@@ -1270,6 +1288,25 @@ async function onHtmlClick(e: MouseEvent) {
     transition: background 0.2s, color 0.2s;
 }
 .ng-extend .chip button.exit:hover { background: rgba(196, 228, 255, 0.14); color: #fff; }
+/* The admins' pencil, left of the close button. */
+.ng-extend .chip button.nge-tut-pencil {
+    position: absolute;
+    top: 9px;
+    right: 38px;
+    z-index: 4;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    color: rgba(226, 238, 251, 0.45);
+    cursor: pointer;
+}
+.ng-extend .chip button.nge-tut-pencil:hover { background: rgba(196, 228, 255, 0.14); color: #fff; }
 
 /* Title: a HUD label with a diamond marker and a hairline that fades out. */
 .chip .title {

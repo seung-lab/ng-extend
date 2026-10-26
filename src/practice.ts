@@ -880,6 +880,9 @@ function resumeTool() {
   if (tool) setTimeout(() => ensureTool(tool), 600);
 }
 
+/** For the tutorials: whether the merge or cut tool is on right now. */
+export function practiceToolOn(): boolean { return toolActive(); }
+
 /** True while a tool (merge, cut) is switched on. */
 function toolActive(): boolean {
   const viewer = getViewer();

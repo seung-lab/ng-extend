@@ -1,8 +1,8 @@
 /**
  * Highlight mode, stage 1 (docs/highlight-mode-spec.md): mark a stretch of a
  * cell as checked. Two picks on the cell, the path between them (the same
- * server call Find Path makes), kept as a thick stroke of line annotations in
- * a "Checked" style layer. The strokes are ordinary annotations, so they save
+ * server call Find Path makes), kept as a thick stroke of polylines in a
+ * "Checked" style layer (stroke_shape.ts keeps them small). The strokes are ordinary annotations, so they save
  * with the view (Save view, autosave, shared links) and survive edits.
  */
 import { ref } from 'vue';
@@ -17,6 +17,7 @@ import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 import { isTouchRef } from './mobile';
 import { StatusMessage } from 'neuroglancer/status';
+import { strokeRuns } from './stroke_shape';
 
 export interface HighlightStyle {
   key: string; label: string; layer: string; color: string;
@@ -120,6 +121,52 @@ const STROKE_SHADER = 'void main() {\n' +
 const ID_PREFIX = 'hl_';
 const LINE = 1; // AnnotationType.LINE
 const POINT = 0; // AnnotationType.POINT
+const POLYLINE = 4; // AnnotationType.POLYLINE
+
+/** Add one mark's stroke: its line pieces (nanometres) saved as a few short
+ *  polylines, the first carrying the description. A stroke too short to keep
+ *  any length becomes a spot. */
+function addStroke(src: any, mark: string, segs: [number[], number[]][], scalesNm: number[], description: string) {
+  const runs = strokeRuns(segs, scalesNm);
+  if (!runs.length && segs.length) {
+    const point = Float32Array.from(segs[0][0].map((v, i) => v / (scalesNm[i] || 1)));
+    src.add({ id: `${mark}_0`, type: POINT, point, properties: [], description }, true).dispose();
+    return;
+  }
+  runs.forEach((points, i) => {
+    src.add({ id: `${mark}_${i}`, type: POLYLINE, points, properties: [], description: i === 0 ? description : undefined }, true).dispose();
+  });
+}
+
+/** Highlights saved before strokes were polylines (one line annotation per
+ *  step) are rewritten the new way when the view opens, so the views they
+ *  are in shrink too. Same ids, same colour, same description. */
+function slimOldStrokes(src: any, scalesNm: number[]): number {
+  const marks = new Map<string, { ids: string[]; segs: [number[], number[]][]; description: string }>();
+  for (const ann of src) {
+    const id = String(ann.id);
+    if (ann.type !== LINE || !id.startsWith(ID_PREFIX)) continue;
+    const mark = id.slice(0, id.lastIndexOf('_'));
+    if (!marks.has(mark)) marks.set(mark, { ids: [], segs: [], description: '' });
+    const m = marks.get(mark)!;
+    m.ids.push(id);
+    m.segs.push([[0, 1, 2].map(i => ann.pointA[i] * (scalesNm[i] || 1)), [0, 1, 2].map(i => ann.pointB[i] * (scalesNm[i] || 1))]);
+    if (ann.description && !m.description) m.description = String(ann.description);
+  }
+  let slimmed = 0;
+  for (const [mark, m] of marks) {
+    // A mark of a line or two is as small as it gets.
+    if (m.ids.length < 3) continue;
+    // Its other annotations (none, for a stroke) keep their ids out of the way.
+    const taken = new Set<string>();
+    for (const ann of src) if (String(ann.id).startsWith(mark + '_')) taken.add(String(ann.id));
+    if (taken.size !== m.ids.length) continue;
+    for (const id of m.ids) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }
+    addStroke(src, mark, m.segs, scalesNm, m.description);
+    slimmed++;
+  }
+  return slimmed;
+}
 const BALL_SCALE = 1.4;
 
 const viewerOf = (): any => (window as any).viewer;
@@ -288,13 +335,8 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
   }
   const src = await strokeSource(style);
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    src.add({
-      id: `${mark}_${i}`, type: LINE, pointA: pts[i], pointB: pts[i + 1], properties: [],
-      description: i === 0 ? `${style.label}: cell ${a.root}` : undefined,
-      relatedSegments: undefined,
-    }, true).dispose();
-  }
+  const ptsNm = pts.map(p => [0, 1, 2].map(i => p[i] * (scalesNm[i] || 1)));
+  addStroke(src, mark, ptsNm.slice(1).map((q, i) => [ptsNm[i], q] as [number[], number[]]), scalesNm, `${style.label}: cell ${a.root}`);
   setLatestMark(mark);
   return pts.length;
 }
@@ -399,7 +441,6 @@ export async function addBranchHighlight(a: Pick, way: BranchWay, style: Highlig
   if (somaSide && somaSide.root !== a.root) throw new Error('Those two points are on different cells. Pick both on the same cell.');
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
   const toNm = (g: ArrayLike<number>) => [0, 1, 2].map(i => g[i] * (scalesNm[i] || 1));
-  const fromNm = (p: number[]) => Float32Array.from(p.map((v, i) => v / (scalesNm[i] || 1)));
 
   const somas = somaSide ? [] : knownSomas(a.root);
   if (!somaSide && !somas.length) throw new NeedsSomaSide();
@@ -445,13 +486,7 @@ export async function addBranchHighlight(a: Pick, way: BranchWay, style: Highlig
   const src = await strokeSource(style);
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
   const what = label ?? (way === 'toward' ? 'to soma' : 'beyond');
-  segments.forEach(([p, q], i) => {
-    src.add({
-      id: `${mark}_${i}`, type: LINE, pointA: fromNm(p), pointB: fromNm(q), properties: [],
-      description: i === 0 ? `${style.label}${what ? ', ' + what : ''}: cell ${a.root}` : undefined,
-      relatedSegments: undefined,
-    }, true).dispose();
-  });
+  addStroke(src, mark, segments, scalesNm, `${style.label}${what ? ', ' + what : ''}: cell ${a.root}`);
   setLatestMark(mark);
   // A soma that was clicked for this is kept for next time.
   if (somaSide && label === undefined) rememberSoma(somaSide, scalesNm);
@@ -595,13 +630,7 @@ export async function addAxonHighlight(root: string, stillWanted: () => boolean 
   if (segments.length > MAX_BRANCH_STROKES) throw new Error(`That is ${pieces.toLocaleString()} pieces, too much to colour at once.`);
   const src = await strokeSource({ key: 'axon', label: AXON_LAYER, layer: AXON_LAYER, color: MEC_AIS.color });
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
-  const fromNm = (p: number[]) => Float32Array.from(p.map((v, i) => v / (scalesNm[i] || 1)));
-  segments.forEach(([p, q], i) => {
-    src.add({
-      id: `${mark}_${i}`, type: LINE, pointA: fromNm(p), pointB: fromNm(q), properties: [],
-      description: i === 0 ? `Axon, beyond the AIS: cell ${root}` : undefined, relatedSegments: undefined,
-    }, true).dispose();
-  });
+  addStroke(src, mark, segments, scalesNm, `Axon, beyond the AIS: cell ${root}`);
   setLatestMark(mark);
   return pieces;
 }
@@ -866,6 +895,12 @@ function buildTint(): NgeMeshTint | null {
         segs.push({ a: p, b: p, rgb: isLatest ? rgbLatest : rgb, latest: isLatest, ball: true });
         continue;
       }
+      if (ann.type === POLYLINE && ann.points) {
+        const rgbHere = isLatest ? rgbLatest : rgb;
+        const ps = (ann.points as ArrayLike<number>[]).map(q => [0, 1, 2].map(i => q[i] * scalesNm[i]));
+        for (let k = 0; k + 1 < ps.length; k++) segs.push({ a: ps[k], b: ps[k + 1], rgb: rgbHere, latest: isLatest });
+        continue;
+      }
       if (ann.type !== LINE) continue;
       segs.push({
         a: [0, 1, 2].map(i => ann.pointA[i] * scalesNm[i]),
@@ -970,6 +1005,22 @@ function scheduleTint() {
 export function startHighlightTint(viewer: any) {
   const watched = new WeakSet<object>();
   const styled = new WeakSet<object>();
+  const slimmed = new WeakSet<object>();
+  // Older highlights, rewritten as polylines once the view knows its voxel
+  // size (the simplifying is in nanometres).
+  const slimAll = () => {
+    const space = viewer.coordinateSpace.value;
+    if (!space?.valid || space.rank < 3) return;
+    const scalesNm: number[] = Array.from(space.scales as Float64Array).slice(0, 3).map(x => x / 1e-9);
+    for (const { managed, src, style } of highlightLayers()) {
+      if (style.lab || slimmed.has(src)) continue;
+      slimmed.add(src);
+      try {
+        const n = slimOldStrokes(src, scalesNm);
+        if (n) console.log(`[highlight] ${n} older highlight${n === 1 ? '' : 's'} in ${managed.name} rewritten smaller`);
+      } catch (e) { console.warn('[highlight] could not slim the older highlights:', e); }
+    }
+  };
   let retry: ReturnType<typeof setTimeout> | null = null;
   let tries = 0;
   const scan = () => {
@@ -998,12 +1049,13 @@ export function startHighlightTint(viewer: any) {
         managed.layer.annotationDisplayState.ngeHideIn3d.value = true;
       } catch { /* */ }
     }
+    slimAll();
     scheduleTint();
     // Not for ever: an annotation layer with a remote source never gets one.
     if (waiting && !retry && tries < 25) { tries++; retry = setTimeout(() => { retry = null; scan(); }, 400); }
   };
   viewer.layerManager.layersChanged.add(() => { tries = 0; scan(); });
-  viewer.coordinateSpace.changed.add(scheduleTint);
+  viewer.coordinateSpace.changed.add(() => { slimAll(); scheduleTint(); });
   scan();
 }
 

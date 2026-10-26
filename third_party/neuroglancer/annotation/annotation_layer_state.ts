@@ -112,6 +112,9 @@ export class AnnotationDisplayState extends RefCounted {
   /** This layer's point size as a multiple of the regular dot (layer JSON
    *  "pointSize"); the slider and number box in the Annotations tab. */
   ngeSize = new WatchableValue<number>(1);
+  /** EyeWire II: the 3D zoom (projectionScale) at which this layer's points are full size; zoomed
+   *  out further they shrink with it, to a third at most (0: never). The Hunt's gem layers. */
+  ngeShrinkRef = new WatchableValue<number>(0);
   /** EyeWire II: the red and blue points of cut mode, sized by the cut bar's
    *  own Point size (ngeCutPointScale), apart from annotation layers. */
   ngeCutPoints = false;

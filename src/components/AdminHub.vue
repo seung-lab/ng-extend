@@ -12,6 +12,7 @@ import {supabase} from '../supabase';
 import RollUp from 'components/RollUp.vue';
 import CellTypeCheck from 'components/CellTypeCheck.vue';
 import AccessRequestsTab from 'components/AccessRequestsTab.vue';
+import HuntsAdminTab from 'components/HuntsAdminTab.vue';
 import TestTriesTab from 'components/TestTriesTab.vue';
 import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
@@ -32,6 +33,7 @@ import nurroSuccess from '../../static/nurro/nurro-success.png';
 import {loadRepoStats, type RepoStats} from '../util/repo_stats';
 import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
+import TutorialEditsTab from 'components/TutorialEditsTab.vue';
 import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
 
 const backend = useProofreadingBackendStore();
@@ -41,8 +43,8 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests'
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts' | 'tutorialEdits'>(
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits'
     ? props.initialSubTab
     : 'notifications');
 
@@ -960,29 +962,12 @@ function reporterComposer(row: TriageRow): Composer {
  *  The quote is the whole submission, as the card shows it (the report's full
  *  message once loaded, else the stored excerpt), never cut short: Ames was
  *  pasting the rest in by hand every time (2026-10-12). */
+// Just the report's title (Ames 2026-10-25: "make the default text ...
+// 'you reported: <TITLE>' and that is all"); the rest is hers to write.
 function draftReporterUpdate(row: TriageRow): string {
-  const t = fullTextOf(row).trim();
-  const q = t ? `You reported: "${t}".` : 'Thanks for your report.';
-  if (row.status === 'done' || row.impl_state === 'deployed') {
-    // Same wording as the bridge's fixedNote: thanks, their words, what was built.
-    const fix = String(row.result_note || row.impl_summary || '')
-      .replace(/\(tested[^)]*\)\.?/gi, ' ').replace(/\bDetails:\s*<?https?:\S+/gi, ' ')
-      .replace(/<@[A-Z0-9]+>/g, ' ').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1')
-      .replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '')
-      // "QUESTION: ..." is Claude asking the approver, not a fix: never sent on.
-      .replace(/^\s*(?:#+\s*)?(?:QUESTION|BLOCKED)\s*:[\s\S]*$/i, '');
-    const thanks = t ? `Thank you for submitting: "${t}".` : 'Thank you for your report.';
-    return `${thanks} A fix has been built and deployed${fix ? `: ${fix}.` : '.'}`;
-  }
-  if (row.status === 'dismissed') {
-    return `${q} Thanks for taking the time to tell us. We looked into it and decided not to change this for now. Please keep the reports coming, they really help.`;
-  }
-  if (row.status === 'approved') {
-    return isBuildable(row)
-      ? `${q} Thanks! The team accepted it and a fix is in the works. We'll let you know when it's live.`
-      : `${q} Thanks! The team reviewed it and is following up.`;
-  }
-  return `${q} Thanks! The team has it and is looking into it now.`;
+  const title = String(reporterOf(row)?.title || '').replace(/\*\*/g, '').trim()
+    || fullTextOf(row).split('\n')[0].replace(/\*\*/g, '').trim().slice(0, 140);
+  return title ? `You reported: "${title}"\n\n` : '';
 }
 
 function closeReporterDraft(row: TriageRow) {
@@ -1155,6 +1140,63 @@ function relTime(iso: string): string {
  *  with that same text as its note, so there is no second question to answer
  *  (Ames 2026-10-10: "let's add a send and mark done"). If the update could
  *  not be sent, the report is left where it is. */
+// ── Duplicates ──
+const DUP_MARK = /^Same as #(\d+) ([0-9a-f-]{36})/;
+/** The report this one is a duplicate of, if it is one. */
+const dupOf = (r: TriageRow): string | null => String(r.approver_note || '').match(DUP_MARK)?.[2] || null;
+/** The duplicates closed into this report. */
+const dupsOf = (r: TriageRow) => triageRows.value.filter(x => dupOf(x) === r.id);
+const dupNotice = ref('');
+watch(dupNotice, v => { if (v) setTimeout(() => { if (dupNotice.value === v) dupNotice.value = ''; }, 6000); });
+const dupDraft = ref<Record<string, string>>({});
+async function markDuplicate(row: TriageRow) {
+  const n = Number(String(dupDraft.value[row.id] || '').replace(/[^0-9]/g, ''));
+  const mainId = Object.entries(triageNumbers.value).find(([, num]) => num === n)?.[0];
+  if (!n || !mainId) { triageError.value = `There is no report #${dupDraft.value[row.id] || ''} on the board.`; return; }
+  if (mainId === row.id) { triageError.value = 'A report cannot be the same as itself.'; return; }
+  if (triageActing.value) return;
+  triageActing.value = row.id;
+  triageError.value = '';
+  try {
+    const by = backend.userName || backend.userEmail || 'admin';
+    await secureWrite('triage.update', { id: row.id, fields: {
+      status: 'dismissed',
+      approver_note: `Same as #${n} ${mainId}: grouped by ${by}. Its reporter hears when #${n} is updated.`,
+      reviewed_by: by, reviewed_at: new Date().toISOString(),
+      ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
+    } });
+    delete dupDraft.value[row.id];
+    await loadTriage();
+  } catch (e: any) {
+    triageError.value = e?.message ?? String(e);
+  } finally {
+    triageActing.value = null;
+  }
+}
+/** Tell the reporters of this card's duplicates too: a plain note, no reply box. */
+async function notifyDuplicates(row: TriageRow, text: string, art: Record<string, string>) {
+  const dups = dupsOf(row).filter(d => d.source === 'site_issue' && d.source_id);
+  if (!dups.length) return 0;
+  const { supabase } = await import('../supabase');
+  const { data } = await supabase.from('site_issues').select('id,user_id').in('id', dups.map(d => d.source_id));
+  const main = reporterOf(row)?.title || '';
+  let told = 0;
+  const seen = new Set<string>();
+  for (const issue of data || []) {
+    if (!issue.user_id || seen.has(issue.user_id)) continue;
+    seen.add(issue.user_id);
+    try {
+      await secureWrite('notification.insert', { row: {
+        title: '💬 An update on your report',
+        body: `${text}${main ? `\n\n(Others reported this too, as "${main}".)` : ''}`,
+        ...art, target_type: 'user', target_id: issue.user_id, send_at: new Date().toISOString(),
+      } });
+      told++;
+    } catch { /* one missed note does not stop the rest */ }
+  }
+  return told;
+}
+
 async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress = false, andLater = false) {
   const text = (reporterDrafts.value[row.id] || '').trim();
   if (!text || reporterSending.value) return;
@@ -1194,6 +1236,9 @@ async function sendReporterUpdate(row: TriageRow, andDone = false, andProgress =
       target_id: userId,
       send_at: new Date().toISOString(),
     } });
+    // Everyone who reported the same thing hears too (never asked to reply).
+    const toldDups = await notifyDuplicates(row, text, art).catch(() => 0);
+    if (toldDups) dupNotice.value = `Also sent to ${toldDups} other ${toldDups === 1 ? 'person' : 'people'} who reported the same thing.`;
     // Re-read the log right before appending, so a bridge write in between
     // is not overwritten.
     const { data: fresh } = await supabase.from('feedback_triage').select('feedback_log').eq('id', row.id).single();
@@ -1453,8 +1498,8 @@ function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
  */
 function notifCategory(n: any): string {
   const t = n.title || '';
-  if (t.includes('Weekly Champions')) return 'weeklyChampions';
-  if (t.includes('Week in Science')) return 'weeklyRecap';
+  if (t.includes('Weekly Champions') || t.includes('Monthly Champions')) return 'weeklyChampions';
+  if (t.includes('Week in Science') || t.includes('Month in Science')) return 'weeklyRecap';
   if (t.includes('Response to your help request')) return 'helpResponse';
   if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
@@ -1463,10 +1508,10 @@ function notifCategory(n: any): string {
 
 const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'announcement',    label: 'Announcements' },
-  { key: 'weeklyChampions', label: 'Weekly champions' },
+  { key: 'weeklyChampions', label: 'Weekly and monthly champions' },
   { key: 'customBadge',     label: 'Custom badges' },
   { key: 'personalBadge',   label: 'Personal badges' },
-  { key: 'weeklyRecap',     label: 'Weekly recaps' },
+  { key: 'weeklyRecap',     label: 'Weekly and monthly recaps' },
   { key: 'helpResponse',    label: 'Help replies' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
@@ -2275,10 +2320,16 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'access' }" @click="adminSubTab = 'access'" title="Players' ten examples for retina access">Access requests</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tests' }" @click="adminSubTab = 'tests'" title="Every Proofreading Test try: the score, what was missed, and the player's cell">Test tries</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'celltypes' }" @click="adminSubTab = 'celltypes'" title="Are the cell types the game logged really in CAVE?">Cell types</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'hunts' }" @click="adminSubTab = 'hunts'" title="Timed merger hunts, with gold, silver and bronze Achievements">Hunts</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tutorialEdits' }" @click="adminSubTab = 'tutorialEdits'" title="Tutorial boxes admins reworded, and suggestions waiting for approval">Tutorial edits</button>
     </div>
+
+    <!-- ── Tutorial edits (Ames 2026-10-25): the pencil on a tutorial box ── -->
+    <TutorialEditsTab v-if="adminSubTab === 'tutorialEdits'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
+    <HuntsAdminTab v-if="adminSubTab === 'hunts'" />
 
     <!-- ── Proofreading Test tries (Ames 2026-10-21): every try, and the player's cell ── -->
     <TestTriesTab v-if="adminSubTab === 'tests'" />
@@ -2820,6 +2871,7 @@ function practiceWhen(iso: string | null) {
           </div>
         </Transition>
         <div v-if="triageError" class="nge-admin-error">⚠ {{ triageError }}</div>
+        <div v-if="dupNotice" class="nge-admin-ok">✓ {{ dupNotice }}</div>
         <div v-if="triageLoading && !triageRows.length" class="nge-admin-hint">Loading…</div>
         <div v-else-if="!triageRows.length" class="nge-admin-hint">
           No proposals waiting. The agent runs on a schedule; new feedback shows up here after its next pass.
@@ -2848,6 +2900,9 @@ function practiceWhen(iso: string | null) {
              @click="triageSelected = row.id">
           <div class="nge-triage-meta">
             <span v-if="triageNumbers[row.id]" class="nge-triage-num" :title="'Report number ' + triageNumbers[row.id]">#{{ triageNumbers[row.id] }}</span>
+            <span v-if="dupOf(row)" class="nge-triage-dup-badge" :title="'Grouped into report #' + (triageNumbers[dupOf(row) || ''] || '')">Same as #{{ triageNumbers[dupOf(row) || ''] || '?' }}</span>
+            <span v-if="dupsOf(row).length" class="nge-triage-dup-badge nge-triage-dup-badge--main"
+                  :title="'Also reported by ' + dupsOf(row).map(d => (reporterOf(d)?.name || 'someone') + ' (#' + (triageNumbers[d.id] || '?') + ')').join(', ')">+{{ dupsOf(row).length }} same</span>
             <span v-if="hasNewReply(row)" class="nge-triage-rec nge-triage-rec--reply" title="The submitter answered your question. Their reply is under Sent to submitter on this card.">💬 New reply</span>
             <span v-if="row.admin_notes?.length" class="nge-triage-impl nge-triage-notes-chip" :title="`${row.admin_notes.length} note${row.admin_notes.length === 1 ? '' : 's'} from admins`">📝 {{ row.admin_notes.length }}</span>
             <span v-if="isAwaitingReply(row)" class="nge-triage-rec nge-triage-rec--waiting"
@@ -3501,7 +3556,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-admin-modal {
   width: 340px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 32px);
   padding: 18px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(8, 10, 20, 0.98), rgba(12, 16, 28, 0.98));
@@ -4481,7 +4536,7 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 @keyframes nge-zero-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 .nge-zero-bit { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation-name: nge-zero-fall; animation-timing-function: cubic-bezier(.3,.6,.5,1); animation-fill-mode: both; }
 .nge-zero-bit--wide { width: 14px; height: 8px; border-radius: 50%; }
-@keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(110vh) rotate(calc(var(--r) * 3)); } }
+@keyframes nge-zero-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(calc(110 * var(--nge-vh, 1vh))) rotate(calc(var(--r) * 3)); } }
 .nge-zero-card { text-align: center; padding: 20px 34px 24px; border-radius: 20px; background: #ffffff; border: 2px solid #f5c542;
   box-shadow: 0 20px 50px rgba(40, 70, 140, 0.22), 0 0 30px rgba(245, 197, 66, 0.3); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
 @keyframes nge-zero-pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -4490,4 +4545,10 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
   color: #2f6fe0; }
 .nge-zero-sub { margin-top: 6px; color: #3a4a66; font: 600 16px Inter, system-ui, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .nge-zero-bit { display: none; } .nge-zero-card, .nge-zero-card img { animation: none; } }
+/* Duplicates. */
+.nge-triage-dup { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 12.5px; color: #62738c; }
+.nge-triage-dup input { width: 52px; margin-left: 2px; padding: 3px 6px; border-radius: 6px; border: 1px solid #c3d3ec; font: inherit; }
+.nge-triage-dup-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: #fde7f1; color: #b0306f; margin-left: 4px; }
+.nge-triage-dup-badge--main { background: #e6f6f4; color: #11766c; }
+.nge-admin-ok { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #e6f6ee; color: #1d7038; font-size: 13px; }
 </style>

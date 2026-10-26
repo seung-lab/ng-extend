@@ -262,7 +262,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       </template>
 
       <p v-if="message" class="nge-acc-msg" :class="{ 'nge-acc-msg--bad': messageBad }" role="status">{{ message }}</p>
-      <div v-if="backend.isAdmin && request && !slim" class="nge-acc-admin">
+      <div v-if="backend.showAdminUi && request && !slim" class="nge-acc-admin">
         <button class="nge-acc-rep" :disabled="!!busy" @click="askingReset = true">Start over (admins, for testing)</button>
         <ConfirmDialog v-if="askingReset" title="Start over?"
           text="This deletes your request, its ten examples and every mark and note on them, for good. It cannot be undone."

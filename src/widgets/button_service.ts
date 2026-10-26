@@ -5,6 +5,7 @@ import {addPastedSegments, segmentLabels, segmentLabelsChanged, setPlaceCellLoad
 import {StatusMessage} from 'neuroglancer/status';
 import {cellAtCrosshair, supervoxelAtPlace} from '../util/crosshair_cell';
 import {getPcgInfo} from './pcg_service';
+import {openCellHistory} from '../util/cell_history';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes, cellTypeLabel} from '../datasets';
@@ -1003,6 +1004,26 @@ export class ButtonService {
     });
     colorSection.appendChild(resetColorBtn);
 
+    // ── Watch it grow (Nseraf, triage #194) ─────────────────────────────
+    // The cell's edits on a slider, shown in 3D. Proofreading datasets only:
+    // the history comes from the chunked graph.
+    const historySection = document.createElement('div');
+    historySection.classList.add('nge-lb-section');
+    const historyTitle = document.createElement('div');
+    historyTitle.classList.add('nge-lb-section-title');
+    historyTitle.textContent = 'History';
+    const historyBtn = document.createElement('button');
+    historyBtn.type = 'button';
+    historyBtn.classList.add('nge-lb-section-button', 'nge-lb-history-btn');
+    historyBtn.textContent = '▶ Watch it grow';
+    historyBtn.title = 'Step through every edit of this cell in the 3D view, with who made it and when. Has a play button for recordings.';
+    historyBtn.addEventListener('click', () => {
+      contextMenu.hide();
+      openCellHistory(segmentIDString);
+    });
+    historySection.append(historyTitle, historyBtn);
+    const hasHistory = !!getPcgInfo();
+
     // ── Section 4: Claim Cell ────────────────────────────────────────────
     const claimSection = document.createElement('div');
     claimSection.classList.add('nge-lb-section');
@@ -1316,7 +1337,9 @@ export class ButtonService {
       exploreSection.append(exploreTitle, exploreNote);
       menu.append(br(), exploreSection, br(), colorSection, br());
     } else {
-      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection, colorSection, br(), claimSection, br(), helpSection, br());
+      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection, colorSection, br());
+      if (hasHistory) menu.append(historySection, br());
+      menu.append(claimSection, br(), helpSection, br());
     }
     return contextMenu;
   }

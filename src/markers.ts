@@ -182,7 +182,9 @@ export function showGemMarkers(groups: Array<{ name: string; color: string; poin
         // only be found from far away: up close the gem sat inside the
         // surface it marks (Ames, 2026-10-09). A hint has to be findable
         // first; Highlight Mode's start gem is drawn the same way.
-        annotationColor: g.color, pointMarker: 'pyr', pointSize: 2.4, onTop: true,
+        // Size 2.4 read as giant once drawn on top (Ames, 2026-10-25), and
+        // on top they stay findable smaller: 1.3.
+        annotationColor: g.color, pointMarker: 'pyr', pointSize: 1.3, onTop: true,
         // Not pickable: a Ctrl+click on a gem must reach the cell under it,
         // or the learner's own cut point would not land.
         pick: false,

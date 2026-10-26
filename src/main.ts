@@ -1,4 +1,5 @@
 import { startViewAutosave } from './util/view_autosave';
+import { startClaimAutosave } from './util/claim_autosave';
 import { startImageSource } from './util/image_source';
 import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
@@ -7,6 +8,7 @@ import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
+import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
 import { startCloseGuard } from './util/close_guard';
 import { startCaveOutbox } from './cave_outbox';
@@ -15,6 +17,7 @@ import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startTabs } from './util/tabs';
+import { showOutageBanner } from './util/outage_banner';
 import { startPanelFront } from './util/panel_front';
 import { startContextLostNotice } from './util/context_lost';
 import { startPulseKey } from './util/pulse_key';
@@ -184,6 +187,7 @@ window.addEventListener('DOMContentLoaded', () => {
   startCalm();
   // Other Pyr tabs in this browser, and a notice if the views stop drawing.
   startTabs();
+  showOutageBanner();
   startPanelFront();
   startContextLostNotice();
   // P over a cell in 3D: it sends a ring of light along itself.
@@ -391,6 +395,13 @@ function setupViewer() {
       }
     }
   }
+  // \ belongs to the Magic Top Bar (ExtensionBar.vue). neuroglancer had it for
+  // its chunk statistics panel, which then opened whenever the bar was not
+  // taking the key (Ames 2026-10-26).
+  // The binding lives in neuroglancer's default map, a parent of the global one.
+  for (const map of [viewer.inputEventBindings.global, ...viewer.inputEventBindings.global.parents]) {
+    map.delete('backslash');
+  }
 
   const hashBinding = viewer.registerDisposer(
       new UrlHashBinding(viewer.state, viewer.dataSourceProvider.credentialsManager, {
@@ -410,6 +421,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startClaimAutosave(viewer);
   // The active quest's annotations, saved to that quest cell as they change.
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
   startSegmentationServerWatch(viewer);
@@ -418,6 +430,7 @@ function setupViewer() {
   startSpooky(viewer);
   startPumpkin(viewer);
   startInvalidSegmentWatch(viewer);
+  recoverCellHistory();
   startAnnotationClickSelect(viewer);
   startThreeDControls(viewer);
   // Merge or cut mode keeps working in a view loaded in place (Nseraf #203).

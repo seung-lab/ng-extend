@@ -18,6 +18,10 @@ const REPLY_ENDPOINT = (window as any).__NGE_REPLY_WRITE_URL
 // Retina access requests too (ewAccessRequest, src/access_request.ts).
 const ACCESS_ENDPOINT = (window as any).__NGE_ACCESS_WRITE_URL
   || functionUrl('ewAccessRequest');
+// The Hunt too (ewHunt, src/hunt.ts): its answer keys must never be taken
+// away by a deploy of the shared gateway from a checkout without them.
+const HUNT_ENDPOINT = (window as any).__NGE_HUNT_URL
+  || functionUrl('ewHunt');
 const STICKY_AUTH_URL = 'https://global.daf-apis.com/sticky_auth';
 
 export function caveToken(): string | null {
@@ -37,13 +41,15 @@ export type SecureAction =
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon' | 'test.tries' | 'test.try' | 'test.queueJoin' | 'test.queueLeave' | 'test.queueRemove'
   | 'access.betaStatus' | 'access.beta'
   | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide' | 'access.reset'
-  | 'notification.self' | 'notification.helpReply' | 'help.dropReminder' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin';
+  | 'notification.self' | 'notification.helpReply' | 'help.dropReminder' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin'
+  | 'hunt.current' | 'hunt.submit' | 'hunt.list' | 'hunt.read' | 'hunt.save' | 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.award' | 'hunt.rescore'
+  | 'hunt.notes' | 'hunt.test' | 'hunt.test_drop' | 'hunt.drop' | 'hunt.start' | 'hunt.duplicate';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */
 export async function secureWrite<T = any>(action: SecureAction, args: Record<string, any> = {}): Promise<T> {
   const token = caveToken();
   if (!token) throw new Error('Sign in to EyeWire II first.');
-  const res = await fetch(action.startsWith('test.') ? TEST_ENDPOINT : action.startsWith('reply.') ? REPLY_ENDPOINT : action.startsWith('access.') ? ACCESS_ENDPOINT : ENDPOINT, {
+  const res = await fetch(action.startsWith('test.') ? TEST_ENDPOINT : action.startsWith('reply.') ? REPLY_ENDPOINT : action.startsWith('access.') ? ACCESS_ENDPOINT : action.startsWith('hunt.') ? HUNT_ENDPOINT : ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...args, action, token }),

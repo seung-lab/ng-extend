@@ -349,6 +349,10 @@ onMounted(() => {
     // Back from reviewing an access request in the view (AccessReviewBar).
     activeTab.value = 'adminHub';
     adminInitialSubTab.value = 'access';
+  } else if (props.initialTab === 'tutorialEdits' && !viewingOtherUser.value) {
+    // From a "Tutorial edit to approve" notification.
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'tutorialEdits';
   }
 });
 
@@ -758,7 +762,7 @@ function favDragEnd() { draggingFav.value = null; dropFav.value = ''; }
 // ── Trophy Case sections in the player's own order ─────────────────────────
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
-const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'special'] as const;
+const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'competitions', 'special'] as const;
 type TrophySection = typeof TROPHY_SECTIONS[number];
 const otherTrophyOrder = ref<string[]>([]);
 const trophyOrder = computed<TrophySection[]>(() => {
@@ -823,13 +827,59 @@ const displayedExplorationBadges = computed(() => {
 const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
 const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
 
+// ── Competitions (Ames 2026-10-21): "a separate section in profile for Competitions ... the
+// gold / silver / bronze are special badges that count up, so user can win gold multiple times
+// and it shows the # times, not repeating the same badge". Each Hunt gives its own Achievements
+// (slug hunt-<id>-<medal>); here they are one tile per medal, with how many times it was won.
+const HUNT_MEDAL = /^hunt-(\d+)-(gold|silver|bronze|fastest)$/;
+type HuntMedal = 'gold' | 'silver' | 'bronze' | 'fastest';
+const MEDAL_ORDER: HuntMedal[] = ['gold', 'silver', 'bronze', 'fastest'];
+const MEDAL_WORD: Record<HuntMedal, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze', fastest: 'Speed' };
+/** Under a medal in the Trophy Case: only the Speed award says what it is for. */
+const MEDAL_SUB: Record<HuntMedal, string> = { gold: '', silver: '', bronze: '', fastest: 'the fastest' };
+function huntMedalOf(a: any): HuntMedal | null {
+  const m = HUNT_MEDAL.exec(String(a?.badge?.slug || ''));
+  return m ? (m[2] as HuntMedal) : null;
+}
+/** The Special Awards that are not Hunt medals (those are under Competitions). */
+const plainSpecialBadges = computed(() => profileSpecialBadges.value.filter((a: any) => !huntMedalOf(a)));
+interface MedalTile { tier: HuntMedal; count: number; awards: any[]; latest: any }
+const competitionMedals = computed<MedalTile[]>(() => MEDAL_ORDER.map((tier) => {
+  const awards = profileSpecialBadges.value.filter((a: any) => huntMedalOf(a) === tier)
+    .sort((x: any, y: any) => (Date.parse(y.awarded_at) || 0) - (Date.parse(x.awarded_at) || 0));
+  return { tier, count: awards.length, awards, latest: awards[0] ?? null };
+}).filter((m) => m.count > 0));
+/** The Hunt a medal was won in: its Achievement is named "<Hunt title>: Gold". */
+function huntTitleOf(a: any): string {
+  return String(a?.badge?.name || '').replace(/:\s*(Gold|Silver|Bronze|Fastest)\s*$/i, '').trim() || 'a Hunt';
+}
+function medalTooltip(m: MedalTile): string {
+  const head = `${MEDAL_WORD[m.tier]}${MEDAL_SUB[m.tier] ? `, ${MEDAL_SUB[m.tier]}` : ''}: won ${m.count === 1 ? 'once' : `${m.count} times`}`;
+  const lines = m.awards.slice(0, 12).map((a: any) => `${huntTitleOf(a)}, ${formatDate(a.awarded_at)}`);
+  const more = m.awards.length > 12 ? [`and ${m.awards.length - 12} more`] : [];
+  return [head, ...lines, ...more].join('\n');
+}
+/** Ames's medal art, the same for every Hunt (the cheetah for Speed). */
+const medalArt = (m: MedalTile) => `hunt/${m.tier}-128.png`;
+const medalSelected = (m: MedalTile) => !!selectedSpecialBadge.value && m.awards.some((a: any) => a.id === selectedSpecialBadge.value.id);
+function onMedalClick(m: MedalTile) { if (m.latest) onSpecialBadgeClick(m.latest); }
+/** For a medal won more than once, the Hunts it was won in, under its picture. */
+function medalWins(a: any): string {
+  const tier = huntMedalOf(a); if (!tier) return '';
+  const m = competitionMedals.value.find((x) => x.tier === tier);
+  if (!m || m.count < 2) return '';
+  const names = m.awards.slice(0, 5).map(huntTitleOf);
+  const more = m.count > 5 ? `, and ${m.count - 5} more` : '';
+  return `${MEDAL_WORD[tier]} ${m.count} times: ${names.join(', ')}${more}.`;
+}
+
 // ── Special Awards "View all" preview ───────────────────────────────────────
 const displayedSpecialBadges = computed(() => {
-  const all = profileSpecialBadges.value;
+  const all = plainSpecialBadges.value;
   if (all.length > SPECIAL_PREVIEW_LIMIT) return all.slice(0, SPECIAL_PREVIEW_LIMIT - 1); // leave one slot for tile
   return all.slice(0, SPECIAL_PREVIEW_LIMIT);
 });
-const showSpecialViewAll = computed(() => profileSpecialBadges.value.length > SPECIAL_PREVIEW_LIMIT);
+const showSpecialViewAll = computed(() => plainSpecialBadges.value.length > SPECIAL_PREVIEW_LIMIT);
 
 // ── Tooltip helpers for badges ───────────────────────────────────────────────
 function badgeTooltip(badge: BadgeDefinition): string {
@@ -1383,18 +1433,8 @@ onUnmounted(() => clearTimeout(stageTimer));
   >
     <div ref="shellEl" class="nge-profile-shell" :class="{ 'nge-profile-shell--trophy': activeTab === 'trophyCase', 'nge-profile-shell--admin': activeTab === 'adminHub', 'nge-profile-shell--week': activeTab === 'weekInScience', 'nge-profile-shell--datasets': activeTab === 'datasets', 'nge-profile-shell--dstats': activeTab === 'datasetStats', 'nge-profile-shell--settings': activeTab === 'settings' }">
 
-      <!-- ── Topbar ─────────────────────────────────────────── -->
-      <div class="nge-profile-topbar">
-        <span class="nge-profile-topbar-label">◈ RESEARCHER PROFILE
-          <!-- Which dataset the Overview's numbers belong to (Ames 2026-10-01:
-               up here, in the bar's own style, instead of a box in the column
-               and the username, which is already shown below). Clicking opens
-               the Datasets tab, where every dataset's totals sit side by side. -->
-          <!-- the dataset scope button went with the per dataset Overview (Ames 2026-10-11) -->
-        </span>
-        <button class="nge-profile-exit" @click="handleClose">×</button>
-      </div>
-
+      <!-- The "Researcher profile" bar went (Ames 2026-10-22: "the top bar can go, put X on same line
+           as Overview"): the × closes from the end of the tab row. -->
       <!-- ── Tab bar ─────────────────────────────────────────── -->
       <div class="nge-profile-tabbar">
         <button
@@ -1441,7 +1481,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           @click="activeTab = 'settings'"
         >⚙️ Settings</button>
         <button
-          v-if="!viewingOtherUser && backendStore.isAdmin"
+          v-if="!viewingOtherUser && backendStore.showAdminUi"
           class="nge-profile-tab"
           :class="{ 'nge-profile-tab--active': activeTab === 'adminHub' }"
           @click="activeTab = 'adminHub'"
@@ -1452,6 +1492,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           :class="{ 'nge-profile-tab--active': activeTab === 'blog' }"
           @click="activeTab = 'blog'"
         >✍️ Blog</button>
+        <button class="nge-profile-exit nge-profile-exit--tabs" title="Close" aria-label="Close the profile" @click="handleClose">×</button>
       </div>
 
       <!-- ── Three-column body (Overview tab) ────────────────── -->
@@ -1525,9 +1566,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                  building Pyr to the top row"). -->
             <div class="nge-profile-header-side">
           <!-- Special Awards (admin-awarded badges) -->
-          <template v-if="profileSpecialBadges.length > 0">
+          <template v-if="plainSpecialBadges.length > 0 || competitionMedals.length > 0">
             <div class="nge-profile-section nge-profile-section--badges nge-profile-section--special">
-              <div class="nge-profile-section-label">★ Special Awards</div>
+              <div v-if="plainSpecialBadges.length > 0" class="nge-profile-section-label">★ Special Awards</div>
               <div class="nge-profile-badges-grid">
                 <div
                   v-for="award in displayedSpecialBadges"
@@ -1541,6 +1582,22 @@ onUnmounted(() => clearTimeout(stageTimer));
                     <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-profile-badge-icon" />
                   </div>
                   <div class="nge-profile-badge-name">{{ award.badge?.name || 'Award' }}</div>
+                </div>
+                <!-- The Hunt medals, each once with how many times it was won (Ames 2026-10-21) -->
+                <span v-if="plainSpecialBadges.length > 0 && competitionMedals.length > 0" class="nge-profile-medal-gap" aria-hidden="true"></span>
+                <div
+                  v-for="m in competitionMedals"
+                  :key="m.tier"
+                  class="nge-profile-badge nge-profile-badge--medal"
+                  :class="{ 'nge-profile-badge--selected': medalSelected(m) }"
+                  :title="medalTooltip(m)"
+                  @click="onMedalClick(m)"
+                >
+                  <div class="nge-profile-badge-img">
+                    <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-profile-badge-icon" />
+                    <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
+                  </div>
+                  <div class="nge-profile-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
                 </div>
                 <!-- View All tile when overflow -->
                 <div
@@ -2026,6 +2083,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               />
               <div class="nge-profile-viz-badge-name">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-profile-viz-badge-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div v-if="medalWins(selectedSpecialBadge)" class="nge-profile-viz-badge-desc nge-medal-wins">{{ medalWins(selectedSpecialBadge) }}</div>
               <div class="nge-profile-viz-badge-threshold">
                 Awarded {{ relativeTime(selectedSpecialBadge.awarded_at) }}
               </div>
@@ -2248,6 +2306,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             <div class="nge-trophy-featured-info">
               <div class="nge-trophy-featured-name nge-trophy-featured-name--scifi">{{ selectedSpecialBadge.badge?.name || 'Award' }}</div>
               <div v-if="selectedSpecialBadge.badge?.description" class="nge-trophy-featured-desc">{{ selectedSpecialBadge.badge.description }}</div>
+              <div v-if="medalWins(selectedSpecialBadge)" class="nge-trophy-featured-desc nge-medal-wins">{{ medalWins(selectedSpecialBadge) }}</div>
               <div class="nge-trophy-featured-desc" style="font-style: italic; opacity: 0.7;">Won for being awesome</div>
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
@@ -2460,8 +2519,37 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
           </div>
 
+          <!-- Competitions -->
+          <div v-if="competitionMedals.length" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'competitions', 'is-drop': dropSection === 'competitions' }" :style="sectionOrder('competitions')" @dragover="sectionDragOver('competitions', $event)" @drop.prevent="sectionDrop('competitions')">
+            <div class="nge-trophy-track-label">◆ Competitions
+              <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
+                <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
+                        @dragstart="sectionDragStart('competitions', $event)" @dragend="sectionDragEnd">⠿</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move up" aria-label="Move this section up" @click="moveSection('competitions', -1)">▲</button>
+                <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('competitions', 1)">▼</button>
+              </span>
+            </div>
+            <div class="nge-trophy-grid">
+              <div
+                v-for="m in competitionMedals"
+                :key="m.tier"
+                class="nge-trophy-badge nge-trophy-badge--medal"
+                :class="{ 'nge-trophy-badge--selected': medalSelected(m) }"
+                :title="medalTooltip(m)"
+                @click="onMedalClick(m)"
+              >
+                <span class="nge-trophy-medal-img">
+                  <img :src="medalArt(m)" :alt="MEDAL_WORD[m.tier]" class="nge-trophy-badge-icon" />
+                  <span v-if="m.count > 1" class="nge-medal-count" :aria-label="`won ${m.count} times`">×{{ m.count }}</span>
+                </span>
+                <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
+                <div v-if="MEDAL_SUB[m.tier]" class="nge-trophy-medal-place">{{ MEDAL_SUB[m.tier] }}</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Special Awards -->
-          <div v-if="profileSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
+          <div v-if="plainSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
             <div class="nge-trophy-track-label">★ Special Awards
               <span v-if="!viewingOtherUser" class="nge-trophy-track-move">
                 <button type="button" class="nge-trophy-track-grip" draggable="true" title="Drag to move this section" aria-label="Drag to move this section"
@@ -2472,7 +2560,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
             <div class="nge-trophy-grid">
               <div
-                v-for="award in profileSpecialBadges"
+                v-for="award in plainSpecialBadges"
                 :key="award.id"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)), 'nge-trophy-badge--bronze': bronzeSlugs.includes(specialSlug(award)) }"
@@ -2600,7 +2688,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
           </div>
           <div class="nge-special-modal-grid">
             <div
-              v-for="award in profileSpecialBadges"
+              v-for="award in plainSpecialBadges"
               :key="award.id"
               class="nge-special-modal-tile"
               :title="specialBadgeTooltip(award)"
@@ -2717,45 +2805,45 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
      ModalOverlay's overlay-content is overflow: visible; the hard cap plus
      overflow hidden means nothing can render past the shell edge, and each
      tab body scrolls internally. */
-  max-height: min(90vh, calc(100vh - 32px));
+  max-height: min(calc(90 * var(--nge-vh, 1vh)), calc(100 * var(--nge-vh, 1vh) - 32px));
   overflow: hidden;
   transition: width 0.25s ease;
 }
 .nge-profile-shell--trophy {
-  width: 85vw;
+  width: calc(85 * var(--nge-vw, 1vw));
   max-width: 1200px;
 }
 .nge-profile-shell--admin {
   width: 720px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
 }
 /* Give Week in Science a real, consistent width instead of letting the shell
    shrink to the recap's old fixed content width (which read as a tiny box). */
 .nge-profile-shell--week {
   /* Wide enough for the recap's three columns to fit without scrolling. */
   width: 1180px;
-  max-width: 94vw;
+  max-width: calc(94 * var(--nge-vw, 1vw));
 }
 .nge-profile-shell--dstats {
   /* Wide enough for the three columns of dataset stats. */
   width: 1180px;
-  max-width: 94vw;
+  max-width: calc(94 * var(--nge-vw, 1vw));
 }
 .nge-profile-body--dstats {
   display: block;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow-y: auto;
 }
 .nge-profile-shell--datasets {
   width: 640px;
-  max-width: 90vw;
+  max-width: calc(90 * var(--nge-vw, 1vw));
 }
 .nge-profile-shell--settings {
   /* Full profile size with three columns (Ames 2026-09-29). */
   width: 1120px;
-  max-width: 94vw;
-  height: min(760px, calc(100vh - 32px));
+  max-width: calc(94 * var(--nge-vw, 1vw));
+  height: min(760px, calc(100 * var(--nge-vh, 1vh) - 32px));
 }
 .nge-profile-body--settings {
   flex-direction: column;
@@ -2773,7 +2861,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* More datasets: one toggle row per optional volume */
 /* A block, not the profile body's row: as a row its title, intro and
    toggles sat side by side in thin columns. */
-.nge-profile-body.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: 38vh; overflow-y: auto; }
+.nge-profile-body.nge-ds-more { display: block; flex: none; padding: 4px 22px 20px; max-height: calc(38 * var(--nge-vh, 1vh)); overflow-y: auto; }
 .nge-ds-more-title { font-size: 0.78em; letter-spacing: 0.12em; text-transform: uppercase; color: #8fb8e8; font-weight: 700; margin-bottom: 4px; }
 .nge-ds-more-intro { font-size: 0.86em; color: #9fb0c8; line-height: 1.45; margin-bottom: 10px; }
 .nge-ds-more-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
@@ -2964,6 +3052,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-topbar-scope:hover .nge-profile-topbar-scope-name { color: #fff; border-bottom-color: #fff; }
 .nge-profile-topbar-scope--fallback .nge-profile-topbar-scope-name { color: #f5a623; }
 
+.nge-profile-exit--tabs { margin-left: auto; padding: 4px 2px 4px 12px; }
 .nge-profile-exit {
   background: none; border: none;
   color: #666; font-size: 1.5em; cursor: pointer; line-height: 1; padding: 0;
@@ -3610,6 +3699,19 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-section--special {
   border-top: none;
 }
+/* Competitions: the medal with how many times it was won (Ames 2026-10-21) */
+.nge-profile-badge--medal .nge-profile-badge-img, .nge-trophy-medal-img { position: relative; display: inline-flex; }
+.nge-medal-count {
+  position: absolute; right: -6px; bottom: -2px; min-width: 20px; padding: 0 5px; border-radius: 999px;
+  background: #0b1424; border: 1px solid rgba(245, 209, 66, 0.75); color: #f8e08a;
+  font: 700 10.5px/16px 'Orbitron', 'Inter', sans-serif; text-align: center; letter-spacing: 0.02em;
+  box-shadow: 0 0 8px rgba(245, 209, 66, 0.25);
+}
+.nge-trophy-medal-img .nge-medal-count { right: -8px; bottom: 4px; font-size: 11.5px; line-height: 18px; min-width: 24px; }
+.nge-trophy-medal-place { margin-top: 1px; font-size: 0.72em; color: rgba(196, 228, 255, 0.55); }
+.nge-medal-wins { color: #f8e08a; }
+
+.nge-profile-medal-gap { align-self: center; width: 1px; height: 30px; margin: 0 4px; background: rgba(100, 180, 255, 0.25); }
 
 .nge-profile-badges-empty {
   font-size: 0.75em;
@@ -3744,7 +3846,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-viz-badge-icon { width: 220px; height: 220px; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(74,158,255,0.4)); }
 .nge-profile-viz-badge-icon--large { width: 240px; height: 240px; max-width: 100%; }
 /* Sized to the window, so the silver favorites and the streak chart fit under it. */
-.nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, 25vh); height: min(220px, 25vh); }
+.nge-profile-viz-badge-icon, .nge-profile-viz-badge-icon--large { width: min(220px, calc(25 * var(--nge-vh, 1vh))); height: min(220px, calc(25 * var(--nge-vh, 1vh))); }
 .nge-profile-viz-panel { max-width: 100%; box-sizing: border-box; }
 .nge-profile-viz-badge-name,
 .nge-profile-viz-badge-desc { max-width: 100%; overflow-wrap: break-word; padding: 0 10px; box-sizing: border-box; }
@@ -3869,7 +3971,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 .nge-cell-list-scroll {
   /* As tall as the window allows, so the column never needs its own scroll. */
-  max-height: max(52px, min(200px, calc(90vh - 580px)));
+  max-height: max(52px, min(200px, calc(90 * var(--nge-vh, 1vh) - 580px)));
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -3985,6 +4087,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-tabbar {
   display: flex;
+  align-items: center;
   /* Wrap rather than crop: in the narrower Settings / Datasets shells the
      tabs are wider than the box and "Admin Hub" was cut off (fit audit). */
   flex-wrap: wrap;
@@ -4038,7 +4141,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-profile-body--week {
   display: block;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow-y: auto;
 }
 
@@ -4054,7 +4157,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   display: flex;
   flex-direction: column;
   padding: 0;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   overflow: hidden;
 }
 .nge-profile-body--admin > :deep(.nge-admin-hub) {
@@ -4066,7 +4169,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 .nge-trophy-scroll {
   overflow-y: auto;
   padding: 16px 24px 24px;
-  max-height: calc(90vh - 100px);
+  max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   scrollbar-width: thin;
   scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
 }
@@ -4329,13 +4432,13 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 @media (hover: none), (pointer: coarse) { .nge-trophy-track-move { opacity: 1; } }
 
 @media (min-width: 901px) {
-  body:not(.nge-mobile) .nge-profile-shell--trophy { width: 97vw; max-width: none; height: 94vh; max-height: 94vh; }
+  body:not(.nge-mobile) .nge-profile-shell--trophy { width: calc(97 * var(--nge-vw, 1vw)); max-width: none; height: calc(94 * var(--nge-vh, 1vh)); max-height: calc(94 * var(--nge-vh, 1vh)); }
   body:not(.nge-mobile) .nge-profile-body--trophy > .nge-trophy-scroll {
     display: grid; grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
     overflow: hidden; padding: 0;
   }
   body:not(.nge-mobile) .nge-trophy-side {
-    --trophy-icon: min(300px, 24vw, 38vh);
+    --trophy-icon: min(300px, calc(24 * var(--nge-vw, 1vw)), calc(38 * var(--nge-vh, 1vh)));
     overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
     padding: 28px 22px 22px; border-right: 1px solid rgba(74, 158, 255, 0.1);
   }
@@ -4556,8 +4659,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   animation: ngeSectionRollIn 0.18s ease-out;
 }
 .nge-special-modal {
-  width: min(720px, 92vw);
-  max-height: 80vh;
+  width: min(720px, calc(92 * var(--nge-vw, 1vw)));
+  max-height: calc(80 * var(--nge-vh, 1vh));
   background: linear-gradient(135deg, rgba(8, 12, 24, 0.98), rgba(12, 18, 32, 0.97));
   border: 1px solid rgba(74, 158, 255, 0.25);
   border-radius: 12px;
@@ -4651,8 +4754,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(90vw, 420px);
-  height: min(90vw, 420px);
+  width: min(calc(90 * var(--nge-vw, 1vw)), 420px);
+  height: min(calc(90 * var(--nge-vw, 1vw)), 420px);
   transform: translate(-50%, -62%);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(53, 181, 255, 0.28) 0%, rgba(53, 181, 255, 0.08) 45%, transparent 70%);
@@ -4663,8 +4766,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(74vw, 340px);
-  height: min(74vw, 340px);
+  width: min(calc(74 * var(--nge-vw, 1vw)), 340px);
+  height: min(calc(74 * var(--nge-vw, 1vw)), 340px);
   transform: translate(-50%, -62%);
   border-radius: 50%;
   border: 1px solid rgba(53, 181, 255, 0.55);
@@ -4674,8 +4777,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   pointer-events: none;
 }
 .nge-badge-zoom-img {
-  width: min(64vw, 300px);
-  height: min(64vw, 300px);
+  width: min(calc(64 * var(--nge-vw, 1vw)), 300px);
+  height: min(calc(64 * var(--nge-vw, 1vw)), 300px);
   object-fit: contain;
   margin-bottom: 6px;
   filter: drop-shadow(0 0 24px rgba(100, 180, 255, 0.55));
@@ -4752,16 +4855,16 @@ body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
    shell instead. Test page: experimental-UI/components/profile.html.
 ───────────────────────────────────────────────────────────────────────────── */
 .nge-profile-modal :deep(.nge-overlay.modal.overlay-content) {
-  width: 100vw;
-  height: 100vh;
+  width: calc(100 * var(--nge-vw, 1vw));
+  height: calc(100 * var(--nge-vh, 1vh));
   /* ng-override sizes every overlay to its content (min-width: max-content):
      here that is about 1340 px, so on a narrower window the profile spilled
      off both sides with its close button out of sight (Celia, report 171,
      2026-10-19). The frame is the window; the Overview scrolls inside it. */
   min-width: 0 !important;
   /* ng-override caps every modal at 100vw - 24px, with !important */
-  max-width: 100vw !important;
-  max-height: 100vh !important;
+  max-width: calc(100 * var(--nge-vw, 1vw)) !important;
+  max-height: calc(100 * var(--nge-vh, 1vh)) !important;
   border-radius: 0;
   box-sizing: border-box;
 }
@@ -4775,7 +4878,7 @@ body.nge-mobile .nge-trophy-featured-icon { cursor: pointer; }
   width: 100%;
   max-width: none;
   height: 100%;
-  max-height: 100vh;
+  max-height: calc(100 * var(--nge-vh, 1vh));
 }
 .nge-profile-modal .nge-profile-col--main { flex: 1 1 0; min-width: 0; }
 .nge-profile-modal .nge-profile-col--right  { flex: 0 1 420px; min-width: 300px; }
@@ -5155,7 +5258,7 @@ body.nge-mobile .nge-track-achievements { padding-left: 0; border-left: none; }
 /* A number that can not be read says so; it is never shown as zero. */
 .nge-profile-stat-unavailable { font-size: 0.82em; color: rgba(200, 215, 240, 0.55); }
 
-/* ══ Calm screen (body.nge-calm; Settings > User Interface, off by default) ══
+/* ══ Calm screen (body.nge-calm; Settings > Screen, off by default) ══
    Annkri (#144): "too many glowing / bright elements stealing focus ... it
    gets too much and strenuous to look at over time". The base in
    ng-override.css already stops every animation and transition and clears
@@ -5231,7 +5334,7 @@ body.nge-calm .nge-profile-windows :deep(.nge-effort-span.is-on) { color: #e6eef
 /* the Scout report's numbers in one colour (inline colours otherwise) */
 body.nge-calm .nge-profile-stat-row--scout .nge-profile-stat-val { color: #d8dde8 !important; }
 /* the favourite, the brightest thing on the page, a size down */
-body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, 18vh); height: min(150px, 18vh); }
+body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, calc(18 * var(--nge-vh, 1vh))); height: min(150px, calc(18 * var(--nge-vh, 1vh))); }
 /* the streak's flame and count sit still in the plain colours */
 body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
 </style>

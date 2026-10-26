@@ -377,7 +377,9 @@ const cells = computed(() => {
         liveSegId: null as string | null,
       }));
 
-    return [...sheetCells, ...extraTasks];
+    // A paged list (Retina) holds only some of the tasks: the sheet rows it
+    // shows are the ones whose task is loaded, so Load more adds to the list.
+    return [...(backend.tasksPaged ? sheetCells.filter(c => c.taskId != null) : sheetCells), ...extraTasks];
   }
 
   // Fallback: use Supabase tasks directly
@@ -453,9 +455,72 @@ const shownCells = computed(() => filteredCells.value.slice(0, rowsShown.value))
 
 const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
 
-const availableCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'pending').length);
-const completedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'completed').length);
-const claimedCount = computed(() => datasetScopedCells.value.filter(c => c.status === 'assigned' || c.status === 'in_progress').length);
+const isClaimedStatus = (s: string) => s === 'assigned' || s === 'in_progress';
+/** A paged list counts on the server. A sheet hold ("WIP", "Complete" by
+ *  hand) moves an available cell to Claimed or Completed here, so the loaded
+ *  cells that are held move between the server's counts the same way. */
+const heldShift = computed(() => {
+  const status = new Map(backend.tasks.map(t => [t.id, t.status] as [number, string]));
+  let claimed = 0, completed = 0;
+  for (const c of datasetScopedCells.value) {
+    if (c.taskId == null || status.get(c.taskId) !== 'pending' || c.status === 'pending') continue;
+    if (c.status === 'completed') completed++; else if (isClaimedStatus(c.status)) claimed++;
+  }
+  return { claimed, completed };
+});
+const serverCounts = computed(() => (backend.tasksPaged ? backend.taskCounts : null));
+const availableCount = computed(() => serverCounts.value
+  ? Math.max(0, serverCounts.value.available - heldShift.value.claimed - heldShift.value.completed)
+  : datasetScopedCells.value.filter(c => c.status === 'pending').length);
+const completedCount = computed(() => serverCounts.value
+  ? serverCounts.value.completed + heldShift.value.completed
+  : datasetScopedCells.value.filter(c => c.status === 'completed').length);
+const claimedCount = computed(() => serverCounts.value
+  ? serverCounts.value.claimed + heldShift.value.claimed
+  : datasetScopedCells.value.filter(c => isClaimedStatus(c.status)).length);
+const allCount = computed(() => serverCounts.value ? serverCounts.value.all : datasetScopedCells.value.length);
+
+// ── Paged list (Retina): Load more, tabs and search reach the server ─────
+/** The server tab behind a cell tab; My Cells is always loaded in full. */
+const PAGED_TABS: Record<string, 'available' | 'claimed' | 'completed' | 'all'> = {
+  available: 'available', claimed: 'claimed', completed: 'completed', all: 'all',
+};
+const pagedTab = computed(() => (backend.tasksPaged ? PAGED_TABS[filter.value] ?? null : null));
+/** More of this tab is on the server than is loaded. */
+const serverHasMore = computed(() => !!pagedTab.value && !backend.taskPages[pagedTab.value].done);
+const tabTotal = computed(() => {
+  switch (filter.value) {
+    case 'available': return availableCount.value;
+    case 'claimed': return claimedCount.value;
+    case 'completed': return completedCount.value;
+    case 'all': return allCount.value;
+    default: return filteredCells.value.length;
+  }
+});
+async function loadMore() {
+  if (filteredCells.value.length > shownCells.value.length) { rowsShown.value += ROWS_STEP; return; }
+  const tab = pagedTab.value;
+  if (!tab) return;
+  await backend.loadMoreTasks(tab);
+  rowsShown.value = Math.max(rowsShown.value, filteredCells.value.length);
+}
+// A tab opened for the first time reads its first page.
+watch(pagedTab, tab => { if (tab && backend.taskPages[tab].next === 0) void backend.loadMoreTasks(tab); });
+// A search asks the server for cells that are not loaded: the sheet rows
+// whose number, notes or name match, and tasks whose IDs or notes do.
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(search, q => {
+  if (searchTimer) clearTimeout(searchTimer);
+  if (!backend.tasksPaged || !q.trim()) return;
+  searchTimer = setTimeout(() => {
+    const term = q.trim().toLowerCase();
+    const segIds = queue.items.filter(i =>
+      i.segId.includes(term) || (i.index || '').toLowerCase().includes(term) ||
+      (i.notes || '').toLowerCase().includes(term) || (history.getNickname(i.segId) || '').toLowerCase().includes(term),
+    ).slice(0, 300).map(i => i.segId);
+    void backend.findTasks(currentDatasetTag(), segIds, term);
+  }, 350);
+});
 
 // ── Dataset labels for the empty-Available prompt ────────────────────
 /** Friendly label of the dataset currently in the viewer. */
@@ -779,6 +844,16 @@ async function batchClaim() {
   const room = heldHere(await backend.loadMyActiveClaims());
   const n = backend.claimLimitFor() - room.length;
   if (n <= 0) { showClaimLimit(room); return; }
+  // A paged list reads the cells to claim first: the ones after a searched
+  // cell, or more of Available when the loaded part has too few.
+  if (backend.tasksPaged) {
+    const start = batchStart.value;
+    const startTask = start?.taskId != null ? backend.tasks.find(t => t.id === start.taskId) : undefined;
+    if (startTask) await backend.loadAvailableAfter(startTask, n);
+    else if (!search.value.trim()) {
+      for (let i = 0; i < 5 && batchCandidates.value.length < n && !backend.taskPages.available.done; i++) await backend.loadMoreTasks('available');
+    }
+  }
   const picks = batchCandidates.value.slice(0, n);
   if (!picks.length) { claimError.value = 'No available cells with a starting point to claim.'; return; }
   batchClaiming.value = { done: 0, total: picks.length };
@@ -881,26 +956,9 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 
 // ── How the cell ended (Nseraf 2026-09-30) ─────────────────────────────────
 // Retina's sheet has four endings and the form could only write "Complete".
-// The proofreader picks one; the last pick is offered again next time, since
-// most cells in a session end the same way. A dataset with one ending shows
-// no choice.
-const STATUS_KEY = 'nge_cl_complete_status';
-function rememberedStatus(cell: CellRow): string {
-  const options = completeStatusesFor(cell.dataset);
-  if (!options.length) return '';
-  try {
-    const last = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}')[canonicalDataset(cell.dataset)];
-    if (options.some(o => o.value === last)) return last;
-  } catch { /* nothing remembered */ }
-  return '';   // first time: no default, the choice is the proofreader's
-}
-function rememberStatus(cell: CellRow, status: string) {
-  try {
-    const all = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}');
-    all[canonicalDataset(cell.dataset)] = status;
-    localStorage.setItem(STATUS_KEY, JSON.stringify(all));
-  } catch { /* private mode */ }
-}
+// The proofreader picks one, every time: the last pick used to be offered
+// again, and went in by mistake (toknow, report 237). A dataset with one
+// ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
@@ -931,7 +989,9 @@ async function prefillCellType(root: string) {
 
 function openComplete(cell: CellRow) {
   chooseClaim.value = false;
-  completing.value = { key: cellKey(cell), link: '', notes: '', status: rememberedStatus(cell), minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
+  // No ending picked to start with: the last one carried over, and a player
+  // who forgot to change it sent the wrong one (toknow, report 237).
+  completing.value = { key: cellKey(cell), link: '', notes: '', status: '', minting: false, checking: false, ok: false, message: '', submitting: false, check: null,
     cellType: '', cellTypeCustom: '', typeKnown: '', typeNote: '', correcting: false };
   void runCrosshairCheck(cell).then(() => {
     const root = completing.value?.check?.root;
@@ -1044,7 +1104,6 @@ async function submitComplete(cell: CellRow) {
       // The player's type, to the sheet's "CitSci Suggested Type" (Celia).
       cellType: type || undefined,
     });
-    if (c.status) rememberStatus(cell, c.status);
     completing.value = null;
     // Straight on to your next claim; with none left, the slim bar offers a
     // new one (Ames 2026-10-21; it used to open the full library).
@@ -2122,7 +2181,7 @@ function jumpToAiTag(tag: IssueTag) {
 
 /** Who may close a help request: the player who asked, and admins. */
 function canResolve(req: HelpRequest): boolean {
-  return backend.isAdmin || (!!req.userId && req.userId === backend.userId);
+  return backend.showAdminUi || (!!req.userId && req.userId === backend.userId);
 }
 /** A note longer than its two shown lines gets a Show more button. */
 function noteIsLong(note: string): boolean {
@@ -2601,12 +2660,23 @@ function collapseToCurrent() {
 }
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
 const nextAvailableCell = computed(() => datasetScopedCells.value.find(c => c.status === 'pending') ?? null);
+/** A paged list may hold no available cell yet while the server has more. */
+const canClaimNew = computed(() => !!nextAvailableCell.value || (backend.tasksPaged && !backend.taskPages.available.done));
+/** The top available cell, reading more of the paged list when the loaded
+ *  part has none left (all claimed meanwhile, or held in the sheet). */
+async function findNextAvailable(): Promise<CellRow | null> {
+  for (let i = 0; i < 5 && !nextAvailableCell.value && backend.tasksPaged && !backend.taskPages.available.done; i++) {
+    await backend.loadMoreTasks('available');
+  }
+  return nextAvailableCell.value;
+}
 const claimingNew = ref(false);
 async function claimNewCell() {
-  const cell = nextAvailableCell.value;
-  if (!cell || claimingNew.value) return;
+  if (!canClaimNew.value || claimingNew.value) return;
   claimingNew.value = true;
   try {
+    const cell = await findNextAvailable();
+    if (!cell) return;
     await claimCell(cell);
     await nextTick();
     // Claimed: the bar shows the new cell. Not claimed: the reason shows above.
@@ -2693,6 +2763,8 @@ onMounted(async () => {
   }
   if (!want.slimSeg) return;
   // The cells load after the panel opens: wait for that one to be listed.
+  // A paged list may not hold it: ask for it once the list is in.
+  let asked = false;
   for (let i = 0; i < 60; i++) {
     if (datasetScopedCells.value.some(c => c.segId === want!.slimSeg)) {
       slimSeg.value = want.slimSeg;
@@ -2700,6 +2772,7 @@ onMounted(async () => {
       clampPanelPos();
       return;
     }
+    if (!asked && backend.tasksPaged && !backend.loading) { asked = true; void backend.findTasks(currentDatasetTag(), [want.slimSeg]); }
     await new Promise(r => setTimeout(r, 500));
   }
 });
@@ -2861,7 +2934,7 @@ const panelStyle = computed(() => ({
                 Claimed <b>{{ claimedCount }}</b>
               </button>
               <button v-if="tabShown('all')" :class="{ active: filter === 'all' }" @click="filter = 'all'" title="Every cell in this dataset">
-                All <b>{{ datasetScopedCells.length }}</b>
+                All <b>{{ allCount }}</b>
               </button>
               <!-- Quests are cells you claim, so they sit with the cells (Ames 2026-10-13). -->
               <button v-if="tabShown('quests')" :class="{ active: filter === 'quests', 'nge-cl-quests-tab': true }" @click="filter = 'quests'"
@@ -3725,11 +3798,11 @@ const panelStyle = computed(() => ({
           </button>
           <!-- The empty slim bar: nothing to work on, so offer the next cell. -->
           <div v-if="slimEmpty && !myOpenClaims.length" class="nge-cl-slim-claim-row">
-            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!nextAvailableCell || claimingNew || !isLoggedIn"
+            <button class="nge-cl-btn nge-cl-btn--claim nge-cl-slim-claim" :disabled="!canClaimNew || claimingNew || !isLoggedIn"
                     :title="!isLoggedIn ? 'Sign in to claim cells'
-                      : nextAvailableCell ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
+                      : canClaimNew ? `Claims the next unclaimed cell in ${currentDatasetLabel} (the top of the Available tab) and takes you to it. Not for you? Release it from My Cells.`
                       : `No unclaimed cells left in ${currentDatasetLabel}. Open the full view to switch datasets.`"
-                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : nextAvailableCell ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
+                    @click="claimNewCell">{{ claimingNew ? 'Claiming…' : canClaimNew ? '＋ Claim a new cell' : 'No cells left to claim here' }}</button>
           </div>
           <template v-for="cell in listCells" :key="cell.taskId ?? cell.segId">
           <div
@@ -3761,6 +3834,18 @@ const panelStyle = computed(() => ({
 
             <!-- Right: actions -->
             <div class="nge-cl-row-actions">
+              <!-- Save view comes first: it shows on the claim being worked on
+                   only, so the buttons after it stay put on every row (toknow,
+                   report 236). -->
+              <button
+                v-if="isWorkingClaim(cell)"
+                class="nge-cl-btn nge-cl-btn--saveview"
+                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
+                :disabled="savingView === cell.taskId"
+                @click="saveClaimView(cell)"
+                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
+              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
                 :class="{ 'nge-cl-btn--jump-active': cell.segId === jumpedSegId }"
@@ -3774,15 +3859,6 @@ const panelStyle = computed(() => ({
                 :disabled="claiming.has(cellKey(cell))"
                 @click="claimCell(cell)"
               ><span v-if="claiming.has(cellKey(cell))" class="nge-cl-spin" />{{ claiming.has(cellKey(cell)) ? 'Claiming…' : 'Claim' }}</button>
-
-              <button
-                v-if="isWorkingClaim(cell)"
-                class="nge-cl-btn nge-cl-btn--saveview"
-                :class="{ 'nge-cl-btn--saved': savedViewAt[cell.taskId] }"
-                :disabled="savingView === cell.taskId"
-                @click="saveClaimView(cell)"
-                title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
-              ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
 
               <button
                 v-if="isMyClaim(cell) && teamsHere && teamsOnDataset(cell.dataset) && cell.status !== 'completed'"
@@ -3900,9 +3976,9 @@ const panelStyle = computed(() => ({
             </div>
           </div>
           </template>
-          <div v-if="!slimCell && filteredCells.length > shownCells.length" class="nge-cl-more">
-            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ filteredCells.length.toLocaleString() }}. Search finds any of them.</span>
-            <button class="nge-cl-btn" @click="rowsShown += ROWS_STEP">Show {{ Math.min(ROWS_STEP, filteredCells.length - shownCells.length) }} more</button>
+          <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
+            <span>Showing {{ shownCells.length.toLocaleString() }} of {{ Math.max(tabTotal, filteredCells.length).toLocaleString() }}. Search finds any of them.</span>
+            <button class="nge-cl-btn" :disabled="!!backend.loadingMore" @click="loadMore"><span v-if="backend.loadingMore" class="nge-cl-spin" />{{ backend.loadingMore ? 'Loading…' : 'Load more' }}</button>
           </div>
         </div>
 
@@ -4092,7 +4168,7 @@ const panelStyle = computed(() => ({
   position: fixed;
   z-index: 10010;
   width: 480px;
-  max-height: 70vh;
+  max-height: calc(70 * var(--nge-vh, 1vh));
   display: flex;
   flex-direction: column;
   /* scifi-ui .holopanel surface: dark gradient, soft rim, lit inset line.
@@ -4667,15 +4743,15 @@ const panelStyle = computed(() => ({
   align-items: center;
   gap: 6px;
   padding: 10px 12px 6px;
-  font-size: 0.72em;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #667;
+  color: #8b97ad;
   cursor: pointer;
   user-select: none;
 }
-.nge-cl-help-resolved-header:hover { color: #889; }
+.nge-cl-help-resolved-header:hover { color: #c9d3e6; }
 .nge-cl-help-resolved-arrow {
   display: inline-block;
   transition: transform 0.15s;
@@ -5646,8 +5722,8 @@ select.nge-cl-complete-type:hover {
   background: rgba(120, 140, 255, 0.08);
 }
 .nge-cl-help-ds-arrow {
-  font-size: 0.7em;
-  color: #667;
+  font-size: 10px;
+  color: #8b97ad;
   display: inline-block;
   transition: transform 0.15s;
   width: 8px;
@@ -5656,15 +5732,14 @@ select.nge-cl-complete-type:hover {
 .nge-cl-help-ds-arrow--collapsed {
   transform: rotate(-90deg);
 }
+/* Readable at a glance (Ames 2026-10-26: "this text is too small"). */
 .nge-cl-help-ds-name {
-  font-family: ui-monospace, 'Cascadia Code', monospace;
-  font-size: 0.78em;
-  font-weight: 600;
-  color: #bcd;
+  font: 600 13px/1.3 'Inter', system-ui, sans-serif;
+  color: #dce6f5;
   flex: 1;
 }
 .nge-cl-help-ds-tag {
-  font-size: 0.62em;
+  font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -5681,14 +5756,14 @@ select.nge-cl-complete-type:hover {
   border: 1px solid rgba(245, 166, 35, 0.18);
   color: rgba(245, 166, 35, 0.85);
 }
-.nge-cl-help-ds-switch { cursor: pointer; font: inherit; }
+.nge-cl-help-ds-switch { cursor: pointer; font-family: inherit; font-size: 11px; }
 .nge-cl-help-ds-switch:hover {
   background: rgba(245, 166, 35, 0.22);
   border-color: rgba(245, 166, 35, 0.5);
   color: #ffd27a;
 }
 .nge-cl-help-ds-count {
-  font-size: 0.7em;
+  font-size: 11px;
   font-weight: 700;
   color: #889;
   background: rgba(255, 255, 255, 0.06);
@@ -5720,7 +5795,7 @@ select.nge-cl-complete-type:hover {
   border-radius: 10px;
   padding: 22px 24px;
   width: 460px;
-  max-width: 92vw;
+  max-width: calc(92 * var(--nge-vw, 1vw));
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
               0 0 40px rgba(245, 166, 35, 0.08) inset;
   color: #e0e0e0;
@@ -5905,7 +5980,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-topbar .nge-cl-title { margin-right: auto; }
 .nge-cl-topbar .nge-cl-gear { margin-left: 0; }
 .nge-cl-caret { margin-right: 10px; }
-.nge-cl-panel--slim { max-height: calc(100vh - 64px); cursor: grab; }
+.nge-cl-panel--slim { max-height: calc(100 * var(--nge-vh, 1vh) - 64px); cursor: grab; }
 .nge-cl-panel--slim > :not(.nge-cl-list) { display: none !important; }
 .nge-cl-panel--slim .nge-cl-list {
   flex: 0 1 auto; overflow-y: auto; position: relative;
@@ -5971,7 +6046,7 @@ select.nge-cl-complete-type:hover {
 .nge-cl-popout {
   position: fixed; right: 520px; top: 80px; z-index: 10011;
   width: 420px; height: 520px; min-width: 300px; min-height: 220px;
-  max-width: calc(100vw - 16px); max-height: calc(100vh - 56px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 16px); max-height: calc(100 * var(--nge-vh, 1vh) - 56px);
   resize: both; overflow: hidden; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: linear-gradient(158deg, rgba(15, 18, 24, 0.97) 0%, rgba(6, 10, 18, 0.98) 100%);

@@ -1261,7 +1261,7 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-sort { margin-left: auto; }
 /* Focus view: a strip of titles, and the open card in the middle. */
 .nge-todo-strip {
-  flex: 0 0 clamp(200px, 15vw, 280px); min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  flex: 0 0 clamp(200px, calc(15 * var(--nge-vw, 1vw)), 280px); min-height: 0; overflow-y: auto; scrollbar-width: thin;
   display: flex; flex-direction: column; gap: 10px; padding-right: 2px;
 }
 .nge-todo-strip-list { display: flex; flex-direction: column; gap: 3px; }

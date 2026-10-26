@@ -696,7 +696,7 @@ onUnmounted(() => {
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden !important;
-  max-height: 100vh !important;
+  max-height: calc(100 * var(--nge-vh, 1vh)) !important;
 }
 .nge-lb-modal :deep(.nge-overlay) > .nge-lb-shell { flex: 1 1 auto; height: auto; min-height: 0; }
 .nge-lb-modal :deep(.nge-overlay) {

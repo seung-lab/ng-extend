@@ -94,7 +94,7 @@
   bottom: 7px;
   z-index: 60;
   flex: none;
-  max-width: 40vw;
+  max-width: calc(40 * var(--nge-vw, 1vw));
   padding: 2px 8px;
   border-radius: 5px;
   background: rgba(4, 8, 18, 0.75);
@@ -1253,8 +1253,8 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
    defeated per-panel clamps (the old Settings bug). Glow via box-shadow is
    not clipped by overflow, so the holo treatment survives. */
 .nge-overlay.modal.overlay-content {
-  max-height: calc(100vh - 24px) !important;
-  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100 * var(--nge-vh, 1vh) - 24px) !important;
+  max-width: calc(100 * var(--nge-vw, 1vw) - 24px) !important;
   overflow: auto !important;
   box-sizing: border-box;
 }
@@ -1531,7 +1531,7 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
    scrolls when everything will not fit. */
 .neuroglancer-segment-display-tab { overflow-y: auto !important; }
 .nge-seg-list--folder, .nge-seg-list--pasted { flex: 0 1 auto !important; max-height: 220px !important; }
-.nge-seg-list-group--inview > .neuroglancer-segment-list { flex: 1 1 auto !important; min-height: min(320px, 45vh); }
+.nge-seg-list-group--inview > .neuroglancer-segment-list { flex: 1 1 auto !important; min-height: min(320px, calc(45 * var(--nge-vh, 1vh))); }
 
 /* the heading's icons keep their place while hidden, so nothing on the
    heading moves when the pointer comes over it (Ames 2026-10-14) */
@@ -1648,7 +1648,7 @@ body.nge-row-dragging, body.nge-row-dragging * { cursor: grabbing !important; us
   display: flex; align-items: center; justify-content: center;
 }
 .nge-confirm {
-  min-width: 300px; max-width: min(420px, calc(100vw - 32px));
+  min-width: 300px; max-width: min(420px, calc(100 * var(--nge-vw, 1vw) - 32px));
   padding: 18px 20px 16px; border-radius: 12px;
   background: linear-gradient(180deg, rgba(18, 28, 50, 0.98), rgba(10, 16, 30, 0.98));
   border: 1px solid rgba(140, 180, 235, 0.3);
@@ -1788,7 +1788,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 .nge-confirm-buttons--choices { flex-wrap: wrap; }
 .nge-seg-list-group--folder .nge-h-hover .nge-seg-remove-all { display: none !important; }
 
-.nge-confirm:has(.nge-confirm-buttons--choices) { max-width: min(560px, calc(100vw - 32px)); }
+.nge-confirm:has(.nge-confirm-buttons--choices) { max-width: min(560px, calc(100 * var(--nge-vw, 1vw) - 32px)); }
 
 /* Heading buttons: room between them, lined up against the right edge (the
    ungroup cross ends where + Folder ends); the eye stays where it is. */

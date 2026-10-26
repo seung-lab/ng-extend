@@ -1,0 +1,59 @@
+name: Monthly Recap Notifications
+
+on:
+  schedule:
+    # 05:30 UTC on the 1st: 00:30 EST or 01:30 EDT, so always the 1st in
+    # US Eastern time, just after the month it reports on has ended.
+    - cron: '30 5 1 * *'
+  workflow_dispatch:
+    inputs:
+      month:
+        description: Month to report, YYYY-MM (empty for the month that just ended)
+        type: string
+        default: ''
+      correct:
+        description: Correct the month's recaps and champions already sent, in place
+        type: boolean
+        default: false
+      test_to:
+        description: Send a test (titled "(test)") only to these user ids, comma separated
+        type: string
+        default: ''
+      dry_run:
+        description: Print what would be sent or corrected, change nothing
+        type: boolean
+        default: false
+
+jobs:
+  send-monthly:
+    runs-on: ubuntu-latest
+    steps:
+      # Cron workflows run from main; always run the maintained scripts.
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Your Month in Science (one card per player)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RECAP_MONTH: ${{ inputs.month }}
+          RECAP_CORRECT: ${{ inputs.correct }}
+          RECAP_DRY: ${{ inputs.dry_run }}
+          RECAP_TEST_TO: ${{ inputs.test_to }}
+        run: node scripts/monthly-recap.mjs
+
+      - name: Monthly Champions (one card for everyone)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RECAP_MONTH: ${{ inputs.month }}
+          RECAP_CORRECT: ${{ inputs.correct }}
+          RECAP_DRY: ${{ inputs.dry_run }}
+          RECAP_TEST_TO: ${{ inputs.test_to }}
+        run: node scripts/monthly-champions.mjs

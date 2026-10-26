@@ -28,19 +28,24 @@ import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
-import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch } from '../util/pumpkin';
+import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
-// The pumpkin button (Ames 2026-10-20): on a patch cell it turns the
-// pumpkin off and on; anywhere else it offers a trip to the pumpkin patch.
+// The pumpkin button (Ames 2026-10-20): opens the field report card, which
+// hides or shows the pumpkins, goes to the patch, or hands out the hammer
+// (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
+// patch, smash the pumpkins"). It used to hide the pumpkins straight away on
+// a patch cell, so the card only ever showed on other datasets.
 const showPumpkinBtn = pumpkinSeason();
 const askPatch = ref(false);
 function pumpkinOff(): boolean { return pumpkinUi.here && useUserPreferencesStore().prefs.hidePumpkin === true; }
 function pumpkinTitle(): string {
   if (!pumpkinUi.here) return 'A rare cell type has been spotted';
-  return useUserPreferencesStore().prefs.hidePumpkin === true ? 'Put the pumpkin back on the cell' : 'Take the pumpkin off the cell';
+  return 'The pumpkin patch: hide, show or smash the pumpkins';
 }
-function onPumpkin() { if (pumpkinUi.here) togglePumpkin(); else askPatch.value = true; }
+function onPumpkin() { askPatch.value = true; }
+function togglePatch() { askPatch.value = false; togglePumpkin(); }
 function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
+function smashPatch() { askPatch.value = false; smashPumpkins(); }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -1017,7 +1022,7 @@ function closePopovers(e: MouseEvent) {
 
 // ── Emoji for writing messages (Amy 2026-09-30), not just reactions ──
 const CHAT_EMOJI = [
-  '👋', '😊', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
+  '👋', '😊', '😉', '😂', '😅', '🥳', '😍', '😎', '🤔', '😮', '😢', '🙏',
   '👍', '👏', '🙌', '💪', '👀', '✨', '🔥', '💯', '🎉', '❤️',
   '🧠', '🔬', '🧬', '⚡', '👁️', '🐭', '🪰', '🐟', '🦉', '🐙',
   '🚀', '🌟', '🎯', '✅', '❌', '⚠️', '☕', '🍕', '🌈', '😴',
@@ -1352,7 +1357,7 @@ function toggleCollapse() {
         <div v-if="shownPin && !searchOpen" class="nge-chat-pin" role="note">
           <button type="button" class="nge-chat-pin-text" :title="'Pinned by ' + shownPin.by + '. Click to go to the message.'"
                   @click.stop="goToMessage(shownPin.messageId)"><span class="nge-chat-pin-glyph" aria-hidden="true"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></span>{{ plainChatText(shownPin.text) }}</button>
-          <button v-if="backendStore.isAdmin" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
+          <button v-if="backendStore.showAdminUi" type="button" class="nge-chat-pin-x" :disabled="pinBusy" title="Unpin for everyone" @click.stop="togglePin(null)">Unpin</button>
           <button type="button" class="nge-chat-pin-x" title="Hide this pin for me" aria-label="Hide this pin for me" @click.stop="hidePin">×</button>
         </div>
         <div class="nge-chat-messages-wrap">
@@ -1534,13 +1539,13 @@ function toggleCollapse() {
                           :title="joinOffered.has(joinKey(msg)) ? 'Offer sent. Waiting for them to accept.' : `Offer to join ${msg.name}'s view and help, live. They choose whether to accept.`"
                           @click="joinHelp(msg)">{{ joinOffered.has(joinKey(msg)) ? '🤝 Offered' : '🤝 Join' }}</button>
                   <span v-if="msg.botLanguage" class="nge-chat-bot-lang">{{ msg.botLanguage }}</span>
-                  <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.isAdmin || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
+                  <button v-if="SHOW_CHAT_DELETE && msg.id != null && (backendStore.showAdminUi || (msg.userId && msg.userId === backendStore.userId))" class="nge-chat-del"
                           :title="msg.userId === backendStore.userId ? 'Delete your message' : 'Delete this message for everyone (admin)'"
                           @click.stop="deleteChatMessage(msg)">🗑</button>
                   <template v-if="msg.id != null && isLoggedIn">
                     <span class="nge-chat-react-add">
                       <button v-if="msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-reply-btn" @click.stop="startReply(msg)" title="Reply">↩</button>
-                      <button v-if="backendStore.isAdmin && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
+                      <button v-if="backendStore.showAdminUi && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
                               @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></button>
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                               @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
@@ -1665,7 +1670,7 @@ function toggleCollapse() {
                  on a patch cell, a trip to the patch anywhere else. -->
             <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
                     @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
-            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" />
+            <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" @toggle="togglePatch()" />
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"

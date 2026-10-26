@@ -1,0 +1,32 @@
+/* ══ Large text (Settings > Screen; Ames 2026-10-25, for older players) ══════
+   body.nge-large-text draws Pyr's windows and the layer side panel a fifth
+   bigger. Most sizes in the game are written in px, so a bigger base font
+   would miss them; `zoom` scales everything in the box together and keeps
+   it laid out (clicks, scrolling and text selection follow it).
+
+   The 2D and 3D views and the top bar are left alone: zooming the viewer
+   would throw off where a click lands in the views.
+
+   One catch: inside a zoomed box, vh and vw are zoomed too, so a window
+   sized "90vh" would run off the screen. Windows inside these boxes size
+   themselves with var(--nge-vh, 1vh) and var(--nge-vw, 1vw) instead, which
+   these boxes set to a viewport unit divided by the zoom, so the window ends
+   up exactly as tall as before, with bigger text inside. */
+:root {
+  --nge-text-zoom: 1.2;
+}
+
+/* Boxes placed by a mouse position or a set width (the Cell Library, the
+   bell, the side panels) keep their frame and zoom what is inside it, so
+   dragging and resizing still follow the mouse. */
+body.nge-large-text :is(
+  .nge-overlay-blocker,
+  .nge-toast-container,
+  .nge-cl-panel > *,
+  .nge-notif-panel > *,
+  .neuroglancer-side-panel > *
+) {
+  zoom: var(--nge-text-zoom);
+  --nge-vh: calc(1vh / var(--nge-text-zoom));
+  --nge-vw: calc(1vw / var(--nge-text-zoom));
+}

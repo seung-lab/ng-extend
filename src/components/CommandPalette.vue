@@ -16,7 +16,7 @@ import {
   useUserPreferencesStore,
   CellHistoryEntry,
 } from '../store';
-import { pumpkinSeason, togglePumpkin } from '../util/pumpkin';
+import { pumpkinSeason, togglePumpkin, smashPumpkins } from '../util/pumpkin';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -185,6 +185,15 @@ function buildActions(): PaletteItem[] {
     action: () => emit('open-settings'),
   });
   items.push({
+    id: 'hide-top-bar',
+    label: 'Magic Top Bar',
+    description: 'On or off. Hides the top bar until you move the mouse to the top edge, or press the \\ key',
+    category: 'action',
+    icon: '▔',
+    aliases: ['magic', 'hide the top bar', 'top bar', 'toolbar', 'auto hide', 'autohide', 'hide bar', 'full screen', 'more room'],
+    action: () => { const p = useUserPreferencesStore(); p.save({ hideTopBar: p.prefs.hideTopBar !== true }); },
+  });
+  items.push({
     id: 'tag-mode',
     label: 'Scout Tag Mode',
     description: 'Flag mergers and missing branches (Shift+T)',
@@ -214,6 +223,15 @@ function buildActions(): PaletteItem[] {
       icon: '🎃',
       aliases: ['pumpkin', 'jack', 'lantern', 'halloween', 'remove pumpkin'],
       action: () => togglePumpkin(),
+    });
+    items.push({
+      id: 'smash-pumpkins',
+      label: 'Smash the Pumpkins',
+      description: 'Off to the Sandbox pumpkin patch with a hammer',
+      category: 'tool',
+      icon: '🔨',
+      aliases: ['smash', 'hammer', 'smash pumpkins', 'break', 'pumpkin'],
+      action: () => smashPumpkins(),
     });
   }
   if (ARCADE_ENABLED) items.push({

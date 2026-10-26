@@ -50,7 +50,14 @@ const draftChatFade = ref(true);
 const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
 const draftKeepDisplay = ref(true);
-const draftCellMessage = ref<'full' | 'small' | 'off'>('full');
+/** "Cell & Quest celebration" (Ames 2026-10-25): a switch, on unless set
+ *  off. Kept in cellCompleteMessage, so a player who had picked the small
+ *  note keeps it while the switch is on. */
+const draftCellCelebration = ref(true);
+let savedCellMessage: 'full' | 'small' | 'off' = 'full';
+const draftAchievementCelebration = ref(true);
+const draftNotifOneList = ref(false);
+const draftDailyDigest = ref(true);
 /** How the cell under the mouse is shown (wolfryder101 #181): the classic fade (default), halo or pulse. */
 const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'saturate' | 'spotlight' | 'fade' | 'none'>('fade');
 /** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
@@ -76,6 +83,8 @@ const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftCursorXL = ref(false);
+const draftLargeText = ref(false);
+const draftHideTopBar = ref(false);
 const draftImageLayerPanel = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
@@ -145,7 +154,11 @@ onMounted(() => {
   draftChatMarkMine.value = prefsStore.prefs.chatMarkMine !== false;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
-  draftCellMessage.value = prefsStore.prefs.cellCompleteMessage || 'full';
+  savedCellMessage = prefsStore.prefs.cellCompleteMessage || 'full';
+  draftCellCelebration.value = savedCellMessage !== 'off';
+  draftAchievementCelebration.value = prefsStore.prefs.achievementCelebration !== false;
+  draftNotifOneList.value = prefsStore.prefs.notifOneList === true;
+  draftDailyDigest.value = prefsStore.prefs.showDailyDigest !== false;
   draftHoverStyle.value = ngeHoverStyle.value;
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
@@ -157,6 +170,8 @@ onMounted(() => {
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftCursorXL.value = prefsStore.prefs.cursorXL === true;
+  draftLargeText.value = prefsStore.prefs.largeText === true;
+  draftHideTopBar.value = prefsStore.prefs.hideTopBar === true;
   draftImageLayerPanel.value = prefsStore.prefs.imageLayerPanel === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
@@ -230,7 +245,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellMessage.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifOneList: draftNotifOneList.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: draftAnnotationSize.value, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -319,6 +334,19 @@ function handleCountryGlobalClick(e: MouseEvent) {
 }
 onMounted(() => document.addEventListener('click', handleCountryGlobalClick, true));
 
+// The Neuroglancer box's (i): a click opens a short note on what neuroglancer
+// is (Ames 2026-10-25: "make a popup with info bc it's long for a tooltip").
+// A click anywhere else or Escape closes it.
+const ngInfoOpen = ref(false);
+function closeNgInfo(e: Event) {
+  if (!ngInfoOpen.value) return;
+  if (e instanceof KeyboardEvent) { if (e.key !== 'Escape') return; e.stopPropagation(); }
+  else if ((e.target as HTMLElement | null)?.closest?.('.nge-set-info, .nge-set-info-pop')) return;
+  ngInfoOpen.value = false;
+}
+onMounted(() => { document.addEventListener('click', closeNgInfo, true); document.addEventListener('keydown', closeNgInfo, true); });
+onUnmounted(() => { document.removeEventListener('click', closeNgInfo, true); document.removeEventListener('keydown', closeNgInfo, true); });
+
 // These four open something in the viewer itself, which sits BEHIND this
 // panel (and behind the profile it may be shown in). The button seemed to do
 // nothing until the panel was closed by hand (M Sorek 2026-10-09). So the
@@ -389,6 +417,17 @@ const props = defineProps<{ embedded?: boolean }>();
 
       <!-- Settings content -->
       <div class="nge-settings-content">
+        <!-- Admins: see the game as a player does (Ames 2026-10-25). Display
+             only and instant, so no Save: admin powers stay, and the
+             "Player view" chip in the top bar switches back. -->
+        <div v-if="backendStore.isAdmin" class="nge-set-viewas">
+          <span class="nge-set-viewas-label">See the game as</span>
+          <div class="nge-set-viewas-seg" role="radiogroup" aria-label="See the game as">
+            <button type="button" role="radio" :aria-checked="!backendStore.playerView" :class="{ 'is-on': !backendStore.playerView }" @click="backendStore.setPlayerView(false)">Admin</button>
+            <button type="button" role="radio" :aria-checked="backendStore.playerView" :class="{ 'is-on': backendStore.playerView }" @click="backendStore.setPlayerView(true)">Player</button>
+          </div>
+          <span class="nge-set-viewas-hint">Player view hides admin buttons and tabs, so you see Pyr as players do. It works straight away, with no Save, and your admin powers stay. Waiting admin notifications show as a red dot on the Player view label in the top bar; click that label to come back.</span>
+        </div>
         <!-- Three columns in the profile (Ames 2026-09-29: "larger, full profile
              size, a cool layout, keep it scifi"). In the stand-alone window
              the column wrappers are display: contents, so it stays one list. -->
@@ -465,9 +504,33 @@ const props = defineProps<{ embedded?: boolean }>();
             <div class="nge-settings-charcount" :class="{ 'nge-settings-charcount--warn': draftBio.length > 250 }">{{ draftBio.length }} / 280</div>
           </div>
 
+          <div class="nge-settings-section nge-set-card--notif" :class="{ 'nge-set-folded': isFolded('notif') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('notif')" title="Fold or unfold this box" @click.prevent="toggleFold('notif')" @keydown.enter.prevent="toggleFold('notif')" @keydown.space.prevent="toggleFold('notif')">Chat and notifications<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <p class="nge-settings-hint">Chat, help requests and the counts on your top bar icons.</p>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftChatMuted" />
+              <span class="nge-settings-toggle-label">Mute the chat unread count</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftChatFade" />
+              <span class="nge-settings-toggle-label">Fade chat when I click away</span>
+            </label>
+            <label class="nge-settings-toggle" title="A thin bar marks your own messages in chat, so they are easy to find when you scroll back. Switch off to hide it.">
+              <input type="checkbox" v-model="draftChatMarkMine" />
+              <span class="nge-settings-toggle-label">Mark my own messages in chat</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftHelpMuted" />
+              <span class="nge-settings-toggle-label">Mute help requests</span>
+            </label>
+            <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
+              <input type="checkbox" v-model="draftUndeleteCounter" />
+              <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
+            </label>
+          </div>
         </div>
         <div class="nge-set-col nge-set-col--topbar">
-          <div class="nge-set-col-head"><span class="nge-set-col-title">Top bar</span><span class="nge-set-col-sub">what you see</span></div>
+          <div class="nge-set-col-head"><span class="nge-set-col-title">Display</span><span class="nge-set-col-sub">what you see</span></div>
           <div class="nge-settings-section nge-set-card--toolbar" :class="{ 'nge-set-folded': isFolded('toolbar') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('toolbar')" title="Fold or unfold this box" @click.prevent="toggleFold('toolbar')" @keydown.enter.prevent="toggleFold('toolbar')" @keydown.space.prevent="toggleFold('toolbar')">Toolbar Icons<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">Toggle which actions appear in your top bar.</p>
@@ -482,52 +545,12 @@ const props = defineProps<{ embedded?: boolean }>();
             <button class="nge-settings-toolbar-reset" @click="resetToolbar">Reset to defaults</button>
           </div>
 
-          <!-- How the game behaves, in a card of its own (Ames 2026-10-06).
-               Annotation point size is not here: it is set on the annotation
-               layer itself. -->
-          <div class="nge-settings-section nge-set-card--ui" :class="{ 'nge-set-folded': isFolded('ui') }">
-            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('ui')" title="Fold or unfold this box" @click.prevent="toggleFold('ui')" @keydown.enter.prevent="toggleFold('ui')" @keydown.space.prevent="toggleFold('ui')">User Interface<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
-            <p class="nge-settings-hint">How layers, jumps and annotations behave.</p>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftAnnotationGems" />
-              <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
-            </label>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftAnnotationSetupTabs" />
-              <span class="nge-settings-toggle-label">Show Source and Rendering tabs on annotation layers</span>
-            </label>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftKeepDisplay" />
-              <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
-            </label>
-            <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer.">
-              <input type="checkbox" v-model="draftClassicLayers" />
-              <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
-            </label>
-            <label class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
-              <input type="checkbox" v-model="draftShowRadio" />
-              <span class="nge-settings-toggle-label">Show the EyeWire Radio speaker</span>
-            </label>
-            <label class="nge-settings-toggle" title="Undelete brings back cells you removed from view. On: its icon shows how many steps it can bring back.">
-              <input type="checkbox" v-model="draftUndeleteCounter" />
-              <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
-            </label>
-            <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
-              <input type="checkbox" v-model="draftPumpkin" />
-              <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
-            </label>
-            <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
-              <input type="checkbox" v-model="draftSegShowId" />
-              <span class="nge-settings-toggle-label">Show the segment ID under a cell's label</span>
-            </label>
-            <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
-              <input type="checkbox" v-model="draftCalm" />
-              <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
-            </label>
-            <label class="nge-settings-toggle" title="A bigger target cursor over the 2D and 3D views, easier to find on a large screen.">
-              <input type="checkbox" v-model="draftCursorXL" />
-              <span class="nge-settings-toggle-label">Extra large cursor</span>
-            </label>
+          <!-- The old User Interface card, split into small cards by topic
+               (Ames 2026-10-24: "need to better organize these"). Annotation
+               point size is not here: it is set on the annotation layer itself. -->
+          <div class="nge-settings-section nge-set-card--look" :class="{ 'nge-set-folded': isFolded('look') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('look')" title="Fold or unfold this box" @click.prevent="toggleFold('look')" @keydown.enter.prevent="toggleFold('look')" @keydown.space.prevent="toggleFold('look')">3D looks<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <p class="nge-settings-hint">How cells look in 3D.</p>
             <label class="nge-settings-toggle nge-settings-pick" title="How the cell under your mouse stands out in 3D. Saturate: the cell's colour turns richer and it is lit from within, so even a bright colour stands out. Spotlight: the cell turns a little richer and the other cells in 3D dim, so it stands out gently. Fade: the original look, the cell turns pale. Halo: a slim glowing line around its edges. Pulse: when you point at it, a ring of light runs out along it from your mouse, like a signal firing. Hologram: the cell turns into cyan light (or your pulse colour), glowing brightest at its edges, with a soft glow around it. Metallic: a dark, shiny cell with bright edges. None: nothing marks it. In 2D the cell keeps its own colour, at your Render opacity. Highlight on hover itself is switched on and off in the Render tab of the 3D layer.">
               <span class="nge-settings-toggle-label">3D Hover</span>
               <select v-model="draftHoverStyle" class="nge-sv-select">
@@ -555,14 +578,91 @@ const props = defineProps<{ embedded?: boolean }>();
               </div>
             </div>
             <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
-            <label class="nge-settings-toggle nge-settings-pick" title="Full: the congratulations in the middle of the screen. Small: a short note at the top that does not cover your work. Nothing: no message; the cell still shows as Proofread in its menu and in the segment list.">
-              <span class="nge-settings-toggle-label">When I complete a cell, show</span>
-              <select v-model="draftCellMessage" class="nge-sv-select">
-                <option value="full">Full congratulations</option>
-                <option value="small">A small note at the top</option>
-                <option value="off">Nothing</option>
+            <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
+              <input type="checkbox" v-model="draftPumpkin" />
+              <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
+            </label>
+          </div>
+
+          <div class="nge-settings-section nge-set-card--screen" :class="{ 'nge-set-folded': isFolded('screen') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('screen')" title="Fold or unfold this box" @click.prevent="toggleFold('screen')" @keydown.enter.prevent="toggleFold('screen')" @keydown.space.prevent="toggleFold('screen')">Screen<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <p class="nge-settings-hint">Celebrations, motion, and what else shows on screen.</p>
+            <label class="nge-settings-toggle" title="On: completing a cell or submitting a Quest brings up the congratulations, with confetti. Off: nothing comes up; the cell still shows as Proofread in its menu and in the segment list, and a Quest still counts.">
+              <input type="checkbox" v-model="draftCellCelebration" />
+              <span class="nge-settings-toggle-label">Cell &amp; Quest celebration</span>
+            </label>
+            <label class="nge-settings-toggle" title="On: an achievement you earn comes up as a card in the middle of the screen, with confetti. Off: nothing comes up; it is still in your Trophy Case and in the bell.">
+              <input type="checkbox" v-model="draftAchievementCelebration" />
+              <span class="nge-settings-toggle-label">Achievement celebration</span>
+            </label>
+            <label class="nge-settings-toggle" title="On: every notification in one list, as before. Off: two tabs in the bell, My Pyr for what was sent to you and Pyr Updates for what went to everyone.">
+              <input type="checkbox" v-model="draftNotifOneList" />
+              <span class="nge-settings-toggle-label">Show all notifications in one list</span>
+            </label>
+            <label class="nge-settings-toggle" title="Today in Pyr is the short note each afternoon on what changed in Pyr that day. Off: it no longer comes to your bell. Other announcements still do.">
+              <input type="checkbox" v-model="draftDailyDigest" />
+              <span class="nge-settings-toggle-label">Show Today in Pyr daily updates</span>
+            </label>
+            <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
+              <input type="checkbox" v-model="draftCalm" />
+              <span class="nge-settings-toggle-label">Calm screen: no animations or glows</span>
+            </label>
+            <label class="nge-settings-toggle" title="A bigger target cursor over the 2D and 3D views, easier to find on a large screen.">
+              <input type="checkbox" v-model="draftCursorXL" />
+              <span class="nge-settings-toggle-label">Extra large cursor</span>
+            </label>
+            <label class="nge-settings-toggle" title="Makes the text in Pyr's windows (your profile, Settings, the Cell Library, the bell, the leaderboard) and in the layer side panel a fifth bigger, with everything around it, so it is easier to read. The 2D and 3D views stay as they are.">
+              <input type="checkbox" v-model="draftLargeText" />
+              <span class="nge-settings-toggle-label">Large text</span>
+            </label>
+            <label class="nge-settings-toggle" title="The top bar tucks away, so the views get the whole window. Move the mouse to the top edge to bring it back, or press the \ key. Your unread notifications show as a small bell in the corner of the 3D view. It stays put on a touch screen, during a tutorial, and while new icons are still arriving.">
+              <input type="checkbox" v-model="draftHideTopBar" />
+              <span class="nge-settings-toggle-label">Magic Top Bar</span>
+            </label>
+            <label class="nge-settings-toggle" title="A cell with a cell type shows the type in the segment list. On: its segment ID is written under the type too. Off: the type alone; the ID is in the hover tip and on the copy button.">
+              <input type="checkbox" v-model="draftSegShowId" />
+              <span class="nge-settings-toggle-label">Show the segment ID under a cell's label</span>
+            </label>
+            <label class="nge-settings-toggle" title="The speaker in the bottom right corner plays EyeWire Radio. Off: no speaker.">
+              <input type="checkbox" v-model="draftShowRadio" />
+              <span class="nge-settings-toggle-label">Show the sound icon (EyeWire Radio)</span>
+            </label>
+          </div>
+
+        </div>
+        <div class="nge-set-col nge-set-col--viewer">
+          <div class="nge-set-col-head"><span class="nge-set-col-title">Viewer</span><span class="nge-set-col-sub">how it works</span></div>
+          <div class="nge-settings-section nge-set-card--jump" :class="{ 'nge-set-folded': isFolded('jump') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('jump')" title="Fold or unfold this box" @click.prevent="toggleFold('jump')" @keydown.enter.prevent="toggleFold('jump')" @keydown.space.prevent="toggleFold('jump')">Jumping and views<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <p class="nge-settings-hint">What happens when you jump to a cell or come back.</p>
+            <label class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
+              <input type="checkbox" v-model="draftJumpAdds" />
+              <span class="nge-settings-toggle-label">Jumping to a cell adds it to my view (off: it replaces my view)</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftKeepDisplay" />
+              <span class="nge-settings-toggle-label">Keep my display settings (opacity, layout, highlight on hover) when jumping to cells</span>
+            </label>
+            <label class="nge-settings-toggle" title="Your view is saved as you work. When a dataset opens, a small bar offers to bring it back. Never shown on the Sandbox.">
+              <input type="checkbox" v-model="draftOfferRestore" />
+              <span class="nge-settings-toggle-label">Offer to pick up where I left off when a dataset opens</span>
+            </label>
+            <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
+              <span class="nge-settings-toggle-label">Cell Library opens on</span>
+              <select v-model="draftLibraryTab" class="nge-sv-select">
+                <option value="mine">My Cells</option>
+                <option value="available">Available</option>
+                <option value="claimed">Claimed</option>
+                <option value="all">All</option>
+                <option value="help">Help</option>
+                <option value="links">My Links</option>
               </select>
             </label>
+          </div>
+
+          <div class="nge-settings-section nge-set-card--images" :class="{ 'nge-set-folded': isFolded('images') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('images')" title="Fold or unfold this box" @click.prevent="toggleFold('images')" @keydown.enter.prevent="toggleFold('images')" @keydown.space.prevent="toggleFold('images')">2D images<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <p class="nge-settings-hint">How sharp the 2D images are, and where they load from.</p>
             <label class="nge-settings-toggle nge-settings-pick" title="How sharp the 2D images are drawn. Half loads about a quarter of the data and Quarter about a sixteenth, so they load much faster on a slow connection, but the images stay that blurry until you set Full again.">
               <span class="nge-settings-toggle-label">2D image detail</span>
               <select v-model.number="draftImageDetail" class="nge-sv-select">
@@ -579,55 +679,8 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="asia">Asia</option>
               </select>
             </label>
-            <label class="nge-settings-toggle nge-settings-pick" title="The tab the Cell Library shows first each time you open it. Shift+L opens and closes the library.">
-              <span class="nge-settings-toggle-label">Cell Library opens on</span>
-              <select v-model="draftLibraryTab" class="nge-sv-select">
-                <option value="mine">My Cells</option>
-                <option value="available">Available</option>
-                <option value="claimed">Claimed</option>
-                <option value="all">All</option>
-                <option value="help">Help</option>
-                <option value="links">My Links</option>
-              </select>
-            </label>
-            <label class="nge-settings-toggle" title="Off: a jump shows only the cell you jumped to. On: each jump adds its cell to the ones already in your view.">
-              <input type="checkbox" v-model="draftJumpAdds" />
-              <span class="nge-settings-toggle-label">Jumping to a cell adds it to my view (off: it replaces my view)</span>
-            </label>
-            <label class="nge-settings-toggle" title="Your view is saved as you work. When a dataset opens, a small bar offers to bring it back. Never shown on the Sandbox.">
-              <input type="checkbox" v-model="draftOfferRestore" />
-              <span class="nge-settings-toggle-label">Offer to pick up where I left off when a dataset opens</span>
-            </label>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftShowNgControls" />
-              <span class="nge-settings-toggle-label">Show the neuroglancer controls button (?)</span>
-            </label>
           </div>
 
-          <div class="nge-settings-section nge-set-card--notif" :class="{ 'nge-set-folded': isFolded('notif') }">
-            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('notif')" title="Fold or unfold this box" @click.prevent="toggleFold('notif')" @keydown.enter.prevent="toggleFold('notif')" @keydown.space.prevent="toggleFold('notif')">Notifications<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
-            <p class="nge-settings-hint">Control the badges on your toolbar icons.</p>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftChatMuted" />
-              <span class="nge-settings-toggle-label">Mute chat unread badge</span>
-            </label>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftChatFade" />
-              <span class="nge-settings-toggle-label">Fade chat when I click away</span>
-            </label>
-            <label class="nge-settings-toggle" title="A thin bar marks your own messages in chat, so they are easy to find when you scroll back. Switch off to hide it.">
-              <input type="checkbox" v-model="draftChatMarkMine" />
-              <span class="nge-settings-toggle-label">Mark my own messages in chat</span>
-            </label>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftHelpMuted" />
-              <span class="nge-settings-toggle-label">Mute help requests</span>
-            </label>
-          </div>
-
-        </div>
-        <div class="nge-set-col nge-set-col--viewer">
-          <div class="nge-set-col-head"><span class="nge-set-col-title">Viewer</span><span class="nge-set-col-sub">how it opens</span></div>
           <div class="nge-settings-section nge-set-card--datasets" :class="{ 'nge-set-folded': isFolded('datasets') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('datasets')" title="Fold or unfold this box" @click.prevent="toggleFold('datasets')" @keydown.enter.prevent="toggleFold('datasets')" @keydown.space.prevent="toggleFold('datasets')">Switching datasets<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
@@ -661,23 +714,50 @@ const props = defineProps<{ embedded?: boolean }>();
             <p class="nge-settings-hint">Click Save below to keep these.</p>
           </div>
 
-          <div class="nge-settings-section nge-set-card--advanced" :class="{ 'nge-set-folded': isFolded('advanced') }">
-            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('advanced')" title="Fold or unfold this box" @click.prevent="toggleFold('advanced')" @keydown.enter.prevent="toggleFold('advanced')" @keydown.space.prevent="toggleFold('advanced')">Advanced<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+          <!-- Everything that brings back neuroglancer's own way of working, in
+               one place for players who know it from before (Ames 2026-10-25).
+               Took over the Advanced card. Named Neuroglancer, with an (i)
+               saying what that is (Ames 2026-10-25). -->
+          <div class="nge-settings-section nge-set-card--classic" :class="{ 'nge-set-folded': isFolded('classic') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('classic')" title="Fold or unfold this box" @click.prevent="toggleFold('classic')" @keydown.enter.prevent="toggleFold('classic')" @keydown.space.prevent="toggleFold('classic')">Neuroglancer<button type="button" class="nge-set-info" :class="{ 'nge-set-info--on': ngInfoOpen }" aria-label="What is neuroglancer?" :aria-expanded="ngInfoOpen" title="What is neuroglancer?" @click.stop.prevent="ngInfoOpen = !ngInfoOpen" @keydown.enter.stop @keydown.space.stop>i</button><span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <div v-if="ngInfoOpen" class="nge-set-info-pop" role="dialog" aria-label="What is neuroglancer?" @click.stop>
+              <button type="button" class="nge-set-info-x" aria-label="Close" @click="ngInfoOpen = false">×</button>
+              <p class="nge-set-info-title">What is neuroglancer?</p>
+              <p>Neuroglancer is a connectomics proofreading platform made by Google that Pyr is built on. It draws the 2D images and the 3D cells you work on. Scientists also use it (without the fancy Pyr interface).</p>
+              <p>Settings here bring back its original, and dare we say unintuitive, user interface elements. This section brings back legacy neuroglancer elements and advanced settings.</p>
+            </div>
+            <p class="nge-settings-hint">Neuroglancer's own controls and panels, for players who know it from before.</p>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftAnnotationGems" />
+              <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
+            </label>
+            <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer.">
+              <input type="checkbox" v-model="draftClassicLayers" />
+              <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
+            </label>
+            <label class="nge-settings-toggle" title="Off: clicking the 2D EM layer's tab shows or hides the 2D view. On: it opens the layer's side panel (Source, Rendering, Annotations), as in neuroglancer.">
+              <input type="checkbox" v-model="draftImageLayerPanel" />
+              <span class="nge-settings-toggle-label">Clicking the 2D image layer opens its side panel</span>
+            </label>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftAnnotationSetupTabs" />
+              <span class="nge-settings-toggle-label">Show Source and Rendering tabs on annotation layers</span>
+            </label>
+            <label class="nge-settings-toggle" title="Segmentation layers open on Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
+              <input type="checkbox" v-model="draftSegSetupTabs" />
+              <span class="nge-settings-toggle-label">Show Source and Graph tabs on segmentation layers</span>
+            </label>
+            <label class="nge-settings-toggle" title="The round (?) button at the top right of the viewer opens neuroglancer's own list of keyboard and mouse controls. Many of them are out of date and do not match Pyr. For Pyr's own keys, open Keyboard shortcuts in the menu at the top right, or press Ctrl+K and type keys.">
+              <input type="checkbox" v-model="draftShowNgControls" />
+              <span class="nge-settings-toggle-label">Show the neuroglancer controls button (?)</span>
+            </label>
             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
               <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>
               <button class="nge-settings-advanced-btn" @click="openJsonEditor">{} Edit JSON State</button>
               <button class="nge-settings-advanced-btn" @click="toggleLayerListPanel">☰ Layer List Panel</button>
               <button class="nge-settings-advanced-btn" @click="toggleSelectionDetails">◫ Selection Details</button>
             </div>
-            <label class="nge-settings-toggle" style="margin-top: 10px;" title="Off: clicking the 2D EM layer's tab shows or hides the 2D view. On: it opens the layer's side panel (Source, Rendering, Annotations), as in neuroglancer.">
-              <input type="checkbox" v-model="draftImageLayerPanel" />
-              <span class="nge-settings-toggle-label">Clicking the 2D image layer opens its side panel</span>
-            </label>
-            <label class="nge-settings-toggle" title="Segmentation layers open on Segments. Turn this on to also see their Source and Graph tabs. Takes effect when the page reloads.">
-              <input type="checkbox" v-model="draftSegSetupTabs" />
-              <span class="nge-settings-toggle-label">Show Source and Graph tabs on segmentation layers</span>
-            </label>
-
+            <div style="height: 4px;"></div>
             <!-- Logins management -->
             <div v-if="loginStore.sessions.length > 0" style="margin-top: 10px;">
               <p class="nge-settings-hint">Active logins:</p>
@@ -784,8 +864,8 @@ const props = defineProps<{ embedded?: boolean }>();
   /* Never exceed the viewport. Without this the panel grew to its natural
      height and simply ran off the bottom of a small laptop screen, taking the
      Save button with it. */
-  max-width: calc(100vw - 24px);
-  max-height: calc(100vh - 32px);
+  max-width: calc(100 * var(--nge-vw, 1vw) - 24px);
+  max-height: calc(100 * var(--nge-vh, 1vh) - 32px);
 }
 
 /* Embedded in the profile's Settings tab: the profile shell owns size and
@@ -1339,7 +1419,7 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-sv-name { color: #e6eefc; font-weight: 600; }
 .nge-sv-link { color: rgba(170, 190, 220, 0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Notification mute toggle (Mute chat unread badge) */
+/* Notification mute toggle (Mute the chat unread count) */
 .nge-settings-slider {
   display: flex;
   align-items: center;
@@ -1424,6 +1504,31 @@ const props = defineProps<{ embedded?: boolean }>();
 @media (max-width: 680px) {
   .nge-settings-shell--embedded .nge-settings-content { grid-template-columns: 1fr; }
 }
+/* See the game as (admins only): a strip across the top. */
+.nge-set-viewas {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(126, 224, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(126, 224, 255, 0.06);
+}
+.nge-set-viewas-label { color: #dce6f5; font-weight: 600; font-size: 13px; }
+.nge-set-viewas-seg { display: inline-flex; border: 1px solid rgba(126, 224, 255, 0.45); border-radius: 999px; overflow: hidden; }
+.nge-set-viewas-seg button {
+  padding: 3px 14px;
+  border: 0;
+  background: transparent;
+  color: #9fb3cc;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nge-set-viewas-seg button.is-on { background: rgba(126, 224, 255, 0.22); color: #fff; font-weight: 600; }
+.nge-set-viewas-hint { flex: 1 1 260px; color: #8ea2bd; font-size: 12px; line-height: 1.4; }
 .nge-settings-shell--embedded .nge-set-col {
   display: flex;
   flex-direction: column;
@@ -1513,6 +1618,28 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-set-fold:focus-visible { outline: 1px solid rgba(74, 158, 255, 0.7); outline-offset: 3px; border-radius: 3px; }
 .nge-set-fold-chev { margin-left: auto; font-size: 13px; color: #7ecaff; transition: transform 0.2s ease; }
 .nge-set-folded .nge-set-fold-chev { transform: rotate(-90deg); }
+/* (i) beside a box title: hover (or focus) for what the title means (Ames 2026-10-25). */
+.nge-set-card--classic { position: relative; }
+.nge-set-info {
+  padding: 0; background: none;
+  display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: -2px;
+  border-radius: 50%; border: 1px solid rgba(126, 202, 255, 0.55); color: #9fdcff; cursor: help;
+  font: italic 700 10px/1 Georgia, 'Times New Roman', serif; letter-spacing: 0; text-transform: none;
+}
+.nge-set-info:hover, .nge-set-info:focus-visible, .nge-set-info--on { background: rgba(74, 158, 255, 0.18); color: #fff; outline: none; }
+.nge-set-info-pop {
+  position: absolute; z-index: 5; top: 36px; left: 10px; right: 10px; box-sizing: border-box;
+  padding: 12px 30px 4px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; color: #cfe0ff;
+  background: linear-gradient(160deg, rgba(16, 28, 52, 0.98), rgba(8, 14, 30, 0.98));
+  border: 1px solid rgba(74, 158, 255, 0.45); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), 0 0 18px rgba(74, 158, 255, 0.12);
+}
+.nge-set-info-pop p { margin: 0 0 8px; }
+.nge-set-info-title { font-weight: 700; color: #9fdcff; letter-spacing: 0.02em; }
+.nge-set-info-x {
+  position: absolute; top: 6px; right: 8px; padding: 0 4px; font-size: 18px; line-height: 1;
+  color: #8fa6c6; background: none; border: 0; cursor: pointer;
+}
+.nge-set-info-x:hover { color: #fff; }
 .nge-set-folded > :not(.nge-settings-label) { display: none !important; }
 .nge-settings-shell--embedded .nge-set-folded { padding-bottom: 13px; }
 

@@ -37,6 +37,11 @@ import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
 import NurroProfile from "components/NurroProfile.vue";
 import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
+import HuntPanel from "components/HuntPanel.vue";
+import HuntGemFx from "components/HuntGemFx.vue";
+import HuntBegins from "components/HuntBegins.vue";
+import HuntOpening from "components/HuntOpening.vue";
+import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import BetaGate from "components/BetaGate.vue";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
@@ -242,6 +247,12 @@ onMounted(() => {
       e.stopImmediatePropagation();
       showTagMode.value = !showTagMode.value;
     }
+    // \: the hidden top bar, down and up again (Settings: Magic Top Bar).
+    if (!typing && (e.code === 'Backslash' || e.key === '\\') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && barAutoHide.value) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      toggleBarPinned();
+    }
     // Shift+L: the Cell Library (Nik 2026-10-09). Plain L is neuroglancer's
     // "recolour", so the library takes the shifted key, as tag mode does.
     if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
@@ -414,6 +425,71 @@ const showFeed = ref(false);
 const showAccess = ref(false);
 function openAccessPanel() { showAccess.value = true; closeHamburger(); }
 document.addEventListener('nge:access-open', () => { showAccess.value = true; });
+
+// ── The Hunt (Ames 2026-10-20) ──────────────────────────────────────────
+// A pill in the top bar while a hunt is announced, running, or just over;
+// it opens the Hunt panel, as a Hunt notification does. One small call when
+// the player is signed in (hunt.ts asks again at each start and end).
+const showHunt = ref(false);
+const huntPanelId = ref<number | null>(null);
+/** The panel shows an admin's test run (Admin Hub > Hunts > Try it yourself). */
+const huntPanelTest = ref(false);
+const huntPill = computed(() => {
+  const h = featuredHunt();
+  if (!h) return null;
+  const p = phaseNow(h);
+  void huntState.now;   // the countdown ticks with the hunt clock
+  const live = huntState.hunts.filter(x => phaseNow(x) === 'live').length;
+  if (p === 'live') return { id: h.id, phase: p, word: live > 1 ? `${live} Hunts` : 'Hunt', time: countdown(h.end_at) };
+  if (p === 'announced') return { id: h.id, phase: p, word: 'Hunt in', time: countdown(h.start_at) };
+  return { id: h.id, phase: p, word: 'Hunt results', time: '' };
+});
+function pickHunt(id: number) { huntPanelTest.value = false; huntPanelId.value = id; }
+function openHunt(id?: number | null) { huntPanelTest.value = false; huntPanelId.value = id ?? null; showHunt.value = true; void loadHunts(); }
+/** Admins: try a hunt. Out of the profile, into the hunt's view, with the panel in its test run. */
+async function tryHunt(id: number, alreadyThere = false) {
+  showProfile.value = false;
+  huntPanelTest.value = true; huntPanelId.value = id; showHunt.value = true;
+  huntState.error = '';
+  try {
+    const t = await openTestHunt(id);
+    if (alreadyThere) await new Promise(r => setTimeout(r, 1500));
+    await goToHunt(t);
+  } catch (err: any) {
+    huntState.error = err?.message || String(err);
+  }
+}
+document.addEventListener('nge:hunt-test', ((e: CustomEvent) => { const id = Number(e.detail?.id); if (id) void tryHunt(id); }) as EventListener);
+// From a notification: the hunt its title names, once the list is fresh.
+// A Hunt note opens its own Hunt at once (Ames 2026-10-21: an old note showed the running Hunt for
+// two seconds first): the one in the list now, else "looking" until the list is fresh, else "gone".
+document.addEventListener('nge:hunt-open', (async (e: CustomEvent) => {
+  const title = String(e.detail?.title || '');
+  if (!title) { openHunt(e.detail?.id ?? null); return; }
+  const match = () => huntState.hunts.find(x => title.endsWith(`: ${x.title}`));
+  const now = match();
+  openHunt(now ? now.id : -1);
+  await loadHunts();
+  const h = match();
+  huntPanelId.value = h ? h.id : -2;
+}) as EventListener);
+let huntsStarted = false;
+// Its own handle on the store: this runs before the bar's backendStore is defined below.
+const huntBackend = useProofreadingBackendStore();
+watch(() => huntBackend.userId, async id => {
+  if (!id || huntsStarted) return;
+  huntsStarted = true;
+  await loadHunts();
+  startGemWatch();
+  // A dataset switch made for a hunt reloads the page: carry on into it.
+  const after = takeHuntAfterSwitch();
+  if (after?.test) { void tryHunt(after.id, true); return; }
+  const h = after ? huntState.hunts.find(x => x.id === after.id) : null;
+  if (h) {
+    openHunt(h.id);
+    setTimeout(() => { void goToHunt(h).catch(err => console.warn('[hunt] could not open after the switch:', err)); }, 1500);
+  }
+}, { immediate: true });
 // A reviewer opened an example from Admin Hub > Access requests: out of the
 // profile, into the view, with the review bar (AccessReviewBar).
 document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
@@ -782,7 +858,7 @@ interface ToolbarIcon {
 // set in its customization grid. Here we only attach the action
 // handlers and (where relevant) badge counters.
 import { TOOLBAR_ICON_DEFS, resolveToolbarOrder, markInjected, RESOURCES_MENU_SVG, LEADERBOARD_SVG } from '../data/toolbar-icons';
-import { iconArrived, isStaged, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
+import { iconArrived, isStaged, isTutorialOnScreen, freshIcons, dragInFull, STAGING_TEST_AVAILABLE } from '../util/toolbar_staging';
 import StagingAnnouncement from 'components/StagingAnnouncement.vue';
 import StagingTestPanel from 'components/StagingTestPanel.vue';
 
@@ -844,11 +920,14 @@ const toolbarActions: Record<string, ToolbarAction> = {
   flight:      { action: () => { showFlightMode.value = !showFlightMode.value; } },
   feed:        { action: () => { showFeed.value = true; } },
   // Purple: unread outside the Admin tab. Red: unread in it (Ames 2026-10-21).
-  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount,
-                 adminBadge: () => backendStore.unreadAdminNotificationCount },
+  notif:       { action: () => { showNotifications.value = !showNotifications.value; }, badge: () => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : backendStore.unreadStaffNotificationCount),
+                 adminBadge: () => backendStore.showAdminUi ? backendStore.unreadAdminNotificationCount : 0 },
   chat:        { action: () => { showChat.value = !showChat.value; if (showChat.value) chatStore.markRead(); }, badge: () => chatStore.unreadCount },
   settings:    { action: () => { profileInitialTab.value = 'settings'; showProfile.value = true; } },
 };
+
+/** The phone bell's count: in player view, without admin and triage notes. */
+const mobileNotifCount = computed(() => backendStore.unreadNotificationCount - (backendStore.showAdminUi ? 0 : backendStore.unreadStaffNotificationCount));
 
 const toolbarDefs = computed<ToolbarIcon[]>(() => {
   return TOOLBAR_ICON_DEFS
@@ -956,6 +1035,153 @@ function onIconDrop(e: DragEvent, id: string) {
 }
 
 
+
+// ── Magic Top Bar: the top bar hides until pointed at (Settings, Nik #243, Ames 2026-10-25) ──────────
+// Like a Mac's hidden menu bar: the bar tucks away above the page, the views
+// take the whole window, and the bar comes down over the top of them when the
+// mouse rests at the top edge (Ames: no strip, the buttons alone). It lies over
+// the views, so they never move as it comes and goes.
+// Never on a touch screen (no pointing), during a tutorial, or while a new
+// player's icons are still arriving (staging teaches through the bar).
+const canHover = ref(typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches);
+{
+  const mq = typeof window !== 'undefined' ? window.matchMedia?.('(hover: hover) and (pointer: fine)') : null;
+  mq?.addEventListener?.('change', e => { canHover.value = e.matches; });
+}
+const barAutoHide = computed(() => useUserPreferencesStore().prefs.hideTopBar === true
+  && canHover.value && !isMobileRef.value && !isTutorialOnScreen() && !isStaged());
+const barHover = ref(false);     // the bar has come down for the mouse
+const barPinned = ref(false);    // the \ key brought it down
+const barFocus = ref(false);     // typing in it (the position box)
+// A menu or panel opened from the bar keeps it down until it closes.
+const barMenuOpen = computed(() => showNotifications.value || showDatasetSelector.value || barFocus.value
+  || Object.values(dropdownStore.activeDropdowns).some(v => v !== undefined));
+const barShown = computed(() => !barAutoHide.value || barHover.value || barPinned.value || barMenuOpen.value);
+let barOpenTimer: ReturnType<typeof setTimeout> | null = null;
+let barCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let mouseOnBar = false;
+const BAR_OPEN_DELAY = 250;   // passing over the top edge does not open it
+const BAR_CLOSE_DELAY = 400;  // nor does slipping off the bar for a moment close it
+function clearBarTimers() {
+  if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+  if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+}
+// Where the mouse brings the bar down: the very top edge anywhere, and a band
+// along the top (the row of layer tabs) except over a layer tab, a button or a
+// box, so reaching for those never opens the bar.
+const TOP_EDGE = 3;
+const OPEN_BAND = 24;
+const NOT_A_BAR_SPOT = '.neuroglancer-layer-item, button, input, textarea, select, a, [role="button"], [contenteditable="true"]';
+function onTuckedMouseMove(e: MouseEvent) {
+  const t = e.target as HTMLElement | null;
+  const inBand = e.clientY <= TOP_EDGE || (e.clientY < OPEN_BAND && !t?.closest?.(NOT_A_BAR_SPOT));
+  if (!inBand) { if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; } return; }
+  if (barHover.value || barOpenTimer) return;
+  barOpenTimer = setTimeout(() => { barOpenTimer = null; barHover.value = true; }, BAR_OPEN_DELAY);
+}
+// The mouse left the page across the top edge (into the browser's own bar).
+function onTuckedMouseOut(e: MouseEvent) {
+  if (!e.relatedTarget && barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+}
+const barTucked = computed(() => barAutoHide.value && !barShown.value);
+watch(barTucked, on => {
+  if (on) {
+    window.addEventListener('mousemove', onTuckedMouseMove, { capture: true, passive: true });
+    document.addEventListener('mouseout', onTuckedMouseOut, true);
+  } else {
+    window.removeEventListener('mousemove', onTuckedMouseMove, { capture: true } as any);
+    document.removeEventListener('mouseout', onTuckedMouseOut, true);
+    if (barOpenTimer) { clearTimeout(barOpenTimer); barOpenTimer = null; }
+  }
+}, { immediate: true });
+function scheduleBarClose() {
+  if (barCloseTimer) clearTimeout(barCloseTimer);
+  barCloseTimer = setTimeout(() => { barCloseTimer = null; if (!mouseOnBar) barHover.value = false; }, BAR_CLOSE_DELAY);
+}
+// While the bar is down for the mouse, every move asks whether the mouse is
+// still on it (or on a menu inside it). Enter and leave events alone miss the
+// case of a bar that slid in under a mouse that had not moved.
+function onBarMouseMove(e: MouseEvent) {
+  const t = e.target as Node | null;
+  const bar = document.getElementById('extensionBar');
+  mouseOnBar = !!t && !!bar && bar.contains(t);
+  if (mouseOnBar) {
+    if (barCloseTimer) { clearTimeout(barCloseTimer); barCloseTimer = null; }
+    // Down for a menu or the key, and now pointed at: it stays while pointed at.
+    barHover.value = true;
+  } else if (barHover.value && !barCloseTimer) scheduleBarClose();
+}
+watch(() => barAutoHide.value && barShown.value, on => {
+  if (on) window.addEventListener('mousemove', onBarMouseMove, { capture: true, passive: true });
+  else { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); mouseOnBar = false; }
+});
+function onBarFocusIn(e: FocusEvent) {
+  const t = e.target as HTMLElement | null;
+  barFocus.value = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
+function onBarFocusOut() { barFocus.value = false; }
+// A menu closed with the mouse already elsewhere: the bar goes up shortly.
+watch(barMenuOpen, open => { if (!open && barHover.value && !mouseOnBar) scheduleBarClose(); });
+// Pinned by the key, the bar goes up again on the next press.
+function toggleBarPinned() {
+  if (!barAutoHide.value) return;
+  clearBarTimers();
+  if (barShown.value) { barPinned.value = false; barHover.value = false; }
+  else barPinned.value = true;
+}
+watch(barAutoHide, on => { if (!on) { clearBarTimers(); barHover.value = false; barPinned.value = false; } });
+// While the bar is up, the Pyr gem sits at the left end of the layer tab row
+// (Ames); it is drawn by CSS from this, and pointing at it brings the bar down.
+document.body.style.setProperty('--nge-pyr-gem', `url("${pyrIcon}")`);
+// A click on the gem brings the bar down at once.
+document.addEventListener('click', e => {
+  if (!barTucked.value) return;
+  const t = e.target as HTMLElement | null;
+  if (!t?.classList?.contains('neuroglancer-layer-panel')) return;
+  if (e.clientX - t.getBoundingClientRect().left > 40) return;
+  clearBarTimers();
+  barHover.value = true;
+});
+watch([barAutoHide, barShown], ([on, shown]) => {
+  document.body.classList.toggle('nge-bar-autohide', on);
+  document.body.classList.toggle('nge-bar-tucked', on && !shown);
+}, { immediate: true });
+
+// While the bar is up, your own unread notifications show as a dot in the
+// top right corner of the 3D view (Ames). Only the bell's personal count:
+// help requests, chat and the Admin tab are not about you. A click on the dot
+// opens the bell. With no 3D view on screen it sits in the window's top right corner.
+const tuckedNotifCount = computed(() => barTucked.value
+  ? Math.max(0, backendStore.unreadNotificationCount - backendStore.unreadAdminNotificationCount) : 0);
+let notifDot: HTMLButtonElement | null = null;
+let notifDotTimer: ReturnType<typeof setInterval> | null = null;
+function placeNotifDot() {
+  const n = tuckedNotifCount.value;
+  if (!n) { notifDot?.remove(); return; }
+  if (!notifDot) {
+    notifDot = document.createElement('button');
+    notifDot.type = 'button';
+    notifDot.className = 'nge-notif-dot';
+    notifDot.addEventListener('click', e => { e.stopPropagation(); showNotifications.value = true; });
+    // Clicks and drags on it must not reach the 3D view under it.
+    for (const t of ['pointerdown', 'mousedown', 'wheel']) notifDot.addEventListener(t, e => e.stopPropagation());
+  }
+  const bell = toolbarDefs.value.find(d => d.id === 'notif')?.svg ?? '';
+  notifDot.innerHTML = `<span class="nge-notif-dot-icon">${bell}</span><span>${n}</span>`;
+  notifDot.title = `${n} unread notification${n === 1 ? '' : 's'}. Click to open them.`;
+  // The 3D view is rebuilt when the layout changes, so look for it each time.
+  const panel = [...document.querySelectorAll<HTMLElement>('.nge-3d-panel')].find(p => p.offsetWidth > 0);
+  const home = panel ?? document.body;
+  notifDot.classList.toggle('nge-notif-dot--corner', !panel);
+  if (notifDot.parentElement !== home) home.appendChild(notifDot);
+}
+watch(tuckedNotifCount, n => {
+  placeNotifDot();
+  if (n && !notifDotTimer) notifDotTimer = setInterval(placeNotifDot, 1000);
+  if (!n && notifDotTimer) { clearInterval(notifDotTimer); notifDotTimer = null; }
+}, { immediate: true });
+onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { capture: true } as any); clearBarTimers(); if (notifDotTimer) clearInterval(notifDotTimer); notifDot?.remove(); });
+
 </script>
 
 <template>
@@ -964,8 +1190,8 @@ function onIconDrop(e: DragEvent, id: string) {
   <!-- <annotation-panel /> --> <!-- Hidden: users pick cells from Cell Library instead -->
   <achievement-toast />
   <staging-announcement />
-  <!-- Test sites, and admins on the live site (util/toolbar_staging.ts). -->
-  <staging-test-panel v-if="STAGING_TEST_AVAILABLE || backendStore.isAdmin" />
+  <!-- Test sites only (util/toolbar_staging.ts). -->
+  <staging-test-panel v-if="STAGING_TEST_AVAILABLE" />
   <command-palette
     ref="cmdPalette"
     @open-profile="showProfile = true"
@@ -1008,6 +1234,13 @@ function onIconDrop(e: DragEvent, id: string) {
   <leaderboard-panel v-if="showLeaderboard" :peek="leaderboardPeek || !isMobileRef" @hide="showLeaderboard = false; leaderboardPeek = false" />
   <dataset-stats-panel v-if="showDatasetStats" :peek="!isMobileRef" @hide="showDatasetStats = false" />
   <settings-panel v-if="showSettings" @hide="showSettings = false" />
+  <!-- Out of the way while the profile is open, as it was when the profile closes (Ames 2026-10-22:
+       "the hunt box overlapping profile when I click achievement") -->
+  <hunt-panel v-if="showHunt" v-show="!showProfile" :hunt-id="huntPanelId" :test="huntPanelTest" @hide="showHunt = false; huntPanelTest = false" @pick="pickHunt" />
+  <!-- Each gem's answer on the spot; the start of a Hunt (Ames 2026-10-21) -->
+  <hunt-gem-fx />
+  <hunt-begins @open="openHunt" />
+  <hunt-opening />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
   <!-- The Ask dock is now the single command surface: it searches the same
@@ -1025,7 +1258,7 @@ function onIconDrop(e: DragEvent, id: string) {
     :list-keys="listKeys"
     @hide="showAssistant = false"
   />
-  <div id="extensionBar">
+  <div id="extensionBar" @focusin="onBarFocusIn" @focusout="onBarFocusOut">
     <div class="ng-extend-logo">
       <!-- Click → hard refresh. Reloads the bundle from the server (skips
            the disk cache so a freshly-deployed JS hits the user without a
@@ -1148,6 +1381,16 @@ function onIconDrop(e: DragEvent, id: string) {
     <RadioPlayer v-if="login.sessions.length > 0 && !useUserPreferencesStore().prefs.hideRadio" />
     <StreakChip v-if="login.sessions.length > 0 && stats.currentStreak > 0" :current="stats.currentStreak" :best="stats.longestStreak" />
     <div class="nge-toolbar-icons" v-if="login.sessions.length > 0">
+      <!-- The Hunt: only while one is announced, running or just over. -->
+      <button v-if="huntPill" class="nge-hunt-pill" :class="`nge-hunt-pill--${huntPill.phase}`"
+              :title="huntPill.phase === 'live' ? 'The Hunt is on: open it' : huntPill.phase === 'announced' ? 'A Hunt is coming' : 'The Hunt is over: see the winners'"
+              @click="openHunt(huntPill.id)">
+        <svg class="nge-hunt-pill-gem" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <path d="M7 3h10l4 6-9 12L3 9z" fill="currentColor" opacity="0.9"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" fill="none" stroke="rgba(8,13,26,0.55)" stroke-width="1.2"/>
+        </svg>
+        <span class="nge-hunt-pill-word">{{ huntPill.word }}</span>
+        <span v-if="huntPill.time" class="nge-hunt-pill-time">{{ huntPill.time }}</span>
+      </button>
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
         <!-- A bug (Amy 2026-09-30), whose legs scurry on hover and click. -->
@@ -1193,6 +1436,12 @@ function onIconDrop(e: DragEvent, id: string) {
       ><span v-if="icon.svg" v-html="icon.svg"></span><img v-else-if="icon.img" :src="icon.img" class="nge-toolbar-icon-img" /><template v-else>{{ icon.emoji }}</template><span v-if="icon.badge && icon.badge() > 0" class="nge-toolbar-badge" :class="{ 'nge-toolbar-badge--chat': icon.id === 'chat', 'nge-toolbar-badge--beside': icon.adminBadge && icon.adminBadge() > 0 }">{{ icon.badge() }}</span><span v-if="icon.adminBadge && icon.adminBadge() > 0" class="nge-toolbar-badge nge-toolbar-badge--admin" :title="`${icon.adminBadge()} unread in Admin`">{{ icon.adminBadge() }}</span></button>
     </div>
 
+    <!-- Player view (Ames 2026-10-25): an admin seeing the game as players do.
+         Shown only while it is on; a click goes back to admin view. The dot
+         means admin or triage notifications are waiting. -->
+    <button v-if="backendStore.isAdmin && backendStore.playerView" type="button" class="nge-player-view-chip"
+            :title="backendStore.unreadStaffNotificationCount > 0 ? `Player view is on. ${backendStore.unreadStaffNotificationCount} admin notifications waiting. Click for admin view.` : 'Player view is on: admin things are hidden. Click for admin view.'"
+            @click="backendStore.setPlayerView(false)">Player view<span v-if="backendStore.unreadStaffNotificationCount > 0" class="nge-player-view-dot" aria-label="Admin notifications waiting"></span></button>
     <button v-if="login.sessions.length > 0" class="nge-icon-btn" @click="profileUserId = null; showProfile = true" id="profileBtn" title="My Profile"><svg viewBox="2.6 1.6 10.8 13.2" fill="none" style="width:1em;height:1em;vertical-align:middle;color:#cfdcef"><circle cx="8" cy="5.4" r="2.9" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 14c0-2.7 2.1-4.6 4.6-4.6s4.6 1.9 4.6 4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     <!-- Phones: the leaderboard, where the layer side panel's sliders used to
          sit (Ames 2026-10-05). The side panel is a desktop tool; on a phone
@@ -1345,7 +1594,7 @@ function onIconDrop(e: DragEvent, id: string) {
     <button :class="{ 'nge-mnav--active': showNotifications }" data-mnav="alerts" @click="showNotifications = !showNotifications">
       <span class="nge-mnav-icon">🔔</span>
       <span class="nge-mnav-label">Notifs</span>
-      <span v-if="backendStore.unreadNotificationCount > 0" class="nge-mnav-badge">{{ backendStore.unreadNotificationCount }}</span>
+      <span v-if="mobileNotifCount > 0" class="nge-mnav-badge">{{ mobileNotifCount }}</span>
     </button>
     <button :class="{ 'nge-mnav--active': showMobileWelcome }" data-mnav="guide" @click="showMobileWelcome = true">
       <span class="nge-mnav-icon">✨</span>
@@ -1773,7 +2022,8 @@ function onIconDrop(e: DragEvent, id: string) {
   box-shadow:
     0 0 0 1px rgba(100, 200, 255, 0.3),
     0 2px 12px rgba(100, 200, 255, 0.18);
-  transform: translateY(-1px);
+  /* and grows a touch, like a Mac's dock (Nseraf: "maybe 5% larger") */
+  transform: translateY(-1px) scale(1.05);
 }
 @media (prefers-reduced-motion: reduce) {
   .nge-icon-btn:hover { transform: none; }
@@ -1880,6 +2130,37 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
   box-shadow: 0 0 8px rgba(74, 208, 122, 0.55);
 }
 
+/* Player view chip (Ames 2026-10-25): only while an admin has it on. */
+.nge-player-view-chip,
+#extensionBar .nge-player-view-chip {
+  position: relative;
+  align-self: center;
+  margin: 0 6px;
+  padding: 2px 9px;
+  border: 1px solid #7ee0ff;
+  border-radius: 999px;
+  background: rgba(126, 224, 255, 0.12);
+  color: #bfefff;
+  height: 20px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nge-player-view-chip:hover { background: rgba(126, 224, 255, 0.24); color: #fff; }
+.nge-player-view-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5484d;
+  box-shadow: 0 0 0 2px #0b1220;
+}
+
 /* ── Right end of the bar: profile, burger, ? and the layer panel toggle ──
    These came from three places (our button, the dropdown, and neuroglancer's
    own icons moved into #ngFarRight) and each looked different: a filled
@@ -1917,7 +2198,7 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
   opacity: 1;
   background: rgba(100, 200, 255, 0.1) !important;
   box-shadow: 0 0 0 1px rgba(100, 200, 255, 0.3), 0 2px 12px rgba(100, 200, 255, 0.18);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.05);
 }
 /* Open menu / panel showing: the same active underline as the left row. */
 #extensionBar #hamburger.open > button,
@@ -2386,4 +2667,90 @@ body.nge-calm .nge-icon-btn--fresh { animation: none; box-shadow: 0 0 0 2px rgba
 }
 /* The Site Tour's compass sits in the same circle as the numbers. */
 .nge-menu-num--icon { font-size: 10px; line-height: 1; }
+/* The Hunt pill (Ames 2026-10-20; restyled 2026-10-21, "does not look good"): an instrument chip like
+   the Hunt box, a gold hairline while a Hunt runs, the word in Orbitron and a steady countdown. The
+   doubled class wins over the top bar's own button rules, which had flattened it. No pulsing. */
+button.nge-hunt-pill.nge-hunt-pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; margin: 0 6px 0 0; padding: 0 9px 0 7px;
+  border-radius: 7px; cursor: pointer; white-space: nowrap;
+  background: linear-gradient(158deg, rgba(10, 17, 32, 0.92), rgba(5, 9, 19, 0.96));
+  border: 1px solid rgba(74, 158, 255, 0.45); box-shadow: inset 0 1px 0 rgba(196, 228, 255, 0.12);
+  color: #e6f0ff;
+}
+button.nge-hunt-pill.nge-hunt-pill:hover, button.nge-hunt-pill.nge-hunt-pill:focus-visible { border-color: rgba(126, 224, 255, 0.8); background: linear-gradient(158deg, rgba(16, 28, 52, 0.95), rgba(8, 14, 28, 0.98)); }
+button.nge-hunt-pill.nge-hunt-pill--live { border-color: rgba(245, 209, 66, 0.7); box-shadow: inset 0 1px 0 rgba(255, 243, 196, 0.15), 0 0 10px rgba(245, 209, 66, 0.18); }
+button.nge-hunt-pill.nge-hunt-pill--live:hover, button.nge-hunt-pill.nge-hunt-pill--live:focus-visible { border-color: #f5d142; }
+.nge-hunt-pill-gem { color: #f5d142; flex: none; filter: drop-shadow(0 0 3px rgba(245, 209, 66, 0.6)); }
+.nge-hunt-pill-word { font: 700 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #9fd0ff; }
+.nge-hunt-pill--live .nge-hunt-pill-word { color: #f5d142; }
+.nge-hunt-pill-time { font: 700 12px 'Orbitron', 'Inter', sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
+.nge-hunt-pill--live .nge-hunt-pill-time { color: #fff3c4; }
+
+/* ── Magic Top Bar: hidden until pointed at (Settings) ─────────────────────────
+   body.nge-bar-autohide: the bar leaves the page flow and lies over the top
+   of the views, which take the whole window, so nothing moves as it comes and
+   goes. body.nge-bar-tucked: it is up, out of sight. `top` slides it rather
+   than a transform, so the bar's fixed position children (share toast) keep
+   the window as their frame. */
+body.nge-bar-autohide .ng-extend {
+  position: relative;
+  flex: 0 0 0;
+  height: 0;
+  /* No z-index here: every panel the bar opens is rendered in .ng-extend too,
+     and a stacking context would cap them all at this level. */
+}
+body.nge-bar-autohide #extensionBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 41;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: top 0.16s ease-out, box-shadow 0.16s;
+}
+body.nge-bar-autohide.nge-bar-tucked #extensionBar {
+  top: -64px;
+  box-shadow: none;
+  transition: top 0.2s ease-in, box-shadow 0.2s;
+}
+body.nge-calm.nge-bar-autohide #extensionBar { transition: none; }
+/* Room above the layer tabs once the bar is out of the way (Ames: they were
+   squished at the top), and the Pyr gem at the row's left end. */
+body.nge-bar-autohide .neuroglancer-layer-panel { padding-top: 6px !important; }
+body.nge-bar-autohide .neuroglancer-layer-panel::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 4px 0 2px;
+  background: var(--nge-pyr-gem) center / contain no-repeat;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.35));
+  cursor: pointer;
+}
+.nge-notif-dot {
+  position: absolute;
+  top: 8px;
+  right: 40px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border: none;
+  border-radius: 11px;
+  background: #7c4dff;
+  color: #fff;
+  font: 700 12px/22px 'Inter', 'Roboto', sans-serif;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(124, 77, 255, 0.6);
+  animation: nge-badge-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.nge-notif-dot:hover { background: #8f66ff; }
+.nge-notif-dot--corner { position: fixed; top: 6px; right: 12px; z-index: 40; }
+.nge-notif-dot-icon { display: inline-flex; align-items: center; }
+.nge-notif-dot-icon svg { width: 13px !important; height: 13px !important; }
 </style>

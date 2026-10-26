@@ -1,0 +1,113 @@
+/* Watch it grow: the floating history panel (src/util/cell_history.ts).
+   Same deep blue as the Δ menu. Sits at the bottom middle, out of the way
+   of the cell; drag it by its title. */
+.nge-ch {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: min(460px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 0 14px 12px;
+  background: linear-gradient(180deg, rgba(20, 32, 55, 0.97), rgba(10, 18, 35, 0.97));
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(74, 158, 255, 0.22);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.3);
+  color: rgba(220, 230, 245, 0.92);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+}
+.nge-ch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 -14px 8px;
+  padding: 9px 10px 8px 14px;
+  border-bottom: 1px solid rgba(74, 158, 255, 0.25);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.nge-ch-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(120, 160, 210, 0.85);
+}
+.nge-ch-id {
+  font-size: 12px;
+  color: rgba(200, 215, 235, 0.7);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 340px;
+}
+.nge-ch-close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(74, 158, 255, 0.18);
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(210, 222, 240, 0.92);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nge-ch-close:hover { background: rgba(74, 158, 255, 0.14); }
+.nge-ch-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.nge-ch-kind:empty { display: none; }
+.nge-ch-kind {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.nge-ch-kind--merge { background: rgba(124, 255, 178, 0.14); color: #7cffb2; }
+.nge-ch-kind--cut { background: rgba(255, 170, 90, 0.14); color: #ffb36b; }
+.nge-ch-who { margin-top: 3px; color: rgba(200, 215, 235, 0.85); }
+.nge-ch-status { min-height: 18px; margin-top: 4px; font-size: 12.5px; color: rgba(150, 190, 240, 0.9); }
+.nge-ch-status:empty { min-height: 0; margin-top: 0; }
+.nge-ch-slider { display: block; width: 100%; margin: 10px 0 8px; accent-color: #4a9eff; }
+.nge-ch-slider[hidden], .nge-ch-controls[hidden], .nge-ch-step[hidden], .nge-ch-who[hidden], .nge-ch-note[hidden] { display: none; }
+.nge-ch-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.nge-ch-btn {
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.10), rgba(74, 158, 255, 0.03));
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  border-radius: 5px;
+  color: rgba(220, 230, 245, 0.95);
+  font: 500 13px 'Inter', system-ui, sans-serif;
+  padding: 5px 10px;
+  min-width: 34px;
+  cursor: pointer;
+}
+.nge-ch-btn:hover { border-color: rgba(74, 158, 255, 0.45); background: rgba(74, 158, 255, 0.16); }
+.nge-ch-play { min-width: 86px; }
+.nge-ch-speed { margin-left: auto; font-size: 12px; color: rgba(200, 215, 235, 0.8); display: flex; align-items: center; gap: 6px; }
+.nge-ch-speed select {
+  background: rgba(10, 18, 35, 0.9);
+  color: rgba(220, 230, 245, 0.95);
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font: inherit;
+}
+.nge-ch-note { margin-top: 8px; font-size: 12px; color: rgba(200, 215, 235, 0.65); }
+.nge-ch-legend { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12px; color: rgba(200, 215, 235, 0.85); }
+.nge-ch-legend[hidden] { display: none; }
+.nge-ch-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.nge-ch-legend { flex-direction: column; align-items: stretch; gap: 3px; }
+.nge-ch-legend-row { display: flex; align-items: center; gap: 6px; }

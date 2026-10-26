@@ -72,13 +72,21 @@ async function topEditors(startISO, endISO, n = 10) {
   // edit_log can be large — stream by user, group client-side. For a
   // typical week this is small enough to pull in one or two pages.
   // Filter to split/merge so it matches the leaderboard view.
-  const rows = await supabaseGet(
-    `edit_log?select=user_id,operation` +
-    `&timestamp=gte.${encodeURIComponent(startISO)}` +
-    `&timestamp=lt.${encodeURIComponent(endISO)}` +
-    `&operation=in.(split,merge)` +
-    `&limit=200000`,
-  );
+  // A page at a time: the server returns at most 1,000 rows a request, so
+  // "limit=200000" quietly stopped at 1,000 and the week's champions were
+  // picked from a sliver of it (found with Nseraf's report 250).
+  const rows = [];
+  for (let from = 0; from < 1000000; from += 1000) {
+    const page = await supabaseGet(
+      `edit_log?select=user_id,operation` +
+      `&timestamp=gte.${encodeURIComponent(startISO)}` +
+      `&timestamp=lt.${encodeURIComponent(endISO)}` +
+      `&operation=in.(split,merge)` +
+      `&order=timestamp.asc&offset=${from}&limit=1000`,
+    );
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
   const counts = new Map();
   for (const r of rows) {
     if (!r.user_id) continue;
