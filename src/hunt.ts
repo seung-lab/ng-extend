@@ -256,6 +256,19 @@ function huntEditGuard(kind: 'merge' | 'split', roots: string[]): string | null 
   return null;
 }
 
+/**
+ * A cell of a Hunt running now (or an admin's try of one). A Hunt made from a proofread cell's edits starts
+ * from an old ID, and the segment list's "update to the current ID" would show the finished cell: the answers.
+ */
+export function isLiveHuntCell(root: string): boolean {
+  const tried = huntState.test;
+  for (const h of [...huntState.hunts, ...(tried ? [tried] : [])]) {
+    if (!h?.cells?.length || !(h.test || phaseNow(h) === 'live')) continue;
+    if (h.cells.some(c => c.root === root)) return true;
+  }
+  return false;
+}
+
 function installEditGuard() {
   try { (window as any).__ngeEditGuard = huntEditGuard; } catch { /* */ }
 }
@@ -1064,12 +1077,18 @@ export function keyCandidates(): KeyCandidate[] {
   } catch { return []; }
 }
 
+/**
+ * The finished cell an admin can lay over a Hunt cell made from its edits (util/hunt_from_edits.ts). It is
+ * the answer, so it is never a Hunt cell and never in a Hunt's view.
+ */
+export const HUNT_PREVIEW_LAYER = 'Finished cell (only you see it)';
+
 /** The cells shown in the segmentation layers (hidden ones, marked "!", left out). */
 export function cellsOnScreen(): { root: string; label: string }[] {
   const out: { root: string; label: string }[] = [];
   try {
     for (const l of viewer()?.state?.toJSON?.()?.layers ?? []) {
-      if (!l || l.type !== 'segmentation' || !Array.isArray(l.segments)) continue;
+      if (!l || l.type !== 'segmentation' || !Array.isArray(l.segments) || l.name === HUNT_PREVIEW_LAYER) continue;
       for (const s of l.segments) {
         const id = String(s);
         if (/^\d{5,24}$/.test(id) && !out.some(c => c.root === id)) out.push({ root: id, label: '' });
@@ -1214,7 +1233,7 @@ export function readHuntFromScreen(keyLayers: { name: string; kind: KeyKind }[])
   const auto = meshEdgeSpots(cells.map(c => c.root), bounds);
   return {
     key: { layers, dims: state.dimensions, bounds_nm: bounds, auto_edges_nm: auto.spots },
-    view: state,
+    view: { ...state, layers: (state.layers ?? []).filter((l: any) => l?.name !== HUNT_PREVIEW_LAYER) },
     cells,
     dataset: canonicalDataset(currentDatasetTag()),
     autoEdges: auto,

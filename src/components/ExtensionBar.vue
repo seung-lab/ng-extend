@@ -16,6 +16,7 @@ import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
+import HuntPlacesBox from "components/HuntPlacesBox.vue";
 import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
@@ -494,6 +495,8 @@ watch(() => huntBackend.userId, async id => {
 // A reviewer opened an example from Admin Hub > Access requests: out of the
 // profile, into the view, with the review bar (AccessReviewBar).
 document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
+// Checking a Hunt's places in the viewer (HuntPlacesBox): the profile covers the view.
+document.addEventListener('nge:hunt-check', () => { showProfile.value = false; });
 // An admin opened a Proofreading Test try in the view (Admin Hub > Test tries).
 document.addEventListener('nge:test-review', () => { showProfile.value = false; showAccess.value = false; });
 /** Chat visibility persists across reloads so closing it stays closed.
@@ -1209,6 +1212,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <access-request-panel v-if="showAccess" @hide="showAccess = false" />
   <access-review-bar />
+  <hunt-places-box />
   <test-review-bar />
   <test-queue-card />
   <!-- Help requests now live in Cell Library's Help tab -->

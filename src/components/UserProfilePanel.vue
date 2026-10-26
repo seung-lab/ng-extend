@@ -357,6 +357,10 @@ onMounted(() => {
     // Back from a Proofreading Test try in the view (TestReviewBar).
     activeTab.value = 'adminHub';
     adminInitialSubTab.value = 'tests';
+  } else if (props.initialTab === 'hunts' && !viewingOtherUser.value) {
+    // Back from checking a Hunt's places in the view (HuntPlacesBox).
+    activeTab.value = 'adminHub';
+    adminInitialSubTab.value = 'hunts';
   } else if (props.initialTab === 'access' && !viewingOtherUser.value) {
     // Back from reviewing an access request in the view (AccessReviewBar).
     activeTab.value = 'adminHub';

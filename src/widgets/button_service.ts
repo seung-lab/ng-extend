@@ -138,6 +138,7 @@ import {useHelpRequestStore, useProofreadingBackendStore, useProofreadingQueueSt
 import {getRootFromSupervoxel, getSelectedSupervoxelId} from './pcg_service';
 import {startLinkForSegment, openStartLink} from '../util/start_link';
 import {isCurrentId, updateToCurrentId, currentIdsOf} from '../util/outdated_ids';
+import {isLiveHuntCell} from '../hunt';
 import {labSheetRowsFor, labSheetLines, labSheetSummary, type LabSheetRow} from '../util/lab_sheet';
 
 const br = () => document.createElement('br');
@@ -172,8 +173,10 @@ export class ButtonService {
     // cell a new ID, and an old one in the list kept looking fine. The old
     // lightbulb said so; this marks the button amber and the menu offers to
     // update it (Ames 2026-10-08).
+    // A Hunt cell made from a proofread cell's edits is an old ID on purpose: its
+    // current ID is the finished cell, so the Hunt's answers (docs/HUNT-FROM-EDITS.md).
     void isCurrentId(segmentIDString).then(current => {
-      if (current !== false) return;
+      if (current !== false || isLiveHuntCell(segmentIDString)) return;
       button.classList.add('nge-lb-outdated');
       button.title = 'This ID is out of date: the cell has been edited since. Click to update it.';
     });
@@ -528,7 +531,7 @@ export class ButtonService {
     });
     menu.appendChild(stale);
     void isCurrentId(segmentIDString).then(current => {
-      if (current !== false) return;
+      if (current !== false || isLiveHuntCell(segmentIDString)) return;
       stale.hidden = false;
       void currentIdsOf(segmentIDString).then(showCurrent);
     });

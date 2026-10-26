@@ -10,11 +10,13 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
+import HuntFromEdits from 'components/HuntFromEdits.vue';
 import { useProofreadingBackendStore } from '../store';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
 import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, meshEdgeSpots, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
+import { fromEdits, forgetFromEdits } from '../util/hunt_from_edits';
 import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
 
@@ -73,9 +75,12 @@ const keyPick = ref<Record<string, { on: boolean; kind: KeyKind }>>({});
 /** The hunt's cells with their somas (x, y, z as the coordinate bar shows them): players start at the first. */
 interface CellRow { root: string; label: string; soma: (number | '')[] }
 const cellRows = ref<CellRow[]>([]);
+/** A cell put on screen from a proofread cell's edits starts at its soma (HuntFromEdits.vue). */
+let startFromEdits: { root: string; soma: number[] } | null = null;
 function setCells(cells: { root: string; label: string; soma?: number[] }[]) {
   const was = new Map(cellRows.value.map(c => [c.root, c]));
-  cellRows.value = cells.map(c => ({ root: c.root, label: c.label || '', soma: c.soma && c.soma.length === 3 ? [...c.soma] : (was.get(c.root)?.soma ?? ['', '', '']) }));
+  cellRows.value = cells.map(c => ({ root: c.root, label: c.label || '',
+    soma: c.soma && c.soma.length === 3 ? [...c.soma] : startFromEdits?.root === c.root ? [...startFromEdits.soma] : (was.get(c.root)?.soma ?? ['', '', '']) }));
 }
 /** Paste "89245, 55709, 978" (or with spaces, as the coordinate bar copies it) into any box: all three fill (Ames 2026-10-21). */
 function pasteSoma(i: number, e: ClipboardEvent) {
@@ -146,8 +151,29 @@ async function refresh() {
   } finally { loading.value = false; }
 }
 onMounted(refresh);
+// Back from checking a cell's places in the viewer (HuntPlacesBox.vue): the editor as it was, read again,
+// since points may have been taken out or added meanwhile.
+onMounted(() => {
+  const was = fromEdits.editor;
+  if (!was || Date.now() - was.at > 6 * 3600 * 1000) { fromEdits.editor = null; return; }
+  fromEdits.editor = null;
+  editing.value = was.editing; form.value = was.form; read.value = was.read; board.value = was.board;
+  cellRows.value = was.cellRows; keyPick.value = was.keyPick; startFromEdits = was.start;
+  autoRead.value = true;
+  const again = () => { scan(); if (picked.value.length) useScreen(); };
+  setTimeout(again, 300); setTimeout(again, 1500);
+});
+/** Look at the places in the viewer: the Admin Hub covers it, so it closes and the editor waits in fromEdits. */
+function checkInViewer() {
+  const copy = (v: any) => (v == null ? v : JSON.parse(JSON.stringify(v)));
+  fromEdits.editor = { at: Date.now(), editing: copy(editing.value), form: copy(form.value), read: copy(read.value), board: copy(board.value),
+    cellRows: copy(cellRows.value), keyPick: copy(keyPick.value), start: copy(startFromEdits) };
+  fromEdits.checking = true;
+  document.dispatchEvent(new CustomEvent('nge:hunt-check'));
+}
 
 function startNew() {
+  forgetFromEdits();
   editing.value = { id: 0 } as AdminHunt;
   form.value = { ...blank(), announce: etDay(1, '15:00'), start: etDay(2, '15:00'), end: etDay(5, '15:00') };
   read.value = null; board.value = []; message.value = ''; error.value = '';
@@ -157,6 +183,7 @@ function startNew() {
 }
 
 async function open(h: AdminHunt) {
+  forgetFromEdits();
   busy.value = 'open'; error.value = ''; message.value = '';
   try {
     const full = await huntCall<AdminHunt & { board: BoardRow[] }>('hunt.read', { id: h.id });
@@ -177,7 +204,7 @@ async function open(h: AdminHunt) {
   finally { busy.value = ''; }
 }
 
-function close() { editing.value = null; read.value = null; board.value = []; message.value = ''; autoRead.value = false; void refresh(); }
+function close() { forgetFromEdits(); editing.value = null; read.value = null; board.value = []; message.value = ''; autoRead.value = false; void refresh(); }
 
 // The key reads itself (Ames 2026-10-21: "it's kind of confusing that I have to click
 // read from screen, shouldn't it be auto?"): for a new Hunt, or once a link is opened,
@@ -229,6 +256,18 @@ function openLink() {
   message.value = 'Opening the link. The ticked layers are read as soon as they are on screen.';
   autoRead.value = true;
   setTimeout(scan, 2500); setTimeout(scan, 6000);
+}
+
+/** The cell from a proofread cell's edits is on screen: read its places as a link's would be. */
+function fromEditsShown(v: { root: string; soma: number[] | null; places: number }) {
+  error.value = '';
+  startFromEdits = v.soma ? { root: v.root, soma: v.soma } : null;
+  const row = cellRows.value.find(c => c.root === v.root);
+  if (row && v.soma) row.soma = [...v.soma];
+  autoRead.value = true;
+  // Read now, even when the layers look as they did (another start, same counts): the cell is new.
+  const again = () => { scan(); if (picked.value.length) useScreen(); };
+  again(); setTimeout(again, 1500); setTimeout(again, 4000);
 }
 
 function useScreen() {
@@ -519,6 +558,7 @@ async function duplicate() {
           <input v-model="form.link" class="nge-hunts-input" placeholder="https://… #!…" aria-label="View link" />
           <button class="nge-hunts-btn" :disabled="!form.link.trim()" @click="openLink">Open the link</button>
         </div>
+        <HuntFromEdits :tolerance-um="Number(form.tolerance_um) || 3" @shown="fromEditsShown" @check="checkInViewer" />
         <ul class="nge-hunts-keylayers" aria-label="Layers with the places marked">
           <li v-if="!candidates.length" class="nge-hunts-muted">No annotation layer with points on screen yet.</li>
           <li v-for="c in candidates" :key="c.name" :class="{ 'nge-hunts-keylayer--on': keyPick[c.name]?.on }">
