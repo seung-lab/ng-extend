@@ -706,6 +706,7 @@ async function huntAction(action, args, ctx) {
   args = args || {};
   switch (action) {
     case 'hunt.current': return current(ctx);
+    case 'hunt.board': return liveBoard(args, ctx);
     case 'hunt.drop': return drop(args, ctx);
     case 'hunt.start': return startRun(args, ctx);
     case 'hunt.submit': fail(410, 'The Hunt now judges each gem as it lands. Reload Pyr for the new Hunt box.'); break;
@@ -731,6 +732,26 @@ async function getHunt(db, id) {
   const h = await db.hunt(posInt(id));
   if (!h) fail(404, 'No such Hunt.');
   return h;
+}
+
+/**
+ * The top ten of a running Hunt and nothing else, for the box to ask again while it runs (Ames
+ * 2026-10-26: each player saw only their own row move; Krzysztof's board had no row for her).
+ * The same rows as hunt.current gives while the Hunt runs, from far fewer reads.
+ */
+async function liveBoard(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (h.status !== 'scheduled' || (adminsOnly(h, ctx) && !ctx.isAdmin)) fail(404, 'No such Hunt.');
+  if (phase(h, now) !== 'live') fail(409, 'This Hunt is not running.');
+  const board = leaderboard(await db.submissions(h.id));
+  const top = board.slice(0, 10);
+  const mine = board.find((b) => b.user_id === me.id);
+  const names = await db.names([...new Set([...top.map((b) => b.user_id), me.id])]);
+  return {
+    id: h.id, rank: mine ? board.indexOf(mine) + 1 : 0,
+    board: top.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: null, you: b.user_id === me.id, fastest: false })),
+  };
 }
 
 /** The hunts a player can see, with their own result and the top ten. Ends any hunt whose time is up. */

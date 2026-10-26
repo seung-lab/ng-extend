@@ -90,7 +90,17 @@ async function go() {
 // ── While it runs: the gems ──
 const kinds = computed<GemKind[]>(() => (hunt.value ? gemKinds(hunt.value) : ['cut']));
 const opened = computed(() => onDataset.value && gems.value >= 0);
-function choose(k: GemKind) { if (hunt.value) pickKind(hunt.value, k); }
+function choose(k: GemKind) {
+  if (!hunt.value) return;
+  pickKind(hunt.value, k);
+  // The number keys work straight after a button: the keyboard goes back to the view.
+  try { (document.querySelector('.neuroglancer-rendered-data-panel') as HTMLElement | null)?.focus(); } catch { /* optional */ }
+}
+/** "Ctrl + Click drops a cut gem, for mergers. Press 3 to switch to Cut." (Ames 2026-10-26: "add in tooltip that you can press 3 or 4"). */
+function kindTitle(k: GemKind) {
+  const key = huntState.keys[k];
+  return `Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}.${key ? ` Press ${key} to switch to ${KIND[k].word}.` : ''}`;
+}
 const run = computed(() => hunt.value?.you);
 /** One pip per gem: gold while unused, gray once dropped (up to 30; beyond that, the number alone). */
 const pips = computed(() => {
@@ -297,9 +307,9 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span class="nge-hunt-slim-read" :title="`${run.gems_left} of ${run.budget} gems left`"><b :key="'g' + run.gems_left" class="nge-hunt-pop">{{ run.gems_left }}</b><small>{{ run.gems_left === 1 ? 'gem left' : 'gems left' }}</small></span>
           </div>
           <div v-if="opened && !run.done && (kinds.length > 1 || !huntPrefs.auto)" class="nge-hunt-slim-row">
-            <div v-if="kinds.length > 1" class="nge-hunt-kinds nge-hunt-kinds--slim" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
+            <div v-if="kinds.length > 1" class="nge-hunt-kinds nge-hunt-kinds--slim" :class="{ 'nge-hunt-kinds--fill': huntPrefs.auto }" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
               <button v-for="k in kinds" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': huntState.kind === k }]"
-                      role="radio" :aria-checked="huntState.kind === k" :title="`Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}`" @click="choose(k)">
+                      role="radio" :aria-checked="huntState.kind === k" :title="kindTitle(k)" @click="choose(k)">
                 <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
                 <span>{{ KIND[k].word }}</span>
               </button>
@@ -347,7 +357,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           <div v-if="!run.done" class="nge-hunt-controls">
             <div v-if="kinds.length > 1" class="nge-hunt-kinds" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
               <button v-for="k in kinds" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': huntState.kind === k }]"
-                      role="radio" :aria-checked="huntState.kind === k" :title="`Ctrl + Click drops a ${KIND[k].word.toLowerCase()} gem, for ${KIND[k].finds}`" @click="choose(k)">
+                      role="radio" :aria-checked="huntState.kind === k" :title="kindTitle(k)" @click="choose(k)">
                 <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
                 <span class="nge-hunt-kind-word">{{ KIND[k].word }}</span>
                 <span class="nge-hunt-kind-count">{{ run.found_by?.[k] ?? 0 }}<i>/{{ run.of_by?.[k] ?? 0 }}</i></span>
@@ -450,7 +460,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span class="nge-hunt-who">{{ b.name }}</span>
             <img v-if="b.fastest" src="hunt/fastest-128.png" class="nge-hunt-speedmark" title="Fastest" alt="Fastest" />
             <span v-if="b.tier && phase === 'ended'" class="nge-hunt-tierdot" :class="`nge-hunt-tierdot--${b.tier}`" :title="TIER_WORD[b.tier]"></span>
-            <span class="nge-hunt-found">{{ b.found }}/{{ hunt.target_count }}<span class="nge-hunt-gemcount"> · {{ b.gems }} {{ b.gems === 1 ? 'gem' : 'gems' }}</span></span>
+            <!-- While it runs, found only: no gem counts (Ames 2026-10-26); the results show them, as the medals count them -->
+            <span class="nge-hunt-found">{{ b.found }}/{{ hunt.target_count }}<span v-if="phase === 'ended'" class="nge-hunt-gemcount"> · {{ b.gems }} {{ b.gems === 1 ? 'gem' : 'gems' }}</span></span>
           </li>
         </ol>
       </section>
@@ -541,7 +552,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-slim-read i { font-style: normal; font-size: 11px; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-slim-read small { margin-left: 5px; font: 600 8.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
 .nge-hunt-slim-time { margin-left: auto; font: 600 11px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.7); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.nge-hunt-submit--slim { flex: 1 0 auto; padding: 5px 10px; font-size: 11px; }
+.nge-hunt-submit--slim { flex: 1 1 auto; min-width: 0; padding: 5px 10px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-hunt-btn--slim { flex: none; padding: 6px 10px; font-size: 11.5px; }
 .nge-hunt-slim-done { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-slim-done span { font: 500 11px 'Inter', sans-serif; letter-spacing: 0; text-transform: none; color: rgb(var(--hn-line) / 0.7); }
@@ -719,8 +730,11 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-kind:hover, .nge-hunt-kind:focus-visible { color: #fff; border-color: rgb(var(--k) / 0.7); }
 .nge-hunt-kind--on { color: #fff; background: rgb(var(--k) / 0.16); border-color: rgb(var(--k) / 0.9); box-shadow: 0 0 14px rgb(var(--k) / 0.28), inset 0 0 10px rgb(var(--k) / 0.12); }
 .nge-hunt-kind--on .nge-hunt-kind-count { color: #fff; }
-.nge-hunt-kinds--slim { flex: 1; min-width: 0; gap: 4px; }
-.nge-hunt-kinds--slim .nge-hunt-kind { padding: 4px 7px; font-size: 11.5px; border-radius: 8px; }
+/* Small box: Cut and Extend keep their words whole and Submit takes the rest (Ames 2026-10-26: "display bug",
+   the two were squeezed under each other beside Submit 1); with no Submit they share the row. */
+.nge-hunt-kinds--slim { flex: none; grid-template-columns: auto auto; gap: 4px; }
+.nge-hunt-kinds--slim.nge-hunt-kinds--fill { flex: 1; grid-template-columns: 1fr 1fr; }
+.nge-hunt-kinds--slim .nge-hunt-kind { padding: 4px 8px; font-size: 11.5px; border-radius: 8px; white-space: nowrap; }
 .nge-hunt-submit--alone { flex: 1 1 auto; }
 /* The check switch */
 .nge-hunt-switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: rgb(var(--hn-line) / 0.8); font-size: 12px; padding: 1px 2px; }

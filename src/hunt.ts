@@ -80,6 +80,8 @@ export const huntState = reactive({
   pending: null as null | { id: string; gem: GemKind; x?: number; y?: number; at: number },
   /** Which layer Ctrl + Click drops into: cut gems or extend gems. */
   kind: 'cut' as GemKind,
+  /** The number key that picks each gem layer (its place in the layer tabs), for the buttons' tooltips. */
+  keys: {} as Partial<Record<GemKind, number>>,
   /** Gems dropped and waiting for Submit (when each gem is not checked as it lands). */
   waiting: 0,
   loaded: false,
@@ -185,9 +187,29 @@ function scheduleRefresh() {
   refreshTimer = setTimeout(() => { void loadHunts(); }, wait);
 }
 
+/**
+ * The board again every half minute while a Hunt runs and this tab is in view (Ames 2026-10-26: every
+ * player saw their own row move and everyone else's stand still until the end). hunt.board reads the
+ * board alone, not every Hunt.
+ */
+let boardAt = 0, boardBusy = false;
+async function refreshBoard() {
+  const t = serverNow();
+  const h = huntState.hunts.find(x => !x.test && Date.parse(x.start_at) <= t && t < Date.parse(x.end_at));
+  if (!h || boardBusy || Date.now() - boardAt < 28_000 || (typeof document !== 'undefined' && document.hidden)) return;
+  boardBusy = true; boardAt = Date.now();
+  try {
+    const r = await huntCall<{ id: number; rank: number; board: HuntInfo['board'] }>('hunt.board', { id: h.id });
+    const copy = huntState.hunts.find(x => x.id === h.id);
+    if (copy && Array.isArray(r?.board)) { copy.board = r.board; if (copy.you) copy.you = { ...copy.you, rank: r.rank }; }
+  } catch { /* the next turn asks again */ }
+  finally { boardBusy = false; }
+}
+
 function startTicker() {
   if (ticker) return;
-  ticker = setInterval(() => { huntState.now = serverNow(); }, 1000);
+  ticker = setInterval(() => { huntState.now = serverNow(); void refreshBoard(); }, 1000);
+  try { document.addEventListener('visibilitychange', () => { if (!document.hidden) { boardAt = 0; void refreshBoard(); } }); } catch { /* no document */ }
 }
 
 /** The hunt the top bar shows: a running one first, then the next to start, then the latest to end. */
@@ -655,6 +677,41 @@ function hookPanels() {
   w.changed.add(() => {
     if (w.value && active && !huntPrefs.panels && lastCtrlAt && Date.now() - lastCtrlAt < 1500) w.value = false;
   });
+  // The Cut and Extend buttons follow the gem layer picked any way (Ames 2026-10-26: "the buttons in hunt
+  // should track my changes -- eg I am in Cut but the box shows extend"): its tab, or its number key.
+  // Going from one gem layer to the other leaves the side panel as the player has it, as the buttons do.
+  const sl = v.selectedLayer;
+  if (!sl?.changed) return;
+  let lastName: string | undefined = sl.layer?.name;
+  sl.changed.add(() => {
+    const name: string | undefined = sl.layer?.name;
+    if (name === lastName) return;
+    const fromGem = isGemLayer(lastName);
+    lastName = name;
+    const k = gemKindOf(name);
+    if (!k) return;
+    if (huntState.kind !== k) huntState.kind = k;
+    if (fromGem && !huntPrefs.panels) queueMicrotask(() => { if (sl.layer?.name === name && sl.visible) sl.visible = false; });
+  });
+}
+/** Which gem a layer holds in the open Hunt, if it is one of its gem layers. */
+function gemKindOf(name: unknown): GemKind | null {
+  if (!active || typeof name !== 'string') return null;
+  return gemKinds(active).find(k => huntLayerName(active!, k) === name) ?? null;
+}
+/** The buttons show the gem layer picked (a hook added late misses a change), and each gem layer's number key. */
+function followKind(h: HuntInfo) {
+  const v = viewer();
+  const k = gemKindOf(v?.selectedLayer?.layer?.name);
+  if (k && huntState.kind !== k) huntState.kind = k;
+  // The number keys pick a layer by its place in the tabs, 1 to 9; with Classic Layers (Settings) they show
+  // and hide it instead, so no key is offered then.
+  let classic = false;
+  try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true; } catch { /* default */ }
+  const tabs = classic ? [] : (v?.layerManager?.managedLayers ?? []).filter((l: any) => !l.archived).map((l: any) => l.name);
+  const keys: Partial<Record<GemKind, number>> = {};
+  for (const g of gemKinds(h)) { const i = tabs.indexOf(huntLayerName(h, g)); if (i >= 0 && i < 9) keys[g] = i + 1; }
+  if (JSON.stringify(keys) !== JSON.stringify(huntState.keys)) huntState.keys = keys;
 }
 /** Gems dropped but not sent yet (Submit mode). */
 const waiting: { id: string; kind: GemKind; x?: number; y?: number }[] = [];
@@ -768,6 +825,7 @@ export function startDropWatch() {
     edgeGlow(h);
     if (!h) return;
     hookPanels();
+    followKind(h);
     for (const kind of gemKinds(h)) {
       const src = managed(huntLayerName(h, kind))?.layer?.localAnnotations;
       if (!src) continue;
