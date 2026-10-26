@@ -70,6 +70,8 @@ export interface Place {
   user: string;
   /** The proofreader's points were further apart than the tolerance: check where the gem should go. */
   wide: boolean;
+  /** A cut: points along the whole piece cut off, nm (Ames 2026-10-26: a gem anywhere on the wrong branches finds it). */
+  cloud?: number[][];
 }
 
 /** Why edits were left out of a start's places: taken back, did not go through, a cut that separated nothing,
@@ -81,6 +83,42 @@ export const PAIRS_KEPT = 60;
 export const SESSION_GAP_MS = 60 * 60 * 1000;
 /** A piece this many level 2 chunks or fewer is a spine or a crumb, too small to hunt. */
 export const TINY_L2 = 1;
+/** The server's caps on a cut off piece's points (functions/hunts.js MAX_CLOUD_PTS, MAX_KEY_PTS). */
+export const MAX_CLOUD_PTS = 600;
+export const MAX_KEY_PTS = 3000;
+
+/** Every so many points, so a long list keeps its spread at the size allowed. */
+export function everyNth<T>(pts: T[], max: number): T[] {
+  if (pts.length <= max) return pts;
+  const step = pts.length / max;
+  return Array.from({ length: max }, (_, i) => pts[Math.floor(i * step)]);
+}
+
+/**
+ * Points no closer than spacingNm to one another, in integer nm: every point left out is within spacingNm
+ * of one kept. The graph's level 2 points along a branch are about 1 µm apart (at most ~5 µm), so a gem
+ * anywhere on the branch is within spacing + about 1 µm of a kept one. Then at most max, spread out.
+ */
+export function thinPoints(pts: number[][], spacingNm: number, max = MAX_CLOUD_PTS): number[][] {
+  const cell = Math.max(1, spacingNm);
+  const grid = new Map<string, number[][]>();
+  const keyOf = (q: number[]) => q.map(v => Math.floor(v / cell));
+  const kept: number[][] = [];
+  for (const raw of pts) {
+    if (!Array.isArray(raw) || raw.length < 3 || !raw.slice(0, 3).every(Number.isFinite)) continue;
+    const q = raw.slice(0, 3).map(v => Math.round(v));
+    const [i, j, k] = keyOf(q);
+    let near = false;
+    for (let a = -1; a <= 1 && !near; a++) for (let b = -1; b <= 1 && !near; b++) for (let c = -1; c <= 1 && !near; c++) {
+      for (const o of grid.get(`${i + a},${j + b},${k + c}`) ?? []) if (dist(o, q) < spacingNm) { near = true; break; }
+    }
+    if (near) continue;
+    kept.push(q);
+    const g = `${i},${j},${k}`;
+    (grid.get(g) ?? grid.set(g, []).get(g)!).push(q);
+  }
+  return everyNth(kept, max);
+}
 
 /** JSON with every long number turned into text first: the ids are 18 digits and JSON numbers would round them. */
 export function parseBigJson(text: string): any {
@@ -211,7 +249,8 @@ export function visibleIn(e: CellEdit, rootOf: Map<string, string>, R: string): 
  * (two of a kind that close would need two gems on one spot). pieceL2: each edit's piece size, by op id
  * (unknown sizes are kept). Also how many each rule dropped.
  */
-export function placesFor(edits: CellEdit[], from: number, visible: Set<number>, pieceL2: Map<number, number>, tolNm: number, tinyL2 = TINY_L2): { places: Place[]; dropped: Dropped } {
+export function placesFor(edits: CellEdit[], from: number, visible: Set<number>, pieceL2: Map<number, number>, tolNm: number, tinyL2 = TINY_L2,
+  clouds: Map<number, number[][]> = new Map()): { places: Place[]; dropped: Dropped } {
   const dropped: Dropped = { undone: 0, failed: 0, idle: 0, hidden: 0, tiny: 0, closeCut: 0, closeMerge: 0 };
   const places: Place[] = [];
   for (const e of edits.slice(from)) {
@@ -223,7 +262,8 @@ export function placesFor(edits: CellEdit[], from: number, visible: Set<number>,
     if (l2 != null && l2 <= tinyL2) { dropped.tiny++; continue; }
     if (!e.nm.every(Number.isFinite)) { dropped.hidden++; continue; }
     if (places.some(p => p.kind === e.kind && dist(p.nm, e.nm) < tolNm)) { if (e.kind === 'cut') dropped.closeCut++; else dropped.closeMerge++; continue; }
-    places.push({ kind: e.kind, nm: e.nm, op: e.op.id, at: e.op.at, user: e.op.user, wide: e.gapNm > tolNm });
+    const cloud = e.kind === 'cut' ? clouds.get(e.op.id) : undefined;
+    places.push({ kind: e.kind, nm: e.nm, op: e.op.id, at: e.op.at, user: e.op.user, wide: e.gapNm > tolNm, ...(cloud?.length ? { cloud } : {}) });
   }
   return { places, dropped };
 }

@@ -1091,9 +1091,21 @@ export interface KeyCandidate { name: string; points: number }
 export function keyCandidates(): KeyCandidate[] {
   try {
     const layers: any[] = viewer()?.state?.toJSON?.()?.layers ?? [];
+    // Points labelled with one place number ("#3", a cut off piece from a proofread cell) are one place.
+    const places = (anns: any[]) => {
+      const tags = new Set<string>();
+      let n = 0;
+      for (const a of anns) {
+        if (!a || !['point', 'ellipsoid', 'line', 'axis_aligned_bounding_box'].includes(a.type)) continue;
+        const tag = a.type === 'point' && /^#\d{1,4}$/.test(String(a.description ?? '').trim()) ? String(a.description).trim() : '';
+        if (tag) { if (tags.has(tag)) continue; tags.add(tag); }
+        n++;
+      }
+      return n;
+    };
     return layers.filter(l => l && l.type === 'annotation')
       // Points, and places with an area: ellipsoids, lines and boxes (Ames 2026-10-26).
-      .map(l => ({ name: String(l.name), points: (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && ['point', 'ellipsoid', 'line', 'axis_aligned_bounding_box'].includes(a.type)).length }))
+      .map(l => ({ name: String(l.name), points: places(Array.isArray(l.annotations) ? l.annotations : []) }))
       .filter(c => c.points > 0).sort((a, b) => b.points - a.points);
   } catch { return []; }
 }

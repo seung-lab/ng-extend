@@ -15,7 +15,7 @@ onUnmounted(() => clearInterval(timer));
 const day = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 const cuts = computed(() => rows.value.filter(r => r.kind === 'cut').length);
 function go(r: PlaceRow) { fromEdits.selected = r.id; goToPlace(r.at); }
-function drop(r: PlaceRow) { removePlace(r.kind, r.id); rows.value = placeRows(); }
+function drop(r: PlaceRow) { removePlace(r.kind, r.ids); rows.value = placeRows(); }
 </script>
 
 <template>
@@ -33,6 +33,7 @@ function drop(r: PlaceRow) { removePlace(r.kind, r.id); rows.value = placeRows()
           <span class="nge-hpl-xyz">{{ r.at.join(', ') }}</span>
           <span v-if="r.place" class="nge-hpl-sub">{{ r.kind === 'cut' ? 'Cut' : 'Joined' }} {{ day(r.place.at) }}<template v-if="r.place.user"> by {{ r.place.user }}</template></span>
           <span v-else class="nge-hpl-sub">Added by you</span>
+          <span v-if="r.ids.length > 1" class="nge-hpl-sub" :title="`A gem anywhere on the piece cut off finds this merger (${r.ids.length} points along it)`">Anywhere on the piece cut off ({{ r.ids.length }} points)</span>
           <span v-if="r.place?.wide" class="nge-hpl-warn">The cut's points were far apart: check where the merger is.</span>
         </span>
         <button type="button" class="nge-hpl-x" aria-label="Take this place out" title="Take this place out" @click.stop="drop(r)">×</button>

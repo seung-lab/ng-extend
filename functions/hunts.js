@@ -27,6 +27,16 @@ const DEFAULT_TOLERANCE_NM = 3000;
 const DEFAULT_MAX_SUBMISSIONS = 10;
 const MIN_POINTS = 10;
 const MAX_TARGETS = 200;
+// A place made from a proofread cell's cut is the whole piece cut off, as points along it (a cloud). The key
+// is read on every gem and every hunt.current (Supabase egress), so the points are capped.
+const MAX_CLOUD_PTS = 600;
+const MAX_KEY_PTS = 3000;
+/** Every so many points, so a long list keeps its spread at the size allowed. */
+function everyNth(pts, max) {
+  if (pts.length <= max) return pts;
+  const step = pts.length / max;
+  return Array.from({ length: max }, (_, i) => pts[Math.floor(i * step)]);
+}
 const MAX_CELLS = 20;
 const SHOW_ENDED_DAYS = 7;
 const DEFAULT_RESULTS_HOURS = 24;   // "Hunt results" in the top bar this long after the end
@@ -100,6 +110,8 @@ function layerPointsNm(layer, dims) { return layerPoints(layer, dims).map((p) =>
  * (Ames 2026-10-26: "large surface area missed extensions or merge origins - this is marked but the hunt
  * didn't credit players bc the surface area is too large"): an ellipsoid { r: radii }, a line { a, b } or a
  * box { lo, hi }, all in nm. A gem counts within the tolerance of the shape, so anywhere inside it.
+ * Points labelled with the same place number, "#3", are one place: the first is its middle and the rest
+ * are a cloud { pts } (a Hunt made from a proofread cell marks a cut by the whole piece cut off).
  */
 function layerPlaces(layer, dims) {
   if (!layer || typeof layer !== 'object') fail(400, 'No annotation layer was sent.');
@@ -113,9 +125,19 @@ function layerPlaces(layer, dims) {
   const nm = (v) => (Array.isArray(v) ? ix.map((i) => Math.round(Number(v[i]) * axes[i].nmPer)) : null);
   const ok = (p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
   const out = [];
+  const groups = new Map();
   for (const a of Array.isArray(layer.annotations) ? layer.annotations : []) {
     if (!a || typeof a !== 'object') continue;
-    if (a.type === 'point') { const p = nm(a.point); if (ok(p)) out.push({ nm: p }); continue; }
+    if (a.type === 'point') {
+      const p = nm(a.point);
+      if (!ok(p)) continue;
+      const g = typeof a.description === 'string' && /^#\d{1,4}$/.test(a.description.trim()) ? a.description.trim() : '';
+      const pl = g ? groups.get(g) : null;
+      if (pl) { (pl.shape || (pl.shape = { pts: [] })).pts.push(p); continue; }
+      out.push({ nm: p });
+      if (g) groups.set(g, out[out.length - 1]);
+      continue;
+    }
     if (a.type === 'ellipsoid') {
       const c = nm(a.center), r = nm(a.radii);
       if (ok(c) && ok(r)) out.push({ nm: c, shape: { r: r.map((v) => Math.max(1, Math.abs(v))) } });
@@ -128,6 +150,7 @@ function layerPlaces(layer, dims) {
       out.push({ nm: mid, shape: a.type === 'line' ? { a: A, b: B } : { lo: A.map((v, i) => Math.min(v, B[i])), hi: A.map((v, i) => Math.max(v, B[i])) } });
     }
   }
+  for (const pl of out) if (pl.shape && Array.isArray(pl.shape.pts)) pl.shape.pts = everyNth(pl.shape.pts, MAX_CLOUD_PTS);
   return out;
 }
 
@@ -135,6 +158,11 @@ function layerPlaces(layer, dims) {
 function placeDist(t, p) {
   const s = t && t[4];
   if (s && typeof s === 'object') {
+    if (Array.isArray(s.pts)) {
+      let d = dist(t, p);
+      for (const q of s.pts) if (Array.isArray(q)) d = Math.min(d, dist(q, p));
+      return d;
+    }
     if (Array.isArray(s.r)) {
       const q = [0, 1, 2].map((i) => (p[i] - t[i]) / Math.max(1, s.r[i]));
       const n = Math.hypot(q[0], q[1], q[2]);
@@ -181,6 +209,10 @@ function keyTargets(key) {
     const kind = part && part.kind === 'merge' ? 'merge' : 'cut';
     for (const pl of layerPlaces(part && part.layer, key.dims)) out.push(pl.shape ? [pl.nm[0], pl.nm[1], pl.nm[2], kind, pl.shape] : [pl.nm[0], pl.nm[1], pl.nm[2], kind]);
   }
+  // At most MAX_KEY_PTS cloud points in all: each cloud keeps its share, spread along it.
+  const clouds = out.filter((t) => t[4] && Array.isArray(t[4].pts));
+  const total = clouds.reduce((n, t) => n + t[4].pts.length, 0);
+  if (total > MAX_KEY_PTS) for (const t of clouds) t[4] = { pts: everyNth(t[4].pts, Math.max(1, Math.floor((t[4].pts.length * MAX_KEY_PTS) / total))) };
   return out;
 }
 
@@ -1066,7 +1098,9 @@ async function addPlace(h, nm, kind, ctx, radius = 0) {
   if (radius > 0) {
     const same = targets.findIndex((t) => kindOf(t) === k && placeDist(t, nm) <= tol);
     if (same >= 0) {
-      const next = targets.map((t, i) => (i === same ? place : t));
+      // A place that is a whole cut off piece (a cloud) keeps its points, and the spot joins them.
+      const cloudAt = (t) => t[4] && Array.isArray(t[4].pts);
+      const next = targets.map((t, i) => (i !== same ? t : cloudAt(t) ? [t[0], t[1], t[2], t[3], { pts: [...t[4].pts, nm.map((v) => Math.round(v))].slice(-MAX_CLOUD_PTS) }] : place));
       await db.setKey(h.id, next);
       const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
       const r = await rescore({ id: h.id }, ctx);

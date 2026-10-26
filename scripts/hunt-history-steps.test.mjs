@@ -9,7 +9,7 @@ import module from 'node:module';
 const strip = module.stripTypeScriptTypes;
 const load = () => {
   const js = strip(fs.readFileSync(new URL('../src/util/hunt_history_steps.ts', import.meta.url), 'utf8')).replace(/^export /gm, '');
-  return new Function(js + ';return {parseBigJson, parseHistory, parseDetails, undoneOps, cellEdits, sessionStarts, sessionSupervoxels, visibleIn, placesFor, SESSION_GAP_MS};')();
+  return new Function(js + ';return {parseBigJson, parseHistory, parseDetails, undoneOps, cellEdits, sessionStarts, sessionSupervoxels, visibleIn, placesFor, thinPoints, everyNth, SESSION_GAP_MS};')();
 };
 const H = load();
 
@@ -142,4 +142,23 @@ test('places: what is dropped, and one per kind within the tolerance', () => {
   assert.deepEqual(dropped, { undone: 1, failed: 1, idle: 1, hidden: 1, tiny: 1, closeCut: 1, closeMerge: 1 });
   // From a later start only the later edits count.
   assert.deepEqual(H.placesFor(edits, 5, visible, sizes, 3000).places.map(p => p.op), [7, 10]);
+});
+
+test('a cut off piece: its points thinned to a gem\'s reach, capped, and on the cut\'s place', () => {
+  // Points along a branch 1 µm apart, 50 µm long: at 2 µm spacing every other one stays.
+  const line = Array.from({ length: 51 }, (_, i) => [i * 1000, 0, 0]);
+  const kept = H.thinPoints(line, 2000);
+  assert.equal(kept.length, 26);
+  assert.ok(line.every(p => kept.some(q => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < 2000)), 'every point is near one kept');
+  assert.ok(kept.every(q => q.every(Number.isInteger)));
+  assert.deepEqual(H.thinPoints([[0.4, 0.6, 1.5], [NaN, 0, 0], [5000, 0, 0]], 2000), [[0, 1, 2], [5000, 0, 0]]);
+  // At most the cap, spread from end to end.
+  const capped = H.thinPoints(Array.from({ length: 900 }, (_, i) => [i * 3000, 0, 0]), 2000, 600);
+  assert.equal(capped.length, 600);
+  assert.deepEqual([capped[0][0], capped[599][0]], [0, Math.floor(599 * 1.5) * 3000]);
+  // The cloud rides on the cut's place, never on a join's.
+  const e = (id, kind, nm) => ({ op: { id, at: id, user: 'u' }, prev: S0, kind, pairs: [], nm, gapNm: 500, undone: false, failed: false, idle: false, piece: [] });
+  const clouds = new Map([[1, [[100, 0, 0], [200, 0, 0]]], [2, [[9, 9, 9]]]]);
+  const { places } = H.placesFor([e(1, 'cut', [0, 0, 0]), e(2, 'merge', [50000, 0, 0])], 0, new Set([1, 2]), new Map(), 3000, 1, clouds);
+  assert.deepEqual(places.map(p => p.cloud ?? null), [[[100, 0, 0], [200, 0, 0]], null]);
 });
