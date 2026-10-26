@@ -1123,11 +1123,13 @@ async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
   // mid-day. The list is served from the server's five minute copy, so these
   // reads cost the sheet nothing; they get limits of their own.
   const QUEST_READS = prefix === "read:quests";
+  // Beta access from connectome.quest (Ames 2026-10-26): a person asks once.
+  const VISITOR = prefix === "visitor:beta";
   // Players: 60 a minute, 5,000 a day (Ames 2026-10-24: "players don't need
   // that high of a limit"). Admins get the bigger allowance below.
   // Admins get far more room (Ames 2026-10-24: "you can give me a higher
   // allowance than regular users"): triage, the To do board and tests add up.
-  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : RL_TIERS.anon;
+  const tier = prefix.startsWith("write:") && admin ? {perMin:600,perDay:200000} : prefix.startsWith("write:") ? {perMin:60,perDay:5000} : QUEST_READS ? {perMin:30,perDay:2000} : VISITOR ? {perMin:2,perDay:5} : RL_TIERS.anon;
   const id = crypto.createHash("sha256").update(clientIp(req)).digest("hex");
   // Signed in writes count per person only (Ames 2026-10-24: "Please wait
   // before sending another change" on the triage board and the Cell
@@ -1144,7 +1146,7 @@ async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
       const now=Date.now(), next=[];
       for(let i=0;i<refs.length;i++) {
         const d=snapshots[i].exists?snapshots[i].data():{};
-        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : {perMin:60,perDay:1500}) : tier;
+        const limits=i ? (prefix.startsWith("write:") ? {perMin:300,perDay:20000} : QUEST_READS ? {perMin:600,perDay:50000} : VISITOR ? {perMin:10,perDay:200} : {perMin:60,perDay:1500}) : tier;
         const minute=now-(d.minStart||0)>=60000, day=now-(d.dayStart||0)>=86400000;
         const minCount=minute?0:(d.minCount||0), dayCount=day?0:(d.dayCount||0);
         if(minCount>=limits.perMin || dayCount>=limits.perDay) {
@@ -2251,7 +2253,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-24-beta-access-1";
+const EW_ACCESS_CODE_VERSION = "2026-10-26-visitor-beta-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2275,14 +2277,46 @@ async function postAccessRequestToSlack(token, { name, email, tries, eyewireUser
   }
   if (!r.ok) throw new Error(r.error || "slack post failed");
 }
+// Every admin's user id, for a bell to all of them.
+async function adminUserIds(sb) {
+  const emails = (await sb("admins?select=email")).map((r) => String(r.email || "").replace(/[",()]/g, "")).filter(Boolean);
+  if (!emails.length) return [];
+  const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(emails.map((e) => `"${e}"`).join(",")) + ")");
+  return people.map((p) => p.id);
+}
+// The connectome.quest Access page asks for beta access here too, with no
+// Pyr sign in (Ames 2026-10-26), so this one function takes that address.
+const ACCESS_ORIGINS = [...EW_ORIGINS, /^https:\/\/(www\.)?connectome\.quest$/];
+async function visitorBetaRequest(req, res, args) {
+  if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long. Please shorten your note." });
+  if (!(await rateLimit(req, false, "visitor:beta")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
+  const sb = ewSb(ewServiceKey.value().trim());
+  try {
+    const data = await require("./access-request").visitorBeta(args, { sb,
+      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
+      notifyAdmins: async ({ title, body }) => {
+        const rows = (await adminUserIds(sb)).map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500),
+          target_type: "user", target_id: id, send_at: new Date().toISOString(), created_by: null }));
+        if (rows.length) await sb("notifications", { method: "POST", body: JSON.stringify(rows) });
+      },
+    });
+    res.json({ ok: true, data });
+  } catch (e) {
+    if (e.status) { res.status(e.status).json({ error: e.message }); return; }
+    console.warn("[visitorBeta]", e.message);
+    res.status(500).json({ error: "That did not go through. Please try again." });
+  }
+}
 exports.ewAccessRequest = onRequest(
   // EW_CAVE_TOKEN (Ames's, a CAVE superadmin): Grant edit access adds the
   // player to Eyewire_2_Edit, group 203 (Ames 2026-10-16).
-  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  { region: "us-central1", secrets: [ewServiceKey, slackBotToken, ewCaveToken], cors: ACCESS_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
     if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
     const { action, token, ...args } = req.body || {};
+    // A visitor to connectome.quest, not signed in to Pyr.
+    if (action === "access.visitorBeta") return visitorBetaRequest(req, res, args);
     if (action === "health") {
       const probe = ewSb(ewServiceKey.value().trim());
       try { await probe("admins?select=id&limit=1"); }
@@ -2315,12 +2349,7 @@ exports.ewAccessRequest = onRequest(
           await note(people.map((p) => p.id), title, body, image);
         },
         // Beta access requests reach every admin (Ames 2026-10-24).
-        notifyAdmins: async ({ title, body, image }) => {
-          const emails = (await sb("admins?select=email")).map((r) => String(r.email || "").replace(/[",()]/g, "")).filter(Boolean);
-          if (!emails.length) return;
-          const people = await sb("users?select=id&middleauth_email=in.(" + encodeURIComponent(emails.map((e) => `"${e}"`).join(",")) + ")");
-          await note(people.map((p) => p.id), title, body, image);
-        },
+        notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
         // Add a player to Eyewire_2_Edit. 422 means already a member: as good.

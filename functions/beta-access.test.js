@@ -64,7 +64,8 @@ test('the request: one triage report, one bell to every admin, one Slack post', 
   assert.match(r.message, /Their note: I proofread on EyeWire for years\./);
   assert.strictEqual(w.told.length, 1);
   assert.ok(w.told[0].title.startsWith(BETA_BELL + ' from New Player'), w.told[0].title);
-  assert.doesNotMatch(w.told[0].body, /proofread on EyeWire/, 'the note stays on the triage card');
+  // The note is in the bell too (Ames 2026-10-26: "Note from beta request should appear here").
+  assert.match(w.told[0].body, /Their note:\n\nI proofread on EyeWire for years/);
   assert.strictEqual(w.posted.length, 1);
   for (const t of [r.title, r.message, w.told[0].title, w.told[0].body]) assert.doesNotMatch(t, /[–—]/);
 });
@@ -113,12 +114,14 @@ test('injection: markup, links, Slack pings and fake emails are refused', async 
 test('the bell draws no link, tag or emphasis from what a player typed', async () => {
   if (!marked) { assert.fail('marked not found in node_modules: cannot check the bell'); return; }
   const w = world();
-  await handle('access.beta', {name: "Mary O'Neil-Smith", email: 'mary_o.neil+pyr@example.co.uk', note: '<script>alert(1)</script> [x](https://evil.example)'}, w.io());
+  await handle('access.beta', {name: "Mary O'Neil-Smith", email: 'mary_o.neil+pyr@example.co.uk', note: '<script>alert(1)</script> [x](https://evil.example)\nwww.evil.example **loud** <!channel>'}, w.io());
   const html = marked.parse(w.told[0].body, {gfm: true, breaks: true, async: false});
   assert.doesNotMatch(html, /<a |<em>|<strong>|<script|<img|mailto:/i, html);
   assert.match(html, /Mary O&#39;Neil-Smith asks to join/, html);
   assert.match(html, /mary_o\.neil\+pyr@example\.co\.uk/, html);
-  // The note, with its markup, is only on the triage card (shown as text there).
+  // The note shows in the bell as the words typed, never as markup.
+  assert.match(html, /Their note:/, html);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/, html);
   assert.match(w.issues[0].message, /<script>alert\(1\)<\/script>/);
 });
 

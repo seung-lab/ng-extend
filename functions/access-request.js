@@ -396,6 +396,8 @@ async function decide(args, {sb, me, isAdmin, notifyPlayer, grantCave}) {
 //   access.beta        a player not on the list: send the request.
 const BETA_CATEGORY = 'Beta access';
 const BETA_BELL = '🔑 Beta access request';
+// Clicking the bell opens Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26).
+const LET_IN = 'Click this note, then Let them in.';
 async function betaRequested(sb, me) {
   if (!me) return false;
   const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id) + '&select=id&limit=1');
@@ -422,6 +424,9 @@ function betaEmail(value) {
   if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(email)) fail(400, 'That email does not look right.');
   return email;
 }
+/** The player's note for the bell (Ames 2026-10-26: "Note from beta request
+ *  should appear here"), every line escaped so it shows as plain text. */
+const noteForBell = note => note ? '\n\nTheir note:\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
 /** Text for a markdown note: every markdown character escaped. */
 const mdText = s => String(s).replace(/[\\`*_{}\[\]()#+\-.!|<>~&:@]/g, c => '\\' + c);
 async function beta(a, io) {
@@ -434,21 +439,67 @@ async function beta(a, io) {
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  // One email when the two match (Ames 2026-10-26: "we don't need the email twice").
+  const same = email === signIn;
   const message = [
     `${name} asks to join the Pyr beta.`,
-    `Email they gave: ${email}`,
-    `Sign in email: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
+    same ? '' : `Email they gave: ${email}`,
+    `${same ? 'Email' : 'Sign in email'}: ${signIn}. To let them in, add this one under Admin Hub, Pilot testers.`,
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
   const title = `Beta access request from ${name}`.slice(0, 120);
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, user_id: io.me.id, user_name: name}])});
   // The report is the record; the bell and the post only tell people.
-  const bell = `${mdText(name)} asks to join the Pyr beta.\n\nEmail they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}\n\nTo let them in, add the sign in email under Admin Hub, Pilot testers.`
-    + (note ? ' Their note is on the triage board.' : '');
+  const bell = `${mdText(name)} asks to join the Pyr beta.\n\n`
+    + (same ? `Email: ${mdText(signIn)}` : `Email they gave: ${mdText(email)}\n\nSign in email: ${mdText(signIn)}`)
+    + `\n\n${LET_IN}`
+    + noteForBell(note);
   // Every admin's Admin tab (Ames 2026-10-24: "yes to all admins").
   try { await (io.notifyAdmins || io.notifyReviewers)({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
   return {invited: false, requested: true};
+}
+
+// ── Beta access from connectome.quest (Ames 2026-10-26) ─────────────────
+// "update connectome.quest with a request early access thing". A visitor to
+// the site's Access page has no Pyr sign in yet, only a name and an email,
+// so this is access.beta without the sign in: the same report on the triage
+// board, bell to every admin and Slack post, marked as from the site. The
+// email they gave is the one an admin adds under Pilot testers, so they must
+// sign in to Pyr with it. Served by ewAccessRequest as action
+// "access.visitorBeta", before its sign in check; the body size and a per
+// address rate limit are there. Here: the same hard checks as access.beta, a
+// hidden field (website) that only a bot fills, and one request per email.
+const SITE = 'connectome.quest';
+async function visitorBetaRequested(sb, email) {
+  // Any Beta access report already naming this email, from the site or the game.
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY)
+    + '&message=ilike.' + encodeURIComponent('*' + email.replace(/[*%,()]/g, '') + '*') + '&select=id&limit=1');
+  return Array.isArray(rows) && rows.length > 0;
+}
+async function visitorBeta(args, io) {
+  const a = args && typeof args === 'object' ? args : {};
+  // A bot that filled the hidden field is told it worked, and nothing happens.
+  if (a.website) return {requested: true};
+  const name = betaName(a.name);
+  const email = betaEmail(a.email);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  if (a.agree !== true) fail(400, 'Please tick the box to say you agree to the community principles.');
+  if (await visitorBetaRequested(io.sb, email)) return {requested: true, already: true};
+  const message = [
+    `${name} asks to join the Pyr beta, from ${SITE}.`,
+    `Email they gave: ${email}. They have not signed in to Pyr yet. To let them in, add this email under Admin Hub, Pilot testers, and tell them to sign in with it.`,
+    'They agreed to the community principles.',
+    note ? `Their note: ${note}` : '',
+  ].filter(Boolean).join('\n');
+  const title = `Beta access request from ${name} (${SITE})`.slice(0, 120);
+  const url = `https://${SITE}/access.html`;
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: BETA_CATEGORY, title, message, url, user_id: null, user_name: name}])});
+  const bell = `${mdText(name)} asks to join the Pyr beta, from ${mdText(SITE)}.\n\nEmail they gave: ${mdText(email)}\n\nThey have not signed in to Pyr yet. ${LET_IN} Then email them to sign in with this address.`
+    + noteForBell(note);
+  try { await io.notifyAdmins({title: `${BETA_BELL} from ${name}`, body: bell}); } catch (e) { console.warn('[beta] bell failed', e && e.message); }
+  try { if (io.postIssue) await io.postIssue({title, message, category: BETA_CATEGORY, user: name, url}); } catch (e) { console.warn('[beta] slack failed', e && e.message); }
+  return {requested: true};
 }
 
 async function handle(action, args, io) {
@@ -467,4 +518,4 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, cleanExample, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
+module.exports = {handle, visitorBeta, cleanExample, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
