@@ -276,7 +276,8 @@ export async function showSession(h: CellHistory, s: SessionOption): Promise<voi
     for (const [name, kind] of kinds) {
       if (managed(name)) continue;
       const ml = makeLayer(v.layerSpecification, name, {
-        type: 'annotation', source: { url: 'local://annotations' }, tool: 'annotatePoint', annotationColor: PLACE_COLOR[kind], pointSize: 6, onTop: true,
+        // Size 1, the normal point (Ames 2026-10-26: at 6 the gems hid the cell); the layer's Size slider changes it.
+        type: 'annotation', source: { url: 'local://annotations' }, tool: 'annotatePoint', annotationColor: PLACE_COLOR[kind], pointSize: 1, onTop: true,
         annotations: numbered.filter(x => x.p.kind === kind).map(x => ({ type: 'point', id: placeId(x.p), point: toVox(x.p.nm), description: String(x.n) })),
       });
       v.layerSpecification.add(ml);
