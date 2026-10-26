@@ -394,11 +394,17 @@ function cellVertices(root: string): { verts: Float32Array[]; pieces: number; lo
  * bottom of the stack. Neighbouring parts are one place: one spot each, in
  * nanometres. `pieces`/`loaded`: the cell's mesh pieces in all, and on hand.
  */
+let lastEdgeStats: any = null;
+try { (window as any).__ngeMecEdgeDebug = () => lastEdgeStats; } catch { /* no window */ }
 export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, reachNm = 2000, binNm = 2000, everySections = 20,
                                     stillWanted: () => boolean = () => true,
                                     onProgress?: (done: number, total: number) => void): Promise<{ spots: number[][]; pieces: number; loaded: number }> {
   const { verts, pieces, loaded } = cellVertices(root);
   const out = { spots: [] as number[][], pieces, loaded };
+  // What happened at each step, for window.__ngeMecEdgeDebug().
+  const st = { parts: 0, partsAtTopOrBottom: 0, sections: 0, unknownTiles: 0, zeroNear: 0, looksOutside: 0, rejectedByNeighbours: 0, marked: 0,
+    cellUm: null as string[] | null, maskZ: [] as number[] };
+  lastEdgeStats = st;
   if (!loaded) return out;
   const { resNm, tile, size } = MEC_IMAGE_MASK;
   // The cell in 2 um parts: the middle of each part's vertices.
@@ -416,7 +422,8 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
   const bySection = new Map<number, typeof bins extends Map<string, infer B> ? B[] : never>();
   for (const b of bins.values()) {
     b.x /= b.n; b.y /= b.n; b.z /= b.n;
-    if (zBoundsNm && (b.z - zBoundsNm[0] <= EDGE_NM || zBoundsNm[1] - b.z <= EDGE_NM)) { b.edge = true; continue; }
+    st.parts++;
+    if (zBoundsNm && (b.z - zBoundsNm[0] <= EDGE_NM || zBoundsNm[1] - b.z <= EDGE_NM)) { b.edge = true; st.partsAtTopOrBottom++; continue; }
     const s = Math.round(b.z / resNm[2] / everySections) * everySections;
     const list = bySection.get(s);
     if (list) list.push(b); else bySection.set(s, [b]);
@@ -464,7 +471,7 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
           const x = px + dx, y = py + dy;
           if (x < 0 || y < 0 || x >= size[0] || y >= size[1]) { touches = [Math.max(0, Math.min(x, size[0] - 1)), Math.max(0, Math.min(y, size[1] - 1))]; break; }
           const t = tiles.get(`${Math.floor(x / tile)},${Math.floor(y / tile)}`);
-          if (!t) continue;   // nothing known here
+          if (!t) { st.unknownTiles++; continue; }   // nothing known here
           if (t[(y % tile) * tile + (x % tile)] !== 0) continue;
           // Is this the outside, or a hole in the tissue?
           const ok = `${s},${x},${y}`;
@@ -473,6 +480,7 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
             isOut = emptyShare(tiles, x, y, W, STEP) >= EMPTY;
             outside.set(ok, isOut);
           }
+          st.zeroNear++;
           if (isOut) { touches = [x, y]; break; }
         }
         if (touches) found.push({ b, x: touches[0], y: touches[1] });
@@ -494,7 +502,8 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
           if (![...near.values()].some(Boolean)) continue;   // nothing known there
           if (emptyShare(near, f.x, f.y, W, STEP) < EMPTY) { agree = false; break; }
         }
-        if (agree) f.b.edge = true;
+        st.looksOutside++;
+        if (agree) f.b.edge = true; else st.rejectedByNeighbours++;
       }
     }));
   }
@@ -517,5 +526,13 @@ export async function maskEdgeSpots(root: string, zBoundsNm: number[] | null, re
     out.spots.push([Math.round(sx / n), Math.round(sy / n), Math.round(sz / n)]);
   }
   out.spots = out.spots.slice(0, 100);
+  st.sections = sections.length;
+  st.marked = out.spots.length;
+  {
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const b of bins.values()) for (const [i, v] of [b.x, b.y, b.z].entries()) { lo[i] = Math.min(lo[i], v); hi[i] = Math.max(hi[i], v); }
+    st.cellUm = [0, 1, 2].map(i => `${'xyz'[i]} ${(lo[i] / 1000).toFixed(1)} to ${(hi[i] / 1000).toFixed(1)}`);
+    st.maskZ = zBoundsNm ? zBoundsNm.map(v => +(v / 1000).toFixed(1)) : [];
+  }
   return out;
 }
