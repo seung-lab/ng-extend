@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {pendingAnnotations} from '../util/annotation_counter';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { recapWeekStart, recapMonth, weekPeriodET, monthPeriodET, monthStartET } from '../util/recap_week';
+import { recapWeekStart, recapMonth, recapYear, weekPeriodET, monthPeriodET, yearPeriodET, monthStartET } from '../util/recap_week';
 import { storeToRefs } from 'pinia';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import RollUp from 'components/RollUp.vue';
@@ -24,10 +24,14 @@ const props = defineProps<{ embedded?: boolean }>();
 // (util/recap_week.ts). Everything weekly below counts from start up to end.
 // The monthly recap notification shows a whole month the same way ("My
 // Month in Science", Ames 2026-10-25): every count below then spans it.
-const isMonth = computed(() => !!recapMonth.value);
-const period = computed(() => recapMonth.value ? monthPeriodET(recapMonth.value) : weekPeriodET(recapWeekStart.value));
-const span = computed(() => isMonth.value ? 'this month' : 'this week');
-onUnmounted(() => { recapWeekStart.value = null; recapMonth.value = null; });
+// The yearly one shows a whole Pyr year (Sep 28 to Sep 28 ET). isMonth means
+// "longer than a week" below: a month or a year.
+const isYear = computed(() => !!recapYear.value);
+const isMonth = computed(() => !!recapMonth.value || isYear.value);
+const period = computed(() => recapYear.value ? yearPeriodET(recapYear.value)
+  : recapMonth.value ? monthPeriodET(recapMonth.value) : weekPeriodET(recapWeekStart.value));
+const span = computed(() => isYear.value ? 'this year' : isMonth.value ? 'this month' : 'this week');
+onUnmounted(() => { recapWeekStart.value = null; recapMonth.value = null; recapYear.value = null; });
 
 // ── Week date range label: "Feb 23 to Mar 1, 2026" ───────────────────────
 const weekRange = computed<string>(() => period.value.label);
@@ -340,7 +344,7 @@ function jumpToCell(segId: string) {
         <div class="nge-recap-hero">
           <!-- "My" when shown inside your own profile, "Your" when it appears
                as a standalone toast/panel addressed to the reader. -->
-          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} {{ isMonth ? 'Month' : 'Week' }} in Science</div>
+          <div class="nge-recap-hero-title">{{ embedded ? 'My' : 'Your' }} {{ isYear ? 'Year' : isMonth ? 'Month' : 'Week' }} in Science</div>
           <div class="nge-recap-hero-daterange">{{ weekRange }}</div>
         </div>
 

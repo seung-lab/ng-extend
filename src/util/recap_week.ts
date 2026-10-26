@@ -82,3 +82,22 @@ export function monthFromRecapTitle(title: string): { y: number; m: number } | n
   const m = MONTH_NAMES.indexOf(hit[1]);
   return m < 0 ? null : { y: Number(hit[2]), m };
 }
+
+/** The Pyr year to show (scripts/recap-month.mjs yearRange): Year n runs from
+ *  Sep 28 00:00 ET, the day the first testers came in 2026, to the next
+ *  Sep 28. Set by the Your Year in Science notification; null shows a week. */
+export const recapYear = ref<number | null>(null);
+const YEAR_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+
+export function yearPeriodET(n: number) {
+  const y = 2026 + n - 1;
+  return { start: etMidnight({ y, m: 8, d: 28 }), end: etMidnight({ y: y + 1, m: 8, d: 28 }), label: `Year ${YEAR_WORDS[n] ?? n}` };
+}
+
+/** "✨ Your Year in Science: Year One" → 1. */
+export function yearFromRecapTitle(title: string): number | null {
+  const hit = String(title || '').match(/Year in Science:?\s*Year (\w+)/);
+  if (!hit) return null;
+  const n = YEAR_WORDS.indexOf(hit[1]);
+  return n > 0 ? n : (Number(hit[1]) || null);
+}

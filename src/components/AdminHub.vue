@@ -1550,8 +1550,8 @@ function notifStage(n: any): 'scheduled' | 'active' | 'expired' {
  */
 function notifCategory(n: any): string {
   const t = n.title || '';
-  if (t.includes('Weekly Champions') || t.includes('Monthly Champions')) return 'weeklyChampions';
-  if (t.includes('Week in Science') || t.includes('Month in Science')) return 'weeklyRecap';
+  if (t.includes('Weekly Champions') || t.includes('Monthly Champions') || t.includes('Year Champions')) return 'weeklyChampions';
+  if (t.includes('Week in Science') || t.includes('Month in Science') || t.includes('Year in Science')) return 'weeklyRecap';
   if (t.includes('Response to your help request')) return 'helpResponse';
   if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
@@ -1560,10 +1560,10 @@ function notifCategory(n: any): string {
 
 const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'announcement',    label: 'Announcements' },
-  { key: 'weeklyChampions', label: 'Weekly and monthly champions' },
+  { key: 'weeklyChampions', label: 'Weekly, monthly and yearly champions' },
   { key: 'customBadge',     label: 'Custom badges' },
   { key: 'personalBadge',   label: 'Personal badges' },
-  { key: 'weeklyRecap',     label: 'Weekly and monthly recaps' },
+  { key: 'weeklyRecap',     label: 'Weekly, monthly and yearly recaps' },
   { key: 'helpResponse',    label: 'Help replies' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';

@@ -1,0 +1,61 @@
+name: Pyr Year Awards
+
+on:
+  schedule:
+    # Sep 28, 04:30 UTC: 00:30 EDT on Pyr's birthday, the day the first
+    # testers were invited in 2026. Each Pyr year runs Sep 28 to Sep 28 ET.
+    - cron: '30 4 28 9 *'
+  workflow_dispatch:
+    inputs:
+      year:
+        description: Pyr year to celebrate, 1 for Year One (empty for the one that just ended)
+        type: string
+        default: ''
+      correct:
+        description: Correct the year's recaps and champions already sent, in place
+        type: boolean
+        default: false
+      test_to:
+        description: Send a test (titled "(test)") only to these user ids, comma separated; gives no awards
+        type: string
+        default: ''
+      dry_run:
+        description: Print what would be sent or given, change nothing
+        type: boolean
+        default: false
+
+jobs:
+  celebrate:
+    runs-on: ubuntu-latest
+    steps:
+      # Cron workflows run from main; always run the maintained scripts.
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Your Year in Science (one card per player)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RECAP_PERIOD: year
+          RECAP_YEAR: ${{ inputs.year }}
+          RECAP_CORRECT: ${{ inputs.correct }}
+          RECAP_DRY: ${{ inputs.dry_run }}
+          RECAP_TEST_TO: ${{ inputs.test_to }}
+        run: node scripts/monthly-recap.mjs
+
+      - name: Pyr Year Champions and the year's awards
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RECAP_PERIOD: year
+          RECAP_YEAR: ${{ inputs.year }}
+          RECAP_CORRECT: ${{ inputs.correct }}
+          RECAP_DRY: ${{ inputs.dry_run }}
+          RECAP_TEST_TO: ${{ inputs.test_to }}
+        run: node scripts/monthly-champions.mjs
