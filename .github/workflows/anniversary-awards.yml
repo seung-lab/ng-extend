@@ -1,0 +1,39 @@
+name: Pyr Birthdays
+
+on:
+  schedule:
+    # Every day at 14:00 UTC: 10 am EDT (9 am EST), like the Pyr Year awards.
+    # A player's Pyr birthday is the ET date they joined (users.created_at).
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      today:
+        description: 'Pretend today is this ET date (YYYY-MM-DD), for a dry run'
+        type: string
+        default: ''
+      dry_run:
+        description: Print who would get a birthday award, change nothing
+        type: boolean
+        default: false
+
+jobs:
+  birthdays:
+    runs-on: ubuntu-latest
+    steps:
+      # Cron workflows run from main; always run the maintained script.
+      - uses: actions/checkout@v4
+        with:
+          ref: eyewire-ii-community
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Give Pyr birthday awards
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RECAP_DRY: ${{ inputs.dry_run }}
+          ANNIVERSARY_TODAY: ${{ inputs.today }}
+        run: node scripts/anniversary-awards.mjs
