@@ -5,7 +5,7 @@
       "at": "2026-10-27T18:13:10Z",
       "title": "Remove one cut point",
       "items": [
-        "Cut mode lists your red and blue points, like the Merge Queue: the × on a row removes just that point, so a misplaced point no longer means clearing them all. Point at a row to light up its piece; right click it to go to the point. The list can be moved and minimized into the cut bar.",
+        "While you have cut points down, they are listed at the top of the cell layer's Segments tab, like any annotations: delete one there to remove just that point, so a misplaced point no longer means clearing them all.",
         "With Classic layers on, a right click on a layer tab selects the layer again even when some text is selected on the page; the browser's own menu shows only on the selected text itself.",
         "Thanks to st0ck53y and Krzysztof."
       ]

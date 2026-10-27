@@ -62,7 +62,7 @@ import {CancellationToken, CancellationTokenSource, uncancelableToken} from 'neu
 import {Trackable} from 'neuroglancer/util/trackable';
 import {Uint64} from 'neuroglancer/util/uint64';
 import {makeDeleteButton} from 'neuroglancer/widget/delete_button';
-import {DependentViewContext} from 'neuroglancer/widget/dependent_view_widget';
+import {DependentViewContext, DependentViewWidget} from 'neuroglancer/widget/dependent_view_widget';
 import {makeIcon} from 'neuroglancer/widget/icon';
 import {MultiscaleAnnotationSource} from 'neuroglancer/annotation/frontend_source';
 import {removeChildren} from 'neuroglancer/util/dom';
@@ -1928,6 +1928,34 @@ class GrapheneGraphSource extends SegmentationGraphSource {
     tabElement.classList.add('neuroglancer-annotations-tab');
     tabElement.classList.add('neuroglancer-graphene-tab');
     return parent;
+  }
+
+  /** nge: the cut points, at the top of the Segments tab, listed like any
+   *  annotations (st0ck53y, report 273: "for cutting you currently have to
+   *  clear them all and start again"; Ames: "show them in seg panel like
+   *  normal annotations"). The same list the hidden Graph tab holds: a row's
+   *  delete removes just that point. Shown only while there are points, and
+   *  only when the player has the panel open: nothing opens it for them. */
+  ngeSegmentsTabContents(layer: SegmentationUserLayer, context: DependentViewContext, parent: HTMLElement) {
+    parent.appendChild(context.registerDisposer(new DependentViewWidget(
+        layer.graphConnection, (connection, box, viewContext) => {
+          if (!(connection instanceof GraphConnection)) return;
+          const {multicutState} = connection.state;
+          box.classList.add('neuroglancer-annotations-tab', 'nge-cut-points');
+          const title = document.createElement('div');
+          title.className = 'nge-cut-points-title';
+          box.appendChild(title);
+          box.appendChild(viewContext
+              .registerDisposer(new MulticutAnnotationLayerView(layer, layer.annotationDisplayState))
+              .element);
+          const update = () => {
+            const n = multicutState.sinks.size + multicutState.sources.size;
+            box.style.display = n ? '' : 'none';
+            title.textContent = `Cut points (${n}): red ${multicutState.sinks.size}, blue ${multicutState.sources.size}`;
+          };
+          viewContext.registerDisposer(multicutState.changed.add(update));
+          update();
+        })).element);
   }
 
 

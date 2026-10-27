@@ -1778,6 +1778,8 @@ export class SegmentDisplayTab extends Tab {
                                   (graph, parent, context) => {
                                     if (graph === undefined) return;
                                     if (graph.tabContents) {
+                                      // nge: a graph server's cut points (graphene).
+                                      (graph as any).ngeSegmentsTabContents?.(layer, context, parent);
                                       return;
                                     }
                                     const toolbox = document.createElement('div');

@@ -297,3 +297,15 @@
   overflow: hidden;
   white-space: nowrap;
 }
+
+/* nge: the cut points at the top of the Segments tab (graphene frontend,
+   ngeSegmentsTabContents), shown only while there are some. */
+.nge-cut-points {
+  margin: 4px 0 8px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.nge-cut-points-title { font-size: 12px; color: #cfd8e6; padding: 2px 4px 4px; }

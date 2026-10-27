@@ -9,7 +9,6 @@ import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
 import { getBaseObjectColor, ngeListHover } from 'neuroglancer/segmentation_display_state/frontend';
-import { ngeGrapheneLayerToGlobal } from 'neuroglancer/datasource/graphene/frontend';
 
 // Hovering a segment in the Merge Queue lights it up in the 2D and 3D views
 // and in the segment list, the way neuroglancer's own merge list does (Nik,
@@ -267,43 +266,6 @@ function resetQueuePlace() {
 }
 watch(hasMergeSegments, shown => { if (shown) placeBesideChat(); }, { immediate: true });
 
-// ── Cut points, listed like the Merge Queue (st0ck53y, report 273: "for
-// cutting you currently have to clear them all and start again") ──────────
-// One row per red and blue point, each with its own remove button. Pointing
-// at a row lights its piece up; a right click goes to the point. It shares
-// the Merge Queue's place, dragging and minimize.
-interface CutRow { key: string; color: 'red' | 'blue'; n: number; seg: string; sel: any; group: any }
-const cutRows = ref<CutRow[]>([]);
-function multicutState(): any {
-  return (currentSegLayer()?.layer as any)?.graphConnection?.value?.state?.multicutState;
-}
-function readCutRows() {
-  const m = multicutState();
-  const out: CutRow[] = [];
-  if (m) {
-    for (const [color, group] of [['red', m.sinks], ['blue', m.sources]] as const) {
-      let n = 0;
-      for (const sel of group) out.push({ key: `${color}${n}`, color, n: ++n, seg: String(sel.segmentId ?? sel.rootId ?? ''), sel, group });
-    }
-  }
-  cutRows.value = out;
-}
-watch(() => [store.redPointCount, store.bluePointCount, store.toolActive], readCutRows, { immediate: true });
-function removeCutPoint(r: CutRow) {
-  try { r.group.delete(r.sel); } catch (e) { console.warn('[cut] could not remove the point:', e); }
-  readCutRows();
-}
-function goToCutPoint(r: CutRow) {
-  try {
-    const viewer = (window as any).viewer;
-    const layer = currentSegLayer()?.layer as any;
-    const p = ngeGrapheneLayerToGlobal(layer, r.sel.position, viewer.coordinateSpace.value);
-    if (p) viewer.position.value = p;
-  } catch { /* not loaded */ }
-}
-const hasCutPoints = computed(() => cutRows.value.length > 0);
-watch(hasCutPoints, shown => { if (shown) placeBesideChat(); });
-
 // Minimized to the Merge Mode bar (Krzysztof Kruk, report 255: "on smaller
 // screens the popup ... can cover a significant useful space"). The bar then
 // shows "Merge Queue (n)" with a button to open it again. Remembered across
@@ -460,9 +422,6 @@ function cancelTool() {
           <!-- Points left on a cell that is not shown were cleared as cut
                mode opened, so the player's own cells stay on screen
                (util/stale_cut_points.ts). Undo puts them back. -->
-          <button v-if="queueMin && hasCutPoints" class="nge-smo-action-btn nge-smo-queue-chip" @click="setQueueMin(false)"
-                  title="Show the cut points">Cut points ({{ cutRows.length }}) <span aria-hidden="true">▴</span></button>
-
           <div v-if="store.staleCutCleared" class="nge-smo-stale" role="status">
             <span>Cleared {{ store.staleCutCleared }} point{{ store.staleCutCleared !== 1 ? 's' : '' }} left on another cell.</span>
             <button class="nge-smo-action-btn nge-smo-stale-undo" @click="undoStaleClear" title="Put the points back. Cut mode then shows only their cell.">Undo</button>
@@ -539,28 +498,6 @@ function cancelTool() {
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
             <!-- why it failed, in the server's words, on a line of its own -->
             <div v-if="rowWhy(i)" class="nge-smo-merge-why">{{ rowWhy(i) }}</div>
-          </div>
-        </div>
-      </div>
-    </transition>
-
-    <!-- Cut points, one row each, removable one at a time -->
-    <transition name="merge-list-fade">
-      <div v-if="isMulticut && hasCutPoints && !isPendingClose && !queueMin" ref="queueEl" class="nge-smo-merge-panel nge-smo-cut-panel" :style="queueStyle">
-        <div class="nge-smo-merge-panel-header" title="Drag to move. Double click to put it back."
-             @mousedown="startQueueDrag" @dblclick="resetQueuePlace">
-          Cut points ({{ cutRows.length }})
-          <span class="nge-smo-merge-grip" aria-hidden="true">⠿</span>
-          <button class="nge-smo-merge-min" @mousedown.stop @dblclick.stop @click.stop="setQueueMin(true)"
-                  title="Minimize to the cut bar" aria-label="Minimize the cut points">–</button>
-        </div>
-        <div class="nge-smo-merge-panel-list">
-          <div v-for="r in cutRows" :key="r.key" class="nge-smo-merge-row">
-            <span class="nge-smo-cut-dot" :class="'nge-smo-cut-dot--' + r.color"></span>
-            <span class="nge-smo-cut-name">{{ r.color === 'red' ? 'Red' : 'Blue' }} {{ r.n }}</span>
-            <span class="nge-smo-seg-id nge-smo-seg-id--hover" title="Hover to light this piece up in the views. Right click to go to the point."
-                  @mouseenter="hoverSegment(r.seg)" @mouseleave="hoverSegment(null)" @contextmenu.prevent="goToCutPoint(r)">{{ r.seg }}</span>
-            <button class="nge-smo-merge-remove" @click.stop="removeCutPoint(r)" :title="`Remove ${r.color} point ${r.n}`">×</button>
           </div>
         </div>
       </div>
@@ -1023,11 +960,6 @@ function cancelTool() {
 }
 .nge-smo-merge-min:hover { background: rgba(0, 220, 120, 0.18); color: #fff; }
 .nge-smo-queue-chip { white-space: nowrap; }
-.nge-smo-cut-panel { border-color: rgba(120, 160, 255, 0.3); }
-.nge-smo-cut-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.nge-smo-cut-dot--red { background: #ff4d4d; }
-.nge-smo-cut-dot--blue { background: #4d7bff; }
-.nge-smo-cut-name { font-size: 11px; color: #dce6f5; min-width: 44px; }
 
 .nge-smo-merge-panel-list {
   overflow-y: auto;
