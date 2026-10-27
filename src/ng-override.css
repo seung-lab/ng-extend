@@ -2018,6 +2018,9 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
    opened as bare white monospace on the image (Ames 2026-10-21: "they
    aren't styled"). Open, it is a card like Pyr's other small panels; closed,
    the x y z letters stay as they are. */
+/* Hidden unless Settings > Neuroglancer > xyz top left is on (Ames
+   2026-10-27: "get rid of this"). */
+body:not(.nge-show-xyz) .neuroglancer-display-dimensions-widget { display: none !important; }
 .neuroglancer-display-dimensions-widget:hover,
 .neuroglancer-display-dimensions-widget[data-active="true"] {
   background: rgba(8, 14, 28, 0.94);
