@@ -178,6 +178,16 @@ test('a twig off a long branch does not cut it short, and a click on the twig gi
   assert.deepEqual([...clickedBranch(g, 'k1', 'S', { minSideNm: 6 * um, somaRadiusNm: 5 * um }).pieces], ['k1']);
 });
 
+test('a branch is never most of the cell', { skip: typeof strip !== 'function' }, () => {
+  const { clickedBranch } = loadLantern();
+  // Without a soma radius the walk from u2 goes to the soma side of F: t2 and all beyond, 8 of 10 pieces.
+  const all = clickedBranch(longCell(), 'u2', 'S', { minSideNm: 0.5 * um });
+  // With the cap at 40%, it steps back toward the click.
+  const capped = clickedBranch(longCell(), 'u2', 'S', { minSideNm: 50 * um, maxShare: 0.4 });
+  assert.ok(capped.pieces.size <= 4 && capped.pieces.has('u2'), [...capped.pieces].join());
+  assert.ok(all.pieces.has('u2'));
+});
+
 test('a click on the soma lights the soma', { skip: typeof strip !== 'function' }, () => {
   const { clickedBranch } = loadLantern();
   const r = clickedBranch(longCell(), 'q', 'S', { somaRadiusNm: 5 * um });

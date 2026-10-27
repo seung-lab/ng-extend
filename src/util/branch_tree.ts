@@ -236,9 +236,9 @@ export function edgeEnds(graph: BranchGraph, bounds: number[][], marginNm = 5000
  * on, from the fork where it leaves its parent branch out to all its tips.
  *
  * From the clicked piece, walk back toward the soma one piece at a time.
- * The walk stops at the first fork where the walk came up the smaller side:
- * where another branch leaves that carries at least `minSideNm` of cable and
- * at least as much as the side walked up. Spines and the small knots the
+ * The walk stops at the first real fork: where another branch leaves that
+ * carries at least `minSideNm` of cable and at least a third as much as the
+ * side walked up. Spines and the small knots the
  * graph has in thick parts are shorter than that, so they never count. The
  * walk also stops at the soma (within `somaRadiusNm` of `somaNm`). The
  * branch is the last piece reached and everything beyond it.
@@ -250,7 +250,9 @@ export function edgeEnds(graph: BranchGraph, bounds: number[][], marginNm = 5000
  * so the light reaches the fork; a piece on its own is a segment of length 0.
  */
 export function clickedBranch(graph: BranchGraph, from: string, ref: string,
-                              opts: { minSideNm?: number; somaNm?: number[]; somaRadiusNm?: number } = {}):
+                              opts: { minSideNm?: number; somaNm?: number[]; somaRadiusNm?: number;
+                                      /** The most of the cell's pieces a branch may be (0 to 1). */
+                                      maxShare?: number } = {}):
     { pieces: Set<string>; fork: string | null; segments: Segment[]; soma: boolean } {
   const minSide = opts.minSideNm ?? 6000;
   const somaR = opts.somaRadiusNm ?? 0;
@@ -291,12 +293,13 @@ export function clickedBranch(graph: BranchGraph, from: string, ref: string,
     for (const c of children.get(n) ?? []) sum += span(n, c) + (cable.get(c) ?? 0);
     cable.set(n, sum);
   }
-  // At each fork on the way back, the bigger side is the parent branch going
-  // on, and the smaller one a branch off it. So the walk goes on while it is
-  // on the bigger side, and stops where it was on the smaller one: a twig
-  // off a long dendrite does not cut the dendrite short (on the retina's big
-  // cells it did, 2026-10-27), and a click on the twig still gives the twig.
+  // At each fork on the way back, the walk goes on only past a twig: another
+  // side under a third the size of the side walked up. A twig off a long
+  // dendrite does not cut the dendrite short (on the retina's big cells it
+  // did, 2026-10-27), a click on the twig still gives the twig, and where a
+  // stem splits into big dendrites the light stays on the one clicked.
   let top = from;
+  const path = [from];
   for (;;) {
     const p = parent.get(top);
     if (p == null || p === ref || nearSoma(p)) break;
@@ -304,11 +307,23 @@ export function clickedBranch(graph: BranchGraph, from: string, ref: string,
     const side = (children.get(p) ?? []).some(s => {
       if (s === top) return false;
       const other = span(p, s) + (cable.get(s) ?? 0);
-      return other >= minSide && other >= mine;
+      return other >= minSide && other >= 0.3 * mine;
     });
     if (side) break;
     top = p;
+    path.push(p);
   }
+  // Never most of the cell: a big soma the walk went on into joins whole
+  // dendrites up. Step back toward the click until the branch is a share.
+  const count = new Map<string, number>();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const n = order[i];
+    let c = 1;
+    for (const k of children.get(n) ?? []) c += count.get(k) ?? 0;
+    count.set(n, c);
+  }
+  const cap = (opts.maxShare ?? 1) * parent.size;
+  while (path.length > 1 && (count.get(top) ?? 0) > cap) { path.pop(); top = path[path.length - 1]; }
   const pieces = new Set<string>();
   const segments: Segment[] = [];
   const walk = [top];

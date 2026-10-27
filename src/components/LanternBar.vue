@@ -21,7 +21,7 @@ const branchHint = computed(() => {
   const tap = isTouchRef.value ? 'Tap' : 'Click';
   if (lanternBranch.message) return lanternBranch.message;
   if (lanternBranch.status === 'finding') return 'Finding the branch…';
-  if (lanternBranch.status === 'lit') return `${tap} another branch, or empty space to clear`;
+  if (lanternBranch.status === 'lit') return `${tap} another branch, or empty space to put it out`;
   return `${tap} a branch to light it`;
 });
 const showGhost = computed(() => spooky.season || backend.showAdminUi);

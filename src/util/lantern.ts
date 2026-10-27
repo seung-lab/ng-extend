@@ -104,18 +104,20 @@ const easeOutBack = (t: number) => { const c = 1.9; return 1 + (c + 1) * Math.po
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 const smooth = (t: number) => t * t * (3 - 2 * t);
 
-/** Is there anything to light? In "branch" mode, only once a branch is picked. */
-const wanted = () => lantern.on && (lantern.mode === 'cell' || (branch.mask !== null && branch.keep));
+/** Is the Lantern burning? In "branch" mode the dark is there from the
+ *  start, waiting for a click (Ames 2026-10-27: with the cell left lit until
+ *  then, "Clicked branch just lit up the whole cell"). */
+const wanted = () => lantern.on;
 
 function apply() {
   const on = wanted();
   const flare = on ? 1 + 0.9 * Math.pow(1 - lit, 2) * (lit > 0 ? 1 : 0) : 1;
-  if (lantern.mode === 'branch' && branch.mask) {
-    // The light runs out along the branch from the click, and the dark
-    // closes in over the rest. Picking another branch runs it out again.
+  if (lantern.mode === 'branch') {
+    // The light runs out along the branch from the click, and back in when
+    // it is let go of. With no branch picked, all of it is in shadow.
     const run = easeOut(spread);
-    state.radiusNm = (branch.reachNm + 2000) * (on ? run : lit * lit);
-    state.intensity = (lantern.flame / 100) * (1 + 0.6 * Math.pow(1 - run, 2));
+    state.radiusNm = branch.mask ? (branch.reachNm + 2000) * run * (on ? 1 : lit * lit) : 0;
+    state.intensity = (lantern.flame / 100) * (1 + (branch.keep ? 0.6 * Math.pow(1 - run, 2) : 0));
     state.mask = branch.mask;
   } else {
     // how far through lighting (or dousing) it is
@@ -150,24 +152,25 @@ function maskAtNm(nm: number[]): number {
 function run() {
   if (tween !== null) { cancelAnimationFrame(tween); tween = null; }
   const target = wanted() ? 1 : 0;
-  if (reducedMotion() || document.hidden) { lit = target; spread = 1; settle(); apply(); return; }
+  const spreadTarget = lantern.mode === 'branch' && branch.keep ? 1 : 0;
+  if (reducedMotion() || document.hidden) { lit = target; spread = spreadTarget; settle(); apply(); return; }
   const from = lit, t0 = performance.now(), ms = (target ? LIGHT_MS : DOUSE_MS) * Math.abs(target - from);
-  const spreadFrom = spread, spreadMs = target && lantern.mode === 'branch' ? SPREAD_MS * (1 - spreadFrom) : 0;
+  const spreadFrom = spread, spreadMs = lantern.mode === 'branch' ? SPREAD_MS * Math.abs(spreadTarget - spreadFrom) : 0;
   if (ms <= 0 && spreadMs <= 0) { settle(); apply(); return; }
   const step = (now: number) => {
     const t = ms > 0 ? Math.min(1, (now - t0) / ms) : 1;
     const u = spreadMs > 0 ? Math.min(1, (now - t0) / spreadMs) : 1;
     lit = from + (target - from) * t;
-    if (spreadMs > 0) spread = spreadFrom + (1 - spreadFrom) * u;
+    if (spreadMs > 0) spread = spreadFrom + (spreadTarget - spreadFrom) * u;
     apply();
     if (t < 1 || u < 1) { tween = requestAnimationFrame(step); } else { tween = null; settle(); apply(); }
   };
   tween = requestAnimationFrame(step);
 }
 
-/** Once the light is out, a branch that was let go of is forgotten. */
+/** Once its light is out, a branch that was let go of is forgotten. */
 function settle() {
-  if (lit === 0 && !branch.keep) { branch.mask = null; }
+  if (!branch.keep && (lit === 0 || spread === 0)) { branch.mask = null; }
 }
 
 export function toggleLantern() { lantern.on = !lantern.on; }
@@ -201,8 +204,14 @@ export function toggleLantern() { lantern.on = !lantern.on; }
 
 /** Another branch must carry this much cable to count as a fork. */
 const MIN_SIDE_NM = 6000;
-/** Around the soma, everything within this is the soma. */
-const SOMA_RADIUS_NM = 7000;
+/** Around the soma, everything within this is the soma. 7 um was too
+ *  little for a retina cell: the walk went on into the soma and lit nearly
+ *  the whole cell (Ames 2026-10-27, "Clicked branch just lit up the whole
+ *  cell"). Thickness cannot tell soma from branch there: its soma measured
+ *  625 nm and the swellings along its dendrites 350 to 450. */
+const SOMA_RADIUS_NM = 15000;
+/** A branch is never more than this share of the cell's pieces. */
+const MAX_SHARE = 0.4;
 /** How far round the line through the branch's pieces the light reaches. */
 const TUBE_NM = 3200;
 /** The map's budget: 8 MB at most. */
@@ -315,6 +324,9 @@ export function letGoOfBranch() {
 
 /** Light the branch under the mouse. */
 async function lightBranchUnderMouse() {
+  // What is under the pointer is normally read on the next frame; read it
+  // now, or a click right after the pointer arrives finds nothing there.
+  try { viewer.mouseState.updateUnconditionally(); } catch { /* the last reading */ }
   const pick = pickUnderMouse();
   if ('error' in pick) {
     // Empty space: back to the normal view.
@@ -352,7 +364,7 @@ async function lightBranchUnderMouse() {
     const somaFrom = ref ? 'on record' : thickest ? 'thickest' : 'guessed';
     if (!ref) { ref = thickest ?? densestPiece(graph); somaNm = ref ? graph.points.get(ref) : undefined; }
     if (!ref) throw new Error('This cell\'s branch map is empty.');
-    const found = clickedBranch(graph, from, ref, {minSideNm: MIN_SIDE_NM, somaNm, somaRadiusNm: SOMA_RADIUS_NM});
+    const found = clickedBranch(graph, from, ref, {minSideNm: MIN_SIDE_NM, somaNm, somaRadiusNm: SOMA_RADIUS_NM, maxShare: MAX_SHARE});
     const ids = [...found.pieces];
     if (found.fork) ids.push(found.fork);
     let boxes: number[][] = [];
