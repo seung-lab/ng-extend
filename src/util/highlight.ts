@@ -10,7 +10,7 @@ import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
-import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, sheetAisXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
+import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
@@ -546,22 +546,29 @@ export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<voi
 }
 
 /** The soma, confirmed at the cell's starting point (its nucleus). */
+/** Where the crosshairs are, in the view's voxels, rounded. */
+function crosshairXyz(): number[] {
+  return Array.from(viewerOf().navigationState.position.value as ArrayLike<number>).slice(0, 3).map(v => Math.round(v));
+}
+/** Confirm puts the mark where the crosshairs are (Ames 2026-10-27: "I
+ *  confirmed AIS here where axes are but then it marked it blue up at the
+ *  original point"). Go to the starting point, or to the lab's AIS point,
+ *  moves the crosshairs there first, so confirming without moving takes it;
+ *  moving them first puts the mark where they were moved. */
 export async function confirmSomaAtStart(): Promise<number[]> {
-  const start = startXyz();
-  if (!start) throw new Error("Pyr doesn't know this cell's starting point. Ctrl + click the soma instead.");
+  const at = crosshairXyz();
   let root = '';
   try { root = workingRoot(); } catch { /* several cells, or none: no cell id in the note */ }
-  await addLabPoint(MEC_SOMA, start, `Soma, at the starting point (nucleus)${root ? `: cell ${root}` : ''}`);
-  return start;
+  await addLabPoint(MEC_SOMA, at, `Soma, confirmed${root ? `: cell ${root}` : ''}`);
+  return at;
 }
-/** The AIS, confirmed at the lab's point from the sheet (AIS Coords). */
+/** The AIS, confirmed where the crosshairs are. */
 export async function confirmAisAtSheet(): Promise<number[]> {
-  const xyz = await sheetAisXyz();
-  if (!xyz) throw new Error("The lab's sheet has no AIS point for this cell. Ctrl + click where the axon leaves the cell instead.");
+  const at = crosshairXyz();
   let root = '';
   try { root = workingRoot(); } catch { /* several cells, or none */ }
-  await addLabPoint(MEC_AIS, xyz, `AIS, the lab's point from the sheet${root ? `: cell ${root}` : ''}`);
-  return xyz;
+  await addLabPoint(MEC_AIS, at, `AIS, confirmed${root ? `: cell ${root}` : ''}`);
+  return at;
 }
 /** Look at a point in the view (the lab's AIS point, the starting point). */
 export function goToXyz(xyz: number[] | null): boolean {
@@ -578,8 +585,8 @@ export function goToStart(): boolean {
 
 async function addLabPoint(kind: MecKind, point: ArrayLike<number>, description: string): Promise<void> {
   const src = await labSource(kind);
-  // A cell has one soma: a soma marked here again moves it.
-  if (kind === MEC_SOMA) {
+  // A cell has one soma and one AIS: marking one again moves it.
+  if (kind === MEC_SOMA || kind === MEC_AIS) {
     const old: string[] = [];
     for (const ann of src) if (String(ann.id).startsWith(ID_PREFIX)) old.push(String(ann.id));
     for (const id of old) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }

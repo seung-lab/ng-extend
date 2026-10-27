@@ -145,12 +145,12 @@ const aisState = () => { const a = aisXyz(); return !a ? 'none' : labAis.value &
 async function readLabAis() { try { labAis.value = await sheetAisXyz(); } catch { labAis.value = null; } }
 function lookAtLabAis() { if (!goToXyz(labAis.value)) say("The lab's sheet has no AIS point for this cell.", true); }
 async function confirmAis() {
-  try { const p = await confirmAisAtSheet(); read(); say(`AIS confirmed at the lab's point, ${p.join(', ')}.`); }
+  try { const p = await confirmAisAtSheet(); read(); say(labAis.value && nearPoint(p, labAis.value) ? `AIS confirmed at the lab's point, ${p.join(', ')}.` : `AIS placed at the crosshairs, ${p.join(', ')}.`); }
   catch (e: any) { say(e?.message || 'Could not mark the AIS.', true); }
 }
 
 async function confirmSoma() {
-  try { const p = await confirmSomaAtStart(); read(); say(`Soma confirmed at the starting point, ${p.join(', ')}.`); }
+  try { const p = await confirmSomaAtStart(); read(); say(soma.value.state === 'start' ? `Soma confirmed at the starting point, ${p.join(', ')}.` : `Soma placed at the crosshairs, ${p.join(', ')}.`); }
   catch (e: any) { say(e?.message || 'Could not mark the soma.', true); }
 }
 function lookAtStart() { if (!goToStart()) say("Pyr doesn't know this cell's starting point.", true); }
@@ -207,7 +207,7 @@ onBeforeUnmount(() => {
             <span>The starting point is the nucleus, inside the soma.</span>
             <span class="nge-mms-btns">
               <button type="button" class="nge-mms-btn" @click="lookAtStart">Go to the starting point</button>
-              <button type="button" class="nge-mms-btn nge-mms-btn--ok" @click="confirmSoma">{{ soma.state === 'none' ? 'Confirm soma here' : 'Back to the starting point' }}</button>
+              <button type="button" class="nge-mms-btn nge-mms-btn--ok" title="Put the Soma mark where the crosshairs are" @click="confirmSoma">{{ soma.state === 'none' ? 'Confirm soma here' : 'Move soma here' }}</button>
             </span>
           </template>
           <span v-else>Ctrl + click a colored part of the soma.</span>
@@ -217,10 +217,10 @@ onBeforeUnmount(() => {
           <i></i><b>{{ k.label }}<kbd v-if="keyOf[k.key]" class="nge-mms-key" :title="`Key ${keyOf[k.key]}`">{{ keyOf[k.key] }}</kbd></b><span>{{ markLine(k.key, counts[k.key] ?? 0) }}</span>
         </button>
         <div v-if="armed === 'mec:ais' && labAis" class="nge-mms-sub">
-          <span>The lab's sheet has a point where the axon leaves the cell.</span>
+          <span>The lab's sheet has a point where the axon leaves the cell. Go there, move the crosshairs if it is off, then confirm: the mark goes where the crosshairs are.</span>
           <span class="nge-mms-btns">
             <button type="button" class="nge-mms-btn" @click="lookAtLabAis">Go to the lab's AIS point</button>
-            <button type="button" class="nge-mms-btn nge-mms-btn--ok" @click="confirmAis">{{ aisState() === 'none' ? 'Confirm AIS here' : "Back to the lab's point" }}</button>
+            <button type="button" class="nge-mms-btn nge-mms-btn--ok" title="Put the AIS mark where the crosshairs are" @click="confirmAis">{{ aisState() === 'none' ? 'Confirm AIS here' : 'Move AIS here' }}</button>
           </span>
         </div>
         <div v-else-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>

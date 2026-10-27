@@ -77,7 +77,7 @@ async function confirmSoma() {
   try {
     const p = await confirmSomaAtStart();
     refresh();
-    say(`Soma confirmed at the starting point, ${p.join(', ')}. Next: the AIS.`);
+    say(`Soma marked at ${p.join(', ')}. Next: the AIS.`);
     if (!labCounts.value['mec:ais']) styleKey.value = 'mec:ais';
   } catch (e: any) { say(e?.message || 'Could not mark the soma.', true); }
 }
@@ -615,7 +615,7 @@ onBeforeUnmount(() => {
         <p class="nge-hl-mec-hint">{{ noTrace && !picked().lab ? 'A highlight color is picked: one click marks a spot.' : labOn && styleKey === 'mec:soma' && somaAt ? `Soma at ${somaAt.join(', ')}. Click again to move it.` : labOn ? hintOf(styleKey) : stretchKind() ? `${hintOf(styleKey)} Click where the stretch starts, then its end: the end gets the mark.` : 'A highlight color is picked: clicks mark a stretch.' }}</p>
         <div v-if="styleKey === 'mec:soma' && startAt" class="nge-hl-mec-actions">
           <button class="nge-hl-btn" type="button" title="Move the view to the cell's starting point, to see it is in the soma." @click="lookAtStart">Go to the starting point</button>
-          <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark on the starting point: the nucleus, inside the soma." @click="confirmSoma">{{ somaAt ? 'Back to the starting point' : 'Confirm soma here' }}</button>
+          <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark where the crosshairs are. Go to the starting point first to use the nucleus." @click="confirmSoma">{{ somaAt ? 'Move soma here' : 'Confirm soma here' }}</button>
         </div>
         <div v-else class="nge-hl-mec-actions">
           <button v-if="!noTrace" class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
