@@ -2259,7 +2259,7 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-26-beta-sort-1";
+const EW_ACCESS_CODE_VERSION = "2026-10-27-principles-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
@@ -2299,6 +2299,17 @@ const ACCESS_ORIGINS = [...EW_ORIGINS, /^https:\/\/(www\.)?connectome\.quest$/];
 const wakeBetaBoard = () => wakeWorkflow("slack-triage-bridge.yml", "beta request");
 // Beta requests sorted in the Admin Hub: listed or removed, by email
 // (access-request.js, access.betaMark). Firestore, so no new table.
+// Who agreed to the Eyewire II Principles, and when (access-request.js,
+// access.principlesAgree, Ames 2026-10-27). One document per account.
+const principlesStore = {
+  get: async (key) => {
+    const d = await db.collection("principles_agreements").doc(crypto.createHash("sha256").update(key).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (key, v) => {
+    await db.collection("principles_agreements").doc(crypto.createHash("sha256").update(key).digest("hex")).set({ key, ...v });
+  },
+};
 const betaMarkStore = {
   all: async () => {
     const snap = await db.collection("beta_request_marks").get();
@@ -2364,7 +2375,7 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
-        wake: wakeBetaBoard, marks: betaMarkStore,
+        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore,
         // Beta access requests post like any report (Ames 2026-10-24).
         postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
