@@ -86,18 +86,20 @@ export function isBuildingCell(root: string): boolean {
 }
 
 /**
- * Before a merge or cut is sent (hunt.ts huntEditGuard asks this first). Admins pass. An invited helper's edit on
- * a cell taking suggestions is kept as a suggestion; anyone else's is refused. A sentence refuses, null lets it go.
+ * Before a merge or cut is sent (hunt.ts huntEditGuard asks this first). An invited helper's edit (an admin's too) on
+ * a cell taking suggestions is kept as a suggestion; other admins pass; anyone else's is refused. A sentence refuses, null lets it go.
  */
 export function buildEditGuard(kind: 'merge' | 'split', roots: string[], edit?: BuildEdit): string | null {
   if (!onBuildDataset() || !buildState.cells.length) return null;
   const cell = roots.map(r => cellOf(r)).find(Boolean);
-  if (!cell || isAdmin()) return null;
+  if (!cell) return null;
   const did = kind === 'merge' ? 'merged' : 'cut';
+  // An invited helper's edit is kept, admins included: while suggestions are open nobody changes the cell.
   if (cell.helper && cell.status === 'suggesting' && edit) {
     void keepSuggestion(cell, kind === 'merge' ? 'merge' : 'cut', edit);
     return `Saving it as a suggestion. Nothing was ${did}.`;
   }
+  if (isAdmin()) return null;
   return `This cell is being made into a Hunt, so it stays as it is for now. Nothing was ${did}.`;
 }
 
