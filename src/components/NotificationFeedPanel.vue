@@ -435,6 +435,15 @@ async function onDetailBodyClick(e: MouseEvent) {
     emit('hide');
     return;
   }
+  // A hunter's report (Ames 2026-10-26): its card opens docked under the top bar (HuntReportCard), the view free.
+  const rep = a?.getAttribute('href')?.match(/^#nge-hunt-report=(\d+)$/);
+  if (rep) {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:hunt-report', { detail: { id: Number(rep[1]) } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
   const m = a?.getAttribute('href')?.match(/^#nge-help-solved=([0-9a-f-]{1,40})$/i);
   if (!m) return;
   e.preventDefault();

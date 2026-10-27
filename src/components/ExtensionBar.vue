@@ -17,6 +17,7 @@ import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
 import HuntPlacesBox from "components/HuntPlacesBox.vue";
+import HuntReportCard from "components/HuntReportCard.vue";
 import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
@@ -1213,6 +1214,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <access-request-panel v-if="showAccess" @hide="showAccess = false" />
   <access-review-bar />
   <hunt-places-box />
+  <hunt-report-card v-if="huntBackend.isAdmin" />
   <test-review-bar />
   <test-queue-card />
   <!-- Help requests now live in Cell Library's Help tab -->

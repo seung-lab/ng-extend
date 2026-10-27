@@ -276,14 +276,16 @@ function installEditGuard() {
 }
 
 /** "2d 4h", "3h 12m", "4m 05s": time left until a moment. */
-export function countdown(iso: string | null | undefined): string {
+export function countdown(iso: string | null | undefined, seconds = true): string {
   const ms = Math.max(0, Date.parse(iso || '') - huntState.now);
   if (!Number.isFinite(ms)) return '';
   const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   // To the second, so it is seen to run (Ames 2026-10-26: "hunt needs a countdown to the second").
+  // The Hunt box leaves the seconds to the top bar until the last hour (Ames 2026-10-26: "we can maybe exclude
+  // the seconds there since it's in the top bar"); the top bar has them always.
   const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
-  if (d > 0) return `${d}d ${String(h).padStart(2, '0')}h ${mm}m ${ss}s`;
-  if (h > 0) return `${h}h ${mm}m ${ss}s`;
+  if (d > 0) return seconds ? `${d}d ${String(h).padStart(2, '0')}h ${mm}m ${ss}s` : `${d}d ${String(h).padStart(2, '0')}h ${mm}m`;
+  if (h > 0) return seconds ? `${h}h ${mm}m ${ss}s` : `${h}h ${mm}m`;
   return `${m}m ${ss}s`;
 }
 
@@ -465,6 +467,27 @@ export function reportedOf(h: HuntInfo | null, id: string): 'sent' | 'no' | null
   if (d?.rep_no) return 'no';
   if (d?.rep) return 'sent';
   return huntState.reported[id] ?? null;
+}
+
+/** A report's spot, marked while an admin looks at it (HuntReportCard): one teal ring, through the cells. */
+const REPORT_LAYER = 'Hunt report (only you see it)';
+export function showReportMarker(at: number[]) {
+  const v = viewer();
+  if (!v?.layerSpecification) return;
+  hideReportMarker();
+  const names: string[] = v.coordinateSpace?.value?.names ?? [];
+  const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (ix.some(i => i < 0)) return;
+  const p = here.slice(); ix.forEach((i, k) => { p[i] = at[k]; });
+  v.layerSpecification.add(makeLayer(v.layerSpecification, REPORT_LAYER, {
+    type: 'annotation', source: { url: 'local://annotations' }, annotations: [{ type: 'point', id: 'report', point: p }],
+    annotationColor: EDGE.color, pointSize: 7, onTop: true,
+  }));
+}
+export function hideReportMarker() {
+  const ml = managed(REPORT_LAYER);
+  if (ml) { try { viewer()?.layerManager?.removeManagedLayer(ml); } catch { /* already gone */ } }
 }
 
 export const huntAnswersLayerName = (h: HuntInfo) => `Hunt answers: ${h.title}`;

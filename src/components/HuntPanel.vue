@@ -85,6 +85,7 @@ const REPORT_KINDS: GemKind[] = ['cut', 'merge'];
 const reportNote = ref('');
 const reportSending = ref(false);
 const reportSent = ref('');
+const reportJustSent = ref(false);
 function reportFromCrosshair() { const p = crosshairXyz(); if (p) reportXyz.value = p.slice(0, 3).join(', '); }
 async function sendReport() {
   const h = hunt.value; if (!h || reportSending.value) return;
@@ -94,7 +95,9 @@ async function sendReport() {
   reportSending.value = true;
   try {
     await reportPlace(h, at, reportKind.value, reportNote.value);
-    reportSent.value = `Sent to the admins. Thank you! If it is real, it goes into the answers and you get Laser Eyes.`;
+    reportSent.value = 'Thanks! An admin will review it soon.';
+    reportJustSent.value = true;
+    setTimeout(() => { reportJustSent.value = false; }, 4000);
     reportXyz.value = ''; reportNote.value = '';
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { reportSending.value = false; }
@@ -216,8 +219,8 @@ const clock = computed(() => {
   const h = hunt.value; if (!h) return null;
   void huntState.now;
   if (h.test) return null;
-  if (phase.value === 'announced') return { label: 'Starts in', value: countdown(h.start_at) };
-  if (phase.value === 'live') return { label: 'Ends in', value: countdown(h.end_at) };
+  if (phase.value === 'announced') return { label: 'Starts in', value: countdown(h.start_at, false) };
+  if (phase.value === 'live') return { label: 'Ends in', value: countdown(h.end_at, false) };
   return null;
 });
 /** How to play: open until the Hunt is open on screen, then folded; a click opens or folds it (Ames: "click to expand"). */
@@ -464,7 +467,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <template v-if="opened && phase !== 'announced' && !hunt.test && !mini">
           <button class="nge-hunt-reportopen" :aria-expanded="reportOpen" @click="reportOpen = !reportOpen">Found a problem the Hunt missed? <span aria-hidden="true">{{ reportOpen ? '▴' : '▾' }}</span></button>
           <div v-if="reportOpen" class="nge-hunt-reportform">
-            <p>Put the crosshair on it, or type x, y, z as the coordinate bar shows them. Say what it is, and send it. If it is real, it goes into the answers and you get Laser Eyes. No gem is used.</p>
+            <p>Put the crosshair on it, or type x, y, z as the coordinate bar shows them. Say what it is, and send it. No gem is used.</p>
             <div class="nge-hunt-reportrow">
               <input v-model="reportXyz" class="nge-hunt-reportxyz" placeholder="x, y, z" aria-label="x, y, z" spellcheck="false" />
               <button class="nge-hunt-missed-go" @click="reportFromCrosshair">Use the crosshair</button>
@@ -476,7 +479,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
               </button>
             </div>
             <input v-model="reportNote" class="nge-hunt-reportxyz" maxlength="200" placeholder="A note for the admins (optional)" aria-label="A note for the admins" />
-            <button class="nge-hunt-submit" :disabled="reportSending" @click="sendReport">{{ reportSending ? 'Sending…' : 'Send to the admins' }}</button>
+            <button class="nge-hunt-submit" :class="{ 'nge-hunt-submit--sent': reportJustSent }" :disabled="reportSending" @click="sendReport">{{ reportSending ? 'Sending…' : reportJustSent ? '✓ Sent' : 'Send to the admins' }}</button>
             <p v-if="reportSent" class="nge-hunt-report-done" role="status">{{ reportSent }}</p>
           </div>
         </template>
@@ -545,10 +548,6 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           </span>
           <span class="nge-hunt-medalmini" title="Speed: the fastest to find them all (or the most, if nobody finds all), from your first open of the Hunt. One try.">
             <img src="hunt/fastest-128.png" alt="" /><b class="nge-hunt-tierword--speed">Speed</b><small>fastest</small>
-          </span>
-          <!-- Laser Eyes (Ames 2026-10-26): find a real problem the answer key missed -->
-          <span class="nge-hunt-medalmini" title="Laser Eyes: find a real problem the answer key missed. The admins check it, and it counts for you.">
-            <img src="hunt/laser-128.png" alt="" /><b class="nge-hunt-tierword--laser">Laser<br />Eyes</b><small>key missed</small>
           </span>
         </div>
         <p v-if="!hunt.test" class="nge-hunt-fine">{{ (hunt.cell_count || 1) > 1 ? 'The cells are' : 'The cell is' }} frozen while the Hunt runs: nobody can merge or cut {{ (hunt.cell_count || 1) > 1 ? 'them' : 'it' }}.</p>
@@ -889,6 +888,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-reportrow { display: flex; gap: 6px; align-items: center; }
 .nge-hunt-reportxyz { flex: 1; min-width: 0; box-sizing: border-box; padding: 5px 8px; border-radius: 7px; background: rgba(4, 8, 18, 0.8); border: 1px solid rgb(var(--hn-accent) / 0.4); color: #e6f0ff; font: 12px 'Inter', sans-serif; font-variant-numeric: tabular-nums; }
 .nge-hunt-reportkinds .nge-hunt-kind { padding: 5px 8px; font-size: 11.5px; }
+.nge-hunt-submit.nge-hunt-submit--sent, .nge-hunt-submit.nge-hunt-submit--sent:disabled { background: rgba(72, 214, 130, 0.22); border-color: #48d682; color: #d9ffe8; box-shadow: 0 0 14px rgba(72, 214, 130, 0.3); }
 .nge-hunt-missed-go { padding: 1px 7px; border-radius: 6px; cursor: pointer; font: 600 10.5px 'Inter', sans-serif; background: rgba(4, 8, 18, 0.6); border: 1px solid rgb(var(--hn-accent) / 0.45); color: rgb(var(--hn-line) / 0.9); }
 .nge-hunt-missed-go:hover:not(:disabled) { color: #fff; border-color: rgb(var(--hn-cyan) / 0.8); }
 .nge-hunt-medalmini small { font-size: 10px; color: rgb(var(--hn-line) / 0.6); }

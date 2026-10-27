@@ -794,6 +794,7 @@ async function huntAction(action, args, ctx) {
     case 'hunt.count_it': needAdmin(); return countIt(args, ctx);
     case 'hunt.report': return reportGem(args, ctx);
     case 'hunt.report_place': return reportPlace(args, ctx);
+    case 'hunt.report_get': needAdmin(); return reportGet(args, ctx);
     case 'hunt.reports': needAdmin(); return reportsAction(args, ctx);
     case 'hunt.dismiss_report': needAdmin(); return dismissReport(args, ctx);
     case 'hunt.add_place': needAdmin(); return addPlaceAction(args, ctx);
@@ -1056,10 +1057,21 @@ async function reportPlace(args, ctx) {
     const what = args.kind === 'merge' ? 'missing extension' : 'merger';
     if (admins.length) {
       await ctx.notify(admins.map((u) => ({ user_id: u, title: `🔎 Hunt report: ${h.title}`.slice(0, 120),
-        body: `${name} found a ${what} the answers missed${at && at.length === 3 ? `, at ${at.join(', ')}` : ''}${note ? `: "${note}"` : ''}. Admin Hub > Hunts > ${h.title}: Reported by hunters.` })));
+        body: `${name} found a ${what} the answers missed${at && at.length === 3 ? `, at ${at.join(', ')}` : ''}${note ? `: "${note}"` : ''}.\n\n[Go there](#nge-hunt-report=${row && row.id}) to look, then add it to the answers or mark it not real.` })));
     }
   }
   return { reported: true, id: row && row.id, open: mine.filter((r) => r.status === 'open').length + 1 };
+}
+
+/** One report, for the card a report's note opens (Ames 2026-10-26: "let admins jump to the point from the box"). */
+async function reportGet(args, ctx) {
+  const { db } = ctx;
+  const rep = db.report ? await db.report(posInt(args && args.report_id)) : null;
+  if (!rep) fail(404, 'That report is not there any more.');
+  const h = await getHunt(db, rep.hunt_id);
+  const name = ((await db.names([rep.user_id])) || {})[rep.user_id] || 'Player';
+  return { id: rep.id, hunt_id: h.id, hunt_title: h.title, dataset: h.dataset, kind: rep.kind, nm: rep.nm, at: rep.at, note: rep.note || '',
+    status: rep.status, name, phase: phase(h, ctx.now || new Date()) };
 }
 
 /** Every open report in a Hunt, for the editor (the newest first): places sent by coordinates, and gems said to be real. */
@@ -1110,10 +1122,17 @@ async function addPlace(h, nm, kind, ctx, radius = 0, credit = []) {
   const targets = await db.key(h.id);
   const tol = tolOf(h);
   const k = kind === 'merge' ? 'merge' : 'cut';
-  const place = radius > 0 ? [nm[0], nm[1], nm[2], k, { r: [radius, radius, radius] }] : [nm[0], nm[1], nm[2], k];
+  // While the Hunt runs, a place added is marked in the key with whoever reported it, and Laser Eyes waits for the
+  // end (Ames 2026-10-26: "hold Laser Eyes until the hunt ends"); finalize gives it with the medals.
+  const live = phase(h, ctx.now || new Date()) !== 'ended';
+  const shapeOf = (extra) => { const sh = { ...(radius > 0 ? { r: [radius, radius, radius] } : {}), ...extra }; return Object.keys(sh).length ? sh : null; };
+  const make = (extra) => { const sh = shapeOf(extra); return sh ? [nm[0], nm[1], nm[2], k, sh] : [nm[0], nm[1], nm[2], k]; };
   if (radius > 0) {
     const same = targets.findIndex((t) => kindOf(t) === k && placeDist(t, nm) <= tol);
     if (same >= 0) {
+      // Bigger: it keeps whether it was added during the Hunt, and who reported it.
+      const old = targets[same][4] || {};
+      const place = make({ ...(old.added ? { added: true } : {}), ...(Array.isArray(old.credit) ? { credit: old.credit } : {}) });
       const next = targets.map((t, i) => (i === same ? place : t));
       await db.setKey(h.id, next);
       const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
@@ -1123,10 +1142,15 @@ async function addPlace(h, nm, kind, ctx, radius = 0, credit = []) {
   }
   if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
   if (targets.some((t) => placeDist(t, nm) <= tol / 4)) fail(409, 'The key already has a place there. Give it a size to make that place bigger.');
+  const place = make(live ? { added: true, ...(credit.length ? { credit: [...new Set(credit)] } : {}) } : {});
   const next = [...targets, place];
   await db.setKey(h.id, next);
   const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
   const r = await rescore({ id: h.id }, ctx);
+  if (live) {
+    const later = await laserFinders(row || h, next.length - 1, ctx, credit);
+    return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed, laser: 0, laser_later: later.length };
+  }
   const laser = await awardLaserEyes(row || h, next.length - 1, ctx, credit);
   return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed, laser: laser.length };
 }
@@ -1211,7 +1235,14 @@ async function finalize(h, ctx, { force = false } = {}) {
   const speed = speedWinner(runs, n);
   if (speed) winners.push({ user_id: speed.user_id, found: speed.found, gems: speed.drops.length, tier: 'fastest', time: clockWords(speed.ms), all: speed.all });
   await postResults(row, board, winners, speed, ctx);
-  if (!winners.length) return { awarded: 0, ...counts };
+  // Laser Eyes, held until now: each place added while the Hunt ran, to whoever found or reported it (once each).
+  let laser = 0;
+  const keyNow = await db.key(row.id);
+  for (let i = 0; i < keyNow.length; i++) {
+    const sh = keyNow[i] && keyNow[i][4];
+    if (sh && sh.added) laser += (await awardLaserEyes(row, i, ctx, Array.isArray(sh.credit) ? sh.credit : [])).length;
+  }
+  if (!winners.length) return { awarded: 0, laser, ...counts };
   const badges = {};
   for (const tier of [...TIERS, 'fastest']) {
     if (!winners.some((w) => w.tier === tier)) continue;
@@ -1232,7 +1263,7 @@ async function finalize(h, ctx, { force = false } = {}) {
       image: badges[w.tier].image_url })));
   }
   // Chat hears the results once, in the results post (postResults), not a line per winner.
-  return { awarded: winners.length, fresh: fresh.length, ...counts };
+  return { awarded: winners.length, fresh: fresh.length, laser, ...counts };
 }
 
 /** Laser Eyes for this Hunt (Ames 2026-10-26): a problem the answer key missed, found. Ames's mask. */
@@ -1250,12 +1281,18 @@ function laserBadgeRow(h, site) {
  * achievement for anyone who found a missing hunt cut or extension, and it increments - max award one
  * time per hunt"): one Achievement per Hunt, given once to each finder; the profile counts them up.
  */
+/** Who found the place at index (their gem on it), and whoever reported it. */
+async function laserFinders(h, index, ctx, also = []) {
+  const { db } = ctx;
+  if (!db.allSubmissions) return [...new Set(also)];
+  const runs = await db.allSubmissions(h.id);
+  return [...new Set([...also, ...runs.filter((r) => Array.isArray(r.points) && !r.points.some((p) => Array.isArray(p))
+    && normalizeDrops(r.points).some((d) => d.hit === index)).map((r) => r.user_id)])];
+}
 async function awardLaserEyes(h, index, ctx, also = []) {
   const { db, notify } = ctx;
   if (!db.allSubmissions || !db.upsertBadge || !db.award) return [];
-  const runs = await db.allSubmissions(h.id);
-  const finders = [...new Set([...also, ...runs.filter((r) => Array.isArray(r.points) && !r.points.some((p) => Array.isArray(p))
-    && normalizeDrops(r.points).some((d) => d.hit === index)).map((r) => r.user_id)])];
+  const finders = await laserFinders(h, index, ctx, also);
   if (!finders.length) return [];
   const badge = await db.upsertBadge(laserBadgeRow(h, ctx.site || ''));
   const had = new Set(db.badgeHolders ? (await db.badgeHolders(badge.id)).map((r) => r.user_id) : []);
