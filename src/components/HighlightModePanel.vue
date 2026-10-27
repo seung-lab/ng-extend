@@ -649,15 +649,13 @@ onBeforeUnmount(() => {
         <button class="nge-hl-btn" type="button" @click="adding = false">Cancel</button>
         <div v-if="addError" class="nge-hl-add-error">{{ addError }}</div>
       </div>
+      <!-- One mark placed: say what comes next on a line of its own, and offer
+           the way back quietly (Ames 2026-10-27: "click another spot to
+           highlight between" and a less bold "cancel this mark"). -->
+      <div v-if="first" class="nge-hl-next">{{ isTouchRef ? 'Tap' : 'Ctrl + click' }} another spot to highlight between</div>
       <div class="nge-hl-actions">
-        <!-- One mark placed: say what comes next, and offer the way back quietly
-             (Ames 2026-10-27: "click another spot to highlight between" and a
-             less bold "cancel this mark"). -->
-        <template v-if="first">
-          <span class="nge-hl-step nge-hl-step--next">{{ isTouchRef ? 'Tap' : 'Ctrl + click' }} another spot to highlight between</span>
-          <button class="nge-hl-btn nge-hl-btn--quiet" :disabled="busy" @click="cancelPick"
-                  title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
-        </template>
+        <button v-if="first" class="nge-hl-btn nge-hl-btn--quiet" :disabled="busy" @click="cancelPick"
+                title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--main" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
         <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
@@ -873,7 +871,8 @@ onBeforeUnmount(() => {
 .nge-hl-btn--main:hover:not(:disabled) { background: #a5ffca; }
 .nge-hl-btn--armed { background: #ffd24d; border-color: #ffd24d; }
 .nge-hl-step { flex: 1; align-self: center; font-size: 11.5px; color: #9dffc9; }
-.nge-hl-step--next { font-size: 12.5px; font-weight: 600; color: #b8ffd6; }
+.nge-hl-next { margin-top: 10px; font-size: 12.5px; font-weight: 600; color: #b8ffd6; }
+.nge-hl-btn--quiet { margin-right: auto; }
 /* Cancel this mark: there when needed, not the loudest thing in the box. */
 .nge-hl-btn--quiet { background: none; border-color: transparent; font-weight: 400; color: rgba(220, 230, 245, 0.7); text-decoration: underline; text-underline-offset: 2px; }
 .nge-hl-btn--quiet:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); color: #fff; }
