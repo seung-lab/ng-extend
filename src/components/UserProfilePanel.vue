@@ -5002,8 +5002,17 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
    The Overview's rows show the art alone; the name shows on hover. The
    rows are shorter for it, with the shelf line redrawn under the art. */
 :is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge .nge-profile-badge-name { display: none; }
+/* Bigger art in the Overview rows too (Ames 2026-10-27: "these can be bigger
+   as well - so tiny"): each fills most of its column, up to 84 px from 42. */
+.nge-track-achievements .nge-profile-badge:not(.nge-profile-badge--viewall):not(.nge-profile-badge--locked) .nge-profile-badge-img {
+  width: 100%; max-width: 84px; height: auto; aspect-ratio: 1;
+}
+.nge-track-achievements .nge-profile-badge:not(.nge-profile-badge--viewall):not(.nge-profile-badge--locked) .nge-profile-badge-icon {
+  width: 92%; height: 92%;
+}
+.nge-track-achievements .nge-profile-badge { justify-content: center; }
 .nge-track-achievements .nge-profile-badges-grid {
-  grid-auto-rows: 56px;
+  grid-auto-rows: minmax(56px, auto);
   /* no shelf line: with the names gone it read as a stray border under
      each row (Ames 2026-10-11); the section's own border is enough */
   background-image: none;
