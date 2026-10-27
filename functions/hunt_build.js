@@ -288,7 +288,7 @@ async function list(ctx) {
         proofread_by: names[c.proofread_by] || null, proofread_at: c.proofread_at || null,
         helpers: helpersOf(c).map((id) => ({ id, name: names[id] || 'Player' })),
         merges_each: c.merges_each, cuts_each: c.cuts_each, counts: counts[c.id] || {}, hunt_id: c.hunt_id || null,
-        admin_note: c.admin_note || '', moves: MOVES[c.status] || [], start: c.start_vox || null,
+        admin_note: c.admin_note || '', moves: MOVES[c.status] || [], start: c.start_vox || null, anchor_sv: c.anchor_sv || null,
         created_at: c.created_at,
       };
     }),

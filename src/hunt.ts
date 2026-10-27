@@ -20,6 +20,7 @@ import { setStatedColor } from './widgets/widget_utils';
 import { secureWrite } from './secure_write';
 import { canonicalDataset, currentDatasetTag, findDatasetByCanonical, switchToDataset } from './datasets';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from './util/keep_display';
+import { buildEditGuard, isBuildingCell } from './hunt_build';
 
 export type HuntPhase = 'announced' | 'live' | 'ended';
 export type HuntTier = 'gold' | 'silver' | 'bronze';
@@ -246,7 +247,10 @@ export function phaseNow(h: HuntInfo): HuntPhase {
  * Everyone, admins too: one stray edit would move the mergers out from under
  * the answer key. Cancel the hunt to edit its cell.
  */
-function huntEditGuard(kind: 'merge' | 'split', roots: string[]): string | null {
+function huntEditGuard(kind: 'merge' | 'split', roots: string[], edit?: any): string | null {
+  // A Hunt being built on the Sandbox first (hunt_build.ts): a helper's edit is kept as a suggestion.
+  const building = buildEditGuard(kind, roots, edit);
+  if (building) return building;
   for (const h of huntState.hunts) {
     if (phaseNow(h) !== 'live' || !h.cells.length) continue;
     if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) continue;
@@ -263,6 +267,7 @@ function huntEditGuard(kind: 'merge' | 'split', roots: string[]): string | null 
  * from an old ID, and the segment list's "update to the current ID" would show the finished cell: the answers.
  */
 export function isLiveHuntCell(root: string): boolean {
+  if (isBuildingCell(root)) return true;   // or being built (hunt_build.ts)
   const tried = huntState.test;
   for (const h of [...huntState.hunts, ...(tried ? [tried] : [])]) {
     if (!h?.cells?.length || !(h.test || phaseNow(h) === 'live')) continue;

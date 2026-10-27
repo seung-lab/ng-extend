@@ -42,6 +42,7 @@ import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { ensureMecLayers } from '../util/mec_layers';
 import MecMarkStatus from './MecMarkStatus.vue';
+import { buildState } from '../hunt_build';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
@@ -412,8 +413,11 @@ const cells = computed(() => {
  *  this so "Available (N)" always matches the list you can actually claim. */
 const datasetScopedCells = computed(() => {
   const activeDs = canonicalDataset(activeDataset.value);
-  if (!activeDs) return cells.value;
-  return cells.value.filter(c => {
+  // A Hunt being built (hunt_build.ts) is out of the Library for players: its cell, and any ID a planting touched.
+  const building = backend.isAdmin ? null : new Set(buildState.cells.flatMap(c => c.protected));
+  const shown = building?.size ? cells.value.filter(c => !building.has(c.segId) && !((c as any).liveSegId && building.has((c as any).liveSegId))) : cells.value;
+  if (!activeDs) return shown;
+  return shown.filter(c => {
     const cd = canonicalDataset(c.dataset);
     return !cd || cd === activeDs;
   });
@@ -3827,6 +3831,7 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
+                  <span v-if="(cell.notes || '').startsWith('Hunt cell')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully. It may become a Hunt.">Hunt cell</span>
                   <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
               </div>
@@ -4625,6 +4630,7 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-linkrow { display: flex; gap: 6px; align-items: center; }
 .nge-cl-complete-typerow { display: flex; gap: 6px; }
 .nge-cl-ai-type { background: rgba(178, 140, 255, 0.14); color: #c9b2ff; text-transform: none; }
+.nge-cl-hunt-cell { background: rgba(66, 213, 236, 0.12); color: #7fe6f5; text-transform: none; }
 .nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
 .nge-cl-complete-ai b { color: #c9b2ff; }
 .nge-cl-complete-type { flex: 1 1 0; min-width: 0; }

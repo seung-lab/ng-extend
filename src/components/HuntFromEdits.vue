@@ -10,9 +10,10 @@
  * The state lives in util/hunt_from_edits.ts (fromEdits), so it outlasts
  * the Admin Hub closing. The rules: util/hunt_history_steps.ts.
  */
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
-import { HISTORY_SOURCES, sourceFor, readCellHistory, showSession, somaVoxels, setFinishedCell, fromEdits, keepHistory, pickedSession } from '../util/hunt_from_edits';
+import { HISTORY_SOURCES, sourceFor, readCellHistory, readPlanted, showSession, somaVoxels, setFinishedCell, fromEdits, keepHistory, pickedSession } from '../util/hunt_from_edits';
+import { huntCall } from '../hunt';
 import type { Place } from '../util/hunt_history_steps';
 import HuntPlacesList from 'components/HuntPlacesList.vue';
 
@@ -64,6 +65,23 @@ async function choose(i: number) {
   finally { busy.value = ''; }
 }
 
+/** A Hunt Builder cell (Admin Hub > Hunts > Hunt builder > Make the Hunt): its planted edits, reversed. */
+const built = computed(() => fromEdits.history?.status === 'built');
+async function fromBuilt() {
+  if (busy.value || !fromEdits.buildId) return;
+  error.value = '';
+  keepHistory(null); fromEdits.pick = -1; fromEdits.selected = '';
+  try {
+    busy.value = 'Reading the planted edits';
+    const h = await readPlanted(fromEdits.buildId, huntCall);
+    fromEdits.dataset = h.source.canon; fromEdits.root = h.root;
+    keepHistory(h);
+    await choose(0);
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
+onMounted(() => { if (fromEdits.buildId && !built.value) void fromBuilt(); });
+
 function finished(e: Event) { fromEdits.finished = (e.target as HTMLInputElement).checked; setFinishedCell(fromEdits.history, fromEdits.finished); }
 
 const droppedLine = computed(() => {
@@ -86,23 +104,27 @@ const onDataset = computed(() => canonicalDataset(currentDatasetTag()) === fromE
 
 <template>
   <div class="nge-hfe">
-    <div class="nge-hfe-head">Or make it from a proofread cell</div>
-    <p class="nge-hfe-help">Paste a cell from the proofread list. Each cut the proofreaders made becomes a merger to find, each join an extension. Players start from the cell as it was before the edits you pick, so check every place in the viewer first.</p>
-    <div class="nge-hfe-row">
+    <div class="nge-hfe-head">{{ fromEdits.buildId ? 'From the cell players helped build' : 'Or make it from a proofread cell' }}</div>
+    <p v-if="fromEdits.buildId" class="nge-hfe-help">Each planting, reversed: a merge you planted is a merger to Cut, a cut a piece to Extend. Players start from the cell as it is now. Saving ties the cell to this Hunt: it stays hidden from players until the Hunt starts.</p>
+    <p v-else class="nge-hfe-help">Paste a cell from the proofread list. Each cut the proofreaders made becomes a merger to find, each join an extension. Players start from the cell as it was before the edits you pick, so check every place in the viewer first.</p>
+    <div v-if="!fromEdits.buildId" class="nge-hfe-row">
       <select v-model="fromEdits.dataset" class="nge-hfe-input nge-hfe-ds" aria-label="Dataset" :disabled="!!busy">
         <option v-for="s in HISTORY_SOURCES" :key="s.canon" :value="s.canon">{{ s.label }}</option>
       </select>
       <input v-model="fromEdits.root" class="nge-hfe-input nge-hfe-root" placeholder="864691136814060915" aria-label="Proofread cell ID" :disabled="!!busy" @keydown.enter="find" />
       <button class="nge-hfe-btn" :disabled="!!busy || !fromEdits.root.trim()" @click="find">Find the edits</button>
     </div>
-    <p v-if="!onDataset && !history" class="nge-hfe-muted">Opening it switches to {{ sourceFor(fromEdits.dataset)?.label }}.</p>
+    <button v-if="fromEdits.buildId && !history && !busy" class="nge-hfe-btn" @click="fromBuilt">Read the planted edits</button>
+    <p v-if="!onDataset && !history && !fromEdits.buildId" class="nge-hfe-muted">Opening it switches to {{ sourceFor(fromEdits.dataset)?.label }}.</p>
     <p v-if="busy" class="nge-hfe-busy" role="status">{{ busy }}…</p>
     <p v-if="error" class="nge-hfe-error" role="alert">{{ error }}</p>
 
     <template v-if="history">
-      <p class="nge-hfe-muted">{{ history.source.label }}, proofread<template v-if="history.status">: {{ history.status }}</template>. {{ count(history.cellEdits, 'edit', 'edits') }} on the cell itself, {{ history.totalEdits }} in its whole history.</p>
+      <p v-if="built" class="nge-hfe-muted">Hunt cell <code>{{ history.root }}</code>: {{ kindsLine(history.sessions[0]?.places ?? []) }} planted.</p>
+      <p v-else class="nge-hfe-muted">{{ history.source.label }}, proofread<template v-if="history.status">: {{ history.status }}</template>. {{ count(history.cellEdits, 'edit', 'edits') }} on the cell itself, {{ history.totalEdits }} in its whole history.</p>
       <p v-if="!history.reaches" class="nge-hfe-warn">The cell's edits did not lead all the way to this ID, so some may be missing. Check the places by hand.</p>
 
+      <template v-if="!built">
       <div class="nge-hfe-label">Players start from the cell as it was</div>
       <div class="nge-hfe-sessions" role="radiogroup" aria-label="When players start from">
         <button v-for="(s, i) in history.sessions" :key="s.at" type="button" role="radio" :aria-checked="i === fromEdits.pick"
@@ -113,11 +135,12 @@ const onDataset = computed(() => canonicalDataset(currentDatasetTag()) === fromE
           <span class="nge-hfe-session-after">{{ count(s.editsAfter, 'edit', 'edits') }} after</span>
         </button>
       </div>
+      </template>
 
       <template v-if="session">
         <HuntPlacesList />
         <p v-if="droppedLine" class="nge-hfe-muted">{{ droppedLine }}</p>
-        <label class="nge-hfe-check"><input type="checkbox" :checked="fromEdits.finished" @change="finished" /> Show the finished cell (only you see it)</label>
+        <label v-if="!built" class="nge-hfe-check"><input type="checkbox" :checked="fromEdits.finished" @change="finished" /> Show the finished cell (only you see it)</label>
         <button class="nge-hfe-btn nge-hfe-btn--look" :disabled="!!busy" @click="emit('check')">Check them in the viewer</button>
       </template>
     </template>

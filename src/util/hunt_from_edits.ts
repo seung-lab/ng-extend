@@ -81,12 +81,14 @@ export const fromEdits = reactive({
   checking: false,
   /** The Hunt editor as it was when the admin went to check; HuntsAdminTab.vue puts it back. */
   editor: null as any,
+  /** A Hunt Builder cell (functions/hunt_build.js) the key comes from: its planted edits, reversed. Saving ties it to the Hunt. */
+  buildId: 0,
 });
 export function keepHistory(h: CellHistory | null) { fromEdits.history = h ? markRaw(h) : null; }
 /** The editor is done with it (closed, or another Hunt opened): forget the cell and take the finished cell away. */
 export function forgetFromEdits() {
   keepHistory(null);
-  Object.assign(fromEdits, { pick: -1, selected: '', finished: false, checking: false, editor: null });
+  Object.assign(fromEdits, { pick: -1, selected: '', finished: false, checking: false, editor: null, buildId: 0 });
   setFinishedCell(null, false);
 }
 export const pickedSession = (): SessionOption | null => (fromEdits.history && fromEdits.pick >= 0 ? fromEdits.history.sessions[fromEdits.pick] ?? null : null);
@@ -250,6 +252,27 @@ export async function readCellHistory(canon: string, rootIn: string, tolNm: numb
     if (n > b) best = k;
   });
   return { source: src, root, status: statusLine(row), somaNm, totalEdits: ops.length, cellEdits: edits.length, reaches, sessions, best };
+}
+
+/**
+ * A Hunt Builder cell's planted edits as one start (Ames 2026-10-27): the cell as it is now, after planting, and
+ * each planting reversed (functions/hunt_build.js placeOf): an admin's merge is a merger to Cut, a cut a piece to
+ * Extend. The points are the helper's own, so a place sits where they made the edit. Sandbox voxels are 4, 4, 40 nm.
+ */
+export async function readPlanted(id: number, call: (action: string, args: any) => Promise<any>): Promise<CellHistory> {
+  const src = sourceFor('pinky_nf_v2');
+  if (!src) throw new Error('This version of Pyr does not have the Sandbox.');
+  const r = await call('build.planted', { id });
+  const places: Place[] = (r?.places ?? []).map((p: any) => ({ kind: p.kind, nm: p.nm, op: Number(p.op), at: Number(p.at) || 0, user: p.user || '', wide: false }));
+  if (!places.length) throw new Error('Nothing has been planted in this cell yet.');
+  const start: number[] | null = Array.isArray(r?.cell?.start) ? r.cell.start.map(Number) : null;
+  const somaNm = start ? [start[0] * 4, start[1] * 4, start[2] * 40] : places[0].nm;
+  const root = String(r.cell.root);
+  const none = { undone: 0, failed: 0, idle: 0, hidden: 0, tiny: 0, closeCut: 0, closeMerge: 0 };
+  return {
+    source: src, root, status: 'built', somaNm, totalEdits: places.length, cellEdits: places.length, reaches: true,
+    sessions: [{ at: Date.now(), beforeRoot: root, editsAfter: 0, places, dropped: none }], best: 0,
+  };
 }
 
 // ── On screen ──────────────────────────────────────────────────────────────

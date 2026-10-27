@@ -11,6 +11,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
 import HuntFromEdits from 'components/HuntFromEdits.vue';
+import HuntBuilderSection from 'components/HuntBuilderSection.vue';
 import { useProofreadingBackendStore } from '../store';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
@@ -68,6 +69,8 @@ const blank = () => ({ title: '', description: '', link: '', tolerance_um: 3, ma
   tierGems: { gold: '', silver: '', bronze: '' } as Record<Tier, number | ''>,
   prize: { gold: blankPrize(), silver: blankPrize(), bronze: blankPrize() } as Record<Tier, Prize>,
   announce: '', start: '', end: '', admins_only: false,
+  /** The helpers' Achievement (Hunt Builder): a special Achievement, or '' for the Hunt's own. */
+  makerBadge: '' as number | '',
   images: { announce: null, start: null, end: null } as Record<NoteKind, Picture | null> });
 const form = ref(blank());
 const candidates = ref<KeyCandidate[]>([]);
@@ -183,6 +186,12 @@ function startNew() {
   scan();
 }
 
+/** Hunt builder > Make the Hunt: a new Hunt whose key comes from that cell's planted edits (HuntFromEdits). */
+function makeFromBuilt(id: number) {
+  startNew();
+  fromEdits.buildId = id;
+}
+
 async function open(h: AdminHunt) {
   forgetFromEdits();
   busy.value = 'open'; error.value = ''; message.value = '';
@@ -196,6 +205,7 @@ async function open(h: AdminHunt) {
       tierGems: { gold: (full.tiers as any)?.gold_gems || '', silver: (full.tiers as any)?.silver_gems || '', bronze: (full.tiers as any)?.bronze_gems || '' },
       prize: { gold: prizeFrom(full.art?.gold), silver: prizeFrom(full.art?.silver), bronze: prizeFrom(full.art?.bronze) },
       announce: toLocalInput(full.announce_at), start: toLocalInput(full.start_at), end: toLocalInput(full.end_at), admins_only: !!full.admins_only,
+      makerBadge: Number((full.art as any)?.maker?.badge_id) || '',
       images: { announce: full.notif_images?.announce ?? null, start: full.notif_images?.start ?? null, end: full.notif_images?.end ?? null } };
     read.value = null;
     cellRows.value = []; setCells(full.cells || []);
@@ -345,6 +355,11 @@ async function save(status?: 'draft' | 'scheduled') {
     const sched = (h as any).status === 'scheduled';
     message.value = status === 'scheduled' ? 'Scheduled. The notes go out at their times.' : sched ? 'Saved. It stays scheduled.' : 'Saved as a draft.';
     savedTimes.value = h.start_at && h.end_at ? { announce: h.announce_at || null, start: h.start_at, end: h.end_at } : null;
+    // Made from a Hunt Builder cell: the cell goes with the Hunt, veiled until it starts (hunt_build.js link).
+    if (fromEdits.buildId) {
+      try { await huntCall('build.link', { id: fromEdits.buildId, hunt_id: h.id }); message.value += ' The Hunt cell is tied to it and stays hidden from players until the start.'; }
+      catch (err: any) { message.value += ` The Hunt cell could not be tied to it: ${err?.message || err}`; }
+    }
     void refresh();
   } catch (e: any) { error.value = e?.message || String(e); savedTimes.value = null; }
   finally { busy.value = ''; void showTop(); }
@@ -447,6 +462,7 @@ function artFields(): Partial<Record<Tier, PrizeArt>> {
     if (p.mode === 'badge' && p.badge_id) out[t] = { badge_id: Number(p.badge_id) };
     else if (p.mode === 'own' && p.image?.image_url) out[t] = { image_url: p.image.image_url, thumbnail_url: p.image.thumbnail_url };
   }
+  if (form.value.makerBadge) (out as any).maker = { badge_id: Number(form.value.makerBadge) };
   return out;
 }
 /** The special Achievements an admin made (not the ones Hunts make for themselves). */
@@ -611,6 +627,7 @@ async function duplicate() {
 
     <!-- The list -->
     <template v-if="!editing">
+      <HuntBuilderSection @make="makeFromBuilt" />
       <button class="nge-hunts-btn nge-hunts-btn--primary" @click="startNew">New Hunt</button>
       <p v-if="loading" class="nge-hunts-muted">Loading…</p>
       <p v-else-if="!list.length && !notInstalled" class="nge-hunts-muted">No Hunts yet.</p>
@@ -771,6 +788,18 @@ async function duplicate() {
           </div>
           <p v-if="form.prize[t].mode === 'badge' && specialById(form.prize[t].badge_id)?.description" class="nge-hunts-muted nge-hunts-special-desc">{{ specialById(form.prize[t].badge_id).description }}</p>
           <p v-if="form.prize[t].mode === 'badge' && !form.prize[t].badge_id" class="nge-hunts-muted">With none picked, {{ TIER_WORD[t] }} gives the Achievement made for this Hunt.</p>
+        </div>
+        <!-- The Hunt Builder's helpers (Ames 2026-10-27: a special Achievement per Hunt, she makes it): given at the end. -->
+        <div class="nge-hunts-prize">
+          <div class="nge-hunts-prize-head"><span class="nge-hunts-medal">Helpers</span>
+            <span class="nge-hunts-muted">Everyone whose suggestion was planted in this Hunt (Hunt builder), at the end.</span></div>
+          <div class="nge-hunts-row">
+            <img v-if="specialById(form.makerBadge)" class="nge-hunts-special-img" :src="specialById(form.makerBadge).thumbnail_url || specialById(form.makerBadge).image_url" alt="" />
+            <select v-model="form.makerBadge" class="nge-hunts-input" aria-label="Special Achievement for the helpers">
+              <option value="">Made for this Hunt: {{ (form.title || 'This Hunt') + ': Hunt Maker' }}</option>
+              <option v-for="b in specials" :key="b.id" :value="b.id">{{ b.name }}</option>
+            </select>
+          </div>
         </div>
       </fieldset>
 

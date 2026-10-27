@@ -18,6 +18,9 @@ import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
 import HuntPlacesBox from "components/HuntPlacesBox.vue";
 import HuntReportCard from "components/HuntReportCard.vue";
+import BuildQueueCard from "components/BuildQueueCard.vue";
+import HelpBuildBox from "components/HelpBuildBox.vue";
+import { buildState, startBuildWatch } from '../hunt_build';
 import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
@@ -484,6 +487,8 @@ watch(() => huntBackend.userId, async id => {
   huntsStarted = true;
   await loadHunts();
   startGemWatch();
+  // The Hunt Builder: the guard and veil on the Sandbox, and a helper's own cells (hunt_build.ts).
+  if (!(location.hostname.startsWith('princeton-tracers-dot-') || new URLSearchParams(location.search).has('tracers'))) startBuildWatch();
   // A dataset switch made for a hunt reloads the page: carry on into it.
   const after = takeHuntAfterSwitch();
   if (after?.test) { void tryHunt(after.id, true); return; }
@@ -500,6 +505,8 @@ document.addEventListener('nge:access-review', () => { showProfile.value = false
 document.addEventListener('nge:hunt-check', () => { showProfile.value = false; });
 // The reports queue works on the view (HuntReportCard), so the Admin Hub steps aside for it (Ames 2026-10-27).
 document.addEventListener('nge:hunt-report', () => { showProfile.value = false; });
+// The Hunt Builder's suggestions queue (BuildQueueCard) works on the view too.
+document.addEventListener('nge:build-queue', () => { showProfile.value = false; });
 // An admin opened a Proofreading Test try in the view (Admin Hub > Test tries).
 document.addEventListener('nge:test-review', () => { showProfile.value = false; showAccess.value = false; });
 /** Chat visibility persists across reloads so closing it stays closed.
@@ -1217,6 +1224,8 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <access-review-bar />
   <hunt-places-box />
   <hunt-report-card v-if="huntBackend.isAdmin" />
+  <build-queue-card v-if="huntBackend.isAdmin" />
+  <help-build-box />
   <test-review-bar />
   <test-queue-card />
   <!-- Help requests now live in Cell Library's Help tab -->
@@ -1400,6 +1409,14 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
         </svg>
         <span class="nge-hunt-pill-word">{{ huntPill.word }}</span>
         <span v-if="huntPill.time" class="nge-hunt-pill-time"><span v-for="(p, i) in clockParts(huntPill.time)" :key="i" :class="{ 'nge-digit': p.d }">{{ p.c }}</span></span>
+      </button>
+      <!-- Help build a Hunt: an invited helper's cells (hunt_build.ts). -->
+      <button v-if="buildState.mine.length" class="nge-hunt-pill nge-hunt-pill--build" title="Help build a Hunt: suggest merges and cuts"
+              @click="buildState.helping = !buildState.helping">
+        <svg class="nge-hunt-pill-gem" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <path d="M7 3h10l4 6-9 12L3 9z" fill="currentColor" opacity="0.9"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" fill="none" stroke="rgba(8,13,26,0.55)" stroke-width="1.2"/>
+        </svg>
+        <span class="nge-hunt-pill-word">Help build</span>
       </button>
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">

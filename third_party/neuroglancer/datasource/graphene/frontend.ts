@@ -1494,18 +1494,20 @@ function ngeGraphEdit(kind: 'merge'|'split', graph: string, jsonResp: any) {
  * reason in the status bar. The app sets window.__ngeEditGuard(kind, roots),
  * which answers a sentence to refuse or null to let the edit through.
  */
-function ngeEditRefusal(kind: 'merge'|'split', roots: Uint64[]): string|null {
+function ngeEditRefusal(kind: 'merge'|'split', roots: Uint64[], edit?: any): string|null {
   try {
     const guard = (window as any)['__ngeEditGuard'];
     if (typeof guard !== 'function') return null;
-    const why = guard(kind, roots.map(r => String(r)));
+    // The edit itself, as it would be sent, so a Hunt Builder helper's merge or cut can be kept as a
+    // suggestion instead (src/hunt_build.ts): a merge [[sv, x, y, z], [sv, x, y, z]], a cut {sources, sinks}, nm.
+    const why = guard(kind, roots.map(r => String(r)), edit);
     return typeof why === 'string' && why ? why : null;
   } catch {
     return null;  // a broken guard never blocks an edit
   }
 }
-function ngeRefuseEdit(kind: 'merge'|'split', roots: Uint64[]) {
-  const why = ngeEditRefusal(kind, roots);
+function ngeRefuseEdit(kind: 'merge'|'split', roots: Uint64[], edit?: any) {
+  const why = ngeEditRefusal(kind, roots, edit);
   if (!why) return;
   StatusMessage.showTemporaryMessage(why, 8000);
   throw new Error(why);
@@ -1537,21 +1539,22 @@ class GrapheneGraphServerInterface {
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     }
-    ngeRefuseEdit('merge', [first.rootId, second.rootId]);
+    const mergeBody = [
+      [
+        String(first.segmentId),
+        ...first.position.map((val, i) => val * annotationToNanometers[i])
+      ],
+      [
+        String(second.segmentId),
+        ...second.position.map((val, i) => val * annotationToNanometers[i])
+      ]
+    ];
+    ngeRefuseEdit('merge', [first.rootId, second.rootId], mergeBody);
 
     const promise = cancellableFetchSpecialOk(
         this.credentialsProvider, `${url}/merge?int64_as_str=1`, {
           method: 'POST',
-          body: JSON.stringify([
-            [
-              String(first.segmentId),
-              ...first.position.map((val, i) => val * annotationToNanometers[i])
-            ],
-            [
-              String(second.segmentId),
-              ...second.position.map((val, i) => val * annotationToNanometers[i])
-            ]
-          ])
+          body: JSON.stringify(mergeBody)
         },
         responseIdentity, cancellationToken);
 
@@ -1576,22 +1579,23 @@ class GrapheneGraphServerInterface {
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     }
-    ngeRefuseEdit('split', [...first, ...second].map(x => x.rootId));
+    const splitBody = {
+      'sources': first.map(
+          x =>
+              [String(x.segmentId),
+               ...x.position.map((val, i) => val * annotationToNanometers[i])]),
+      'sinks': second.map(
+          x =>
+              [String(x.segmentId),
+               ...x.position.map((val, i) => val * annotationToNanometers[i])])
+    };
+    ngeRefuseEdit('split', [...first, ...second].map(x => x.rootId), splitBody);
 
     const promise =
         cancellableFetchSpecialOk(
             this.credentialsProvider, `${url}/split?int64_as_str=1`, {
               method: 'POST',
-              body: JSON.stringify({
-                'sources': first.map(
-                    x =>
-                        [String(x.segmentId),
-                         ...x.position.map((val, i) => val * annotationToNanometers[i])]),
-                'sinks': second.map(
-                    x =>
-                        [String(x.segmentId),
-                         ...x.position.map((val, i) => val * annotationToNanometers[i])])
-              })
+              body: JSON.stringify(splitBody)
             },
             responseIdentity);
 

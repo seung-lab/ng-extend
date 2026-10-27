@@ -49,7 +49,7 @@ export type SecureAction =
 export async function secureWrite<T = any>(action: SecureAction, args: Record<string, any> = {}): Promise<T> {
   const token = caveToken();
   if (!token) throw new Error('Sign in to EyeWire II first.');
-  const res = await fetch(action.startsWith('test.') ? TEST_ENDPOINT : action.startsWith('reply.') ? REPLY_ENDPOINT : action.startsWith('access.') ? ACCESS_ENDPOINT : action.startsWith('hunt.') ? HUNT_ENDPOINT : ENDPOINT, {
+  const res = await fetch(action.startsWith('test.') ? TEST_ENDPOINT : action.startsWith('reply.') ? REPLY_ENDPOINT : action.startsWith('access.') ? ACCESS_ENDPOINT : (action.startsWith('hunt.') || action.startsWith('build.')) ? HUNT_ENDPOINT : ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...args, action, token }),
