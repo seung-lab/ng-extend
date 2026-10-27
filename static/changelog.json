@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T00:44:24Z",
+      "title": "Hunt box tidy",
+      "digest": "minor",
+      "items": [
+        "Sending a problem the Hunt missed now shows a green Sent and a thank you.",
+        "The Hunt box shows hours and minutes, and the seconds in the last hour; the top bar keeps the seconds."
+      ]
+    },
+    {
       "at": "2026-10-27T00:08:57Z",
       "title": "Report a problem the Hunt missed",
       "items": [
