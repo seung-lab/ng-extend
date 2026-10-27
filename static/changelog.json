@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T16:16:00Z",
+      "title": "The Eyewire II Principles",
+      "items": [
+        "The first time you open the retina dataset, Pyr asks you to agree to the Eyewire II Principles: keep what you find within the community and respect each other's work. One click, once."
+      ]
+    },
+    {
       "at": "2026-10-27T16:13:00Z",
       "title": "Lantern: Clicked branch fixes",
       "digest": "minor",
