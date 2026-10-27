@@ -32,7 +32,9 @@ export type BuildKind = 'merge' | 'cut';
 export type BuildEdit = any[][] | { sources: any[][]; sinks: any[][] };
 export interface GuardCell { id: number; status: string; dataset: string; root: string; protected: string[]; veil: string[]; helper: boolean; merges_each: number; cuts_each: number }
 export interface MySuggestion { id: number; kind: BuildKind; at: number[]; note: string; status: string; t: string; edit: BuildEdit }
-export interface MineCell { id: number; root: string; dataset: string; start: number[] | null; merges_each: number; cuts_each: number; used: { merge: number; cut: number }; suggestions: MySuggestion[] }
+export interface MineCell { id: number; root: string; dataset: string; start: number[] | null; merges_each: number; cuts_each: number; used: { merge: number; cut: number };
+  /** Taking suggestions now, and until when (null: until the admins close them). */
+  open: boolean; closes: string | null; suggestions: MySuggestion[] }
 
 export const buildState = reactive({
   cells: [] as GuardCell[],

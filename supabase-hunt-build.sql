@@ -53,3 +53,8 @@ create index if not exists hunt_suggestions_user on hunt_suggestions (user_id, c
 alter table hunt_candidates  enable row level security;
 alter table hunt_suggestions enable row level security;
 -- No policies: only the server (service role) reads and writes them.
+
+-- Added 2026-10-27: a closing time for suggestions, and the cell players hunt (the cell after planting, or the
+-- cell before proofreading when the Hunt comes from the proofreaders' own edits).
+alter table hunt_candidates add column if not exists suggest_until timestamptz;
+alter table hunt_candidates add column if not exists hunt_root text;

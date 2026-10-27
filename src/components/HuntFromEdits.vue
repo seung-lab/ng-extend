@@ -12,7 +12,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { currentDatasetTag, canonicalDataset } from '../datasets';
-import { HISTORY_SOURCES, sourceFor, readCellHistory, readPlanted, showSession, somaVoxels, setFinishedCell, fromEdits, keepHistory, pickedSession } from '../util/hunt_from_edits';
+import { HISTORY_SOURCES, sourceFor, readCellHistory, plantedHistory, buildSomaNm, showSession, somaVoxels, setFinishedCell, fromEdits, keepHistory, pickedSession } from '../util/hunt_from_edits';
 import { huntCall } from '../hunt';
 import type { Place } from '../util/hunt_history_steps';
 import HuntPlacesList from 'components/HuntPlacesList.vue';
@@ -65,22 +65,41 @@ async function choose(i: number) {
   finally { busy.value = ''; }
 }
 
-/** A Hunt Builder cell (Admin Hub > Hunts > Hunt builder > Make the Hunt): its planted edits, reversed. */
+/**
+ * A Hunt Builder cell (Admin Hub > Hunts > Hunt builder > Make the Hunt), two ways (Ames 2026-10-27): its planted
+ * edits reversed (players start from the cell as it is now), or its proofreaders' own edits (players start from the
+ * cell before they were made, as any proofread cell; "we should save the proofreading edits as hunt points").
+ */
 const built = computed(() => fromEdits.history?.status === 'built');
-async function fromBuilt() {
+const buildInfo = ref<any>(null);
+const plantedCount = computed(() => buildInfo.value?.places?.length ?? 0);
+async function fromBuilt(mode?: 'planted' | 'proofreading') {
   if (busy.value || !fromEdits.buildId) return;
   error.value = '';
   keepHistory(null); fromEdits.pick = -1; fromEdits.selected = '';
   try {
-    busy.value = 'Reading the planted edits';
-    const h = await readPlanted(fromEdits.buildId, huntCall);
-    fromEdits.dataset = h.source.canon; fromEdits.root = h.root;
+    busy.value = 'Reading the Hunt cell';
+    const r = buildInfo.value = await huntCall<any>('build.planted', { id: fromEdits.buildId });
+    const way = mode ?? (r.places?.length ? 'planted' : 'proofreading');
+    if (way === 'planted') {
+      const h = plantedHistory(r);
+      fromEdits.dataset = h.source.canon; fromEdits.root = h.root;
+      keepHistory(h);
+      await choose(0);
+      return;
+    }
+    const root = String(r.cell.proofread_root || r.cell.root);
+    const somaNm = buildSomaNm(r.cell.start);
+    // The claim's soma anchor stands in for the proofread list; without one, the list is asked as usual.
+    const known = r.cell.anchor_sv && somaNm ? { sv: String(r.cell.anchor_sv), somaNm } : undefined;
+    fromEdits.dataset = 'pinky_nf_v2'; fromEdits.root = root;
+    const h = await readCellHistory('pinky_nf_v2', root, tolNm.value, s => { busy.value = s; }, known);
     keepHistory(h);
-    await choose(0);
+    await choose(h.best);
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
-onMounted(() => { if (fromEdits.buildId && !built.value) void fromBuilt(); });
+onMounted(() => { if (fromEdits.buildId && !fromEdits.history) void fromBuilt(); });
 
 function finished(e: Event) { fromEdits.finished = (e.target as HTMLInputElement).checked; setFinishedCell(fromEdits.history, fromEdits.finished); }
 
@@ -105,7 +124,16 @@ const onDataset = computed(() => canonicalDataset(currentDatasetTag()) === fromE
 <template>
   <div class="nge-hfe">
     <div class="nge-hfe-head">{{ fromEdits.buildId ? 'From the cell players helped build' : 'Or make it from a proofread cell' }}</div>
-    <p v-if="fromEdits.buildId" class="nge-hfe-help">Each planting, reversed: a merge you planted is a merger to Cut, a cut a piece to Extend. Players start from the cell as it is now. Saving ties the cell to this Hunt: it stays hidden from players until the Hunt starts.</p>
+    <template v-if="fromEdits.buildId">
+      <div class="nge-hfe-ways" role="radiogroup" aria-label="Where the places come from">
+        <button type="button" role="radio" class="nge-hfe-session" :class="{ 'nge-hfe-session--on': built }" :aria-checked="built" :disabled="!!busy || !plantedCount" @click="fromBuilt('planted')">Planted errors ({{ plantedCount }})</button>
+        <button type="button" role="radio" class="nge-hfe-session" :class="{ 'nge-hfe-session--on': !!history && !built }" :aria-checked="!!history && !built" :disabled="!!busy" @click="fromBuilt('proofreading')">The proofreaders' edits</button>
+      </div>
+      <p class="nge-hfe-help">{{ built
+        ? 'Each planting, reversed: a merge you planted is a merger to Cut, a cut a piece to Extend. Players start from the cell as it is now.'
+        : 'Each cut the proofreaders made is a merger to find, each join an extension. Players start from the cell as it was before the edits you pick; the proofread cell stays hidden from players until the Hunt ends.' }}
+        Saving ties the cell to this Hunt.</p>
+    </template>
     <p v-else class="nge-hfe-help">Paste a cell from the proofread list. Each cut the proofreaders made becomes a merger to find, each join an extension. Players start from the cell as it was before the edits you pick, so check every place in the viewer first.</p>
     <div v-if="!fromEdits.buildId" class="nge-hfe-row">
       <select v-model="fromEdits.dataset" class="nge-hfe-input nge-hfe-ds" aria-label="Dataset" :disabled="!!busy">
@@ -114,7 +142,7 @@ const onDataset = computed(() => canonicalDataset(currentDatasetTag()) === fromE
       <input v-model="fromEdits.root" class="nge-hfe-input nge-hfe-root" placeholder="864691136814060915" aria-label="Proofread cell ID" :disabled="!!busy" @keydown.enter="find" />
       <button class="nge-hfe-btn" :disabled="!!busy || !fromEdits.root.trim()" @click="find">Find the edits</button>
     </div>
-    <button v-if="fromEdits.buildId && !history && !busy" class="nge-hfe-btn" @click="fromBuilt">Read the planted edits</button>
+    <button v-if="fromEdits.buildId && !history && !busy" class="nge-hfe-btn" @click="fromBuilt()">Read the Hunt cell again</button>
     <p v-if="!onDataset && !history && !fromEdits.buildId" class="nge-hfe-muted">Opening it switches to {{ sourceFor(fromEdits.dataset)?.label }}.</p>
     <p v-if="busy" class="nge-hfe-busy" role="status">{{ busy }}…</p>
     <p v-if="error" class="nge-hfe-error" role="alert">{{ error }}</p>
@@ -166,6 +194,8 @@ const onDataset = computed(() => canonicalDataset(currentDatasetTag()) === fromE
 .nge-hfe-warn { margin: 0; color: #f8e08a; font-size: 12px; }
 .nge-hfe-label { margin-top: 4px; color: #8fa3bf; font-size: 11.5px; }
 .nge-hfe-sessions { display: flex; flex-direction: column; gap: 2px; }
+.nge-hfe-ways { display: flex; gap: 6px; }
+.nge-hfe-ways .nge-hfe-session { display: block; }
 .nge-hfe-session { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; text-align: left; padding: 5px 8px; border-radius: 6px;
   background: none; border: 1px solid transparent; color: #c9d6ea; font: 12.5px 'Inter', sans-serif; cursor: pointer; }
 .nge-hfe-session:hover:not(:disabled) { background: rgba(90, 170, 255, 0.08); }

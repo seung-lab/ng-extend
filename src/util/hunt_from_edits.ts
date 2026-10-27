@@ -81,7 +81,8 @@ export const fromEdits = reactive({
   checking: false,
   /** The Hunt editor as it was when the admin went to check; HuntsAdminTab.vue puts it back. */
   editor: null as any,
-  /** A Hunt Builder cell (functions/hunt_build.js) the key comes from: its planted edits, reversed. Saving ties it to the Hunt. */
+  /** A Hunt Builder cell (functions/hunt_build.js) the key comes from: its planted edits reversed, or its proofreaders'
+   *  own edits. Saving ties it to the Hunt. */
   buildId: 0,
 });
 export function keepHistory(h: CellHistory | null) { fromEdits.history = h ? markRaw(h) : null; }
@@ -147,17 +148,19 @@ function statusLine(row: any): string {
  * Everything the panel shows for one cell: its sessions, and for each the places a player can find from there.
  * step(text) says what is being asked, for a loading line.
  */
-export async function readCellHistory(canon: string, rootIn: string, tolNm: number, step: (s: string) => void = () => {}): Promise<CellHistory> {
+export async function readCellHistory(canon: string, rootIn: string, tolNm: number, step: (s: string) => void = () => {},
+  /** The soma when it is known already (a Hunt Builder candidate's claim anchor), so the proofread list is not needed. */
+  known?: { sv: string; somaNm: number[]; status?: string }): Promise<CellHistory> {
   const src = sourceFor(canon);
   if (!src) throw new Error('This works on MICrONS public and the Sandbox, where proofread cells are listed.');
   const root = rootIn.trim();
   if (!/^\d{15,20}$/.test(root)) throw new Error('Paste a cell ID (a long number).');
   const seg = `${src.server}/segmentation/api/v1/table/${src.table}`;
 
-  step('Finding the cell in the proofread list');
-  const row = await somaRow(src, root);
-  const sv = row?.pt_supervoxel_id != null ? String(row.pt_supervoxel_id) : '';
-  const somaNm = ['x', 'y', 'z'].map(a => Number(row?.[`pt_position_${a}`]));
+  step(known ? 'Reading the cell' : 'Finding the cell in the proofread list');
+  const row = known ? { strategy_dendrite: null, cell_type: known.status ?? '' } : await somaRow(src, root);
+  const sv = known ? known.sv : row?.pt_supervoxel_id != null ? String(row.pt_supervoxel_id) : '';
+  const somaNm = known ? known.somaNm : ['x', 'y', 'z'].map(a => Number(row?.[`pt_position_${a}`]));
   if (!/^\d+$/.test(sv) || !somaNm.every(Number.isFinite)) {
     throw new Error(`This cell is not in ${src.label}'s proofread list (${src.somaTable}), so its soma is not known. Paste the ID the list has for it.`);
   }
@@ -260,13 +263,17 @@ export async function readCellHistory(canon: string, rootIn: string, tolNm: numb
  * Extend. The points are the helper's own, so a place sits where they made the edit. Sandbox voxels are 4, 4, 40 nm.
  */
 export async function readPlanted(id: number, call: (action: string, args: any) => Promise<any>): Promise<CellHistory> {
+  return plantedHistory(await call('build.planted', { id }));
+}
+/** The soma of a Hunt Builder cell in nm, from its claim point (Sandbox voxels are 4, 4, 40 nm). */
+export const buildSomaNm = (start: number[] | null | undefined): number[] | null => (Array.isArray(start) && start.length >= 3 ? [start[0] * 4, start[1] * 4, start[2] * 40] : null);
+export function plantedHistory(r: any): CellHistory {
   const src = sourceFor('pinky_nf_v2');
   if (!src) throw new Error('This version of Pyr does not have the Sandbox.');
-  const r = await call('build.planted', { id });
   const places: Place[] = (r?.places ?? []).map((p: any) => ({ kind: p.kind, nm: p.nm, op: Number(p.op), at: Number(p.at) || 0, user: p.user || '', wide: false }));
   if (!places.length) throw new Error('Nothing has been planted in this cell yet.');
   const start: number[] | null = Array.isArray(r?.cell?.start) ? r.cell.start.map(Number) : null;
-  const somaNm = start ? [start[0] * 4, start[1] * 4, start[2] * 40] : places[0].nm;
+  const somaNm = buildSomaNm(start) ?? places[0].nm;
   const root = String(r.cell.root);
   const none = { undone: 0, failed: 0, idle: 0, hidden: 0, tiny: 0, closeCut: 0, closeMerge: 0 };
   return {

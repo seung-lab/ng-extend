@@ -21,6 +21,7 @@ const kindWord = (s: MySuggestion) => (s.kind === 'merge' ? 'Merge' : 'Cut');
 const detail = (s: MySuggestion) => (s.kind === 'merge' ? 'two pieces joined' : `${(s.edit as any).sources?.length ?? 0} red, ${(s.edit as any).sinks?.length ?? 0} blue points`);
 const statusWord = (s: MySuggestion) => (s.status === 'planted' ? '✓ planted' : s.status === 'skipped' ? 'not used' : s.status === 'open' ? '' : s.status === 'undone' ? 'not used' : '');
 const here = computed(() => onBuildDataset());
+const closesLine = computed(() => (cell.value?.closes ? new Date(cell.value.closes).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''));
 
 async function open() {
   const c = cell.value; if (!c || busy.value) return;
@@ -58,7 +59,8 @@ function close() { buildState.helping = false; }
       <button class="nge-hb-x" aria-label="Close" @click="close">×</button>
     </div>
     <template v-if="cell">
-      <p class="nge-hb-hint">Merge or cut as you normally would. Pyr keeps it as a suggestion and the cell stays as it is. Where yours go stays a secret until the Hunt.</p>
+      <p v-if="cell.open" class="nge-hb-hint">Merge or cut as you normally would. Pyr keeps it as a suggestion and the cell stays as it is. Where yours go stays a secret until the Hunt.<template v-if="cell.closes"> Open until {{ closesLine }}.</template></p>
+      <p v-else class="nge-hb-hint">Suggestions for this cell have closed. Thanks for helping! The admins are looking at them now.</p>
       <button class="nge-hb-btn nge-hb-btn--open" :disabled="!!busy" @click="open">{{ busy === 'open' ? 'Opening…' : here ? 'Show the cell' : 'Open the cell on the Sandbox' }}</button>
       <div class="nge-hb-counts">
         <span><b>Merges</b> {{ cell.used.merge }} of {{ cell.merges_each }}
@@ -74,7 +76,7 @@ function close() { buildState.helping = false; }
             <span v-if="statusWord(s)" class="nge-hb-st" :class="{ 'nge-hb-st--ok': s.status === 'planted' }">{{ statusWord(s) }}</span></span>
           <span class="nge-hb-acts">
             <button class="nge-hb-link" :disabled="!here" :title="here ? 'Go to it' : 'Open the cell first'" @click="goToNm(s.at)">Go there</button>
-            <template v-if="s.status === 'open'">
+            <template v-if="s.status === 'open' && cell.open">
               <button class="nge-hb-link" @click="startNote(s)">Note</button>
               <button class="nge-hb-link" :disabled="!!busy" @click="takeBack(s)">{{ busy === `back${s.id}` ? 'Taking back…' : 'Take back' }}</button>
             </template>

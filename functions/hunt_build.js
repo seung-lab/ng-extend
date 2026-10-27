@@ -35,7 +35,7 @@ const VEILED = new Set(['planting', 'building', 'in_hunt']);
 const MAX_EACH = 10;
 const MAX_POINTS_PER_SIDE = 40;
 const ROOT_RE = /^\d{15,20}$/;
-const TASK_NOTE = 'Hunt cell: proofread this one fully. It may become a Hunt.';
+const TASK_NOTE = 'Hunt candidate: proofread this one fully. It may become a Hunt.';
 
 const isRoot = (s) => ROOT_RE.test(String(s || ''));
 const uniq = (a) => [...new Set(a)];
@@ -93,14 +93,19 @@ function usedCounts(mine) {
   return { merge: live.filter((s) => s.kind === 'merge').length, cut: live.filter((s) => s.kind === 'cut').length };
 }
 
+/** Suggestions are open: the cell is taking them and its closing time (Ames 2026-10-27: "a set time") has not come. */
+const openNow = (c, now) => c.status === 'suggesting' && !(Number.isFinite(msOf(c.suggest_until)) && now.getTime() >= msOf(c.suggest_until));
+/** A time as players read it, Eastern (the Hunts tab's zone). */
+const etWords = (iso) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
 const helpersOf = (c) => (Array.isArray(c.helpers) ? c.helpers.map(String) : []);
 const isHelper = (c, uid) => helpersOf(c).includes(String(uid));
 const msOf = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? t : NaN; };
 
 /**
  * Which IDs Pyr hides from players for one candidate now. Planting and building: everything protected. In a
- * Hunt: everything until its start, then everything but the cell itself (planted cuts show only the original
- * segment). huntInfo: { start_at } of the linked Hunt, or null.
+ * Hunt: everything until its start, then everything but the cell players hunt (hunt_root): planted cuts show only
+ * the original segment, and a Hunt made from the proofreaders' own edits keeps the proofread cell (the answers)
+ * hidden throughout. huntInfo: { start_at } of the linked Hunt, or null.
  */
 function veilOf(c, huntInfo, now) {
   if (!VEILED.has(c.status)) return [];
@@ -108,7 +113,8 @@ function veilOf(c, huntInfo, now) {
   if (c.status !== 'in_hunt') return all;
   const start = msOf(huntInfo && huntInfo.start_at);
   if (!Number.isFinite(start) || now.getTime() < start) return all;
-  return all.filter((r) => r !== String(c.root));
+  const hunted = isRoot(c.hunt_root) ? String(c.hunt_root) : String(c.root);
+  return all.filter((r) => r !== hunted);
 }
 
 /** The guard for one viewer: protected and veiled IDs, and whether they help with each. Never anyone's suggestions. */
@@ -118,7 +124,7 @@ function guardView(cands, hunts, me, now) {
     id: c.id, status: c.status, dataset: c.dataset || DATASET, root: String(c.root),
     protected: roots([c.root, ...(c.protected_roots || [])]),
     veil: veilOf(c, huntOf.get(Number(c.hunt_id)) || null, now),
-    helper: c.status === 'suggesting' && isHelper(c, me.id),
+    helper: openNow(c, now) && isHelper(c, me.id),
     merges_each: c.merges_each, cuts_each: c.cuts_each,
   }));
 }
@@ -142,15 +148,20 @@ function cleanSettings(f) {
     if (k in f) { const n = Math.floor(Number(f[k])); if (!Number.isFinite(n) || n < 0 || n > MAX_EACH) fail(400, `Between 0 and ${MAX_EACH}.`); out[k] = n; }
   }
   if ('admin_note' in f) out.admin_note = String(f.admin_note || '').slice(0, 1000);
+  if ('suggest_until' in f) {
+    if (f.suggest_until == null || f.suggest_until === '') out.suggest_until = null;
+    else { const t = Date.parse(f.suggest_until); if (!Number.isFinite(t)) fail(400, 'That closing time is not a date.'); out.suggest_until = new Date(t).toISOString(); }
+  }
   return out;
 }
 
 /** Which moves an admin can make from each status (the list's buttons). */
 const MOVES = {
-  proofread: ['suggesting', 'proofreading', 'dropped'],
+  // Straight to building: a Hunt from the proofreaders' own edits, no suggestions.
+  proofread: ['suggesting', 'building', 'proofreading', 'dropped'],
   suggesting: ['planting', 'proofread', 'dropped'],
   planting: ['building', 'suggesting'],
-  building: ['planting'],
+  building: ['planting', 'proofread'],
   proofreading: ['dropped'],
   dropped: ['proofreading'],
 };
@@ -204,13 +215,14 @@ async function guard(ctx) {
 
 /** A helper's cells (open for suggestions, they are invited) and their own suggestions on them. */
 async function mine(ctx) {
-  const { db, me } = ctx;
+  const { db, me, now = new Date() } = ctx;
   const cands = (await db.candidatesByStatus(['suggesting'])).filter((c) => isHelper(c, me.id));
   const sugs = cands.length ? await db.suggestionsBy(me.id, cands.map((c) => c.id)) : [];
   return {
     cells: cands.map((c) => ({
       id: c.id, root: String(c.root), dataset: c.dataset || DATASET, start: c.start_vox || null,
       merges_each: c.merges_each, cuts_each: c.cuts_each, used: usedCounts(sugs.filter((s) => s.candidate_id === c.id)),
+      open: openNow(c, now), closes: c.suggest_until || null,
       suggestions: sugs.filter((s) => s.candidate_id === c.id && s.status !== 'taken_back')
         .map((s) => ({ id: s.id, kind: s.kind, at: s.at_nm, note: s.note || '', status: s.status, t: s.created_at, edit: s.edit })),
     })),
@@ -221,6 +233,7 @@ async function suggest(args, ctx) {
   const { db, me, now = new Date() } = ctx;
   const c = await getCandidate(db, args.candidate_id);
   if (c.status !== 'suggesting') fail(409, 'This cell is not taking suggestions now.');
+  if (!openNow(c, now)) fail(409, 'Suggestions for this cell have closed.');
   if (!isHelper(c, me.id)) fail(403, 'Only invited helpers can suggest on this cell.');
   const kind = args.kind === 'merge' ? 'merge' : args.kind === 'cut' ? 'cut' : fail(400, 'A suggestion is a merge or a cut.');
   const { edit, at_nm } = cleanEdit(kind, args.edit);
@@ -289,6 +302,8 @@ async function list(ctx) {
         helpers: helpersOf(c).map((id) => ({ id, name: names[id] || 'Player' })),
         merges_each: c.merges_each, cuts_each: c.cuts_each, counts: counts[c.id] || {}, hunt_id: c.hunt_id || null,
         admin_note: c.admin_note || '', moves: MOVES[c.status] || [], start: c.start_vox || null, anchor_sv: c.anchor_sv || null,
+        suggest_until: c.suggest_until || null, closed: c.status === 'suggesting' && !openNow(c, now),
+        proofread_root: c.proofread_root || null, hunt_root: c.hunt_root || null,
         created_at: c.created_at,
       };
     }),
@@ -334,7 +349,12 @@ async function move(args, ctx) {
   if (to === 'suggesting') {
     if (!helpersOf(c).length) fail(409, 'Invite at least one helper first.');
     patch.protected_roots = roots([...(c.protected_roots || []), c.root, c.proofread_root]);
+    if ('suggest_until' in args) Object.assign(patch, cleanSettings({ suggest_until: args.suggest_until }));
+    const until = 'suggest_until' in patch ? patch.suggest_until : c.suggest_until;
+    if (until && msOf(until) <= now.getTime()) fail(400, 'Set a closing time in the future, or none.');
   }
+  // Straight from proofread to building (the proofreaders' own edits): locked and veiled from now.
+  if (to === 'building' && c.status === 'proofread') patch.protected_roots = roots([...(c.protected_roots || []), c.root, c.proofread_root]);
   if (to === 'proofreading' && c.status === 'proofread' && posInt(c.task_id)) {
     // Sent back: the task is the proofreader's again, with the admin's note.
     await db.patchTask(posInt(c.task_id), { status: 'assigned', updated_at: now.toISOString() });
@@ -345,8 +365,9 @@ async function move(args, ctx) {
   }
   const next = await db.patchCandidate(c.id, patch);
   if (to === 'suggesting' && notify) {
+    const until = next && next.suggest_until;
     await notify(helpersOf(c).map((uid) => ({ user_id: uid, title: 'Help build a Hunt',
-      body: `You are invited to help build a Hunt on the Sandbox. Open "Help build a Hunt" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is. You have ${c.merges_each} merges and ${c.cuts_each} cuts. Where they go stays a secret until the Hunt.` })));
+      body: `You are invited to help build a Hunt on the Sandbox. Open "Help build a Hunt" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is. You have ${c.merges_each} merges and ${c.cuts_each} cuts${until ? `, until ${etWords(until)}` : ''}. Where they go stays a secret until the Hunt.` })));
   }
   return { cell: next, ...(await list(ctx)) };
 }
@@ -453,7 +474,8 @@ async function planted(args, ctx) {
     .sort((a, b) => msOf(a.done_at) - msOf(b.done_at) || a.id - b.id);
   const names = await db.names(uniq(sugs.map((s) => s.user_id)));
   return {
-    cell: { id: c.id, root: String(c.root), dataset: c.dataset || DATASET, start: c.start_vox || null, status: c.status },
+    cell: { id: c.id, root: String(c.root), dataset: c.dataset || DATASET, start: c.start_vox || null, status: c.status,
+      proofread_root: c.proofread_root || null, anchor_sv: c.anchor_sv || null },
     places: sugs.map((s) => ({ ...placeOf(s), op: posInt(s.operation_id) || s.id, at: msOf(s.done_at) || 0, user: names[s.user_id] || 'Player', suggestion: s.id })),
   };
 }
@@ -465,7 +487,9 @@ async function link(args, ctx) {
   if (!['building', 'in_hunt'].includes(c.status)) fail(409, 'Finish planting first (the cell must be in Building).');
   const hunt = posInt(args.hunt_id);
   if (!hunt || !(await db.huntTimes([hunt])).length) fail(404, 'No such Hunt.');
-  await db.patchCandidate(c.id, { status: 'in_hunt', hunt_id: hunt, updated_at: now.toISOString() });
+  // The cell players hunt: the cell after planting, or the cell before proofreading (its proofreaders' edits).
+  const huntRoot = isRoot(args.hunt_root) ? { hunt_root: String(args.hunt_root) } : {};
+  await db.patchCandidate(c.id, { status: 'in_hunt', hunt_id: hunt, ...huntRoot, updated_at: now.toISOString() });
   return list(ctx);
 }
 
@@ -577,5 +601,5 @@ async function claimGuard(sb, operation, args) {
 module.exports = {
   buildAction, restDb, claimGuard, makersOf,
   cleanEdit, cleanPoint, middle, placeOf, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
-  STATUSES, PROTECTED, VEILED, MOVES, DATASET, TASK_NOTE,
+  STATUSES, PROTECTED, VEILED, MOVES, DATASET, TASK_NOTE, openNow,
 };

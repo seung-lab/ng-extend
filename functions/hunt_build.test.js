@@ -96,7 +96,7 @@ test('Phase 1: a candidate is a task in the Library; Done makes it proofread wit
   assert.equal(c.root, '648518346349539999');
   assert.equal(c.proofread_by, 'toknow');
   assert.deepEqual(c.start, [1, 2, 3]);
-  assert.deepEqual(c.moves, ['suggesting', 'proofreading', 'dropped']);
+  assert.deepEqual(c.moves, ['suggesting', 'building', 'proofreading', 'dropped']);
   // Players never read the list.
   await assert.rejects(B.buildAction('build.list', {}, ctx(db, P1)), /Admins only/);
 });
@@ -258,3 +258,55 @@ test('settings are clamped', () => {
   assert.deepEqual(B.cleanSettings({ merges_each: 3, cuts_each: '0', admin_note: 'x' }), { merges_each: 3, cuts_each: 0, admin_note: 'x' });
   assert.throws(() => B.cleanSettings({ merges_each: 11 }), /Between 0 and 10/);
 });
+
+test('a closing time: helpers can suggest until it, then the cell waits for the admins, still locked', async () => {
+  const db = fakeDb();
+  const A = ctx(db, ADMIN, true);
+  await B.buildAction('build.add', { roots: [CELL] }, A);
+  Object.assign(db._t.tasks[0], { status: 'completed', assigned_to: P3.id, final_segment_id: CELL });
+  await B.buildAction('build.list', {}, A);
+  await B.buildAction('build.helpers', { id: 1, names: 'nseraf' }, A);
+  await assert.rejects(B.buildAction('build.move', { id: 1, to: 'suggesting', suggest_until: '2026-10-27T00:00:00Z' }, A), /in the future/);
+  notes.length = 0;
+  await B.buildAction('build.move', { id: 1, to: 'suggesting', suggest_until: '2026-10-30T19:00:00Z' }, A);
+  assert.match(notes[0].body, /until Oct 30, 3:00 PM ET/);
+  const before = ctx(db, P1, false, new Date('2026-10-30T18:59:00Z')), after = ctx(db, P1, false, new Date('2026-10-30T19:01:00Z'));
+  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, before);
+  await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, after), /have closed/);
+  assert.equal((await B.buildAction('build.guard', {}, before)).cells[0].helper, true);
+  const g = (await B.buildAction('build.guard', {}, after)).cells[0];
+  assert.equal(g.helper, false, 'closed: a helper\'s edit is refused, not kept');
+  assert.deepEqual(g.protected, [CELL], 'still locked');
+  const m = (await B.buildAction('build.mine', {}, after)).cells[0];
+  assert.equal(m.open, false);
+  assert.equal(m.closes, '2026-10-30T19:00:00.000Z');
+  const l = await B.buildAction('build.list', {}, ctx(db, ADMIN, true, new Date('2026-10-30T19:01:00Z')));
+  assert.equal(l.cells[0].closed, true);
+  // The admin can change it.
+  await B.buildAction('build.set', { id: 1, fields: { suggest_until: null } }, A);
+  assert.equal(db._t.candidates[0].suggest_until, null);
+});
+
+test('from the proofreaders\' own edits: proofread straight to building; the proofread cell stays hidden through the Hunt', async () => {
+  const db = fakeDb();
+  const A = ctx(db, ADMIN, true);
+  await B.buildAction('build.add', { roots: [CELL] }, A);
+  Object.assign(db._t.tasks[0], { status: 'completed', assigned_to: P3.id, final_segment_id: CELL2 });
+  await B.buildAction('build.list', {}, A);
+  assert.ok(db._t.candidates[0].status === 'proofread');
+  await B.buildAction('build.move', { id: 1, to: 'building' }, A);
+  let g = await B.buildAction('build.guard', {}, ctx(db, P2));
+  assert.deepEqual(g.cells[0].veil, [CELL2], 'building: veiled at once');
+  db._t.hunts.push({ id: 7, start_at: '2026-11-01T15:00:00Z', end_at: '2026-11-01T17:00:00Z', status: 'scheduled' });
+  // Players hunt the cell as it was before proofreading (an old ID); the proofread cell is the answer.
+  await B.buildAction('build.link', { id: 1, hunt_id: 7, hunt_root: CELL }, A);
+  g = await B.buildAction('build.guard', {}, ctx(db, P2, false, new Date('2026-11-01T15:30:00Z')));
+  assert.deepEqual(g.cells[0].veil, [CELL2], 'during the Hunt the proofread cell stays hidden');
+  // Nothing was planted: Put it back after the end simply closes it.
+  const after = ctx(db, ADMIN, true, new Date('2026-11-01T18:00:00Z'));
+  assert.deepEqual((await B.buildAction('build.put_back', { id: 1 }, after)).operations, []);
+  await B.buildAction('build.put_back', { id: 1, done: true, undone: [] }, after);
+  assert.equal(db._t.candidates[0].status, 'put_back');
+});
+
+test('the Cell Library note says Hunt candidate', () => { assert.match(B.TASK_NOTE, /^Hunt candidate:/); });

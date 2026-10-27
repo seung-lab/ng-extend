@@ -17,7 +17,7 @@ import { renderSafeMarkdown } from '../util/safe_markdown';
 import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
 import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, meshEdgeSpots, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
-import { fromEdits, forgetFromEdits } from '../util/hunt_from_edits';
+import { fromEdits, forgetFromEdits, pickedSession } from '../util/hunt_from_edits';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
 
@@ -357,7 +357,10 @@ async function save(status?: 'draft' | 'scheduled') {
     savedTimes.value = h.start_at && h.end_at ? { announce: h.announce_at || null, start: h.start_at, end: h.end_at } : null;
     // Made from a Hunt Builder cell: the cell goes with the Hunt, veiled until it starts (hunt_build.js link).
     if (fromEdits.buildId) {
-      try { await huntCall('build.link', { id: fromEdits.buildId, hunt_id: h.id }); message.value += ' The Hunt cell is tied to it and stays hidden from players until the start.'; }
+      try {
+        await huntCall('build.link', { id: fromEdits.buildId, hunt_id: h.id, hunt_root: pickedSession()?.beforeRoot || h.cells?.[0]?.root || '' });
+        message.value += ' The Hunt cell is tied to it and stays hidden from players until the start.';
+      }
       catch (err: any) { message.value += ` The Hunt cell could not be tied to it: ${err?.message || err}`; }
     }
     void refresh();

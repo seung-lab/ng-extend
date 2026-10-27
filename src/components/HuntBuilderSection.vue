@@ -8,12 +8,14 @@
 import { computed, onMounted, ref } from 'vue';
 import { huntCall } from '../hunt';
 import { putBack, openBuildCell } from '../hunt_build';
+import { etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
 
 interface Row {
   id: number; root: string; status: string; task: { status: string; who: string | null; since: string } | null;
   proofread_by: string | null; proofread_at: string | null; helpers: { id: string; name: string }[];
   merges_each: number; cuts_each: number; counts: Record<string, number>; hunt_id: number | null; admin_note: string;
   moves: string[]; start: number[] | null; created_at: string; anchor_sv?: string | null;
+  suggest_until: string | null; closed: boolean; proofread_root: string | null; hunt_root: string | null;
 }
 const emit = defineEmits<{ (e: 'make', id: number): void }>();
 
@@ -26,6 +28,8 @@ const notInstalled = ref(false);
 const open = ref<number | null>(null);
 const helpersText = ref('');
 const sendBackNote = ref('');
+/** When suggestions close, Eastern, as the Hunts tab's times (Ames 2026-10-27: "after that period (set time) ends they go to admin"). */
+const closeAt = ref('');
 
 const STATUS_WORD: Record<string, string> = {
   proofreading: 'Proofreading', proofread: 'Proofread', suggesting: 'Suggestions open', planting: 'Planting',
@@ -35,7 +39,11 @@ const MOVE_WORD: Record<string, string> = {
   suggesting: 'Open suggestions', proofreading: 'Send back', dropped: 'Drop', planting: 'Close suggestions, start planting',
   building: 'Finish planting', proofread: 'Back to proofread',
 };
+const etLine = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : '');
+const statusWord = (r: Row) => (r.closed ? 'Suggestions closed' : STATUS_WORD[r.status] || r.status);
 const moveWord = (r: Row, to: string) => (r.status === 'planting' && to === 'suggesting' ? 'Reopen suggestions' : r.status === 'building' && to === 'planting' ? 'Back to planting'
+  : r.status === 'proofread' && to === 'building' ? 'Build from the proofreaders\' edits'
+  : r.status === 'building' && to === 'proofread' ? 'Back to proofread'
   : r.status === 'dropped' && to === 'proofreading' ? 'Bring back' : MOVE_WORD[to] || to);
 const who = (r: Row) => r.proofread_by || r.task?.who || '';
 const countsLine = (r: Row) => {
@@ -60,7 +68,7 @@ async function add() {
   try {
     const r = await huntCall<{ added: number; skipped: string[]; cells: Row[] }>('build.add', { roots: paste.value });
     rows.value = r.cells; paste.value = '';
-    message.value = `Added ${r.added} ${r.added === 1 ? 'cell' : 'cells'} to the Cell Library on the Sandbox, each marked Hunt cell.${r.skipped.length ? ` Already here: ${r.skipped.length}.` : ''}`;
+    message.value = `Added ${r.added} ${r.added === 1 ? 'cell' : 'cells'} to the Cell Library on the Sandbox, each marked Hunt candidate.${r.skipped.length ? ` Already here: ${r.skipped.length}.` : ''}`;
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -68,14 +76,17 @@ function toggle(r: Row) {
   open.value = open.value === r.id ? null : r.id;
   helpersText.value = r.helpers.map(h => h.name).join(', ');
   sendBackNote.value = '';
+  closeAt.value = r.suggest_until ? utcIsoToEtNaive(r.suggest_until) : '';
 }
 async function move(r: Row, to: string) {
   if (busy.value) return;
   busy.value = `move${r.id}`; error.value = ''; message.value = '';
   try {
-    const out = await huntCall<{ cells: Row[] }>('build.move', { id: r.id, to, note: to === 'proofreading' ? sendBackNote.value.trim() : '' });
+    const until = closeAt.value ? etNaiveToUtcIso(closeAt.value) : null;
+    const out = await huntCall<{ cells: Row[] }>('build.move', { id: r.id, to, note: to === 'proofreading' ? sendBackNote.value.trim() : '', ...(to === 'suggesting' ? { suggest_until: until } : {}) });
     rows.value = out.cells;
-    message.value = to === 'suggesting' ? `Suggestions are open. ${r.helpers.length} ${r.helpers.length === 1 ? 'helper has' : 'helpers have'} a note in the bell. The cell is out of the Library and its edits are kept as suggestions now.`
+    message.value = to === 'suggesting' ? `Suggestions are open${until ? ` until ${etLine(until)}` : ''}. ${r.helpers.length} ${r.helpers.length === 1 ? 'helper has' : 'helpers have'} a note in the bell. The cell is out of the Library and its edits are kept as suggestions now.`
+      : to === 'building' && r.status === 'proofread' ? 'The cell is locked and hidden from players now. Make the Hunt from the proofreaders\' edits when you are ready.'
       : to === 'planting' ? 'Suggestions are closed and the cell is veiled: players can\'t see it in Pyr now. Go through them to plant.'
       : to === 'building' ? 'Planting is done. Make the Hunt from it when you are ready.'
       : to === 'proofreading' && r.status === 'proofread' ? 'Sent back to the proofreader, with your note.' : `Done: ${STATUS_WORD[to] || to}.`;
@@ -92,7 +103,10 @@ async function saveHelpers(r: Row) {
 async function saveCounts(r: Row) {
   if (busy.value) return;
   busy.value = `set${r.id}`; error.value = '';
-  try { rows.value = (await huntCall<{ cells: Row[] }>('build.set', { id: r.id, fields: { merges_each: r.merges_each, cuts_each: r.cuts_each } })).cells; message.value = 'Saved.'; }
+  try {
+    rows.value = (await huntCall<{ cells: Row[] }>('build.set', { id: r.id, fields: { merges_each: r.merges_each, cuts_each: r.cuts_each, suggest_until: closeAt.value ? etNaiveToUtcIso(closeAt.value) : null } })).cells;
+    message.value = closeAt.value ? `Saved. Suggestions close ${etLine(etNaiveToUtcIso(closeAt.value))}.` : 'Saved. Suggestions stay open until you close them.';
+  }
   catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -119,7 +133,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
 <template>
   <fieldset class="nge-hb-admin" :disabled="busy === 'load'">
     <legend>Hunt builder · Sandbox</legend>
-    <p class="nge-hb-admin-help">Players help build a Hunt. Add cells that need full proofreading: each goes in the Cell Library marked <b>Hunt cell</b>. When it is proofread, invite helpers and open suggestions: their merges and cuts are kept, never sent. Then plant the ones you like, finish planting, and make the Hunt. From planting on, players can't see the cell in Pyr until the Hunt starts.</p>
+    <p class="nge-hb-admin-help">Players help build a Hunt. Add cells that need full proofreading: each goes in the Cell Library marked <b>Hunt candidate</b>. When it is proofread, either build the Hunt from the proofreaders' own edits, or invite helpers and open suggestions until a closing time: their merges and cuts are kept, never sent. Then plant the ones you like, finish planting, and make the Hunt. From planting (or building) on, players can't see the cell in Pyr until the Hunt starts.</p>
     <p v-if="notInstalled" class="nge-hb-admin-warn">The Hunt Builder is not set up yet: run <code>supabase-hunt-build.sql</code> in Supabase.</p>
     <div class="nge-hb-admin-add">
       <input v-model="paste" class="nge-hb-admin-input" placeholder="Paste Sandbox cell IDs" aria-label="Sandbox cell IDs to add" @keydown.enter="add" />
@@ -134,7 +148,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
       <li v-for="r in live" :key="r.id" class="nge-hb-admin-row" :class="{ 'nge-hb-admin-row--open': open === r.id }">
         <button class="nge-hb-admin-line" :aria-expanded="open === r.id" @click="toggle(r)">
           <span class="nge-hb-admin-id">…{{ r.root.slice(-6) }}</span>
-          <span class="nge-hb-admin-chip" :class="`nge-hb-admin-chip--${r.status}`">{{ STATUS_WORD[r.status] || r.status }}</span>
+          <span class="nge-hb-admin-chip" :class="[`nge-hb-admin-chip--${r.status}`, { 'nge-hb-admin-chip--closed': r.closed }]">{{ statusWord(r) }}</span>
           <span class="nge-hb-admin-who">{{ r.status === 'proofreading' ? (r.task?.who ? `${r.task.who} is on it` : 'Waiting for a proofreader') : who(r) }}</span>
           <span class="nge-hb-admin-counts">{{ countsLine(r) }}</span>
         </button>
@@ -146,8 +160,10 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
               <button class="nge-hb-admin-btn" :disabled="!!busy" @click="saveHelpers(r)">{{ busy === `help${r.id}` ? 'Saving…' : 'Save helpers' }}</button>
               <label class="nge-hb-admin-num">Merges each <input v-model.number="r.merges_each" type="number" min="0" max="10" /></label>
               <label class="nge-hb-admin-num">Cuts each <input v-model.number="r.cuts_each" type="number" min="0" max="10" /></label>
+              <label class="nge-hb-admin-num">Suggestions close (ET) <input v-model="closeAt" type="datetime-local" class="nge-hb-admin-when" aria-label="When suggestions close, Eastern time" /></label>
               <button class="nge-hb-admin-btn" :disabled="!!busy" @click="saveCounts(r)">Save</button>
             </div>
+            <p v-if="r.status === 'suggesting'" class="nge-hb-admin-muted">{{ r.closed ? `Closed ${etLine(r.suggest_until)}: helpers can't add more. The cell stays locked; start planting when you are ready.` : r.suggest_until ? `Open until ${etLine(r.suggest_until)}.` : 'Open until you close them.' }}</p>
           </template>
           <label v-if="r.status === 'proofread'" class="nge-hb-admin-field">Note if you send it back <input v-model="sendBackNote" class="nge-hb-admin-input" maxlength="500" placeholder="The axon past the bend still needs work" /></label>
           <div class="nge-hb-admin-actions">
@@ -211,6 +227,8 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
 .nge-hb-admin-chip--suggesting { color: #c8a4ff; border-color: rgba(155, 92, 255, 0.55); }
 .nge-hb-admin-chip--planting { color: #f5d142; border-color: rgba(245, 209, 66, 0.55); }
 .nge-hb-admin-chip--building { color: #5aaaff; border-color: rgba(90, 170, 255, 0.6); }
+.nge-hb-admin-chip--closed { color: #ffe9a8; border-color: rgba(245, 209, 66, 0.45); }
+.nge-hb-admin-when { width: auto !important; }
 .nge-hb-admin-chip--in_hunt { color: #9ff0bf; border-color: rgba(72, 214, 130, 0.5); }
 .nge-hb-admin-who { min-width: 0; color: #a9bbd3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-hb-admin-counts { color: #8fa3bf; font-size: 11.5px; white-space: nowrap; }
