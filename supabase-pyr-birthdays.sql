@@ -60,7 +60,10 @@ DECLARE
   today  DATE := COALESCE(p_today, (now() AT TIME ZONE 'America/New_York')::DATE);
   art    TEXT := 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/images/champions/pyr-birthday.png';
   words  TEXT[] := ARRAY['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
-  -- Ames's birthday lines (2026-10-26). {span} is "a whole year", "two whole years", ...
+  -- Ames's birthday lines (2026-10-26), one per birthday: everyone's first gets
+  -- the first line, their second the next, and so on (Ames: "the same message for
+  -- each person after 1 year, then a different for 2 year"). {span} is "a whole
+  -- year", "two whole years", ...
   cheers TEXT[] := ARRAY[
     'Blow out the virtual candles on your virtual cake on your virtual birthday!',
     '{Span} of Pyr is worth cell-ebrating!',
@@ -85,7 +88,7 @@ BEGIN
     word := COALESCE(words[n], n::TEXT);
     nm := word || CASE WHEN n = 1 THEN ' Year' ELSE ' Years' END || ' in Pyr';
     span := CASE WHEN n = 1 THEN 'a whole year' ELSE lower(word) || ' whole years' END;
-    line := replace(replace(cheers[1 + (hashtext(r.uid::TEXT || ':' || n) & 2147483647) % array_length(cheers, 1)],
+    line := replace(replace(cheers[1 + (n - 1) % array_length(cheers, 1)],
               '{span}', span), '{Span}', upper(left(span, 1)) || substr(span, 2));
     user_id := r.uid; display_name := r.dname; years := n; award := nm; cheer := line;
     RETURN NEXT;
