@@ -1364,8 +1364,9 @@ const BOT_FEEDBACK_CHANNEL_ID = "C0BGTNRRA75";
 const BOT_FEEDBACK_CHANNEL_NAME = "citsci_bot_feedback";
 // Hardcoded member IDs (amy, celia, marissa/sorek.m) so @-mentions resolve to
 // live pings without the users:read scope. Falls back to name lookup if empty.
-const REVIEW_MENTION_IDS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"];
-const REVIEW_MENTION_HANDLES = ["amy", "celia", "sorek.m"];
+// Marissa (sorek.m, U033TSX9A) is no longer tagged (Ames 2026-10-27).
+const REVIEW_MENTION_IDS = ["U02FH1DRC", "U033NHWDE"];
+const REVIEW_MENTION_HANDLES = ["amy", "celia"];
 const _channelIdCache = {};
 let _reviewMentionIds = null;
 
@@ -2260,7 +2261,7 @@ const EW_ACCESS_CODE_VERSION = "2026-10-26-beta-sort-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
-const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m (REVIEW_MENTION_IDS)
+const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m: Marissa stays tagged on access requests (Ames 2026-10-27)
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 // Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
 const ACCESS_CAVE_GROUP = 203;
@@ -2401,7 +2402,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-26-hunt-17-answers";
+const EW_HUNT_CODE_VERSION = "2026-10-27-hunt-27-ranks";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {

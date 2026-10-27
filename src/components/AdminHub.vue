@@ -44,7 +44,7 @@ const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
 const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts' | 'tutorialEdits'>(
-  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits'
+  props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits' || props.initialSubTab === 'hunts'
     ? props.initialSubTab
     : 'notifications');
 
@@ -344,6 +344,28 @@ async function loadReporters(rows: TriageRow[]) {
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
 }
 const reporterOf = (r: TriageRow) => (r.source === 'site_issue' ? reporters.value[r.source_id] : undefined);
+
+// ── Let them in from a Beta access card (Ames 2026-10-26: "so admin could
+//    grant them access from here?"). The email is read the same way as in
+//    Beta requests (parseBetaRequest), from the server's own lines.
+const cardLetInBusy = ref('');
+const cardLetInError = ref<Record<string, string>>({});
+function betaEmailOfCard(r: TriageRow): string {
+  const who = reporterOf(r);
+  if (!who || who.category !== 'Beta access') return '';
+  return parseBetaRequest({ id: r.source_id, message: who.message || '', user_name: who.name, created_at: who.at })?.email || '';
+}
+async function letInFromCard(r: TriageRow) {
+  const email = betaEmailOfCard(r);
+  if (!email || cardLetInBusy.value) return;
+  cardLetInBusy.value = r.id; cardLetInError.value = { ...cardLetInError.value, [r.id]: '' };
+  try {
+    const { error } = await supabase.from('pilot_members').upsert([{ email, enabled: true }], { onConflict: 'email' });
+    if (error) { cardLetInError.value = { ...cardLetInError.value, [r.id]: error.message }; return; }
+  } finally { cardLetInBusy.value = ''; }
+  await setTriageStatus(r, 'done', false, false, `Let in: ${email} added to Pilot testers.`);
+  if (adminSubTab.value === 'pilot') void loadPilot();
+}
 /** What the player wrote, in full. The triage row only keeps an excerpt,
  *  which ends in "..." when the report was long (Ames 2026-10-10: "make it
  *  so the user's full text appears"). The excerpt stands in until the report
@@ -1581,7 +1603,7 @@ function notifCategory(n: any): string {
   if (t.includes('Weekly Champions') || t.includes('Monthly Champions') || t.includes('Year Champions')) return 'weeklyChampions';
   if (t.includes('Week in Science') || t.includes('Month in Science') || t.includes('Year in Science')) return 'weeklyRecap';
   if (t.includes('Response to your help request')) return 'helpResponse';
-  if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
+  if (t === '✨ New Achievement!' || t === 'New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
   return 'announcement';
 }
@@ -2073,8 +2095,8 @@ async function awardToUser(uid: string, displayName: string) {
   if (badge) {
     try {
       await backend.createNotification({
-        title: '✨ New Achievement!',
-        body: `You earned the "${badge.name}" award!${badge.description ? ' — ' + badge.description : ''}`,
+        title: 'New Achievement!',   // no emoji in Achievement notes (Ames 2026-10-27)
+        body: `You earned the "${badge.name}" Achievement!${badge.description ? ' ' + badge.description : ''}`,
         image_url: badge.image_url || '',
         thumbnail_url: badge.thumbnail_url || '',
         target_type: 'user',
@@ -3175,6 +3197,16 @@ function practiceWhen(iso: string | null) {
           <!-- Optional note to the person who filed the report. Drafted from
                the card's state; edit, send, or close it and nothing is sent.
                Slack threads get the same thing via "update reporter". -->
+          <!-- A beta access request is granted right here (Ames 2026-10-26:
+               "so admin could grant them access from here?"). -->
+          <div v-if="betaEmailOfCard(row) && triageGroupOf(row) !== 'done'" class="nge-triage-beta">
+            <button class="nge-admin-action-btn nge-triage-done-btn" :disabled="triageActing === row.id || cardLetInBusy === row.id"
+                    :title="'Adds ' + betaEmailOfCard(row) + ' to Pilot testers, then moves this card to Done.'"
+                    @click="letInFromCard(row)">{{ cardLetInBusy === row.id ? 'Adding…' : '🔑 Let them in' }}</button>
+            <span class="nge-triage-beta-email">{{ betaEmailOfCard(row) }}</span>
+            <button v-if="!props.standalone" class="nge-triage-link nge-triage-beta-open" type="button" @click="adminSubTab = 'pilot'">Open Beta requests</button>
+          </div>
+          <p v-if="cardLetInError[row.id]" class="nge-triage-beta-error" role="alert">{{ cardLetInError[row.id] }}</p>
           <div v-if="row.source === 'site_issue'" class="nge-triage-reporter">
             <!-- The thread, oldest first: what was sent, and any reply asked for. -->
             <div v-for="u in reporterThreadFor(row)" :key="u.role + u.ts" class="nge-triage-note"
@@ -4378,6 +4410,10 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   border-radius: 6px; color: #dde; font-size: 13.5px; padding: 8px 10px; resize: vertical;
 }
 .nge-triage-comment { border-color: rgba(255,255,255,0.14); font-family: inherit; }
+.nge-triage-beta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0 4px; }
+.nge-triage-beta-email { font-size: 0.9em; overflow-wrap: anywhere; }
+.nge-triage-beta-open { background: none; border: 0; padding: 0; font: inherit; font-size: 0.9em; }
+.nge-triage-beta-error { margin: 4px 0; font-size: 0.9em; color: #e05a5a; }
 .nge-triage-reporter {
   display: flex; flex-direction: column; gap: 6px;
   padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08);

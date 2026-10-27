@@ -7,6 +7,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { useProofreadingBackendStore } from '../store';
 import { siteTexts, loadSiteTexts, saveSiteText, resetSiteText, textToHtml, textToSteps, htmlToText } from '../site_texts';
+import { isApprover } from '../tutorial_edits';
+import { supabase } from '../supabase';
 
 const props = defineProps<{
   textKey: string;
@@ -14,6 +16,11 @@ const props = defineProps<{
   original: string[] | string;
   listClass?: string;
   textClass?: string;
+  /** Other admins' edits wait for an approver (Ames 2026-10-26, the Hunt's instructions: "If another admin
+   *  edits it I want to get a notification to approve first"). The approvers' own go straight out. */
+  approval?: boolean;
+  /** The text's name in the approvers' note, e.g. "Hunt instructions". */
+  label?: string;
 }>();
 const emit = defineEmits<{ (e: 'action', name: string): void }>();
 
@@ -27,6 +34,13 @@ const paragraph = computed<string>(() => saved.value
   ? saved.value.body.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(textToHtml).join('<br>')
   : (props.original as string));
 
+// A suggestion waiting for approval is kept as its own site text, draft.<key>.
+const draftKey = computed(() => `draft.${props.textKey}`.slice(0, 64));
+const suggestion = computed(() => (props.approval ? siteTexts[draftKey.value] : undefined));
+const approver = computed(() => isApprover(backend.userEmail));
+const suggestionSteps = computed<string[]>(() => (suggestion.value ? textToSteps(suggestion.value.body) : []));
+const sentNote = ref('');
+
 const editing = ref(false);
 const draft = ref('');
 const busy = ref(false);
@@ -38,9 +52,43 @@ function startEdit() {
   editing.value = true;
 }
 async function save() {
-  busy.value = true; error.value = '';
-  try { await saveSiteText(props.textKey, draft.value.trim()); editing.value = false; }
+  busy.value = true; error.value = ''; sentNote.value = '';
+  try {
+    if (props.approval && !approver.value) {
+      // Someone else's edit: a suggestion, and the approvers get a note with the text now and as suggested.
+      await saveSiteText(draftKey.value, draft.value.trim());
+      editing.value = false;
+      sentNote.value = 'Sent for approval. Players see it once it is approved.';
+      try {
+        const { data } = await supabase.from('admins').select('user_id,email');
+        const ids = ((data as any[]) || []).filter(a => a.user_id && isApprover(a.email)).map(a => String(a.user_id));
+        const now = saved.value ? saved.value.body : (isList.value ? (props.original as string[]).map(htmlToText).join('\n') : htmlToText(props.original as string));
+        const quote = (t: string) => t.split(/\r?\n/).filter(l => l.trim()).map(l => `> ${l.trim()}`).join('\n');
+        const what = props.label || 'An in-game text';
+        for (const id of ids) {
+          await backend.createNotification({ title: `📋 Text edit to approve: ${what}`, target_type: 'user', target_id: id,
+            body: `**Now:**\n${quote(now)}\n\n**Suggested by ${backend.userName || 'an admin'}:**\n${quote(draft.value.trim())}\n\nOpen it in the game (${what}) to approve or turn it down.` });
+        }
+      } catch (e) { console.warn('[site texts] could not tell the approvers:', e); }
+      return;
+    }
+    await saveSiteText(props.textKey, draft.value.trim());
+    editing.value = false;
+  }
   catch (e: any) { error.value = 'Not saved: ' + (e?.message || e); }
+  finally { busy.value = false; }
+}
+async function approve() {
+  const s = suggestion.value; if (!s) return;
+  busy.value = true; error.value = '';
+  try { await saveSiteText(props.textKey, s.body); await resetSiteText(draftKey.value); }
+  catch (e: any) { error.value = 'Not approved: ' + (e?.message || e); }
+  finally { busy.value = false; }
+}
+async function turnDown() {
+  busy.value = true; error.value = '';
+  try { await resetSiteText(draftKey.value); }
+  catch (e: any) { error.value = 'Not turned down: ' + (e?.message || e); }
   finally { busy.value = false; }
 }
 async function restore() {
@@ -70,9 +118,19 @@ function onClick(e: MouseEvent) {
     <template v-if="!editing">
       <ol v-if="isList" :class="listClass"><li v-for="(s, i) in steps" :key="i" v-html="s"></li></ol>
       <div v-else :class="textClass" v-html="paragraph"></div>
+      <!-- A suggestion waiting: the approver sees it and decides; other admins see that it waits -->
+      <div v-if="suggestion && backend.showAdminUi" class="nge-edtext-suggestion" @click.stop>
+        <div class="nge-edtext-suggestion-head">Suggested{{ suggestion.by ? ` by ${suggestion.by}` : '' }}{{ approver ? '' : ': waiting for approval' }}</div>
+        <ol v-if="approver && isList" :class="listClass"><li v-for="(s, i) in suggestionSteps" :key="i" v-html="s"></li></ol>
+        <div v-if="approver" class="nge-edtext-actions">
+          <button type="button" class="nge-edtext-btn nge-edtext-btn--save" :disabled="busy" @click="approve">Approve</button>
+          <button type="button" class="nge-edtext-btn" :disabled="busy" @click="turnDown">Turn down</button>
+        </div>
+      </div>
+      <div v-if="sentNote && backend.showAdminUi" class="nge-edtext-note">{{ sentNote }}</div>
       <div v-if="backend.showAdminUi" class="nge-edtext-admin">
         <span v-if="savedNote" class="nge-edtext-note">{{ savedNote }}</span>
-        <button type="button" class="nge-edtext-btn" title="Change this text for everyone. Admins only." @click.stop="startEdit">Edit</button>
+        <button type="button" class="nge-edtext-btn" :title="approval && !approver ? 'Suggest a change: it shows once it is approved. Admins only.' : 'Change this text for everyone. Admins only.'" @click.stop="startEdit">{{ approval && !approver ? 'Suggest an edit' : 'Edit' }}</button>
       </div>
     </template>
     <div v-else class="nge-edtext-form" @click.stop>
@@ -83,9 +141,9 @@ function onClick(e: MouseEvent) {
       </div>
       <div v-if="error" class="nge-edtext-error">{{ error }}</div>
       <div class="nge-edtext-actions">
-        <button type="button" class="nge-edtext-btn nge-edtext-btn--save" :disabled="busy || !draft.trim()" @click="save">{{ busy ? 'Saving…' : 'Save for everyone' }}</button>
+        <button type="button" class="nge-edtext-btn nge-edtext-btn--save" :disabled="busy || !draft.trim()" @click="save">{{ busy ? 'Saving…' : approval && !approver ? 'Send for approval' : 'Save for everyone' }}</button>
         <button type="button" class="nge-edtext-btn" :disabled="busy" @click="editing = false">Cancel</button>
-        <button v-if="saved" type="button" class="nge-edtext-btn nge-edtext-btn--quiet" :disabled="busy" title="Remove the saved text and show the original" @click="restore">Restore original</button>
+        <button v-if="saved && (!approval || approver)" type="button" class="nge-edtext-btn nge-edtext-btn--quiet" :disabled="busy" title="Remove the saved text and show the original" @click="restore">Restore original</button>
       </div>
     </div>
   </div>
@@ -112,4 +170,6 @@ function onClick(e: MouseEvent) {
 .nge-edtext-hint { font-size: 11px; color: rgba(214, 226, 245, 0.6); }
 .nge-edtext-error { font-size: 12px; color: #ff9b9b; }
 .nge-edtext-actions { display: flex; gap: 6px; align-items: center; }
+.nge-edtext-suggestion { margin-top: 6px; padding: 7px 9px; border-radius: 7px; border: 1px dashed rgba(245, 209, 66, 0.55); background: rgba(245, 209, 66, 0.06); display: flex; flex-direction: column; gap: 5px; }
+.nge-edtext-suggestion-head { font-size: 11.5px; font-weight: 600; color: #f5d98a; }
 </style>

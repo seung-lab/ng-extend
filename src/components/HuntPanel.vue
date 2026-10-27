@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen, reportPlace, crosshairXyz, clockParts,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -76,6 +76,32 @@ onUnmounted(() => { if (gemTimer) clearInterval(gemTimer); });
 
 // A new hunt in the panel (or a switch between a test run and the real one) starts clean.
 watch(() => `${hunt.value?.id ?? ''}:${hunt.value?.test ? 'test' : ''}`, () => { error.value = ''; });
+
+/** The report form (Ames 2026-10-26): where, what, a note, and Send. */
+const reportOpen = ref(false);
+const reportXyz = ref('');
+const reportKind = ref<GemKind>('cut');
+const REPORT_KINDS: GemKind[] = ['cut', 'merge'];
+const reportNote = ref('');
+const reportSending = ref(false);
+const reportSent = ref('');
+const reportJustSent = ref(false);
+function reportFromCrosshair() { const p = crosshairXyz(); if (p) reportXyz.value = p.slice(0, 3).join(', '); }
+async function sendReport() {
+  const h = hunt.value; if (!h || reportSending.value) return;
+  const at = (reportXyz.value.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+  error.value = ''; reportSent.value = '';
+  if (at.length !== 3) { error.value = 'Give x, y and z (three numbers), or use the crosshair.'; return; }
+  reportSending.value = true;
+  try {
+    await reportPlace(h, at, reportKind.value, reportNote.value);
+    reportSent.value = 'Thanks! An admin will review it soon.';
+    reportJustSent.value = true;
+    setTimeout(() => { reportJustSent.value = false; }, 4000);
+    reportXyz.value = ''; reportNote.value = '';
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { reportSending.value = false; }
+}
 
 /** The answers on the cells, once the Hunt is over (Ames 2026-10-26). */
 const answersShown = ref(false);
@@ -150,7 +176,7 @@ function wordsFor(n: any) {
 /** The answers before the newest, so a quick second gem never hides the first one's answer. */
 const earlier = computed(() => {
   void huntState.now;
-  return huntState.log.slice(1, 3).filter(n => Date.now() - n.at < 60000).map(n => ({ at: n.at, ...wordsFor(n) }));
+  return huntState.log.slice(1, 3).filter(n => Date.now() - n.at < 60000).map(n => ({ at: n.at, id: n.id, ...wordsFor(n) }));
 });
 /** Your clock: from your first open of the Hunt; it stops at your last find once you are done. */
 const yourTime = computed(() => {
@@ -193,8 +219,8 @@ const clock = computed(() => {
   const h = hunt.value; if (!h) return null;
   void huntState.now;
   if (h.test) return null;
-  if (phase.value === 'announced') return { label: 'Starts in', value: countdown(h.start_at) };
-  if (phase.value === 'live') return { label: 'Ends in', value: countdown(h.end_at) };
+  if (phase.value === 'announced') return { label: 'Starts in', value: countdown(h.start_at, false) };
+  if (phase.value === 'live') return { label: 'Ends in', value: countdown(h.end_at, false) };
   return null;
 });
 /** How to play: open until the Hunt is open on screen, then folded; a click opens or folds it (Ames: "click to expand"). */
@@ -284,7 +310,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <svg class="nge-hunt-eyegem" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
         The Hunt
       </span>
-      <span v-if="mini && clock" class="nge-hunt-headclock"><span>{{ clock.label }}</span><b>{{ clock.value }}</b></span>
+      <span v-if="mini && clock" class="nge-hunt-headclock"><span>{{ clock.label }}</span><b><i v-for="(p, i) in clockParts(clock.value)" :key="i" :class="{ 'nge-digit': p.d }">{{ p.c }}</i></b></span>
       <button v-if="opened && phase === 'live' && !mini" class="nge-hunt-panelsbtn" :class="{ 'nge-hunt-panelsbtn--on': huntPrefs.panels }" :aria-pressed="huntPrefs.panels"
               :title="huntPrefs.panels ? 'Hide the Annotations and Selection panels while hunting' : 'Show the Annotations and Selection panels (your gems in Found and Missed)'"
               :aria-label="huntPrefs.panels ? 'Hide the side panels' : 'Show the side panels'" @pointerdown.stop @click="setHuntPanels(!huntPrefs.panels)">
@@ -314,7 +340,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
     <div v-else-if="!(mini && phase === 'announced' && !error)" class="nge-hunt-body">
       <div v-if="!mini" class="nge-hunt-titlerow">
         <h2 class="nge-hunt-title">{{ hunt.title }}</h2>
-        <div v-if="clock" class="nge-hunt-clock"><span class="nge-hunt-clock-label">{{ clock.label }}</span><span class="nge-hunt-clock-time">{{ clock.value }}</span></div>
+        <div v-if="clock" class="nge-hunt-clock"><span class="nge-hunt-clock-label">{{ clock.label }}</span><span class="nge-hunt-clock-time"><i v-for="(p, i) in clockParts(clock.value)" :key="i" :class="{ 'nge-digit': p.d }">{{ p.c }}</i></span></div>
       </div>
       <p v-if="!mini" class="nge-hunt-brief">{{ briefShort }}</p>
       <p v-if="phase === 'announced' && !mini" class="nge-hunt-when">{{ localTime(hunt.start_at) }} until {{ localTime(hunt.end_at) }}</p>
@@ -436,6 +462,28 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
           </div>
         </template>
 
+        <!-- A problem the answers missed, sent by where it is and what it is (Ames 2026-10-26: "submit a missed
+             thing that lets me plug in coords and label cut or merge"). No gem used; an admin checks it. -->
+        <template v-if="opened && phase !== 'announced' && !hunt.test && !mini">
+          <button class="nge-hunt-reportopen" :aria-expanded="reportOpen" @click="reportOpen = !reportOpen">Found a problem the Hunt missed? <span aria-hidden="true">{{ reportOpen ? '▴' : '▾' }}</span></button>
+          <div v-if="reportOpen" class="nge-hunt-reportform">
+            <p>Put the crosshair on it, or type x, y, z as the coordinate bar shows them. Say what it is, and send it. No gem is used.</p>
+            <div class="nge-hunt-reportrow">
+              <input v-model="reportXyz" class="nge-hunt-reportxyz" placeholder="x, y, z" aria-label="x, y, z" spellcheck="false" />
+              <button class="nge-hunt-missed-go" @click="reportFromCrosshair">Use the crosshair</button>
+            </div>
+            <div class="nge-hunt-kinds nge-hunt-reportkinds" role="radiogroup" aria-label="What it is">
+              <button v-for="k in REPORT_KINDS" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': reportKind === k }]" role="radio" :aria-checked="reportKind === k" @click="reportKind = k">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
+                <span class="nge-hunt-kind-word">{{ k === 'cut' ? 'Cut' : 'Merge' }}</span>
+              </button>
+            </div>
+            <input v-model="reportNote" class="nge-hunt-reportxyz" maxlength="200" placeholder="A note for the admins (optional)" aria-label="A note for the admins" />
+            <button class="nge-hunt-submit" :class="{ 'nge-hunt-submit--sent': reportJustSent }" :disabled="reportSending" @click="sendReport">{{ reportSending ? 'Sending…' : reportJustSent ? '✓ Sent' : 'Send to the admins' }}</button>
+            <p v-if="reportSent" class="nge-hunt-report-done" role="status">{{ reportSent }}</p>
+          </div>
+        </template>
+
         <div v-if="!mini" class="nge-hunt-actions">
           <button class="nge-hunt-btn" :class="{ 'nge-hunt-btn--primary': !opened }" :disabled="!!busy" @click="go">
             {{ busy === 'go' ? 'Opening…' : onDataset && opened ? 'Back to the start view' : 'Open the Hunt' }}
@@ -482,7 +530,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
       </button>
       <div v-if="howOpen && phase !== 'ended' && !mini" class="nge-hunt-howpanel">
         <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
-        <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" />
+        <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" approval label="Hunt instructions" />
         <!-- What the colors mean (Ames 2026-10-26): the gems' own colors, and the glow on a cell -->
         <div class="nge-hunt-key" aria-label="What the colors mean">
           <span v-for="k in GEM_KEY" :key="k.words" class="nge-hunt-keyitem">
@@ -577,6 +625,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 /* ── Head ── */
 .nge-hunt-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px 18px; cursor: grab; touch-action: none; user-select: none; border-bottom: 1px solid rgb(var(--hn-accent) / 0.14); }
 .nge-hunt--dragging .nge-hunt-head { cursor: grabbing; }
+/* The title bar stays put and only the contents scroll (toknow, report #265). */
+.nge-hunt-head { position: sticky; top: 0; z-index: 4; background: rgba(9, 15, 29, 0.98); border-radius: 14px 14px 0 0; }
 .nge-hunt-eyebrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-eyegem { filter: drop-shadow(0 0 4px rgb(var(--hn-gold) / 0.7)); }
 .nge-hunt--mini { width: min(300px, calc(100vw - 24px)); }
@@ -654,7 +704,10 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 }
 .nge-hunt-clock { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
 .nge-hunt-clock-label { font: 600 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
-.nge-hunt-clock-time { font: 700 17px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); }
+.nge-hunt-clock-time { font: 700 15px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); white-space: pre; }
+/* The countdowns keep their width as they tick (Orbitron's digits differ): each digit in a slot as wide as the widest. */
+.nge-hunt-clock-time i, .nge-hunt-headclock b i { font-style: normal; }
+.nge-hunt-clock-time .nge-digit, .nge-hunt-headclock b .nge-digit { display: inline-block; width: 0.84em; text-align: center; }
 .nge-hunt-brief { margin: 0; color: rgb(var(--hn-line) / 0.8); font-size: 12.5px; }
 .nge-hunt-when { margin: 0; color: rgb(var(--hn-line) / 0.6); font-size: 12px; }
 .nge-hunt-desc { font-size: 13px; color: rgb(var(--hn-ink) / 0.85); }
@@ -828,7 +881,18 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-medalrow { display: flex; gap: 4px; margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(66, 213, 236, 0.18); }
 .nge-hunt-medalmini { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0; text-align: center; }
 .nge-hunt-medalmini img { width: 30px; height: 30px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
-.nge-hunt-medalmini b { font: 700 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
+.nge-hunt-medalmini b { font: 700 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+.nge-hunt-medalmini b.nge-hunt-tierword--laser { white-space: normal; line-height: 1.1; }
+.nge-hunt-reportopen { align-self: center; padding: 2px 4px; border: none; background: none; cursor: pointer; font: 600 12px 'Inter', sans-serif; color: #9fe9f5; }
+.nge-hunt-reportopen:hover, .nge-hunt-reportopen:focus-visible { color: #fff; }
+.nge-hunt-reportform { display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border-radius: 10px; border: 1px solid rgba(95, 227, 245, 0.45); background: rgba(95, 227, 245, 0.05); }
+.nge-hunt-reportform p { margin: 0; font: 11.5px/1.4 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.85); }
+.nge-hunt-reportrow { display: flex; gap: 6px; align-items: center; }
+.nge-hunt-reportxyz { flex: 1; min-width: 0; box-sizing: border-box; padding: 5px 8px; border-radius: 7px; background: rgba(4, 8, 18, 0.8); border: 1px solid rgb(var(--hn-accent) / 0.4); color: #e6f0ff; font: 12px 'Inter', sans-serif; font-variant-numeric: tabular-nums; }
+.nge-hunt-reportkinds .nge-hunt-kind { padding: 5px 8px; font-size: 11.5px; }
+.nge-hunt-submit.nge-hunt-submit--sent, .nge-hunt-submit.nge-hunt-submit--sent:disabled { background: rgba(72, 214, 130, 0.22); border-color: #48d682; color: #d9ffe8; box-shadow: 0 0 14px rgba(72, 214, 130, 0.3); }
+.nge-hunt-missed-go { padding: 1px 7px; border-radius: 6px; cursor: pointer; font: 600 10.5px 'Inter', sans-serif; background: rgba(4, 8, 18, 0.6); border: 1px solid rgb(var(--hn-accent) / 0.45); color: rgb(var(--hn-line) / 0.9); }
+.nge-hunt-missed-go:hover:not(:disabled) { color: #fff; border-color: rgb(var(--hn-cyan) / 0.8); }
 .nge-hunt-medalmini small { font-size: 10px; color: rgb(var(--hn-line) / 0.6); }
 .nge-hunt-desc--how { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(66, 213, 236, 0.18); font-size: 12.5px; }
 
@@ -863,6 +927,13 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-log--already b { color: #9fd0ff; }
 .nge-hunt-log--refused b { color: #ffb3b3; }
 .nge-hunt-answersbtn { width: 100%; }
+.nge-hunt-report { align-self: flex-start; margin-top: 6px; padding: 4px 10px; border-radius: 8px; cursor: pointer; font: 600 11.5px 'Inter', sans-serif;
+  background: rgba(95, 227, 245, 0.08); border: 1px solid rgba(95, 227, 245, 0.55); color: #c9f6ff; }
+.nge-hunt-report:hover:not(:disabled), .nge-hunt-report:focus-visible { background: rgba(95, 227, 245, 0.18); color: #fff; }
+.nge-hunt-report:disabled { opacity: 0.6; cursor: default; }
+.nge-hunt-report--small { margin: 0 0 0 6px; padding: 1px 7px; font-size: 10.5px; }
+.nge-hunt-report-done { display: block; margin-top: 5px; font: 11.5px 'Inter', sans-serif; color: #9fe9f5; }
+.nge-hunt-report-tag { margin-left: 6px; font: 10.5px 'Inter', sans-serif; color: #9fe9f5; }
 .nge-hunt-answersnote { margin: -2px 0 0; text-align: center; font: 12px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.8); }
 .nge-hunt-congrats { padding: 10px 12px; border-radius: 10px; text-align: center; background: radial-gradient(120% 120% at 50% 0%, rgb(var(--hn-gold) / 0.16), rgb(var(--hn-accent) / 0.05) 70%); border: 1px solid rgb(var(--hn-gold) / 0.55); animation: ngeHuntHit 0.7s cubic-bezier(0.2, 1.5, 0.4, 1); }
 .nge-hunt-congrats-head { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px 0 2px; }
@@ -879,6 +950,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-mymedal--gold { border-color: rgb(var(--hn-gold) / 0.75); box-shadow: 0 0 18px rgb(var(--hn-gold) / 0.2); }
 .nge-hunt-mymedal--speed b { color: #7fd8ff; }
 .nge-hunt-tierword--speed { color: #7fd8ff !important; text-shadow: 0 0 8px rgba(127, 216, 255, 0.35); }
+.nge-hunt-tierword--laser { color: #5fe3f5 !important; text-shadow: 0 0 8px rgba(95, 227, 245, 0.35); white-space: nowrap; }
 .nge-hunt-speedmark { width: 18px; height: 18px; object-fit: contain; flex: none; }
 
 /* Calm screen and reduced motion: the same box, still. */

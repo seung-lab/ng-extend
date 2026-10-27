@@ -84,6 +84,8 @@ export const huntState = reactive({
   pending: null as null | { id: string; gem: GemKind; x?: number; y?: number; at: number },
   /** Which layer Ctrl + Click drops into: cut gems or extend gems. */
   kind: 'cut' as GemKind,
+  /** Gems this player told the admins about ("It's real"): sent, or checked and not one the key missed. */
+  reported: {} as Record<string, 'sent' | 'no'>,
   /** The number key that picks each gem layer (its place in the layer tabs), for the buttons' tooltips. */
   keys: {} as Partial<Record<GemKind, number>>,
   /** Gems dropped and waiting for Submit (when each gem is not checked as it lands). */
@@ -256,18 +258,44 @@ function huntEditGuard(kind: 'merge' | 'split', roots: string[]): string | null 
   return null;
 }
 
+/**
+ * A cell of a Hunt running now (or an admin's try of one). A Hunt made from a proofread cell's edits starts
+ * from an old ID, and the segment list's "update to the current ID" would show the finished cell: the answers.
+ */
+export function isLiveHuntCell(root: string): boolean {
+  const tried = huntState.test;
+  for (const h of [...huntState.hunts, ...(tried ? [tried] : [])]) {
+    if (!h?.cells?.length || !(h.test || phaseNow(h) === 'live')) continue;
+    if (h.cells.some(c => c.root === root)) return true;
+  }
+  return false;
+}
+
 function installEditGuard() {
   try { (window as any).__ngeEditGuard = huntEditGuard; } catch { /* */ }
 }
 
 /** "2d 4h", "3h 12m", "4m 05s": time left until a moment. */
-export function countdown(iso: string | null | undefined): string {
+export function countdown(iso: string | null | undefined, seconds = true): string {
   const ms = Math.max(0, Date.parse(iso || '') - huntState.now);
   if (!Number.isFinite(ms)) return '';
   const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
-  return `${m}m ${String(sec).padStart(2, '0')}s`;
+  // To the second, so it is seen to run (Ames 2026-10-26: "hunt needs a countdown to the second").
+  // The Hunt box leaves the seconds to the top bar until the last hour (Ames 2026-10-26: "we can maybe exclude
+  // the seconds there since it's in the top bar"); the top bar has them always.
+  const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
+  if (d > 0) return seconds ? `${d}d ${String(h).padStart(2, '0')}h ${mm}m ${ss}s` : `${d}d ${String(h).padStart(2, '0')}h ${mm}m`;
+  if (h > 0) return seconds ? `${h}h ${mm}m ${ss}s` : `${h}h ${mm}m`;
+  return `${m}m ${ss}s`;
+}
+
+/**
+ * A countdown's characters, each digit marked (Ames 2026-10-26: "make sure this box stays a consistent width
+ * even when seconds are different width"): Orbitron's digits differ (a 1 is half a 0, and tabular figures are
+ * not in the font), so each digit sits in a slot as wide as the widest one (.nge-digit, 0.84em).
+ */
+export function clockParts(text: string): { c: string; d: boolean }[] {
+  return [...(text || '')].map(c => ({ c, d: c >= '0' && c <= '9' }));
 }
 
 /** A moment in the player's own time zone. */
@@ -397,6 +425,131 @@ function ensureGemLayers(h: HuntInfo, extra: KeptGem[] = []) {
 
 /** Where the edges of the dataset are, shown to players: teal rings, read only, so nobody spends a
  *  gem finding them (Ames 2026-10-23: "we should just highlight/show where the edges [are]"). */
+/**
+ * A Hunt's note in chat as the Hunt stands now (Ames 2026-10-26: "can we update this message when a hunt is
+ * active? bc it's not 'coming' anymore"). "🔎 The Hunt is coming: X" reads "is on" while X runs and "is over"
+ * after. stage: 0 coming, 1 on, 2 over, so chat can keep only the newest card per Hunt. From the Hunt's
+ * phase as the server last gave it (the list is asked again at each start and end), not a ticking clock.
+ */
+const HUNT_NOTE = /^(\s*🔎\s*The Hunt) (is coming|is on|is over): (.+?)\s*$/u;
+export function huntNoteNow(text: string): { text: string; title: string; stage: number } | null {
+  const m = HUNT_NOTE.exec(text);
+  if (!m) return null;
+  const title = m[3];
+  const stage = m[2] === 'is coming' ? 0 : m[2] === 'is on' ? 1 : 2;
+  const h = huntState.hunts.find(x => x.title === title);
+  const now = !h ? stage : h.phase === 'live' ? 1 : h.phase === 'ended' ? 2 : 0;
+  return { text: now > stage ? `${m[1]} ${now === 1 ? 'is on' : 'is over'}: ${title}` : text, title, stage };
+}
+
+/**
+ * A missed gem is a real problem the key missed, says the player (Ames 2026-10-26: "a 'found an unlabeled
+ * cut/merge' type button"): the admins hear, and Count it in the editor makes it count, with Laser Eyes.
+ */
+export async function reportGem(h: HuntInfo, dropId: string) {
+  await huntCall('hunt.report', { id: h.id, drop_id: dropId });
+  huntState.reported = { ...huntState.reported, [dropId]: 'sent' };
+}
+/**
+ * A problem the Hunt's answers missed, sent by where it is (x, y, z as the coordinate bar shows them) and what it
+ * is (Ames 2026-10-26: "submit a missed thing that lets me plug in coords and label cut or merge"). No gem is used.
+ */
+export async function reportPlace(h: HuntInfo, at: number[], kind: GemKind, note: string): Promise<{ open: number }> {
+  const scales = viewer()?.coordinateSpace?.value?.scales;
+  if (!scales || scales.length < 3) throw new Error('The viewer is not ready yet. Try again in a moment.');
+  if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) throw new Error('Open the Hunt first, so the coordinates are its own.');
+  const nm = at.slice(0, 3).map((v, i) => v * Number(scales[i]) * 1e9);
+  return huntCall<{ open: number }>('hunt.report_place', { id: h.id, nm, at: at.slice(0, 3), kind, note });
+}
+/** What the server says of this player's reports (after a reload, or an admin's check). */
+export function reportedOf(h: HuntInfo | null, id: string): 'sent' | 'no' | null {
+  const d = (h?.you as any)?.drops?.find((x: any) => x.id === id);
+  if (d?.rep_no) return 'no';
+  if (d?.rep) return 'sent';
+  return huntState.reported[id] ?? null;
+}
+
+/** A report's spot, marked while an admin looks at it (HuntReportCard): one teal dot, through the cells, the size of a gem
+ *  (Ames 2026-10-27: "this annotation is too big"). */
+const REPORT_LAYER = 'Hunt report (only you see it)';
+// Balls and boxes drawn see through, so the cells inside them still show (Ames 2026-10-27: a 15 µm place hid them).
+const SEE_THROUGH = 'void main() { setColor(vec4(defaultColor(), 0.3)); }';
+/** With sizeUm, the ball a place of that size would be, around the spot (Ames 2026-10-27: "maybe we need a visual for
+ *  me to see how big a box I am labeling", "I didn't realize how large that is"). */
+export function showReportMarker(at: number[], sizeUm = 0) {
+  const v = viewer();
+  if (!v?.layerSpecification) return;
+  hideReportMarker();
+  const names: string[] = v.coordinateSpace?.value?.names ?? [];
+  const scales = v.coordinateSpace?.value?.scales;
+  const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (ix.some(i => i < 0)) return;
+  const p = here.slice(); ix.forEach((i, k) => { p[i] = at[k]; });
+  const annotations: any[] = [{ type: 'point', id: 'report', point: p }];
+  if (sizeUm > 0 && scales) {
+    const radii = names.map((_, i) => (ix.includes(i) ? (sizeUm * 500) / (Number(scales[i]) * 1e9) : 0));
+    annotations.push({ type: 'ellipsoid', id: 'report-size', center: p, radii });
+  }
+  v.layerSpecification.add(makeLayer(v.layerSpecification, REPORT_LAYER, {
+    type: 'annotation', source: { url: 'local://annotations' }, annotations,
+    annotationColor: EDGE.color, pointSize: 3, onTop: true, shader: SEE_THROUGH,
+  }));
+}
+
+/** A place in the answers, as the reports queue has it (functions/hunts.js reportQueue). */
+export interface KeyPlace { n: number; kind: GemKind; nm: number[]; shape?: { r?: number[]; a?: number[]; b?: number[]; lo?: number[]; hi?: number[]; pts?: number[][] }; added?: boolean; credit?: string[] }
+const PLACES_LAYER = 'Hunt answers (admins only)';
+const ADDED_COLOR = '#48d682';   // green: added from a hunter's report
+/**
+ * The Hunt's answers while an admin goes through the reports (Ames 2026-10-27: "I also need to be able to see the
+ * current Hunt points in this view"): each place as the key has it (a point, ball, line, box or cut off piece),
+ * mergers gold, extensions purple, the ones added from reports green; each labelled with its number and, for an
+ * added one, whose report it came from.
+ */
+export function showKeyPlaces(places: KeyPlace[]) {
+  const v = viewer();
+  const cs = v?.coordinateSpace?.value;
+  const names: string[] = cs?.names ?? [], scales = cs?.scales;
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (!v?.layerSpecification || !scales || ix.some(i => i < 0)) return;
+  hideKeyPlaces();
+  if (!places.length) return;
+  const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
+  const toGlobal = (e: number[]) => { const p = here.slice(); ix.forEach((i, k) => { p[i] = Number(e[k]) / (Number(scales[i]) * 1e9); }); return p; };
+  const toSize = (r: number[]) => names.map((_, i) => { const k = ix.indexOf(i); return k < 0 ? 0 : Number(r[k]) / (Number(scales[i]) * 1e9); });
+  const anns: any[] = [];
+  const ids: Record<'cut' | 'merge' | 'added', string[]> = { cut: [], merge: [], added: [] };
+  for (const p of places) {
+    const id = `place-${p.n}`, s = p.shape || {};
+    const description = `#${p.n} ${p.kind === 'merge' ? 'missing extension' : 'merger'}${p.added ? `, added from ${p.credit?.length ? `${p.credit.join(', ')}'s report` : 'a report'}` : ''}`;
+    const mine: any[] = Array.isArray(s.r) ? [{ type: 'ellipsoid', id, center: toGlobal(p.nm), radii: toSize(s.r), description }]
+      : Array.isArray(s.a) && Array.isArray(s.b) ? [{ type: 'line', id, pointA: toGlobal(s.a), pointB: toGlobal(s.b), description }]
+      : Array.isArray(s.lo) && Array.isArray(s.hi) ? [{ type: 'axis_aligned_bounding_box', id, pointA: toGlobal(s.lo), pointB: toGlobal(s.hi), description }]
+      : [{ type: 'point', id, point: toGlobal(p.nm), description }];
+    if (Array.isArray(s.pts)) s.pts.forEach((q, k) => mine.push({ type: 'point', id: `${id}-${k}`, point: toGlobal(q), description }));
+    anns.push(...mine);
+    ids[p.added ? 'added' : p.kind === 'merge' ? 'merge' : 'cut'].push(...mine.map(a => a.id));
+  }
+  const folders = [
+    { id: 'places-cut', name: 'Mergers', ids: ids.cut, color: FOUND_COLOR.cut, paint: true },
+    { id: 'places-merge', name: 'Extensions', ids: ids.merge, color: FOUND_COLOR.merge, paint: true },
+    { id: 'places-added', name: 'Added from reports', ids: ids.added, color: ADDED_COLOR, paint: true },
+  ].filter(f => f.ids.length);
+  v.layerSpecification.add(makeLayer(v.layerSpecification, PLACES_LAYER, {
+    type: 'annotation', source: { url: 'local://annotations' }, annotations: anns,
+    annotationColor: FOUND_COLOR.cut, pointSize: 3, onTop: true, ngeAnnFolders: folders, shader: SEE_THROUGH,
+  }));
+}
+export function hideKeyPlaces() {
+  const ml = managed(PLACES_LAYER);
+  if (ml) { try { viewer()?.layerManager?.removeManagedLayer(ml); } catch { /* already gone */ } }
+}
+export function hideReportMarker() {
+  const ml = managed(REPORT_LAYER);
+  if (ml) { try { viewer()?.layerManager?.removeManagedLayer(ml); } catch { /* already gone */ } }
+}
+
 export const huntAnswersLayerName = (h: HuntInfo) => `Hunt answers: ${h.title}`;
 /** Nanometres to the viewer's global coordinates, at the current position for any other axes. */
 function nmToGlobal(): ((nm: number[]) => number[]) | null {
@@ -1041,18 +1194,37 @@ export interface KeyCandidate { name: string; points: number }
 export function keyCandidates(): KeyCandidate[] {
   try {
     const layers: any[] = viewer()?.state?.toJSON?.()?.layers ?? [];
+    // Points labelled with one place number ("#3", a cut off piece from a proofread cell) are one place.
+    const places = (anns: any[]) => {
+      const tags = new Set<string>();
+      let n = 0;
+      for (const a of anns) {
+        if (!a || !['point', 'ellipsoid', 'line', 'axis_aligned_bounding_box'].includes(a.type)) continue;
+        const tag = a.type === 'point' && /^#\d{1,4}$/.test(String(a.description ?? '').trim()) ? String(a.description).trim() : '';
+        if (tag) { if (tags.has(tag)) continue; tags.add(tag); }
+        n++;
+      }
+      return n;
+    };
     return layers.filter(l => l && l.type === 'annotation')
-      .map(l => ({ name: String(l.name), points: (Array.isArray(l.annotations) ? l.annotations : []).filter((a: any) => a && a.type === 'point').length }))
+      // Points, and places with an area: ellipsoids, lines and boxes (Ames 2026-10-26).
+      .map(l => ({ name: String(l.name), points: places(Array.isArray(l.annotations) ? l.annotations : []) }))
       .filter(c => c.points > 0).sort((a, b) => b.points - a.points);
   } catch { return []; }
 }
+
+/**
+ * The finished cell an admin can lay over a Hunt cell made from its edits (util/hunt_from_edits.ts). It is
+ * the answer, so it is never a Hunt cell and never in a Hunt's view.
+ */
+export const HUNT_PREVIEW_LAYER = 'Finished cell (only you see it)';
 
 /** The cells shown in the segmentation layers (hidden ones, marked "!", left out). */
 export function cellsOnScreen(): { root: string; label: string }[] {
   const out: { root: string; label: string }[] = [];
   try {
     for (const l of viewer()?.state?.toJSON?.()?.layers ?? []) {
-      if (!l || l.type !== 'segmentation' || !Array.isArray(l.segments)) continue;
+      if (!l || l.type !== 'segmentation' || !Array.isArray(l.segments) || l.name === HUNT_PREVIEW_LAYER) continue;
       for (const s of l.segments) {
         const id = String(s);
         if (/^\d{5,24}$/.test(id) && !out.some(c => c.root === id)) out.push({ root: id, label: '' });
@@ -1197,7 +1369,7 @@ export function readHuntFromScreen(keyLayers: { name: string; kind: KeyKind }[])
   const auto = meshEdgeSpots(cells.map(c => c.root), bounds);
   return {
     key: { layers, dims: state.dimensions, bounds_nm: bounds, auto_edges_nm: auto.spots },
-    view: state,
+    view: { ...state, layers: (state.layers ?? []).filter((l: any) => l?.name !== HUNT_PREVIEW_LAYER) },
     cells,
     dataset: canonicalDataset(currentDatasetTag()),
     autoEdges: auto,

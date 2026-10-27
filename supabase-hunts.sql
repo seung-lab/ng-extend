@@ -85,4 +85,26 @@ alter table hunts enable row level security;
 alter table hunt_keys enable row level security;
 alter table hunt_submissions enable row level security;
 
+-- 2026-10-26: a hunter reports a problem the answers missed, by its coordinates (Ames: "submit a missed
+-- thing that lets me plug in coords and label cut or merge"). Read and written by the ewHunt function only.
+create table if not exists hunt_reports (
+  id          bigint      generated always as identity primary key,
+  hunt_id     bigint      not null references hunts (id) on delete cascade,
+  user_id     uuid        not null references users (id) on delete cascade,
+  nm          jsonb       not null,               -- [x, y, z] in nanometres
+  at          jsonb,                              -- [x, y, z] as the coordinate bar showed them
+  kind        text        not null check (kind in ('cut', 'merge')),
+  note        text,
+  status      text        not null default 'open' check (status in ('open', 'counted', 'not_real')),
+  created_at  timestamptz not null default now()
+);
+create index if not exists hunt_reports_hunt_idx on hunt_reports (hunt_id, status);
+alter table hunt_reports enable row level security;
+
 commit;
+
+-- An admin's note on a report, and who dealt with it and when (Ames 2026-10-27: "it labels who added them",
+-- "make it so we can dismiss or add a note"). Safe to run again.
+alter table hunt_reports add column if not exists admin_note text;
+alter table hunt_reports add column if not exists done_by uuid references users (id) on delete set null;
+alter table hunt_reports add column if not exists done_at timestamptz;

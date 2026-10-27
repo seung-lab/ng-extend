@@ -10,12 +10,14 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
+import HuntFromEdits from 'components/HuntFromEdits.vue';
 import { useProofreadingBackendStore } from '../store';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { pasteFormatted, prefixLines, wrapSelection, type Composer } from '../util/text_composer';
 import { huntCall, keyCandidates, readHuntFromScreen, guessKind, crosshairXyz, goToSoma, meshEdgeSpots, ON_TEST_SITE, type KeyCandidate, type KeyKind } from '../hunt';
 import { openStartLink } from '../util/start_link';
-import { datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
+import { fromEdits, forgetFromEdits } from '../util/hunt_from_edits';
+import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
 import { ET_ZONE, etNaiveToUtcIso, utcIsoToEtNaive } from '../util/et_time';
 
 type Tier = 'gold' | 'silver' | 'bronze';
@@ -38,6 +40,7 @@ interface AdminHunt {
 }
 interface BoardRow { rank: number; name: string; user_id: string; found: number; at: string; gems: number; tier: Tier | null }
 interface RunGem { id: string; at: number[] | null; hit: boolean; k: 'cut' | 'merge' | null }
+interface Report { user_id: string; name: string; drop_id?: string; report_id?: number; k: 'cut' | 'merge' | null; at: number[] | null; nm?: number[]; note?: string; t: string | null }
 
 const TIERS: Tier[] = ['gold', 'silver', 'bronze'];
 const TIER_WORD: Record<Tier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
@@ -73,9 +76,12 @@ const keyPick = ref<Record<string, { on: boolean; kind: KeyKind }>>({});
 /** The hunt's cells with their somas (x, y, z as the coordinate bar shows them): players start at the first. */
 interface CellRow { root: string; label: string; soma: (number | '')[] }
 const cellRows = ref<CellRow[]>([]);
+/** A cell put on screen from a proofread cell's edits starts at its soma (HuntFromEdits.vue). */
+let startFromEdits: { root: string; soma: number[] } | null = null;
 function setCells(cells: { root: string; label: string; soma?: number[] }[]) {
   const was = new Map(cellRows.value.map(c => [c.root, c]));
-  cellRows.value = cells.map(c => ({ root: c.root, label: c.label || '', soma: c.soma && c.soma.length === 3 ? [...c.soma] : (was.get(c.root)?.soma ?? ['', '', '']) }));
+  cellRows.value = cells.map(c => ({ root: c.root, label: c.label || '',
+    soma: c.soma && c.soma.length === 3 ? [...c.soma] : startFromEdits?.root === c.root ? [...startFromEdits.soma] : (was.get(c.root)?.soma ?? ['', '', '']) }));
 }
 /** Paste "89245, 55709, 978" (or with spaces, as the coordinate bar copies it) into any box: all three fill (Ames 2026-10-21). */
 function pasteSoma(i: number, e: ClipboardEvent) {
@@ -146,8 +152,29 @@ async function refresh() {
   } finally { loading.value = false; }
 }
 onMounted(refresh);
+// Back from checking a cell's places in the viewer (HuntPlacesBox.vue): the editor as it was, read again,
+// since points may have been taken out or added meanwhile.
+onMounted(() => {
+  const was = fromEdits.editor;
+  if (!was || Date.now() - was.at > 6 * 3600 * 1000) { fromEdits.editor = null; return; }
+  fromEdits.editor = null;
+  editing.value = was.editing; form.value = was.form; read.value = was.read; board.value = was.board;
+  cellRows.value = was.cellRows; keyPick.value = was.keyPick; startFromEdits = was.start;
+  autoRead.value = true;
+  const again = () => { scan(); if (picked.value.length) useScreen(); };
+  setTimeout(again, 300); setTimeout(again, 1500);
+});
+/** Look at the places in the viewer: the Admin Hub covers it, so it closes and the editor waits in fromEdits. */
+function checkInViewer() {
+  const copy = (v: any) => (v == null ? v : JSON.parse(JSON.stringify(v)));
+  fromEdits.editor = { at: Date.now(), editing: copy(editing.value), form: copy(form.value), read: copy(read.value), board: copy(board.value),
+    cellRows: copy(cellRows.value), keyPick: copy(keyPick.value), start: copy(startFromEdits) };
+  fromEdits.checking = true;
+  document.dispatchEvent(new CustomEvent('nge:hunt-check'));
+}
 
 function startNew() {
+  forgetFromEdits();
   editing.value = { id: 0 } as AdminHunt;
   form.value = { ...blank(), announce: etDay(1, '15:00'), start: etDay(2, '15:00'), end: etDay(5, '15:00') };
   read.value = null; board.value = []; message.value = ''; error.value = '';
@@ -157,6 +184,7 @@ function startNew() {
 }
 
 async function open(h: AdminHunt) {
+  forgetFromEdits();
   busy.value = 'open'; error.value = ''; message.value = '';
   try {
     const full = await huntCall<AdminHunt & { board: BoardRow[] }>('hunt.read', { id: h.id });
@@ -173,11 +201,12 @@ async function open(h: AdminHunt) {
     cellRows.value = []; setCells(full.cells || []);
     autoRead.value = false;   // a saved key stays until a link is opened
     scan();
+    void loadReports(full);
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
 
-function close() { editing.value = null; read.value = null; board.value = []; message.value = ''; autoRead.value = false; void refresh(); }
+function close() { forgetFromEdits(); editing.value = null; read.value = null; board.value = []; message.value = ''; autoRead.value = false; void refresh(); }
 
 // The key reads itself (Ames 2026-10-21: "it's kind of confusing that I have to click
 // read from screen, shouldn't it be auto?"): for a new Hunt, or once a link is opened,
@@ -215,8 +244,20 @@ function keyLink(full: any): string {
   const xyz = ['x', 'y', 'z'];
   if (!xyz.every(a => Array.isArray(dims[a]) && Number(dims[a][0]) > 0)) return '';
   const toVox = (p: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(p[i]) / (Number(dims[a][0]) * 1e9); });
-  const layerOf = (name: string, pts: number[][]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
-    annotations: pts.map((p, i) => ({ type: 'point', id: `${name.toLowerCase()}-${i}`, point: toVox(p) })) });
+  const scaleOf = (r: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(r[i]) / (Number(dims[a][0]) * 1e9); });
+  // A place with an area comes back as its ellipsoid, line or box (Ames 2026-10-26).
+  // A cut off piece (a cloud, from a proofread cell) comes back as its points, all labelled with its place number.
+  const annotationOf = (p: any, id: string, n: number): any[] => {
+    const s = p[4];
+    if (s && Array.isArray(s.pts)) return [{ type: 'point', id, point: toVox(p), description: `#${n}` },
+      ...s.pts.map((q: number[], k: number) => ({ type: 'point', id: `${id}-${k}`, point: toVox(q), description: `#${n}` }))];
+    if (s && Array.isArray(s.r)) return [{ type: 'ellipsoid', id, center: toVox(p), radii: scaleOf(s.r) }];
+    if (s && Array.isArray(s.a)) return [{ type: 'line', id, pointA: toVox(s.a), pointB: toVox(s.b) }];
+    if (s && Array.isArray(s.lo)) return [{ type: 'axis_aligned_bounding_box', id, pointA: toVox(s.lo), pointB: toVox(s.hi) }];
+    return [{ type: 'point', id, point: toVox(p) }];
+  };
+  const layerOf = (name: string, pts: any[]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
+    annotations: pts.flatMap((p, i) => annotationOf(p, `${name.toLowerCase()}-${i}`, i + 1)) });
   const cuts = targets.filter(t => t[3] !== 'merge'), merges = targets.filter(t => t[3] === 'merge'), edges: number[][] = full.edges || [];
   const layers = [...(view.layers || []),
     ...(cuts.length ? [layerOf('Mergers', cuts)] : []), ...(merges.length ? [layerOf('Extensions', merges)] : []), ...(edges.length ? [layerOf('edge', edges)] : [])];
@@ -229,6 +270,18 @@ function openLink() {
   message.value = 'Opening the link. The ticked layers are read as soon as they are on screen.';
   autoRead.value = true;
   setTimeout(scan, 2500); setTimeout(scan, 6000);
+}
+
+/** The cell from a proofread cell's edits is on screen: read its places as a link's would be. */
+function fromEditsShown(v: { root: string; soma: number[] | null; places: number }) {
+  error.value = '';
+  startFromEdits = v.soma ? { root: v.root, soma: v.soma } : null;
+  const row = cellRows.value.find(c => c.root === v.root);
+  if (row && v.soma) row.soma = [...v.soma];
+  autoRead.value = true;
+  // Read now, even when the layers look as they did (another start, same counts): the cell is new.
+  const again = () => { scan(); if (picked.value.length) useScreen(); };
+  again(); setTimeout(again, 1500); setTimeout(again, 4000);
 }
 
 function useScreen() {
@@ -440,6 +493,44 @@ async function showRun(b: BoardRow) {
   catch (e: any) { error.value = e?.message || String(e); }
 }
 function goToGem(d: RunGem) { if (d.at) goToSoma(d.at.slice(0, 3)); }
+
+// Gems hunters say are on a real problem the answers missed (Ames 2026-10-26): check each, then Count it or Dismiss.
+// The oldest first, and Go through them opens the reports queue on the view (HuntReportCard; Ames 2026-10-27).
+const reports = ref<Report[]>([]);
+async function loadReports(h: AdminHunt) {
+  reports.value = [];
+  if (!h?.id || (h as any).status !== 'scheduled') return;
+  try { reports.value = (await huntCall<{ reports: Report[] }>('hunt.reports', { id: h.id })).reports || []; } catch { /* the list is a help */ }
+}
+/** The reports queue on the view (HuntReportCard), the oldest open one first; the Admin Hub steps aside. */
+function goThroughReports() {
+  const h = editing.value; if (!h?.id) return;
+  document.dispatchEvent(new CustomEvent('nge:hunt-report', { detail: { hunt: h.id } }));
+}
+async function countReport(r: Report) {
+  await countIt({ user_id: r.user_id } as BoardRow, { id: r.drop_id || '', at: r.at, hit: false, k: r.k });
+}
+/** A report sent by coordinates: into the key, everyone judged again, Laser Eyes for whoever sent it. */
+async function addFromReport(r: Report) {
+  const h = editing.value; if (!h?.id || busy.value || !r.nm || !r.report_id) return;
+  busy.value = 'add'; error.value = ''; message.value = '';
+  try {
+    const out = await huntCall<any>('hunt.add_place', { id: h.id, nm: r.nm, kind: r.k === 'merge' ? 'merge' : 'cut', report_id: r.report_id });
+    busy.value = '';
+    await open(out);
+    message.value = `Added ${r.name}'s ${r.k === 'merge' ? 'missing extension' : 'merger'}: the key has ${out.target_count} places now. ${out.changed} ${out.changed === 1 ? 'run' : 'runs'} changed, and ${out.laser} ${out.laser === 1 ? 'hunter' : 'hunters'} got Laser Eyes.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
+async function dismissReport(r: Report) {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  busy.value = 'dismiss'; error.value = ''; message.value = '';
+  try {
+    reports.value = (await huntCall<{ reports: Report[] }>('hunt.dismiss_report', r.report_id ? { id: h.id, report_id: r.report_id } : { id: h.id, user_id: r.user_id, drop_id: r.drop_id })).reports || [];
+    message.value = `Dismissed: ${r.name}'s report is off the list.`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 async function countIt(b: BoardRow, d: RunGem) {
   const h = editing.value; if (!h?.id || busy.value) return;
   busy.value = 'count'; error.value = ''; message.value = '';
@@ -448,6 +539,39 @@ async function countIt(b: BoardRow, d: RunGem) {
     busy.value = '';
     await open(r);
     message.value = `Counted: the key has ${r.target_count} places now. ${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
+
+// A place the key missed, by its coordinates (Ames 2026-10-26: "I want to be able to add coords for missing cut
+// or merge and label them as merge or cut"): x, y, z as the coordinate bar shows them, or the crosshair.
+// One box for x, y, z (Ames 2026-10-26: "give me one box for xyz"): paste them as the coordinate bar shows them.
+const addAt = ref<{ xyz: string; kind: 'cut' | 'merge'; size: number | '' }>({ xyz: '', kind: 'cut', size: '' });
+const xyzOf = (text: string) => (text.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+function addFromCrosshair() {
+  const p = crosshairXyz();
+  if (p) addAt.value = { ...addAt.value, xyz: p.slice(0, 3).join(', ') };
+}
+async function addPlace() {
+  const h = editing.value; if (!h?.id || busy.value) return;
+  const v = xyzOf(addAt.value.xyz);
+  error.value = ''; message.value = '';
+  if (v.length !== 3 || v.some(n => !Number.isFinite(n))) { error.value = 'Give x, y and z (three numbers), or use the crosshair.'; return; }
+  if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) { error.value = 'Open the Hunt on its dataset first (Open the link above), so the coordinates are its own.'; return; }
+  const scales = (window as any).viewer?.coordinateSpace?.value?.scales;
+  if (!scales || scales.length < 3) { error.value = 'The viewer is not ready yet. Try again in a moment.'; return; }
+  const nm = v.map((n, i) => n * Number(scales[i]) * 1e9);
+  busy.value = 'add';
+  try {
+    const size = Number(addAt.value.size) || 0;
+    const r = await huntCall<any>('hunt.add_place', { id: h.id, nm, kind: addAt.value.kind, radius_nm: size > 0 ? size * 500 : 0 });
+    busy.value = '';
+    await open(r);
+    const what = addAt.value.kind === 'merge' ? 'missing extension' : 'merger';
+    const after = `${r.changed} ${r.changed === 1 ? 'run' : 'runs'} changed`
+      + `${r.laser ? `, and ${r.laser} ${r.laser === 1 ? 'hunter' : 'hunters'} got Laser Eyes` : ''}.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+    message.value = r.enlarged ? `Made the ${what} there bigger: ${size} µm across. ${after}` : `Added a ${what}${size ? ` ${size} µm across` : ''}: the key has ${r.target_count} places now. ${after}`;
+    addAt.value = { xyz: '', kind: addAt.value.kind, size: '' };
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -512,6 +636,24 @@ async function duplicate() {
         </label>
       </div>
 
+      <!-- Reported by hunters (Ames 2026-10-26): at the top, so a report during a Hunt is seen at once -->
+      <fieldset v-if="reports.length" class="nge-hunts-group nge-hunts-reports" :disabled="!!busy">
+        <legend>Reported by hunters ({{ reports.length }})</legend>
+        <p class="nge-hunts-help">Hunters say these are real problems the answers missed, the oldest first. <b>Go through them</b> opens them one by one on the view, with the answers drawn in, a note for each, and who sent each spot first. Or here: <b>Add to the answers</b> (or <b>Count it</b>, for a gem) puts it in the key, judges everyone again and gives Laser Eyes; <b>Dismiss</b> takes it off this list.</p>
+        <button v-if="reports.some((r) => r.report_id)" class="nge-hunts-btn nge-hunts-btn--primary" @click="goThroughReports">Go through them, oldest first</button>
+        <ul class="nge-hunts-gems">
+          <li v-for="r in reports" :key="r.report_id ? `r${r.report_id}` : r.user_id + r.drop_id" class="nge-hunts-gem--miss">
+            <span><b>{{ r.name }}</b>: {{ r.k === 'merge' ? 'missing extension' : 'merger' }}{{ r.report_id ? '' : ' (their gem)' }}</span>
+            <span class="nge-hunts-muted">{{ (r.at || []).slice(0, 3).map((v) => Math.round(v)).join(', ') }}</span>
+            <span v-if="r.note" class="nge-hunts-report-note">"{{ r.note }}"</span>
+            <button class="nge-hunts-btn nge-hunts-btn--small" :disabled="!r.at" title="Move the view there" @click.stop="goToGem({ id: r.drop_id || '', at: r.at, hit: false, k: r.k })">Go there</button>
+            <button v-if="r.report_id" class="nge-hunts-btn nge-hunts-btn--small" title="A real problem the answers missed: add it to the key, judge everyone again, Laser Eyes for whoever sent it" @click.stop="addFromReport(r)">Add to the answers</button>
+            <button v-else class="nge-hunts-btn nge-hunts-btn--small" title="A real error the answers missed: add it to the key, judge everyone again, Laser Eyes" @click.stop="countReport(r)">Count it</button>
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="Not a problem the answers missed: off the list" @click.stop="dismissReport(r)">Dismiss</button>
+          </li>
+        </ul>
+      </fieldset>
+
       <fieldset class="nge-hunts-group" :disabled="!!busy">
         <legend>1. The answer key</legend>
         <p class="nge-hunts-help">Paste a share link of the cell with each place marked by a point: mergers (to cut) in one annotation layer, extensions (to merge) in another. Open it and check the ticks and kinds: the key is read from the screen by itself, again whenever they change. Players start from the same view with every annotation layer taken out, and drop one gem on each merger or extension they find. Branches that run out of the data are no missing extensions: mark those ends in a layer named <b>edge</b> (it is picked up as edges by itself; the volume's own edges count without marking, and players see the cells glow teal there), and an Extend gem there is answered "Edge of the dataset", with no gem used.</p>
@@ -519,6 +661,7 @@ async function duplicate() {
           <input v-model="form.link" class="nge-hunts-input" placeholder="https://… #!…" aria-label="View link" />
           <button class="nge-hunts-btn" :disabled="!form.link.trim()" @click="openLink">Open the link</button>
         </div>
+        <HuntFromEdits :tolerance-um="Number(form.tolerance_um) || 3" @shown="fromEditsShown" @check="checkInViewer" />
         <ul class="nge-hunts-keylayers" aria-label="Layers with the places marked">
           <li v-if="!candidates.length" class="nge-hunts-muted">No annotation layer with points on screen yet.</li>
           <li v-for="c in candidates" :key="c.name" :class="{ 'nge-hunts-keylayer--on': keyPick[c.name]?.on }">
@@ -694,6 +837,24 @@ async function duplicate() {
         <button class="nge-hunts-btn nge-hunts-btn--danger" :disabled="!!busy" @click="asking = 'delete'">Delete</button>
       </div>
 
+      <!-- A place the key missed, by its coordinates (Ames 2026-10-26) -->
+      <fieldset v-if="!isNew && scheduled" class="nge-hunts-group nge-hunts-addplace" :disabled="!!busy">
+        <legend>A place the key missed</legend>
+        <p class="nge-hunts-help">A real merger or missing extension the key does not have: put the crosshair on it (or type x, y, z as the coordinate bar shows them), say which it is, and add it. For a wide face, give it a size: a gem anywhere in it counts, and at a place the key has already, that place is made bigger. (In the key layers themselves, an ellipsoid, line or box works the same way.) Everyone is judged again, and each hunter whose gem finds it gets <b>Laser Eyes</b>. A hunter's own gem on it can also be counted below with <b>Count it</b>.</p>
+        <div class="nge-hunts-addrow">
+          <input v-model="addAt.xyz" type="text" class="nge-hunts-input nge-hunts-xyz" placeholder="x, y, z" aria-label="x, y, z" spellcheck="false" />
+          <button class="nge-hunts-btn nge-hunts-btn--small" title="Fill in where the crosshair is now" @click="addFromCrosshair">Use the crosshair</button>
+        </div>
+        <div class="nge-hunts-addrow">
+          <label class="nge-hunts-addsize" title="For a wide face or a long stretch: a gem anywhere within this ball counts. At a place the key has already, it makes that place this big.">Size <input v-model.number="addAt.size" type="number" min="0" max="200" step="0.5" class="nge-hunts-input" placeholder="a point" /> µm across</label>
+          <select v-model="addAt.kind" class="nge-hunts-input" aria-label="Which kind">
+            <option value="cut">Merger (Cut)</option>
+            <option value="merge">Missing extension (Extend)</option>
+          </select>
+          <button class="nge-hunts-btn" :disabled="!!busy" @click="addPlace">{{ busy === 'add' ? 'Adding…' : 'Add to the key' }}</button>
+        </div>
+      </fieldset>
+
       <!-- Results -->
       <fieldset v-if="board.length" class="nge-hunts-group">
         <legend>Hunters ({{ board.length }})</legend>
@@ -802,6 +963,15 @@ async function duplicate() {
 .nge-hunts-tierword { font-weight: 700; color: #fff; font-size: 13px; }
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
 .nge-hunts-answers { margin-top: 8px; }
+.nge-hunts-reports { border-color: rgba(95, 227, 245, 0.55); box-shadow: 0 0 14px rgba(95, 227, 245, 0.12); }
+.nge-hunts-report-note { flex-basis: 100%; font-size: 12px; color: #cfe9f5; }
+.nge-hunts-addrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nge-hunts-addrow input.nge-hunts-input { width: 92px; }
+.nge-hunts-addrow input.nge-hunts-xyz { flex: 1; min-width: 180px; width: auto; font-variant-numeric: tabular-nums; }
+.nge-hunts-addsize { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: #cfdcef; white-space: nowrap; }
+.nge-hunts-addsize input.nge-hunts-input { width: 74px; }
+.nge-hunts-addsize, .nge-hunts-addsize input { text-transform: none; }
+.nge-hunts-addrow select.nge-hunts-input { width: auto; flex: 1; min-width: 180px; }
 .nge-hunts-resultshours { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .nge-hunts-resultshours .nge-hunts-input { width: 72px; }
 .nge-hunts-startrow { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; }

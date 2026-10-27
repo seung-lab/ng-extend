@@ -27,6 +27,16 @@ const DEFAULT_TOLERANCE_NM = 3000;
 const DEFAULT_MAX_SUBMISSIONS = 10;
 const MIN_POINTS = 10;
 const MAX_TARGETS = 200;
+// A place made from a proofread cell's cut is the whole piece cut off, as points along it (a cloud). The key
+// is read on every gem and every hunt.current (Supabase egress), so the points are capped.
+const MAX_CLOUD_PTS = 600;
+const MAX_KEY_PTS = 3000;
+/** Every so many points, so a long list keeps its spread at the size allowed. */
+function everyNth(pts, max) {
+  if (pts.length <= max) return pts;
+  const step = pts.length / max;
+  return Array.from({ length: max }, (_, i) => pts[Math.floor(i * step)]);
+}
 const MAX_CELLS = 20;
 const SHOW_ENDED_DAYS = 7;
 const DEFAULT_RESULTS_HOURS = 24;   // "Hunt results" in the top bar this long after the end
@@ -95,6 +105,81 @@ function layerPoints(layer, dims) {
 }
 function layerPointsNm(layer, dims) { return layerPoints(layer, dims).map((p) => p.nm); }
 
+/**
+ * The places of one key layer, each [x, y, z] in nm (its middle) and, for a place with an area, its shape
+ * (Ames 2026-10-26: "large surface area missed extensions or merge origins - this is marked but the hunt
+ * didn't credit players bc the surface area is too large"): an ellipsoid { r: radii }, a line { a, b } or a
+ * box { lo, hi }, all in nm. A gem counts within the tolerance of the shape, so anywhere inside it.
+ * Points labelled with the same place number, "#3", are one place: the first is its middle and the rest
+ * are a cloud { pts } (a Hunt made from a proofread cell marks a cut by the whole piece cut off).
+ */
+function layerPlaces(layer, dims) {
+  if (!layer || typeof layer !== 'object') fail(400, 'No annotation layer was sent.');
+  let src = layer.source;
+  if (Array.isArray(src)) src = src[0];
+  const t = src && typeof src === 'object' ? src.transform : null;
+  if (t && !isIdentity(t.matrix)) fail(400, 'This layer is moved by a transform. Mark the places in a plain annotation layer.');
+  const axes = axisScales((t && t.outputDimensions) || dims);
+  let ix = ['x', 'y', 'z'].map((n) => axes.findIndex((a) => a.name === n));
+  if (ix.some((i) => i < 0)) ix = [0, 1, 2];
+  const nm = (v) => (Array.isArray(v) ? ix.map((i) => Math.round(Number(v[i]) * axes[i].nmPer)) : null);
+  const ok = (p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+  const out = [];
+  const groups = new Map();
+  for (const a of Array.isArray(layer.annotations) ? layer.annotations : []) {
+    if (!a || typeof a !== 'object') continue;
+    if (a.type === 'point') {
+      const p = nm(a.point);
+      if (!ok(p)) continue;
+      const g = typeof a.description === 'string' && /^#\d{1,4}$/.test(a.description.trim()) ? a.description.trim() : '';
+      const pl = g ? groups.get(g) : null;
+      if (pl) { (pl.shape || (pl.shape = { pts: [] })).pts.push(p); continue; }
+      out.push({ nm: p });
+      if (g) groups.set(g, out[out.length - 1]);
+      continue;
+    }
+    if (a.type === 'ellipsoid') {
+      const c = nm(a.center), r = nm(a.radii);
+      if (ok(c) && ok(r)) out.push({ nm: c, shape: { r: r.map((v) => Math.max(1, Math.abs(v))) } });
+      continue;
+    }
+    if (a.type === 'line' || a.type === 'axis_aligned_bounding_box') {
+      const A = nm(a.pointA), B = nm(a.pointB);
+      if (!ok(A) || !ok(B)) continue;
+      const mid = A.map((v, i) => Math.round((v + B[i]) / 2));
+      out.push({ nm: mid, shape: a.type === 'line' ? { a: A, b: B } : { lo: A.map((v, i) => Math.min(v, B[i])), hi: A.map((v, i) => Math.max(v, B[i])) } });
+    }
+  }
+  for (const pl of out) if (pl.shape && Array.isArray(pl.shape.pts)) pl.shape.pts = everyNth(pl.shape.pts, MAX_CLOUD_PTS);
+  return out;
+}
+
+/** How far a gem is from a place: from its point, or from its shape (0 inside it). */
+function placeDist(t, p) {
+  const s = t && t[4];
+  if (s && typeof s === 'object') {
+    if (Array.isArray(s.pts)) {
+      let d = dist(t, p);
+      for (const q of s.pts) if (Array.isArray(q)) d = Math.min(d, dist(q, p));
+      return d;
+    }
+    if (Array.isArray(s.r)) {
+      const q = [0, 1, 2].map((i) => (p[i] - t[i]) / Math.max(1, s.r[i]));
+      const n = Math.hypot(q[0], q[1], q[2]);
+      if (n <= 1) return 0;
+      return dist([0, 1, 2].map((i) => t[i] + (q[i] / n) * Math.max(1, s.r[i])), p);
+    }
+    if (Array.isArray(s.a) && Array.isArray(s.b)) {
+      const ab = [0, 1, 2].map((i) => s.b[i] - s.a[i]), ap = [0, 1, 2].map((i) => p[i] - s.a[i]);
+      const L = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+      const u = L ? Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / L)) : 0;
+      return dist([0, 1, 2].map((i) => s.a[i] + u * ab[i]), p);
+    }
+    if (Array.isArray(s.lo) && Array.isArray(s.hi)) return Math.hypot(...[0, 1, 2].map((i) => Math.max(s.lo[i] - p[i], 0, p[i] - s.hi[i])));
+  }
+  return dist(t, p);
+}
+
 // ── Scoring ───────────────────────────────────────────────────────────────
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -122,8 +207,12 @@ function keyTargets(key) {
   for (const part of parts) {
     if (part && part.kind === 'edge') continue;
     const kind = part && part.kind === 'merge' ? 'merge' : 'cut';
-    for (const pt of layerPointsNm(part && part.layer, key.dims)) out.push([pt[0], pt[1], pt[2], kind]);
+    for (const pl of layerPlaces(part && part.layer, key.dims)) out.push(pl.shape ? [pl.nm[0], pl.nm[1], pl.nm[2], kind, pl.shape] : [pl.nm[0], pl.nm[1], pl.nm[2], kind]);
   }
+  // At most MAX_KEY_PTS cloud points in all: each cloud keeps its share, spread along it.
+  const clouds = out.filter((t) => t[4] && Array.isArray(t[4].pts));
+  const total = clouds.reduce((n, t) => n + t[4].pts.length, 0);
+  if (total > MAX_KEY_PTS) for (const t of clouds) t[4] = { pts: everyNth(t[4].pts, Math.max(1, Math.floor((t[4].pts.length * MAX_KEY_PTS) / total))) };
   return out;
 }
 
@@ -192,7 +281,7 @@ function match(targets, points, toleranceNm) {
   const tol = Number(toleranceNm) > 0 ? Number(toleranceNm) : DEFAULT_TOLERANCE_NM;
   const T = Array.isArray(targets) ? targets : [];
   const P = Array.isArray(points) ? points : [];
-  const reach = T.map((t) => P.map((p, pi) => [dist(t, p), pi]).filter(([d]) => d <= tol)
+  const reach = T.map((t) => P.map((p, pi) => [placeDist(t, p), pi]).filter(([d]) => d <= tol)
     .sort((a, b) => a[0] - b[0]).map(([, pi]) => pi));
   const owner = new Array(P.length).fill(-1);
   const tryTarget = (ti, seen) => {
@@ -209,7 +298,7 @@ function match(targets, points, toleranceNm) {
   let close = 0;
   P.forEach((p, pi) => {
     if (owner[pi] >= 0) return;
-    if (T.some((t, ti) => !foundTargets.has(ti) && dist(t, p) <= 2 * tol)) close++;
+    if (T.some((t, ti) => !foundTargets.has(ti) && placeDist(t, p) <= 2 * tol)) close++;
   });
   return { found, close, hit: T.map((t, ti) => foundTargets.has(ti)) };
 }
@@ -224,7 +313,7 @@ function testDetail(targets, points, toleranceNm) {
   const P = Array.isArray(points) ? points : [];
   const m = match(T, P, toleranceNm);
   return T.map((t, ti) => {
-    const near = P.length ? Math.min(...P.map((p) => dist(t, p))) : null;
+    const near = P.length ? Math.min(...P.map((p) => placeDist(t, p))) : null;
     return { kind: kindOf(t), found: m.hit[ti], nearest_um: near == null ? null : Math.round(near / 100) / 10 };
   });
 }
@@ -380,7 +469,8 @@ function normalizeDrops(points) {
   return (Array.isArray(points) ? points : [])
     .filter((d) => d && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.nm) && d.nm.length === 3)
     .map((d) => ({ id: String(d.id || '').slice(0, 80), nm: d.nm.map(Number), at: Array.isArray(d.at) ? d.at.map(Number) : null,
-      hit: Number.isInteger(d.hit) ? d.hit : -1, k: d.k === 'cut' || d.k === 'merge' ? d.k : null, t: d.t || null }));
+      hit: Number.isInteger(d.hit) ? d.hit : -1, k: d.k === 'cut' || d.k === 'merge' ? d.k : null, t: d.t || null,
+      ...(d.rep === true ? { rep: true } : {}), ...(d.rep_no === true ? { rep_no: true } : {}) }));
 }
 
 /** One gem: the nearest problem not yet found within the tolerance, or one found already, or a miss. */
@@ -395,7 +485,7 @@ function judgeDrop(targets, drops, nm, tol, kind) {
   const taken = new Set(drops.filter((d) => d.hit >= 0).map((d) => d.hit));
   let hit = -1, best = Infinity, already = false, nearest = Infinity, other = null;
   targets.forEach((t, i) => {
-    const d = dist(t, nm);
+    const d = placeDist(t, nm);
     const mine = !kind || kindOf(t) === kind;
     if (!taken.has(i) && mine) nearest = Math.min(nearest, d);
     if (d > tol) return;
@@ -430,7 +520,8 @@ function runView(h, drops, targets, run) {
     started_at: (run && run.created_at) || null, time_ms: run ? runClock(run, drops) : null,
     done: (targets.length > 0 && found >= targets.length) || used >= budget,
     tier: null,   // the medals are places, given and shown at the end
-    drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, kind: d.hit >= 0 ? kindOf(targets[d.hit]) : null, k: d.k })),
+    drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, kind: d.hit >= 0 ? kindOf(targets[d.hit]) : null, k: d.k,
+      ...(d.rep ? { rep: true } : {}), ...(d.rep_no ? { rep_no: true } : {}) })),
   };
 }
 
@@ -539,10 +630,17 @@ function notificationRows(h) {
 
 const LINES = {
   fastest: 'You spotted them all first. Takes one to know one.',
-  gold: 'Two cells walked into a bar, and you told them apart.',
-  silver: 'So close to gold, you could merge with it.',
-  bronze: 'Every merger you spot is one less cell living a double life.',
+  // Celia's lines (2026-10-26). Gold has two: each Hunt takes one (lineFor).
+  gold: ['Legend of the hidden merger.', 'You have 24/24 karat vision!'],
+  silver: 'Scientists praise you, werewolves fear you!',
+  bronze: 'Splitting + merging = one strong alloy!',
+  laser: 'Nothing gets past those eyes, not even the answer key.',
 };
+/** A medal's line: one of its lines, the same for every winner of one Hunt. */
+function lineFor(tier, h) {
+  const l = LINES[tier];
+  return Array.isArray(l) ? l[posInt(h && h.id) % l.length] : l;
+}
 
 /** The special Achievement for one tier of one hunt. */
 function badgeRow(h, tier, th, site) {
@@ -557,7 +655,7 @@ function badgeRow(h, tier, th, site) {
   return {
     slug: `hunt-${h.id}-${tier}`,
     name: `${h.title}: ${TIER_NAME[tier]}`.slice(0, 80),
-    description: `${TIER_NAME[tier]} in ${h.title}: ${count}. ${LINES[tier]}`.slice(0, 300),
+    description: `${TIER_NAME[tier]} in ${h.title}: ${count}. ${lineFor(tier, h)}`.slice(0, 300),
     image_url: art, thumbnail_url: thumb, created_by: h.created_by || null,
   };
 }
@@ -726,6 +824,15 @@ async function huntAction(action, args, ctx) {
     case 'hunt.duplicate': needAdmin(); return duplicate(args, ctx);
     case 'hunt.run': needAdmin(); return adminRun(args, ctx);
     case 'hunt.count_it': needAdmin(); return countIt(args, ctx);
+    case 'hunt.report': return reportGem(args, ctx);
+    case 'hunt.report_place': return reportPlace(args, ctx);
+    case 'hunt.report_get': needAdmin(); return reportGet(args, ctx);
+    case 'hunt.report_queue': needAdmin(); return reportQueue(args, ctx);
+    case 'hunt.report_note': needAdmin(); return reportNote(args, ctx);
+    case 'hunt.report_same': needAdmin(); return reportSame(args, ctx);
+    case 'hunt.reports': needAdmin(); return reportsAction(args, ctx);
+    case 'hunt.dismiss_report': needAdmin(); return dismissReport(args, ctx);
+    case 'hunt.add_place': needAdmin(); return addPlaceAction(args, ctx);
     case 'hunt.test': needAdmin(); return testOpen(args, ctx);
     case 'hunt.test_drop': needAdmin(); return testDrop(args, ctx);
     default: fail(400, 'Unknown Hunt action.');
@@ -779,45 +886,65 @@ async function answers(args, ctx) {
 async function current(ctx) {
   const { db, me, now = new Date() } = ctx;
   const since = new Date(now.getTime() - SHOW_ENDED_DAYS * DAY).toISOString();
-  // An admins only hunt (for testing) is never shown to players.
-  const rows = (await db.visibleHunts(since)).filter((h) => visible(h, now) && (!adminsOnly(h, ctx) || ctx.isAdmin));
-  const hunts = [];
-  for (const h of rows) {
+  // An admins only hunt (for testing) is never shown to players, and the database leaves those out for
+  // them. For admins, a test Hunt goes once its results window is over (Ames 2026-10-26: "this takes a
+  // long time to load": 17 Hunts, 146 reads one after another, 9 s, for an admin).
+  const players = !ctx.isAdmin;
+  const rows = (await db.visibleHunts(since, { players })).filter((h) => visible(h, now) && (!adminsOnly(h, ctx) || ctx.isAdmin)
+    && !(h.admins_only && phase(h, now) === 'ended' && now.getTime() - Date.parse(h.end_at) > resultsHours(h) * 3600000));
+  // Each Hunt's reads go together, and the Hunts together.
+  const hunts = await Promise.all(rows.map((h) => huntForPlayer(h, ctx)));
+  return { now: now.toISOString(), hunts };
+}
+
+/** One Hunt as hunt.current gives it: the player's own run, the board, the medals once given. */
+async function huntForPlayer(h, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  {
     if (phase(h, now) === 'ended' && !h.awarded_at) {
       try { const r = await finalize(h, ctx); if (r) h.awarded_at = now.toISOString(); }
       catch (e) { console.warn('[hunt] awards for', h.id, 'failed:', e && e.message); }
     }
-    const key = await db.key(h.id);
+    const open = phase(h, now) !== 'announced';
+    const [key, ex, subs, run, prizes] = await Promise.all([
+      db.key(h.id),
+      open && db.keyExtras ? db.keyExtras(h.id) : null,
+      db.submissions(h.id),
+      open ? db.myRun(h.id, me.id) : null,
+      prizesFor(h, db, ctx.site),
+    ]);
     h._kinds = kindCounts(key);
-    if (phase(h, now) !== 'announced' && db.keyExtras) { const ex = await db.keyExtras(h.id); h._edges = ex.edges; h._bounds = ex.bounds; }
-    const subs = await db.submissions(h.id);
+    if (ex) { h._edges = ex.edges; h._bounds = ex.bounds; }
     const board = leaderboard(subs);
-    const th = thresholds(h), gl = gemLimits(h);
     const top = board.slice(0, 10);
     const mineBest = board.find((b) => b.user_id === me.id);
-    const names = { ...(await db.names([...new Set([...top.map((b) => b.user_id), me.id])])) };
-    const run = phase(h, now) === 'announced' ? null : await db.myRun(h.id, me.id);
+    const ended = phase(h, now) === 'ended';
+    const [names0, medals, allRuns] = await Promise.all([
+      db.names([...new Set([...top.map((b) => b.user_id), me.id])]),
+      // The medals, from the awards once they are given (never before).
+      ended && h.awarded_at && db.huntMedals ? db.huntMedals(h) : [],
+      ended && board.length && db.allSubmissions ? db.allSubmissions(h.id) : null,
+    ]);
+    const names = { ...names0 };
     const runDrops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : null;
     const mine = runView(h, runDrops || [], key, runDrops ? run : null);
-    const ended = phase(h, now) === 'ended';
     // At the ceremony everyone who took part is listed (Ames 2026-10-21); while it runs, the top ten.
-    // The medals, from the awards once they are given (never before: they are places, decided at the end).
-    const medals = ended && h.awarded_at && db.huntMedals ? await db.huntMedals(h) : [];
     const medalOf = new Map(medals.filter((m) => m.tier !== 'fastest').map((m) => [m.user_id, m.tier]));
     const speed = medals.find((m) => m.tier === 'fastest') || null;
     const order = { gold: 0, silver: 1, bronze: 2 };
     let clockOf = new Map();
-    if (ended && board.length && db.allSubmissions) {
-      const runs = (await db.allSubmissions(h.id)).filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)));
+    if (allRuns) {
+      const runs = allRuns.filter((x) => Array.isArray(x.points) && !x.points.some((p) => Array.isArray(p)));
       clockOf = new Map(runs.map((x) => [x.user_id, runClock(x, normalizeDrops(x.points))]));
     }
     const clock = (b) => { const v = clockOf.get(b.user_id); return v == null ? Infinity : v; };
+    // The medal, then the most found, then fewer gems, then the faster clock (Ames 2026-10-27: "most found is not first").
     const ranked = ended ? [...board].sort((a, b) => ((order[medalOf.get(a.user_id)] ?? 9) - (order[medalOf.get(b.user_id)] ?? 9))
-      || (clock(a) - clock(b)) || (b.found - a.found) || (a.gems - b.gems)) : board;
+      || (b.found - a.found) || (a.gems - b.gems) || (clock(a) - clock(b))) : board;
     const shown = ended ? ranked.slice(0, 200) : top;
     if (ended) { const more = await db.names([...new Set([...shown.map((b) => b.user_id), ...(speed ? [speed.user_id] : [])])]); Object.assign(names, more); }
-    hunts.push({
-      ...publicHunt(h, now), prizes: await prizesFor(h, db, ctx.site),
+    return {
+      ...publicHunt(h, now), prizes,
       you: { ...mine, best: mineBest ? mineBest.found : 0, submissions: run ? 1 : 0,
         tier: medalOf.get(me.id) || null, rank: mineBest ? ranked.indexOf(mineBest) + 1 : 0 },
       board: shown.map((b, i) => ({ rank: i + 1, name: names[b.user_id] || 'Player', found: b.found, gems: b.gems, at: b.at, tier: medalOf.get(b.user_id) || null, you: b.user_id === me.id,
@@ -825,9 +952,8 @@ async function current(ctx) {
       fastest: speed ? { name: names[speed.user_id] || 'Player', reason: speed.reason || '', you: speed.user_id === me.id } : null,
       players: board.length,
       winners: TIERS.reduce((o, t) => { o[t] = medals.filter((m) => m.tier === t).length; return o; }, {}),
-    });
+    };
   }
-  return { now: now.toISOString(), hunts };
 }
 
 /** The player opened the Hunt: their run, and its clock, start now (once; a second call changes nothing). */
@@ -872,7 +998,7 @@ async function adminRun(args, ctx) {
   const h = await getHunt(db, args.id);
   const run = await db.myRun(h.id, String(args.user_id || ''));
   const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
-  return { user_id: args.user_id, drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, k: d.k, t: d.t })) };
+  return { user_id: args.user_id, drops: drops.map((d) => ({ id: d.id, at: d.at, hit: d.hit >= 0, k: d.k, t: d.t, rep: !!d.rep })) };
 }
 
 /**
@@ -889,15 +1015,294 @@ async function countIt(args, ctx) {
   const d = drops.find((x) => x.id === String(args.drop_id || ''));
   if (!d) fail(404, 'That gem is not in this hunter\'s run.');
   if (d.hit >= 0) fail(409, 'That gem already found a problem.');
-  const targets = await db.key(h.id);
-  if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
+  return addPlace(h, d.nm, d.k, ctx);
+}
+
+/**
+ * A place the key missed, added by an admin from its coordinates (Ames 2026-10-26: "I want to be able to add
+ * coords for missing cut or merge and label them as merge or cut"): into the key, everyone judged again, and
+ * Laser Eyes to each hunter whose gem now finds it.
+ */
+async function addPlaceAction(args, ctx) {
+  const h = await getHunt(ctx.db, args && args.id);
+  const nm = Array.isArray(args && args.nm) ? args.nm.slice(0, 3).map(Number) : [];
+  if (nm.length !== 3 || !nm.every((v) => Number.isFinite(v) && Math.abs(v) < 1e10)) fail(400, 'Give x, y and z.');
+  if (args.kind !== 'cut' && args.kind !== 'merge') fail(400, 'Say whether it is a merger (Cut) or a missing extension (Extend).');
+  const radius = Math.max(0, Math.min(Number(args.radius_nm) || 0, 100000));
+  // From a hunter's report (Reported by hunters > Add to the key): it is counted, and the hunter gets Laser Eyes.
+  const rep = args.report_id && ctx.db.report ? await ctx.db.report(posInt(args.report_id)) : null;
+  if (args.report_id && (!rep || rep.hunt_id !== h.id)) fail(404, 'No such report in this Hunt.');
+  const out = await addPlace(h, nm, args.kind, ctx, radius, rep ? [rep.user_id] : []);
+  if (rep) await settleReport(h, rep, 'counted', { ...args, enlarged: !!out.enlarged }, ctx);
+  return out;
+}
+
+/**
+ * A report dealt with: what became of it, which admin did it and when, and their note (Ames 2026-10-27: "it labels
+ * who added them", "make it so we can dismiss or add a note"). With tell, the hunter hears it in the bell.
+ */
+async function settleReport(h, rep, status, args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const note = typeof (args && args.note) === 'string' ? args.note.trim().slice(0, 300) : '';
+  const row = { ...(status ? { status } : {}), ...(note ? { admin_note: note } : {}), ...(status ? { done_by: me.id, done_at: now.toISOString() } : {}) };
+  if (Object.keys(row).length) await db.patchReport(rep.id, row);
+  // Added: the hunter always hears it (Ames 2026-10-27: "the players should get a notif if their hunt addition was
+  // added"). A dismissal or a note goes to them only with tell, and the admin's note only then.
+  const tell = !!(args && args.tell);
+  if ((tell || status === 'counted') && ctx.notify) {
+    const what = rep.kind === 'merge' ? 'missing extension' : 'merger';
+    const at = Array.isArray(rep.at) && rep.at.length === 3 ? ` at ${rep.at.join(', ')}` : '';
+    const outcome = args.said ? args.said : status === 'counted' && args.enlarged ? 'The answers had it, and its place there is bigger now, so a gem on it counts. Thank you!'
+      : status === 'counted' ? 'It is in the answers now. Thank you!' : status === 'not_real' ? 'It is not one this Hunt counts, but thank you for sending it.' : '';
+    const said = note && tell ? `${outcome ? '\n\n' : ''}A note from the admins: "${note}"` : '';
+    if (outcome || said) {
+      await ctx.notify([{ user_id: rep.user_id, title: `🔎 Your Hunt report: ${h.title}`.slice(0, 120),
+        body: `An admin looked at the ${what} you sent${at}. ${outcome}${said}` }]);
+    }
+  }
+}
+
+/**
+ * Correct, but not first (Ames 2026-10-27: "send them 'correct! you were the 2nd person to identify this'"): the answers
+ * have this spot already, so nothing is added and the credit stays with the first; the hunter always hears which they
+ * were. Counted, with no credit of its own (the queue says "Same as").
+ */
+async function reportSame(args, ctx) {
+  const { db } = ctx;
+  const rep = db.report ? await db.report(posInt(args && args.report_id)) : null;
+  if (!rep) fail(404, 'That report is not there any more.');
+  if (rep.status !== 'open') fail(409, 'That report is done already.');
+  const h = await getHunt(db, rep.hunt_id);
+  const q = await reportQueue({ id: h.id }, ctx);
+  const me = q.reports.find((r) => r.id === rep.id);
+  if (!me || !me.in_key) fail(409, 'The answers have nothing at this spot yet: add it instead.');
   const tol = tolOf(h);
-  if (targets.some((t) => dist(t, d.nm) <= tol / 4)) fail(409, 'The key already has a place there.');
-  const next = [...targets, [d.nm[0], d.nm[1], d.nm[2], d.k === 'merge' ? 'merge' : 'cut']];
+  const earlier = q.reports.filter((r) => r.id !== rep.id && r.t <= me.t && r.kind === rep.kind && r.status !== 'not_real' && placeDist([...r.nm, r.kind], rep.nm) <= tol);
+  const nth = earlier.length + 1;
+  const ord = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
+  const what = rep.kind === 'merge' ? 'missing extension' : 'merger';
+  const first = me.in_key.credit[0] || (earlier[0] && earlier[0].name) || '';
+  const said = first && first !== me.name
+    ? `Correct! You were the ${ord(Math.max(nth, 2))} to find this ${what}; ${first} sent it first, so the credit is theirs. Thank you!`
+    : `Correct! The Hunt's answers had this ${what} already, so a gem on it counts. Thank you!`;
+  await settleReport(h, rep, 'counted', { ...args, said }, ctx);
+  return { ...(await reportQueue({ id: h.id }, ctx)), said };
+}
+
+/** A note on a report without settling it (or after): kept with it for the admins, and sent to the hunter with tell. */
+async function reportNote(args, ctx) {
+  const { db } = ctx;
+  const rep = db.report ? await db.report(posInt(args && args.report_id)) : null;
+  if (!rep) fail(404, 'That report is not there any more.');
+  const note = typeof args.note === 'string' ? args.note.trim() : '';
+  if (!note) fail(400, 'Write the note first.');
+  const h = await getHunt(db, rep.hunt_id);
+  await settleReport(h, rep, null, args, ctx);
+  return reportQueue({ id: h.id }, ctx);
+}
+
+/**
+ * Every report in a Hunt, the oldest first, for the admins' queue (Ames 2026-10-27: "click on one and it loads them
+ * oldest to newest ... so that I can credit the first person to submit"). Each says what became of it and who
+ * dealt with it, the first report at the same spot if this one is not, and the place in the answers it falls in;
+ * with the answers themselves, to draw in the view ("I also need to be able to see the current Hunt points").
+ */
+async function reportQueue(args, ctx) {
+  const { db } = ctx;
+  let huntId = args && args.id;
+  if (args && args.report_id) {
+    const rep = db.report ? await db.report(posInt(args.report_id)) : null;
+    if (!rep) fail(404, 'That report is not there any more.');
+    huntId = rep.hunt_id;
+  }
+  const h = await getHunt(db, huntId);
+  const rows = (db.reportsFor ? await db.reportsFor(h.id) : []).filter((r) => Array.isArray(r.nm) && r.nm.length === 3)
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id);
+  const targets = await db.key(h.id);
+  const tol = tolOf(h);
+  const ids = new Set();
+  for (const r of rows) { ids.add(r.user_id); if (r.done_by) ids.add(r.done_by); }
+  for (const t of targets) for (const u of (t[4] && Array.isArray(t[4].credit) ? t[4].credit : [])) ids.add(u);
+  const names = ids.size ? (await db.names([...ids])) || {} : {};
+  const nameOf = (u) => names[u] || 'Player';
+  const creditOf = (t) => (t && t[4] && Array.isArray(t[4].credit) ? t[4].credit.map(nameOf) : []);
+  const reports = rows.map((r, i) => {
+    const first = rows.slice(0, i).find((o) => o.kind === r.kind && placeDist([...o.nm, o.kind], r.nm) <= tol);
+    const n = targets.findIndex((t) => placeDist(t, r.nm) <= tol);
+    const t = n >= 0 ? targets[n] : null;
+    return { id: r.id, user_id: r.user_id, name: nameOf(r.user_id), kind: r.kind, nm: r.nm, at: r.at || null, note: r.note || '', status: r.status, t: r.created_at,
+      admin_note: r.admin_note || '', done_by: r.done_by ? nameOf(r.done_by) : '', done_at: r.done_at || null,
+      first: first ? { id: first.id, name: nameOf(first.user_id), status: first.status } : null,
+      in_key: t ? { n: n + 1, kind: kindOf(t), added: !!(t[4] && t[4].added), credit: creditOf(t) } : null };
+  });
+  const places = targets.map((t, i) => {
+    const { added, credit, ...shape } = t[4] || {};
+    return { n: i + 1, kind: kindOf(t), nm: [t[0], t[1], t[2]], ...(Object.keys(shape).length ? { shape } : {}), added: !!added, credit: creditOf(t) };
+  });
+  return { hunt: { id: h.id, title: h.title, dataset: h.dataset, phase: phase(h, ctx.now || new Date()), tolerance_nm: tol }, reports, places };
+}
+
+/**
+ * A hunter says their missed gem is on a real problem the key missed (Ames 2026-10-26: "in this view I want
+ * a 'found an unlabeled cut/merge' type button"). The gem is marked reported in their run and every admin
+ * hears of it; Count it (from the editor's Reported list) then makes it count, with Laser Eyes.
+ */
+async function reportGem(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (h.status !== 'scheduled' || (adminsOnly(h, ctx) && !ctx.isAdmin)) fail(404, 'No such Hunt.');
+  if (phase(h, now) === 'announced') fail(409, 'The Hunt has not started yet.');
+  const run = await db.myRun(h.id, me.id);
+  const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
+  const d = drops.find((x) => x.id === String((args && args.drop_id) || ''));
+  if (!d) fail(404, 'That gem is not in your Hunt.');
+  if (d.hit >= 0) fail(409, 'That gem found a problem already.');
+  if (d.rep) return { reported: true, drop_id: d.id, again: true };
+  const next = drops.map((x) => (x.id === d.id ? { ...x, rep: true } : x));
+  await db.patchSubmission(run.id, { points: next });
+  if (ctx.notify && db.adminUserIds) {
+    const admins = await db.adminUserIds();
+    const name = ((await db.names([me.id])) || {})[me.id] || 'A hunter';
+    const what = d.k === 'merge' ? 'missing extension' : 'merger';
+    const at = (d.at || []).slice(0, 3).map((v) => Math.round(Number(v))).join(', ');
+    if (admins.length) {
+      await ctx.notify(admins.map((u) => ({ user_id: u, title: `🔎 Hunt report: ${h.title}`.slice(0, 120),
+        body: `${name} says their gem is on a real ${what} the answers missed${at ? `, at ${at}` : ''}. Admin Hub > Hunts > ${h.title}: Reported by hunters, to check it and Count it.` })));
+    }
+  }
+  return { reported: true, drop_id: d.id };
+}
+
+/**
+ * A problem the Hunt's answers missed, sent by a hunter with where it is and what it is (Ames 2026-10-26:
+ * "we want a submit a missed thing that lets me plug in coords and label cut or merge"). No gem is used.
+ * Kept in hunt_reports (supabase-hunts.sql) for the editor's Reported by hunters; every admin hears of it.
+ */
+async function reportPlace(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (h.status !== 'scheduled' || (adminsOnly(h, ctx) && !ctx.isAdmin)) fail(404, 'No such Hunt.');
+  if (phase(h, now) === 'announced') fail(409, 'The Hunt has not started yet.');
+  const nm = Array.isArray(args && args.nm) ? args.nm.slice(0, 3).map(Number) : [];
+  if (nm.length !== 3 || !nm.every((v) => Number.isFinite(v) && Math.abs(v) < 1e10)) fail(400, 'Give x, y and z.');
+  if (args.kind !== 'cut' && args.kind !== 'merge') fail(400, 'Say whether it is a merger (Cut) or a missing extension (Extend).');
+  if (!db.insertReport) fail(503, 'Reports are not set up yet.');
+  const mine = await db.reportsFor(h.id, me.id);
+  if (mine.filter((r) => r.status === 'open').length >= 20) fail(429, 'You have 20 reports waiting already. An admin will check them soon.');
+  const at = Array.isArray(args.at) ? args.at.slice(0, 3).map((v) => Math.round(Number(v))).filter(Number.isFinite) : null;
+  const note = typeof args.note === 'string' ? args.note.trim().slice(0, 200) : '';
+  const row = await db.insertReport({ hunt_id: h.id, user_id: me.id, nm: nm.map((v) => Math.round(v)), at: at && at.length === 3 ? at : null, kind: args.kind, note: note || null });
+  if (ctx.notify && db.adminUserIds) {
+    const admins = await db.adminUserIds();
+    const name = ((await db.names([me.id])) || {})[me.id] || 'A hunter';
+    const what = args.kind === 'merge' ? 'missing extension' : 'merger';
+    if (admins.length) {
+      await ctx.notify(admins.map((u) => ({ user_id: u, title: `🔎 Hunt report: ${h.title}`.slice(0, 120),
+        body: `${name} found a ${what} the answers missed${at && at.length === 3 ? `, at ${at.join(', ')}` : ''}${note ? `: "${note}"` : ''}.\n\n[Go there](#nge-hunt-report=${row && row.id}) to look, then add it to the answers or dismiss it.` })));
+    }
+  }
+  return { reported: true, id: row && row.id, open: mine.filter((r) => r.status === 'open').length + 1 };
+}
+
+/** One report, for the card a report's note opens (Ames 2026-10-26: "let admins jump to the point from the box"). */
+async function reportGet(args, ctx) {
+  const { db } = ctx;
+  const rep = db.report ? await db.report(posInt(args && args.report_id)) : null;
+  if (!rep) fail(404, 'That report is not there any more.');
+  const h = await getHunt(db, rep.hunt_id);
+  const name = ((await db.names([rep.user_id])) || {})[rep.user_id] || 'Player';
+  return { id: rep.id, hunt_id: h.id, hunt_title: h.title, dataset: h.dataset, kind: rep.kind, nm: rep.nm, at: rep.at, note: rep.note || '',
+    status: rep.status, name, phase: phase(h, ctx.now || new Date()) };
+}
+
+/** Every open report in a Hunt, for the editor, the oldest first (Ames 2026-10-27): places sent by coordinates, and gems said to be real. */
+async function reportsAction(args, ctx) {
+  const { db } = ctx;
+  const h = await getHunt(db, args && args.id);
+  const runs = db.allSubmissions ? await db.allSubmissions(h.id) : [];
+  const out = [];
+  for (const r of runs) {
+    if (!Array.isArray(r.points) || r.points.some((p) => Array.isArray(p))) continue;
+    for (const d of normalizeDrops(r.points)) if (d.rep && d.hit < 0) out.push({ user_id: r.user_id, drop_id: d.id, k: d.k, at: d.at, t: d.t });
+  }
+  if (db.reportsFor) {
+    for (const r of await db.reportsFor(h.id)) {
+      if (r.status === 'open') out.push({ user_id: r.user_id, report_id: r.id, k: r.kind, at: r.at, nm: r.nm, note: r.note || '', t: r.created_at });
+    }
+  }
+  const names = out.length ? await db.names([...new Set(out.map((x) => x.user_id))]) : {};
+  return { reports: out.map((x) => ({ ...x, name: names[x.user_id] || 'Player' })).sort((a, b) => String(a.t).localeCompare(String(b.t))) };
+}
+
+/** Not a problem after all: off the Reported list; the hunter's box says it was checked. */
+async function dismissReport(args, ctx) {
+  const { db } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (args && args.report_id) {
+    const rep = db.report ? await db.report(posInt(args.report_id)) : null;
+    if (!rep || rep.hunt_id !== h.id) fail(404, 'No such report in this Hunt.');
+    await settleReport(h, rep, 'not_real', args, ctx);
+    return reportsAction({ id: h.id }, ctx);
+  }
+  const run = await db.myRun(h.id, String((args && args.user_id) || ''));
+  const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
+  const d = drops.find((x) => x.id === String((args && args.drop_id) || ''));
+  if (!d) fail(404, 'That gem is not in this hunter\'s run.');
+  const next = drops.map((x) => (x.id === d.id ? (({ rep, ...rest }) => ({ ...rest, rep_no: true }))(x) : x));
+  await db.patchSubmission(run.id, { points: next });
+  return reportsAction({ id: h.id }, ctx);
+}
+
+/**
+ * Into the key at nm, of kind; every run judged again; Laser Eyes to whoever now finds it. With a radius it is a
+ * sphere, and at a place of that kind the key has already, it makes that place bigger instead (a wide face the
+ * key marked with a point: Ames 2026-10-26), with no Laser Eyes: the place was in the key all along.
+ */
+async function addPlace(h, nm, kind, ctx, radius = 0, credit = []) {
+  const { db } = ctx;
+  const targets = await db.key(h.id);
+  const tol = tolOf(h);
+  const k = kind === 'merge' ? 'merge' : 'cut';
+  // While the Hunt runs, a place added is marked in the key with whoever reported it, and Laser Eyes waits for the
+  // end (Ames 2026-10-26: "hold Laser Eyes until the hunt ends"); finalize gives it with the medals.
+  const live = phase(h, ctx.now || new Date()) !== 'ended';
+  const shapeOf = (extra) => { const sh = { ...(radius > 0 ? { r: [radius, radius, radius] } : {}), ...extra }; return Object.keys(sh).length ? sh : null; };
+  const make = (extra) => { const sh = shapeOf(extra); return sh ? [nm[0], nm[1], nm[2], k, sh] : [nm[0], nm[1], nm[2], k]; };
+  if (radius > 0) {
+    // The nearest place of that kind within the tolerance, or within the new ball itself (Ames 2026-10-27: "I think
+    // this is marked but I just need to make a larger marked area").
+    let same = -1, best = Math.max(tol, radius);
+    targets.forEach((t, i) => { const d = kindOf(t) === k ? placeDist(t, nm) : Infinity; if (d <= best) { best = d; same = i; } });
+    if (same >= 0) {
+      // Bigger: it keeps whether it was added during the Hunt, and who reported it. A place that is a whole cut off
+      // piece (a cloud, from a proofread cell) keeps its points instead, and the spot joins them.
+      const old = targets[same][4] || {};
+      const keep = { ...(old.added ? { added: true } : {}), ...(Array.isArray(old.credit) ? { credit: old.credit } : {}) };
+      const t0 = targets[same];
+      const place = Array.isArray(old.pts)
+        ? [t0[0], t0[1], t0[2], t0[3], { pts: [...old.pts, nm.map((v) => Math.round(v))].slice(-MAX_CLOUD_PTS), ...keep }]
+        : make(keep);
+      const next = targets.map((t, i) => (i === same ? place : t));
+      await db.setKey(h.id, next);
+      const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
+      const r = await rescore({ id: h.id }, ctx);
+      return { ...(await adminView(row, ctx)), counted: true, enlarged: true, rescored: r.rescored, changed: r.changed, laser: 0 };
+    }
+  }
+  if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
+  if (targets.some((t) => placeDist(t, nm) <= tol / 4)) fail(409, 'The key already has a place there. Give it a size to make that place bigger.');
+  // From a report after the end too, so the queue shows whose report it came from (Laser Eyes is given at once then).
+  const place = make(live || credit.length ? { added: true, ...(credit.length ? { credit: [...new Set(credit)] } : {}) } : {});
+  const next = [...targets, place];
   await db.setKey(h.id, next);
   const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
   const r = await rescore({ id: h.id }, ctx);
-  return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed };
+  if (live) {
+    const later = await laserFinders(row || h, next.length - 1, ctx, credit);
+    return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed, laser: 0, laser_later: later.length };
+  }
+  const laser = await awardLaserEyes(row || h, next.length - 1, ctx, credit);
+  return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed, laser: laser.length };
 }
 
 /** A copy of a hunt, as a draft: its key, view, cells, words and settings; no notes, no answers. */
@@ -980,7 +1385,14 @@ async function finalize(h, ctx, { force = false } = {}) {
   const speed = speedWinner(runs, n);
   if (speed) winners.push({ user_id: speed.user_id, found: speed.found, gems: speed.drops.length, tier: 'fastest', time: clockWords(speed.ms), all: speed.all });
   await postResults(row, board, winners, speed, ctx);
-  if (!winners.length) return { awarded: 0, ...counts };
+  // Laser Eyes, held until now: each place added while the Hunt ran, to whoever found or reported it (once each).
+  let laser = 0;
+  const keyNow = await db.key(row.id);
+  for (let i = 0; i < keyNow.length; i++) {
+    const sh = keyNow[i] && keyNow[i][4];
+    if (sh && sh.added) laser += (await awardLaserEyes(row, i, ctx, Array.isArray(sh.credit) ? sh.credit : [])).length;
+  }
+  if (!winners.length) return { awarded: 0, laser, ...counts };
   const badges = {};
   for (const tier of [...TIERS, 'fastest']) {
     if (!winners.some((w) => w.tier === tier)) continue;
@@ -996,12 +1408,53 @@ async function finalize(h, ctx, { force = false } = {}) {
       : `${TIER_NAME[w.tier]} in ${row.title}: ${w.found} of ${row.target_count} found with ${w.gems} gems` })));
   for (const w of winners) counts[w.tier]++;
   if (fresh.length && notify) {
-    await notify(fresh.map((w) => ({ user_id: w.user_id, title: `🏅 New Achievement: ${badges[w.tier].name}`,
-      body: `You earned the "${badges[w.tier].name}" award! ${w.tier === 'fastest' ? badges[w.tier].description : `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`}`,
+    await notify(fresh.map((w) => ({ user_id: w.user_id, title: `New Achievement: ${badges[w.tier].name}`,
+      body: `You earned the "${badges[w.tier].name}" Achievement! ${w.tier === 'fastest' ? badges[w.tier].description : `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`}`,
       image: badges[w.tier].image_url })));
   }
   // Chat hears the results once, in the results post (postResults), not a line per winner.
-  return { awarded: winners.length, fresh: fresh.length, ...counts };
+  return { awarded: winners.length, fresh: fresh.length, laser, ...counts };
+}
+
+/** Laser Eyes for this Hunt (Ames 2026-10-26): a problem the answer key missed, found. Ames's mask. */
+function laserBadgeRow(h, site) {
+  return {
+    slug: `hunt-${h.id}-laser`,
+    name: `${h.title}: Laser Eyes`.slice(0, 80),
+    description: `Laser Eyes in ${h.title}: a problem the answer key missed, found. ${LINES.laser}`.slice(0, 300),
+    image_url: `${site}/hunt/laser.png`, thumbnail_url: `${site}/hunt/laser-128.png`, created_by: h.created_by || null,
+  };
+}
+
+/**
+ * Laser Eyes to everyone whose gem found a place Count it just added (Ames 2026-10-26: "use this
+ * achievement for anyone who found a missing hunt cut or extension, and it increments - max award one
+ * time per hunt"): one Achievement per Hunt, given once to each finder; the profile counts them up.
+ */
+/** Who found the place at index (their gem on it), and whoever reported it. */
+async function laserFinders(h, index, ctx, also = []) {
+  const { db } = ctx;
+  if (!db.allSubmissions) return [...new Set(also)];
+  const runs = await db.allSubmissions(h.id);
+  return [...new Set([...also, ...runs.filter((r) => Array.isArray(r.points) && !r.points.some((p) => Array.isArray(p))
+    && normalizeDrops(r.points).some((d) => d.hit === index)).map((r) => r.user_id)])];
+}
+async function awardLaserEyes(h, index, ctx, also = []) {
+  const { db, notify } = ctx;
+  if (!db.allSubmissions || !db.upsertBadge || !db.award) return [];
+  const finders = await laserFinders(h, index, ctx, also);
+  if (!finders.length) return [];
+  const badge = await db.upsertBadge(laserBadgeRow(h, ctx.site || ''));
+  const had = new Set(db.badgeHolders ? (await db.badgeHolders(badge.id)).map((r) => r.user_id) : []);
+  const fresh = finders.filter((u) => !had.has(u));
+  if (!fresh.length) return [];
+  await db.award(fresh.map((u) => ({ badge_id: badge.id, user_id: u, awarded_by: (ctx.me && ctx.me.id) || null,
+    reason: `Found a problem the answer key missed in ${h.title}` })));
+  if (notify) {
+    await notify(fresh.map((u) => ({ user_id: u, title: `New Achievement: ${badge.name}`,
+      body: `You earned the "${badge.name}" Achievement! ${badge.description}`, image: badge.image_url })));
+  }
+  return fresh;
 }
 
 /** The speed award's Achievement for this hunt (its own; the cheetah art, or a picture set for it). */
@@ -1287,6 +1740,17 @@ async function adminRead(args, ctx) {
 // ── The database ──────────────────────────────────────────────────────────
 
 const adminsOnlyColumn = { ok: false, at: 0 };
+/** A call on hunt_reports; before its SQL is run, the list is empty and a new report says so. */
+async function reportsTable(call, empty) {
+  try { return await call(); }
+  catch (e) {
+    if (/hunt_reports|42P01|PGRST205|404/.test(String(e && e.message))) {
+      if (empty !== undefined) return empty;
+      fail(503, 'Reports are not set up yet: an admin needs to run one step. Tell an admin in chat for now.');
+    }
+    throw e;
+  }
+}
 function restDb(sb) {
   const enc = encodeURIComponent;
   const merge = { Prefer: 'resolution=merge-duplicates,return=representation' };
@@ -1294,7 +1758,9 @@ function restDb(sb) {
   const rawKey = async (id) => { const r = await one(sb(`hunt_keys?hunt_id=eq.${id}&select=targets&limit=1`)); return (r && r.targets) || []; };
   return {
     hunts: () => sb('hunts?select=*&order=start_at.desc.nullslast&limit=200'),
-    visibleHunts: (since) => sb(`hunts?status=eq.scheduled&end_at=gte.${enc(since)}&select=*&order=start_at.asc&limit=20`),
+    // Newest first, so the newest Hunt is never the one left out (it was oldest first, 20 at most: Hunt 21
+    // would have been missing); back in start order for the box. A player's list has no admins only Hunts.
+    visibleHunts: async (since, o = {}) => (await sb(`hunts?status=eq.scheduled&end_at=gte.${enc(since)}${o.players ? '&admins_only=eq.false' : ''}&select=*&order=start_at.desc&limit=50`)).reverse(),
     hunt: (id) => one(sb(`hunts?id=eq.${id}&select=*&limit=1`)),
     insertHunt: (row) => one(sb('hunts', { method: 'POST', body: JSON.stringify(row) })),
     patchHunt: (id, row) => one(sb(`hunts?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) })),
@@ -1368,6 +1834,21 @@ function restDb(sb) {
       return new Set(rows.map((r) => `${r.badge_id}:${r.user_id}`));
     },
     award: (rows) => (rows.length ? sb('special_badge_awards?on_conflict=badge_id,user_id', { method: 'POST', headers: merge, body: JSON.stringify(rows) }) : []),
+    badgeHolders: (badgeId) => sb(`special_badge_awards?badge_id=eq.${posInt(badgeId)}&select=user_id&limit=10000`),
+    // Reports by coordinates (hunt_reports, supabase-hunts.sql). Before the SQL is run: a plain word, no crash.
+    insertReport: (row) => reportsTable(() => one(sb('hunt_reports', { method: 'POST', body: JSON.stringify(row) }))),
+    reportsFor: (huntId, userId) => reportsTable(() => sb(`hunt_reports?hunt_id=eq.${posInt(huntId)}${userId ? `&user_id=eq.${enc(userId)}` : ''}&select=*&order=created_at.desc&limit=500`), []),
+    report: (id) => reportsTable(() => one(sb(`hunt_reports?id=eq.${posInt(id)}&select=*&limit=1`))),
+    patchReport: (id, row) => reportsTable(async () => {
+      const patch = (r) => sb(`hunt_reports?id=eq.${posInt(id)}`, { method: 'PATCH', body: JSON.stringify(r) });
+      try { return await patch(row); }
+      catch (e) {
+        // Before the step that adds admin_note, done_by and done_at (supabase-hunts.sql): the status alone.
+        if (!/PGRST204|admin_note|done_by|done_at/.test(String(e && e.message))) throw e;
+        if (!row.status) fail(503, 'Notes on reports need one step an admin runs first (supabase-hunts.sql).');
+        return patch({ status: row.status });
+      }
+    }),
   };
 }
 
@@ -1375,5 +1856,5 @@ module.exports = {
   huntAction, restDb, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM, resultsHours,
-  keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM,
+  keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM, placeDist, layerPlaces,
 };

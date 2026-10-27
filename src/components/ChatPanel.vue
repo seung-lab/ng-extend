@@ -28,6 +28,7 @@ import { cellLinkHref } from '../util/cell_link';
 import { LIVE_CHAT_PREFIX, HELP_CHAT_PREFIX, OLD_HELP_CHAT_PREFIX } from '../store';
 import { invite as teamInvite, teamAccess } from '../util/team_session';
 import { currentDatasetTag } from '../datasets';
+import { huntNoteNow } from '../hunt';
 import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
@@ -564,8 +565,17 @@ function hideAnnouncement(id: number | string | null | undefined) {
   hiddenAnnouncements.value = next;
   try { localStorage.setItem(HIDDEN_ANNOUNCE_KEY, JSON.stringify([...next].slice(-200))); } catch { /* private window */ }
 }
-const listedMessages = computed<ChatMessage[]>(() => (chatQuery.value ? searchHits.value : chatMessages.value)
-  .filter(m => !(m.type === 'message' && m.notificationId && hiddenAnnouncements.value.has(Number(m.notificationId)))));
+/** A Hunt's notes in chat: only the newest card for each Hunt (coming, then on, then over), so an old
+ *  "is coming" never sits beside "is on" (Ames 2026-10-26). */
+const huntNoteOf = (m: ChatMessage) => (m.type === 'message' && m.notificationId ? huntNoteNow(rawAnnounceText(m)) : null);
+const listedMessages = computed<ChatMessage[]>(() => {
+  const all = (chatQuery.value ? searchHits.value : chatMessages.value)
+    .filter(m => !(m.type === 'message' && m.notificationId && hiddenAnnouncements.value.has(Number(m.notificationId))));
+  const newest = new Map<string, number>();
+  for (const m of all) { const n = huntNoteOf(m); if (n) newest.set(n.title, Math.max(newest.get(n.title) ?? -1, n.stage)); }
+  if (!newest.size) return all;
+  return all.filter(m => { const n = huntNoteOf(m); return !n || n.stage >= (newest.get(n.title) ?? 0); });
+});
 function openSearch() {
   searchOpen.value = true;
   if (collapsed.value) toggleCollapse();
@@ -1056,8 +1066,13 @@ function isSelfMention(token: string): boolean {
 /** An announcement's line, without the 📢 older ones carry in their text.
  *  The card draws its own: the picture, or 📢 when there is none (Ames
  *  2026-10-24). */
-function announceText(msg: ChatMessage): string {
+function rawAnnounceText(msg: ChatMessage): string {
   return msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('').replace(/^\s*📢\s*/u, '');
+}
+function announceText(msg: ChatMessage): string {
+  const text = rawAnnounceText(msg);
+  // A Hunt's note says where the Hunt is now: not "is coming" once it runs (Ames 2026-10-26).
+  return huntNoteNow(text)?.text ?? text;
 }
 /** Open the notification an announcement message refers to. */
 /** The 🗑 on chat messages is hidden for now (Ames 2026-09-28). Deleting still

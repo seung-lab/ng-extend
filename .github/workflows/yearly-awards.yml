@@ -2,9 +2,10 @@ name: Pyr Year Awards
 
 on:
   schedule:
-    # Sep 28, 04:30 UTC: 00:30 EDT on Pyr's birthday, the day the first
-    # testers were invited in 2026. Each Pyr year runs Sep 28 to Sep 28 ET.
-    - cron: '30 4 28 9 *'
+    # Sep 28, 14:00 UTC: 10 am EDT on Pyr's birthday, the day the first
+    # testers were invited in 2026 (Ames 2026-10-26: "10 am ET"). The year it
+    # celebrates still runs Sep 28 to Sep 28 from midnight ET.
+    - cron: '0 14 28 9 *'
   workflow_dispatch:
     inputs:
       year:
