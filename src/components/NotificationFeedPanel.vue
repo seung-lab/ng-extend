@@ -438,7 +438,9 @@ function openDetail(notif: any) {
       const excerpt = quoted.replace(/\.\.\.$/, '').replace(/\s+/g, ' ').trim();
       if (excerpt) window.localStorage.setItem('nge_triage_focus', JSON.stringify({ excerpt, at: Date.now() }));
     } catch { /* the board still opens */ }
-    window.open(`${window.location.origin}${window.location.pathname}?triage=board`, '_blank', 'noopener');
+    // Newer alerts name their report: open that card exactly.
+    const reportId = String(notif.body || '').match(/#nge-triage-report=([0-9a-f-]{36})/i)?.[1];
+    window.open(`${window.location.origin}${window.location.pathname}?triage=board${reportId ? `&report=${reportId}` : ''}`, '_blank', 'noopener');
     emit('hide');
     return;
   }

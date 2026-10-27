@@ -5721,6 +5721,41 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }).then(() => {}, () => {}); // ignore duplicate errors
   }
 
+  /**
+   * Moving a triage card to In progress or Done reads its bell notes (Ames
+   * 2026-10-27): a note that names the report (a reply, a tag, newer alerts),
+   * or a 🗂 alert that quotes it. Works on the triage board's own page too,
+   * where the game never signed in: the account is looked up by email only,
+   * so nothing else (a visit, a streak) starts. Other Pyr tabs hear at once.
+   */
+  let reportReaderId: string | null = null;
+  async function markReportNotesRead(reportId: string, excerpt: string | null) {
+    let uid = userId.value || reportReaderId;
+    if (!uid && userEmail.value) {
+      const { data } = await supabase.from('users').select('id').eq('middleauth_email', userEmail.value).single();
+      uid = reportReaderId = (data as any)?.id ?? null;
+    }
+    if (!uid || !reportId) return 0;
+    const flat = (t: any) => String(t || '').replace(/\s+/g, ' ').trim();
+    const quote = flat(excerpt).slice(0, 60);
+    const { data: recent } = await supabase.from('notifications').select('id,title,body')
+      .lte('send_at', new Date().toISOString()).order('send_at', { ascending: false }).limit(150);
+    const hits = ((recent || []) as any[]).filter(n => {
+      const body = String(n.body || '');
+      return body.includes(reportId) || (!!quote && String(n.title || '').startsWith('🗂') && flat(body).startsWith('"' + quote));
+    }).map(n => Number(n.id));
+    if (!hits.length) return 0;
+    const { data: had } = await supabase.from('notification_reads').select('notification_id').eq('user_id', uid).in('notification_id', hits);
+    const seen = new Set(((had || []) as any[]).map(r => Number(r.notification_id)));
+    const fresh = hits.filter(id => !seen.has(id));
+    if (!fresh.length) return 0;
+    const { error } = await supabase.from('notification_reads').upsert(fresh.map(id => ({ notification_id: id, user_id: uid })), { onConflict: 'notification_id,user_id' });
+    if (error) return 0;
+    for (const id of fresh) notificationReads.value.add(id);
+    try { readsChannel?.postMessage({ user: uid, ids: fresh }); } catch { /* closed */ }
+    return fresh.length;
+  }
+
   /** only: mark just these (one tab of the feed) instead of everything. */
   async function markAllNotificationsRead(only?: number[]) {
     if (!userId.value) return;
@@ -6481,7 +6516,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
-    markNotificationRead, markAllNotificationsRead,
+    markNotificationRead, markAllNotificationsRead, markReportNotesRead,
     createNotification, createSelfNotification, announceAchievement, postDueChatAnnouncements, deleteNotification, dismissNotification,
     dismissAllNotifications,
     subscribeToNotifications, unsubscribeFromNotifications,

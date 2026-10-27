@@ -829,6 +829,11 @@ const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r
  *  scripts/slack-triage-bridge.mjs looks for too. */
 const TODO_NOTE = 'To do';
 const isTodo = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(TODO_NOTE);
+/** Moving a card to In progress or Done reads its bell notes for you (Ames 2026-10-27). */
+async function readReportNotes(row: TriageRow) {
+  try { await backend.markReportNotesRead(row.id, row.source_excerpt); }
+  catch { /* the card moved; the notes just stay unread */ }
+}
 async function markInProgress(row: TriageRow, later = false) {
   if (triageActing.value) return;
   triageActing.value = row.id;
@@ -846,6 +851,7 @@ async function markInProgress(row: TriageRow, later = false) {
       reviewed_at: new Date().toISOString(),
     } });
     if (later) { await loadTriage(); return; }
+    void readReportNotes(row);
     triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
@@ -1086,6 +1092,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     }
     delete triageNotes.value[row.id];
     if (status === 'done') cheerFor(row);
+    if (status === 'done' || (status === 'approved' && !discard)) void readReportNotes(row);
     await loadTriage();
     if (noteLost) {
       triageError.value = `Saved as ${status}, but your comment was not stored: the approver_note column does not exist yet. Run supabase-triage-approver-note.sql in the Supabase SQL editor. Your comment was: "${note}"`;
