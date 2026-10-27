@@ -11,6 +11,20 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { huntCall, huntState, loadHunts, goToHunt, goToSoma, showReportMarker, hideReportMarker, showKeyPlaces, hideKeyPlaces, type KeyPlace } from '../hunt';
 import { canonicalDataset, currentDatasetTag } from '../datasets';
+import { useProofreadingBackendStore } from '../store';
+
+/** The bell notes for these reports, marked read: going through them here is reading them (Ames 2026-10-27: "if I go
+ *  through the submissions via the UI it should mark these notifs read"). */
+function markNotesRead(ids: number[]) {
+  if (!ids.length) return;
+  const backend = useProofreadingBackendStore();
+  const want = new Set(ids);
+  const notes = (backend.notifications as any[]).filter(n => {
+    const m = String(n.body || '').match(/#nge-hunt-report=(\d+)/);
+    return m && want.has(Number(m[1]));
+  }).map(n => n.id);
+  if (notes.length) void backend.markAllNotificationsRead(notes);
+}
 
 interface Report {
   id: number; user_id: string; name: string; kind: 'cut' | 'merge'; nm: number[]; at: number[] | null; note: string; status: 'open' | 'counted' | 'not_real'; t: string;
@@ -94,6 +108,7 @@ const keyWords = computed(() => {
 async function load(args: { report_id?: number; id?: number }, keep?: number) {
   const q = await huntCall<Queue>('hunt.report_queue', args);
   queue.value = q;
+  markNotesRead(q.reports.filter(r => r.status !== 'open').map(r => r.id));
   const at = keep ? q.reports.findIndex(r => r.id === keep) : -1;
   if (at >= 0) return at;
   const firstOpen = q.reports.findIndex(r => r.status === 'open');
@@ -121,6 +136,7 @@ async function step(i: number) {
   if (i < 0 || i >= list.length) return;
   idx.value = i; done.value = ''; error.value = ''; size.value = ''; tell.value = false;
   note.value = list[i].admin_note || '';
+  markNotesRead([list[i].id]);
   busy.value = '';
   await goThere();
 }

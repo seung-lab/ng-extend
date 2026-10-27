@@ -938,8 +938,9 @@ async function huntForPlayer(h, ctx) {
       clockOf = new Map(runs.map((x) => [x.user_id, runClock(x, normalizeDrops(x.points))]));
     }
     const clock = (b) => { const v = clockOf.get(b.user_id); return v == null ? Infinity : v; };
+    // The medal, then the most found, then fewer gems, then the faster clock (Ames 2026-10-27: "most found is not first").
     const ranked = ended ? [...board].sort((a, b) => ((order[medalOf.get(a.user_id)] ?? 9) - (order[medalOf.get(b.user_id)] ?? 9))
-      || (clock(a) - clock(b)) || (b.found - a.found) || (a.gems - b.gems)) : board;
+      || (b.found - a.found) || (a.gems - b.gems) || (clock(a) - clock(b))) : board;
     const shown = ended ? ranked.slice(0, 200) : top;
     if (ended) { const more = await db.names([...new Set([...shown.map((b) => b.user_id), ...(speed ? [speed.user_id] : [])])]); Object.assign(names, more); }
     return {
