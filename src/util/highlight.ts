@@ -546,14 +546,36 @@ export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<voi
 }
 
 /** The soma, confirmed at the cell's starting point (its nucleus). */
+/** Where the crosshairs are, in the view's voxels, rounded. */
+function crosshairXyz(): number[] {
+  return Array.from(viewerOf().navigationState.position.value as ArrayLike<number>).slice(0, 3).map(v => Math.round(v));
+}
+/** Confirm puts the mark where the crosshairs are (Ames 2026-10-27: "I
+ *  confirmed AIS here where axes are but then it marked it blue up at the
+ *  original point"). Go to the starting point, or to the lab's AIS point,
+ *  moves the crosshairs there first, so confirming without moving takes it;
+ *  moving them first puts the mark where they were moved. */
 export async function confirmSomaAtStart(): Promise<number[]> {
-  const start = startXyz();
-  if (!start) throw new Error("Pyr doesn't know this cell's starting point. Ctrl + click the soma instead.");
+  const at = crosshairXyz();
   let root = '';
   try { root = workingRoot(); } catch { /* several cells, or none: no cell id in the note */ }
-  await addLabPoint(MEC_SOMA, start, `Soma, at the starting point (nucleus)${root ? `: cell ${root}` : ''}`);
-  return start;
+  await addLabPoint(MEC_SOMA, at, `Soma, confirmed${root ? `: cell ${root}` : ''}`);
+  return at;
 }
+/** The AIS, confirmed where the crosshairs are. */
+export async function confirmAisAtSheet(): Promise<number[]> {
+  const at = crosshairXyz();
+  let root = '';
+  try { root = workingRoot(); } catch { /* several cells, or none */ }
+  await addLabPoint(MEC_AIS, at, `AIS, confirmed${root ? `: cell ${root}` : ''}`);
+  return at;
+}
+/** Look at a point in the view (the lab's AIS point, the starting point). */
+export function goToXyz(xyz: number[] | null): boolean {
+  if (!xyz) return false;
+  try { viewerOf().navigationState.position.value = Float32Array.from(xyz); return true; } catch { return false; }
+}
+
 /** Look at the starting point, to check it is in the soma. */
 export function goToStart(): boolean {
   const start = startXyz();
@@ -563,8 +585,8 @@ export function goToStart(): boolean {
 
 async function addLabPoint(kind: MecKind, point: ArrayLike<number>, description: string): Promise<void> {
   const src = await labSource(kind);
-  // A cell has one soma: a soma marked here again moves it.
-  if (kind === MEC_SOMA) {
+  // A cell has one soma and one AIS: marking one again moves it.
+  if (kind === MEC_SOMA || kind === MEC_AIS) {
     const old: string[] = [];
     for (const ann of src) if (String(ann.id).startsWith(ID_PREFIX)) old.push(String(ann.id));
     for (const id of old) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }

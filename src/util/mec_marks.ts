@@ -103,6 +103,74 @@ export function startXyz(): number[] | null {
   } catch { return null; }
 }
 const samePoint = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
+
+/**
+ * The lab's AIS point for the working cell, from the MEC sheet's "AIS Coords"
+ * column (added by the lab 2026-10-27; Ames: "let's place the AIS for players
+ * to confirm"). The tab is public, read as CSV, and a row is found by its
+ * "Starting XYZ Coords", the claim's point. Read once per 10 minutes. The same
+ * units as the starting point (the view's voxels). Null if the sheet has none.
+ */
+const MEC_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw/export?format=csv&gid=869365415';
+let sheetAis: { at: number; map: Map<string, number[]> } | null = null;
+let sheetAisLoading: Promise<void> | null = null;
+const xyzKey = (p: number[]) => p.map(v => Math.round(v)).join(',');
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') quoted = false; else cell += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+const parseXyz = (v: string) => { const n = String(v ?? '').match(/-?\d+(?:\.\d+)?/g)?.map(Number); return n && n.length === 3 && n.every(Number.isFinite) ? n : null; };
+async function loadSheetAis(): Promise<void> {
+  const res = await fetch(MEC_SHEET_CSV);
+  if (!res.ok) throw new Error(`MEC sheet: HTTP ${res.status}`);
+  const rows = parseCsv(await res.text());
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const head = rows.findIndex(r => r.some(c => norm(c).startsWith('startingxyz')) && r.some(c => norm(c).startsWith('aiscoord')));
+  const map = new Map<string, number[]>();
+  if (head >= 0) {
+    const iStart = rows[head].findIndex(c => norm(c).startsWith('startingxyz'));
+    const iAis = rows[head].findIndex(c => norm(c).startsWith('aiscoord'));
+    for (const r of rows.slice(head + 1)) {
+      const s = parseXyz(r[iStart]), a = parseXyz(r[iAis]);
+      if (s && a) map.set(xyzKey(s), a);
+    }
+  }
+  sheetAis = { at: Date.now(), map };
+}
+/** The lab's AIS point for the working cell, or null. */
+export async function sheetAisXyz(): Promise<number[] | null> {
+  const start = startXyz();
+  if (!start) return null;
+  if (!sheetAis || Date.now() - sheetAis.at > 10 * 60 * 1000) {
+    sheetAisLoading ??= loadSheetAis().catch(e => { console.warn('[mec marks] AIS from the sheet:', e); }).finally(() => { sheetAisLoading = null; });
+    await sheetAisLoading;
+  }
+  return sheetAis?.map.get(xyzKey(start)) ?? null;
+}
+/** The working cell's AIS mark: at the lab's point, moved off it, or none. */
+export function aisXyz(): number[] | null {
+  let last: number[] | null = null;
+  try {
+    for (const ann of mecLayers().get(MEC_AIS)?.layer?.localAnnotations ?? []) {
+      if (ann.type === 0 && ann.point) last = [0, 1, 2].map(i => Math.round(ann.point[i]));
+    }
+  } catch { /* not loaded */ }
+  return last;
+}
+export const nearPoint = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
 /** The soma mark: on the starting point, moved off it, or not placed. */
 export function somaState(): { state: 'start' | 'moved' | 'none'; xyz: number[] | null } {
   const soma = somaXyz(), start = startXyz();

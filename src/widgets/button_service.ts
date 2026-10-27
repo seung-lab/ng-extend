@@ -11,8 +11,8 @@ import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {currentCellTypes, cellTypeLabel} from '../datasets';
 import {planMenuCompletion, finishMenuCompletion, needsCompletionDetails, reopenAfterUnmark} from '../util/menu_complete';
 import {askCompletionDetails, type CompletionDetails} from '../util/completion_details';
-import {completeStatusesFor, CANT_COMPLETE, marksProofread} from '../sheet_sync';
-import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer} from './lightbulb_service';
+import {completeStatusesFor, CANT_COMPLETE, AXON_COMPLETE, marksProofread} from '../sheet_sync';
+import {getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem, activeCaveServer, labelAxonComplete} from './lightbulb_service';
 
 /** The name Pyr shows for a cell: its type, with its classification. */
 function cellLabel(status: CellStatus|null|undefined): string {
@@ -688,9 +688,12 @@ export class ButtonService {
       // Can't Complete: no proofread mark in CAVE (sheet_sync.ts); the claim
       // ends, counts as completed, and the sheet records it with the note.
       if (willBeComplete && plan?.row && !marksProofread(details.status)) {
-        statusLine.textContent = "Writing Can't Complete to the sheet…";
+        const ending = details.status || CANT_COMPLETE;
+        statusLine.textContent = `Writing ${ending} to the sheet…`;
+        // Axon complete (MEC) also gets its label (lightbulb_service).
+        if (ending === AXON_COMPLETE) void labelAxonComplete(localServerURL, plan?.cellRoot ?? segmentIDString);
         try {
-          statusLine.textContent = "Can't Complete, not marked proofread. " + await finishMenuCompletion(plan, details);
+          statusLine.textContent = `${ending}, not marked proofread. ` + await finishMenuCompletion(plan, details);
         } catch (e: any) {
           statusLine.textContent = e?.message || 'The sheet could not be updated.';
         }
