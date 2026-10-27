@@ -42,7 +42,7 @@ import HuntPanel from "components/HuntPanel.vue";
 import HuntGemFx from "components/HuntGemFx.vue";
 import HuntBegins from "components/HuntBegins.vue";
 import HuntOpening from "components/HuntOpening.vue";
-import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt } from '../hunt';
+import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt, clockParts } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import BetaGate from "components/BetaGate.vue";
 import { betaGate } from "../beta_gate";
@@ -1395,7 +1395,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
           <path d="M7 3h10l4 6-9 12L3 9z" fill="currentColor" opacity="0.9"/><path d="M3 9h18M9 3l3 6 3-6M12 9v12" fill="none" stroke="rgba(8,13,26,0.55)" stroke-width="1.2"/>
         </svg>
         <span class="nge-hunt-pill-word">{{ huntPill.word }}</span>
-        <span v-if="huntPill.time" class="nge-hunt-pill-time">{{ huntPill.time }}</span>
+        <span v-if="huntPill.time" class="nge-hunt-pill-time"><span v-for="(p, i) in clockParts(huntPill.time)" :key="i" :class="{ 'nge-digit': p.d }">{{ p.c }}</span></span>
       </button>
       <button class="nge-icon-btn nge-feedback-btn" title="Submit an issue or feedback"
               @click="showFeedback = true">
@@ -2689,7 +2689,9 @@ button.nge-hunt-pill.nge-hunt-pill--live:hover, button.nge-hunt-pill.nge-hunt-pi
 .nge-hunt-pill-gem { color: #f5d142; flex: none; filter: drop-shadow(0 0 3px rgba(245, 209, 66, 0.6)); }
 .nge-hunt-pill-word { font: 700 10px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #9fd0ff; }
 .nge-hunt-pill--live .nge-hunt-pill-word { color: #f5d142; }
-.nge-hunt-pill-time { font: 700 12px 'Orbitron', 'Inter', sans-serif; font-variant-numeric: tabular-nums; color: #fff; }
+.nge-hunt-pill-time { font: 700 12px 'Orbitron', 'Inter', sans-serif; font-variant-numeric: tabular-nums; color: #fff; white-space: pre; }
+/* Each digit in a slot as wide as Orbitron's widest (0 and 8, 10.0 px at 12 px), so the pill never changes width. */
+.nge-hunt-pill-time .nge-digit { display: inline-block; width: 0.84em; text-align: center; }
 .nge-hunt-pill--live .nge-hunt-pill-time { color: #fff3c4; }
 
 /* ── Magic Top Bar: hidden until pointed at (Settings) ─────────────────────────

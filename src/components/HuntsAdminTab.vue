@@ -40,7 +40,7 @@ interface AdminHunt {
 }
 interface BoardRow { rank: number; name: string; user_id: string; found: number; at: string; gems: number; tier: Tier | null }
 interface RunGem { id: string; at: number[] | null; hit: boolean; k: 'cut' | 'merge' | null }
-interface Report { user_id: string; name: string; drop_id: string; k: 'cut' | 'merge' | null; at: number[] | null; t: string | null }
+interface Report { user_id: string; name: string; drop_id?: string; report_id?: number; k: 'cut' | 'merge' | null; at: number[] | null; nm?: number[]; note?: string; t: string | null }
 
 const TIERS: Tier[] = ['gold', 'silver', 'bronze'];
 const TIER_WORD: Record<Tier, string> = { gold: 'Gold', silver: 'Silver', bronze: 'Bronze' };
@@ -499,13 +499,25 @@ async function loadReports(h: AdminHunt) {
   try { reports.value = (await huntCall<{ reports: Report[] }>('hunt.reports', { id: h.id })).reports || []; } catch { /* the list is a help */ }
 }
 async function countReport(r: Report) {
-  await countIt({ user_id: r.user_id } as BoardRow, { id: r.drop_id, at: r.at, hit: false, k: r.k });
+  await countIt({ user_id: r.user_id } as BoardRow, { id: r.drop_id || '', at: r.at, hit: false, k: r.k });
+}
+/** A report sent by coordinates: into the key, everyone judged again, Laser Eyes for whoever sent it. */
+async function addFromReport(r: Report) {
+  const h = editing.value; if (!h?.id || busy.value || !r.nm || !r.report_id) return;
+  busy.value = 'add'; error.value = ''; message.value = '';
+  try {
+    const out = await huntCall<any>('hunt.add_place', { id: h.id, nm: r.nm, kind: r.k === 'merge' ? 'merge' : 'cut', report_id: r.report_id });
+    busy.value = '';
+    await open(out);
+    message.value = `Added ${r.name}'s ${r.k === 'merge' ? 'missing extension' : 'merger'}: the key has ${out.target_count} places now. ${out.changed} ${out.changed === 1 ? 'run' : 'runs'} changed, and ${out.laser} ${out.laser === 1 ? 'hunter' : 'hunters'} got Laser Eyes.${phase.value === 'ended' ? ' Give the awards again to hand out what changed.' : ''}`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
 }
 async function dismissReport(r: Report) {
   const h = editing.value; if (!h?.id || busy.value) return;
   busy.value = 'dismiss'; error.value = ''; message.value = '';
   try {
-    reports.value = (await huntCall<{ reports: Report[] }>('hunt.dismiss_report', { id: h.id, user_id: r.user_id, drop_id: r.drop_id })).reports || [];
+    reports.value = (await huntCall<{ reports: Report[] }>('hunt.dismiss_report', r.report_id ? { id: h.id, report_id: r.report_id } : { id: h.id, user_id: r.user_id, drop_id: r.drop_id })).reports || [];
     message.value = `Not counted: ${r.name}'s report is off the list, and their Hunt box says it was checked.`;
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
@@ -618,13 +630,15 @@ async function duplicate() {
       <!-- Reported by hunters (Ames 2026-10-26): at the top, so a report during a Hunt is seen at once -->
       <fieldset v-if="reports.length" class="nge-hunts-group nge-hunts-reports" :disabled="!!busy">
         <legend>Reported by hunters ({{ reports.length }})</legend>
-        <p class="nge-hunts-help">Each hunter says their gem is on a real problem the answers missed. Go there and look: <b>Count it</b> puts it in the key, judges everyone again and gives Laser Eyes; <b>Not real</b> takes it off this list.</p>
+        <p class="nge-hunts-help">Hunters say these are real problems the answers missed. Go there and look: <b>Add to the key</b> (or <b>Count it</b>, for a gem) puts it in the key, judges everyone again and gives Laser Eyes; <b>Not real</b> takes it off this list.</p>
         <ul class="nge-hunts-gems">
-          <li v-for="r in reports" :key="r.user_id + r.drop_id" class="nge-hunts-gem--miss">
-            <span><b>{{ r.name }}</b>: {{ r.k === 'merge' ? 'Extend' : 'Cut' }} gem</span>
+          <li v-for="r in reports" :key="r.report_id ? `r${r.report_id}` : r.user_id + r.drop_id" class="nge-hunts-gem--miss">
+            <span><b>{{ r.name }}</b>: {{ r.k === 'merge' ? 'missing extension' : 'merger' }}{{ r.report_id ? '' : ' (their gem)' }}</span>
             <span class="nge-hunts-muted">{{ (r.at || []).slice(0, 3).map((v) => Math.round(v)).join(', ') }}</span>
-            <button class="nge-hunts-btn nge-hunts-btn--small" :disabled="!r.at" title="Move the view to this gem" @click.stop="goToGem({ id: r.drop_id, at: r.at, hit: false, k: r.k })">Go there</button>
-            <button class="nge-hunts-btn nge-hunts-btn--small" title="A real error the answers missed: add it to the key, judge everyone again, Laser Eyes" @click.stop="countReport(r)">Count it</button>
+            <span v-if="r.note" class="nge-hunts-report-note">"{{ r.note }}"</span>
+            <button class="nge-hunts-btn nge-hunts-btn--small" :disabled="!r.at" title="Move the view there" @click.stop="goToGem({ id: r.drop_id || '', at: r.at, hit: false, k: r.k })">Go there</button>
+            <button v-if="r.report_id" class="nge-hunts-btn nge-hunts-btn--small" title="A real problem the answers missed: add it to the key, judge everyone again, Laser Eyes for whoever sent it" @click.stop="addFromReport(r)">Add to the key</button>
+            <button v-else class="nge-hunts-btn nge-hunts-btn--small" title="A real error the answers missed: add it to the key, judge everyone again, Laser Eyes" @click.stop="countReport(r)">Count it</button>
             <button class="nge-hunts-btn nge-hunts-btn--small" title="Not a problem the answers missed: off the list" @click.stop="dismissReport(r)">Not real</button>
           </li>
         </ul>
@@ -940,6 +954,7 @@ async function duplicate() {
 .nge-hunts-when { color: #9fd0ff; font-size: 12px; }
 .nge-hunts-answers { margin-top: 8px; }
 .nge-hunts-reports { border-color: rgba(95, 227, 245, 0.55); box-shadow: 0 0 14px rgba(95, 227, 245, 0.12); }
+.nge-hunts-report-note { flex-basis: 100%; font-size: 12px; color: #cfe9f5; }
 .nge-hunts-addrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .nge-hunts-addrow input.nge-hunts-input { width: 92px; }
 .nge-hunts-addrow input.nge-hunts-xyz { flex: 1; min-width: 180px; width: auto; font-variant-numeric: tabular-nums; }

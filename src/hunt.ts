@@ -287,6 +287,15 @@ export function countdown(iso: string | null | undefined): string {
   return `${m}m ${ss}s`;
 }
 
+/**
+ * A countdown's characters, each digit marked (Ames 2026-10-26: "make sure this box stays a consistent width
+ * even when seconds are different width"): Orbitron's digits differ (a 1 is half a 0, and tabular figures are
+ * not in the font), so each digit sits in a slot as wide as the widest one (.nge-digit, 0.84em).
+ */
+export function clockParts(text: string): { c: string; d: boolean }[] {
+  return [...(text || '')].map(c => ({ c, d: c >= '0' && c <= '9' }));
+}
+
 /** A moment in the player's own time zone. */
 export function localTime(iso: string | null | undefined): string {
   const t = Date.parse(iso || '');
@@ -438,6 +447,17 @@ export function huntNoteNow(text: string): { text: string; title: string; stage:
 export async function reportGem(h: HuntInfo, dropId: string) {
   await huntCall('hunt.report', { id: h.id, drop_id: dropId });
   huntState.reported = { ...huntState.reported, [dropId]: 'sent' };
+}
+/**
+ * A problem the Hunt's answers missed, sent by where it is (x, y, z as the coordinate bar shows them) and what it
+ * is (Ames 2026-10-26: "submit a missed thing that lets me plug in coords and label cut or merge"). No gem is used.
+ */
+export async function reportPlace(h: HuntInfo, at: number[], kind: GemKind, note: string): Promise<{ open: number }> {
+  const scales = viewer()?.coordinateSpace?.value?.scales;
+  if (!scales || scales.length < 3) throw new Error('The viewer is not ready yet. Try again in a moment.');
+  if (canonicalDataset(currentDatasetTag()) !== canonicalDataset(h.dataset)) throw new Error('Open the Hunt first, so the coordinates are its own.');
+  const nm = at.slice(0, 3).map((v, i) => v * Number(scales[i]) * 1e9);
+  return huntCall<{ open: number }>('hunt.report_place', { id: h.id, nm, at: at.slice(0, 3), kind, note });
 }
 /** What the server says of this player's reports (after a reload, or an admin's check). */
 export function reportedOf(h: HuntInfo | null, id: string): 'sent' | 'no' | null {

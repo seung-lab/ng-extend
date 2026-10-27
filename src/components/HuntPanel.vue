@@ -12,7 +12,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen, reportGem, reportedOf,
+  huntState, loadHunts, featuredHunt, phaseNow, countdown, localTime, goToHunt, goToSoma, gemKinds, pickKind, huntPrefs, setAutoJudge, setHuntPanels, setHuntEdges, submitWaiting, takeBackGem, GEM_KEY, EDGE_COLOR, showAnswers, hideAnswers, answersOnScreen, reportPlace, crosshairXyz, clockParts,
   gemsOnScreen, startGemWatch, type HuntInfo, type HuntTier, type GemKind,
 } from '../hunt';
 import { canonicalDataset, currentDatasetTag, datasetAbbrev, findDatasetByCanonical, segLayerName } from '../datasets';
@@ -77,17 +77,27 @@ onUnmounted(() => { if (gemTimer) clearInterval(gemTimer); });
 // A new hunt in the panel (or a switch between a test run and the real one) starts clean.
 watch(() => `${hunt.value?.id ?? ''}:${hunt.value?.test ? 'test' : ''}`, () => { error.value = ''; });
 
-/** The player's missed gems, newest first, for the list under the gem dots. */
-const missedOpen = ref(false);
-const missedGems = computed(() => ((run.value as any)?.drops ?? []).filter((d: any) => !d.hit).slice().reverse() as { id: string; at: number[] | null; k: 'cut' | 'merge' | null }[]);
-/** "It's real": a missed gem told to the admins (Ames 2026-10-26). */
-const reporting = ref('');
-const canReport = (cls: string, id: string | undefined) => !!id && cls === 'miss' && !hunt.value?.test && phase.value !== 'announced';
-async function report(id: string) {
-  const h = hunt.value; if (!h || reporting.value) return;
-  reporting.value = id; error.value = '';
-  try { await reportGem(h, id); } catch (e: any) { error.value = e?.message || String(e); }
-  finally { reporting.value = ''; }
+/** The report form (Ames 2026-10-26): where, what, a note, and Send. */
+const reportOpen = ref(false);
+const reportXyz = ref('');
+const reportKind = ref<GemKind>('cut');
+const REPORT_KINDS: GemKind[] = ['cut', 'merge'];
+const reportNote = ref('');
+const reportSending = ref(false);
+const reportSent = ref('');
+function reportFromCrosshair() { const p = crosshairXyz(); if (p) reportXyz.value = p.slice(0, 3).join(', '); }
+async function sendReport() {
+  const h = hunt.value; if (!h || reportSending.value) return;
+  const at = (reportXyz.value.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+  error.value = ''; reportSent.value = '';
+  if (at.length !== 3) { error.value = 'Give x, y and z (three numbers), or use the crosshair.'; return; }
+  reportSending.value = true;
+  try {
+    await reportPlace(h, at, reportKind.value, reportNote.value);
+    reportSent.value = `Sent to the admins. Thank you! If it is real, it goes into the answers and you get Laser Eyes.`;
+    reportXyz.value = ''; reportNote.value = '';
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { reportSending.value = false; }
 }
 
 /** The answers on the cells, once the Hunt is over (Ames 2026-10-26). */
@@ -297,7 +307,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
         <svg class="nge-hunt-eyegem" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
         The Hunt
       </span>
-      <span v-if="mini && clock" class="nge-hunt-headclock"><span>{{ clock.label }}</span><b>{{ clock.value }}</b></span>
+      <span v-if="mini && clock" class="nge-hunt-headclock"><span>{{ clock.label }}</span><b><i v-for="(p, i) in clockParts(clock.value)" :key="i" :class="{ 'nge-digit': p.d }">{{ p.c }}</i></b></span>
       <button v-if="opened && phase === 'live' && !mini" class="nge-hunt-panelsbtn" :class="{ 'nge-hunt-panelsbtn--on': huntPrefs.panels }" :aria-pressed="huntPrefs.panels"
               :title="huntPrefs.panels ? 'Hide the Annotations and Selection panels while hunting' : 'Show the Annotations and Selection panels (your gems in Found and Missed)'"
               :aria-label="huntPrefs.panels ? 'Hide the side panels' : 'Show the side panels'" @pointerdown.stop @click="setHuntPanels(!huntPrefs.panels)">
@@ -327,7 +337,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
     <div v-else-if="!(mini && phase === 'announced' && !error)" class="nge-hunt-body">
       <div v-if="!mini" class="nge-hunt-titlerow">
         <h2 class="nge-hunt-title">{{ hunt.title }}</h2>
-        <div v-if="clock" class="nge-hunt-clock"><span class="nge-hunt-clock-label">{{ clock.label }}</span><span class="nge-hunt-clock-time">{{ clock.value }}</span></div>
+        <div v-if="clock" class="nge-hunt-clock"><span class="nge-hunt-clock-label">{{ clock.label }}</span><span class="nge-hunt-clock-time"><i v-for="(p, i) in clockParts(clock.value)" :key="i" :class="{ 'nge-digit': p.d }">{{ p.c }}</i></span></div>
       </div>
       <p v-if="!mini" class="nge-hunt-brief">{{ briefShort }}</p>
       <p v-if="phase === 'announced' && !mini" class="nge-hunt-when">{{ localTime(hunt.start_at) }} until {{ localTime(hunt.end_at) }}</p>
@@ -395,19 +405,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span v-for="(used, i) in pips" :key="i" class="nge-hunt-pip" :class="{ 'nge-hunt-pip--used': used }"></span>
           </div>
           <!-- Where the used gems went, so found, missed and left add up to the total -->
-          <p v-if="!mini && run.gems_used > 0" class="nge-hunt-used">{{ run.gems_used }} {{ run.gems_used === 1 ? 'gem' : 'gems' }} used: {{ run.found }} right,
-            <button v-if="missedGems.length && !hunt.test" class="nge-hunt-missedlink" :aria-expanded="missedOpen" title="Your missed gems: go to each, and tell the admins if one is on a real problem" @click="missedOpen = !missedOpen">{{ missed }} missed {{ missedOpen ? '▴' : '▾' }}</button>
-            <template v-else>{{ missed }} missed</template></p>
-          <!-- Every missed gem, any time (Ames 2026-10-26: "where should I see 'not there'?"): go there, and It's real -->
-          <ul v-if="missedOpen && !mini && missedGems.length" class="nge-hunt-missedlist" aria-label="Your missed gems">
-            <li v-for="(g, i) in missedGems" :key="g.id">
-              <span class="nge-hunt-missed-n">{{ i + 1 }}</span>
-              <span class="nge-hunt-missed-kind">{{ g.k === 'merge' ? 'Extend' : 'Cut' }} gem</span>
-              <button class="nge-hunt-missed-go" :disabled="!g.at" @click="goToSoma((g.at || []).slice(0, 3))">Go there</button>
-              <span v-if="reportedOf(hunt, g.id)" class="nge-hunt-report-tag">{{ reportedOf(hunt, g.id) === 'no' ? 'checked' : 'reported' }}</span>
-              <button v-else class="nge-hunt-report nge-hunt-report--small" :disabled="reporting === g.id" title="Your gem is on a real merger or missing extension that the Hunt's answers do not have: an admin checks it, and if it is real it counts for you." @click="report(g.id)">It's real</button>
-            </li>
-          </ul>
+          <p v-if="!mini && run.gems_used > 0" class="nge-hunt-used">{{ run.gems_used }} {{ run.gems_used === 1 ? 'gem' : 'gems' }} used: {{ run.found }} right, {{ missed }} missed</p>
 
           <div v-if="!run.done" class="nge-hunt-controls">
             <div v-if="kinds.length > 1" class="nge-hunt-kinds" role="radiogroup" aria-label="Which gem Ctrl + Click drops">
@@ -447,22 +445,9 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <span class="nge-hunt-news-head">{{ newsLine.head }}</span>
             <span class="nge-hunt-news-text">{{ newsLine.text }}</span>
             <button v-if="newsLine.other && kinds.includes(newsLine.other)" class="nge-hunt-news-switch" @click="choose(newsLine.other)">Switch to {{ KIND[newsLine.other].word }}</button>
-            <!-- Sure it's real? Tell the admins (Ames 2026-10-26: "a 'found an unlabeled cut/merge' type button") -->
-            <template v-if="news && canReport(newsLine.cls, news.id)">
-              <span v-if="reportedOf(hunt, news.id) === 'sent'" class="nge-hunt-report-done">Sent to the admins. If it is real, it counts for you, with Laser Eyes.</span>
-              <span v-else-if="reportedOf(hunt, news.id) === 'no'" class="nge-hunt-report-done">An admin checked it: not one the answers missed.</span>
-              <button v-else class="nge-hunt-report" :disabled="reporting === news.id" title="Your gem is on a real merger or missing extension that the Hunt's answers do not have: an admin checks it, and if it is real it counts for you." @click="report(news.id)">
-                {{ reporting === news.id ? 'Sending…' : "It's real: tell the admins" }}
-              </button>
-            </template>
           </div>
           <ul v-if="earlier.length && !mini" class="nge-hunt-log" aria-label="Your answers before">
-            <li v-for="e in earlier" :key="e.at" :class="[`nge-hunt-log--${e.cls}`, { 'nge-hunt-log--ext': e.ext }]"><b>{{ e.head }}</b> {{ e.text }}
-              <template v-if="canReport(e.cls, e.id)">
-                <span v-if="reportedOf(hunt, e.id)" class="nge-hunt-report-tag">{{ reportedOf(hunt, e.id) === 'no' ? 'checked' : 'reported' }}</span>
-                <button v-else class="nge-hunt-report nge-hunt-report--small" :disabled="reporting === e.id" @click="report(e.id)">It's real</button>
-              </template>
-            </li>
+            <li v-for="e in earlier" :key="e.at" :class="[`nge-hunt-log--${e.cls}`, { 'nge-hunt-log--ext': e.ext }]"><b>{{ e.head }}</b> {{ e.text }}</li>
           </ul>
 
           <!-- Done -->
@@ -471,6 +456,28 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
             <p class="nge-hunt-done-why">{{ doneWhy.text }}</p>
             <p>{{ run.found }}/{{ run.of }} found<template v-if="yourTime"> · {{ yourTime }}</template></p>
             <p v-if="!hunt.test" class="nge-hunt-muted">Medals at the end, {{ localTime(hunt.end_at) }}.</p>
+          </div>
+        </template>
+
+        <!-- A problem the answers missed, sent by where it is and what it is (Ames 2026-10-26: "submit a missed
+             thing that lets me plug in coords and label cut or merge"). No gem used; an admin checks it. -->
+        <template v-if="opened && phase !== 'announced' && !hunt.test && !mini">
+          <button class="nge-hunt-reportopen" :aria-expanded="reportOpen" @click="reportOpen = !reportOpen">Found a problem the Hunt missed? <span aria-hidden="true">{{ reportOpen ? '▴' : '▾' }}</span></button>
+          <div v-if="reportOpen" class="nge-hunt-reportform">
+            <p>Put the crosshair on it, or type x, y, z as the coordinate bar shows them. Say what it is, and send it. If it is real, it goes into the answers and you get Laser Eyes. No gem is used.</p>
+            <div class="nge-hunt-reportrow">
+              <input v-model="reportXyz" class="nge-hunt-reportxyz" placeholder="x, y, z" aria-label="x, y, z" spellcheck="false" />
+              <button class="nge-hunt-missed-go" @click="reportFromCrosshair">Use the crosshair</button>
+            </div>
+            <div class="nge-hunt-kinds nge-hunt-reportkinds" role="radiogroup" aria-label="What it is">
+              <button v-for="k in REPORT_KINDS" :key="k" class="nge-hunt-kind" :class="[`nge-hunt-kind--${k}`, { 'nge-hunt-kind--on': reportKind === k }]" role="radio" :aria-checked="reportKind === k" @click="reportKind = k">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
+                <span class="nge-hunt-kind-word">{{ k === 'cut' ? 'Cut' : 'Merge' }}</span>
+              </button>
+            </div>
+            <input v-model="reportNote" class="nge-hunt-reportxyz" maxlength="200" placeholder="A note for the admins (optional)" aria-label="A note for the admins" />
+            <button class="nge-hunt-submit" :disabled="reportSending" @click="sendReport">{{ reportSending ? 'Sending…' : 'Send to the admins' }}</button>
+            <p v-if="reportSent" class="nge-hunt-report-done" role="status">{{ reportSent }}</p>
           </div>
         </template>
 
@@ -520,7 +527,7 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
       </button>
       <div v-if="howOpen && phase !== 'ended' && !mini" class="nge-hunt-howpanel">
         <div v-if="description" class="nge-hunt-desc nge-hunt-desc--how" v-html="description"></div>
-        <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" />
+        <EditableText text-key="howto.hunt" :original="HUNT_STEPS" list-class="nge-hunt-howto-steps" approval label="Hunt instructions" />
         <!-- What the colors mean (Ames 2026-10-26): the gems' own colors, and the glow on a cell -->
         <div class="nge-hunt-key" aria-label="What the colors mean">
           <span v-for="k in GEM_KEY" :key="k.words" class="nge-hunt-keyitem">
@@ -696,7 +703,10 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 }
 .nge-hunt-clock { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
 .nge-hunt-clock-label { font: 600 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(var(--hn-line) / 0.55); }
-.nge-hunt-clock-time { font: 700 17px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); }
+.nge-hunt-clock-time { font: 700 15px 'Orbitron', 'Inter', sans-serif; color: rgb(var(--hn-gold)); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgb(var(--hn-gold) / 0.35); white-space: pre; }
+/* The countdowns keep their width as they tick (Orbitron's digits differ): each digit in a slot as wide as the widest. */
+.nge-hunt-clock-time i, .nge-hunt-headclock b i { font-style: normal; }
+.nge-hunt-clock-time .nge-digit, .nge-hunt-headclock b .nge-digit { display: inline-block; width: 0.84em; text-align: center; }
 .nge-hunt-brief { margin: 0; color: rgb(var(--hn-line) / 0.8); font-size: 12.5px; }
 .nge-hunt-when { margin: 0; color: rgb(var(--hn-line) / 0.6); font-size: 12px; }
 .nge-hunt-desc { font-size: 13px; color: rgb(var(--hn-ink) / 0.85); }
@@ -872,12 +882,13 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 .nge-hunt-medalmini img { width: 30px; height: 30px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
 .nge-hunt-medalmini b { font: 700 9px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
 .nge-hunt-medalmini b.nge-hunt-tierword--laser { white-space: normal; line-height: 1.1; }
-.nge-hunt-missedlink { padding: 0; border: none; background: none; cursor: pointer; font: inherit; color: #9fe9f5; text-decoration: underline dotted; text-underline-offset: 3px; }
-.nge-hunt-missedlink:hover, .nge-hunt-missedlink:focus-visible { color: #fff; }
-.nge-hunt-missedlist { list-style: none; margin: -2px 0 0; padding: 4px 6px; max-height: 170px; overflow-y: auto; border: 1px solid rgb(var(--hn-accent) / 0.2); border-radius: 8px; background: rgba(4, 8, 18, 0.45); }
-.nge-hunt-missedlist li { display: flex; align-items: center; gap: 6px; padding: 3px 0; font: 11.5px 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.85); }
-.nge-hunt-missed-n { width: 18px; text-align: right; color: rgb(var(--hn-line) / 0.5); font-variant-numeric: tabular-nums; }
-.nge-hunt-missed-kind { flex: 1; }
+.nge-hunt-reportopen { align-self: center; padding: 2px 4px; border: none; background: none; cursor: pointer; font: 600 12px 'Inter', sans-serif; color: #9fe9f5; }
+.nge-hunt-reportopen:hover, .nge-hunt-reportopen:focus-visible { color: #fff; }
+.nge-hunt-reportform { display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border-radius: 10px; border: 1px solid rgba(95, 227, 245, 0.45); background: rgba(95, 227, 245, 0.05); }
+.nge-hunt-reportform p { margin: 0; font: 11.5px/1.4 'Inter', sans-serif; color: rgb(var(--hn-line) / 0.85); }
+.nge-hunt-reportrow { display: flex; gap: 6px; align-items: center; }
+.nge-hunt-reportxyz { flex: 1; min-width: 0; box-sizing: border-box; padding: 5px 8px; border-radius: 7px; background: rgba(4, 8, 18, 0.8); border: 1px solid rgb(var(--hn-accent) / 0.4); color: #e6f0ff; font: 12px 'Inter', sans-serif; font-variant-numeric: tabular-nums; }
+.nge-hunt-reportkinds .nge-hunt-kind { padding: 5px 8px; font-size: 11.5px; }
 .nge-hunt-missed-go { padding: 1px 7px; border-radius: 6px; cursor: pointer; font: 600 10.5px 'Inter', sans-serif; background: rgba(4, 8, 18, 0.6); border: 1px solid rgb(var(--hn-accent) / 0.45); color: rgb(var(--hn-line) / 0.9); }
 .nge-hunt-missed-go:hover:not(:disabled) { color: #fff; border-color: rgb(var(--hn-cyan) / 0.8); }
 .nge-hunt-medalmini small { font-size: 10px; color: rgb(var(--hn-line) / 0.6); }

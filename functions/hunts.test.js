@@ -175,6 +175,10 @@ function fakeDb() {
     held: async (ids) => new Set(s.awards.filter((a) => ids.includes(a.badge_id)).map((a) => `${a.badge_id}:${a.user_id}`)),
     award: async (rows) => { for (const r of rows) if (!s.awards.some((a) => a.badge_id === r.badge_id && a.user_id === r.user_id)) s.awards.push(clone(r)); },
     badgeHolders: async (id) => s.awards.filter((a) => a.badge_id === id).map((a) => ({ user_id: a.user_id })),
+    insertReport: async (row) => { const r = { id: s.seq++, status: 'open', created_at: new Date().toISOString(), ...clone(row) }; (s.reports = s.reports || []).push(r); return clone(r); },
+    reportsFor: async (huntId, userId) => clone((s.reports || []).filter((r) => r.hunt_id === huntId && (!userId || r.user_id === userId)).reverse()),
+    report: async (id) => clone((s.reports || []).find((r) => r.id === id) || null),
+    patchReport: async (id, row) => { Object.assign((s.reports || []).find((r) => r.id === id), clone(row)); },
   };
   return db;
 }
@@ -742,6 +746,32 @@ test('places with an area: a gem anywhere inside an ellipsoid, along a line or i
   await H.huntAction('hunt.save', { id: draft.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
   const hit = await H.huntAction('hunt.drop', { id: draft.id, kind: 'merge', layer: layer([{ ...pt(6750, 5000, 100), id: 'w1' }]), dims: DIMS }, h.ctx(P1, at(50)));
   assert.equal(hit.drop.hit, true);   // 7 µm from the middle, inside the 8 µm ellipsoid
+});
+
+test('a hunter sends a problem the answers missed by its coordinates and kind; Add to the key counts it, with Laser Eyes for them (Ames 2026-10-26)', async () => {
+  const h = harness();
+  h.db.adminUserIds = async () => [ADMIN.id];
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  await assert.rejects(H.huntAction('hunt.report_place', { id: d.id, nm: [1, 2, 3], kind: 'cut' }, h.ctx(P1, at(30))), /not started/);
+  await assert.rejects(H.huntAction('hunt.report_place', { id: d.id, nm: [1, 2], kind: 'cut' }, h.ctx(P1, at(50))), /x, y and z/);
+  await assert.rejects(H.huntAction('hunt.report_place', { id: d.id, nm: [1, 2, 3], kind: 'edge' }, h.ctx(P1, at(50))), /merger \(Cut\) or a missing extension/);
+  const r = await H.huntAction('hunt.report_place', { id: d.id, nm: [120000, 120000, 4000], at: [30000, 30000, 100], kind: 'merge', note: 'thin branch stops' }, h.ctx(P1, at(50)));
+  assert.deepEqual([r.reported, r.open], [true, 1]);
+  assert.match(h.bell[0].body, /^nseraf found a missing extension the answers missed, at 30000, 30000, 100: "thin branch stops"\./);
+  assert.equal(h.db._s.subs.length, 0);   // no gem used
+  const list = await H.huntAction('hunt.reports', { id: d.id }, h.ctx(ADMIN, at(51), true));
+  assert.deepEqual(list.reports.map((x) => [x.name, x.k, x.note, !!x.report_id]), [['nseraf', 'merge', 'thin branch stops', true]]);
+  // Add to the key from the report: in the key, counted, and Laser Eyes for the hunter who sent it.
+  const added = await H.huntAction('hunt.add_place', { id: d.id, nm: list.reports[0].nm, kind: 'merge', report_id: list.reports[0].report_id }, h.ctx(ADMIN, at(52), true));
+  assert.deepEqual([added.target_count, added.laser], [4, 1]);
+  assert.ok(h.db._s.awards.some((a) => a.user_id === P1.id));
+  assert.deepEqual((await H.huntAction('hunt.reports', { id: d.id }, h.ctx(ADMIN, at(53), true))).reports, []);
+  // Not real: off the list.
+  const r2 = await H.huntAction('hunt.report_place', { id: d.id, nm: [5, 5, 5], kind: 'cut' }, h.ctx(P2, at(54)));
+  const left = await H.huntAction('hunt.dismiss_report', { id: d.id, report_id: r2.id }, h.ctx(ADMIN, at(55), true));
+  assert.deepEqual(left.reports, []);
+  assert.equal(h.db._s.reports.find((x) => x.id === r2.id).status, 'not_real');
 });
 
 test('a hunter reports a missed gem as a real problem: the admins hear, the editor lists it, Count it makes it count (Ames 2026-10-26)', async () => {

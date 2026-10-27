@@ -793,6 +793,7 @@ async function huntAction(action, args, ctx) {
     case 'hunt.run': needAdmin(); return adminRun(args, ctx);
     case 'hunt.count_it': needAdmin(); return countIt(args, ctx);
     case 'hunt.report': return reportGem(args, ctx);
+    case 'hunt.report_place': return reportPlace(args, ctx);
     case 'hunt.reports': needAdmin(); return reportsAction(args, ctx);
     case 'hunt.dismiss_report': needAdmin(); return dismissReport(args, ctx);
     case 'hunt.add_place': needAdmin(); return addPlaceAction(args, ctx);
@@ -991,7 +992,12 @@ async function addPlaceAction(args, ctx) {
   if (nm.length !== 3 || !nm.every((v) => Number.isFinite(v) && Math.abs(v) < 1e10)) fail(400, 'Give x, y and z.');
   if (args.kind !== 'cut' && args.kind !== 'merge') fail(400, 'Say whether it is a merger (Cut) or a missing extension (Extend).');
   const radius = Math.max(0, Math.min(Number(args.radius_nm) || 0, 100000));
-  return addPlace(h, nm, args.kind, ctx, radius);
+  // From a hunter's report (Reported by hunters > Add to the key): it is counted, and the hunter gets Laser Eyes.
+  const rep = args.report_id && ctx.db.report ? await ctx.db.report(posInt(args.report_id)) : null;
+  if (args.report_id && (!rep || rep.hunt_id !== h.id)) fail(404, 'No such report in this Hunt.');
+  const out = await addPlace(h, nm, args.kind, ctx, radius, rep ? [rep.user_id] : []);
+  if (rep) await ctx.db.patchReport(rep.id, { status: 'counted' });
+  return out;
 }
 
 /**
@@ -1025,7 +1031,38 @@ async function reportGem(args, ctx) {
   return { reported: true, drop_id: d.id };
 }
 
-/** Every reported gem still a miss in a Hunt, for the editor (the newest first). */
+/**
+ * A problem the Hunt's answers missed, sent by a hunter with where it is and what it is (Ames 2026-10-26:
+ * "we want a submit a missed thing that lets me plug in coords and label cut or merge"). No gem is used.
+ * Kept in hunt_reports (supabase-hunts.sql) for the editor's Reported by hunters; every admin hears of it.
+ */
+async function reportPlace(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const h = await getHunt(db, args && args.id);
+  if (h.status !== 'scheduled' || (adminsOnly(h, ctx) && !ctx.isAdmin)) fail(404, 'No such Hunt.');
+  if (phase(h, now) === 'announced') fail(409, 'The Hunt has not started yet.');
+  const nm = Array.isArray(args && args.nm) ? args.nm.slice(0, 3).map(Number) : [];
+  if (nm.length !== 3 || !nm.every((v) => Number.isFinite(v) && Math.abs(v) < 1e10)) fail(400, 'Give x, y and z.');
+  if (args.kind !== 'cut' && args.kind !== 'merge') fail(400, 'Say whether it is a merger (Cut) or a missing extension (Extend).');
+  if (!db.insertReport) fail(503, 'Reports are not set up yet.');
+  const mine = await db.reportsFor(h.id, me.id);
+  if (mine.filter((r) => r.status === 'open').length >= 20) fail(429, 'You have 20 reports waiting already. An admin will check them soon.');
+  const at = Array.isArray(args.at) ? args.at.slice(0, 3).map((v) => Math.round(Number(v))).filter(Number.isFinite) : null;
+  const note = typeof args.note === 'string' ? args.note.trim().slice(0, 200) : '';
+  const row = await db.insertReport({ hunt_id: h.id, user_id: me.id, nm: nm.map((v) => Math.round(v)), at: at && at.length === 3 ? at : null, kind: args.kind, note: note || null });
+  if (ctx.notify && db.adminUserIds) {
+    const admins = await db.adminUserIds();
+    const name = ((await db.names([me.id])) || {})[me.id] || 'A hunter';
+    const what = args.kind === 'merge' ? 'missing extension' : 'merger';
+    if (admins.length) {
+      await ctx.notify(admins.map((u) => ({ user_id: u, title: `🔎 Hunt report: ${h.title}`.slice(0, 120),
+        body: `${name} found a ${what} the answers missed${at && at.length === 3 ? `, at ${at.join(', ')}` : ''}${note ? `: "${note}"` : ''}. Admin Hub > Hunts > ${h.title}: Reported by hunters.` })));
+    }
+  }
+  return { reported: true, id: row && row.id, open: mine.filter((r) => r.status === 'open').length + 1 };
+}
+
+/** Every open report in a Hunt, for the editor (the newest first): places sent by coordinates, and gems said to be real. */
 async function reportsAction(args, ctx) {
   const { db } = ctx;
   const h = await getHunt(db, args && args.id);
@@ -1035,6 +1072,11 @@ async function reportsAction(args, ctx) {
     if (!Array.isArray(r.points) || r.points.some((p) => Array.isArray(p))) continue;
     for (const d of normalizeDrops(r.points)) if (d.rep && d.hit < 0) out.push({ user_id: r.user_id, drop_id: d.id, k: d.k, at: d.at, t: d.t });
   }
+  if (db.reportsFor) {
+    for (const r of await db.reportsFor(h.id)) {
+      if (r.status === 'open') out.push({ user_id: r.user_id, report_id: r.id, k: r.kind, at: r.at, nm: r.nm, note: r.note || '', t: r.created_at });
+    }
+  }
   const names = out.length ? await db.names([...new Set(out.map((x) => x.user_id))]) : {};
   return { reports: out.map((x) => ({ ...x, name: names[x.user_id] || 'Player' })).sort((a, b) => String(b.t).localeCompare(String(a.t))) };
 }
@@ -1043,6 +1085,12 @@ async function reportsAction(args, ctx) {
 async function dismissReport(args, ctx) {
   const { db } = ctx;
   const h = await getHunt(db, args && args.id);
+  if (args && args.report_id) {
+    const rep = db.report ? await db.report(posInt(args.report_id)) : null;
+    if (!rep || rep.hunt_id !== h.id) fail(404, 'No such report in this Hunt.');
+    await db.patchReport(rep.id, { status: 'not_real' });
+    return reportsAction({ id: h.id }, ctx);
+  }
   const run = await db.myRun(h.id, String((args && args.user_id) || ''));
   const drops = run && Array.isArray(run.points) && !run.points.some((x) => Array.isArray(x)) ? normalizeDrops(run.points) : [];
   const d = drops.find((x) => x.id === String((args && args.drop_id) || ''));
@@ -1057,7 +1105,7 @@ async function dismissReport(args, ctx) {
  * sphere, and at a place of that kind the key has already, it makes that place bigger instead (a wide face the
  * key marked with a point: Ames 2026-10-26), with no Laser Eyes: the place was in the key all along.
  */
-async function addPlace(h, nm, kind, ctx, radius = 0) {
+async function addPlace(h, nm, kind, ctx, radius = 0, credit = []) {
   const { db } = ctx;
   const targets = await db.key(h.id);
   const tol = tolOf(h);
@@ -1079,7 +1127,7 @@ async function addPlace(h, nm, kind, ctx, radius = 0) {
   await db.setKey(h.id, next);
   const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
   const r = await rescore({ id: h.id }, ctx);
-  const laser = await awardLaserEyes(row || h, next.length - 1, ctx);
+  const laser = await awardLaserEyes(row || h, next.length - 1, ctx, credit);
   return { ...(await adminView(row, ctx)), counted: true, rescored: r.rescored, changed: r.changed, laser: laser.length };
 }
 
@@ -1202,12 +1250,12 @@ function laserBadgeRow(h, site) {
  * achievement for anyone who found a missing hunt cut or extension, and it increments - max award one
  * time per hunt"): one Achievement per Hunt, given once to each finder; the profile counts them up.
  */
-async function awardLaserEyes(h, index, ctx) {
+async function awardLaserEyes(h, index, ctx, also = []) {
   const { db, notify } = ctx;
   if (!db.allSubmissions || !db.upsertBadge || !db.award) return [];
   const runs = await db.allSubmissions(h.id);
-  const finders = [...new Set(runs.filter((r) => Array.isArray(r.points) && !r.points.some((p) => Array.isArray(p))
-    && normalizeDrops(r.points).some((d) => d.hit === index)).map((r) => r.user_id))];
+  const finders = [...new Set([...also, ...runs.filter((r) => Array.isArray(r.points) && !r.points.some((p) => Array.isArray(p))
+    && normalizeDrops(r.points).some((d) => d.hit === index)).map((r) => r.user_id)])];
   if (!finders.length) return [];
   const badge = await db.upsertBadge(laserBadgeRow(h, ctx.site || ''));
   const had = new Set(db.badgeHolders ? (await db.badgeHolders(badge.id)).map((r) => r.user_id) : []);
@@ -1505,6 +1553,17 @@ async function adminRead(args, ctx) {
 // ── The database ──────────────────────────────────────────────────────────
 
 const adminsOnlyColumn = { ok: false, at: 0 };
+/** A call on hunt_reports; before its SQL is run, the list is empty and a new report says so. */
+async function reportsTable(call, empty) {
+  try { return await call(); }
+  catch (e) {
+    if (/hunt_reports|42P01|PGRST205|404/.test(String(e && e.message))) {
+      if (empty !== undefined) return empty;
+      fail(503, 'Reports are not set up yet: an admin needs to run one step. Tell an admin in chat for now.');
+    }
+    throw e;
+  }
+}
 function restDb(sb) {
   const enc = encodeURIComponent;
   const merge = { Prefer: 'resolution=merge-duplicates,return=representation' };
@@ -1589,6 +1648,11 @@ function restDb(sb) {
     },
     award: (rows) => (rows.length ? sb('special_badge_awards?on_conflict=badge_id,user_id', { method: 'POST', headers: merge, body: JSON.stringify(rows) }) : []),
     badgeHolders: (badgeId) => sb(`special_badge_awards?badge_id=eq.${posInt(badgeId)}&select=user_id&limit=10000`),
+    // Reports by coordinates (hunt_reports, supabase-hunts.sql). Before the SQL is run: a plain word, no crash.
+    insertReport: (row) => reportsTable(() => one(sb('hunt_reports', { method: 'POST', body: JSON.stringify(row) }))),
+    reportsFor: (huntId, userId) => reportsTable(() => sb(`hunt_reports?hunt_id=eq.${posInt(huntId)}${userId ? `&user_id=eq.${enc(userId)}` : ''}&select=*&order=created_at.desc&limit=500`), []),
+    report: (id) => reportsTable(() => one(sb(`hunt_reports?id=eq.${posInt(id)}&select=*&limit=1`))),
+    patchReport: (id, row) => reportsTable(() => sb(`hunt_reports?id=eq.${posInt(id)}`, { method: 'PATCH', body: JSON.stringify(row) })),
   };
 }
 
