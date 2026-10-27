@@ -11,8 +11,8 @@
  * Counts every point in the lab's layers, placed here, in Highlight or by hand.
  */
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
-import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer } from '../util/mec_marks';
-import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick, addEdgeMarks, workingRoot, autoEdgeNews, undoHighlight } from '../util/highlight';
+import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer, sheetAisXyz, aisXyz, nearPoint } from '../util/mec_marks';
+import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick, addEdgeMarks, workingRoot, autoEdgeNews, undoHighlight, confirmAisAtSheet, goToXyz } from '../util/highlight';
 
 const props = defineProps<{ startOpen?: boolean }>();
 // Open unless the player closed it (Ames 2026-10-24: "make the Marks open by
@@ -48,8 +48,9 @@ function say(text: string, isBad = false) { message.value = text; bad.value = is
 const somaLine = () => soma.value.state === 'start' ? 'Confirmed at the starting point'
   : soma.value.state === 'moved' ? `Placed at ${soma.value.xyz!.join(', ')}` : 'Not confirmed yet';
 function markLine(key: string, n: number): string {
+  if (key === 'mec:ais' && n) return aisState() === 'lab' ? "Confirmed at the lab's point" : `${n} placed`;
   if (n) return `${n} placed`;
-  if (key === 'mec:ais') return 'None yet. Skip it if the cell has no distinct axon.';
+  if (key === 'mec:ais') return labAis.value ? "The lab's sheet has a point for it: confirm it" : 'None yet. Skip it if the cell has no distinct axon.';
   if (key === 'mec:edge') return 'None yet';
   return 'None yet';
 }
@@ -137,6 +138,17 @@ function undoLast() {
   read();
 }
 
+// ── The AIS from the lab's sheet (Ames 2026-10-27: "let's place the AIS for
+// players to confirm"). Go there, check, confirm; or Ctrl + click elsewhere.
+const labAis = ref<number[] | null>(null);
+const aisState = () => { const a = aisXyz(); return !a ? 'none' : labAis.value && nearPoint(a, labAis.value) ? 'lab' : 'own'; };
+async function readLabAis() { try { labAis.value = await sheetAisXyz(); } catch { labAis.value = null; } }
+function lookAtLabAis() { if (!goToXyz(labAis.value)) say("The lab's sheet has no AIS point for this cell.", true); }
+async function confirmAis() {
+  try { const p = await confirmAisAtSheet(); read(); say(`AIS confirmed at the lab's point, ${p.join(', ')}.`); }
+  catch (e: any) { say(e?.message || 'Could not mark the AIS.', true); }
+}
+
 async function confirmSoma() {
   try { const p = await confirmSomaAtStart(); read(); say(`Soma confirmed at the starting point, ${p.join(', ')}.`); }
   catch (e: any) { say(e?.message || 'Could not mark the soma.', true); }
@@ -148,6 +160,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 let stopSelected = () => { /* set on mount */ };
 let stopLayers = () => { /* set on mount */ };
 onMounted(() => {
+  void readLabAis();
   readKeys();
   try {
     const v = (window as any).viewer;
@@ -203,7 +216,14 @@ onBeforeUnmount(() => {
                 :aria-checked="armed === k.key ? 'true' : 'false'" :style="{ '--k': k.color }" :title="k.hint" @click="arm(k.key)">
           <i></i><b>{{ k.label }}<kbd v-if="keyOf[k.key]" class="nge-mms-key" :title="`Key ${keyOf[k.key]}`">{{ keyOf[k.key] }}</kbd></b><span>{{ markLine(k.key, counts[k.key] ?? 0) }}</span>
         </button>
-        <div v-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
+        <div v-if="armed === 'mec:ais' && labAis" class="nge-mms-sub">
+          <span>The lab's sheet has a point where the axon leaves the cell.</span>
+          <span class="nge-mms-btns">
+            <button type="button" class="nge-mms-btn" @click="lookAtLabAis">Go to the lab's AIS point</button>
+            <button type="button" class="nge-mms-btn nge-mms-btn--ok" @click="confirmAis">{{ aisState() === 'none' ? 'Confirm AIS here' : "Back to the lab's point" }}</button>
+          </span>
+        </div>
+        <div v-else-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
       </div>
       <div class="nge-mms-foot">
         <button type="button" class="nge-mms-btn" :disabled="busy || autoLooking !== null" @click="findEdges"

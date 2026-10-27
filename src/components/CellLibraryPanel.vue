@@ -25,9 +25,9 @@ import {
   isLiveHelp,
 } from '../store';
 import { getDatasetCaveConfig } from '../config';
-import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem } from '../widgets/lightbulb_service';
+import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
-import { syncCellToSheet, completeStatusesFor, marksProofread } from '../sheet_sync';
+import { syncCellToSheet, completeStatusesFor, marksProofread, AXON_COMPLETE } from '../sheet_sync';
 import { cellAtCrosshair, type CrosshairCell } from '../util/crosshair_cell';
 import { getRootFromSupervoxel, ancestorAmong } from '../widgets/pcg_service';
 import { mintShortStateLink } from '../util/state_link';
@@ -1128,6 +1128,12 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   const cavePromise = proofread ? writeCaveCompletion(cell, done) : Promise.resolve(true);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
+  // Axon complete: labelled as such, not marked proofread (lightbulb_service).
+  if (done.status === AXON_COMPLETE) {
+    const nums = (done.coords || '').split(/[\s,]+/).map(Number).filter(n => !Number.isNaN(n));
+    void labelAxonComplete(activeCaveServer() || '', done.finalSegId || cell.finalSegId || cell.segId,
+      nums.length === 3 ? (nums as [number, number, number]) : undefined);
+  }
   // Write completion to the source sheet, including the Final Link.
   syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;

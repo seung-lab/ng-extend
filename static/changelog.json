@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T16:20:00Z",
+      "title": "MEC: the AIS is ready to confirm",
+      "items": [
+        "On MEC cells, the lab's sheet now has the AIS, where the axon leaves the cell. In Marks, pick AIS, Go to the lab's AIS point, check it, and Confirm AIS here.",
+        "An Axon complete cell is now labelled axon complete in the lab's records, apart from fully proofread cells."
+      ]
+    },
+    {
       "at": "2026-10-27T16:13:00Z",
       "title": "Lantern: Clicked branch fixes",
       "digest": "minor",

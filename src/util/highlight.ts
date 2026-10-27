@@ -10,7 +10,7 @@ import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
-import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
+import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, sheetAisXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
@@ -554,6 +554,21 @@ export async function confirmSomaAtStart(): Promise<number[]> {
   await addLabPoint(MEC_SOMA, start, `Soma, at the starting point (nucleus)${root ? `: cell ${root}` : ''}`);
   return start;
 }
+/** The AIS, confirmed at the lab's point from the sheet (AIS Coords). */
+export async function confirmAisAtSheet(): Promise<number[]> {
+  const xyz = await sheetAisXyz();
+  if (!xyz) throw new Error("The lab's sheet has no AIS point for this cell. Ctrl + click where the axon leaves the cell instead.");
+  let root = '';
+  try { root = workingRoot(); } catch { /* several cells, or none */ }
+  await addLabPoint(MEC_AIS, xyz, `AIS, the lab's point from the sheet${root ? `: cell ${root}` : ''}`);
+  return xyz;
+}
+/** Look at a point in the view (the lab's AIS point, the starting point). */
+export function goToXyz(xyz: number[] | null): boolean {
+  if (!xyz) return false;
+  try { viewerOf().navigationState.position.value = Float32Array.from(xyz); return true; } catch { return false; }
+}
+
 /** Look at the starting point, to check it is in the soma. */
 export function goToStart(): boolean {
   const start = startXyz();
