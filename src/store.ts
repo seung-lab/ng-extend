@@ -6664,7 +6664,10 @@ function readMentionNotifyPref(): boolean {
 
 /** Reactions offered on chat messages. The ewCommunityData gateway accepts
  *  exactly these, so keep functions/community-data.js in step. */
-export const CHAT_REACTION_QUICK = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+/** The Pyr gem as a reaction (Ames 2026-10-27). Not an emoji: stored as this
+ *  code and drawn as the gem picture (ChatPanel). */
+export const CHAT_REACTION_GEM = ':pyr-gem:';
+export const CHAT_REACTION_QUICK = [CHAT_REACTION_GEM, '👍', '❤️', '🔥', '😂', '🎉', '🧠'];
 /** More reactions, behind the picker's "+" (Nseraf 2026-10-11 asked for
  *  more; Ames approved this list). All friendly or neutral. */
 export const CHAT_REACTION_MORE = ['👋', '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈'];

@@ -10,6 +10,7 @@ const SITE_ASSETS = 'https://connectome.quest/assets/';
 // The six quick ones, then the longer list behind the picker's "+" (Ames
 // approved it 2026-10-11). Nothing outside this list is accepted.
 const REACTION_EMOJI = new Set([
+  ':pyr-gem:', // the Pyr gem, drawn as a picture by the game (Ames 2026-10-27)
   '👍', '❤️', '🔥', '😂', '🎉', '🧠',
   '👋', '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈',
 ]);
