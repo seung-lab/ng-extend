@@ -14,6 +14,7 @@
  * renderer reads.
  */
 import {mat4, vec3} from 'neuroglancer/util/geom';
+import {GL} from 'neuroglancer/webgl/context';
 
 export interface NgeLantern {
   /** The centre of the view, in the viewer's global coordinates. */
@@ -28,6 +29,41 @@ export interface NgeLantern {
   intensity: number;
   /** Brightness of the part left in shadow, 0 to 1. */
   shadow: number;
+  /** "Clicked branch": only what this map marks is lit, and the reach
+   *  (centre and radiusNm) spreads the light out along it from the click. */
+  mask?: NgeLanternMask|null;
+}
+
+/** A map of the lit branch: one byte a cell, 255 lit, 0 not, x fastest. */
+export interface NgeLanternMask {
+  data: Uint8Array;
+  dims: [number, number, number];
+  /** Global (display) coordinates to texture coordinates in [0, 1]. */
+  gridFromGlobal: mat4;
+}
+
+const maskTextures = new WeakMap<GL, {texture: WebGLTexture|null, mask: NgeLanternMask|null}>();
+/** Bind the branch map to `unit`, uploading it when it is a new one. */
+export function bindNgeLanternMask(gl: GL, unit: number, mask: NgeLanternMask) {
+  let entry = maskTextures.get(gl);
+  if (entry === undefined) {
+    entry = {texture: gl.createTexture(), mask: null};
+    maskTextures.set(gl, entry);
+  }
+  const T = WebGL2RenderingContext;
+  gl.activeTexture(T.TEXTURE0 + unit);
+  gl.bindTexture(T.TEXTURE_3D, entry.texture);
+  if (entry.mask !== mask) {
+    entry.mask = mask;
+    const [w, h, d] = mask.dims;
+    gl.pixelStorei(T.UNPACK_ALIGNMENT, 1);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_MIN_FILTER, T.LINEAR);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_MAG_FILTER, T.LINEAR);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_WRAP_S, T.CLAMP_TO_EDGE);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_WRAP_T, T.CLAMP_TO_EDGE);
+    gl.texParameteri(T.TEXTURE_3D, T.TEXTURE_WRAP_R, T.CLAMP_TO_EDGE);
+    gl.texImage3D(T.TEXTURE_3D, 0, T.R8, w, h, d, 0, T.RED, T.UNSIGNED_BYTE, mask.data);
+  }
 }
 
 let current: NgeLantern|null = null;

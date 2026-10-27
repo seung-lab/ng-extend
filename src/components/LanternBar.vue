@@ -5,7 +5,8 @@
  * util/lantern.ts for what the two settings do.
  */
 import { computed, ref } from 'vue';
-import { lantern, LANTERN_LIMITS as L } from '../util/lantern';
+import { lantern, lanternBranch, LANTERN_LIMITS as L } from '../util/lantern';
+import { isTouchRef } from '../util/mobile';
 import { spooky, callGhost, callTheReaper, shoo } from '../util/spooky';
 import { useProofreadingBackendStore } from '../store';
 import ghostIcon from '../images/ghost-icon.png';
@@ -14,6 +15,15 @@ import reaperIcon from '../images/reaper-icon.png';
 // The ghost button (Halloween: util/spooky.ts). Everyone has it in Halloween
 // week; outside it, admins only, for trying it out.
 const backend = useProofreadingBackendStore();
+
+// What the bar says in Clicked branch mode.
+const branchHint = computed(() => {
+  const tap = isTouchRef.value ? 'Tap' : 'Click';
+  if (lanternBranch.message) return lanternBranch.message;
+  if (lanternBranch.status === 'finding') return 'Finding the branch…';
+  if (lanternBranch.status === 'lit') return `${tap} another branch, or empty space to clear`;
+  return `${tap} a branch to light it`;
+});
 const showGhost = computed(() => spooky.season || backend.showAdminUi);
 
 // The bar can be dragged anywhere by its grip (Ames 2026-10-10: "I need to be
@@ -75,7 +85,15 @@ function resetPlace() {
         Lantern
       </button>
       <template v-if="lantern.open">
-        <label class="nge-lantern-set" title="How far the light reaches">
+        <!-- What is lit: the cell round the middle of the view, or only the branch you click (Ames 2026-10-27). -->
+        <span class="nge-lantern-mode" role="radiogroup" aria-label="What the Lantern lights">
+          <button type="button" role="radio" :aria-checked="lantern.mode === 'cell'" :class="{ 'is-on': lantern.mode === 'cell' }"
+                  title="Light the cell around the middle of your view" @click="lantern.mode = 'cell'">Whole cell</button>
+          <button type="button" role="radio" :aria-checked="lantern.mode === 'branch'" :class="{ 'is-on': lantern.mode === 'branch' }"
+                  title="Light only the branch you click on" @click="lantern.mode = 'branch'">Clicked branch</button>
+        </span>
+        <span v-if="lantern.mode === 'branch'" class="nge-lantern-hint" :class="{ 'is-failed': lanternBranch.status === 'failed' }" aria-live="polite">{{ branchHint }}</span>
+        <label v-if="lantern.mode === 'cell'" class="nge-lantern-set" title="How far the light reaches">
           <span>Size</span>
           <input type="range" v-model.number="lantern.sizeUm" :min="L.sizeUm.min" :max="L.sizeUm.max" :step="L.sizeUm.step" @keydown.stop />
           <output>{{ lantern.sizeUm }} <span class="nge-lantern-unit">µm</span></output>
@@ -174,6 +192,15 @@ function resetPlace() {
   background: none; cursor: pointer; font: 600 11px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #ffc878;
 }
 .nge-lantern-name:hover, .nge-lantern-name:focus-visible { border-color: rgba(255, 196, 110, 0.45); outline: none; }
+.nge-lantern-mode { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid rgba(255, 196, 110, 0.28); border-radius: 7px; }
+.nge-lantern-mode button {
+  padding: 3px 8px; border: 0; border-radius: 5px; background: none; cursor: pointer;
+  font: 500 11px/1.2 'Inter', system-ui, sans-serif; color: rgba(190, 205, 225, 0.85); white-space: nowrap;
+}
+.nge-lantern-mode button:hover, .nge-lantern-mode button:focus-visible { color: #fff; outline: none; background: rgba(255, 196, 110, 0.1); }
+.nge-lantern-mode button.is-on { color: #1a1206; background: #ffc878; }
+.nge-lantern-hint { font-size: 11px; color: rgba(190, 205, 225, 0.8); white-space: nowrap; }
+.nge-lantern-hint.is-failed { color: #ffb4a0; white-space: normal; max-width: 260px; }
 .nge-lantern-set { display: inline-flex; align-items: center; gap: 7px; color: rgba(190, 205, 225, 0.85); }
 .nge-lantern-set > span:first-child { font: 500 10px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 208, 138, 0.72); }
 .nge-lantern-set input[type='range'] { width: 92px; accent-color: #ffc878; }

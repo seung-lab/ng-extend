@@ -229,3 +229,131 @@ export function edgeEnds(graph: BranchGraph, bounds: number[][], marginNm = 5000
   }
   return out;
 }
+
+/**
+ * Lantern mode's "Clicked branch" (Ames 2026-10-27: "a mode in lantern mode
+ * where it only highlights the branch you click on"): the branch a click is
+ * on, from the fork where it leaves its parent branch out to all its tips.
+ *
+ * From the clicked piece, walk back toward the soma one piece at a time.
+ * The walk stops at the first fork where the walk came up the smaller side:
+ * where another branch leaves that carries at least `minSideNm` of cable and
+ * at least as much as the side walked up. Spines and the small knots the
+ * graph has in thick parts are shorter than that, so they never count. The
+ * walk also stops at the soma (within `somaRadiusNm` of `somaNm`). The
+ * branch is the last piece reached and everything beyond it.
+ *
+ * A click on the soma itself gives the soma: the pieces within
+ * `somaRadiusNm` of it.
+ *
+ * `segments` are the links inside the branch, plus the one back to its fork
+ * so the light reaches the fork; a piece on its own is a segment of length 0.
+ */
+export function clickedBranch(graph: BranchGraph, from: string, ref: string,
+                              opts: { minSideNm?: number; somaNm?: number[]; somaRadiusNm?: number } = {}):
+    { pieces: Set<string>; fork: string | null; segments: Segment[]; soma: boolean } {
+  const minSide = opts.minSideNm ?? 6000;
+  const somaR = opts.somaRadiusNm ?? 0;
+  const somaNm = opts.somaNm ?? graph.points.get(ref);
+  const nearSoma = (id: string) => {
+    const p = graph.points.get(id);
+    return !!(somaR > 0 && p && somaNm && Math.hypot(p[0] - somaNm[0], p[1] - somaNm[1], p[2] - somaNm[2]) <= somaR);
+  };
+  const adj = neighbours(graph);
+  const span = (a: string, b: string) => {
+    const p = graph.points.get(a), q = graph.points.get(b);
+    return p && q ? Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) : 0;
+  };
+  // A click on the soma: the soma.
+  if (from === ref || nearSoma(from)) {
+    const pieces = new Set<string>([from]);
+    for (const id of graph.points.keys()) if (id === ref || nearSoma(id)) pieces.add(id);
+    const segments: Segment[] = [];
+    for (const [a, b] of graph.edges) {
+      const p = graph.points.get(a), q = graph.points.get(b);
+      if (p && q && pieces.has(a) && pieces.has(b)) segments.push([p, q]);
+    }
+    for (const id of pieces) { const p = graph.points.get(id); if (p) segments.push([p, p]); }
+    return { pieces, fork: null, segments, soma: true };
+  }
+  const parent = shortestWaysBack(graph, adj, ref);
+  if (!parent.has(from)) throw new Error('No connection was found between that point and the rest of the cell.');
+  const children = new Map<string, string[]>();
+  for (const [n, p] of parent) if (p != null) { const l = children.get(p); if (l) l.push(n); else children.set(p, [n]); }
+  // The cable beyond each piece, worked out tips first.
+  const order: string[] = [];
+  const stack = [ref];
+  while (stack.length) { const n = stack.pop()!; order.push(n); for (const c of children.get(n) ?? []) stack.push(c); }
+  const cable = new Map<string, number>();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const n = order[i];
+    let sum = 0;
+    for (const c of children.get(n) ?? []) sum += span(n, c) + (cable.get(c) ?? 0);
+    cable.set(n, sum);
+  }
+  // At each fork on the way back, the bigger side is the parent branch going
+  // on, and the smaller one a branch off it. So the walk goes on while it is
+  // on the bigger side, and stops where it was on the smaller one: a twig
+  // off a long dendrite does not cut the dendrite short (on the retina's big
+  // cells it did, 2026-10-27), and a click on the twig still gives the twig.
+  let top = from;
+  for (;;) {
+    const p = parent.get(top);
+    if (p == null || p === ref || nearSoma(p)) break;
+    const mine = span(p, top) + (cable.get(top) ?? 0);
+    const side = (children.get(p) ?? []).some(s => {
+      if (s === top) return false;
+      const other = span(p, s) + (cable.get(s) ?? 0);
+      return other >= minSide && other >= mine;
+    });
+    if (side) break;
+    top = p;
+  }
+  const pieces = new Set<string>();
+  const segments: Segment[] = [];
+  const walk = [top];
+  while (walk.length) {
+    const n = walk.pop()!;
+    pieces.add(n);
+    const p = graph.points.get(n);
+    if (p) segments.push([p, p]);
+    for (const c of children.get(n) ?? []) {
+      const q = graph.points.get(c);
+      if (p && q) segments.push([p, q]);
+      walk.push(c);
+    }
+  }
+  const fork = parent.get(top) ?? null;
+  const tp = graph.points.get(top), fp = fork ? graph.points.get(fork) : undefined;
+  if (tp && fp) segments.push([tp, fp]);
+  return { pieces, fork, segments, soma: false };
+}
+
+/**
+ * Where the soma most likely is when none is on record: the piece with the
+ * most other pieces within `radiusNm`. A soma is one big lump of the cell,
+ * so it is made of many pieces close together. A guess, so a soma on record
+ * is always used first.
+ */
+export function densestPiece(graph: BranchGraph, radiusNm = 6000): string | undefined {
+  const grid = new Map<string, number[][]>();
+  const cellOf = (v: number) => Math.floor(v / radiusNm);
+  for (const p of graph.points.values()) {
+    const k = `${cellOf(p[0])},${cellOf(p[1])},${cellOf(p[2])}`;
+    const l = grid.get(k); if (l) l.push(p); else grid.set(k, [p]);
+  }
+  let best: string | undefined, bestN = -1;
+  const r2 = radiusNm * radiusNm;
+  for (const [id, p] of graph.points) {
+    const gx = cellOf(p[0]), gy = cellOf(p[1]), gz = cellOf(p[2]);
+    let n = 0;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      for (const q of grid.get(`${gx + dx},${gy + dy},${gz + dz}`) ?? []) {
+        const ex = q[0] - p[0], ey = q[1] - p[1], ez = q[2] - p[2];
+        if (ex * ex + ey * ey + ez * ez <= r2) n++;
+      }
+    }
+    if (n > bestN) { bestN = n; best = id; }
+  }
+  return best;
+}
