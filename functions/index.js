@@ -1653,6 +1653,7 @@ exports.guideFeedback = onRequest(
 // service key and does not come through here.
 // ════════════════════════════════════════════════════════════════════════
 const { authorizeData, isPersonalProfileEdit } = require("./community-data");
+const { syncProductionGroup } = require("./production-group");
 const EW_SB = "https://javthknksdcrlhiaaptj.supabase.co/rest/v1/";
 const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^http:\/\/localhost(:\d+)?$/];
 const ewIdentityCache = new Map(); // token -> { email, caveId, at }
@@ -2492,6 +2493,9 @@ exports.ewCommunityData = onRequest(
       const key = ewServiceKey.value().trim(), sb = ewSb(key);
       const ctx=await pilotContext(sb,who), {me,isAdmin}=ctx;
       const groups = me ? (await sb("user_group_members?user_id=eq."+me.id+"&select=group_id")).map(r=>r.group_id) : [];
+      // Keep the Production editors group in step (production-group.js): at
+      // most every few hours a player, so nearly every request skips it.
+      if (me && input.token) await syncProductionGroup(sb, me, groups, () => ewHasProduction(input.token));
       const context={...ctx,groups,now:new Date().toISOString()};
       // The blog has its own short list of authors (blog_authors), separate from admins and the pilot.
       if (input.table === "blog_posts" && me) context.isBlogAuthor = (await sb("blog_authors?user_id=eq."+me.id+"&select=user_id&limit=1")).length > 0;
