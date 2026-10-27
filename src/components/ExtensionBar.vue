@@ -46,6 +46,7 @@ import HuntOpening from "components/HuntOpening.vue";
 import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt, clockParts } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
 import BetaGate from "components/BetaGate.vue";
+import PrinciplesGate from "components/PrinciplesGate.vue";
 import { betaGate } from "../beta_gate";
 import ScreenshotDialog from "components/ScreenshotDialog.vue";
 import StreakChip from "components/StreakChip.vue";
@@ -1236,6 +1237,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <dataset-selector-panel v-if="showDatasetSelector" @hide="showDatasetSelector = false" />
   <!-- Invite only for now (Ames 2026-10-24): players not on Pilot testers. -->
   <beta-gate />
+  <principles-gate />
   <user-profile-panel v-if="showProfile" :view-user-id="profileUserId" :initial-tab="profileInitialTab" @hide="showProfile = false; profileUserId = null; profileInitialTab = undefined" @open-settings="profileInitialTab = 'settings'; showProfile = true" />
   <feedback-modal v-if="showFeedback" @hide="showFeedback = false" />
   <nurro-profile v-if="showNurroProfile" @hide="showNurroProfile = false" />
