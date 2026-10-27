@@ -829,6 +829,7 @@ async function huntAction(action, args, ctx) {
     case 'hunt.report_get': needAdmin(); return reportGet(args, ctx);
     case 'hunt.report_queue': needAdmin(); return reportQueue(args, ctx);
     case 'hunt.report_note': needAdmin(); return reportNote(args, ctx);
+    case 'hunt.report_same': needAdmin(); return reportSame(args, ctx);
     case 'hunt.reports': needAdmin(); return reportsAction(args, ctx);
     case 'hunt.dismiss_report': needAdmin(); return dismissReport(args, ctx);
     case 'hunt.add_place': needAdmin(); return addPlaceAction(args, ctx);
@@ -1050,7 +1051,7 @@ async function settleReport(h, rep, status, args, ctx) {
   if ((tell || status === 'counted') && ctx.notify) {
     const what = rep.kind === 'merge' ? 'missing extension' : 'merger';
     const at = Array.isArray(rep.at) && rep.at.length === 3 ? ` at ${rep.at.join(', ')}` : '';
-    const outcome = status === 'counted' && args.enlarged ? 'The answers had it, and its place there is bigger now, so a gem on it counts. Thank you!'
+    const outcome = args.said ? args.said : status === 'counted' && args.enlarged ? 'The answers had it, and its place there is bigger now, so a gem on it counts. Thank you!'
       : status === 'counted' ? 'It is in the answers now. Thank you!' : status === 'not_real' ? 'It is not one this Hunt counts, but thank you for sending it.' : '';
     const said = note && tell ? `${outcome ? '\n\n' : ''}A note from the admins: "${note}"` : '';
     if (outcome || said) {
@@ -1058,6 +1059,33 @@ async function settleReport(h, rep, status, args, ctx) {
         body: `An admin looked at the ${what} you sent${at}. ${outcome}${said}` }]);
     }
   }
+}
+
+/**
+ * Correct, but not first (Ames 2026-10-27: "send them 'correct! you were the 2nd person to identify this'"): the answers
+ * have this spot already, so nothing is added and the credit stays with the first; the hunter always hears which they
+ * were. Counted, with no credit of its own (the queue says "Same as").
+ */
+async function reportSame(args, ctx) {
+  const { db } = ctx;
+  const rep = db.report ? await db.report(posInt(args && args.report_id)) : null;
+  if (!rep) fail(404, 'That report is not there any more.');
+  if (rep.status !== 'open') fail(409, 'That report is done already.');
+  const h = await getHunt(db, rep.hunt_id);
+  const q = await reportQueue({ id: h.id }, ctx);
+  const me = q.reports.find((r) => r.id === rep.id);
+  if (!me || !me.in_key) fail(409, 'The answers have nothing at this spot yet: add it instead.');
+  const tol = tolOf(h);
+  const earlier = q.reports.filter((r) => r.id !== rep.id && r.t <= me.t && r.kind === rep.kind && r.status !== 'not_real' && placeDist([...r.nm, r.kind], rep.nm) <= tol);
+  const nth = earlier.length + 1;
+  const ord = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
+  const what = rep.kind === 'merge' ? 'missing extension' : 'merger';
+  const first = me.in_key.credit[0] || (earlier[0] && earlier[0].name) || '';
+  const said = first && first !== me.name
+    ? `Correct! You were the ${ord(Math.max(nth, 2))} to find this ${what}; ${first} sent it first, so the credit is theirs. Thank you!`
+    : `Correct! The Hunt's answers had this ${what} already, so a gem on it counts. Thank you!`;
+  await settleReport(h, rep, 'counted', { ...args, said }, ctx);
+  return { ...(await reportQueue({ id: h.id }, ctx)), said };
 }
 
 /** A note on a report without settling it (or after): kept with it for the admins, and sent to the hunter with tell. */

@@ -31,6 +31,19 @@ const shown = ref(false);   // the view is at this report
 
 const report = computed(() => queue.value?.reports[idx.value] ?? null);
 const openCount = computed(() => queue.value?.reports.filter(r => r.status === 'open').length ?? 0);
+// The last open report done: a burst of gems and the tally (Ames 2026-10-27: "make a fun success state for admins!").
+const celebrate = ref(false);
+watch(openCount, (n, was) => { if (n === 0 && was > 0 && queue.value?.reports.length) celebrate.value = true; else if (n > 0) celebrate.value = false; });
+const tally = computed(() => {
+  const list = queue.value?.reports ?? [];
+  const added = list.filter(r => r.status === 'counted' && r.in_key?.credit.includes(r.name)).length;
+  const same = list.filter(r => r.status === 'counted' && !r.in_key?.credit.includes(r.name)).length;
+  return { added, same, dismissed: list.filter(r => r.status === 'not_real').length, all: list.length };
+});
+const GEM_COLORS = ['#5fe3f5', '#5aaaff', '#9b5cff', '#48d682', '#f5d142', '#9fd0ff'];
+const burst = Array.from({ length: 18 }, (_, i) => ({
+  '--a': `${(i / 18) * 360 + (i % 3) * 7}deg`, '--d': `${70 + (i % 4) * 26}px`, '--t': `${(i % 5) * 0.05}s`, '--s': `${0.7 + (i % 3) * 0.25}`, color: GEM_COLORS[i % GEM_COLORS.length],
+}));
 const nextOpen = computed(() => {
   const list = queue.value?.reports ?? [];
   const after = list.findIndex((r, i) => i > idx.value && r.status === 'open');
@@ -47,6 +60,7 @@ const statusWords = computed(() => {
   if (!r || r.status === 'open') return '';
   const by = r.done_by ? ` by ${r.done_by}` : '', at = r.done_at ? `, ${whenOf(r.done_at)}` : '';
   const credited = !!r.in_key?.credit.includes(r.name);
+  if (r.status === 'counted' && !credited && r.in_key) return `✓ Correct, the same as place #${r.in_key.n}${by}${at}. ${r.in_key.credit[0] ? `${r.in_key.credit[0]} has the credit.` : ''}`;
   return r.status === 'counted' ? `✓ Added to the answers${by}${at}.${credited ? ` ${r.name} has the credit.` : ''}` : `Dismissed${by}${at}.`;
 });
 /** With a size: the place of that kind it will make bigger instead of adding one (functions/hunts.js addPlace): the
@@ -149,6 +163,19 @@ async function add() {
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
+/** Correct, but the answers have it already: they hear which they were, the credit stays with the first (Ames 2026-10-27). */
+async function same() {
+  const r = report.value; if (!r || busy.value) return;
+  busy.value = 'same'; error.value = '';
+  try {
+    const out = await huntCall<Queue & { said: string }>('hunt.report_same', { report_id: r.id, note: note.value.trim(), tell: tell.value });
+    queue.value = out;
+    idx.value = Math.max(0, out.reports.findIndex(x => x.id === r.id));
+    done.value = `Sent to ${r.name}: "${out.said}"`;
+    hideReportMarker();
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 async function dismiss() {
   const q = queue.value, r = report.value; if (!q || !r || busy.value) return;
   busy.value = 'no'; error.value = '';
@@ -206,6 +233,7 @@ function close() { queue.value = null; hideReportMarker(); hideKeyPlaces(); }
         <button class="nge-hreport-btn" :disabled="!report.at || !!busy" @click="goThere">{{ busy === 'go' ? 'Going…' : 'Go there again' }}</button>
         <label class="nge-hreport-size" title="How wide, across. A place of this kind already near it is made this big (the button says which); otherwise a new place this big is added. A gem anywhere in it counts.">Size <input v-model.number="size" type="number" min="0" max="200" step="0.5" placeholder="a point" /> <span class="nge-hreport-unit">µm</span></label>
         <button class="nge-hreport-btn nge-hreport-btn--add" :disabled="!!busy" @click="add">{{ busy === 'add' ? 'Adding…' : grows ? `Resize place #${grows.n}` : 'Add to the answers' }}</button>
+        <button v-if="report.in_key" class="nge-hreport-btn nge-hreport-btn--same" :disabled="!!busy" :title="`Correct, but the answers have it already: nothing is added, the credit stays with the first, and ${report.name} hears they were right`" @click="same">{{ busy === 'same' ? 'Sending…' : `Same as #${report.in_key.n}` }}</button>
         <button class="nge-hreport-btn" :disabled="!!busy" @click="dismiss">{{ busy === 'no' ? 'Dismissing…' : 'Dismiss' }}</button>
       </div>
       <p v-if="report.status === 'open' && Number(size) > 0" class="nge-hreport-sizeline">The teal ball in the view is {{ size }} µm across: a gem anywhere in it counts.{{ grows ? ` Place #${grows.n} is ${growsNow ? `${growsNow} µm across` : 'a point'} now.` : '' }}</p>
@@ -214,7 +242,14 @@ function close() { queue.value = null; hideReportMarker(); hideKeyPlaces(); }
         <label class="nge-hreport-tell" :title="`Send the note, and what you decided, to ${report.name} in the bell. Adding it always tells them; the note goes only with this ticked.`"><input v-model="tell" type="checkbox" /> Send to {{ report.name }}</label>
         <button v-if="report.status !== 'open' || (note.trim() && note.trim() !== report.admin_note)" class="nge-hreport-btn nge-hreport-btn--small" :disabled="!!busy || !note.trim()" @click="saveNote">{{ busy === 'note' ? 'Saving…' : 'Save note' }}</button>
       </div>
-      <p v-if="done" class="nge-hreport-done" role="status">{{ done }}</p>
+      <p v-if="done && !celebrate" class="nge-hreport-done" role="status">{{ done }}</p>
+      <div v-if="celebrate" class="nge-hreport-win" role="status">
+        <span class="nge-hreport-burst" aria-hidden="true">
+          <svg v-for="(g, i) in burst" :key="i" class="nge-hreport-gem" :style="g" viewBox="0 0 24 24" width="14" height="14"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
+        </span>
+        <b class="nge-hreport-wintitle">Every report checked!</b>
+        <span class="nge-hreport-wintext">{{ tally.all }} {{ tally.all === 1 ? 'report' : 'reports' }}: {{ tally.added }} added to the answers, {{ tally.same }} correct but not first, {{ tally.dismissed }} dismissed. The hunters thank you.</span>
+      </div>
       <div class="nge-hreport-foot">
         <span class="nge-hreport-legend"><i class="nge-hreport-dot nge-hreport-dot--cut"></i>merger <i class="nge-hreport-dot nge-hreport-dot--merge"></i>extension <i class="nge-hreport-dot nge-hreport-dot--added"></i>added from a report <i class="nge-hreport-dot nge-hreport-dot--here"></i>this report</span>
         <button class="nge-hreport-btn nge-hreport-btn--next" :class="{ 'nge-hreport-btn--primary': report.status !== 'open' }" :disabled="nextOpen < 0 || !!busy" @click="step(nextOpen)">Next open ›</button>
@@ -261,6 +296,7 @@ function close() { queue.value = null; hideReportMarker(); hideKeyPlaces(); }
 .nge-hreport-btn--primary { background: rgba(95, 227, 245, 0.14); border-color: #5fe3f5; }
 .nge-hreport-btn--add { background: rgba(72, 214, 130, 0.16); border-color: #48d682; }
 .nge-hreport-btn--next { margin-left: auto; }
+.nge-hreport-btn--same { background: rgba(90, 170, 255, 0.16); border-color: #5aaaff; }
 .nge-hreport-size { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #cfdcef; }
 .nge-hreport-size input { width: 64px; padding: 4px 6px; border-radius: 6px; background: rgba(4, 8, 18, 0.8); border: 1px solid rgba(90, 170, 255, 0.35); color: #e6f0ff; font: 12px 'Inter', sans-serif; }
 .nge-hreport-unit { text-transform: none; }
@@ -273,6 +309,21 @@ function close() { queue.value = null; hideReportMarker(); hideKeyPlaces(); }
 .nge-hreport-dot--added { background: #48d682; }
 .nge-hreport-dot--here { background: #42d5ec; }
 .nge-hreport-done { margin: 8px 0 0; color: #9ff0bf; }
+.nge-hreport-win { position: relative; margin: 10px 0 0; padding: 12px 14px; border-radius: 10px; text-align: center; overflow: visible;
+  border: 1px solid rgba(95, 227, 245, 0.6); background: radial-gradient(120% 140% at 50% 0%, rgba(95, 227, 245, 0.18), rgba(72, 214, 130, 0.08) 60%, transparent);
+  animation: ngeHrWin 0.6s cubic-bezier(.2, 1.4, .4, 1) both; }
+.nge-hreport-wintitle { display: block; font: 700 15px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.06em; color: #e9fbff; text-shadow: 0 0 14px rgba(95, 227, 245, 0.7); }
+.nge-hreport-wintext { display: block; margin-top: 4px; font-size: 12px; color: #bfe6f5; }
+.nge-hreport-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.nge-hreport-gem { position: absolute; left: -7px; top: -7px; opacity: 0; filter: drop-shadow(0 0 6px currentColor);
+  animation: ngeHrGem 1.4s cubic-bezier(.15, .8, .3, 1) var(--t) both; }
+@keyframes ngeHrWin { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes ngeHrGem {
+  0% { opacity: 0; transform: rotate(var(--a)) translateY(0) scale(0.3); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(-1 * var(--d))) rotate(200deg) scale(var(--s)); }
+}
+@media (prefers-reduced-motion: reduce) { .nge-hreport-win, .nge-hreport-gem { animation: none; } .nge-hreport-gem { display: none; } }
 .nge-hreport-sizeline { margin: 6px 0 0; font-size: 12px; color: #9fe9f5; }
 .nge-hreport-muted { margin: 0; color: #9fb7d9; }
 .nge-hreport-error { margin: 8px 0 0; color: #ff9b9b; }

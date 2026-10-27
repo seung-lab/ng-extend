@@ -827,6 +827,17 @@ test('the reports queue: oldest first, the first at a spot, what the answers hav
   const grown = await H.huntAction('hunt.add_place', { id: d.id, nm: [126000, 120000, 4000], kind: 'merge', radius_nm: 8000 }, h.ctx(ADMIN, at(57), true));
   assert.deepEqual([grown.enlarged, grown.target_count], [true, 4]);
   assert.deepEqual(h.db._s.keys[d.id][3], [126000, 120000, 4000, 'merge', { r: [8000, 8000, 8000], added: true, credit: [P1.id] }]);
+  // Correct, but not first: Same as. Nothing added, the hunter hears they were second (r2 was dismissed, so it is not counted).
+  const r4 = await H.huntAction('hunt.report_place', { id: d.id, nm: [120500, 120000, 4000], kind: 'merge' }, h.ctx(P2, at(57)));
+  const keyLen = h.db._s.keys[d.id].length;
+  const sm = await H.huntAction('hunt.report_same', { report_id: r4.id }, h.ctx(ADMIN, at(57), true));
+  assert.equal(sm.said, 'Correct! You were the 2nd to find this missing extension; nseraf sent it first, so the credit is theirs. Thank you!');
+  assert.equal(h.db._s.keys[d.id].length, keyLen);
+  assert.equal(h.bell.filter((n) => n.user_id === P2.id).slice(-1)[0].body, `An admin looked at the missing extension you sent. ${sm.said}`);
+  assert.equal(h.db._s.reports.find((x) => x.id === r4.id).status, 'counted');
+  await assert.rejects(H.huntAction('hunt.report_same', { report_id: r4.id }, h.ctx(ADMIN, at(57), true)), /done already/);
+  await assert.rejects(H.huntAction('hunt.report_same', { report_id: r3.id }, h.ctx(ADMIN, at(57), true)), /nothing at this spot/);
+  h.bell.length = 0;
   // Dismiss with tell: the hunter hears it kindly.
   await H.huntAction('hunt.dismiss_report', { id: d.id, report_id: r3.id, tell: true }, h.ctx(ADMIN, at(58), true));
   assert.equal(h.bell.filter((n) => n.user_id === P2.id)[0].body, 'An admin looked at the merger you sent. It is not one this Hunt counts, but thank you for sending it.');
