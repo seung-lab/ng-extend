@@ -3861,7 +3861,8 @@ const panelStyle = computed(() => ({
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully. It may become a Hunt.">Hunt candidate</span>
-                  <span v-if="cell.notes" class="nge-cl-notes">{{ cell.notes }}</span>
+                  <!-- The Hunt candidate tag says it (its tooltip has the note) -->
+                  <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
               </div>
             </div>
