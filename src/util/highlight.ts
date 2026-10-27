@@ -353,7 +353,7 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
  *  click for Highlight is kept there), and the cell's row in the library.
  *  A view can hold several cells, so the one that belongs to a cell is
  *  chosen later, by which lies on it. */
-function knownSomas(root: string): number[][] {
+export function knownSomas(root: string): number[][] {
   const out: number[][] = [];
   for (const managed of viewerOf()?.layerManager?.managedLayers ?? []) {
     if (managed.archived || !SOMA_LAYER_NAME.test(String(managed.name))) continue;

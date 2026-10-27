@@ -16,7 +16,7 @@
 
 import {NgeShell} from 'neuroglancer/mesh/nge_hover';
 import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine} from 'neuroglancer/mesh/nge_tint';
-import {getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
+import {bindNgeLanternMask, getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
 import {getNgeMeshEdge} from 'neuroglancer/mesh/nge_edge';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
@@ -171,6 +171,9 @@ const ngeFineMat = mat4.create();
 // EyeWire II Lantern mode: the cell is lit around where you are, and left in
 // shadow elsewhere (mesh/nge_lantern.ts).
 const ngeLanternMat = mat4.create();
+// Its "Clicked branch": a map of the branch that is lit.
+const ngeLanternMaskSymbol = Symbol('ngeLanternMask');
+const ngeLanternMaskMat = mat4.create();
 // The edge of the dataset in the Hunt (mesh/nge_edge.ts): model to nanometres.
 const ngeEdgeMat = mat4.create();
 
@@ -448,7 +451,14 @@ export class MeshShaderManager {
           shader.uniform('uNgeLanternModel'), false, ngeLanternNmFromModel(ngeLanternMat, lantern, modelMat));
       gl.uniform4f(
           shader.uniform('uNgeLantern'), ngeLanternPos[0], ngeLanternPos[1], ngeLanternPos[2], lantern.radiusNm);
-      gl.uniform3f(shader.uniform('uNgeLanternLight'), 1, lantern.intensity, lantern.shadow);
+      const mask = lantern.mask ?? null;
+      if (mask !== null) {
+        bindNgeLanternMask(gl, shader.textureUnit(ngeLanternMaskSymbol), mask);
+        gl.uniformMatrix4fv(
+            shader.uniform('uNgeLanternMaskMatrix'), false, mat4.multiply(ngeLanternMaskMat, mask.gridFromGlobal, modelMat));
+      }
+      // x: 1 lights round the lantern, 2 lights the mapped branch.
+      gl.uniform3f(shader.uniform('uNgeLanternLight'), mask !== null ? 2 : 1, lantern.intensity, lantern.shadow);
       const second = getNgeLanternSecond();
       if (second !== null && second.radiusNm > 0) {
         gl.uniform4f(shader.uniform('uNgeLantern2'), second.posNm[0], second.posNm[1], second.posNm[2], second.radiusNm);
@@ -571,6 +581,8 @@ highp float ngeHoloDot(highp vec2 p) {
         builder.addUniform('highp mat4', 'uNgeLanternModel');
         builder.addUniform('highp vec4', 'uNgeLantern');
         builder.addUniform('highp vec3', 'uNgeLanternLight');
+        builder.addUniform('highp mat4', 'uNgeLanternMaskMatrix');
+        builder.addTextureSampler('sampler3D', 'uNgeLanternMask', ngeLanternMaskSymbol);
         // A second, coloured light (the reaper's red lantern): xyz nm, w reach.
         builder.addUniform('highp vec4', 'uNgeLantern2');
         builder.addUniform('highp vec3', 'uNgeLantern2Color');
@@ -690,6 +702,12 @@ if (uNgeLanternLight.x > 0.5) {
   highp vec3 lanternFrom = (uNgeLanternModel * vec4(vertexPosition, 1.0)).xyz - uNgeLantern.xyz;
   // Fully lit inside four fifths of the reach, fading out just past it.
   highp float lit = 1.0 - smoothstep(0.8 * uNgeLantern.w, 1.2 * uNgeLantern.w, length(lanternFrom));
+  if (uNgeLanternLight.x > 1.5) {
+    // Clicked branch: only the mapped branch, as far as the light has spread.
+    highp vec3 maskCoord = (uNgeLanternMaskMatrix * vec4(vertexPosition, 1.0)).xyz;
+    highp float inMap = all(greaterThanEqual(maskCoord, vec3(0.0))) && all(lessThanEqual(maskCoord, vec3(1.0))) ? 1.0 : 0.0;
+    lit *= inMap * smoothstep(0.15, 0.6, texture(uNgeLanternMask, maskCoord).r);
+  }
   // In shadow a cell keeps its shape and loses its colour.
   highp float grey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
   vColor.rgb = mix(vec3(grey) * uNgeLanternLight.z, min(vColor.rgb * uNgeLanternLight.y, vec3(1.0)), lit);

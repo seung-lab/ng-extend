@@ -554,6 +554,8 @@ async function handle(action, args, io) {
   if (action === 'access.beta') return beta(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);
   if (action === 'access.betaMark') return betaMark(a, io);
+  if (action === 'access.principlesStatus') return principlesStatus(a, io);
+  if (action === 'access.principlesAgree') return principlesAgree(a, io);
   if (action === 'access.mine') return mine(a, io);
   if (action === 'access.save') return save(a, io);
   if (action === 'access.remove') return remove(a, io);
@@ -566,4 +568,40 @@ async function handle(action, args, io) {
   fail(400, `unknown action ${action}`);
 }
 
-module.exports = {handle, visitorBeta, cleanExample, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};
+// ── The Eyewire II Principles (Ames 2026-10-27: "ask players to agree to
+// community principles when they go to Retina dataset",
+// https://eyewire.ai/principles). Asked only ever once per account, even if
+// PRINCIPLES_VERSION changes later. The record (who, when, which version)
+// is kept by the server, in the store passed in (Firestore in
+// index.js, principles_agreements), never taken from the browser.
+//   access.principlesStatus  anyone signed in: {version, agreed, at}.
+//   access.principlesAgree   anyone signed in: {version} they saw; agrees.
+const PRINCIPLES_VERSION = '2026-10-27';
+function principlesKey(io) {
+  if (io.me && io.me.id) return `user:${io.me.id}`;
+  const email = String((io.who && io.who.email) || '').toLowerCase();
+  if (!email) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  return `email:${email}`;
+}
+async function principlesStatus(a, io) {
+  const rec = await io.principles.get(principlesKey(io));
+  // Asked only ever once (Ames 2026-10-27: "it should only ever ask them
+  // this once"): any agreement counts, whatever version it was.
+  const agreed = !!(rec && rec.at);
+  return {version: PRINCIPLES_VERSION, agreed, at: agreed ? rec.at : null};
+}
+async function principlesAgree(a, io) {
+  // Agreeing to an older text than the one the server asks for is not agreeing.
+  if (a.version !== PRINCIPLES_VERSION) fail(409, 'The principles were updated. Reload the page to read the new version.');
+  const key = principlesKey(io);
+  // Already agreed: the first agreement stands, never written over.
+  const had = await io.principles.get(key);
+  if (had && had.at) return {version: PRINCIPLES_VERSION, agreed: true, at: had.at};
+  const at = new Date().toISOString();
+  await io.principles.set(key, {version: PRINCIPLES_VERSION, at,
+    userId: (io.me && io.me.id) || null, email: String((io.who && io.who.email) || '').toLowerCase(),
+    name: (io.me && (io.me.username || io.me.display_name)) || ''});
+  return {version: PRINCIPLES_VERSION, agreed: true, at};
+}
+
+module.exports = {handle, visitorBeta, cleanExample, PRINCIPLES_VERSION, KINDS, IMAGE, GRANTED_TITLE, BETA_CATEGORY, BETA_BELL};

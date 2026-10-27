@@ -11,7 +11,8 @@ import { booGhost, isBoo, inSeason } from '../util/spooky';
 import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
-import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_MAX_CHARS, chatTextLength } from '../store';
+import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_REACTION_GEM, CHAT_MAX_CHARS, chatTextLength } from '../store';
+import pyrGemUrl from '../../static/badges/pyr/pyr-icon.png';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import { mintShortStateLink } from '../util/state_link';
 import { supabase } from '../supabase';
@@ -1451,7 +1452,7 @@ function toggleCollapse() {
                     <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                             @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
                     <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
-                      <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                      <button v-for="e in CHAT_REACTION_QUICK" :key="e" :title="e === CHAT_REACTION_GEM ? 'Pyr gem' : undefined" @click.stop="react(String(msg.id), e)"><img v-if="e === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ e }}</template></button>
                       <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                     </span>
                   </span>
@@ -1463,7 +1464,7 @@ function toggleCollapse() {
                             :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
                             :title="list.map(r => r.name).join(', ')"
                             :disabled="!isLoggedIn"
-                            @click.stop="react(String(msg.id), String(emo))">{{ emo }}<span>{{ list.length }}</span></button>
+                            @click.stop="react(String(msg.id), String(emo))"><img v-if="emo === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ emo }}</template><span>{{ list.length }}</span></button>
                   </div>
                 </div>
 
@@ -1565,7 +1566,7 @@ function toggleCollapse() {
                       <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
                               @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
-                        <button v-for="e in CHAT_REACTION_QUICK" :key="e" @click.stop="react(String(msg.id), e)">{{ e }}</button>
+                        <button v-for="e in CHAT_REACTION_QUICK" :key="e" :title="e === CHAT_REACTION_GEM ? 'Pyr gem' : undefined" @click.stop="react(String(msg.id), e)"><img v-if="e === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ e }}</template></button>
                         <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
                       </span>
                     </span>
@@ -1573,7 +1574,7 @@ function toggleCollapse() {
                       <button v-for="(list, emo) in reactionsOf(msg)" :key="emo" class="nge-chat-react"
                               :class="{ 'nge-chat-react--mine': reactedByMe(list) }"
                               :title="list.map(r => r.name).join(', ')"
-                              @click.stop="react(String(msg.id), String(emo))">{{ emo }}<span>{{ list.length }}</span></button>
+                              @click.stop="react(String(msg.id), String(emo))"><img v-if="emo === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ emo }}</template><span>{{ list.length }}</span></button>
                     </div>
                   </template>
                 </div>
@@ -2725,6 +2726,8 @@ button.nge-chat-quote:hover { background: rgba(74, 158, 255, 0.13); border-left-
 .nge-chat-react-more button:hover { transform: scale(1.25); background: rgba(74, 158, 255, 0.15); }
 .nge-chat-react-more button { width: 27px; height: 27px; padding: 0; border-radius: 6px; }
 .nge-chat-react-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+/* The Pyr gem reaction: a picture the size of the emoji beside it. */
+.nge-chat-gem { width: 1.15em; height: 1.15em; object-fit: contain; vertical-align: -0.2em; pointer-events: none; }
 .nge-chat-react {
   display: inline-flex;
   align-items: center;

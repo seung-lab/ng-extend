@@ -1784,6 +1784,34 @@ class GrapheneGraphServerInterface {
 
   private ngeNoPiecePoints = new Set<string>();
 
+  /** How thick the cell is in each piece: the distance, in NANOMETERS, from
+   *  the piece's innermost point to its surface (the server's max_dt_nm).
+   *  The soma is by far the thickest part of a cell. Empty where the
+   *  dataset keeps no such store (the Sandbox). */
+  async ngePieceThickness(ids: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    const m = this.url.match(/^(https:\/\/[^/]+)\/segmentation\/(?:api\/v1\/)?table\/([^/?#]+)/);
+    if (!m || this.ngeNoPiecePoints.has(`${m[1]}/${m[2]}`)) return out;
+    const wanted = ids.filter(id => /^\d+$/.test(id));
+    try {
+      const BATCH = 2000;
+      for (let i = 0; i < wanted.length; i += BATCH) {
+        const batch = wanted.slice(i, i + BATCH);
+        const response = await cancellableFetchSpecialOk(
+            this.credentialsProvider,
+            `${m[1]}/l2cache/api/v1/table/${m[2]}/attributes?attribute_names=max_dt_nm&int64_as_str=1`,
+            {method: 'POST', headers: {'Content-Type': 'application/json'}, body: `{"l2_ids":[${batch.join(',')}]}`},
+            responseIdentity);
+        const json = await response.json();
+        for (const id of batch) {
+          const v = Number(json?.[id]?.['max_dt_nm']);
+          if (Number.isFinite(v) && v > 0) out.set(id, v);
+        }
+      }
+    } catch { /* none: the caller guesses another way */ }
+    return out;
+  }
+
   /** The block of the volume each piece lies in, in NANOMETERS, as
    *  [x0, y0, z0, x1, y1, z1]. Read from the piece's id, so it asks the
    *  server nothing beyond the dataset's own description (asked once). */
@@ -3081,6 +3109,14 @@ export async function ngeGraphenePiecesOf(layer: SegmentationUserLayer, supervox
   };
   await Promise.all([next(), next(), next(), next(), next(), next()]);
   return out;
+}
+
+/** How thick a cell is in each of its pieces, nm (empty where the dataset
+ *  keeps no such store). Lantern's Clicked branch finds the soma with it. */
+export async function ngeGrapheneThickness(layer: SegmentationUserLayer, ids: string[]): Promise<Map<string, number>> {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) return new Map();
+  return (connection.graph.graphServer as any).ngePieceThickness(ids);
 }
 
 /** The piece of its cell that a pick landed in, or undefined. */

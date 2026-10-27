@@ -195,6 +195,7 @@ async function todoAction(action, args, {db, me, byName, tag, connectorBase = CO
 const SLACK_IDS = [
   { match: /^(amy|ames)\b|^amy/i, id: 'U02FH1DRC' },
   { match: /^celia/i, id: 'U033NHWDE' },
+  // Tagging Marissa on a card still pings her in Slack (Ames 2026-10-27).
   { match: /^(marissa|m sorek|sorek)/i, id: 'U033TSX9A' },
 ];
 function slackIdOf(person) {

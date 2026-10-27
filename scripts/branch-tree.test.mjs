@@ -132,3 +132,72 @@ test('beyond the AIS is the axon, and its ends at the edge of the data are found
   // Two tips close together are one place.
   assert.equal(edgeEnds(graph(), [[-100, -100, -100], [100, 100, 100]], 1000, 50).length, 1);
 });
+
+// Lantern's "Clicked branch": the branch a click is on, from its fork out.
+const loadLantern = () => {
+  const js = strip(fs.readFileSync(new URL('../src/util/branch_tree.ts', import.meta.url), 'utf8')).replace(/^export /gm, '');
+  return new Function(js + ';return {clickedBranch, densestPiece};')();
+};
+// A long cell, in microns (nm below): soma S with a second soma piece q, a
+// trunk S-t1-t2-F with a spine t1-s, forking at F into F-u1-u2 and F-v1-v2.
+const um = 1000;
+const L = { S: [0, 0, 0], q: [1, 1, 0], t1: [10, 0, 0], s: [10, 1, 0], t2: [20, 0, 0], F: [30, 0, 0],
+  u1: [40, 10, 0], u2: [50, 20, 0], v1: [40, -10, 0], v2: [50, -20, 0] };
+const longCell = () => ({
+  edges: [['S', 'q'], ['S', 't1'], ['t1', 's'], ['t1', 't2'], ['t2', 'F'], ['F', 'u1'], ['u1', 'u2'], ['F', 'v1'], ['v1', 'v2']],
+  points: new Map(Object.entries(L).map(([k, p]) => [k, p.map(v => v * um)])),
+});
+const nm = p => p.map(v => v * um).join();
+
+test('a click on a branch lights that branch from its fork out', { skip: typeof strip !== 'function' }, () => {
+  const { clickedBranch } = loadLantern();
+  const r = clickedBranch(longCell(), 'u2', 'S', { minSideNm: 6 * um });
+  assert.deepEqual([...r.pieces].sort(), ['u1', 'u2']);
+  assert.equal(r.fork, 'F');
+  // the light reaches back to the fork
+  assert.ok(r.segments.some(([a, b]) => a.join() === nm(L.u1) && b.join() === nm(L.F)));
+});
+
+test('a click on the trunk lights it and all beyond, not stopping at a spine', { skip: typeof strip !== 'function' }, () => {
+  const { clickedBranch } = loadLantern();
+  const r = clickedBranch(longCell(), 't2', 'S', { minSideNm: 6 * um, somaRadiusNm: 5 * um });
+  assert.deepEqual([...r.pieces].sort(), ['F', 's', 't1', 't2', 'u1', 'u2', 'v1', 'v2']);
+});
+
+test('a twig off a long branch does not cut it short, and a click on the twig gives the twig', { skip: typeof strip !== 'function' }, () => {
+  const { clickedBranch } = loadLantern();
+  // The trunk goes on past F to w1, w2, w3, longer than either fork.
+  const g = longCell();
+  g.edges = g.edges.filter(([a, b]) => !(a === 'F' && (b === 'u1' || b === 'v1')));
+  for (const [k, p] of Object.entries({ w1: [40, 0, 0], w2: [70, 0, 0], w3: [100, 0, 0], k1: [30, 8, 0] })) g.points.set(k, p.map(v => v * um));
+  g.edges.push(['F', 'w1'], ['w1', 'w2'], ['w2', 'w3'], ['F', 'k1']);
+  // k1 is an 8 um twig at F: a click far out on w3 still lights the trunk from the soma.
+  const r = clickedBranch(g, 'w3', 'S', { minSideNm: 6 * um, somaRadiusNm: 5 * um });
+  assert.ok(r.pieces.has('t1') && r.pieces.has('k1') && r.pieces.has('w3'));
+  // and a click on the twig lights the twig alone
+  assert.deepEqual([...clickedBranch(g, 'k1', 'S', { minSideNm: 6 * um, somaRadiusNm: 5 * um }).pieces], ['k1']);
+});
+
+test('a branch is never most of the cell', { skip: typeof strip !== 'function' }, () => {
+  const { clickedBranch } = loadLantern();
+  // Without a soma radius the walk from u2 goes to the soma side of F: t2 and all beyond, 8 of 10 pieces.
+  const all = clickedBranch(longCell(), 'u2', 'S', { minSideNm: 0.5 * um });
+  // With the cap at 40%, it steps back toward the click.
+  const capped = clickedBranch(longCell(), 'u2', 'S', { minSideNm: 50 * um, maxShare: 0.4 });
+  assert.ok(capped.pieces.size <= 4 && capped.pieces.has('u2'), [...capped.pieces].join());
+  assert.ok(all.pieces.has('u2'));
+});
+
+test('a click on the soma lights the soma', { skip: typeof strip !== 'function' }, () => {
+  const { clickedBranch } = loadLantern();
+  const r = clickedBranch(longCell(), 'q', 'S', { somaRadiusNm: 5 * um });
+  assert.equal(r.soma, true);
+  assert.deepEqual([...r.pieces].sort(), ['S', 'q']);
+});
+
+test('with no soma on record, the densest piece stands in for it', { skip: typeof strip !== 'function' }, () => {
+  const { densestPiece } = loadLantern();
+  const g = longCell();
+  for (let i = 0; i < 6; i++) g.points.set(`b${i}`, [Math.cos(i) * 2 * um, Math.sin(i) * 2 * um, 0]);
+  assert.ok(['S', 'q', 'b0', 'b1', 'b2', 'b3', 'b4', 'b5'].includes(densestPiece(g, 5 * um)));
+});

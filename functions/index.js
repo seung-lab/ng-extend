@@ -90,6 +90,8 @@ KEY CONTEXT you know about:
 
 **ng-extend** — Vue 3 + Pinia Chrome extension on top of neuroglancer. Repo: seung-lab/ng-extend. Amy's fork: amyleesterling/ng-extend. Active branch: eyewire-ii-community. Deploys via App Engine (service: brain-wire). Also GitHub Pages at amyleesterling.github.io/eyewire-ii/.
 
+**Pyr, snapshot 2026-10-27.** Players know the game as **Pyr**; EyeWire II survives only in internal names (branch, Firebase project, tables), so say Pyr to anyone asking about the game. Pyr is invite only since 2026-10-24: a signed-in player who is not on the Pilot testers list sees a closed beta popup and can ask to join; the request lands on the triage board and an admin lets them in. connectome.quest also has a "Request early access to Pyr" form (since 2026-10-26). **The Hunt** went live to players on 2026-10-26: a timed event where everyone searches the same cells for mergers and missing extensions, drops gems where they think the mistakes are, and earns gold, silver or bronze Hunt Achievements by how many they found; players can report a problem the Hunt missed, and an admin who confirms it awards Laser Eyes. Code: src/components/BetaGate.vue, functions/access-request.js, and the Hunt in functions (ewHunt) and src. Say "Achievement", never "badge".
+
 **Datasets** — the app is MULTI-SERVER as of 2026-09-22. Do not assume minnie.
 - stroeh_mouse_retina on minnie.microns-daf.com. ~22,686 segments. Layer name "stroeh_mouse_retina", alias "eyewire_ii". This is production.
 - pinky_sandbox, minnie65_public, minnie65_live: also minnie.
@@ -1364,8 +1366,9 @@ const BOT_FEEDBACK_CHANNEL_ID = "C0BGTNRRA75";
 const BOT_FEEDBACK_CHANNEL_NAME = "citsci_bot_feedback";
 // Hardcoded member IDs (amy, celia, marissa/sorek.m) so @-mentions resolve to
 // live pings without the users:read scope. Falls back to name lookup if empty.
-const REVIEW_MENTION_IDS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"];
-const REVIEW_MENTION_HANDLES = ["amy", "celia", "sorek.m"];
+// Marissa (sorek.m, U033TSX9A) is no longer tagged (Ames 2026-10-27).
+const REVIEW_MENTION_IDS = ["U02FH1DRC", "U033NHWDE"];
+const REVIEW_MENTION_HANDLES = ["amy", "celia"];
 const _channelIdCache = {};
 let _reviewMentionIds = null;
 
@@ -2261,11 +2264,11 @@ exports.ewReportReply = onRequest(
 // access-request.js; client in src/access_request.ts. No pilot gate: asking
 // is how a player joins. Kept out of ewSecureWrite for the reason above.
 //   firebase deploy --only functions:ewAccessRequest --project eyewire-ii-e4d52
-const EW_ACCESS_CODE_VERSION = "2026-10-26-beta-sort-1";
+const EW_ACCESS_CODE_VERSION = "2026-10-27-principles-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
-const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m (REVIEW_MENTION_IDS)
+const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m: Marissa stays tagged on access requests (Ames 2026-10-27)
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 // Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
 const ACCESS_CAVE_GROUP = 203;
@@ -2301,6 +2304,17 @@ const ACCESS_ORIGINS = [...EW_ORIGINS, /^https:\/\/(www\.)?connectome\.quest$/];
 const wakeBetaBoard = () => wakeWorkflow("slack-triage-bridge.yml", "beta request");
 // Beta requests sorted in the Admin Hub: listed or removed, by email
 // (access-request.js, access.betaMark). Firestore, so no new table.
+// Who agreed to the Eyewire II Principles, and when (access-request.js,
+// access.principlesAgree, Ames 2026-10-27). One document per account.
+const principlesStore = {
+  get: async (key) => {
+    const d = await db.collection("principles_agreements").doc(crypto.createHash("sha256").update(key).digest("hex")).get();
+    return d.exists ? d.data() : null;
+  },
+  set: async (key, v) => {
+    await db.collection("principles_agreements").doc(crypto.createHash("sha256").update(key).digest("hex")).set({ key, ...v });
+  },
+};
 const betaMarkStore = {
   all: async () => {
     const snap = await db.collection("beta_request_marks").get();
@@ -2366,7 +2380,7 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
-        wake: wakeBetaBoard, marks: betaMarkStore,
+        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore,
         // Beta access requests post like any report (Ames 2026-10-24).
         postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
