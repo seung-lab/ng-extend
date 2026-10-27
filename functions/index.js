@@ -1857,6 +1857,11 @@ exports.ewSecureWrite = onRequest(
           }
           const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat","save_link"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
+          // A Hunt being built on the Sandbox (hunt_build.js) cannot be claimed, even outside the Cell Library.
+          if (action === "pilot.task") {
+            const no = await require("./hunt_build").claimGuard(sb, args.operation, args.args || {});
+            if (no) throw ewErr(409, no);
+          }
           const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};
           out=await sb("rpc/"+(action === "pilot.task"?"pilot_task_action":"pilot_practice_action"),{method:"POST",body:JSON.stringify(payload)});
           break;
@@ -2401,7 +2406,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-27-hunt-27-ranks";
+const EW_HUNT_CODE_VERSION = "2026-10-27-hunt-28-builder";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
@@ -2418,7 +2423,7 @@ exports.ewHunt = onRequest(
       res.json({ ok: true, db: true, tables, code: EW_HUNT_CODE_VERSION });
       return;
     }
-    if (typeof action !== "string" || !action.startsWith("hunt.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    if (typeof action !== "string" || !(action.startsWith("hunt.") || action.startsWith("build."))) { res.status(400).json({ error: `unknown action ${action}` }); return; }
     const who = await ewVerify(token);
     if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
     if (!(await rateLimit({ ip: who.email }, true, "write:secure")).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
@@ -2432,17 +2437,26 @@ exports.ewHunt = onRequest(
       // never reaches the players' bells or chat (Ames 2026-10-21: "we want to be testing on the test site").
       const liveSite = origin === EW_LIVE_SITE || /^https:\/\/princeton-tracers-dot-brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/.test(origin);
       const hunts = require("./hunts");
+      const notify = async (rows) => {
+        const out = rows.map((r) => ({ title: String(r.title).slice(0, 120), body: String(r.body).slice(0, 1500), target_type: "user",
+          target_id: r.user_id, send_at: new Date().toISOString(), ...(r.image ? { image_url: r.image, thumbnail_url: r.image } : {}),
+          created_by: (me && me.id) || null }));
+        if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
+      };
+      // The Hunt Builder (players help build a Hunt on the Sandbox): hunt_build.js, tested in hunt_build.test.js.
+      if (action.startsWith("build.")) {
+        const build = require("./hunt_build");
+        res.json({ ok: true, data: await build.buildAction(action, args, { db: build.restDb(sb), me, isAdmin, now: new Date(), notify }) });
+        return;
+      }
       const data = await hunts.huntAction(action, args, {
         db: hunts.restDb(sb), me, isAdmin, now: new Date(), site, testSite: !liveSite,
         // Launched (Ames 2026-10-26, "Hunt to live, open to players"): a Hunt reaches every
         // player unless it is set admins only (every Hunt saved from a test site is).
         huntPublic: true,
-        notify: async (rows) => {
-          const out = rows.map((r) => ({ title: String(r.title).slice(0, 120), body: String(r.body).slice(0, 1500), target_type: "user",
-            target_id: r.user_id, send_at: new Date().toISOString(), ...(r.image ? { image_url: r.image, thumbnail_url: r.image } : {}),
-            created_by: (me && me.id) || null }));
-          if (out.length) await sb("notifications", { method: "POST", body: JSON.stringify(out) });
-        },
+        notify,
+        // Helpers whose suggestions were planted in this Hunt (the maker Achievement at the end).
+        makers: async (huntId) => { try { return await require("./hunt_build").makersOf(require("./hunt_build").restDb(sb), huntId); } catch (e) { return []; } },
         // The chat line an award gets anyway (chat.achievement), one per player.
         chatAward: async (userId, badge) => {
           const line = specialAwardRow(badge);
@@ -2458,6 +2472,12 @@ exports.ewHunt = onRequest(
     } catch (e) {
       // Until supabase-hunts.sql is run the tables are missing: say so plainly.
       if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "hunt.current") { res.json({ ok: true, data: { now: new Date().toISOString(), hunts: [], installed: false } }); return; }
+      if (!e.status && /supabase 404/.test(String(e && e.message)) && action.startsWith("build.")) {
+        // Before supabase-hunt-build.sql is run: the guard has nothing to guard, the rest says so.
+        if (action === "build.guard") { res.json({ ok: true, data: { cells: [], installed: false } }); return; }
+        if (action === "build.mine") { res.json({ ok: true, data: { cells: [], installed: false } }); return; }
+        res.status(503).json({ error: "The Hunt Builder is not set up yet: run supabase-hunt-build.sql in Supabase." }); return;
+      }
       if (!e.status && /supabase 404/.test(String(e && e.message))) { res.status(503).json({ error: "The Hunt is not set up yet: its tables are not in the database." }); return; }
       console.warn("[ewHunt]", action, who.email, e.message);
       res.status(e.status || 500).json({ error: e.status ? e.message : "That did not go through. Please try again." });

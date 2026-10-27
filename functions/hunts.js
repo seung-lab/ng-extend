@@ -635,6 +635,7 @@ const LINES = {
   silver: 'Scientists praise you, werewolves fear you!',
   bronze: 'Splitting + merging = one strong alloy!',
   laser: 'Nothing gets past those eyes, not even the answer key.',
+  maker: 'Every great Hunt needs something to hunt.',
 };
 /** A medal's line: one of its lines, the same for every winner of one Hunt. */
 function lineFor(tier, h) {
@@ -765,7 +766,7 @@ function cleanFields(f) {
     const a = f.art || {};
     const https = (v) => typeof v === 'string' && /^https:\/\/\S{4,800}$/.test(v);
     out.art = {};
-    for (const t of [...TIERS, 'fastest']) {
+    for (const t of [...TIERS, 'fastest', 'maker']) {
       const v = a[t];
       if (https(v)) out.art[t] = { image_url: v, thumbnail_url: v };
       else if (v && typeof v === 'object' && posInt(v.badge_id)) out.art[t] = { badge_id: posInt(v.badge_id) };
@@ -1392,7 +1393,10 @@ async function finalize(h, ctx, { force = false } = {}) {
     const sh = keyNow[i] && keyNow[i][4];
     if (sh && sh.added) laser += (await awardLaserEyes(row, i, ctx, Array.isArray(sh.credit) ? sh.credit : [])).length;
   }
-  if (!winners.length) return { awarded: 0, laser, ...counts };
+  // The helpers whose suggestions were planted in this Hunt (hunt_build.js): one Achievement each, given now so
+  // nothing leaks early (Ames 2026-10-27: a special Achievement per Hunt; she makes it and picks it in the editor).
+  const maker = ctx.makers ? await awardMakers(row, ctx) : 0;
+  if (!winners.length) return { awarded: 0, laser, maker, ...counts };
   const badges = {};
   for (const tier of [...TIERS, 'fastest']) {
     if (!winners.some((w) => w.tier === tier)) continue;
@@ -1413,7 +1417,37 @@ async function finalize(h, ctx, { force = false } = {}) {
       image: badges[w.tier].image_url })));
   }
   // Chat hears the results once, in the results post (postResults), not a line per winner.
-  return { awarded: winners.length, fresh: fresh.length, laser, ...counts };
+  return { awarded: winners.length, fresh: fresh.length, laser, maker, ...counts };
+}
+
+/** The helpers' Achievement for this Hunt: the special Achievement picked in the editor (art.maker), else the Hunt's own. */
+function makerBadgeRow(h, site) {
+  const a = h.art && h.art.maker;
+  const own = a && typeof a === 'object' && typeof a.image_url === 'string' && /^https:\/\//.test(a.image_url) ? a : null;
+  return {
+    slug: `hunt-${h.id}-maker`,
+    name: `${h.title}: Hunt Maker`.slice(0, 80),
+    description: `Helped build ${h.title}: a suggestion of yours was planted in it. ${LINES.maker}`.slice(0, 300),
+    image_url: own ? own.image_url : `${site}/hunt/gold.png`, thumbnail_url: own ? (own.thumbnail_url || own.image_url) : `${site}/hunt/gold-128.png`,
+    created_by: h.created_by || null,
+  };
+}
+async function awardMakers(h, ctx) {
+  const { db, notify } = ctx;
+  if (!db.upsertBadge || !db.award) return 0;
+  const makers = await ctx.makers(h.id);
+  if (!makers.length) return 0;
+  const id = chosenBadge(h, 'maker');
+  const badge = (id && db.badgeById ? await db.badgeById(id) : null) || await db.upsertBadge(makerBadgeRow(h, ctx.site || ''));
+  const had = new Set(db.badgeHolders ? (await db.badgeHolders(badge.id)).map((r) => r.user_id) : []);
+  const fresh = makers.filter((u) => !had.has(u));
+  if (!fresh.length) return 0;
+  await db.award(fresh.map((u) => ({ badge_id: badge.id, user_id: u, awarded_by: h.created_by || null, reason: `Helped build ${h.title}` })));
+  if (notify) {
+    await notify(fresh.map((u) => ({ user_id: u, title: `New Achievement: ${badge.name}`,
+      body: `You earned the "${badge.name}" Achievement! Thanks for helping build ${h.title}.`, image: badge.image_url })));
+  }
+  return fresh.length;
 }
 
 /** Laser Eyes for this Hunt (Ames 2026-10-26): a problem the answer key missed, found. Ames's mask. */
@@ -1856,5 +1890,5 @@ module.exports = {
   huntAction, restDb, speedWinner, clockWords, runClock, layerPoints, layerPointsNm, keyTargets, judgeDrop, replay, gemLimits, runView, startView, startGapUm, kindCounts, spotWords, prizesFor, score, match, testDetail, thresholds, tierFor, maxPoints, phase, visible, inWords,
   publicHunt, leaderboard, notificationRows, badgeRow, stripView, cleanFields, cleanCells, finalize,
   syncNotifications, TITLE_PREFIX, TIERS, DEFAULT_TOLERANCE_NM, resultsHours,
-  keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM, placeDist, layerPlaces,
+  keyEdges, cleanBounds, splitKey, joinKey, atEdge, EDGE_NM, placeDist, layerPlaces, makerBadgeRow,
 };
