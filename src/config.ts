@@ -37,7 +37,7 @@ const MEC_HOWTO: string[] = [
   `Pyr places <b>Hits Edge</b> marks on its own wherever the cell reaches the end of the imaged data, once the cell has loaded in 3D (<b>Find ends at the edge</b> in Marks looks again). Check each one, and delete any that is not a branch end.`,
   `Want a layer of your own, for notes or spots to come back to? Ctrl+click (or right click) the <b>+</b> beside the layer tabs, and give it a name.`,
   `<b>Reminder: do NOT merge mitochondria.</b>`,
-  `When the axon is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID, and choose <b>Axon complete</b>. It counts as your completed cell and is recorded in the spreadsheet, with how many of each mark you placed.`,
+  `When the axon is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID, and choose <b>Axon complete</b> (or <b>Complete</b> if you proofread the whole cell). It counts as your completed cell and is recorded in the spreadsheet, with how many of each mark you placed.`,
 ];
 
 export interface DatasetCaveConfig {

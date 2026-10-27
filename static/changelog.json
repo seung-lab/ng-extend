@@ -2,11 +2,11 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-27T15:51:00Z",
+      "at": "2026-10-27T15:55:00Z",
       "title": "MEC: proofread the axon only",
       "items": [
         "On MEC, proofread just the axon now, from the AIS to every one of its ends, and ignore missed spines.",
-        "When the axon is done, Complete the cell and choose Axon complete: it counts as your completed cell and goes into the lab's sheet."
+        "When the axon is done, Complete the cell and choose Axon complete: it counts as your completed cell and goes into the lab's sheet. Proofread the whole cell? Choose Complete instead."
       ]
     },
     {

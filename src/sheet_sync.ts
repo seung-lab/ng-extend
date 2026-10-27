@@ -17,6 +17,8 @@ export const COMPLETE_STATUSES: Record<string, { value: string; hint: string }[]
   // axon proofread in MEC without having to proofread the whole thing").
   pni_mec: [
     { value: 'Axon complete', hint: 'The axon is proofread, to every end. Counts as your completed cell; the cell is not marked proofread' },
+    // The whole cell, for a player who wants to (Ames 2026-10-27).
+    { value: 'Complete', hint: 'The whole cell is proofread, axon and dendrites. It is marked proofread' },
   ],
 };
 /** An MEC cell whose axon is proofread: counts as the player's completed cell
