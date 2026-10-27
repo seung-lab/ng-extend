@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T18:12:00Z",
+      "title": "Bigger Achievements, and small fixes in chat and Highlight",
+      "items": [
+        "Your Trophy Case shows Achievements bigger. Point at one to see its name.",
+        "In a narrow chat, the emoji and reaction pickers now stay on the screen.",
+        "In Highlight, after your first mark the box tells you the next step: click another spot to highlight between."
+      ]
+    },
+    {
       "at": "2026-10-27T17:29:00Z",
       "title": "MEC: the AIS is ready to confirm",
       "items": [
