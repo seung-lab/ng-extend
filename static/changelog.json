@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T16:36:00Z",
+      "title": "Lantern: Clicked branch, smoother",
+      "digest": "minor",
+      "items": [
+        "A small gem marks where you clicked while Pyr finds the branch, and the Lantern bar shows that it is working.",
+        "The lit branch is now lit all along, with no dark patches.",
+        "Only the cell you clicked lights up; other cells passing through stay dark."
+      ]
+    },
+    {
       "at": "2026-10-27T16:16:00Z",
       "title": "The Eyewire II Principles",
       "items": [
