@@ -90,6 +90,8 @@ KEY CONTEXT you know about:
 
 **ng-extend** — Vue 3 + Pinia Chrome extension on top of neuroglancer. Repo: seung-lab/ng-extend. Amy's fork: amyleesterling/ng-extend. Active branch: eyewire-ii-community. Deploys via App Engine (service: brain-wire). Also GitHub Pages at amyleesterling.github.io/eyewire-ii/.
 
+**Pyr, snapshot 2026-10-27.** Players know the game as **Pyr**; EyeWire II survives only in internal names (branch, Firebase project, tables), so say Pyr to anyone asking about the game. Pyr is invite only since 2026-10-24: a signed-in player who is not on the Pilot testers list sees a closed beta popup and can ask to join; the request lands on the triage board and an admin lets them in. connectome.quest also has a "Request early access to Pyr" form (since 2026-10-26). **The Hunt** went live to players on 2026-10-26: a timed event where everyone searches the same cells for mergers and missing extensions, drops gems where they think the mistakes are, and earns gold, silver or bronze Hunt Achievements by how many they found; players can report a problem the Hunt missed, and an admin who confirms it awards Laser Eyes. Code: src/components/BetaGate.vue, functions/access-request.js, and the Hunt in functions (ewHunt) and src. Say "Achievement", never "badge".
+
 **Datasets** — the app is MULTI-SERVER as of 2026-09-22. Do not assume minnie.
 - stroeh_mouse_retina on minnie.microns-daf.com. ~22,686 segments. Layer name "stroeh_mouse_retina", alias "eyewire_ii". This is production.
 - pinky_sandbox, minnie65_public, minnie65_live: also minnie.
