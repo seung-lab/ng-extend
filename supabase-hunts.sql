@@ -102,3 +102,9 @@ create index if not exists hunt_reports_hunt_idx on hunt_reports (hunt_id, statu
 alter table hunt_reports enable row level security;
 
 commit;
+
+-- An admin's note on a report, and who dealt with it and when (Ames 2026-10-27: "it labels who added them",
+-- "make it so we can dismiss or add a note"). Safe to run again.
+alter table hunt_reports add column if not exists admin_note text;
+alter table hunt_reports add column if not exists done_by uuid references users (id) on delete set null;
+alter table hunt_reports add column if not exists done_at timestamptz;

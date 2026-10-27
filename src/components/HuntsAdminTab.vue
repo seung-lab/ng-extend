@@ -494,12 +494,18 @@ async function showRun(b: BoardRow) {
 }
 function goToGem(d: RunGem) { if (d.at) goToSoma(d.at.slice(0, 3)); }
 
-// Gems hunters say are on a real problem the answers missed (Ames 2026-10-26): check each, then Count it or Not real.
+// Gems hunters say are on a real problem the answers missed (Ames 2026-10-26): check each, then Count it or Dismiss.
+// The oldest first, and Go through them opens the reports queue on the view (HuntReportCard; Ames 2026-10-27).
 const reports = ref<Report[]>([]);
 async function loadReports(h: AdminHunt) {
   reports.value = [];
   if (!h?.id || (h as any).status !== 'scheduled') return;
   try { reports.value = (await huntCall<{ reports: Report[] }>('hunt.reports', { id: h.id })).reports || []; } catch { /* the list is a help */ }
+}
+/** The reports queue on the view (HuntReportCard), the oldest open one first; the Admin Hub steps aside. */
+function goThroughReports() {
+  const h = editing.value; if (!h?.id) return;
+  document.dispatchEvent(new CustomEvent('nge:hunt-report', { detail: { hunt: h.id } }));
 }
 async function countReport(r: Report) {
   await countIt({ user_id: r.user_id } as BoardRow, { id: r.drop_id || '', at: r.at, hit: false, k: r.k });
@@ -521,7 +527,7 @@ async function dismissReport(r: Report) {
   busy.value = 'dismiss'; error.value = ''; message.value = '';
   try {
     reports.value = (await huntCall<{ reports: Report[] }>('hunt.dismiss_report', r.report_id ? { id: h.id, report_id: r.report_id } : { id: h.id, user_id: r.user_id, drop_id: r.drop_id })).reports || [];
-    message.value = `Not counted: ${r.name}'s report is off the list, and their Hunt box says it was checked.`;
+    message.value = `Dismissed: ${r.name}'s report is off the list.`;
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -633,16 +639,17 @@ async function duplicate() {
       <!-- Reported by hunters (Ames 2026-10-26): at the top, so a report during a Hunt is seen at once -->
       <fieldset v-if="reports.length" class="nge-hunts-group nge-hunts-reports" :disabled="!!busy">
         <legend>Reported by hunters ({{ reports.length }})</legend>
-        <p class="nge-hunts-help">Hunters say these are real problems the answers missed. Go there and look: <b>Add to the key</b> (or <b>Count it</b>, for a gem) puts it in the key, judges everyone again and gives Laser Eyes; <b>Not real</b> takes it off this list.</p>
+        <p class="nge-hunts-help">Hunters say these are real problems the answers missed, the oldest first. <b>Go through them</b> opens them one by one on the view, with the answers drawn in, a note for each, and who sent each spot first. Or here: <b>Add to the answers</b> (or <b>Count it</b>, for a gem) puts it in the key, judges everyone again and gives Laser Eyes; <b>Dismiss</b> takes it off this list.</p>
+        <button v-if="reports.some((r) => r.report_id)" class="nge-hunts-btn nge-hunts-btn--primary" @click="goThroughReports">Go through them, oldest first</button>
         <ul class="nge-hunts-gems">
           <li v-for="r in reports" :key="r.report_id ? `r${r.report_id}` : r.user_id + r.drop_id" class="nge-hunts-gem--miss">
             <span><b>{{ r.name }}</b>: {{ r.k === 'merge' ? 'missing extension' : 'merger' }}{{ r.report_id ? '' : ' (their gem)' }}</span>
             <span class="nge-hunts-muted">{{ (r.at || []).slice(0, 3).map((v) => Math.round(v)).join(', ') }}</span>
             <span v-if="r.note" class="nge-hunts-report-note">"{{ r.note }}"</span>
             <button class="nge-hunts-btn nge-hunts-btn--small" :disabled="!r.at" title="Move the view there" @click.stop="goToGem({ id: r.drop_id || '', at: r.at, hit: false, k: r.k })">Go there</button>
-            <button v-if="r.report_id" class="nge-hunts-btn nge-hunts-btn--small" title="A real problem the answers missed: add it to the key, judge everyone again, Laser Eyes for whoever sent it" @click.stop="addFromReport(r)">Add to the key</button>
+            <button v-if="r.report_id" class="nge-hunts-btn nge-hunts-btn--small" title="A real problem the answers missed: add it to the key, judge everyone again, Laser Eyes for whoever sent it" @click.stop="addFromReport(r)">Add to the answers</button>
             <button v-else class="nge-hunts-btn nge-hunts-btn--small" title="A real error the answers missed: add it to the key, judge everyone again, Laser Eyes" @click.stop="countReport(r)">Count it</button>
-            <button class="nge-hunts-btn nge-hunts-btn--small" title="Not a problem the answers missed: off the list" @click.stop="dismissReport(r)">Not real</button>
+            <button class="nge-hunts-btn nge-hunts-btn--small" title="Not a problem the answers missed: off the list" @click.stop="dismissReport(r)">Dismiss</button>
           </li>
         </ul>
       </fieldset>

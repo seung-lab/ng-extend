@@ -469,7 +469,8 @@ export function reportedOf(h: HuntInfo | null, id: string): 'sent' | 'no' | null
   return huntState.reported[id] ?? null;
 }
 
-/** A report's spot, marked while an admin looks at it (HuntReportCard): one teal ring, through the cells. */
+/** A report's spot, marked while an admin looks at it (HuntReportCard): one teal dot, through the cells, the size of a gem
+ *  (Ames 2026-10-27: "this annotation is too big"). */
 const REPORT_LAYER = 'Hunt report (only you see it)';
 export function showReportMarker(at: number[]) {
   const v = viewer();
@@ -482,8 +483,57 @@ export function showReportMarker(at: number[]) {
   const p = here.slice(); ix.forEach((i, k) => { p[i] = at[k]; });
   v.layerSpecification.add(makeLayer(v.layerSpecification, REPORT_LAYER, {
     type: 'annotation', source: { url: 'local://annotations' }, annotations: [{ type: 'point', id: 'report', point: p }],
-    annotationColor: EDGE.color, pointSize: 7, onTop: true,
+    annotationColor: EDGE.color, pointSize: 3, onTop: true,
   }));
+}
+
+/** A place in the answers, as the reports queue has it (functions/hunts.js reportQueue). */
+export interface KeyPlace { n: number; kind: GemKind; nm: number[]; shape?: { r?: number[]; a?: number[]; b?: number[]; lo?: number[]; hi?: number[]; pts?: number[][] }; added?: boolean; credit?: string[] }
+const PLACES_LAYER = 'Hunt answers (admins only)';
+const ADDED_COLOR = '#48d682';   // green: added from a hunter's report
+/**
+ * The Hunt's answers while an admin goes through the reports (Ames 2026-10-27: "I also need to be able to see the
+ * current Hunt points in this view"): each place as the key has it (a point, ball, line, box or cut off piece),
+ * mergers gold, extensions purple, the ones added from reports green; each labelled with its number and, for an
+ * added one, whose report it came from.
+ */
+export function showKeyPlaces(places: KeyPlace[]) {
+  const v = viewer();
+  const cs = v?.coordinateSpace?.value;
+  const names: string[] = cs?.names ?? [], scales = cs?.scales;
+  const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
+  if (!v?.layerSpecification || !scales || ix.some(i => i < 0)) return;
+  hideKeyPlaces();
+  if (!places.length) return;
+  const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
+  const toGlobal = (e: number[]) => { const p = here.slice(); ix.forEach((i, k) => { p[i] = Number(e[k]) / (Number(scales[i]) * 1e9); }); return p; };
+  const toSize = (r: number[]) => names.map((_, i) => { const k = ix.indexOf(i); return k < 0 ? 0 : Number(r[k]) / (Number(scales[i]) * 1e9); });
+  const anns: any[] = [];
+  const ids: Record<'cut' | 'merge' | 'added', string[]> = { cut: [], merge: [], added: [] };
+  for (const p of places) {
+    const id = `place-${p.n}`, s = p.shape || {};
+    const description = `#${p.n} ${p.kind === 'merge' ? 'missing extension' : 'merger'}${p.added ? `, added from ${p.credit?.length ? `${p.credit.join(', ')}'s report` : 'a report'}` : ''}`;
+    const mine: any[] = Array.isArray(s.r) ? [{ type: 'ellipsoid', id, center: toGlobal(p.nm), radii: toSize(s.r), description }]
+      : Array.isArray(s.a) && Array.isArray(s.b) ? [{ type: 'line', id, pointA: toGlobal(s.a), pointB: toGlobal(s.b), description }]
+      : Array.isArray(s.lo) && Array.isArray(s.hi) ? [{ type: 'axis_aligned_bounding_box', id, pointA: toGlobal(s.lo), pointB: toGlobal(s.hi), description }]
+      : [{ type: 'point', id, point: toGlobal(p.nm), description }];
+    if (Array.isArray(s.pts)) s.pts.forEach((q, k) => mine.push({ type: 'point', id: `${id}-${k}`, point: toGlobal(q), description }));
+    anns.push(...mine);
+    ids[p.added ? 'added' : p.kind === 'merge' ? 'merge' : 'cut'].push(...mine.map(a => a.id));
+  }
+  const folders = [
+    { id: 'places-cut', name: 'Mergers', ids: ids.cut, color: FOUND_COLOR.cut, paint: true },
+    { id: 'places-merge', name: 'Extensions', ids: ids.merge, color: FOUND_COLOR.merge, paint: true },
+    { id: 'places-added', name: 'Added from reports', ids: ids.added, color: ADDED_COLOR, paint: true },
+  ].filter(f => f.ids.length);
+  v.layerSpecification.add(makeLayer(v.layerSpecification, PLACES_LAYER, {
+    type: 'annotation', source: { url: 'local://annotations' }, annotations: anns,
+    annotationColor: FOUND_COLOR.cut, pointSize: 3, onTop: true, ngeAnnFolders: folders,
+  }));
+}
+export function hideKeyPlaces() {
+  const ml = managed(PLACES_LAYER);
+  if (ml) { try { viewer()?.layerManager?.removeManagedLayer(ml); } catch { /* already gone */ } }
 }
 export function hideReportMarker() {
   const ml = managed(REPORT_LAYER);

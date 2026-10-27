@@ -827,6 +827,8 @@ async function huntAction(action, args, ctx) {
     case 'hunt.report': return reportGem(args, ctx);
     case 'hunt.report_place': return reportPlace(args, ctx);
     case 'hunt.report_get': needAdmin(); return reportGet(args, ctx);
+    case 'hunt.report_queue': needAdmin(); return reportQueue(args, ctx);
+    case 'hunt.report_note': needAdmin(); return reportNote(args, ctx);
     case 'hunt.reports': needAdmin(); return reportsAction(args, ctx);
     case 'hunt.dismiss_report': needAdmin(); return dismissReport(args, ctx);
     case 'hunt.add_place': needAdmin(); return addPlaceAction(args, ctx);
@@ -1029,8 +1031,86 @@ async function addPlaceAction(args, ctx) {
   const rep = args.report_id && ctx.db.report ? await ctx.db.report(posInt(args.report_id)) : null;
   if (args.report_id && (!rep || rep.hunt_id !== h.id)) fail(404, 'No such report in this Hunt.');
   const out = await addPlace(h, nm, args.kind, ctx, radius, rep ? [rep.user_id] : []);
-  if (rep) await ctx.db.patchReport(rep.id, { status: 'counted' });
+  if (rep) await settleReport(h, rep, 'counted', { ...args, enlarged: !!out.enlarged }, ctx);
   return out;
+}
+
+/**
+ * A report dealt with: what became of it, which admin did it and when, and their note (Ames 2026-10-27: "it labels
+ * who added them", "make it so we can dismiss or add a note"). With tell, the hunter hears it in the bell.
+ */
+async function settleReport(h, rep, status, args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const note = typeof (args && args.note) === 'string' ? args.note.trim().slice(0, 300) : '';
+  const row = { ...(status ? { status } : {}), ...(note ? { admin_note: note } : {}), ...(status ? { done_by: me.id, done_at: now.toISOString() } : {}) };
+  if (Object.keys(row).length) await db.patchReport(rep.id, row);
+  // Added: the hunter always hears it (Ames 2026-10-27: "the players should get a notif if their hunt addition was
+  // added"). A dismissal or a note goes to them only with tell, and the admin's note only then.
+  const tell = !!(args && args.tell);
+  if ((tell || status === 'counted') && ctx.notify) {
+    const what = rep.kind === 'merge' ? 'missing extension' : 'merger';
+    const at = Array.isArray(rep.at) && rep.at.length === 3 ? ` at ${rep.at.join(', ')}` : '';
+    const outcome = status === 'counted' && args.enlarged ? 'The answers had it, and its place there is bigger now, so a gem on it counts. Thank you!'
+      : status === 'counted' ? 'It is in the answers now. Thank you!' : status === 'not_real' ? 'It is not one this Hunt counts, but thank you for sending it.' : '';
+    const said = note && tell ? `${outcome ? '\n\n' : ''}A note from the admins: "${note}"` : '';
+    if (outcome || said) {
+      await ctx.notify([{ user_id: rep.user_id, title: `🔎 Your Hunt report: ${h.title}`.slice(0, 120),
+        body: `An admin looked at the ${what} you sent${at}. ${outcome}${said}` }]);
+    }
+  }
+}
+
+/** A note on a report without settling it (or after): kept with it for the admins, and sent to the hunter with tell. */
+async function reportNote(args, ctx) {
+  const { db } = ctx;
+  const rep = db.report ? await db.report(posInt(args && args.report_id)) : null;
+  if (!rep) fail(404, 'That report is not there any more.');
+  const note = typeof args.note === 'string' ? args.note.trim() : '';
+  if (!note) fail(400, 'Write the note first.');
+  const h = await getHunt(db, rep.hunt_id);
+  await settleReport(h, rep, null, args, ctx);
+  return reportQueue({ id: h.id }, ctx);
+}
+
+/**
+ * Every report in a Hunt, the oldest first, for the admins' queue (Ames 2026-10-27: "click on one and it loads them
+ * oldest to newest ... so that I can credit the first person to submit"). Each says what became of it and who
+ * dealt with it, the first report at the same spot if this one is not, and the place in the answers it falls in;
+ * with the answers themselves, to draw in the view ("I also need to be able to see the current Hunt points").
+ */
+async function reportQueue(args, ctx) {
+  const { db } = ctx;
+  let huntId = args && args.id;
+  if (args && args.report_id) {
+    const rep = db.report ? await db.report(posInt(args.report_id)) : null;
+    if (!rep) fail(404, 'That report is not there any more.');
+    huntId = rep.hunt_id;
+  }
+  const h = await getHunt(db, huntId);
+  const rows = (db.reportsFor ? await db.reportsFor(h.id) : []).filter((r) => Array.isArray(r.nm) && r.nm.length === 3)
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id - b.id);
+  const targets = await db.key(h.id);
+  const tol = tolOf(h);
+  const ids = new Set();
+  for (const r of rows) { ids.add(r.user_id); if (r.done_by) ids.add(r.done_by); }
+  for (const t of targets) for (const u of (t[4] && Array.isArray(t[4].credit) ? t[4].credit : [])) ids.add(u);
+  const names = ids.size ? (await db.names([...ids])) || {} : {};
+  const nameOf = (u) => names[u] || 'Player';
+  const creditOf = (t) => (t && t[4] && Array.isArray(t[4].credit) ? t[4].credit.map(nameOf) : []);
+  const reports = rows.map((r, i) => {
+    const first = rows.slice(0, i).find((o) => o.kind === r.kind && placeDist([...o.nm, o.kind], r.nm) <= tol);
+    const n = targets.findIndex((t) => placeDist(t, r.nm) <= tol);
+    const t = n >= 0 ? targets[n] : null;
+    return { id: r.id, user_id: r.user_id, name: nameOf(r.user_id), kind: r.kind, nm: r.nm, at: r.at || null, note: r.note || '', status: r.status, t: r.created_at,
+      admin_note: r.admin_note || '', done_by: r.done_by ? nameOf(r.done_by) : '', done_at: r.done_at || null,
+      first: first ? { id: first.id, name: nameOf(first.user_id), status: first.status } : null,
+      in_key: t ? { n: n + 1, kind: kindOf(t), added: !!(t[4] && t[4].added), credit: creditOf(t) } : null };
+  });
+  const places = targets.map((t, i) => {
+    const { added, credit, ...shape } = t[4] || {};
+    return { n: i + 1, kind: kindOf(t), nm: [t[0], t[1], t[2]], ...(Object.keys(shape).length ? { shape } : {}), added: !!added, credit: creditOf(t) };
+  });
+  return { hunt: { id: h.id, title: h.title, dataset: h.dataset, phase: phase(h, ctx.now || new Date()), tolerance_nm: tol }, reports, places };
 }
 
 /**
@@ -1089,7 +1169,7 @@ async function reportPlace(args, ctx) {
     const what = args.kind === 'merge' ? 'missing extension' : 'merger';
     if (admins.length) {
       await ctx.notify(admins.map((u) => ({ user_id: u, title: `🔎 Hunt report: ${h.title}`.slice(0, 120),
-        body: `${name} found a ${what} the answers missed${at && at.length === 3 ? `, at ${at.join(', ')}` : ''}${note ? `: "${note}"` : ''}.\n\n[Go there](#nge-hunt-report=${row && row.id}) to look, then add it to the answers or mark it not real.` })));
+        body: `${name} found a ${what} the answers missed${at && at.length === 3 ? `, at ${at.join(', ')}` : ''}${note ? `: "${note}"` : ''}.\n\n[Go there](#nge-hunt-report=${row && row.id}) to look, then add it to the answers or dismiss it.` })));
     }
   }
   return { reported: true, id: row && row.id, open: mine.filter((r) => r.status === 'open').length + 1 };
@@ -1106,7 +1186,7 @@ async function reportGet(args, ctx) {
     status: rep.status, name, phase: phase(h, ctx.now || new Date()) };
 }
 
-/** Every open report in a Hunt, for the editor (the newest first): places sent by coordinates, and gems said to be real. */
+/** Every open report in a Hunt, for the editor, the oldest first (Ames 2026-10-27): places sent by coordinates, and gems said to be real. */
 async function reportsAction(args, ctx) {
   const { db } = ctx;
   const h = await getHunt(db, args && args.id);
@@ -1122,7 +1202,7 @@ async function reportsAction(args, ctx) {
     }
   }
   const names = out.length ? await db.names([...new Set(out.map((x) => x.user_id))]) : {};
-  return { reports: out.map((x) => ({ ...x, name: names[x.user_id] || 'Player' })).sort((a, b) => String(b.t).localeCompare(String(a.t))) };
+  return { reports: out.map((x) => ({ ...x, name: names[x.user_id] || 'Player' })).sort((a, b) => String(a.t).localeCompare(String(b.t))) };
 }
 
 /** Not a problem after all: off the Reported list; the hunter's box says it was checked. */
@@ -1132,7 +1212,7 @@ async function dismissReport(args, ctx) {
   if (args && args.report_id) {
     const rep = db.report ? await db.report(posInt(args.report_id)) : null;
     if (!rep || rep.hunt_id !== h.id) fail(404, 'No such report in this Hunt.');
-    await db.patchReport(rep.id, { status: 'not_real' });
+    await settleReport(h, rep, 'not_real', args, ctx);
     return reportsAction({ id: h.id }, ctx);
   }
   const run = await db.myRun(h.id, String((args && args.user_id) || ''));
@@ -1160,7 +1240,10 @@ async function addPlace(h, nm, kind, ctx, radius = 0, credit = []) {
   const shapeOf = (extra) => { const sh = { ...(radius > 0 ? { r: [radius, radius, radius] } : {}), ...extra }; return Object.keys(sh).length ? sh : null; };
   const make = (extra) => { const sh = shapeOf(extra); return sh ? [nm[0], nm[1], nm[2], k, sh] : [nm[0], nm[1], nm[2], k]; };
   if (radius > 0) {
-    const same = targets.findIndex((t) => kindOf(t) === k && placeDist(t, nm) <= tol);
+    // The nearest place of that kind within the tolerance, or within the new ball itself (Ames 2026-10-27: "I think
+    // this is marked but I just need to make a larger marked area").
+    let same = -1, best = Math.max(tol, radius);
+    targets.forEach((t, i) => { const d = kindOf(t) === k ? placeDist(t, nm) : Infinity; if (d <= best) { best = d; same = i; } });
     if (same >= 0) {
       // Bigger: it keeps whether it was added during the Hunt, and who reported it. A place that is a whole cut off
       // piece (a cloud, from a proofread cell) keeps its points instead, and the spot joins them.
@@ -1179,7 +1262,8 @@ async function addPlace(h, nm, kind, ctx, radius = 0, credit = []) {
   }
   if (targets.length >= MAX_TARGETS) fail(400, `At most ${MAX_TARGETS} places per Hunt.`);
   if (targets.some((t) => placeDist(t, nm) <= tol / 4)) fail(409, 'The key already has a place there. Give it a size to make that place bigger.');
-  const place = make(live ? { added: true, ...(credit.length ? { credit: [...new Set(credit)] } : {}) } : {});
+  // From a report after the end too, so the queue shows whose report it came from (Laser Eyes is given at once then).
+  const place = make(live || credit.length ? { added: true, ...(credit.length ? { credit: [...new Set(credit)] } : {}) } : {});
   const next = [...targets, place];
   await db.setKey(h.id, next);
   const row = await db.patchHunt(h.id, { target_count: next.length, updated_at: (ctx.now || new Date()).toISOString() });
@@ -1726,7 +1810,16 @@ function restDb(sb) {
     insertReport: (row) => reportsTable(() => one(sb('hunt_reports', { method: 'POST', body: JSON.stringify(row) }))),
     reportsFor: (huntId, userId) => reportsTable(() => sb(`hunt_reports?hunt_id=eq.${posInt(huntId)}${userId ? `&user_id=eq.${enc(userId)}` : ''}&select=*&order=created_at.desc&limit=500`), []),
     report: (id) => reportsTable(() => one(sb(`hunt_reports?id=eq.${posInt(id)}&select=*&limit=1`))),
-    patchReport: (id, row) => reportsTable(() => sb(`hunt_reports?id=eq.${posInt(id)}`, { method: 'PATCH', body: JSON.stringify(row) })),
+    patchReport: (id, row) => reportsTable(async () => {
+      const patch = (r) => sb(`hunt_reports?id=eq.${posInt(id)}`, { method: 'PATCH', body: JSON.stringify(r) });
+      try { return await patch(row); }
+      catch (e) {
+        // Before the step that adds admin_note, done_by and done_at (supabase-hunts.sql): the status alone.
+        if (!/PGRST204|admin_note|done_by|done_at/.test(String(e && e.message))) throw e;
+        if (!row.status) fail(503, 'Notes on reports need one step an admin runs first (supabase-hunts.sql).');
+        return patch({ status: row.status });
+      }
+    }),
   };
 }
 

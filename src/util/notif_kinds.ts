@@ -7,9 +7,11 @@
  *   answer to a reply an admin asked for (functions/report-reply.js).
  * - triage: the triage loop's alerts about reports (Ames 2026-10-06: "they are
  *   clogging up my feed"), and an admin tagging you on a report.
+ * - hunt: hunters' reports of a problem a Hunt's answers missed (Ames
+ *   2026-10-27: "a special category of hunt submission notifications").
  * - main: everything else.
  */
-export type NotifKind = 'main' | 'triage' | 'admin';
+export type NotifKind = 'main' | 'triage' | 'admin' | 'hunt';
 
 // To do board tags and hand overs start with 📋 (functions/todos.js makeTagger; Ames 2026-10-23).
 // Beta access requests from players not on Pilot testers (Ames 2026-10-24).
@@ -20,6 +22,8 @@ export function notifKind(title: string | null | undefined, isAdmin: boolean): N
   if (!isAdmin) return 'main';
   const t = title || '';
   if (ADMIN_STARTS.some(s => t.startsWith(s))) return 'admin';
+  // Hunters' reports of what the answers missed (functions/hunts.js), a tab of their own (Ames 2026-10-27).
+  if (t.startsWith('🔎 Hunt report')) return 'hunt';
   if (TRIAGE_STARTS.some(s => t.startsWith(s)) || /tagged you on a report$/.test(t)) return 'triage';
   return 'main';
 }

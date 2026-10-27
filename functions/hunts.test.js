@@ -775,6 +775,8 @@ test('a hunter sends a problem the answers missed by its coordinates and kind; A
   const added = await H.huntAction('hunt.add_place', { id: d.id, nm: list.reports[0].nm, kind: 'merge', report_id: list.reports[0].report_id }, h.ctx(ADMIN, at(52), true));
   assert.deepEqual([added.target_count, added.laser, added.laser_later], [4, 0, 1]);
   assert.deepEqual(h.db._s.keys[d.id].slice(-1)[0][4], { added: true, credit: [P1.id] });
+  // The hunter always hears it was added (Ames 2026-10-27), with no admin note unless one is sent.
+  assert.deepEqual(h.bell.filter((n) => n.user_id === P1.id).map((n) => n.body), ['An admin looked at the missing extension you sent at 30000, 30000, 100. It is in the answers now. Thank you!']);
   assert.ok(!h.db._s.awards.some((a) => a.user_id === P1.id));
   await H.huntAction('hunt.current', {}, h.ctx(P2, at(121)));                 // the end
   assert.ok(h.db._s.awards.some((a) => a.user_id === P1.id && h.db._s.badges.find((b) => b.id === a.badge_id).slug === `hunt-${d.id}-laser`));
@@ -784,6 +786,50 @@ test('a hunter sends a problem the answers missed by its coordinates and kind; A
   const left = await H.huntAction('hunt.dismiss_report', { id: d.id, report_id: r2.id }, h.ctx(ADMIN, at(55), true));
   assert.deepEqual(left.reports, []);
   assert.equal(h.db._s.reports.find((x) => x.id === r2.id).status, 'not_real');
+});
+
+test('the reports queue: oldest first, the first at a spot, what the answers have there, notes and who dealt with it (Ames 2026-10-27)', async () => {
+  const h = harness();
+  h.db.adminUserIds = async () => [ADMIN.id];
+  const d = await makeHunt(h);
+  await H.huntAction('hunt.save', { id: d.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  // The admins' note says dismiss, not "mark it not real".
+  const r1 = await H.huntAction('hunt.report_place', { id: d.id, nm: [120000, 120000, 4000], at: [30000, 30000, 100], kind: 'merge', note: 'stub' }, h.ctx(P1, at(50)));
+  assert.match(h.bell[0].body, /then add it to the answers or dismiss it\.$/);
+  const r2 = await H.huntAction('hunt.report_place', { id: d.id, nm: [121000, 120000, 4000], at: [30250, 30000, 100], kind: 'merge' }, h.ctx(P2, at(51)));
+  const r3 = await H.huntAction('hunt.report_place', { id: d.id, nm: [5000, 5000, 100], kind: 'cut', note: 'two cells' }, h.ctx(P2, at(52)));
+  await assert.rejects(H.huntAction('hunt.report_queue', { report_id: r2.id }, h.ctx(P1, at(53))), /Admins only/);
+  // From any report: the whole Hunt's, the oldest first; the second at r1's spot names r1's sender as the first.
+  let q = await H.huntAction('hunt.report_queue', { report_id: r3.id }, h.ctx(ADMIN, at(53), true));
+  assert.deepEqual([q.hunt.id, q.hunt.title, q.hunt.phase], [d.id, 'Pinky Hunt', 'live']);
+  assert.deepEqual(q.reports.map((r) => [r.id, r.name, r.kind, r.status, r.first && r.first.name]), [[r1.id, 'nseraf', 'merge', 'open', null], [r2.id, 'annkri', 'merge', 'open', 'nseraf'], [r3.id, 'annkri', 'cut', 'open', null]]);
+  assert.equal(q.places.length, 3);
+  assert.deepEqual(q.places.map((p) => [p.n, p.added]), [[1, false], [2, false], [3, false]]);
+  // Add r1 with a note, and tell the hunter: counted, by whom, credited, and the answers have it with their name.
+  await H.huntAction('hunt.add_place', { id: d.id, nm: [120000, 120000, 4000], kind: 'merge', report_id: r1.id, note: 'good eye', tell: true }, h.ctx(ADMIN, at(54), true));
+  const told = h.bell.filter((n) => n.user_id === P1.id);
+  assert.deepEqual(told.map((n) => n.title), ['🔎 Your Hunt report: Pinky Hunt']);
+  assert.equal(told[0].body, 'An admin looked at the missing extension you sent at 30000, 30000, 100. It is in the answers now. Thank you!\n\nA note from the admins: "good eye"');
+  q = await H.huntAction('hunt.report_queue', { id: d.id }, h.ctx(ADMIN, at(55), true));
+  const [a, b] = q.reports;
+  assert.deepEqual([a.status, a.done_by, a.admin_note, !!a.done_at], ['counted', 'ames', 'good eye', true]);
+  assert.deepEqual(a.in_key, { n: 4, kind: 'merge', added: true, credit: ['nseraf'] });
+  assert.deepEqual(b.in_key, { n: 4, kind: 'merge', added: true, credit: ['nseraf'] });   // r2 is the same spot: in the answers already
+  assert.deepEqual(q.places[3], { n: 4, kind: 'merge', nm: [120000, 120000, 4000], added: true, credit: ['nseraf'] });
+  // Dismiss r2 with a note kept for the admins only; a note alone on r3, which stays open.
+  await H.huntAction('hunt.dismiss_report', { id: d.id, report_id: r2.id, note: 'same as nseraf' }, h.ctx(ADMIN, at(56), true));
+  assert.equal(h.bell.filter((n) => n.user_id === P2.id).length, 0);
+  await assert.rejects(H.huntAction('hunt.report_note', { report_id: r3.id, note: '  ' }, h.ctx(ADMIN, at(57), true)), /Write the note/);
+  q = await H.huntAction('hunt.report_note', { report_id: r3.id, note: 'ask Celia' }, h.ctx(ADMIN, at(57), true));
+  assert.deepEqual(q.reports.map((r) => [r.status, r.admin_note, r.done_by]), [['counted', 'good eye', 'ames'], ['not_real', 'same as nseraf', 'ames'], ['open', 'ask Celia', '']]);
+  // A size grows the nearest place of that kind within the new ball, past the tolerance (2 µm here): place #4,
+  // 6 µm away, becomes a 16 µm ball; nothing new is added, and it keeps whose report it came from.
+  const grown = await H.huntAction('hunt.add_place', { id: d.id, nm: [126000, 120000, 4000], kind: 'merge', radius_nm: 8000 }, h.ctx(ADMIN, at(57), true));
+  assert.deepEqual([grown.enlarged, grown.target_count], [true, 4]);
+  assert.deepEqual(h.db._s.keys[d.id][3], [126000, 120000, 4000, 'merge', { r: [8000, 8000, 8000], added: true, credit: [P1.id] }]);
+  // Dismiss with tell: the hunter hears it kindly.
+  await H.huntAction('hunt.dismiss_report', { id: d.id, report_id: r3.id, tell: true }, h.ctx(ADMIN, at(58), true));
+  assert.equal(h.bell.filter((n) => n.user_id === P2.id)[0].body, 'An admin looked at the merger you sent. It is not one this Hunt counts, but thank you for sending it.');
 });
 
 test('a place that is a whole cut off piece: a gem near any of its points counts, one find per piece (Ames 2026-10-26)', async () => {

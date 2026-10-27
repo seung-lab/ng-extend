@@ -498,6 +498,8 @@ watch(() => huntBackend.userId, async id => {
 document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
 // Checking a Hunt's places in the viewer (HuntPlacesBox): the profile covers the view.
 document.addEventListener('nge:hunt-check', () => { showProfile.value = false; });
+// The reports queue works on the view (HuntReportCard), so the Admin Hub steps aside for it (Ames 2026-10-27).
+document.addEventListener('nge:hunt-report', () => { showProfile.value = false; });
 // An admin opened a Proofreading Test try in the view (Admin Hub > Test tries).
 document.addEventListener('nge:test-review', () => { showProfile.value = false; showAccess.value = false; });
 /** Chat visibility persists across reloads so closing it stays closed.
