@@ -118,6 +118,8 @@ test('chat reactions are your own, from the offered set, and removable only by y
  const p=plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'\u{1F525}',user_id:b,name:'Admin'});
  assert.equal(p.body.user_id,a);assert.equal(p.body.name,'Player');assert.equal(p.body.message_id,'33333333-3333-4333-8333-333333333333');
  assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'<script>'}),/Unsupported reaction/);
+ assert.equal(plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:':pyr-gem:'}).body.emoji,':pyr-gem:');
+ assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:':pyr-gem'}),/Unsupported reaction/);
  assert.throws(()=>plan('chat_reactions','POST','',{message_id:42,emoji:'\u{1F525}'}),/Unknown message/);
  assert.throws(()=>plan('chat_reactions','POST','',{message_id:'33333333-3333-4333-8333-333333333333',emoji:'\u{1F525}'},anon),/Sign in/);
  assert.throws(()=>plan('chat_reactions','PATCH','id=eq.1',{emoji:'\u{1F525}'}),/cannot be edited/);

@@ -49,6 +49,7 @@ const draftChatMuted = ref(false);
 const draftChatFade = ref(true);
 const draftChatMarkMine = ref(true);
 const draftShowNgControls = ref(false);
+const draftShowXyz = ref(false);
 const draftKeepDisplay = ref(true);
 /** "Cell & Quest celebration" (Ames 2026-10-25): a switch, on unless set
  *  off. Kept in cellCompleteMessage, so a player who had picked the small
@@ -138,6 +139,7 @@ onMounted(() => {
   draftChatFade.value = prefsStore.prefs.chatFadeAway !== false;
   draftChatMarkMine.value = prefsStore.prefs.chatMarkMine !== false;
   draftShowNgControls.value = prefsStore.prefs.showNgControlsButton === true;
+  draftShowXyz.value = prefsStore.prefs.showXyzCorner === true;
   draftKeepDisplay.value = prefsStore.prefs.keepDisplayOnJump !== false;
   savedCellMessage = prefsStore.prefs.cellCompleteMessage || 'full';
   draftCellCelebration.value = savedCellMessage !== 'off';
@@ -229,7 +231,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifOneList: draftNotifOneList.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifOneList: draftNotifOneList.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -733,6 +735,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="The round (?) button at the top right of the viewer opens neuroglancer's own list of keyboard and mouse controls. Many of them are out of date and do not match Pyr. For Pyr's own keys, open Keyboard shortcuts in the menu at the top right, or press Ctrl+K and type keys.">
               <input type="checkbox" v-model="draftShowNgControls" />
               <span class="nge-settings-toggle-label">Show the neuroglancer controls button (?)</span>
+            </label>
+            <label class="nge-settings-toggle" title="The x y z letters in the top left of each view. Point at them for neuroglancer's scale and depth panel.">
+              <input type="checkbox" v-model="draftShowXyz" />
+              <span class="nge-settings-toggle-label">xyz top left</span>
             </label>
             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
               <button class="nge-settings-advanced-btn" @click="openNgSettings">⚙ Viewer Settings</button>

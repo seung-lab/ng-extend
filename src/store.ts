@@ -1020,6 +1020,10 @@ export interface UserPreferences {
   /** Show neuroglancer's "?" controls button in the top bar. Off by default
    *  (Amy 2026-09-30); the controls panel is still in the command palette. */
   showNgControlsButton?: boolean;
+  /** Show neuroglancer's x y z corner in each view (it opens into the scale
+   *  and depth panel on hover). Off by default (Ames 2026-10-27: "get rid of
+   *  this"); the Neuroglancer box in Settings brings it back. */
+  showXyzCorner?: boolean;
   /** What a completed cell shows: the full congratulations in the middle of
    *  the screen (the default), a small note at the top that does not cover
    *  the work, or nothing (Krzysztof Kruk 2026-10-11: the popup "might be
@@ -1267,6 +1271,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // The cursor size follows the setting, on every computer the account uses.
   watch(() => prefs.value.cursorXL === true, on => { document.body?.classList.toggle('nge-cursor-xl', on); }, { immediate: true });
   watch(() => prefs.value.largeText === true, on => { document.body?.classList.toggle('nge-large-text', on); }, { immediate: true });
+  watch(() => prefs.value.showXyzCorner === true, on => { document.body?.classList.toggle('nge-show-xyz', on); }, { immediate: true });
   // The renderer reads the hover style and pulse colour from these.
   watch(() => [prefs.value.hoverStyle, prefs.value.pulseColor], () => {
     ngeHoverStyle.value = ngeParseHoverStyle(prefs.value);
@@ -6659,7 +6664,10 @@ function readMentionNotifyPref(): boolean {
 
 /** Reactions offered on chat messages. The ewCommunityData gateway accepts
  *  exactly these, so keep functions/community-data.js in step. */
-export const CHAT_REACTION_QUICK = ['👍', '❤️', '🔥', '😂', '🎉', '🧠'];
+/** The Pyr gem as a reaction (Ames 2026-10-27). Not an emoji: stored as this
+ *  code and drawn as the gem picture (ChatPanel). */
+export const CHAT_REACTION_GEM = ':pyr-gem:';
+export const CHAT_REACTION_QUICK = [CHAT_REACTION_GEM, '👍', '❤️', '🔥', '😂', '🎉', '🧠'];
 /** More reactions, behind the picker's "+" (Nseraf 2026-10-11 asked for
  *  more; Ames approved this list). All friendly or neutral. */
 export const CHAT_REACTION_MORE = ['👋', '👌', '👏', '🙌', '🙏', '💯', '✅', '🤝', '🫡', '😀', '😄', '😊', '😎', '🤩', '🥳', '😅', '🤗', '🤔', '👀', '😮', '🤯', '💡', '❓', '😢', '🫂', '💙', '💜', '🔬', '🧬', '🧪', '✂️', '🔗', '🧩', '🗺️', '🏆', '⭐', '✨', '🚀', '🌈'];

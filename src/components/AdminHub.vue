@@ -2118,7 +2118,28 @@ async function awardToGroup() {
 
 function selectBadgeForAward(badgeId: number) {
   awardBadgeId.value = awardBadgeId.value === badgeId ? null : badgeId;
+  // The award box sits above the grid: bring it into view.
+  if (awardBadgeId.value) void nextTick(() => awardSectionEl.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 }
+
+// The award grid a page at a time, with a name search (Ames 2026-10-27: "we
+// don't need to see ALL the badges ever here, you can page it").
+const BADGE_PAGE = 15;
+const badgePage = ref(0);
+const badgeFind = ref('');
+const awardSectionEl = ref<HTMLElement | null>(null);
+const filteredBadges = computed(() => {
+  const q = badgeFind.value.trim().toLowerCase();
+  return q ? backend.specialBadges.filter(b => String(b.name || '').toLowerCase().includes(q)) : backend.specialBadges;
+});
+const badgePages = computed(() => Math.max(1, Math.ceil(filteredBadges.value.length / BADGE_PAGE)));
+const pagedBadges = computed(() => filteredBadges.value.slice(badgePage.value * BADGE_PAGE, (badgePage.value + 1) * BADGE_PAGE));
+watch(badgeFind, () => { badgePage.value = 0; });
+watch(badgePages, n => { if (badgePage.value > n - 1) badgePage.value = n - 1; });
+const awardBadge = computed(() => backend.specialBadges.find(b => b.id === awardBadgeId.value) ?? null);
+/** Badges whose picture failed to load show a plain medal instead. */
+const brokenBadgeImg = ref(new Set<number>());
+function onBadgeImgError(id: number) { brokenBadgeImg.value = new Set(brokenBadgeImg.value).add(id); }
 
 onMounted(() => {
   backend.loadGroups();
@@ -2769,18 +2790,19 @@ function practiceWhen(iso: string | null) {
 
       <div class="nge-admin-block" v-if="backend.specialBadges.length > 0">
         <label class="nge-admin-label">Award Badge <span class="nge-admin-hint" style="font-weight:normal; margin-left:6px">Click a badge to select it</span></label>
-        <div class="nge-admin-badge-grid">
-          <div v-for="b in backend.specialBadges" :key="b.id"
-            class="nge-admin-badge-card" :class="{ 'nge-admin-badge-card--selected': awardBadgeId === b.id }"
-            @click="selectBadgeForAward(b.id)" :title="b.description || b.name">
-            <img v-if="b.thumbnail_url || b.image_url" :src="b.thumbnail_url || b.image_url" class="nge-admin-badge-img" />
-            <div class="nge-admin-badge-name">{{ b.name }}</div>
-          </div>
-        </div>
 
         <div v-if="awardSuccess" class="nge-admin-success">{{ awardSuccess }}</div>
 
-        <div v-if="awardBadgeId" class="nge-admin-award-section">
+        <!-- The chosen badge and how to award it, above the grid (Ames
+             2026-10-27: "if I select one the award input should be added at
+             the top"). -->
+        <div v-if="awardBadgeId" ref="awardSectionEl" class="nge-admin-award-section">
+          <div v-if="awardBadge" class="nge-admin-award-chosen">
+            <img v-if="(awardBadge.thumbnail_url || awardBadge.image_url) && !brokenBadgeImg.has(awardBadge.id)" :src="awardBadge.thumbnail_url || awardBadge.image_url" class="nge-admin-badge-img nge-admin-badge-img--sm" @error="onBadgeImgError(awardBadge.id)" />
+            <span v-else class="nge-admin-badge-fallback nge-admin-badge-fallback--sm">🏅</span>
+            <span class="nge-admin-award-chosen-name">{{ awardBadge.name }}</span>
+            <button class="nge-admin-action-btn" @click="awardBadgeId = null">Change</button>
+          </div>
           <div class="nge-admin-row">
             <label class="nge-admin-file-label">
               <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="nge-admin-file-input" :disabled="badgeImageBusy" @change="replaceBadgeImage" />
@@ -2806,6 +2828,25 @@ function practiceWhen(iso: string | null) {
             </select>
             <button class="nge-admin-action-btn" :disabled="!awardGroupId" @click="awardToGroup">Award to Group</button>
           </div>
+        </div>
+
+        <div class="nge-admin-row nge-admin-badge-tools">
+          <input v-model="badgeFind" class="nge-admin-input" placeholder="Find a badge by name..." />
+          <span class="nge-admin-hint">{{ filteredBadges.length }} {{ filteredBadges.length === 1 ? 'badge' : 'badges' }}</span>
+        </div>
+        <div class="nge-admin-badge-grid">
+          <div v-for="b in pagedBadges" :key="b.id"
+            class="nge-admin-badge-card" :class="{ 'nge-admin-badge-card--selected': awardBadgeId === b.id }"
+            @click="selectBadgeForAward(b.id)" :title="b.description || b.name">
+            <img v-if="(b.thumbnail_url || b.image_url) && !brokenBadgeImg.has(b.id)" :src="b.thumbnail_url || b.image_url" class="nge-admin-badge-img" loading="lazy" @error="onBadgeImgError(b.id)" />
+            <span v-else class="nge-admin-badge-fallback">🏅</span>
+            <div class="nge-admin-badge-name">{{ b.name }}</div>
+          </div>
+        </div>
+        <div v-if="badgePages > 1" class="nge-admin-row nge-admin-badge-pager">
+          <button class="nge-admin-action-btn" :disabled="badgePage === 0" @click="badgePage--">‹ Back</button>
+          <span class="nge-admin-hint">Page {{ badgePage + 1 }} of {{ badgePages }}</span>
+          <button class="nge-admin-action-btn" :disabled="badgePage >= badgePages - 1" @click="badgePage++">Next ›</button>
         </div>
       </div>
     </div>
@@ -4549,6 +4590,22 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
   height: 56px;
   object-fit: contain;
 }
+.nge-admin-badge-img--sm { width: 36px; height: 36px; }
+.nge-admin-badge-fallback {
+  display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px; font-size: 30px; opacity: 0.55;
+}
+.nge-admin-badge-fallback--sm { width: 36px; height: 36px; font-size: 20px; }
+.nge-admin-award-chosen {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px;
+  background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.4);
+}
+.nge-admin-award-chosen-name { flex: 1; font-weight: 600; color: #e0ecff; }
+.nge-admin-award-section { margin-bottom: 12px; }
+.nge-admin-badge-tools { margin-bottom: 8px; }
+.nge-admin-badge-tools .nge-admin-input { flex: 1; }
+.nge-admin-badge-pager { justify-content: center; margin-top: 10px; }
 .nge-admin-badge-name {
   font-size: 0.78em;
   color: #aab;
