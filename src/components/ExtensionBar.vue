@@ -429,8 +429,6 @@ const showFeed = ref(false);
 const showAccess = ref(false);
 function openAccessPanel() { showAccess.value = true; closeHamburger(); }
 document.addEventListener('nge:access-open', () => { showAccess.value = true; });
-// The principles screen's "Choose another dataset" (PrinciplesGate.vue).
-document.addEventListener('nge:open-dataset-selector', () => { showDatasetSelector.value = true; });
 
 // ── The Hunt (Ames 2026-10-20) ──────────────────────────────────────────
 // A pill in the top bar while a hunt is announced, running, or just over;

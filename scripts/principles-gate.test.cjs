@@ -4,9 +4,8 @@
 // Run:    node scripts/principles-gate.test.cjs [shots dir]
 // Checks: a signed in player who has not agreed gets the principles screen on
 // the retina, with a link to eyewire.ai/principles; it stays up through Escape
-// and a click outside; Agree needs the tick; agreeing sends the version the
-// server asked about, once, and the screen goes; Choose another dataset closes
-// it and opens Switch dataset. Controls: a player who agreed sees nothing; a
+// and a click outside; OK, I agree sends the version the server asked about,
+// once, and the screen goes (Ames 2026-10-27: one sentence and OK). Controls: a player who agreed sees nothing; a
 // player still at the beta screen is not asked; a server error shows nothing.
 // Every server call is answered here; nothing reaches production.
 const path = require('path');
@@ -66,7 +65,7 @@ async function player(browser, status, beta = { invited: true }) {
     const shown = await p.page.$('.nge-principles-panel');
     check('not agreed: the principles screen shows', !!shown);
     const text = shown ? (await p.page.innerText('.nge-principles-panel')).replace(/\s+/g, ' ') : '';
-    check('it names the Eyewire II Principles and links the full text', /Eyewire II Principles/.test(text)
+    check('one sentence, a link to the full text, and OK', /OK, I agree/i.test(text) && (text.match(/\. /g) || []).length <= 1 && /Eyewire II Principles/.test(text)
       && await p.page.$eval('.nge-principles-panel a[href="https://eyewire.ai/principles"]', a => a.target === '_blank').catch(() => false), text.slice(0, 200));
     check('no dashes in its words', !/[\u2013\u2014]/.test(text));
     const box = await p.page.locator('.nge-principles-panel').boundingBox();
@@ -76,24 +75,12 @@ async function player(browser, status, beta = { invited: true }) {
     await p.page.waitForTimeout(400);
     check('Escape and a click outside leave it up', !!(await p.page.$('.nge-principles-panel')));
     await p.page.click('.nge-principles-btn');
-    await p.page.waitForTimeout(300);
-    const err = await p.page.$eval('.nge-principles-error', el => el.innerText).catch(() => '');
-    check('Agree without the tick says so, and nothing is sent', /tick the box/.test(err) && !p.calls.some(c => c.action === 'access.principlesAgree'), err);
-    await p.page.check('.nge-principles-agree input');
-    await p.page.click('.nge-principles-btn');
     await p.page.waitForTimeout(800);
     const sent = p.calls.filter(c => c.action === 'access.principlesAgree');
     check('Agree sends one agreement, with the version the server asked about', sent.length === 1 && sent[0].version === V, sent);
     check('then the screen goes', !(await p.page.$('.nge-principles-panel')));
     check('no page errors', p.errors.filter(e => !/Failed to fetch/.test(e)).length === 0, p.errors.slice(0, 3));
     await p.context.close();
-
-    // 2. Choose another dataset.
-    const q = await player(browser, { version: V, agreed: false, at: null });
-    await q.page.click('.nge-principles-link').catch(() => {});
-    await q.page.waitForTimeout(600);
-    check('Choose another dataset closes it and opens Switch dataset', !(await q.page.$('.nge-principles-panel')) && !!(await q.page.$('.nge-dataset-panel')));
-    await q.context.close();
 
     // 3. Controls.
     const a = await player(browser, { version: V, agreed: true, at: '2026-10-27T10:00:00Z' });
