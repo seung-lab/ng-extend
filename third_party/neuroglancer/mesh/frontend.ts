@@ -16,7 +16,7 @@
 
 import {NgeShell} from 'neuroglancer/mesh/nge_hover';
 import {bindNgeMeshTint, getNgeMeshTint, bindNgeMeshTintFine, getNgeMeshTintFine} from 'neuroglancer/mesh/nge_tint';
-import {bindNgeLanternMask, getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
+import {bindNgeLanternMask, ngeLanternLights, getNgeLantern, getNgeLanternSecond, ngeLanternNmFromModel, ngeLanternPositionNm} from 'neuroglancer/mesh/nge_lantern';
 import {getNgeMeshEdge} from 'neuroglancer/mesh/nge_edge';
 import {ChunkState} from 'neuroglancer/chunk_manager/base';
 import {Chunk, ChunkManager, ChunkSource} from 'neuroglancer/chunk_manager/frontend';
@@ -582,6 +582,8 @@ highp float ngeHoloDot(highp vec2 p) {
         builder.addUniform('highp vec4', 'uNgeLantern');
         builder.addUniform('highp vec3', 'uNgeLanternLight');
         builder.addUniform('highp mat4', 'uNgeLanternMaskMatrix');
+        // Clicked branch: 1 on the clicked cell, 0 on any other.
+        builder.addUniform('highp float', 'uNgeLanternMine');
         builder.addTextureSampler('sampler3D', 'uNgeLanternMask', ngeLanternMaskSymbol);
         // A second, coloured light (the reaper's red lantern): xyz nm, w reach.
         builder.addUniform('highp vec4', 'uNgeLantern2');
@@ -706,7 +708,7 @@ if (uNgeLanternLight.x > 0.5) {
     // Clicked branch: only the mapped branch, as far as the light has spread.
     highp vec3 maskCoord = (uNgeLanternMaskMatrix * vec4(vertexPosition, 1.0)).xyz;
     highp float inMap = all(greaterThanEqual(maskCoord, vec3(0.0))) && all(lessThanEqual(maskCoord, vec3(1.0))) ? 1.0 : 0.0;
-    lit *= inMap * smoothstep(0.15, 0.6, texture(uNgeLanternMask, maskCoord).r);
+    lit *= uNgeLanternMine * inMap * smoothstep(0.15, 0.6, texture(uNgeLanternMask, maskCoord).r);
   }
   // In shadow a cell keeps its shape and loses its colour.
   highp float grey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
@@ -852,6 +854,7 @@ export class MeshLayer extends
         renderContext.emitPickID ? renderContext.pickIDs : undefined,
         (objectId, color, pickIndex) => {
           const key = getObjectKey(objectId);
+          if (renderContext.emitColor) gl.uniform1f(shader.uniform('uNgeLanternMine'), ngeLanternLights(key) ? 1 : 0);
           const manifestChunk = manifestChunks.get(key);
           ++totalChunks;
           if (manifestChunk === undefined) return;
@@ -1117,6 +1120,7 @@ export class MultiscaleMeshLayer extends
         renderContext.emitPickID ? renderContext.pickIDs : undefined,
         (objectId, color, pickIndex) => {
           const key = getObjectKey(objectId);
+          if (renderContext.emitColor) gl.uniform1f(shader.uniform('uNgeLanternMine'), ngeLanternLights(key) ? 1 : 0);
           const manifestChunk = chunks.get(key);
           ++totalManifestChunks;
           if (manifestChunk === undefined) return;
