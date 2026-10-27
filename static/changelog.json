@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T16:03:00Z",
+      "title": "Lantern: Clicked branch",
+      "digest": "minor",
+      "items": [
+        "The Lantern has a new choice, Clicked branch: click a branch and only that branch lights up, from where it forks off out to its tips.",
+        "Click another branch to move the light, or click empty space to bring the normal view back.",
+        "Whole cell is still the usual Lantern, and stays the default."
+      ]
+    },
+    {
       "at": "2026-10-27T15:55:00Z",
       "title": "MEC: proofread the axon only",
       "items": [
