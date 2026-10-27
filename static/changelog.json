@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T20:01:53Z",
+      "title": "FlyWire tour: one stray T4 cell left out",
+      "digest": "minor",
+      "items": [
+        "Show all T4a cells in the FlyWire tour no longer includes one cell whose body sits outside the brain, far from the rest. FlyWire labels it T4a, but it is not a good one to look at. Thanks to wolfryder101."
+      ]
+    },
+    {
       "at": "2026-10-27T18:12:00Z",
       "title": "Bigger Achievements, and small fixes in chat and Highlight",
       "items": [
