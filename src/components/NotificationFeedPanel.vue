@@ -733,6 +733,11 @@ function plainText(text: string): string {
 function cleanCopy(text: string): string {
   if (!text) return '';
   return String(text)
+    // Achievement notes carry no emoji, and say Achievement (Ames 2026-10-27: "we don't need emoji in the
+    // achievement text"); older ones are cleaned here, including "award! — description" (a stray comma once dashes go).
+    .replace(/^\s*(?:\p{Extended_Pictographic}\uFE0F?\s*)+(?=New Achievement)/u, '')
+    .replace(/" award!\s*[—–]\s*/g, '" Achievement! ')
+    .replace(/" award!/g, '" Achievement!')
     // Hunt reports sent before 2026-10-27 said "mark it not real" (Ames: "Add it to the answers or Dismiss")
     .replace(/add it to the answers or mark it not real\./g, 'add it to the answers or dismiss it.')
     // "Sep 21 – Sep 27" and "Dec 29, 2025 – Jan 4, 2026" become "... to ..."

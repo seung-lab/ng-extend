@@ -1581,7 +1581,7 @@ function notifCategory(n: any): string {
   if (t.includes('Weekly Champions') || t.includes('Monthly Champions') || t.includes('Year Champions')) return 'weeklyChampions';
   if (t.includes('Week in Science') || t.includes('Month in Science') || t.includes('Year in Science')) return 'weeklyRecap';
   if (t.includes('Response to your help request')) return 'helpResponse';
-  if (t === '✨ New Achievement!') return 'customBadge';         // admin-awarded special badge
+  if (t === '✨ New Achievement!' || t === 'New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
   return 'announcement';
 }
@@ -2073,8 +2073,8 @@ async function awardToUser(uid: string, displayName: string) {
   if (badge) {
     try {
       await backend.createNotification({
-        title: '✨ New Achievement!',
-        body: `You earned the "${badge.name}" award!${badge.description ? ' — ' + badge.description : ''}`,
+        title: 'New Achievement!',   // no emoji in Achievement notes (Ames 2026-10-27)
+        body: `You earned the "${badge.name}" Achievement!${badge.description ? ' ' + badge.description : ''}`,
         image_url: badge.image_url || '',
         thumbnail_url: badge.thumbnail_url || '',
         target_type: 'user',

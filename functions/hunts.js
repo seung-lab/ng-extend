@@ -1408,8 +1408,8 @@ async function finalize(h, ctx, { force = false } = {}) {
       : `${TIER_NAME[w.tier]} in ${row.title}: ${w.found} of ${row.target_count} found with ${w.gems} gems` })));
   for (const w of winners) counts[w.tier]++;
   if (fresh.length && notify) {
-    await notify(fresh.map((w) => ({ user_id: w.user_id, title: `🏅 New Achievement: ${badges[w.tier].name}`,
-      body: `You earned the "${badges[w.tier].name}" award! ${w.tier === 'fastest' ? badges[w.tier].description : `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`}`,
+    await notify(fresh.map((w) => ({ user_id: w.user_id, title: `New Achievement: ${badges[w.tier].name}`,
+      body: `You earned the "${badges[w.tier].name}" Achievement! ${w.tier === 'fastest' ? badges[w.tier].description : `${badges[w.tier].description} You found ${w.found} of ${row.target_count} with ${w.gems} ${w.gems === 1 ? 'gem' : 'gems'}.`}`,
       image: badges[w.tier].image_url })));
   }
   // Chat hears the results once, in the results post (postResults), not a line per winner.
@@ -1451,8 +1451,8 @@ async function awardLaserEyes(h, index, ctx, also = []) {
   await db.award(fresh.map((u) => ({ badge_id: badge.id, user_id: u, awarded_by: (ctx.me && ctx.me.id) || null,
     reason: `Found a problem the answer key missed in ${h.title}` })));
   if (notify) {
-    await notify(fresh.map((u) => ({ user_id: u, title: `🏅 New Achievement: ${badge.name}`,
-      body: `You earned the "${badge.name}" award! ${badge.description}`, image: badge.image_url })));
+    await notify(fresh.map((u) => ({ user_id: u, title: `New Achievement: ${badge.name}`,
+      body: `You earned the "${badge.name}" Achievement! ${badge.description}`, image: badge.image_url })));
   }
   return fresh;
 }

@@ -322,7 +322,7 @@ test('at the end the awards are given once, the speed award too, with a bell not
   assert.match(speed.description, /every problem found in 30m 00s/);
   assert.equal(h.db._s.awards.length, 3);
   assert.equal(h.db._s.awards.find((a) => a.badge_id === speed.id).user_id, P1.id);
-  assert.deepEqual(h.bell.map((b) => b.title).sort(), ['🏅 New Achievement: Pinky Hunt: Fastest', '🏅 New Achievement: Pinky Hunt: Gold', '🏅 New Achievement: Pinky Hunt: Silver']);
+  assert.deepEqual(h.bell.map((b) => b.title).sort(), ['New Achievement: Pinky Hunt: Fastest', 'New Achievement: Pinky Hunt: Gold', 'New Achievement: Pinky Hunt: Silver']);
   // Chat hears it once: the results post, to everyone, with the default picture.
   assert.equal(h.chat.length, 0);
   const results = h.db._s.notes.filter((n) => /results/.test(n.title));
@@ -1130,5 +1130,5 @@ test('at the end the board goes by medal, then the quicker clock within each med
   await dropAll(d.id, all.slice(0, 2), h.ctx(P1, at(61)));                // 2 of 3: Silver
   const end = (await H.huntAction('hunt.current', {}, h.ctx(P1, at(121)))).hunts[0];
   assert.deepEqual(end.board.map((b) => [b.name, b.tier]), [['krzysztof', 'gold'], ['annkri', 'gold'], ['nseraf', 'silver']]);
-  assert.ok(h.bell.every((n) => /^You earned the ".+" award! /.test(n.body)), JSON.stringify(h.bell.map((n) => n.body)));
+  assert.ok(h.bell.every((n) => /^You earned the ".+" Achievement! /.test(n.body)), JSON.stringify(h.bell.map((n) => n.body)));
 });
