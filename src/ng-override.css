@@ -1975,7 +1975,7 @@ body.nge-calm .nge-holo-modal-particles { display: none !important; }
 /* A grip under each folder's box: drag to make it taller or shorter (Nseraf,
    report 179), like the line above the Selection panel. The height is the
    folder's own (saved with it); a double click gives back the usual cap. */
-.nge-seg-list--folder[data-nge-sized] { max-height: var(--nge-folder-h, 220px) !important; }
+.nge-seg-list--folder[data-nge-sized], .nge-seg-list--pasted[data-nge-sized] { max-height: var(--nge-folder-h, 220px) !important; }
 .nge-seg-folder-grip {
   flex: 0 0 auto; height: 9px; margin-left: calc(10px + var(--nge-folder-depth, 0) * 14px);
   cursor: row-resize; position: relative; touch-action: none;

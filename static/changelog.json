@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T20:14:59Z",
+      "title": "Drag the Pasted list taller",
+      "digest": "minor",
+      "items": [
+        "The Pasted list in the Segments tab has a grip under it, like a folder's: drag it to make the list taller or shorter, and double click it for the usual size. Your height is remembered."
+      ]
+    },
+    {
       "at": "2026-10-27T20:08:49Z",
       "title": "FlyWire tour: one stray T4 cell left out",
       "digest": "minor",
