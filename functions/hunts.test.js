@@ -786,6 +786,73 @@ test('a hunter sends a problem the answers missed by its coordinates and kind; A
   assert.equal(h.db._s.reports.find((x) => x.id === r2.id).status, 'not_real');
 });
 
+test('a place that is a whole cut off piece: a gem near any of its points counts, one find per piece (Ames 2026-10-26)', async () => {
+  // placeDist: the nearest of the middle and the cloud's points.
+  const cloud = [0, 0, 0, 'cut', { pts: [[10000, 0, 0], [20000, 0, 0]] }];
+  assert.equal(H.placeDist(cloud, [20000, 1000, 0]), 1000);
+  assert.equal(H.placeDist(cloud, [1000, 0, 0]), 1000);
+  assert.equal(H.placeDist(cloud, [30000, 0, 0]), 10000);
+  // Read from a key layer: points labelled "#N" are one place, the first its middle. Other labels never group.
+  const layerOf = (annotations) => ({ type: 'annotation', source: 'local://annotations', annotations });
+  assert.deepEqual(H.layerPlaces(layerOf([
+    { type: 'point', id: 'a', point: [0, 0, 0], description: '#1' },
+    { type: 'point', id: 'b', point: [100, 0, 0], description: '#1' },
+    { type: 'point', id: 'c', point: [0, 100, 0], description: '#2' },
+    { type: 'point', id: 'd', point: [200, 0, 0], description: '#1' },
+    { type: 'point', id: 'e', point: [5, 5, 5] },
+    { type: 'point', id: 'f', point: [6, 6, 6], description: 'merger' },
+    { type: 'point', id: 'g', point: [7, 7, 7], description: 'merger' }]), DIMS), [
+    { nm: [0, 0, 0], shape: { pts: [[400, 0, 0], [800, 0, 0]] } },
+    { nm: [0, 400, 0] },
+    { nm: [20, 20, 200] },
+    { nm: [24, 24, 240] },
+    { nm: [28, 28, 280] }]);
+  // At most 600 points a place, and 3000 in a key, spread along each cloud.
+  const many = (n, g, y = 0) => Array.from({ length: n }, (_, i) => ({ type: 'point', id: `${g}${i}`, point: [i, y, 0], description: g }));
+  const big = H.layerPlaces(layerOf(many(701, '#1')), DIMS);
+  assert.equal(big.length, 1);
+  assert.equal(big[0].shape.pts.length, 600);
+  assert.deepEqual([big[0].shape.pts[0], big[0].shape.pts[599]], [[4, 0, 0], [2796, 0, 0]]);   // spread from the first to the last
+  const six = H.keyTargets({ layers: [{ layer: layerOf([...many(601, '#1', 0), ...many(601, '#2', 10), ...many(601, '#3', 20), ...many(601, '#4', 30), ...many(601, '#5', 40), ...many(601, '#6', 50)]), kind: 'cut' }], dims: DIMS });
+  assert.equal(six.length, 6);
+  assert.deepEqual(six.map((t) => t[4].pts.length), [500, 500, 500, 500, 500, 500]);
+  assert.ok(six.every((t) => t[3] === 'cut' && t[4].pts.every((q) => q.every(Number.isInteger))));
+
+  // A Hunt with one cloud: three points 10 µm apart along x, [20000..40000, 20000, 4000] nm.
+  const h = harness();
+  const key = { layers: [{ layer: layerOf([
+    { type: 'point', id: 'm', point: [5000, 5000, 100], description: '#1' },
+    { type: 'point', id: 'm1', point: [7500, 5000, 100], description: '#1' },
+    { type: 'point', id: 'm2', point: [10000, 5000, 100], description: '#1' },
+    { type: 'point', id: 'x', point: [30000, 30000, 300] }]), kind: 'cut' }], dims: DIMS };
+  const draft = await H.huntAction('hunt.save', { fields: { title: 'Piece Hunt', dataset: 'minnie65_public', cells: [{ root: '864691135572849645' }], tolerance_nm: 3000,
+    announce_at: iso(at(24)), start_at: iso(at(48)), end_at: iso(at(120)) }, key, view: VIEW, status: 'draft' }, h.ctx(ADMIN, at(0), true));
+  assert.equal(draft.target_count, 2);
+  assert.deepEqual(h.db._s.keys[draft.id][0], [20000, 20000, 4000, 'cut', { pts: [[30000, 20000, 4000], [40000, 20000, 4000]] }]);
+  await H.huntAction('hunt.save', { id: draft.id, status: 'scheduled' }, h.ctx(ADMIN, at(1), true));
+  const drop = (id, x, y, z, t) => H.huntAction('hunt.drop', { id: draft.id, kind: 'cut', layer: layer([{ ...pt(x, y, z), id }]), dims: DIMS }, h.ctx(P1, at(t)));
+  // 22 µm from the middle but 0.8 µm from the far end of the piece: found.
+  assert.equal((await drop('g1', 9800, 5000, 100, 50)).drop.hit, true);
+  // Near the middle of the same piece: found already, no gem used.
+  const again = await drop('g2', 5100, 5000, 100, 51);
+  assert.equal(again.drop.already, true);
+  // Between two points 10 µm apart, 5 µm from each: beyond the 3 µm tolerance, a miss.
+  const gap = await drop('g3', 8750, 5000, 100, 52);
+  assert.equal(gap.drop.hit, false);
+  assert.equal(h.db._s.subs[0].found, 1);
+  // Count it on that miss: a new place of its own, and the piece keeps its points.
+  const admin = h.ctx(ADMIN, at(53), true);
+  const c = await H.huntAction('hunt.count_it', { id: draft.id, user_id: P1.id, drop_id: 'g3' }, admin);
+  assert.equal(c.target_count, 3);
+  assert.deepEqual(h.db._s.keys[draft.id][0][4].pts.length, 2);
+  assert.equal(h.db._s.subs[0].found, 2);
+  // Adding a place on the piece: it is there already. With a size: the piece keeps its points and the spot joins them.
+  await assert.rejects(H.huntAction('hunt.add_place', { id: draft.id, nm: [40100, 20000, 4000], kind: 'cut' }, admin), /already has a place there/);
+  const grown = await H.huntAction('hunt.add_place', { id: draft.id, nm: [42000, 21000, 4000], kind: 'cut', radius_nm: 8000 }, admin);
+  assert.deepEqual([grown.enlarged, grown.target_count], [true, 3]);
+  assert.deepEqual(h.db._s.keys[draft.id][0], [20000, 20000, 4000, 'cut', { pts: [[30000, 20000, 4000], [40000, 20000, 4000], [42000, 21000, 4000]] }]);
+});
+
 test('a hunter reports a missed gem as a real problem: the admins hear, the editor lists it, Count it makes it count (Ames 2026-10-26)', async () => {
   const h = harness();
   h.db.adminUserIds = async () => [ADMIN.id];

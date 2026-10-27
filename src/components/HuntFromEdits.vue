@@ -69,11 +69,15 @@ function finished(e: Event) { fromEdits.finished = (e.target as HTMLInputElement
 const droppedLine = computed(() => {
   const d = session.value?.dropped;
   if (!d) return '';
+  // What happened, in the proofreaders' terms (Ames 2026-10-26: "what does this mean?").
   const parts = [
-    d.hidden ? `${d.hidden} players could not see from here` : '',
-    d.tiny ? count(d.tiny, 'tiny piece', 'tiny pieces') : '',
-    d.close ? `${d.close} within ${props.toleranceUm || 3} µm of another of the same kind` : '',
-    d.undone ? `${d.undone} undone or changing nothing` : '',
+    d.hidden ? `${count(d.hidden, 'fix', 'fixes')} in pieces not yet part of the cell` : '',
+    d.closeCut ? `${count(d.closeCut, 'cut', 'cuts')} on the same spot as another (one gem finds both)` : '',
+    d.closeMerge ? `${count(d.closeMerge, 'join', 'joins')} on the same spot as another (one gem finds both)` : '',
+    d.idle ? `${count(d.idle, 'cut', 'cuts')} that separated nothing` : '',
+    d.tiny ? `${count(d.tiny, 'tiny piece', 'tiny pieces')} (a spine or a crumb)` : '',
+    d.undone ? `${count(d.undone, 'edit', 'edits')} taken back` : '',
+    d.failed ? `${count(d.failed, 'edit', 'edits')} that did not go through` : '',
   ].filter(Boolean);
   return parts.length ? `Left out: ${parts.join(', ')}.` : '';
 });

@@ -246,15 +246,18 @@ function keyLink(full: any): string {
   const toVox = (p: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(p[i]) / (Number(dims[a][0]) * 1e9); });
   const scaleOf = (r: number[]) => axes.map(a => { const i = xyz.indexOf(a); return i < 0 ? 0 : Number(r[i]) / (Number(dims[a][0]) * 1e9); });
   // A place with an area comes back as its ellipsoid, line or box (Ames 2026-10-26).
-  const annotationOf = (p: any, id: string) => {
+  // A cut off piece (a cloud, from a proofread cell) comes back as its points, all labelled with its place number.
+  const annotationOf = (p: any, id: string, n: number): any[] => {
     const s = p[4];
-    if (s && Array.isArray(s.r)) return { type: 'ellipsoid', id, center: toVox(p), radii: scaleOf(s.r) };
-    if (s && Array.isArray(s.a)) return { type: 'line', id, pointA: toVox(s.a), pointB: toVox(s.b) };
-    if (s && Array.isArray(s.lo)) return { type: 'axis_aligned_bounding_box', id, pointA: toVox(s.lo), pointB: toVox(s.hi) };
-    return { type: 'point', id, point: toVox(p) };
+    if (s && Array.isArray(s.pts)) return [{ type: 'point', id, point: toVox(p), description: `#${n}` },
+      ...s.pts.map((q: number[], k: number) => ({ type: 'point', id: `${id}-${k}`, point: toVox(q), description: `#${n}` }))];
+    if (s && Array.isArray(s.r)) return [{ type: 'ellipsoid', id, center: toVox(p), radii: scaleOf(s.r) }];
+    if (s && Array.isArray(s.a)) return [{ type: 'line', id, pointA: toVox(s.a), pointB: toVox(s.b) }];
+    if (s && Array.isArray(s.lo)) return [{ type: 'axis_aligned_bounding_box', id, pointA: toVox(s.lo), pointB: toVox(s.hi) }];
+    return [{ type: 'point', id, point: toVox(p) }];
   };
   const layerOf = (name: string, pts: any[]) => ({ type: 'annotation', name, source: 'local://annotations', tool: 'annotatePoint',
-    annotations: pts.map((p, i) => annotationOf(p, `${name.toLowerCase()}-${i}`)) });
+    annotations: pts.flatMap((p, i) => annotationOf(p, `${name.toLowerCase()}-${i}`, i + 1)) });
   const cuts = targets.filter(t => t[3] !== 'merge'), merges = targets.filter(t => t[3] === 'merge'), edges: number[][] = full.edges || [];
   const layers = [...(view.layers || []),
     ...(cuts.length ? [layerOf('Mergers', cuts)] : []), ...(merges.length ? [layerOf('Extensions', merges)] : []), ...(edges.length ? [layerOf('edge', edges)] : [])];

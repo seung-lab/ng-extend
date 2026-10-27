@@ -17,7 +17,7 @@ import { canonicalDataset, currentDatasetTag, findDatasetBySegName, segLayerName
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from './keep_display';
 import { HUNT_PREVIEW_LAYER } from '../hunt';
 import {
-  parseBigJson, parseHistory, parseDetails, cellEdits, sessionStarts, sessionSupervoxels, visibleIn, placesFor,
+  parseBigJson, parseHistory, parseDetails, cellEdits, sessionStarts, sessionSupervoxels, visibleIn, placesFor, thinPoints, everyNth, MAX_KEY_PTS,
   type CellEdit, type Place, type Dropped,
 } from './hunt_history_steps';
 
@@ -28,13 +28,16 @@ export interface HistorySource {
   table: string; segLayer: string;
   /** The proofread list: a CAVE table with pt_root_id, pt_supervoxel_id, pt_position. */
   datastack: string; somaTable: string;
+  /** The graph keeps a point on the cell for each of its level 2 pieces (l2cache rep_coord_nm), so a cut's
+   *  place can be the whole piece cut off. The Sandbox graph has none: its cuts stay one spot. */
+  l2cache: boolean;
 }
 export const HISTORY_SOURCES: HistorySource[] = [
   // MICrONS Live, not the v117 card: a cell as it was after June 2021 is "not valid" on v117 (401).
   { canon: 'minnie65_public', label: 'MICrONS public', server: 'https://minnie.microns-daf.com', table: 'minnie65_public', segLayer: 'minnie65_public_live',
-    datastack: 'minnie65_public', somaTable: 'proofreading_status_and_strategy' },
+    datastack: 'minnie65_public', somaTable: 'proofreading_status_and_strategy', l2cache: true },
   { canon: 'pinky_nf_v2', label: 'Sandbox', server: 'https://minnie.microns-daf.com', table: 'pinky_nf_v2', segLayer: 'pinky_nf_v2',
-    datastack: 'pinky_sandbox', somaTable: 'neurons' },
+    datastack: 'pinky_sandbox', somaTable: 'neurons', l2cache: false },
 ];
 export const sourceFor = (canon: string) => HISTORY_SOURCES.find(s => s.canon === canonicalDataset(canon)) ?? null;
 
@@ -203,19 +206,42 @@ export async function readCellHistory(canon: string, rootIn: string, tolNm: numb
   const byOp = new Map(edits.map(e => [e.op.id, e] as [number, CellEdit]));
   step(`Measuring ${needSize.length} pieces`);
   const pieceL2 = new Map<number, number>();
+  const pieceIds = new Map<number, string[]>();
   await inTurn(needSize, 6, async (id) => {
     const e = byOp.get(id);
     if (!e?.piece.length) return;
-    let n = 0;
+    const all: string[] = [];
     for (const r of e.piece.slice(0, 3)) {
-      try { n += ((await ask(`${seg}/node/${r}/leaves?stop_layer=2`, {}, src.server))?.leaf_ids ?? []).length; }
+      try { all.push(...((await ask(`${seg}/node/${r}/leaves?stop_layer=2&int64_as_str=1`, {}, src.server))?.leaf_ids ?? []).map(String)); }
       catch { return; }   // unknown size: kept
     }
-    pieceL2.set(id, n);
+    pieceL2.set(id, all.length);
+    pieceIds.set(id, all);
   });
 
+  // A cut's place is the whole piece cut off (Ames 2026-10-26: "places like this not even all of them are
+  // marked"): a point on the cell for each of its level 2 pieces, thinned to a gem's reach.
+  const clouds = new Map<number, number[][]>();
+  if (src.l2cache) {
+    const cuts = needSize.filter(id => byOp.get(id)?.kind === 'cut' && (pieceL2.get(id) ?? 0) > 1);
+    step(`Marking the ${cuts.length} pieces cut off`);
+    const spacing = Math.max(1000, Math.min(4000, Math.round((tolNm * 2) / 3)));
+    await inTurn(cuts, 4, async (id) => {
+      const l2 = pieceIds.get(id) ?? [];
+      const pts: number[][] = [];
+      for (let k = 0; k < l2.length; k += 1000) {
+        try {
+          const r = await ask(`${src.server}/l2cache/api/v1/table/${src.table}/attributes?int64_as_str=1&attribute_names=rep_coord_nm`,
+            { method: 'POST', body: `{"l2_ids":[${l2.slice(k, k + 1000).join(',')}]}` }, src.server);
+          for (const v of Object.values(r ?? {}) as any[]) if (Array.isArray(v?.rep_coord_nm)) pts.push(v.rep_coord_nm.map(Number));
+        } catch { return; }   // no cloud: the cut stays one spot
+      }
+      if (pts.length) clouds.set(id, thinPoints(pts, spacing));
+    });
+  }
+
   const sessions: SessionOption[] = starts.map((i, k) => {
-    const { places, dropped } = placesFor(edits, i, seen[k], pieceL2, tolNm);
+    const { places, dropped } = placesFor(edits, i, seen[k], pieceL2, tolNm, undefined, clouds);
     return { at: edits[i].op.at, beforeRoot: edits[i].prev, editsAfter: edits.length - i, places, dropped };
   });
   let best = 0;
@@ -232,6 +258,10 @@ export const MERGERS_LAYER = 'Mergers';
 export const EXTENSIONS_LAYER = 'Extensions';
 const PLACE_COLOR = { cut: '#f5d142', merge: '#9b5cff' };   // the gems' own found colors (hunt.ts FOUND_COLOR)
 export const placeId = (p: Place) => `place-${p.op}`;
+/** A place's label in its layer, "#3": every point of a cut off piece carries its place's, so the editor and
+ *  the server read them as one place (functions/hunts.js layerPlaces). */
+export const placeTag = (n: number) => `#${n}`;
+const tagNumber = (d: unknown) => { const m = /^#(\d{1,4})$/.exec(String(d ?? '').trim()); return m ? Number(m[1]) : null; };
 
 function nmToVoxels(dims: Record<string, any>): (nm: number[]) => number[] {
   const axes = Object.keys(dims || {});
@@ -269,15 +299,23 @@ export async function showSession(h: CellHistory, s: SessionOption): Promise<voi
   restoreDisplayAfterLoad(snap);
   // The points go on once the view has settled: a layer added with the restore, or too soon after it, comes
   // back empty or not at all (hunt.ts openHunt adds its gem layers the same way).
-  const numbered = s.places.map((p, i) => ({ p, n: i + 1 }));
+  // Cut off pieces' points within the server's cap for a whole Hunt, each piece keeping its share.
+  const total = s.places.reduce((n, p) => n + (p.cloud?.length ?? 0), 0);
+  const shareOf = (p: Place) => (p.cloud && total > MAX_KEY_PTS ? everyNth(p.cloud, Math.max(1, Math.floor((p.cloud.length * MAX_KEY_PTS) / total))) : p.cloud ?? []);
+  const numbered = s.places.map((p, i) => ({ p, n: i + 1, cloud: shareOf(p) }));
+  const pointsOf = (x: { p: Place; n: number; cloud: number[][] }) => [
+    { type: 'point', id: placeId(x.p), point: toVox(x.p.nm), description: placeTag(x.n) },
+    ...x.cloud.map((q, k) => ({ type: 'point', id: `${placeId(x.p)}-${k}`, point: toVox(q), description: placeTag(x.n) })),
+  ];
   const kinds: [string, 'cut' | 'merge'][] = ([[MERGERS_LAYER, 'cut'], [EXTENSIONS_LAYER, 'merge']] as [string, 'cut' | 'merge'][])
     .filter(([, k]) => s.places.some(p => p.kind === k));
   const add = () => {
     for (const [name, kind] of kinds) {
       if (managed(name)) continue;
       const ml = makeLayer(v.layerSpecification, name, {
-        type: 'annotation', source: { url: 'local://annotations' }, tool: 'annotatePoint', annotationColor: PLACE_COLOR[kind], pointSize: 6, onTop: true,
-        annotations: numbered.filter(x => x.p.kind === kind).map(x => ({ type: 'point', id: placeId(x.p), point: toVox(x.p.nm), description: String(x.n) })),
+        // Size 1, the normal point (Ames 2026-10-26: at 6 the gems hid the cell); the layer's Size slider changes it.
+        type: 'annotation', source: { url: 'local://annotations' }, tool: 'annotatePoint', annotationColor: PLACE_COLOR[kind], pointSize: 1, onTop: true,
+        annotations: numbered.filter(x => x.p.kind === kind).flatMap(pointsOf),
       });
       v.layerSpecification.add(ml);
     }
@@ -301,28 +339,41 @@ export function somaVoxels(h: CellHistory): number[] | null {
   return dims ? nmToVoxels(dims)(h.somaNm).slice(0, 3).map(v => Math.round(v)) : null;
 }
 
-/** A place layer's points as they are on screen now (the admin may have moved, removed or added some). */
-export function placesOnScreen(): { id: string; kind: 'cut' | 'merge'; at: number[] }[] {
-  const out: { id: string; kind: 'cut' | 'merge'; at: number[] }[] = [];
+/**
+ * The places on screen now (the admin may have moved, removed or added points): one per place, its first
+ * point where the list goes to, with the ids of all its points (a cut off piece has many, labelled "#N").
+ */
+export interface ScreenPlace { id: string; kind: 'cut' | 'merge'; at: number[]; tag: number | null; ids: string[] }
+export function placesOnScreen(): ScreenPlace[] {
+  const out: ScreenPlace[] = [];
   try {
     for (const l of viewer()?.state?.toJSON?.()?.layers ?? []) {
       const kind = l?.type !== 'annotation' ? null : l.name === MERGERS_LAYER ? 'cut' : l.name === EXTENSIONS_LAYER ? 'merge' : null;
       if (!kind) continue;
+      const byTag = new Map<number, ScreenPlace>();
       for (const a of Array.isArray(l.annotations) ? l.annotations : []) {
-        if (a?.type === 'point' && Array.isArray(a.point)) out.push({ id: String(a.id), kind, at: a.point.slice(0, 3).map((x: number) => Math.round(Number(x))) });
+        if (a?.type !== 'point' || !Array.isArray(a.point)) continue;
+        const tag = tagNumber(a.description), id = String(a.id);
+        const row = tag != null ? byTag.get(tag) : undefined;
+        if (row) { row.ids.push(id); continue; }
+        const r: ScreenPlace = { id, kind, at: a.point.slice(0, 3).map((x: number) => Math.round(Number(x))), tag, ids: [id] };
+        out.push(r);
+        if (tag != null) byTag.set(tag, r);
       }
     }
   } catch { /* nothing on screen */ }
   return out;
 }
 
-export interface PlaceRow { id: string; kind: 'cut' | 'merge'; at: number[]; n: number | null; place: Place | null }
+export interface PlaceRow { id: string; kind: 'cut' | 'merge'; at: number[]; ids: string[]; n: number | null; place: Place | null }
 /** The places on screen now, numbered as the list numbers them; points the admin added come last, unnumbered. */
 export function placeRows(): PlaceRow[] {
-  const meta = new Map<string, { n: number; place: Place }>();
-  (pickedSession()?.places ?? []).forEach((p, i) => meta.set(placeId(p), { n: i + 1, place: p }));
-  return placesOnScreen().map(r => ({ ...r, n: meta.get(r.id)?.n ?? null, place: meta.get(r.id)?.place ?? null }))
-    .sort((a, b) => (a.n ?? 1e9) - (b.n ?? 1e9));
+  const places = pickedSession()?.places ?? [];
+  return placesOnScreen().map(r => {
+    const p = r.tag != null ? places[r.tag - 1] : undefined;
+    const mine = !!p && p.kind === r.kind;
+    return { id: r.id, kind: r.kind, at: r.at, ids: r.ids, n: mine ? r.tag : null, place: mine ? p! : null };
+  }).sort((a, b) => (a.n ?? 1e9) - (b.n ?? 1e9));
 }
 /** Go to the next (1) or previous (-1) place in the list. */
 export function stepPlace(dir: 1 | -1) {
@@ -338,12 +389,14 @@ function managed(name: string): any {
   return (viewer()?.layerManager?.managedLayers ?? []).find((ml: any) => ml.name === name && !ml.archived) ?? null;
 }
 
-/** Take one place off the screen (its layer reads again, so the key loses it too). */
-export function removePlace(kind: 'cut' | 'merge', id: string) {
+/** Take one place off the screen, every point of it (its layer reads again, so the key loses it too). */
+export function removePlace(kind: 'cut' | 'merge', ids: string[]) {
   const src = managed(kind === 'cut' ? MERGERS_LAYER : EXTENSIONS_LAYER)?.layer?.localAnnotations;
   if (!src) return;
-  const ref = src.getReference(id);
-  try { src.delete(ref); } finally { ref.dispose(); }
+  for (const id of ids) {
+    const ref = src.getReference(id);
+    try { src.delete(ref); } finally { ref.dispose(); }
+  }
 }
 
 /** Move the view to a place. */
