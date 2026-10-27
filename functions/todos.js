@@ -195,7 +195,7 @@ async function todoAction(action, args, {db, me, byName, tag, connectorBase = CO
 const SLACK_IDS = [
   { match: /^(amy|ames)\b|^amy/i, id: 'U02FH1DRC' },
   { match: /^celia/i, id: 'U033NHWDE' },
-  { match: /^(marissa|m sorek|sorek)/i, id: 'U033TSX9A' },
+  // Marissa is no longer pinged in Slack (Ames 2026-10-27); a tag still rings her bell in Pyr.
 ];
 function slackIdOf(person) {
   for (const s of SLACK_IDS) if (s.match.test(person.name || '') || s.match.test(person.email || '')) return s.id;

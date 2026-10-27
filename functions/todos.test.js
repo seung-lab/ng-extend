@@ -88,7 +88,7 @@ test('a checklist keeps text and ticks only', async () => {
 test('Slack ids for the known admins', () => {
   assert.equal(slackIdOf({ name: 'Celia D.' }), 'U033NHWDE');
   assert.equal(slackIdOf({ name: 'Amy R. Sterling' }), 'U02FH1DRC');
-  assert.equal(slackIdOf({ name: 'M Sorek' }), 'U033TSX9A');
+  assert.equal(slackIdOf({ name: 'M Sorek' }), null, 'Marissa is not pinged in Slack (2026-10-27)');
   assert.equal(slackIdOf({ name: 'Someone New' }), null);
 });
 
