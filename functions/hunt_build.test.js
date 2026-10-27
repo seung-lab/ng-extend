@@ -101,21 +101,37 @@ test('Phase 1: a candidate is a task in the Library; Done makes it proofread wit
   await assert.rejects(B.buildAction('build.list', {}, ctx(db, P1)), /Admins only/);
 });
 
-test('suggestions open only with helpers, and the helpers hear', async () => {
+test('suggestions open to everyone with production access, and anyone invited; they hear', async () => {
   const db = fakeDb();
+  const groupNotes = [];
+  db.productionGroupId = async () => 42;
+  db.insertGroupNote = async (row) => { groupNotes.push(row); return row; };
   const A = ctx(db, ADMIN, true);
   await B.buildAction('build.add', { roots: [CELL] }, A);
   Object.assign(db._t.tasks[0], { status: 'completed', assigned_to: P3.id, final_segment_id: CELL });
   await B.buildAction('build.list', {}, A);
-  await assert.rejects(B.buildAction('build.move', { id: 1, to: 'suggesting' }, A), /Invite at least one helper/);
   await assert.rejects(B.buildAction('build.helpers', { id: 1, names: 'nobody' }, A), /No player called nobody/);
   notes.length = 0;
   await B.buildAction('build.helpers', { id: 1, names: ['nseraf'] }, A);
   assert.equal(notes.length, 0, 'not open yet: no note');
+  // No invite needed to open.
   await B.buildAction('build.move', { id: 1, to: 'suggesting' }, A);
-  assert.equal(notes.length, 1);
+  assert.equal(groupNotes.length, 1, 'one note to the Production editors group');
+  assert.equal(groupNotes[0].target_type, 'group');
+  assert.equal(groupNotes[0].target_id, '42');
+  assert.equal(notes.length, 1, 'and one to the invited player');
   assert.equal(notes[0].user_id, P1.id);
-  assert.match(notes[0].title, /Help build a Hunt/);
+  // A player with production access suggests without an invite; one without, and not invited, cannot.
+  const prod = { ...ctx(db, P3), production: async () => true };
+  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, prod);
+  assert.equal((await B.buildAction('build.guard', {}, prod)).cells[0].helper, true);
+  assert.equal((await B.buildAction('build.mine', {}, prod)).cells.length, 1);
+  const none = { ...ctx(db, P2), production: async () => false };
+  await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, none), /production access/);
+  assert.equal((await B.buildAction('build.guard', {}, none)).cells[0].helper, false);
+  // CAVE not answering counts as no access, never as yes.
+  const unknown = { ...ctx(db, P2), production: async () => null };
+  await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, unknown), /production access/);
   await assert.rejects(B.buildAction('build.move', { id: 1, to: 'in_hunt' }, A), /cannot go to in_hunt/);
 });
 
@@ -131,7 +147,7 @@ test('a helper suggests two merges and two cuts; a third is refused; take back f
   await B.buildAction('build.take_back', { id: 2 }, H1);
   await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge }, H1);
   // Not invited: refused. Another's suggestion: not theirs to take back.
-  await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, ctx(db, P3)), /invited helpers/);
+  await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, ctx(db, P3)), /production access/);
   await assert.rejects(B.buildAction('build.take_back', { id: 1 }, ctx(db, P2)), /No such suggestion/);
   // A helper sees only their own.
   const m = await B.buildAction('build.mine', {}, ctx(db, P2));

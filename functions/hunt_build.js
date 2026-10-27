@@ -99,6 +99,9 @@ const openNow = (c, now) => c.status === 'suggesting' && !(Number.isFinite(msOf(
 const etWords = (iso) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
 const helpersOf = (c) => (Array.isArray(c.helpers) ? c.helpers.map(String) : []);
 const isHelper = (c, uid) => helpersOf(c).includes(String(uid));
+/** Who may suggest: every player with production access (Ames 2026-10-27: "open to all users with Production
+ *  access"), and anyone an admin invited by name. prod is true, false, or null when CAVE could not be asked. */
+const canSuggest = (c, uid, prod) => prod === true || isHelper(c, uid);
 const msOf = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? t : NaN; };
 
 /**
@@ -118,13 +121,13 @@ function veilOf(c, huntInfo, now) {
 }
 
 /** The guard for one viewer: protected and veiled IDs, and whether they help with each. Never anyone's suggestions. */
-function guardView(cands, hunts, me, now) {
+function guardView(cands, hunts, me, now, prod = false) {
   const huntOf = new Map((hunts || []).map((h) => [Number(h.id), h]));
   return cands.filter((c) => PROTECTED.has(c.status)).map((c) => ({
     id: c.id, status: c.status, dataset: c.dataset || DATASET, root: String(c.root),
     protected: roots([c.root, ...(c.protected_roots || [])]),
     veil: veilOf(c, huntOf.get(Number(c.hunt_id)) || null, now),
-    helper: openNow(c, now) && isHelper(c, me.id),
+    helper: openNow(c, now) && canSuggest(c, me.id, prod),
     merges_each: c.merges_each, cuts_each: c.cuts_each,
   }));
 }
@@ -176,6 +179,9 @@ async function buildAction(action, args, ctx) {
   if (!me) fail(403, 'Sign in and create your Pyr profile first.');
   const needAdmin = () => { if (!isAdmin) fail(403, 'Admins only.'); };
   args = args || {};
+  if (['build.guard', 'build.mine', 'build.suggest'].includes(action)) {
+    ctx = { ...ctx, prod: isAdmin ? true : ctx.production ? await ctx.production().catch(() => null) : false };
+  }
   switch (action) {
     case 'build.guard': return guard(ctx);
     case 'build.mine': return mine(ctx);
@@ -244,13 +250,13 @@ async function guard(ctx) {
   const cands = await db.protectedCandidates();
   const huntIds = uniq(cands.filter((c) => c.status === 'in_hunt' && posInt(c.hunt_id)).map((c) => posInt(c.hunt_id)));
   const hunts = huntIds.length ? await db.huntTimes(huntIds) : [];
-  return { cells: guardView(cands, hunts, me, now) };
+  return { cells: guardView(cands, hunts, me, now, ctx.prod) };
 }
 
 /** A helper's cells (open for suggestions, they are invited) and their own suggestions on them. */
 async function mine(ctx) {
   const { db, me, now = new Date() } = ctx;
-  const cands = (await db.candidatesByStatus(['suggesting'])).filter((c) => isHelper(c, me.id));
+  const cands = (await db.candidatesByStatus(['suggesting'])).filter((c) => canSuggest(c, me.id, ctx.prod));
   const sugs = cands.length ? await db.suggestionsBy(me.id, cands.map((c) => c.id)) : [];
   return {
     cells: cands.map((c) => ({
@@ -268,7 +274,7 @@ async function suggest(args, ctx) {
   const c = await getCandidate(db, args.candidate_id);
   if (c.status !== 'suggesting') fail(409, 'This cell is not taking suggestions now.');
   if (!openNow(c, now)) fail(409, 'Suggestions for this cell have closed.');
-  if (!isHelper(c, me.id)) fail(403, 'Only invited helpers can suggest on this cell.');
+  if (!canSuggest(c, me.id, ctx.prod)) fail(403, 'Suggestions are open to players with production access.');
   const kind = args.kind === 'merge' ? 'merge' : args.kind === 'cut' ? 'cut' : fail(400, 'A suggestion is a merge or a cut.');
   const { edit, at_nm } = cleanEdit(kind, args.edit);
   const used = usedCounts(await db.suggestionsBy(me.id, [c.id]));
@@ -382,7 +388,6 @@ async function move(args, ctx) {
   if (!STATUSES.includes(to) || !(MOVES[c.status] || []).includes(to)) fail(409, `A cell that is ${c.status} cannot go to ${to || 'that'}.`);
   const patch = { status: to, updated_at: now.toISOString() };
   if (to === 'suggesting') {
-    if (!helpersOf(c).length) fail(409, 'Invite at least one helper first.');
     patch.protected_roots = roots([...(c.protected_roots || []), c.root, c.proofread_root]);
     if ('suggest_until' in args) Object.assign(patch, cleanSettings({ suggest_until: args.suggest_until }));
     const until = 'suggest_until' in patch ? patch.suggest_until : c.suggest_until;
@@ -399,10 +404,14 @@ async function move(args, ctx) {
     }
   }
   const next = await db.patchCandidate(c.id, patch);
-  if (to === 'suggesting' && notify) {
+  if (to === 'suggesting') {
     const until = next && next.suggest_until;
-    await notify(helpersOf(c).map((uid) => ({ user_id: uid, title: 'Help build a Hunt',
-      body: `You are invited to help build a Hunt on the Sandbox. Open "Help build a Hunt" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is. You have ${c.merges_each} merges and ${c.cuts_each} cuts${until ? `, until ${etWords(until)}` : ''}. Where they go stays a secret until the Hunt.` })));
+    const body = `Help build a Hunt on the Sandbox! Open "Help build" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is. You have ${c.merges_each} merges and ${c.cuts_each} cuts${until ? `, until ${etWords(until)}` : ''}. Where they go stays a secret until the Hunt.`;
+    // Everyone with production access, through the Production editors group (it keeps itself up to date), and
+    // anyone invited by name.
+    const group = db.productionGroupId ? await db.productionGroupId().catch(() => null) : null;
+    if (group && db.insertGroupNote) await db.insertGroupNote({ title: 'Help build a Hunt', body, target_type: 'group', target_id: String(group), send_at: now.toISOString(), created_by: (ctx.me && ctx.me.id) || null });
+    if (notify && helpersOf(c).length) await notify(helpersOf(c).map((uid) => ({ user_id: uid, title: 'Help build a Hunt', body })));
   }
   return { cell: next, ...(await list(ctx)) };
 }
@@ -421,7 +430,7 @@ async function setHelpers(args, ctx) {
   await db.patchCandidate(c.id, { helpers: ids, updated_at: now.toISOString() });
   if (c.status === 'suggesting' && fresh.length && notify) {
     await notify(fresh.map((uid) => ({ user_id: uid, title: 'Help build a Hunt',
-      body: `You are invited to help build a Hunt on the Sandbox. Open "Help build a Hunt" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is.` })));
+      body: `You are invited to help build a Hunt on the Sandbox. Open "Help build" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is.` })));
   }
   return list(ctx);
 }
@@ -592,6 +601,8 @@ function restDb(sb) {
     taskFor: (dataset, root) => one(sb(`proofreading_tasks?dataset=eq.${enc(dataset)}&segment_id=eq.${enc(root)}&select=id,status&order=id.desc&limit=1`)),
     addTask: (row) => one(sb('proofreading_tasks', { method: 'POST', body: JSON.stringify(row) })),
     patchTask: (id, row) => sb(`proofreading_tasks?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }),
+    productionGroupId: async () => { const g = await one(sb(`user_groups?name=eq.${enc('Production editors')}&select=id&limit=1`)); return g ? g.id : null; },
+    insertGroupNote: (row) => one(sb('notifications', { method: 'POST', body: JSON.stringify(row) })),
     huntTimes: (ids) => sb(`hunts?id=in.${inList(ids)}&select=id,start_at,end_at,status`),
     activeAssignments: (taskIds) => sb(`task_assignments?task_id=in.${inList(taskIds)}&status=eq.active&select=task_id,user_id,claimed_at,status&limit=500`),
     /** As the pilot_task_action release does: the assignment released, the task back to pending, only if still that player's claim. */
@@ -644,6 +655,6 @@ async function claimGuard(sb, operation, args) {
 
 module.exports = {
   buildAction, restDb, claimGuard, makersOf, releaseStale, staleClaims, CLAIM_HOURS,
-  cleanEdit, cleanPoint, middle, placeOf, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
+  cleanEdit, cleanPoint, middle, placeOf, canSuggest, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
   STATUSES, PROTECTED, VEILED, MOVES, DATASET, TASK_NOTE, openNow,
 };

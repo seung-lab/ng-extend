@@ -45,8 +45,8 @@ const MOVE_WORD: Record<string, string> = {
  */
 const STAGES: { key: string; word: string; tip: string }[] = [
   { key: 'proofreading', word: 'Proofreading', tip: 'Players claim it in the Cell Library, where it is tagged Hunt candidate and listed first, and proofread it fully. Pressing Done moves it on.' },
-  { key: 'proofread', word: 'Proofread', tip: 'You look it over. Send it back with a note, open suggestions for invited helpers, or build the Hunt straight from the proofreaders\' own edits.' },
-  { key: 'suggesting', word: 'Suggestions', tip: 'Invited helpers merge and cut with the normal tools; Pyr keeps each edit as a suggestion and the cell stays as it is. Locked: out of the Cell Library, no claims, other players\' edits refused. Closes at the time you set.' },
+  { key: 'proofread', word: 'Proofread', tip: 'You look it over. Send it back with a note, open suggestions, or build the Hunt straight from the proofreaders\' own edits.' },
+  { key: 'suggesting', word: 'Suggestions', tip: 'Everyone with production access (and anyone you invite) merges and cuts with the normal tools; Pyr keeps each edit as a suggestion and the cell stays as it is. Locked: out of the Cell Library, no claims, other players\' edits refused. Closes at the time you set.' },
   { key: 'planting', word: 'Planting', tip: 'You go through the suggestions, oldest first: Plant it makes the helper\'s edit for real, or Skip. Veiled: players cannot see the cell in Pyr from here on.' },
   { key: 'building', word: 'Building', tip: 'Make the Hunt: the planted edits reversed, or the proofreaders\' edits. Set its words and times and save. Still veiled. Best done close to the Hunt.' },
   { key: 'in_hunt', word: 'In a Hunt', tip: 'At the start the veil lifts for the cell players hunt only: pieces a planted cut made, and the proofread cell, stay hidden. Helpers get their Achievement at the end.' },
@@ -105,7 +105,7 @@ async function move(r: Row, to: string) {
     const until = closeAt.value ? etNaiveToUtcIso(closeAt.value) : null;
     const out = await huntCall<{ cells: Row[] }>('build.move', { id: r.id, to, note: to === 'proofreading' ? sendBackNote.value.trim() : '', ...(to === 'suggesting' ? { suggest_until: until } : {}) });
     rows.value = out.cells;
-    message.value = to === 'suggesting' ? `Suggestions are open${until ? ` until ${etLine(until)}` : ''}. ${r.helpers.length} ${r.helpers.length === 1 ? 'helper has' : 'helpers have'} a note in the bell. The cell is out of the Library and its edits are kept as suggestions now.`
+    message.value = to === 'suggesting' ? `Suggestions are open${until ? ` until ${etLine(until)}` : ''} to everyone with production access${r.helpers.length ? `, and ${r.helpers.length} invited` : ''}. They have a note in the bell. The cell is out of the Library and its edits are kept as suggestions now.`
       : to === 'building' && r.status === 'proofread' ? 'The cell is locked and hidden from players now. Make the Hunt from the proofreaders\' edits when you are ready.'
       : to === 'planting' ? 'Suggestions are closed and the cell is veiled: players can\'t see it in Pyr now. Go through them to plant.'
       : to === 'building' ? 'Planting is done. Make the Hunt from it when you are ready.'
@@ -153,7 +153,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
 <template>
   <fieldset class="nge-hb-admin" :disabled="busy === 'load'">
     <legend>Hunt builder · Sandbox</legend>
-    <p class="nge-hb-admin-help">Players help build a Hunt. Add cells that need full proofreading: each goes in the Cell Library marked <b>Hunt candidate</b>. When it is proofread, either build the Hunt from the proofreaders' own edits, or invite helpers and open suggestions until a closing time: their merges and cuts are kept, never sent. Then plant the ones you like, finish planting, and make the Hunt. From planting (or building) on, players can't see the cell in Pyr until the Hunt starts.</p>
+    <p class="nge-hb-admin-help">Players help build a Hunt. Add cells that need full proofreading: each goes in the Cell Library marked <b>Hunt candidate</b>. When it is proofread, either build the Hunt from the proofreaders' own edits, or open suggestions to everyone with production access until a closing time: their merges and cuts are kept, never sent. Then plant the ones you like, finish planting, and make the Hunt. From planting (or building) on, players can't see the cell in Pyr until the Hunt starts.</p>
     <ol class="nge-hb-stages" aria-label="The stages, in order">
       <li v-for="(st, i) in STAGES" :key="st.key" class="nge-hb-stage" :class="{ 'nge-hb-stage--some': stageCount(st.key) }" tabindex="0" :aria-describedby="`nge-hb-tip-${st.key}`">
         <span class="nge-hb-stage-n">{{ i + 1 }}</span>
@@ -183,7 +183,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
         <div v-if="open === r.id" class="nge-hb-admin-body">
           <p class="nge-hb-admin-muted">Cell <code>{{ r.root }}</code><template v-if="r.proofread_at"> · proofread {{ when(r.proofread_at) }} by {{ r.proofread_by || 'a player' }}</template><template v-if="r.hunt_id"> · Hunt #{{ r.hunt_id }}</template></p>
           <template v-if="['proofread', 'suggesting'].includes(r.status)">
-            <label class="nge-hb-admin-field">Invited helpers <input v-model="helpersText" class="nge-hb-admin-input" placeholder="nseraf, celiad" aria-label="Invited helpers, by name" /></label>
+            <label class="nge-hb-admin-field">Also invite (optional: everyone with production access can already suggest) <input v-model="helpersText" class="nge-hb-admin-input" placeholder="names of players without production access" aria-label="Also invite, by name" /></label>
             <div class="nge-hb-admin-actions">
               <button class="nge-hb-admin-btn" :disabled="!!busy" @click="saveHelpers(r)">{{ busy === `help${r.id}` ? 'Saving…' : 'Save helpers' }}</button>
               <label class="nge-hb-admin-num">Merges each <input v-model.number="r.merges_each" type="number" min="0" max="10" /></label>
