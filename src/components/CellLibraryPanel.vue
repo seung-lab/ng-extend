@@ -1754,6 +1754,7 @@ async function submitResponse(req: HelpRequest, andResolve = false) {
   respondingTo.value = null;
   responseScreenshotUrl.value = '';
   helpStore.refreshPending();
+  if (andResolve && helpStore.requests.find(r => r.id === req.id)?.resolved) showSolved(req.id);
 }
 
 // ── Pop-out: one help request in its own window ─────────────────────
@@ -2188,10 +2189,24 @@ function noteIsLong(note: string): boolean {
   return note.length > 90 || note.includes('\n');
 }
 
-function resolveReq(req: HelpRequest) {
-  helpStore.resolve(req.id);
+async function resolveReq(req: HelpRequest) {
+  const ok = await helpStore.resolve(req.id);
   helpStore.refreshPending();
+  if (ok) showSolved(req.id);
 }
+
+// A small success moment when a request is marked solved (Ames 2026-10-27:
+// "a little success state for marked solved"). The request moves to Resolved
+// at once; this card says so for a few seconds, in the Help tab and, when it
+// was solved there, in the pop-out.
+const solvedFlash = ref<string | null>(null);
+let solvedTimer: ReturnType<typeof setTimeout> | null = null;
+function showSolved(id: string) {
+  solvedFlash.value = id;
+  if (solvedTimer) clearTimeout(solvedTimer);
+  solvedTimer = setTimeout(() => { solvedFlash.value = null; }, 4200);
+}
+onBeforeUnmount(() => { if (solvedTimer) clearTimeout(solvedTimer); });
 
 function openResponseUrl(url: string) {
   if (url.startsWith('http')) {
@@ -3026,6 +3041,11 @@ const panelStyle = computed(() => ({
           <!-- Always-visible quick-add: submit a new help request from the top -->
           <!-- Collapsed by default: a permanently-open form at the top of the
                tab read as an alert rather than an action. -->
+<div v-if="solvedFlash" class="nge-cl-solved" role="status" aria-live="polite">
+            <span class="nge-cl-solved-check" aria-hidden="true">✓</span>
+            <img :src="nurroCelebrate" class="nge-cl-solved-nurro" alt="" />
+            <span class="nge-cl-solved-text"><b>Solved!</b> Thanks for closing the loop. It moved to Resolved.</span>
+          </div>
           <button
             v-if="!helpFormOpen"
             class="nge-cl-help-open-btn"
@@ -4033,6 +4053,11 @@ const panelStyle = computed(() => ({
           <span v-if="poppedReq.annotationLayer" class="nge-cl-response-layer">📐 {{ poppedReq.annotationLayer === 'All annotation layers' ? poppedReq.annotationLayer : (poppedReq.annotationLayer.includes(', ') ? 'Layers: ' : 'Layer: ') + poppedReq.annotationLayer }}</span>
         </div>
 
+        <div v-if="solvedFlash && solvedFlash === poppedReq.id" class="nge-cl-solved" role="status" aria-live="polite">
+            <span class="nge-cl-solved-check" aria-hidden="true">✓</span>
+            <img :src="nurroCelebrate" class="nge-cl-solved-nurro" alt="" />
+            <span class="nge-cl-solved-text"><b>Solved!</b> Thanks for closing the loop. It moved to Resolved.</span>
+          </div>
         <div class="nge-cl-popout-actions">
           <button class="nge-cl-btn" @click="jumpToReq(poppedReq)" title="Fly the view to this cell">↗ Jump to the cell</button>
           <button v-if="!poppedReq.resolved" class="nge-cl-btn" @click="toggleResponseForm(poppedReq.id)">{{ respondingTo === poppedReq.id ? 'Cancel reply' : '💬 Reply' }}</button>
@@ -5698,6 +5723,29 @@ select.nge-cl-complete-type:hover {
   max-height: 250px;
 }
 
+/* Marked solved: a short, happy card (Ames 2026-10-27). */
+.nge-cl-solved {
+  display: flex; align-items: center; gap: 10px;
+  margin: 6px 0 8px; padding: 8px 12px;
+  border-radius: 10px; border: 1px solid rgba(111, 224, 160, 0.55);
+  background: linear-gradient(90deg, rgba(111, 224, 160, 0.16), rgba(111, 224, 160, 0.05));
+  color: #d8f7e6; font: 500 13px/1.35 'Inter', system-ui, sans-serif;
+  animation: ngeSolvedIn 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both, ngeSolvedOut 0.5s ease-in 3.7s both;
+}
+.nge-cl-solved b { color: #fff; }
+.nge-cl-solved-check {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #6fe0a0; color: #062014; font-weight: 800; font-size: 14px;
+  box-shadow: 0 0 0 0 rgba(111, 224, 160, 0.6);
+  animation: ngeSolvedRing 1.1s ease-out 0.25s;
+}
+.nge-cl-solved-nurro { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; }
+@keyframes ngeSolvedIn { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes ngeSolvedOut { to { opacity: 0; } }
+@keyframes ngeSolvedRing { to { box-shadow: 0 0 0 12px rgba(111, 224, 160, 0); } }
+@media (prefers-reduced-motion: reduce) { .nge-cl-solved, .nge-cl-solved-check { animation: none; } }
+body.nge-calm .nge-cl-solved, body.nge-calm .nge-cl-solved-check { animation: none; }
 /* ── Dataset grouping for Help tab ── */
 .nge-cl-help-ds-group {
   margin-bottom: 4px;
