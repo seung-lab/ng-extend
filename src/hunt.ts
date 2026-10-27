@@ -472,18 +472,28 @@ export function reportedOf(h: HuntInfo | null, id: string): 'sent' | 'no' | null
 /** A report's spot, marked while an admin looks at it (HuntReportCard): one teal dot, through the cells, the size of a gem
  *  (Ames 2026-10-27: "this annotation is too big"). */
 const REPORT_LAYER = 'Hunt report (only you see it)';
-export function showReportMarker(at: number[]) {
+// Balls and boxes drawn see through, so the cells inside them still show (Ames 2026-10-27: a 15 µm place hid them).
+const SEE_THROUGH = 'void main() { setColor(vec4(defaultColor(), 0.3)); }';
+/** With sizeUm, the ball a place of that size would be, around the spot (Ames 2026-10-27: "maybe we need a visual for
+ *  me to see how big a box I am labeling", "I didn't realize how large that is"). */
+export function showReportMarker(at: number[], sizeUm = 0) {
   const v = viewer();
   if (!v?.layerSpecification) return;
   hideReportMarker();
   const names: string[] = v.coordinateSpace?.value?.names ?? [];
+  const scales = v.coordinateSpace?.value?.scales;
   const here = Array.from<number>(v.navigationState?.position?.value ?? new Float32Array(names.length));
   const ix = ['x', 'y', 'z'].map(n => names.indexOf(n));
   if (ix.some(i => i < 0)) return;
   const p = here.slice(); ix.forEach((i, k) => { p[i] = at[k]; });
+  const annotations: any[] = [{ type: 'point', id: 'report', point: p }];
+  if (sizeUm > 0 && scales) {
+    const radii = names.map((_, i) => (ix.includes(i) ? (sizeUm * 500) / (Number(scales[i]) * 1e9) : 0));
+    annotations.push({ type: 'ellipsoid', id: 'report-size', center: p, radii });
+  }
   v.layerSpecification.add(makeLayer(v.layerSpecification, REPORT_LAYER, {
-    type: 'annotation', source: { url: 'local://annotations' }, annotations: [{ type: 'point', id: 'report', point: p }],
-    annotationColor: EDGE.color, pointSize: 3, onTop: true,
+    type: 'annotation', source: { url: 'local://annotations' }, annotations,
+    annotationColor: EDGE.color, pointSize: 3, onTop: true, shader: SEE_THROUGH,
   }));
 }
 
@@ -528,7 +538,7 @@ export function showKeyPlaces(places: KeyPlace[]) {
   ].filter(f => f.ids.length);
   v.layerSpecification.add(makeLayer(v.layerSpecification, PLACES_LAYER, {
     type: 'annotation', source: { url: 'local://annotations' }, annotations: anns,
-    annotationColor: FOUND_COLOR.cut, pointSize: 3, onTop: true, ngeAnnFolders: folders,
+    annotationColor: FOUND_COLOR.cut, pointSize: 3, onTop: true, ngeAnnFolders: folders, shader: SEE_THROUGH,
   }));
 }
 export function hideKeyPlaces() {

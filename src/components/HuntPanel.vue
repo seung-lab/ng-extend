@@ -625,6 +625,8 @@ watch(() => [hunt.value?.id, phase.value, hunt.value?.you.tier] as const, ([id, 
 /* ── Head ── */
 .nge-hunt-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px 18px; cursor: grab; touch-action: none; user-select: none; border-bottom: 1px solid rgb(var(--hn-accent) / 0.14); }
 .nge-hunt--dragging .nge-hunt-head { cursor: grabbing; }
+/* The title bar stays put and only the contents scroll (toknow, report #265). */
+.nge-hunt-head { position: sticky; top: 0; z-index: 4; background: rgba(9, 15, 29, 0.98); border-radius: 14px 14px 0 0; }
 .nge-hunt-eyebrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; font: 600 10.5px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: rgb(var(--hn-gold)); }
 .nge-hunt-eyegem { filter: drop-shadow(0 0 4px rgb(var(--hn-gold) / 0.7)); }
 .nge-hunt--mini { width: min(300px, calc(100vw - 24px)); }

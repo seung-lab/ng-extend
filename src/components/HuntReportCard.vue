@@ -8,7 +8,7 @@
  * and whether an earlier report or the answers have the same spot, so the first hunter to send it gets the credit.
  * Add to the answers or Dismiss, with a note that can go to the hunter ("make it so we can dismiss or add a note").
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { huntCall, huntState, loadHunts, goToHunt, goToSoma, showReportMarker, hideReportMarker, showKeyPlaces, hideKeyPlaces, type KeyPlace } from '../hunt';
 import { canonicalDataset, currentDatasetTag } from '../datasets';
 
@@ -62,6 +62,13 @@ const grows = computed(() => {
     if (d <= best) { best = d; hit = p; }
   }
   return hit;
+});
+/** How wide the place there is now, in µm across (a ball), for the line under Size. */
+const growsNow = computed(() => { const r = grows.value?.shape?.r; return r ? Math.round((r[0] * 2) / 100) / 10 : 0; });
+// The ball a size would make, drawn around the spot as it is typed.
+watch(size, s => {
+  const r = report.value;
+  if (shown.value && r?.at && r.status === 'open') showReportMarker(r.at.slice(0, 3), Number(s) || 0);
 });
 const keyWords = computed(() => {
   const k = report.value?.in_key;
@@ -198,9 +205,10 @@ function close() { queue.value = null; hideReportMarker(); hideKeyPlaces(); }
       <div v-if="report.status === 'open'" class="nge-hreport-actions">
         <button class="nge-hreport-btn" :disabled="!report.at || !!busy" @click="goThere">{{ busy === 'go' ? 'Going…' : 'Go there again' }}</button>
         <label class="nge-hreport-size" title="How wide, across. A place of this kind already near it is made this big (the button says which); otherwise a new place this big is added. A gem anywhere in it counts.">Size <input v-model.number="size" type="number" min="0" max="200" step="0.5" placeholder="a point" /> <span class="nge-hreport-unit">µm</span></label>
-        <button class="nge-hreport-btn nge-hreport-btn--add" :disabled="!!busy" @click="add">{{ busy === 'add' ? 'Adding…' : grows ? `Make place #${grows.n} bigger` : 'Add to the answers' }}</button>
+        <button class="nge-hreport-btn nge-hreport-btn--add" :disabled="!!busy" @click="add">{{ busy === 'add' ? 'Adding…' : grows ? `Resize place #${grows.n}` : 'Add to the answers' }}</button>
         <button class="nge-hreport-btn" :disabled="!!busy" @click="dismiss">{{ busy === 'no' ? 'Dismissing…' : 'Dismiss' }}</button>
       </div>
+      <p v-if="report.status === 'open' && Number(size) > 0" class="nge-hreport-sizeline">The teal ball in the view is {{ size }} µm across: a gem anywhere in it counts.{{ grows ? ` Place #${grows.n} is ${growsNow ? `${growsNow} µm across` : 'a point'} now.` : '' }}</p>
       <div class="nge-hreport-noterow">
         <input v-model="note" class="nge-hreport-noteinput" maxlength="300" :placeholder="report.status === 'open' ? 'A note (optional), kept with the report' : 'A note, kept with the report'" aria-label="A note on this report" />
         <label class="nge-hreport-tell" :title="`Send the note, and what you decided, to ${report.name} in the bell. Adding it always tells them; the note goes only with this ticked.`"><input v-model="tell" type="checkbox" /> Send to {{ report.name }}</label>
@@ -265,6 +273,7 @@ function close() { queue.value = null; hideReportMarker(); hideKeyPlaces(); }
 .nge-hreport-dot--added { background: #48d682; }
 .nge-hreport-dot--here { background: #42d5ec; }
 .nge-hreport-done { margin: 8px 0 0; color: #9ff0bf; }
+.nge-hreport-sizeline { margin: 6px 0 0; font-size: 12px; color: #9fe9f5; }
 .nge-hreport-muted { margin: 0; color: #9fb7d9; }
 .nge-hreport-error { margin: 8px 0 0; color: #ff9b9b; }
 </style>

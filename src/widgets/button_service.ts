@@ -1025,7 +1025,9 @@ export class ButtonService {
       openCellHistory(segmentIDString);
     });
     historySection.append(historyTitle, historyBtn);
-    const hasHistory = !!getPcgInfo();
+    // Not on a running Hunt's cells, for players: the edits would show what the Hunt hides (Nseraf, report #267:
+    // "it *can* give away stuff added (mergers)"). Admins keep it.
+    const hasHistory = !!getPcgInfo() && !(isLiveHuntCell(segmentIDString) && !useProofreadingBackendStore().isAdmin);
 
     // ── Section 4: Claim Cell ────────────────────────────────────────────
     const claimSection = document.createElement('div');
