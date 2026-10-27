@@ -205,8 +205,42 @@ async function getCandidate(db, id) {
   return c;
 }
 
+/**
+ * A claim on a Hunt candidate is let go 24 hours after it was made (Ames 2026-10-27: "These cells release 24 hours
+ * after being claimed"), so a candidate is never held up. Asked on the way through build.guard (every Sandbox player,
+ * every 2 minutes) and build.list, at most once every 5 minutes per server copy. The claimer hears it in the bell.
+ */
+const CLAIM_HOURS = 24;
+let releasedAt = 0;
+function staleClaims(assignments, now, hours = CLAIM_HOURS) {
+  const cut = now.getTime() - hours * 3600000;
+  return assignments.filter((a) => a.status === 'active' && Number.isFinite(msOf(a.claimed_at)) && msOf(a.claimed_at) <= cut);
+}
+async function releaseStale(ctx, force = false) {
+  const { db, now = new Date(), notify } = ctx;
+  if (!db.activeAssignments || !db.releaseClaim) return 0;
+  if (!force && Date.now() - releasedAt < 300000) return 0;
+  releasedAt = Date.now();
+  try {
+    const waiting = (await db.candidatesByStatus(['proofreading'])).filter((c) => posInt(c.task_id));
+    if (!waiting.length) return 0;
+    const stale = staleClaims(await db.activeAssignments(waiting.map((c) => posInt(c.task_id))), now);
+    let n = 0;
+    for (const a of stale) {
+      if (!(await db.releaseClaim(posInt(a.task_id), String(a.user_id), now))) continue;
+      n++;
+      if (notify) {
+        await notify([{ user_id: a.user_id, title: 'Your Hunt candidate claim was let go',
+          body: `A claim on a Hunt candidate lasts ${CLAIM_HOURS} hours, so yours has gone back to the Cell Library for someone else. Claim it again if you are still on it: your edits are all still in the cell.` }]);
+      }
+    }
+    return n;
+  } catch (e) { console.warn('[hunt_build] claims not let go:', e && e.message); return 0; }
+}
+
 async function guard(ctx) {
   const { db, me, now = new Date() } = ctx;
+  await releaseStale(ctx);
   const cands = await db.protectedCandidates();
   const huntIds = uniq(cands.filter((c) => c.status === 'in_hunt' && posInt(c.hunt_id)).map((c) => posInt(c.hunt_id)));
   const hunts = huntIds.length ? await db.huntTimes(huntIds) : [];
@@ -270,6 +304,7 @@ async function myNote(args, ctx) {
 /** The candidates, newest first, each with its task's state, its counts and the next move. Proofread ones are noticed here. */
 async function list(ctx) {
   const { db, now = new Date() } = ctx;
+  await releaseStale(ctx);
   let cands = await db.candidates();
   // Phase 1: a candidate whose task is done is proofread (Done in the Cell Library is the player's word).
   const waiting = cands.filter((c) => c.status === 'proofreading' && posInt(c.task_id));
@@ -558,6 +593,15 @@ function restDb(sb) {
     addTask: (row) => one(sb('proofreading_tasks', { method: 'POST', body: JSON.stringify(row) })),
     patchTask: (id, row) => sb(`proofreading_tasks?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }),
     huntTimes: (ids) => sb(`hunts?id=in.${inList(ids)}&select=id,start_at,end_at,status`),
+    activeAssignments: (taskIds) => sb(`task_assignments?task_id=in.${inList(taskIds)}&status=eq.active&select=task_id,user_id,claimed_at,status&limit=500`),
+    /** As the pilot_task_action release does: the assignment released, the task back to pending, only if still that player's claim. */
+    releaseClaim: async (taskId, userId, now) => {
+      const t = await one(sb(`proofreading_tasks?id=eq.${taskId}&assigned_to=eq.${enc(userId)}&status=in.(assigned,in_progress)`,
+        { method: 'PATCH', body: JSON.stringify({ status: 'pending', assigned_to: null, updated_at: now.toISOString() }) }));
+      await sb(`task_assignments?task_id=eq.${taskId}&user_id=eq.${enc(userId)}&status=eq.active`,
+        { method: 'PATCH', body: JSON.stringify({ status: 'released', released_at: now.toISOString() }) });
+      return !!t;
+    },
     names: async (ids) => {
       const list = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(String(id)));
       if (!list.length) return {};
@@ -599,7 +643,7 @@ async function claimGuard(sb, operation, args) {
 }
 
 module.exports = {
-  buildAction, restDb, claimGuard, makersOf,
+  buildAction, restDb, claimGuard, makersOf, releaseStale, staleClaims, CLAIM_HOURS,
   cleanEdit, cleanPoint, middle, placeOf, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
   STATUSES, PROTECTED, VEILED, MOVES, DATASET, TASK_NOTE, openNow,
 };

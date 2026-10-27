@@ -153,7 +153,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -423,9 +423,16 @@ const datasetScopedCells = computed(() => {
   });
 });
 
+/** A Hunt candidate (the Hunt Builder): a Sandbox task whose note starts "Hunt candidate" ("Hunt cell", the first 8). */
+const isHuntCandidate = (c: { notes?: string | null }) => /^Hunt (cell|candidate)/.test(c.notes || '');
+/** Hunt candidates on this dataset, every state: the Hunt chip shows only when there are some (Ames 2026-10-27). */
+const huntCells = computed(() => datasetScopedCells.value.filter(isHuntCandidate));
+const huntOpenCount = computed(() => huntCells.value.filter(c => c.status !== 'completed').length);
 const filteredCells = computed(() => {
   let list = datasetScopedCells.value;
-  if (filter.value === 'mine') {
+  if (filter.value === 'hunt') {
+    list = huntCells.value;
+  } else if (filter.value === 'mine') {
     // My claimed cells first, then my completed cells
     const myClaimed = list.filter(c => isMyClaim(c));
     const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId);
@@ -448,8 +455,8 @@ const filteredCells = computed(() => {
   }
   // Hunt candidates first (Ames 2026-10-27: "should I see Hunt Candidates here?"): the sheet's cells came first,
   // so the eight sat at the very bottom of the list.
-  const hunt = list.filter(c => /^Hunt (cell|candidate)/.test(c.notes || ''));
-  return hunt.length ? [...hunt, ...list.filter(c => !/^Hunt (cell|candidate)/.test(c.notes || ''))] : list;
+  const hunt = list.filter(isHuntCandidate);
+  return hunt.length ? [...hunt, ...list.filter(c => !isHuntCandidate(c))] : list;
 });
 
 // Draw the list a slice at a time: thousands of rows made the panel slow to
@@ -2661,7 +2668,7 @@ const slimEmpty = ref(false);
 const slim = computed(() => slimCell.value !== null || slimEmpty.value);
 /** The rows the cell list draws: one in the slim view, none on the empty bar. */
 const listCells = computed(() => (slimCell.value ? [slimCell.value] : slimEmpty.value ? [] : shownCells.value));
-const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed'];
+const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed', 'hunt'];
 /** The cell the caret shrinks to: the one on screen, else the claim being
  *  worked on, else your first claim. */
 function currentCell(): CellRow | null {
@@ -2949,6 +2956,11 @@ const panelStyle = computed(() => ({
               </span>
             </div>
             <div class="nge-cl-tabgroup-row">
+              <!-- Hunt candidates (the Hunt Builder), only while there are some: cells that may become a Hunt. -->
+              <button v-if="huntCells.length" :class="{ active: filter === 'hunt', 'nge-cl-hunt-tab': true }" @click="filter = 'hunt'"
+                      title="Hunt candidates: cells that may become a Hunt. Proofread one fully, to every end. A claim on one is let go 24 hours after you claim it, so the cell is not held up.">
+                Hunt <b>{{ huntOpenCount }}</b>
+              </button>
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
                       title="Cells you have claimed, and cells you completed">
                 My Cells <b>{{ myClaimCount }}</b>
@@ -3860,7 +3872,7 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
-                  <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully. It may become a Hunt.">Hunt candidate</span>
+                  <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
                   <!-- The Hunt candidate tag says it (its tooltip has the note) -->
                   <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
@@ -4666,6 +4678,8 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-typerow { display: flex; gap: 6px; }
 .nge-cl-ai-type { background: rgba(178, 140, 255, 0.14); color: #c9b2ff; text-transform: none; }
 .nge-cl-hunt-cell { background: rgba(66, 213, 236, 0.12); color: #7fe6f5; text-transform: none; }
+.nge-cl-hunt-tab b { color: #7fe6f5; }
+.nge-cl-hunt-tab.active { border-color: rgba(66, 213, 236, 0.7) !important; }
 .nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
 .nge-cl-complete-ai b { color: #c9b2ff; }
 .nge-cl-complete-type { flex: 1 1 0; min-width: 0; }

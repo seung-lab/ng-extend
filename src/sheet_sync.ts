@@ -1,5 +1,6 @@
 import { canonicalDataset, currentDatasetTag } from './datasets';
 import { functionUrl } from './functions_base';
+import { useProofreadingBackendStore } from './store';
 
 /** The ways a cell can end, per dataset, spelled exactly as that dataset's
  *  sheet spells them in its Status dropdown (Retina, read 2026-10-03). The
@@ -41,9 +42,19 @@ export function completeStatusesFor(dataset?: string | null) {
 /** Only the server holds Sheets credentials and chooses the destination/range. */
 /** `link` and `notes` (complete only) fill the sheet's "Final Link" and
  *  "Notes" columns; the server never overwrites a filled cell. */
+/** A Sandbox task the Hunt Builder made: its note starts "Hunt candidate" (or "Hunt cell", the first 8). */
+function isHuntCandidate(segmentId: string): boolean {
+  try {
+    const tasks = (useProofreadingBackendStore().tasks ?? []) as { segment_id: string; final_segment_id?: string | null; notes: string | null }[];
+    return tasks.some(t => (t.segment_id === segmentId || t.final_segment_id === segmentId) && /^Hunt (cell|candidate)/.test(t.notes || ''));
+  } catch { return false; }
+}
 export async function syncCellToSheet(action: 'claim' | 'complete' | 'coordinates' | 'release' | 'reopen', segmentId: string, coordinates?: string, sourceDataset?: string, link?: string, notes?: string, status?: string, cellType?: string) {
   const dataset = canonicalDataset(sourceDataset || currentDatasetTag());
   if (!['pinky_nf_v2', 'stroeh_mouse_retina', 'pni_mec'].includes(dataset)) return;
+  // A Hunt candidate (the Hunt Builder) lives only in Pyr, never in the Sandbox's sheet (Ames 2026-10-27: a claim
+  // said "This segment is missing from the source sheet").
+  if (dataset === 'pinky_nf_v2' && isHuntCandidate(segmentId)) return;
   let token: string | null = null;
   try { token = JSON.parse(localStorage.getItem('auth_token_v2_https://global.daf-apis.com/sticky_auth') || '{}').accessToken || null; } catch {}
   if (!token) throw new Error('Sign in before syncing a cell.');

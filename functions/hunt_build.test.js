@@ -310,3 +310,25 @@ test('from the proofreaders\' own edits: proofread straight to building; the pro
 });
 
 test('the Cell Library note says Hunt candidate', () => { assert.match(B.TASK_NOTE, /^Hunt candidate:/); });
+
+test('a claim on a Hunt candidate is let go after 24 hours, and the player hears', async () => {
+  const now = new Date('2026-10-28T12:00:00Z');
+  const rows = [
+    { task_id: 101, user_id: P1.id, claimed_at: '2026-10-27T11:59:00Z', status: 'active' },
+    { task_id: 102, user_id: P2.id, claimed_at: '2026-10-27T12:30:00Z', status: 'active' },
+  ];
+  assert.deepEqual(B.staleClaims(rows, now).map((a) => a.task_id), [101]);
+  const db = fakeDb();
+  const A = ctx(db, ADMIN, true, now);
+  await B.buildAction('build.add', { roots: [CELL, CELL2] }, A);
+  const released = [];
+  db.activeAssignments = async () => rows;
+  db.releaseClaim = async (taskId, userId) => { released.push([taskId, userId]); return true; };
+  notes.length = 0;
+  assert.equal(await B.releaseStale(A, true), 1);
+  assert.deepEqual(released, [[101, P1.id]]);
+  assert.equal(notes[0].user_id, P1.id);
+  assert.match(notes[0].title, /let go/);
+  // Not more than once every 5 minutes on its own.
+  assert.equal(await B.releaseStale(A), 0);
+});
