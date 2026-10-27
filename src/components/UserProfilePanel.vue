@@ -246,8 +246,6 @@ const showFlagPicker = ref(false);
 const showAllBuilding    = ref(false);
 const showAllExploration = ref(false);
 const showAllSpecialModal = ref(false);
-const BADGE_PREVIEW_LIMIT = 5;  // one row of five (Ames 2026-10-01: no scrolling)
-const BADGE_PREVIEW_WITH_VIEWALL = 4; // four + the View all tile
 const SPECIAL_PREVIEW_LIMIT = 5;
 
 // ── Profile tabs ─────────────────────────────────────────────────────────────
@@ -832,20 +830,21 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// The latest of each track is featured beside its numbers in the left
-// column, so these rows start with the one before it (Ames 2026-10-11).
+// Each track's row: its three most recent Achievements, bigger, then View
+// all when there are more. The latest is no longer featured beside the
+// numbers (Ames 2026-10-27: "get rid of the achievement to the far left and
+// maybe we want to just show the 3 most recent").
+const ROW_RECENT = 3;
 const displayedBuildingBadges = computed(() => {
-  const all = earnedBuildingBadges.value.earned.slice(1);
-  if (showAllBuilding.value) return all;
-  return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
+  const all = earnedBuildingBadges.value.earned;
+  return showAllBuilding.value ? all : all.slice(0, ROW_RECENT);
 });
 const displayedExplorationBadges = computed(() => {
-  const all = earnedExplorationBadges.value.earned.slice(1);
-  if (showAllExploration.value) return all;
-  return all.length >= BADGE_PREVIEW_LIMIT ? all.slice(0, BADGE_PREVIEW_WITH_VIEWALL) : all.slice(0, BADGE_PREVIEW_LIMIT);
+  const all = earnedExplorationBadges.value.earned;
+  return showAllExploration.value ? all : all.slice(0, ROW_RECENT);
 });
-const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
-const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length - 1 >= BADGE_PREVIEW_LIMIT);
+const showBuildingViewAll = computed(() => earnedBuildingBadges.value.earned.length > ROW_RECENT);
+const showExplorationViewAll = computed(() => earnedExplorationBadges.value.earned.length > ROW_RECENT);
 
 // ── Competitions (Ames 2026-10-21): "a separate section in profile for Competitions ... the
 // gold / silver / bronze are special badges that count up, so user can win gold multiple times
@@ -1703,10 +1702,6 @@ onUnmounted(() => clearTimeout(stageTimer));
           <div class="nge-profile-section nge-profile-section--completions nge-profile-section--windows">
             <div v-if="scopedCellsFailed" class="nge-profile-stat-unavailable">Not available right now</div>
             <div v-else class="nge-profile-feature-row">
-              <!-- the latest Cell Completions Achievement; its name is the tooltip -->
-              <div v-if="latestExplorationBadge" class="nge-profile-feature" :title="badgeTooltip(latestExplorationBadge)" @click="onBadgeClick(latestExplorationBadge)">
-                <img :src="getBadgeUrl(latestExplorationBadge.imageKey)" :alt="latestExplorationBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestExplorationBadge.slug}`" />
-              </div>
             <div class="nge-profile-windows">
               <!-- No curve on the compact layout (a laptop, or a small screen
                    zoomed in): the draw stuttered and the sliver it had there
@@ -1803,10 +1798,6 @@ onUnmounted(() => clearTimeout(stageTimer));
                  A player with months of earlier work elsewhere read a small
                  number here as their work having gone missing. -->
             <div class="nge-profile-feature-row">
-              <!-- the latest Editor Achievement; its name is the tooltip -->
-              <div v-if="latestBuildingBadge" class="nge-profile-feature" :title="badgeTooltip(latestBuildingBadge)" @click="onBadgeClick(latestBuildingBadge)">
-                <img :src="getBadgeUrl(latestBuildingBadge.imageKey)" :alt="latestBuildingBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestBuildingBadge.slug}`" />
-              </div>
             <div class="nge-profile-windows">
             <!-- The same rows as the three numbers, as a line from the first
                  day to today (Ames 2026-10-11). Nothing while they load, and
@@ -1926,9 +1917,6 @@ onUnmounted(() => clearTimeout(stageTimer));
               <!-- The latest Days Achievement, at the left. Streak and best
                    streak are not repeated here: they sit on the right under
                    Streak (Ames 2026-10-11). -->
-              <div v-if="latestLoyaltyBadge" class="nge-profile-feature" :title="badgeTooltip(latestLoyaltyBadge)" @click="onBadgeClick(latestLoyaltyBadge)">
-                <img :src="getBadgeUrl(latestLoyaltyBadge.imageKey)" :alt="latestLoyaltyBadge.name" class="nge-profile-feature-icon" :class="`nge-badge--${latestLoyaltyBadge.slug}`" />
-              </div>
               <div class="nge-profile-stat-col" title="Every day you have shown up, ever. This never resets.">
                 <div class="nge-profile-stat-label">Total days</div>
                 <div class="nge-profile-stat-val nge-profile-stat-val--hero"><RollUp :value="revealStage >= 3 ? totalDays : 0" /></div>
@@ -1945,7 +1933,7 @@ onUnmounted(() => clearTimeout(stageTimer));
           <div v-if="LOYALTY_BADGES.length" class="nge-profile-section nge-profile-section--badges">
             <div class="nge-profile-badges-grid">
               <div
-                v-for="badge in earnedLoyaltyBadges.earned.slice(1, 5)"
+                v-for="badge in earnedLoyaltyBadges.earned.slice(0, ROW_RECENT)"
                 :key="badge.id"
                 class="nge-profile-badge nge-profile-badge--loyalty"
                 :class="{ 'nge-profile-badge--selected': selectedBadge?.id === badge.id }"
@@ -1958,7 +1946,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 <div class="nge-profile-badge-name">{{ badge.name }}</div>
               </div>
               <div
-                v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length < 5"
+                v-if="earnedLoyaltyBadges.next && earnedLoyaltyBadges.earned.length <= ROW_RECENT"
                 class="nge-profile-badge nge-profile-badge--locked"
                 :title="`Next: ${earnedLoyaltyBadges.next.threshold} days of science`"
               >
@@ -1969,7 +1957,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                 </div>
               </div>
               <div
-                v-if="earnedLoyaltyBadges.earned.length >= 5"
+                v-if="earnedLoyaltyBadges.earned.length > ROW_RECENT"
                 class="nge-profile-badge nge-profile-badge--viewall"
                 title="View all achievements in Trophy Case"
                 @click="activeTab = 'trophyCase'"
@@ -5004,8 +4992,9 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 :is(.nge-track-achievements, .nge-profile-header-side) .nge-profile-badge .nge-profile-badge-name { display: none; }
 /* Bigger art in the Overview rows too (Ames 2026-10-27: "these can be bigger
    as well - so tiny"): each fills most of its column, up to 84 px from 42. */
+.nge-track-achievements .nge-profile-badges-grid { grid-template-columns: repeat(4, 1fr); }
 .nge-track-achievements .nge-profile-badge:not(.nge-profile-badge--viewall):not(.nge-profile-badge--locked) .nge-profile-badge-img {
-  width: 100%; max-width: 84px; height: auto; aspect-ratio: 1;
+  width: 100%; max-width: 96px; height: auto; aspect-ratio: 1;
 }
 .nge-track-achievements .nge-profile-badge:not(.nge-profile-badge--viewall):not(.nge-profile-badge--locked) .nge-profile-badge-icon {
   width: 92%; height: 92%;
