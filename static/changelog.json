@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-27T00:08:57Z",
+      "title": "Report a problem the Hunt missed",
+      "items": [
+        "Found a real merger or missing extension the Hunt does not have? In the Hunt box, press \"Found a problem the Hunt missed?\", put the crosshair on it, choose Cut or Merge, and send it to the admins. No gem is used, and if it is real you get Laser Eyes.",
+        "The Hunt countdown keeps the same width as the seconds tick."
+      ]
+    },
+    {
       "at": "2026-10-26T23:20:49Z",
       "title": "Hunt fixes",
       "digest": "minor",
