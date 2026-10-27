@@ -77,6 +77,7 @@ BEGIN
     SELECT b.user_id AS uid, b.joined_on, b.birthday, u.display_name AS dname
     FROM public.pyr_birthdays b JOIN public.users u ON u.id = b.user_id
     WHERE b.birthday IN (to_char(today, 'MM-DD'), to_char(today - 1, 'MM-DD'), to_char(today - 2, 'MM-DD'))
+    ORDER BY b.joined_on, b.user_id   -- the longest here first (Ames, who built Pyr, joined first)
   LOOP
     -- Whole years as of today (a Dec 31 birthday caught up on Jan 1 is last year's).
     n := EXTRACT(YEAR FROM today)::INT - EXTRACT(YEAR FROM r.joined_on)::INT
