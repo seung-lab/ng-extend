@@ -1940,20 +1940,32 @@ class GrapheneGraphSource extends SegmentationGraphSource {
     parent.appendChild(context.registerDisposer(new DependentViewWidget(
         layer.graphConnection, (connection, box, viewContext) => {
           if (!(connection instanceof GraphConnection)) return;
-          const {multicutState} = connection.state;
-          box.classList.add('neuroglancer-annotations-tab', 'nge-cut-points');
-          const title = document.createElement('div');
-          title.className = 'nge-cut-points-title';
-          box.appendChild(title);
-          box.appendChild(viewContext
-              .registerDisposer(new MulticutAnnotationLayerView(layer, layer.annotationDisplayState))
-              .element);
+          const {multicutState, mergeState} = connection.state;
+          const section = (view: AnnotationLayerView) => {
+            const el = document.createElement('div');
+            el.classList.add('neuroglancer-annotations-tab', 'nge-cut-points');
+            const title = document.createElement('div');
+            title.className = 'nge-cut-points-title';
+            el.appendChild(title);
+            el.appendChild(viewContext.registerDisposer(view).element);
+            box.appendChild(el);
+            return {el, title};
+          };
+          const cut = section(new MulticutAnnotationLayerView(layer, layer.annotationDisplayState));
+          // Merge points too (Ames): each pending merge is one line, its two
+          // points; deleting it takes the pair out of the Merge Queue.
+          const merge = section(new NgeStatesAnnotationLayerView(
+              layer, layer.annotationDisplayState, [connection.mergeAnnotationState]));
           const update = () => {
-            const n = multicutState.sinks.size + multicutState.sources.size;
-            box.style.display = n ? '' : 'none';
-            title.textContent = `Cut points (${n}): red ${multicutState.sinks.size}, blue ${multicutState.sources.size}`;
+            const red = multicutState.sinks.size, blue = multicutState.sources.size;
+            cut.el.style.display = red + blue ? '' : 'none';
+            cut.title.textContent = `Cut points (${red + blue}): red ${red}, blue ${blue}`;
+            const pairs = mergeState.merges.value.filter(m => !m.mergedRoot).length;
+            merge.el.style.display = pairs ? '' : 'none';
+            merge.title.textContent = `Merge points: ${pairs} ${pairs === 1 ? 'pair' : 'pairs'}`;
           };
           viewContext.registerDisposer(multicutState.changed.add(update));
+          viewContext.registerDisposer(mergeState.merges.changed.add(update));
           update();
         })).element);
   }
@@ -2111,6 +2123,22 @@ class MulticutAnnotationLayerView extends AnnotationLayerView {
       this._annotationStates = this.registerDisposer(new MergedAnnotationStates());
     }
     return this._annotationStates;
+  }
+}
+
+/** nge: an annotation list of just these states (the Segments tab's merge
+ *  points; MulticutAnnotationLayerView is the cut points). */
+class NgeStatesAnnotationLayerView extends AnnotationLayerView {
+  private _ngeStates: MergedAnnotationStates;
+  constructor(layer: SegmentationUserLayer, displayState: AnnotationDisplayState, states: AnnotationLayerState[]) {
+    super(layer, displayState);
+    for (const state of states) this.annotationStates.add(state);
+  }
+  get annotationStates() {
+    if (this._ngeStates === undefined) {
+      this._ngeStates = this.registerDisposer(new MergedAnnotationStates());
+    }
+    return this._ngeStates;
   }
 }
 

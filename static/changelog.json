@@ -3,9 +3,9 @@
   "entries": [
     {
       "at": "2026-10-27T18:13:10Z",
-      "title": "Remove one cut point",
+      "title": "Cut and merge points in the Segments tab",
       "items": [
-        "While you have cut points down, they are listed at the top of the cell layer's Segments tab, like any annotations: delete one there to remove just that point, so a misplaced point no longer means clearing them all.",
+        "Your cut points and merge points are listed at the top of the cell layer's Segments tab while you have some, like any annotations. Delete a cut point there to remove just that point, so a misplaced point no longer means clearing them all; delete a merge there to take that pair out of the Merge Queue.",
         "With Classic layers on, a right click on a layer tab selects the layer again even when some text is selected on the page; the browser's own menu shows only on the selected text itself.",
         "Thanks to st0ck53y and Krzysztof."
       ]
