@@ -280,8 +280,19 @@ window.addEventListener('DOMContentLoaded', () => {
     // menu too, so Copy works there (Ames 2026-09-29: "I need to be able to
     // copy + paste in chat!"). Right-click on the viewer still navigates.
     const inViewer = !!target.closest('.neuroglancer-rendered-data-panel, .neuroglancer-panel canvas');
-    const hasSelection = String(window.getSelection() || '').trim().length > 0;
-    if (!inViewer && (target.closest('.nge-chat-float') || hasSelection)) {
+    // Only a right click ON the selected text: any selection anywhere used to
+    // let the browser's menu take every right click, a layer tab's too
+    // (Krzysztof Kruk, report 275: with Classic layers, a right click on a
+    // tab "just shows the regular OS context menu").
+    const sel = window.getSelection();
+    let onSelection = false;
+    try {
+      if (sel && String(sel).trim()) {
+        for (let i = 0; i < sel.rangeCount && !onSelection; i++) onSelection = sel.getRangeAt(i).intersectsNode(target);
+      }
+    } catch { /* no selection */ }
+    const ownMenu = !!target.closest('.neuroglancer-layer-item, .neuroglancer-layer-panel');
+    if (!inViewer && !ownMenu && (target.closest('.nge-chat-float') || onSelection)) {
       e.stopPropagation();
     }
   }, true);
