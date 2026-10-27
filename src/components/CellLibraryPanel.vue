@@ -446,7 +446,10 @@ const filteredCells = computed(() => {
       (history.getNickname(c.segId) || '').toLowerCase().includes(q),
     );
   }
-  return list;
+  // Hunt candidates first (Ames 2026-10-27: "should I see Hunt Candidates here?"): the sheet's cells came first,
+  // so the eight sat at the very bottom of the list.
+  const hunt = list.filter(c => /^Hunt (cell|candidate)/.test(c.notes || ''));
+  return hunt.length ? [...hunt, ...list.filter(c => !/^Hunt (cell|candidate)/.test(c.notes || ''))] : list;
 });
 
 // Draw the list a slice at a time: thousands of rows made the panel slow to

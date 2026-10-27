@@ -39,6 +39,26 @@ const MOVE_WORD: Record<string, string> = {
   suggesting: 'Open suggestions', proofreading: 'Send back', dropped: 'Drop', planting: 'Close suggestions, start planting',
   building: 'Finish planting', proofread: 'Back to proofread',
 };
+/**
+ * The stages in order, each with what happens there (Ames 2026-10-27: "a step through here that lets me see all the
+ * stages in hover tooltip"). The strip on top counts the cells at each; a row's chip shows its stage's words.
+ */
+const STAGES: { key: string; word: string; tip: string }[] = [
+  { key: 'proofreading', word: 'Proofreading', tip: 'Players claim it in the Cell Library, where it is tagged Hunt candidate and listed first, and proofread it fully. Pressing Done moves it on.' },
+  { key: 'proofread', word: 'Proofread', tip: 'You look it over. Send it back with a note, open suggestions for invited helpers, or build the Hunt straight from the proofreaders\' own edits.' },
+  { key: 'suggesting', word: 'Suggestions', tip: 'Invited helpers merge and cut with the normal tools; Pyr keeps each edit as a suggestion and the cell stays as it is. Locked: out of the Cell Library, no claims, other players\' edits refused. Closes at the time you set.' },
+  { key: 'planting', word: 'Planting', tip: 'You go through the suggestions, oldest first: Plant it makes the helper\'s edit for real, or Skip. Veiled: players cannot see the cell in Pyr from here on.' },
+  { key: 'building', word: 'Building', tip: 'Make the Hunt: the planted edits reversed, or the proofreaders\' edits. Set its words and times and save. Still veiled. Best done close to the Hunt.' },
+  { key: 'in_hunt', word: 'In a Hunt', tip: 'At the start the veil lifts for the cell players hunt only: pieces a planted cut made, and the proofread cell, stay hidden. Helpers get their Achievement at the end.' },
+  { key: 'put_back', word: 'Put back', tip: 'After the Hunt ends, Put it back undoes every planting, so the cell is as it was proofread.' },
+];
+const stageIndex = (status: string) => STAGES.findIndex(st => st.key === status);
+const stageTip = (r: Row) => {
+  const i = stageIndex(r.status);
+  if (r.status === 'dropped') return 'Dropped: off the list. Bring it back to proofread it again.';
+  return i < 0 ? '' : `Stage ${i + 1} of ${STAGES.length}, ${STAGES[i].word}. ${r.closed ? 'Suggestions have closed: helpers cannot add more. ' : ''}${STAGES[i].tip}`;
+};
+const stageCount = (key: string) => rows.value.filter(r => r.status === key).length;
 const etLine = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : '');
 const statusWord = (r: Row) => (r.closed ? 'Suggestions closed' : STATUS_WORD[r.status] || r.status);
 const moveWord = (r: Row, to: string) => (r.status === 'planting' && to === 'suggesting' ? 'Reopen suggestions' : r.status === 'building' && to === 'planting' ? 'Back to planting'
@@ -134,6 +154,14 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
   <fieldset class="nge-hb-admin" :disabled="busy === 'load'">
     <legend>Hunt builder · Sandbox</legend>
     <p class="nge-hb-admin-help">Players help build a Hunt. Add cells that need full proofreading: each goes in the Cell Library marked <b>Hunt candidate</b>. When it is proofread, either build the Hunt from the proofreaders' own edits, or invite helpers and open suggestions until a closing time: their merges and cuts are kept, never sent. Then plant the ones you like, finish planting, and make the Hunt. From planting (or building) on, players can't see the cell in Pyr until the Hunt starts.</p>
+    <ol class="nge-hb-stages" aria-label="The stages, in order">
+      <li v-for="(st, i) in STAGES" :key="st.key" class="nge-hb-stage" :class="{ 'nge-hb-stage--some': stageCount(st.key) }" tabindex="0" :aria-describedby="`nge-hb-tip-${st.key}`">
+        <span class="nge-hb-stage-n">{{ i + 1 }}</span>
+        <span class="nge-hb-stage-word">{{ st.word }}</span>
+        <span v-if="stageCount(st.key)" class="nge-hb-stage-count">{{ stageCount(st.key) }}</span>
+        <span :id="`nge-hb-tip-${st.key}`" class="nge-hb-stage-tip" role="tooltip"><b>{{ i + 1 }}. {{ st.word }}</b> {{ st.tip }}</span>
+      </li>
+    </ol>
     <p v-if="notInstalled" class="nge-hb-admin-warn">The Hunt Builder is not set up yet: run <code>supabase-hunt-build.sql</code> in Supabase.</p>
     <div class="nge-hb-admin-add">
       <input v-model="paste" class="nge-hb-admin-input" placeholder="Paste Sandbox cell IDs" aria-label="Sandbox cell IDs to add" @keydown.enter="add" />
@@ -148,7 +176,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
       <li v-for="r in live" :key="r.id" class="nge-hb-admin-row" :class="{ 'nge-hb-admin-row--open': open === r.id }">
         <button class="nge-hb-admin-line" :aria-expanded="open === r.id" @click="toggle(r)">
           <span class="nge-hb-admin-id">…{{ r.root.slice(-6) }}</span>
-          <span class="nge-hb-admin-chip" :class="[`nge-hb-admin-chip--${r.status}`, { 'nge-hb-admin-chip--closed': r.closed }]">{{ statusWord(r) }}</span>
+          <span class="nge-hb-admin-chip" :class="[`nge-hb-admin-chip--${r.status}`, { 'nge-hb-admin-chip--closed': r.closed }]" :title="stageTip(r)">{{ statusWord(r) }}</span>
           <span class="nge-hb-admin-who">{{ r.status === 'proofreading' ? (r.task?.who ? `${r.task.who} is on it` : 'Waiting for a proofreader') : who(r) }}</span>
           <span class="nge-hb-admin-counts">{{ countsLine(r) }}</span>
         </button>
@@ -197,6 +225,22 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
 <style scoped>
 .nge-hb-admin { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; padding: 10px 12px 12px; border-radius: 10px; border: 1px solid rgba(245, 209, 66, 0.35); min-width: 0; }
 .nge-hb-admin legend { padding: 0 6px; font: 700 11px 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #f5d142; }
+.nge-hb-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.nge-hb-stage { position: relative; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 4px; border-radius: 999px; cursor: help;
+  border: 1px solid rgba(90, 170, 255, 0.22); color: #8fa3bf; font: 600 11.5px 'Inter', sans-serif; outline: none; }
+.nge-hb-stage:not(:last-child)::after { content: ''; position: absolute; right: -5px; top: 50%; width: 5px; height: 1px; background: rgba(90, 170, 255, 0.35); }
+.nge-hb-stage--some { color: #e6f0ff; border-color: rgba(245, 209, 66, 0.5); background: rgba(245, 209, 66, 0.07); }
+.nge-hb-stage-n { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; font-size: 10.5px; background: rgba(90, 170, 255, 0.16); color: #cfe4ff; }
+.nge-hb-stage--some .nge-hb-stage-n { background: #f5d142; color: #1d1600; }
+.nge-hb-stage-count { padding: 0 6px; border-radius: 999px; font-size: 10.5px; background: rgba(245, 209, 66, 0.2); color: #fff3c4; font-variant-numeric: tabular-nums; }
+.nge-hb-stage-tip { position: absolute; left: 0; top: calc(100% + 6px); z-index: 5; width: 260px; padding: 8px 10px; border-radius: 8px; pointer-events: none;
+  background: rgba(6, 11, 22, 0.98); border: 1px solid rgba(245, 209, 66, 0.45); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  color: #cfdcef; font: 400 12px/1.45 'Inter', sans-serif; opacity: 0; visibility: hidden; transition: opacity 0.12s; }
+.nge-hb-stage-tip b { color: #fff3c4; }
+.nge-hb-stage:nth-child(n+5) .nge-hb-stage-tip { left: auto; right: 0; }
+.nge-hb-stage:hover .nge-hb-stage-tip, .nge-hb-stage:focus-visible .nge-hb-stage-tip { opacity: 1; visibility: visible; }
+.nge-hb-stage:focus-visible { border-color: #9fd0ff; }
+@media (prefers-reduced-motion: reduce) { .nge-hb-stage-tip { transition: none; } }
 .nge-hb-admin-help { margin: 0; color: #a9bbd3; font-size: 12.5px; line-height: 1.45; }
 .nge-hb-admin-warn { margin: 0; color: #f8e08a; font-size: 12.5px; }
 .nge-hb-admin-add, .nge-hb-admin-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
