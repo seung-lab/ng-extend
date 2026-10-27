@@ -570,9 +570,9 @@ async function handle(action, args, io) {
 
 // ── The Eyewire II Principles (Ames 2026-10-27: "ask players to agree to
 // community principles when they go to Retina dataset",
-// https://eyewire.ai/principles). Asked once per account and version; a new
-// PRINCIPLES_VERSION asks everyone again. The record (who, when, which
-// version) is kept by the server, in the store passed in (Firestore in
+// https://eyewire.ai/principles). Asked only ever once per account, even if
+// PRINCIPLES_VERSION changes later. The record (who, when, which version)
+// is kept by the server, in the store passed in (Firestore in
 // index.js, principles_agreements), never taken from the browser.
 //   access.principlesStatus  anyone signed in: {version, agreed, at}.
 //   access.principlesAgree   anyone signed in: {version} they saw; agrees.
@@ -585,13 +585,18 @@ function principlesKey(io) {
 }
 async function principlesStatus(a, io) {
   const rec = await io.principles.get(principlesKey(io));
-  const agreed = !!(rec && rec.version === PRINCIPLES_VERSION);
+  // Asked only ever once (Ames 2026-10-27: "it should only ever ask them
+  // this once"): any agreement counts, whatever version it was.
+  const agreed = !!(rec && rec.at);
   return {version: PRINCIPLES_VERSION, agreed, at: agreed ? rec.at : null};
 }
 async function principlesAgree(a, io) {
   // Agreeing to an older text than the one the server asks for is not agreeing.
   if (a.version !== PRINCIPLES_VERSION) fail(409, 'The principles were updated. Reload the page to read the new version.');
   const key = principlesKey(io);
+  // Already agreed: the first agreement stands, never written over.
+  const had = await io.principles.get(key);
+  if (had && had.at) return {version: PRINCIPLES_VERSION, agreed: true, at: had.at};
   const at = new Date().toISOString();
   await io.principles.set(key, {version: PRINCIPLES_VERSION, at,
     userId: (io.me && io.me.id) || null, email: String((io.who && io.who.email) || '').toLowerCase(),

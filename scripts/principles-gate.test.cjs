@@ -80,6 +80,20 @@ async function player(browser, status, beta = { invited: true }) {
     check('Agree sends one agreement, with the version the server asked about', sent.length === 1 && sent[0].version === V, sent);
     check('then the screen goes', !(await p.page.$('.nge-principles-panel')));
     check('no page errors', p.errors.filter(e => !/Failed to fetch/.test(e)).length === 0, p.errors.slice(0, 3));
+    // Only ever once (Ames 2026-10-27): after a reload, even with the server
+    // still saying "not agreed", this browser does not ask again.
+    await p.page.reload({ waitUntil: 'load' });
+    await p.page.waitForFunction(() => { const a = document.querySelector('#app'); return !!(a && a.__vue_app__ && window.viewer); }, null, { timeout: 90000 });
+    await p.page.addStyleTag({ content: HIDE_CSS });
+    await p.page.evaluate(() => {
+      const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia;
+      const login = pinia._s.get('login');
+      if (login && login.sessions.length === 0) login.sessions.push({ key: 'auth_token_v2_https://global.daf-apis.com/sticky_auth', name: 'New Player', email: 'new@example.org', hostname: 'test' });
+      const pb = pinia._s.get('proofreadingBackend');
+      pb.userId = 'u-new'; pb.userName = 'New Player'; pb.username = 'newbie';
+    });
+    await p.page.waitForTimeout(3000);
+    check('after agreeing, a reload never asks again', !(await p.page.$('.nge-principles-panel')));
     await p.context.close();
 
     // 3. Controls.

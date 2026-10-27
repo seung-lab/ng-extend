@@ -41,9 +41,16 @@ const onRetina = computed(() => {
   return canonicalDataset(currentSegLayerName()) === RETINA;
 });
 
+// Asked only ever once (Ames 2026-10-27): the server's record decides, and
+// this browser remembers too, so a slow or failed lookup never asks again.
+const OK_KEY = (id: string) => `nge_principles_ok_v1:${id}`;
+function rememberOk(id: string) { agreedFor.value = id; try { localStorage.setItem(OK_KEY(id), '1'); } catch { /* storage blocked */ } }
+function knownOk(id: string) { try { return localStorage.getItem(OK_KEY(id)) === '1'; } catch { return false; } }
+
 let asking = false;
 async function check() {
   const id = backend.userId;
+  if (id && agreedFor.value !== id && knownOk(id)) agreedFor.value = id;
   if (!id || betaGate.value !== 'in' || !onRetina.value || agreedFor.value === id) { show.value = false; return; }
   if (asking) return;
   asking = true;
@@ -56,7 +63,7 @@ async function check() {
       show.value = onRetina.value;
       if (show.value) setTimeout(() => { if (panelEl.value) runPanelTrace(panelEl.value); }, 80);
     } else if (s && s.agreed) {
-      agreedFor.value = id;
+      rememberOk(id);
       show.value = false;
     }
   } catch { /* fail open; asked again on the next dataset switch */ }
@@ -69,7 +76,7 @@ async function agree() {
   sending.value = true; error.value = '';
   try {
     await secureWrite('access.principlesAgree', { version });
-    agreedFor.value = backend.userId || '';
+    if (backend.userId) rememberOk(backend.userId);
     show.value = false;
   } catch (e: any) {
     error.value = e?.message || 'That did not go through. Please try again.';

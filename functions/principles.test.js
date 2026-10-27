@@ -28,13 +28,17 @@ test('not agreed yet, then agreed, for this version', async () => {
   assert.equal(st.at, rec.at);
 });
 
-test('agreeing to an older text does not count, and a new version asks again', async () => {
+test('asked only ever once: an agreement to any version counts, and the first one stands', async () => {
   const {store, io} = world();
   await assert.rejects(handle('access.principlesAgree', {version: '2020-01-01'}, io()), /updated/);
   await assert.rejects(handle('access.principlesAgree', {}, io()), /updated/);
   assert.deepEqual(store, {});
   store['user:u-1'] = {version: '2020-01-01', at: '2020-01-01T00:00:00Z'};
-  assert.equal((await handle('access.principlesStatus', {}, io())).agreed, false);
+  const st = await handle('access.principlesStatus', {}, io());
+  assert.equal(st.agreed, true, 'an older agreement still counts (Ames: "only ever ask them this once")');
+  const again = await handle('access.principlesAgree', {version: PRINCIPLES_VERSION}, io());
+  assert.equal(again.at, '2020-01-01T00:00:00Z');
+  assert.equal(store['user:u-1'].version, '2020-01-01', 'never written over');
 });
 
 test('each account is asked on its own; with no profile yet the sign in email is the key', async () => {
