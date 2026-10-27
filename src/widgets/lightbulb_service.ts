@@ -1157,3 +1157,36 @@ export async function saveCellType(
 if (typeof window !== 'undefined' && (window as any).ngeOutboxTest) {
   (window as any).__ngeOutboxSave = { setCellComplete, saveCellType, problem: () => lastCompletionProblem || lastCellTypeProblem };
 }
+
+/**
+ * The label for an MEC cell completed as Axon complete (Ames 2026-10-27: "can
+ * you add a CAVE label for axon complete?"). Not a proofread mark: an
+ * "axon complete" tag in the dataset's cell status table, beside the
+ * "complete" ones. Where the dataset's CAVE tables take no writes yet
+ * (annotationLog: MEC since 2026-09-28) Pyr's edit log is the record, as for
+ * a completion, with the label in it, until the table can be written.
+ * True when it was recorded one way or the other.
+ */
+export async function labelAxonComplete(caveServer: string, rootId: string, pt?: [number, number, number]): Promise<boolean> {
+  const dsCfg = getActiveDatasetConfig();
+  const pos = pt ?? getViewerPosition();
+  let inCave = false;
+  if (!dsCfg.annotationLog && caveServer && dsCfg.cellStatusTable) {
+    const tag = dsCfg.cellStatusSchema === 'bound_tag_user' ? 'axon complete' : encodeTag('axon complete');
+    const res = await fetch(annotationBaseUrl(caveServer, dsCfg.cellStatusTable, dsCfg.alignedVolume), {
+      method: 'POST', headers: authHeaders(caveServer),
+      body: JSON.stringify({ annotations: [{ pt: { position: pos }, tag }] }),
+    }).catch(e => { console.warn('[lightbulb] axon complete: CAVE network error', e); return null; });
+    inCave = !!res?.ok;
+    if (!inCave) reportWriteFailure('cave_write', `axon complete label ${res ? res.status : 'network error'} on ${dsCfg.cellStatusTable}`, '');
+  }
+  try {
+    const backend = useProofreadingBackendStore();
+    if (backend.userId) {
+      await backend.logEdit({ operation: 'mark_axon_complete', segment_after: rootId, coordinates: `${pos[0]}, ${pos[1]}, ${pos[2]}`,
+        metadata: { root_id: rootId, label: 'axon complete', in_cave: inCave } });
+      return true;
+    }
+  } catch (e) { console.warn('[lightbulb] axon complete: edit log failed', e); }
+  return inCave;
+}

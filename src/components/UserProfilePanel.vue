@@ -2489,6 +2489,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 v-for="badge in earnedExplorationBadges.earned"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--exploration"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
@@ -2520,6 +2521,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 v-for="badge in earnedBuildingBadges.earned"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--building"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
@@ -2551,6 +2553,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 v-for="badge in earnedLoyaltyBadges.earned"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--loyalty"
+                :title="`${badge.name}: ${badge.threshold} days of science`"
                 :class="{
                   'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
                   'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
@@ -4299,6 +4302,19 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   margin-bottom: 6px;
   filter: drop-shadow(0 0 4px rgba(100, 180, 255, 0.2));
 }
+
+/* In the Trophy Case grid the art is the card: bigger, and the name and
+   count move to the tooltip (Ames 2026-10-27: "badges are too small -- we
+   don't want to have the title on display - they can appear on hover"). */
+.nge-trophy-grid .nge-trophy-badge { padding: 10px; justify-content: center; }
+.nge-trophy-grid .nge-trophy-badge-icon {
+  width: 82%; max-width: 150px; height: auto; aspect-ratio: 1; margin-bottom: 0;
+}
+.nge-trophy-grid .nge-trophy-medal-img { display: block; width: 82%; max-width: 150px; }
+.nge-trophy-grid .nge-trophy-medal-img .nge-trophy-badge-icon { width: 100%; }
+.nge-trophy-grid .nge-trophy-badge-name,
+.nge-trophy-grid .nge-trophy-badge-threshold,
+.nge-trophy-grid .nge-trophy-medal-place { display: none; }
 
 .nge-trophy-badge-mystery {
   width: 56px;

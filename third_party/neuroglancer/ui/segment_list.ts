@@ -893,6 +893,28 @@ function renderTagSummary(
  * back to its usual size.
  */
 function makeFolderGrip(list: HTMLElement, folders: SegmentFolders, folderId: string) {
+  return makeListGrip(list, h => folders.setHeight(folderId, h),
+      () => !!folders.value.find(f => f.id === folderId)?.height);
+}
+
+/** The Pasted list's height, kept in this browser (Ames 2026-10-27: "why
+ *  can't I drag to expand this?" It stopped at 220 px with room below). */
+const PASTED_HEIGHT_KEY = 'nge-pasted-list-h';
+function makePastedGrip(list: HTMLElement) {
+  try {
+    const h = Number(localStorage.getItem(PASTED_HEIGHT_KEY));
+    if (h >= FOLDER_MIN_HEIGHT) { list.dataset.ngeSized = ''; list.style.setProperty('--nge-folder-h', `${h}px`); }
+  } catch { /* storage blocked */ }
+  return makeListGrip(list, h => {
+    try {
+      if (h === undefined) localStorage.removeItem(PASTED_HEIGHT_KEY);
+      else localStorage.setItem(PASTED_HEIGHT_KEY, String(Math.round(h)));
+    } catch { /* storage blocked */ }
+    if (h === undefined) list.style.removeProperty('--nge-folder-h');
+  }, () => { try { return !!localStorage.getItem(PASTED_HEIGHT_KEY); } catch { return false; } });
+}
+
+function makeListGrip(list: HTMLElement, setHeight: (h: number|undefined) => void, hasHeight: () => boolean) {
   const grip = document.createElement('div');
   grip.className = 'nge-seg-folder-grip';
   grip.title = 'Drag to make this folder taller or shorter. Double click for its usual size.';
@@ -916,8 +938,8 @@ function makeFolderGrip(list: HTMLElement, folders: SegmentFolders, folderId: st
       grip.removeEventListener('pointerup', up);
       grip.removeEventListener('pointercancel', up);
       grip.classList.remove('nge-seg-folder-grip--active');
-      if (Math.abs(h - startH) >= 2) folders.setHeight(folderId, h);
-      else if (!folders.value.find(f => f.id === folderId)?.height) delete list.dataset.ngeSized;
+      if (Math.abs(h - startH) >= 2) setHeight(h);
+      else if (!hasHeight()) delete list.dataset.ngeSized;
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
@@ -926,7 +948,7 @@ function makeFolderGrip(list: HTMLElement, folders: SegmentFolders, folderId: st
   grip.addEventListener('dblclick', (e) => {
     e.stopPropagation();
     delete list.dataset.ngeSized;
-    folders.setHeight(folderId, undefined);
+    setHeight(undefined);
   });
   return grip;
 }
@@ -1911,6 +1933,9 @@ export class SegmentDisplayTab extends Tab {
                     let grip: HTMLElement|undefined;
                     if (typeof mode === 'object' && folders !== undefined) {
                       grip = makeFolderGrip(vlist.element, folders, mode.folder);
+                      grp.element.appendChild(grip);
+                    } else if (mode === 'pasted') {
+                      grip = makePastedGrip(vlist.element);
                       grp.element.appendChild(grip);
                     }
                     return {source, vlist, grp, grip};

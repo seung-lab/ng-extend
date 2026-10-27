@@ -59,6 +59,8 @@ export const lantern = reactive<Saved>(load());
 
 /** Clicked branch, for the bar: what it is doing, in words a player reads. */
 export const lanternBranch = reactive({
+  /** The gem at the click, in page pixels, while the branch is found. */
+  marker: null as {x: number; y: number; at: number; state: 'finding' | 'done' | 'failed'} | null,
   /** idle: nothing clicked yet; finding: asking the server; lit; failed. */
   status: 'idle' as 'idle' | 'finding' | 'lit' | 'failed',
   message: '',
@@ -135,7 +137,7 @@ function apply() {
   // For checking from the console and in tests.
   (window as any).__ngeLantern = lit > 0
     ? {mode: lantern.mode, centerNm: Array.from(state.center, (v, i) => v * state.scaleNm[i]), radiusNm: state.radiusNm, heightNm: state.heightNm, intensity: state.intensity, shadow: state.shadow, lit,
-       branch: state.mask ? {pieces: branch.pieces, dims: state.mask.dims, cellNm: branch.cellNm, reachNm: branch.reachNm, forkNm: branch.forkNm, somaNm: branch.somaNm, somaFrom: branch.somaFrom, maskAtNm} : null}
+       branch: state.mask ? {pieces: branch.pieces, dims: state.mask.dims, cellNm: branch.cellNm, reachNm: branch.reachNm, forkNm: branch.forkNm, somaNm: branch.somaNm, somaFrom: branch.somaFrom, wholeBlocks: branch.wholeBlocks, maskAtNm} : null}
     : null;
 }
 
@@ -214,6 +216,10 @@ const SOMA_RADIUS_NM = 15000;
 const MAX_SHARE = 0.4;
 /** How far round the line through the branch's pieces the light reaches. */
 const TUBE_NM = 3200;
+/** A branch piece's block of the volume is lit, within WIDE_NM of the
+ *  branch's line, unless a side of it is longer than WHOLE_BLOCK_NM. */
+const WHOLE_BLOCK_NM = 30000;
+const WIDE_NM = 6000;
 /** The map's budget: 8 MB at most. */
 const MAX_CELLS = 8e6;
 /** How long the light takes to run out along a new branch. */
@@ -232,35 +238,51 @@ const branch = {
   forkNm: null as number[] | null,
   somaNm: null as number[] | null,
   somaFrom: '' as '' | 'on record' | 'thickest' | 'guessed',
+  /** How many of its pieces were lit block by block (no exact position). */
+  wholeBlocks: 0,
 };
 let spread = 1;
 let asked = 0;
 
 /** A cell's branch map, and its thickest piece (the soma, where the dataset
- *  says how thick each piece is). Kept for 5 minutes; an edit gives the cell
- *  a new id, so a kept map is never a stale one. */
-const graphs = new Map<string, {at: number; graph: BranchGraph; thickest?: string}>();
-async function graphOf(layer: SegmentationUserLayer, root: string) {
+ *  says how thick each piece is; asked only when no soma is on record, as it
+ *  is a second pass over every piece). Kept for 5 minutes; an edit gives the
+ *  cell a new id, so a kept map is never a stale one. */
+interface GraphEntry { at: number; graph: BranchGraph; thickest?: Promise<string | undefined>; }
+const graphs = new Map<string, GraphEntry>();
+async function graphOf(layer: SegmentationUserLayer, root: string): Promise<GraphEntry> {
   const kept = graphs.get(root);
   if (kept && Date.now() - kept.at < 5 * 60 * 1000) return kept;
   const graph = await ngeGrapheneBranchGraph(layer, root);
   if (!graph.points.size) throw new Error('The server has no branch map for this cell.');
-  let thickest: string | undefined, most = 0;
-  for (const [id, nm] of await ngeGrapheneThickness(layer, [...graph.points.keys()])) if (nm > most) { most = nm; thickest = id; }
-  const entry = {at: Date.now(), graph, thickest};
+  const entry: GraphEntry = {at: Date.now(), graph};
   graphs.set(root, entry);
   if (graphs.size > 6) graphs.delete(graphs.keys().next().value!);
   return entry;
 }
+function thickestOf(layer: SegmentationUserLayer, entry: GraphEntry): Promise<string | undefined> {
+  entry.thickest ??= ngeGrapheneThickness(layer, [...entry.graph.points.keys()]).then(thickness => {
+    let thickest: string | undefined, most = 0;
+    for (const [id, nm] of thickness) if (nm > most) { most = nm; thickest = id; }
+    return thickest;
+  }, () => undefined);
+  return entry.thickest;
+}
 
 /** Paint the branch into a map: a tube round its segments, kept inside its
- *  pieces' blocks of the volume when those are known. */
-function buildMask(segments: Segment[], boxes: number[][], scalesNm: number[]): {mask: NgeLanternMask; cellNm: number} | null {
-  if (!segments.length) return null;
+ *  pieces' blocks of the volume when those are known. `wholeBoxes` are lit
+ *  whole: the blocks of pieces with no exact position, whose point is only
+ *  the block's middle and can lie microns off the branch (MEC came out
+ *  "splotchy", Ames 2026-10-27). A piece is always inside its block. */
+function buildMask(segments: Segment[], boxes: number[][], scalesNm: number[], wholeBoxes: {box: number[]; near: boolean}[] = []): {mask: NgeLanternMask; cellNm: number} | null {
+  if (!segments.length && !wholeBoxes.length) return null;
   const r = TUBE_NM;
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const [a, b] of segments) for (const p of [a, b]) for (let i = 0; i < 3; i++) {
     lo[i] = Math.min(lo[i], p[i] - r); hi[i] = Math.max(hi[i], p[i] + r);
+  }
+  for (const {box} of wholeBoxes) for (let i = 0; i < 3; i++) {
+    lo[i] = Math.min(lo[i], box[i]); hi[i] = Math.max(hi[i], box[i + 3]);
   }
   const ext = [0, 1, 2].map(i => hi[i] - lo[i]);
   let cell = Math.max(250, Math.cbrt((ext[0] * ext[1] * ext[2]) / MAX_CELLS));
@@ -269,11 +291,15 @@ function buildMask(segments: Segment[], boxes: number[][], scalesNm: number[]): 
   const [nx, ny, nz] = dims;
   const data = new Uint8Array(nx * ny * nz);
   const soft = Math.max(cell, r * 0.25);
+  // Cells within the wide reach of the branch's line: a whole block is lit
+  // only there, so a long block does not light far along another branch.
+  const wide = new Uint8Array(nx * ny * nz);
+  const rw = Math.max(r, WIDE_NM);
   for (const [a, b] of segments) {
     const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const len2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] || 1;
-    const i0 = [0, 1, 2].map(i => Math.max(0, Math.floor((Math.min(a[i], b[i]) - r - lo[i]) / cell)));
-    const i1 = [0, 1, 2].map(i => Math.min(dims[i] - 1, Math.ceil((Math.max(a[i], b[i]) + r - lo[i]) / cell)));
+    const i0 = [0, 1, 2].map(i => Math.max(0, Math.floor((Math.min(a[i], b[i]) - rw - lo[i]) / cell)));
+    const i1 = [0, 1, 2].map(i => Math.min(dims[i] - 1, Math.ceil((Math.max(a[i], b[i]) + rw - lo[i]) / cell)));
     for (let z = i0[2]; z <= i1[2]; z++) {
       const pz = lo[2] + (z + 0.5) * cell - a[2];
       for (let y = i0[1]; y <= i1[1]; y++) {
@@ -285,11 +311,21 @@ function buildMask(segments: Segment[], boxes: number[][], scalesNm: number[]): 
           t = t < 0 ? 0 : t > 1 ? 1 : t;
           const ex = px - t * d[0], ey = py - t * d[1], ez = pz - t * d[2];
           const dist = Math.sqrt(ex * ex + ey * ey + ez * ez);
+          if (dist < rw) wide[o] = 1;
           if (dist >= r) continue;
           const v = Math.round(Math.min(1, (r - dist) / soft) * 255);
           if (v > data[o]) data[o] = v;
         }
       }
+    }
+  }
+  for (const {box, near} of wholeBoxes) {
+    const b0 = [0, 1, 2].map(i => Math.max(0, Math.floor((box[i] - lo[i]) / cell)));
+    const b1 = [0, 1, 2].map(i => Math.min(dims[i] - 1, Math.ceil((box[i + 3] - lo[i]) / cell) - 1));
+    for (let z = b0[2]; z <= b1[2]; z++) for (let y = b0[1]; y <= b1[1]; y++) {
+      const row = (z * ny + y) * nx;
+      if (!near) { data.fill(255, row + b0[0], row + b1[0] + 1); continue; }
+      for (let o = row + b0[0]; o <= row + b1[0]; o++) if (wide[o]) data[o] = 255;
     }
   }
   // Only inside the branch's own blocks: a tube is round, the cell is not, and
@@ -319,16 +355,29 @@ export function letGoOfBranch() {
   branch.keep = false;
   lanternBranch.status = 'idle';
   lanternBranch.message = '';
+  lanternBranch.marker = null;
   run();
 }
 
+/** The gem where the player clicked, kept until the branch lights. */
+function markClick(x: number, y: number) {
+  lanternBranch.marker = {x, y, at: Date.now(), state: 'finding'};
+}
+function endMarker(state: 'done' | 'failed') {
+  const m = lanternBranch.marker;
+  if (!m) return;
+  lanternBranch.marker = {...m, state};
+  setTimeout(() => { if (lanternBranch.marker?.at === m.at) lanternBranch.marker = null; }, reducedMotion() ? 0 : 700);
+}
+
 /** Light the branch under the mouse. */
-async function lightBranchUnderMouse() {
+async function lightBranchUnderMouse(x: number, y: number) {
   // What is under the pointer is normally read on the next frame; read it
   // now, or a click right after the pointer arrives finds nothing there.
   try { viewer.mouseState.updateUnconditionally(); } catch { /* the last reading */ }
   const pick = pickUnderMouse();
   if ('error' in pick) {
+    lanternBranch.marker = null;
     // Empty space: back to the normal view.
     if (pick.error.startsWith('Click on a cell')) {
       if (branch.mask || lanternBranch.status !== 'idle') letGoOfBranch();
@@ -345,12 +394,16 @@ async function lightBranchUnderMouse() {
   const toNm = (g: ArrayLike<number>) => [0, 1, 2].map(i => g[i] * (scalesNm[i] || 1));
   const clickNm = toNm(pick.global);
   lanternBranch.status = 'finding';
-  lanternBranch.message = graphs.has(pick.root) ? '' : 'Finding the branch…';
+  lanternBranch.message = '';
+  markClick(x, y);
   try {
-    const {graph, thickest} = await graphOf(layer, pick.root);
+    // The map and the clicked piece are asked for at the same time.
+    const pieceAsked = ngeGraphenePieceOf(layer, pick.selection);
+    const entry = await graphOf(layer, pick.root);
+    const {graph} = entry;
     if (mine !== asked) return;
     // The piece clicked: asked of the server, else the nearest one.
-    let from = await ngeGraphenePieceOf(layer, pick.selection);
+    let from = await pieceAsked;
     if (mine !== asked) return;
     if (!from || !graph.points.has(from)) from = nearestPiece(graph, clickNm)?.id;
     if (!from) throw new Error('That point is not on a mapped part of this cell.');
@@ -361,6 +414,8 @@ async function lightBranchUnderMouse() {
       const near = nearestPiece(graph, toNm(s));
       if (near && near.distNm < best) { best = near.distNm; ref = near.id; somaNm = toNm(s); }
     }
+    const thickest = ref ? undefined : await thickestOf(layer, entry);
+    if (mine !== asked) return;
     const somaFrom = ref ? 'on record' : thickest ? 'thickest' : 'guessed';
     if (!ref) { ref = thickest ?? densestPiece(graph); somaNm = ref ? graph.points.get(ref) : undefined; }
     if (!ref) throw new Error('This cell\'s branch map is empty.');
@@ -368,13 +423,31 @@ async function lightBranchUnderMouse() {
     const ids = [...found.pieces];
     if (found.fork) ids.push(found.fork);
     let boxes: number[][] = [];
-    try { boxes = [...(await ngeGrapheneBoxesOf(layer, ids)).values()]; } catch { /* the tube alone */ }
+    const wholeBoxes: {box: number[]; near: boolean}[] = [];
+    try {
+      for (const [id, box] of await ngeGrapheneBoxesOf(layer, ids)) {
+        boxes.push(box);
+        // A piece of the branch is lit block and all, as near the branch's
+        // line as WIDE_NM: it is always inside its block, and the straight
+        // lines between pieces cut the corners of a bending dendrite (MEC
+        // came out "splotchy", Ames 2026-10-27). A piece whose point is just
+        // its block's middle (no exact position) lights its whole block, as
+        // the line can miss it altogether. A huge block is left to the tube.
+        const p = graph.points.get(id);
+        if (!found.pieces.has(id)) continue;
+        const middle = !!p && [0, 1, 2].every(i => Math.abs(p[i] - (box[i] + box[i + 3]) / 2) < 1);
+        const huge = [0, 1, 2].some(i => box[i + 3] - box[i] > WHOLE_BLOCK_NM);
+        if (middle) wholeBoxes.push({box, near: huge});
+        else if (!huge) wholeBoxes.push({box, near: true});
+      }
+    } catch { boxes = []; /* the tube alone */ }
     if (mine !== asked) return;
-    const built = buildMask(found.segments, boxes, scalesNm);
+    const built = buildMask(found.segments, boxes, scalesNm, wholeBoxes);
+    branch.wholeBlocks = wholeBoxes.length;
     if (!built) throw new Error('The server has no positions for that part of the cell.');
     let reach = 0;
     for (const [a, b] of found.segments) for (const p of [a, b]) reach = Math.max(reach, Math.hypot(p[0] - clickNm[0], p[1] - clickNm[1], p[2] - clickNm[2]));
-    branch.mask = built.mask;
+    branch.mask = {...built.mask, objectKey: `${pick.selection.rootId.low},${pick.selection.rootId.high}`};
     branch.cellNm = built.cellNm;
     branch.clickNm = clickNm;
     branch.reachNm = reach + TUBE_NM;
@@ -386,12 +459,14 @@ async function lightBranchUnderMouse() {
     spread = 0;
     lanternBranch.status = 'lit';
     lanternBranch.message = found.soma ? 'The soma is lit.' : '';
+    endMarker('done');
     run();
   } catch (e: any) {
     if (mine !== asked) return;
     console.warn('[lantern] could not find the branch:', e);
     lanternBranch.status = 'failed';
     lanternBranch.message = String(e?.message || e).slice(0, 160) || 'That branch could not be found.';
+    endMarker('failed');
   }
 }
 
@@ -412,7 +487,7 @@ function onUp(e: PointerEvent) {
   down = null;
   if (!d || d.id !== e.pointerId || !lantern.on || lantern.mode !== 'branch') return;
   if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 600) return;
-  void lightBranchUnderMouse();
+  void lightBranchUnderMouse(e.clientX, e.clientY);
 }
 
 /** Call once the viewer exists. */
@@ -426,7 +501,7 @@ export function startLantern(v: any) {
   try { viewer.coordinateSpace.changed.add(() => { if (lit > 0) apply(); }); } catch { /* fixed scales */ }
   watch(() => lantern.on, on => {
     // Turned off: the branch goes with it, so turning it on again starts clean.
-    if (!on) { asked++; branch.keep = false; lanternBranch.status = 'idle'; lanternBranch.message = ''; }
+    if (!on) { asked++; branch.keep = false; lanternBranch.status = 'idle'; lanternBranch.message = ''; lanternBranch.marker = null; }
     run();
   });
   watch(() => lantern.mode, () => {
@@ -436,6 +511,7 @@ export function startLantern(v: any) {
     branch.mask = null;
     lanternBranch.status = 'idle';
     lanternBranch.message = '';
+    lanternBranch.marker = null;
     lit = 0;
     run();
   });

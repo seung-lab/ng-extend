@@ -944,7 +944,16 @@ function toggleMore(e: MouseEvent) {
 function togglePicker(id: string, e?: MouseEvent) {
   pickerMore.value = false;
   pickerFor.value = pickerFor.value === id ? null : id;
-  if (e && pickerFor.value) placeInlinePicker(e);
+  if (e && pickerFor.value) {
+    placeInlinePicker(e);
+    // Measured once drawn: the row grew (the Pyr gem), so a fixed width put
+    // it past the edge of a narrow chat.
+    const btn = e.currentTarget as HTMLElement;
+    void nextTick(() => {
+      const el = document.querySelector('.nge-chat-react-picker--placed') as HTMLElement | null;
+      if (el) placeInlinePickerAt(btn, el.offsetWidth, el.offsetHeight);
+    });
+  }
 }
 /** On an announcement the row of emoji opened to the left of the button and
  *  ran off the chat's left edge, so the first ones could not be picked
@@ -953,7 +962,9 @@ function togglePicker(id: string, e?: MouseEvent) {
 const inlinePickerPlace = ref<Record<string, string>>({});
 const PICK_W = 196, PICK_H = 32;
 function placeInlinePicker(e: MouseEvent) {
-  const btn = e.currentTarget as HTMLElement;
+  placeInlinePickerAt(e.currentTarget as HTMLElement, PICK_W, PICK_H);
+}
+function placeInlinePickerAt(btn: HTMLElement, PICK_W: number, PICK_H: number) {
   const at = btn.getBoundingClientRect();
   // Kept inside the chat itself, so on a narrow chat the first emoji are not
   // past its left edge (Nseraf, 2026-10-23); every message, not only
@@ -961,7 +972,9 @@ function placeInlinePicker(e: MouseEvent) {
   const box = btn.closest('.nge-chat-float')?.getBoundingClientRect();
   const lo = Math.max(6, (box?.left ?? 0) + 4);
   const hi = Math.min(window.innerWidth - 6, (box?.right ?? window.innerWidth) - 4) - PICK_W;
-  const left = Math.max(lo, Math.min(hi, at.right - PICK_W));
+  // A chat narrower than the row: keep it on the screen instead.
+  const left = hi >= lo ? Math.max(lo, Math.min(hi, at.right - PICK_W))
+    : Math.max(6, Math.min(window.innerWidth - PICK_W - 6, lo));
   const above = at.top - PICK_H - 6;
   const top = above >= 6 ? above : Math.min(window.innerHeight - PICK_H - 6, at.bottom + 6);
   inlinePickerPlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` };
@@ -1039,6 +1052,27 @@ const CHAT_EMOJI = [
   '🚀', '🌟', '🎯', '✅', '❌', '⚠️', '☕', '🍕', '🌈', '😴',
 ];
 const emojiOpen = ref(false);
+/** The emoji panel opened leftwards from its button, so in a narrow chat
+ *  at the left of the screen its first columns were off the screen (Nik,
+ *  2026-10-27). It is placed on the page now, above the button, measured and
+ *  kept inside the window. */
+const emojiPlace = ref<Record<string, string>>({});
+function toggleEmoji(e: MouseEvent) {
+  emojiOpen.value = !emojiOpen.value;
+  if (!emojiOpen.value) return;
+  const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const place = (w: number, h: number) => {
+    const left = Math.max(6, Math.min(window.innerWidth - w - 6, at.right - w));
+    const above = at.top - h - 4;
+    const top = above >= 6 ? above : Math.min(window.innerHeight - h - 6, at.bottom + 4);
+    emojiPlace.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` };
+  };
+  place(266, 140);
+  void nextTick(() => {
+    const el = document.querySelector('.nge-chat-emoji-grid') as HTMLElement | null;
+    if (el) place(el.offsetWidth, el.offsetHeight);
+  });
+}
 function insertEmoji(emo: string) {
   const el = inputEl.value;
   const v = messageInput.value;
@@ -1677,8 +1711,8 @@ function toggleCollapse() {
                   :title="`Up to ${CHAT_MAX_CHARS} characters, links don't count`">{{ CHAT_MAX_CHARS - messageLength }}</span>
             <span class="nge-chat-emoji">
               <button class="nge-chat-share-btn nge-chat-emoji-btn" :disabled="!isLoggedIn || !chatUsable"
-                      @mousedown.prevent @click.stop="emojiOpen = !emojiOpen" title="Add an emoji">🙂</button>
-              <span v-if="emojiOpen" class="nge-chat-emoji-grid">
+                      @mousedown.prevent @click.stop="toggleEmoji($event)" title="Add an emoji">🙂</button>
+              <span v-if="emojiOpen" class="nge-chat-emoji-grid" :style="emojiPlace">
                 <button v-for="e in CHAT_EMOJI" :key="e" @mousedown.prevent @click.stop="insertEmoji(e)">{{ e }}</button>
               </span>
             </span>
@@ -2547,9 +2581,7 @@ function toggleCollapse() {
 .nge-chat-pumpkin-btn { flex: 0 0 auto; margin-left: 4px; display: flex; align-items: center; justify-content: center; padding: 0; }
 .nge-chat-pumpkin-btn.off { filter: grayscale(1); opacity: 0.55; }
 .nge-chat-emoji-grid {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
+  position: fixed;
   display: grid;
   grid-template-columns: repeat(8, 30px);
   gap: 2px;
@@ -2558,7 +2590,7 @@ function toggleCollapse() {
   border: 1px solid rgba(74, 158, 255, 0.3);
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-  z-index: 6;
+  z-index: 10000;
 }
 .nge-chat-emoji-grid button {
   width: 30px; height: 30px;

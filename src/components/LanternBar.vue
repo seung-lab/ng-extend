@@ -20,7 +20,7 @@ const backend = useProofreadingBackendStore();
 const branchHint = computed(() => {
   const tap = isTouchRef.value ? 'Tap' : 'Click';
   if (lanternBranch.message) return lanternBranch.message;
-  if (lanternBranch.status === 'finding') return 'Finding the branch…';
+  if (lanternBranch.status === 'finding') return 'Finding the branch';
   if (lanternBranch.status === 'lit') return `${tap} another branch, or empty space to put it out`;
   return `${tap} a branch to light it`;
 });
@@ -92,7 +92,9 @@ function resetPlace() {
           <button type="button" role="radio" :aria-checked="lantern.mode === 'branch'" :class="{ 'is-on': lantern.mode === 'branch' }"
                   title="Light only the branch you click on" @click="lantern.mode = 'branch'">Clicked branch</button>
         </span>
-        <span v-if="lantern.mode === 'branch'" class="nge-lantern-hint" :class="{ 'is-failed': lanternBranch.status === 'failed' }" aria-live="polite">{{ branchHint }}</span>
+        <span v-if="lantern.mode === 'branch'" class="nge-lantern-hint" :class="{ 'is-failed': lanternBranch.status === 'failed' }" aria-live="polite">
+          <span v-if="lanternBranch.status === 'finding'" class="nge-lantern-spin" aria-hidden="true"></span>{{ branchHint }}
+        </span>
         <label v-if="lantern.mode === 'cell'" class="nge-lantern-set" title="How far the light reaches">
           <span>Size</span>
           <input type="range" v-model.number="lantern.sizeUm" :min="L.sizeUm.min" :max="L.sizeUm.max" :step="L.sizeUm.step" @keydown.stop />
@@ -117,6 +119,16 @@ function resetPlace() {
       <button type="button" class="nge-lantern-off" title="Turn the Lantern off (Shift+N)" aria-label="Turn the Lantern off" @click="lantern.on = false">×</button>
     </div>
     </Transition>
+    <!-- The gem where the branch was clicked: it glows while the branch is
+         found, and goes once it lights (Ames 2026-10-27). -->
+    <div v-if="lantern.on && lanternBranch.marker" :key="lanternBranch.marker.at" class="nge-lantern-gem"
+         :class="'is-' + lanternBranch.marker.state" :style="{ left: lanternBranch.marker.x + 'px', top: lanternBranch.marker.y + 'px' }" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22">
+        <path d="M7 4h10l4 5-9 11L3 9z" fill="#ffc878"/>
+        <path d="M7 4h10l-2 5H9z" fill="#fff2d6" opacity="0.75"/>
+        <path d="M3 9h18M7 4l5 16M17 4l-5 16" stroke="#8a5512" stroke-width="0.8" fill="none" opacity="0.55"/>
+      </svg>
+    </div>
   </Teleport>
 </template>
 
@@ -200,6 +212,32 @@ function resetPlace() {
 .nge-lantern-mode button:hover, .nge-lantern-mode button:focus-visible { color: #fff; outline: none; background: rgba(255, 196, 110, 0.1); }
 .nge-lantern-mode button.is-on { color: #1a1206; background: #ffc878; }
 .nge-lantern-hint { font-size: 11px; color: rgba(190, 205, 225, 0.8); white-space: nowrap; }
+.nge-lantern-spin {
+  display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; box-sizing: border-box;
+  border: 2px solid rgba(255, 200, 120, 0.25); border-top-color: #ffc878; border-radius: 50%;
+  animation: nge-lantern-spin 0.8s linear infinite;
+}
+@keyframes nge-lantern-spin { to { transform: rotate(360deg); } }
+/* The gem at the click: its tip on the point, a ring going out from it while
+   the branch is found; it rises and fades once the branch lights. */
+.nge-lantern-gem { position: fixed; z-index: 899; width: 0; height: 0; pointer-events: none; }
+.nge-lantern-gem svg { position: absolute; left: -11px; top: -24px; filter: drop-shadow(0 0 6px rgba(255, 200, 120, 0.9)); animation: nge-lantern-gem-bob 0.9s ease-in-out infinite alternate; }
+.nge-lantern-gem::after {
+  content: ''; position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; box-sizing: border-box;
+  border: 2px solid rgba(255, 200, 120, 0.85); border-radius: 50%; animation: nge-lantern-gem-ring 1.1s ease-out infinite;
+}
+.nge-lantern-gem.is-done svg { animation: nge-lantern-gem-done 0.65s ease-out forwards; }
+.nge-lantern-gem.is-done::after, .nge-lantern-gem.is-failed::after { display: none; }
+.nge-lantern-gem.is-failed svg { animation: nge-lantern-gem-fail 0.6s ease-in forwards; }
+@keyframes nge-lantern-gem-bob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+@keyframes nge-lantern-gem-ring { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+@keyframes nge-lantern-gem-done { 0% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 200, 120, 0.9)) brightness(1); } 35% { transform: scale(1.35); filter: drop-shadow(0 0 12px rgba(255, 220, 160, 1)) brightness(1.6); } 100% { transform: translateY(-14px) scale(0.6); opacity: 0; } }
+@keyframes nge-lantern-gem-fail { to { transform: translateY(6px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .nge-lantern-spin { animation: none; border-color: #ffc878; border-top-color: #ffc878; opacity: 0.8; }
+  .nge-lantern-gem svg, .nge-lantern-gem.is-done svg, .nge-lantern-gem.is-failed svg { animation: none; }
+  .nge-lantern-gem::after { animation: none; transform: scale(1.3); opacity: 0.6; }
+}
 .nge-lantern-hint.is-failed { color: #ffb4a0; white-space: normal; max-width: 260px; }
 .nge-lantern-set { display: inline-flex; align-items: center; gap: 7px; color: rgba(190, 205, 225, 0.85); }
 .nge-lantern-set > span:first-child { font: 500 10px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 208, 138, 0.72); }

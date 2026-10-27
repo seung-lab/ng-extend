@@ -40,6 +40,15 @@ export interface NgeLanternMask {
   dims: [number, number, number];
   /** Global (display) coordinates to texture coordinates in [0, 1]. */
   gridFromGlobal: mat4;
+  /** Only this cell is lit (its key, "low,high"); others passing through the
+   *  map stay in shadow (Ames 2026-10-27: a neighbour lit up yellow). */
+  objectKey?: string;
+}
+
+/** Is this cell (its object key) one the branch light may fall on? */
+export function ngeLanternLights(objectKey: string) {
+  const key = current?.mask?.objectKey;
+  return key === undefined || key === objectKey;
 }
 
 const maskTextures = new WeakMap<GL, {texture: WebGLTexture|null, mask: NgeLanternMask|null}>();

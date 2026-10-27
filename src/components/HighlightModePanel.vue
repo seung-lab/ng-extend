@@ -77,7 +77,7 @@ async function confirmSoma() {
   try {
     const p = await confirmSomaAtStart();
     refresh();
-    say(`Soma confirmed at the starting point, ${p.join(', ')}. Next: the AIS.`);
+    say(`Soma marked at ${p.join(', ')}. Next: the AIS.`);
     if (!labCounts.value['mec:ais']) styleKey.value = 'mec:ais';
   } catch (e: any) { say(e?.message || 'Could not mark the soma.', true); }
 }
@@ -300,7 +300,7 @@ async function place(x: number, y: number) {
   if (!first.value) {
     first.value = pick;
     try { showStartMarker(pick, styleOf()); } catch (e) { console.warn('[highlight] start marker failed:', e); }
-    say(isTouchRef.value ? 'Start placed. Now tap where the checked stretch ends.' : 'Start placed. Now click where the checked stretch ends.');
+    say(isTouchRef.value ? 'Start placed. Tap another spot to highlight between.' : 'Start placed. Ctrl + click another spot to highlight between.');
     return;
   }
   const a = first.value;
@@ -615,7 +615,7 @@ onBeforeUnmount(() => {
         <p class="nge-hl-mec-hint">{{ noTrace && !picked().lab ? 'A highlight color is picked: one click marks a spot.' : labOn && styleKey === 'mec:soma' && somaAt ? `Soma at ${somaAt.join(', ')}. Click again to move it.` : labOn ? hintOf(styleKey) : stretchKind() ? `${hintOf(styleKey)} Click where the stretch starts, then its end: the end gets the mark.` : 'A highlight color is picked: clicks mark a stretch.' }}</p>
         <div v-if="styleKey === 'mec:soma' && startAt" class="nge-hl-mec-actions">
           <button class="nge-hl-btn" type="button" title="Move the view to the cell's starting point, to see it is in the soma." @click="lookAtStart">Go to the starting point</button>
-          <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark on the starting point: the nucleus, inside the soma." @click="confirmSoma">{{ somaAt ? 'Back to the starting point' : 'Confirm soma here' }}</button>
+          <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark where the crosshairs are. Go to the starting point first to use the nucleus." @click="confirmSoma">{{ somaAt ? 'Move soma here' : 'Confirm soma here' }}</button>
         </div>
         <div v-else class="nge-hl-mec-actions">
           <button v-if="!noTrace" class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
@@ -649,8 +649,12 @@ onBeforeUnmount(() => {
         <button class="nge-hl-btn" type="button" @click="adding = false">Cancel</button>
         <div v-if="addError" class="nge-hl-add-error">{{ addError }}</div>
       </div>
+      <!-- One mark placed: say what comes next on a line of its own, and offer
+           the way back quietly (Ames 2026-10-27: "click another spot to
+           highlight between" and a less bold "cancel this mark"). -->
+      <div v-if="first" class="nge-hl-next">{{ isTouchRef ? 'Tap' : 'Ctrl + click' }} another spot to highlight between</div>
       <div class="nge-hl-actions">
-        <button v-if="first" class="nge-hl-btn nge-hl-btn--main nge-hl-btn--armed" :disabled="busy" @click="cancelPick"
+        <button v-if="first" class="nge-hl-btn nge-hl-btn--quiet" :disabled="busy" @click="cancelPick"
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--main" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
@@ -681,7 +685,7 @@ onBeforeUnmount(() => {
            count or two, quietly (Ames 2026-10-02). -->
       <div class="nge-hl-status">
         <span v-if="message" :class="{ 'nge-hl-bad': messageBad }">{{ message }}</span>
-        <span v-else-if="!busy && !bandOn" class="nge-hl-dim">{{ branchWay ? '' : first ? 'Start placed. Ctrl + click the end.' : labOn ? 'One click drops the mark.' : 'No point placed yet.' }}</span>
+        <span v-else-if="!busy && !bandOn" class="nge-hl-dim">{{ branchWay ? '' : first ? 'Start placed. Ctrl + click another spot to highlight between.' : labOn ? 'One click drops the mark.' : 'No point placed yet.' }}</span>
         <span v-if="stat && !busy" class="nge-hl-stat">{{ stat }}</span>
         <span class="nge-hl-count">{{ markCount }} {{ markCount === 1 ? 'mark' : 'marks' }}</span>
       </div>
@@ -867,6 +871,11 @@ onBeforeUnmount(() => {
 .nge-hl-btn--main:hover:not(:disabled) { background: #a5ffca; }
 .nge-hl-btn--armed { background: #ffd24d; border-color: #ffd24d; }
 .nge-hl-step { flex: 1; align-self: center; font-size: 11.5px; color: #9dffc9; }
+.nge-hl-next { margin-top: 10px; font-size: 12.5px; font-weight: 600; color: #b8ffd6; }
+.nge-hl-btn--quiet { margin-right: auto; }
+/* Cancel this mark: there when needed, not the loudest thing in the box. */
+.nge-hl-btn--quiet { background: none; border-color: transparent; font-weight: 400; color: rgba(220, 230, 245, 0.7); text-decoration: underline; text-underline-offset: 2px; }
+.nge-hl-btn--quiet:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); color: #fff; }
 .nge-hl-width { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11.5px; color: rgba(220, 230, 245, 0.72); }
 .nge-hl-width input { flex: 1; min-width: 0; accent-color: #7cffb2; }
 .nge-hl-width-val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: #dce6f5; }
