@@ -1120,7 +1120,10 @@ async function autoEdgeTick() {
   } catch (e) { console.warn('[highlight] Hits Edge on its own failed:', e); }
   finally { autoBusy = false; autoEdgeNews.looking = null; }
 }
+/** Off for now (Ames 2026-10-28: "get rid of hits edge"). */
+const AUTO_EDGE_MARKS = false;
 /** Call once the viewer exists. */
 export function startAutoEdgeMarks() {
+  if (!AUTO_EDGE_MARKS) return;
   setInterval(() => { void autoEdgeTick(); }, 4000);
 }

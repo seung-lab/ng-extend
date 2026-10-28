@@ -3,6 +3,9 @@ import { startViewHash } from './util/start_view';
 import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
 import { taskAction } from './pilot_actions';
+import { startClaimTimer, countsTime, noteClaimSave, noteClaimFinished, type TimedClaim } from './util/claim_time';
+// A congratulations at 10, 25, 50 and 100 hours on a cell, and a finished Super Quest.
+import './util/claim_congrats';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
@@ -3551,7 +3554,17 @@ export interface ProofreadingTask {
   supervoxel_id: string | null;
   /** The claimer's saved view of this cell, annotation layers included. */
   working_link?: string | null;
+  /** 'interneuron': a long term quest (supabase-interneuron-quests.sql). One
+   *  at a time, never expires, not counted against the claim limit. */
+  kind?: 'cell' | 'interneuron' | null;
+  /** A Super Quest's category, such as "Pyramidal Target" (supabase-super-quest-categories.sql). */
+  quest_category?: string | null;
+  /** When a Super Quest claim ends, 2 months after it was claimed (supabase-super-quest-two-months.sql). */
+  quest_ends_at?: string | null;
 }
+
+/** An interneuron quest: a claim of its own kind, listed apart in the Cell Library. */
+export const isQuestTask = (t: { kind?: string | null } | null | undefined) => t?.kind === 'interneuron';
 
 export interface EditLogEntry {
   task_id?: number | null;
@@ -4171,6 +4184,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     try {
       await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
       tellScripts('complete', taskId, finalSegId);
+      noteClaimFinished(taskId, tasks.value.find(t => t.id === taskId)?.kind);
 
       await logEdit({
         operation: 'complete_task',
@@ -4431,6 +4445,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * full year also get the big centre celebration. A first count of old days
    * is a correction, not a day earned just now, so it celebrates nothing.
    */
+  const DAY_NOTES_OFF = true;
   function celebrateDays(before: unknown, now: unknown, recounted: boolean) {
     if (recounted || typeof before !== 'number' || typeof now !== 'number' || now <= before) return;
     // Loyalty achievements listen for this (AchievementToast.vue); the note is
@@ -4439,6 +4454,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       (window as any).__ngeLoyaltyDays = { before, now };
       document.dispatchEvent(new CustomEvent('nge:loyalty-days', { detail: { before, now } }));
     } catch { /* no document */ }
+    // The Loyalty Achievements (badge_definitions.ts) now mark these same days
+    // with their own note, art and celebration, so the older "Day 60 at
+    // EyeWire II" note doubled up (Ames 2026-10-28: "is this right? two
+    // notifications?"). It is no longer sent; the profile still counts the
+    // days to the next step.
+    if (DAY_NOTES_OFF) return;
     const reached = dayMilestonesReached(before, now);
     const days = reached[reached.length - 1];
     if (!days || !userId.value) return;
@@ -5128,6 +5149,14 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     for (let i = 0; i < 14 && !(sv = supervoxelAt(at)); i++) await new Promise(r => setTimeout(r, 500));
     return sv ? anchorWith(t, sv) : null;
   }
+  // Active time on each claim (src/util/claim_time.ts): the player's open
+  // claims, each with its listed ID and its IDs after edits.
+  const timedClaims = computed<TimedClaim[]>(() => myActiveClaims().filter(countsTime).map(t => ({
+    id: t.id, dataset: t.dataset, kind: t.kind,
+    roots: [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id]].filter((r): r is string => !!r),
+  })));
+  startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
+
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
     // A burst of edits is one lookup, shortly after the last of them.
@@ -5155,11 +5184,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     return CLAIM_LIMITS[canonicalDataset(dataset)] ?? MAX_CLAIMS;
   }
 
-  /** How many active claims does the current user have in this dataset? */
+  /** How many active claims does the current user have in this dataset?
+   *  An interneuron quest is not counted (it has a limit of its own). */
   function myActiveClaimCount(): number {
     if (!userId.value) return 0;
     return tasks.value.filter(
-      t => t.assigned_to === userId.value && (t.status === 'assigned' || t.status === 'in_progress'),
+      t => t.assigned_to === userId.value && (t.status === 'assigned' || t.status === 'in_progress') && !isQuestTask(t),
     ).length;
   }
 
@@ -5262,6 +5292,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       await taskAction('save_link', { id: taskId, link });
       const t = tasks.value.find(x => x.id === taskId);
       if (t) t.working_link = link;
+      noteClaimSave(taskId);
       return true;
     } catch (e: any) {
       console.warn('[backend] saveWorkingLink error:', e.message);

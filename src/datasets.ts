@@ -34,6 +34,10 @@ export interface DatasetEntry {
   label: string;
   /** Compact name for inline UI (chat chips, badges) where `label` is too long. */
   shortLabel: string;
+  /** Production levels (Ames 2026-10-28): the retina is Level 1, earned with
+   *  edit access; MEC is Level 2, asked for once Level 1 is unlocked. Shown on
+   *  the dataset's card. */
+  level?: number;
   /** Shortest name, for the top bar's "Data:" button. */
   abbrev: string;
   /** Organism the volume comes from; drives the species icon. */
@@ -132,6 +136,7 @@ export function isDatasetShown(ds: DatasetEntry): boolean {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    level: 1,
     origin: 'Princeton',
     section: 'production',
     cellTasks: true,
@@ -539,6 +544,7 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    level: 2,
     origin: 'Princeton',
     section: 'production',
     cellTasks: true,

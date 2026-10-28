@@ -534,7 +534,26 @@ const showCellLibrary = ref(false);
 const cellLibraryInitialTab = ref<string | undefined>(undefined);
 const showBatchProcessor = ref(false);
 const showTagMode = ref(false);
+// Highlight mode comes back open after a refresh, as merge and cut do
+// (Nseraf, report 286: "it'd be nice if highlight remained after F5"). Kept
+// in this tab only, so a new tab or window starts without it.
+const HIGHLIGHT_OPEN_KEY = 'nge_highlight_open';
 const showHighlight = ref(false);
+// Reopened once the viewer and its cell layer are there: the box reads them.
+try {
+  if (sessionStorage.getItem(HIGHLIGHT_OPEN_KEY) === '1') {
+    let tries = 0;
+    const reopen = setInterval(() => {
+      const ready = !!(window as any).viewer?.layerManager?.managedLayers?.length;
+      if (ready || ++tries > 60) {
+        clearInterval(reopen);
+        if (ready && !highlightOff.value) showHighlight.value = true;
+        else { try { sessionStorage.removeItem(HIGHLIGHT_OPEN_KEY); } catch { /* */ } }
+      }
+    }, 500);
+  }
+} catch { /* private window */ }
+watch(showHighlight, on => { try { if (on) sessionStorage.setItem(HIGHLIGHT_OPEN_KEY, '1'); else sessionStorage.removeItem(HIGHLIGHT_OPEN_KEY); } catch { /* private window */ } });
 /** The spray can sprays when clicked. The class lives in the template's own
  *  :class binding: the same click opens the Highlight box, which makes Vue
  *  rewrite the button's class list, and a class added by hand was wiped

@@ -13,6 +13,7 @@ import recapBanner from '../../static/images/recap/week-in-science-ca3.jpg';
 import { useUserStatsStore, useCellHistoryStore, useIssueTagStore, useHelpRequestStore, useProofreadingBackendStore } from '../store';
 import { BUILDING_BADGES, EXPLORATION_BADGES, BadgeTrack } from '../widgets/badge_definitions';
 import { SCIENCE_FACTS } from '../data/science-facts';
+import { superQuestSecondsBetween, refreshClaimTimes } from '../util/claim_time';
 
 const { stats } = storeToRefs(useUserStatsStore());
 const emit = defineEmits({ hide: null });
@@ -65,6 +66,15 @@ const serverCounts = ref<{ week: [number, number]; month: [number, number]; cell
 // tallied and not sent yet.
 const cellsCompletedWeek = computed(() => serverCounts.value ? Math.max(serverCounts.value.cells, 0) : cellsCompleted.value.length);
 const annotationsWeek = computed(() => (serverCounts.value?.annotations ?? 0) + pendingAnnotations.value);
+// ── Time on Super Quests (Ames 2026-10-28): MEC's giant interneurons, from
+// the active time Pyr counts on each claim (util/claim_time.ts). Shown only
+// when there is some in the period.
+onMounted(() => { void refreshClaimTimes(); });
+const superQuestSecs = computed(() => superQuestSecondsBetween(period.value.start, period.value.end));
+const superQuestTime = computed(() => {
+  const s = superQuestSecs.value, h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+});
 const shown = computed(() => {
   const s = stats.value;
   const c = serverCounts.value;
@@ -367,6 +377,15 @@ function jumpToCell(segId: string) {
             <div class="nge-recap-big-number nge-recap-big-number--ann"><RollUp :value="annotationsWeek" /></div>
             <div class="nge-recap-big-label">annotation{{ annotationsWeek === 1 ? '' : 's' }} placed</div>
             <div class="nge-recap-big-sub">{{ span }}</div>
+          </div>
+        </div>
+
+        <!-- Time on Super Quests, when there is some -->
+        <div class="nge-recap-section nge-recap-sq" v-if="superQuestSecs >= 60">
+          <div class="nge-recap-section-label">Super Quests</div>
+          <div class="nge-recap-sq-row">
+            <span class="nge-recap-sq-num">{{ superQuestTime }}</span>
+            <span class="nge-recap-sq-text">of active time on giant interneurons {{ span }}, cells no one has mapped before</span>
           </div>
         </div>
 
@@ -1053,4 +1072,7 @@ function jumpToCell(segId: string) {
 .nge-recap-badge-track--exploration .nge-recap-badge-kind { background: rgba(94, 234, 212, 0.14); color: #5eead4; }
 .nge-recap-badge-track--building .nge-recap-progress-fill { background: linear-gradient(90deg, #f5a623, #ffd08a); }
 .nge-recap-badge-track--exploration .nge-recap-progress-fill { background: linear-gradient(90deg, #14b8a6, #5eead4); }
+.nge-recap-sq-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+.nge-recap-sq-num { font-size: 26px; font-weight: 700; color: #d3b0ff; font-variant-numeric: tabular-nums; }
+.nge-recap-sq-text { font-size: 14px; color: #c4d2e0; }
 </style>
