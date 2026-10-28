@@ -193,6 +193,8 @@ const MOVES = {
   building: ['planting', 'proofread'],
   proofreading: ['dropped'],
   dropped: ['proofreading'],
+  // Proofread again (Ames 2026-10-27: "I want to reset the one I marked complete, bc I didn't actually check it").
+  put_back: ['proofreading'],
 };
 
 // ── Actions ─────────────────────────────────────────────────────────────────
@@ -462,6 +464,12 @@ async function move(args, ctx) {
   }
   // Straight from proofread to building (the proofreaders' own edits): locked and veiled from now.
   if (to === 'building' && c.status === 'proofread') patch.protected_roots = roots([...(c.protected_roots || []), c.root, c.proofread_root]);
+  // From put back or dropped: a fresh start. The task is Available again under the cell's ID now, and the old
+  // proofreader, lock and Hunt are let go. Completions already counted stay counted.
+  if (to === 'proofreading' && (c.status === 'put_back' || c.status === 'dropped')) {
+    Object.assign(patch, { proofread_by: null, proofread_at: null, proofread_root: null, protected_roots: [], hunt_id: null, hunt_root: null, suggest_until: null });
+    if (posInt(c.task_id)) await db.patchTask(posInt(c.task_id), { status: 'pending', assigned_to: null, segment_id: String(c.root), updated_at: now.toISOString() });
+  }
   if (to === 'proofreading' && c.status === 'proofread' && posInt(c.task_id)) {
     // Sent back: the task is the proofreader's again, with the admin's note.
     await db.patchTask(posInt(c.task_id), { status: 'assigned', updated_at: now.toISOString() });

@@ -448,3 +448,22 @@ test('the planted note shows Nurro planting', () => {
   assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'planted', true), 'https://pyr.test/hunt/planted-128.jpg');
   assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'open', true), 'https://pyr.test/hunt/scythe-128.png');
 });
+
+test('a put back cell can be proofread again: its task is Available under its ID now', async () => {
+  const db = fakeDb();
+  const A = await openCell(db);
+  await B.buildAction('build.move', { id: 1, to: 'planting' }, A);
+  await B.buildAction('build.put_back', { id: 1, done: true, undone: [], cell_root: CELL2 }, A);
+  assert.equal(db._t.candidates[0].status, 'put_back');
+  const l = await B.buildAction('build.list', {}, A);
+  assert.deepEqual(l.cells[0].moves, ['proofreading']);
+  await B.buildAction('build.move', { id: 1, to: 'proofreading' }, A);
+  const c = db._t.candidates[0], task = db._t.tasks[0];
+  assert.equal(c.status, 'proofreading');
+  assert.equal(c.proofread_by, null);
+  assert.deepEqual(c.protected_roots, []);
+  assert.equal(task.status, 'pending');
+  assert.equal(task.assigned_to, null);
+  assert.equal(task.segment_id, CELL2);
+  assert.equal((await B.buildAction('build.guard', {}, ctx(db, P2))).cells.length, 0, 'not guarded any more');
+});
