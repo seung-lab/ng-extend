@@ -30,6 +30,25 @@ const helpersText = ref('');
 const sendBackNote = ref('');
 /** When suggestions close, Eastern, as the Hunts tab's times (Ames 2026-10-27: "after that period (set time) ends they go to admin"). */
 const closeAt = ref('');
+/** A candidate's soma, view voxels (Ames 2026-10-28, report 279: "which 1 is the actual cell?"). */
+const somaAt = ref<(number | '')[]>(['', '', '']);
+function somaFromCrosshair() {
+  try {
+    const v = (window as any).viewer;
+    const names: string[] = v.coordinateSpace.value.names;
+    const p = v.navigationState.position.value;
+    somaAt.value = ['x', 'y', 'z'].map(n => Math.round(p[names.indexOf(n)]));
+  } catch { error.value = 'The view is not ready yet.'; }
+}
+async function saveSoma(r: Row) {
+  if (busy.value) return;
+  busy.value = `soma${r.id}`; error.value = ''; message.value = '';
+  try {
+    rows.value = (await huntCall<{ cells: Row[] }>('build.soma', { id: r.id, soma: somaAt.value.map(Number) })).cells;
+    message.value = `Soma saved: claiming this candidate now goes to ${somaAt.value.join(', ')}, and that is the cell the Hunt Builder follows.`;
+  } catch (e: any) { error.value = e?.message || String(e); }
+  finally { busy.value = ''; }
+}
 
 const STATUS_WORD: Record<string, string> = {
   proofreading: 'Proofreading', proofread: 'Proofread', suggesting: 'Suggestions open', planting: 'Planting',
@@ -97,6 +116,7 @@ function toggle(r: Row) {
   helpersText.value = r.helpers.map(h => h.name).join(', ');
   sendBackNote.value = '';
   closeAt.value = r.suggest_until ? utcIsoToEtNaive(r.suggest_until) : '';
+  somaAt.value = r.start ? r.start.slice(0, 3).map(Number) : ['', '', ''];
 }
 async function move(r: Row, to: string) {
   if (busy.value) return;
@@ -165,7 +185,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
     </ol>
     <p v-if="notInstalled" class="nge-hb-admin-warn">The Hunt Builder is not set up yet: run <code>supabase-hunt-build.sql</code> in Supabase.</p>
     <div class="nge-hb-admin-add">
-      <input v-model="paste" class="nge-hb-admin-input" placeholder="Paste Sandbox cell IDs" aria-label="Sandbox cell IDs to add" @keydown.enter="add" />
+      <textarea v-model="paste" class="nge-hb-admin-input nge-hb-admin-paste" rows="2" placeholder="One cell a line: its ID, then its soma x, y, z (as the coordinate bar shows)" aria-label="Sandbox cells to add: ID, then soma x, y, z"></textarea>
       <button class="nge-hb-admin-btn nge-hb-admin-btn--primary" :disabled="!!busy || !paste.trim()" @click="add">{{ busy === 'add' ? 'Adding…' : 'Add candidates' }}</button>
     </div>
     <p v-if="error" class="nge-hb-admin-error" role="alert">{{ error }}</p>
@@ -182,6 +202,12 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
           <span class="nge-hb-admin-counts">{{ countsLine(r) }}</span>
         </button>
         <div v-if="open === r.id" class="nge-hb-admin-body">
+          <div v-if="['proofreading', 'proofread'].includes(r.status)" class="nge-hb-admin-actions">
+            <span class="nge-hb-admin-num" :class="{ 'nge-hb-admin-nosoma': !r.start }">Soma {{ r.start ? '' : '(not set: say which cell is meant)' }}</span>
+            <input v-for="k in 3" :key="k" v-model.number="somaAt[k - 1]" type="number" class="nge-hb-admin-xyz" :aria-label="['x', 'y', 'z'][k - 1]" />
+            <button class="nge-hb-admin-btn" :disabled="!!busy" title="The point at the center of the view" @click="somaFromCrosshair">Use the crosshair</button>
+            <button class="nge-hb-admin-btn" :disabled="!!busy || somaAt.some(v => !Number.isFinite(Number(v)) || v === '')" @click="saveSoma(r)">{{ busy === `soma${r.id}` ? 'Saving…' : 'Save soma' }}</button>
+          </div>
           <p class="nge-hb-admin-muted">Cell <code>{{ r.root }}</code><template v-if="r.proofread_at"> · proofread {{ when(r.proofread_at) }} by {{ r.proofread_by || 'a player' }}</template><template v-if="r.hunt_id"> · Hunt #{{ r.hunt_id }}</template></p>
           <template v-if="['proofread', 'suggesting'].includes(r.status)">
             <label class="nge-hb-admin-field">Also invite (optional: everyone with production access can already suggest) <input v-model="helpersText" class="nge-hb-admin-input" placeholder="names of players without production access" aria-label="Also invite, by name" /></label>
@@ -275,6 +301,9 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
 .nge-hb-admin-chip--building { color: #5aaaff; border-color: rgba(90, 170, 255, 0.6); }
 .nge-hb-admin-chip--closed { color: #ffe9a8; border-color: rgba(245, 209, 66, 0.45); }
 .nge-hb-admin-when { width: auto !important; }
+.nge-hb-admin-paste { resize: vertical; min-height: 34px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; }
+.nge-hb-admin-xyz { width: 76px; padding: 4px 6px; border-radius: 6px; background: rgba(4, 8, 18, 0.8); border: 1px solid rgba(90, 170, 255, 0.3); color: #e6f0ff; font: 12px 'JetBrains Mono', ui-monospace, monospace; }
+.nge-hb-admin-nosoma { color: #ffe9a8; }
 .nge-hb-admin-chip--in_hunt { color: #9ff0bf; border-color: rgba(72, 214, 130, 0.5); }
 .nge-hb-admin-who { min-width: 0; color: #a9bbd3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nge-hb-admin-counts { color: #8fa3bf; font-size: 11.5px; white-space: nowrap; }

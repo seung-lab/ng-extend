@@ -481,3 +481,21 @@ test('a Hunt candidate is claimed only with production access (admins pass); CAV
   assert.match(await B.claimGuard(sb, 'claim_cell', { segment_id: CELL }, { hasProduction: async () => false }), /production access/);
   assert.equal(await B.claimGuard(sb, 'claim', { id: 8 }, { hasProduction: async () => false }), null, 'another task: no check');
 });
+
+test('candidates pasted with their soma: the claim point and the jump go there; a soma can be set later', async () => {
+  assert.deepEqual(B.parseCandidates(`${CELL} 1200, 3400, 56\n${CELL2}\n${CELL} 1 2 3`), [{ root: CELL, soma: [1200, 3400, 56] }, { root: CELL2, soma: null }]);
+  assert.deepEqual(B.parseCandidates(`${CELL} ${CELL2}`).map((c) => c.root), [CELL, CELL2]);
+  const db = fakeDb();
+  const A = ctx(db, ADMIN, true);
+  await B.buildAction('build.add', { roots: `${CELL} 1200, 3400, 56\n${CELL2}` }, A);
+  const t1 = db._t.tasks[0];
+  assert.deepEqual([t1.claim_point_x, t1.claim_point_y, t1.claim_point_z, t1.nucleus_coords], [1200, 3400, 56, '1200, 3400, 56']);
+  assert.deepEqual(db._t.candidates[0].start_vox, [1200, 3400, 56]);
+  assert.equal(db._t.tasks[1].claim_point_x, undefined);
+  db._t.tasks[1].supervoxel_id = '999';
+  const l = await B.buildAction('build.soma', { id: 2, soma: [10, 20, 30] }, A);
+  assert.deepEqual(l.cells.find((c) => c.id === 2).start, [10, 20, 30]);
+  assert.equal(db._t.tasks[1].nucleus_coords, '10, 20, 30');
+  assert.equal(db._t.tasks[1].supervoxel_id, null, 'pinned again at the soma');
+  await assert.rejects(B.buildAction('build.soma', { id: 2, soma: [1, 2] }, A), /x, y, z/);
+});

@@ -229,6 +229,7 @@ async function buildAction(action, args, ctx) {
     case 'build.undo': needAdmin(); return undo(args, ctx);
     case 'build.note': needAdmin(); return note(args, ctx);
     case 'build.track': needAdmin(); return track(args, ctx);
+    case 'build.soma': needAdmin(); return setSoma(args, ctx);
     case 'build.planted': needAdmin(); return planted(args, ctx);
     case 'build.link': needAdmin(); return link(args, ctx);
     case 'build.put_back': needAdmin(); return putBack(args, ctx);
@@ -421,21 +422,48 @@ async function list(ctx) {
   };
 }
 
-/** New candidates from pasted IDs: a proofreading task each (one already there is reused), then the candidate. */
+/**
+ * Pasted candidates, one a line: the cell ID, then optionally its soma as x, y, z in the view's voxels, as the
+ * coordinate bar shows them (Ames 2026-10-28, Nseraf's report 279: a candidate that was two pyramidal cells merged
+ * did not say which one was meant). Returns [{ root, soma: [x, y, z] | null }]. A line of several IDs and no point
+ * is read as several cells.
+ */
+function parseCandidates(text) {
+  const out = [];
+  for (const line of String(text || '').split(/\n+/)) {
+    const nums = line.split(/[\s,;()]+/).filter(Boolean);
+    const ids = nums.filter(isRoot);
+    if (!ids.length) continue;
+    const rest = nums.filter((x) => !isRoot(x) && /^-?\d+(\.\d+)?$/.test(x)).map(Number);
+    if (ids.length === 1 && rest.length >= 3) out.push({ root: ids[0], soma: rest.slice(0, 3).map((v) => Math.round(v)) });
+    else for (const id of ids) out.push({ root: id, soma: null });
+  }
+  const seen = new Set();
+  return out.filter((c) => (seen.has(c.root) ? false : (seen.add(c.root), true)));
+}
+const cleanSoma = (v) => { const a = Array.isArray(v) ? v.slice(0, 3).map(Number) : []; return a.length === 3 && a.every(Number.isFinite) ? a.map((x) => Math.round(x)) : null; };
+/** The soma on the task, as the Cell Library reads it: the claim point (the claim is pinned there) and the jump's coordinates. */
+const somaTaskFields = (soma) => ({ claim_point_x: soma[0], claim_point_y: soma[1], claim_point_z: soma[2], nucleus_coords: soma.join(', ') });
+
+/** New candidates from pasted lines: a proofreading task each (one already there is reused), then the candidate. */
 async function add(args, ctx) {
   const { db, me, now = new Date() } = ctx;
-  const ids = roots(String(Array.isArray(args.roots) ? args.roots.join(' ') : args.roots || '').split(/[\s,;]+/));
-  if (!ids.length) fail(400, 'Paste one or more cell IDs (long numbers).');
+  const pasted = Array.isArray(args.roots) ? roots(args.roots).map((root) => ({ root, soma: null })) : parseCandidates(args.roots);
+  const somaOf = new Map(pasted.map((c) => [c.root, c.soma]));
+  const ids = pasted.map((c) => c.root);
+  if (!ids.length) fail(400, 'Paste one or more cell IDs (long numbers), each with its soma x, y, z if you have it.');
   if (ids.length > 50) fail(400, 'At most 50 at a time.');
   const settings = cleanSettings(args.settings || {});
   const open = new Set((await db.candidates()).filter((c) => c.status !== 'put_back' && c.status !== 'dropped').map((c) => String(c.root)));
   const added = [], skipped = [];
   for (const root of ids) {
     if (open.has(root)) { skipped.push(root); continue; }
+    const soma = somaOf.get(root) || null;
     let task = await db.taskFor(DATASET, root);
-    if (!task) task = await db.addTask({ segment_id: root, dataset: DATASET, notes: TASK_NOTE });
+    if (!task) task = await db.addTask({ segment_id: root, dataset: DATASET, notes: TASK_NOTE, ...(soma ? somaTaskFields(soma) : {}) });
+    else if (soma) await db.patchTask(task.id, somaTaskFields(soma));
     const c = await db.addCandidate({ dataset: DATASET, root, task_id: task ? task.id : null, status: 'proofreading',
-      merges_each: 2, cuts_each: 2, ...settings, created_by: me.id, created_at: now.toISOString(), updated_at: now.toISOString() });
+      merges_each: 2, cuts_each: 2, ...settings, ...(soma ? { start_vox: soma } : {}), created_by: me.id, created_at: now.toISOString(), updated_at: now.toISOString() });
     added.push(c.id);
   }
   return { added: added.length, skipped, ...(await list(ctx)) };
@@ -594,6 +622,21 @@ async function note(args, ctx) {
   const { s, c } = await sugOn(db, args.id);
   await db.patchSuggestion(s.id, { admin_note: String(args.note || '').slice(0, 1000) });
   return queue({ id: c.id }, ctx);
+}
+
+/**
+ * The soma of a candidate, set or changed (Ames 2026-10-28): the cell meant is the one there. The task's claim
+ * point and jump move to it, and a claim's pin is let go so it is pinned again at the soma.
+ */
+async function setSoma(args, ctx) {
+  const { db, now = new Date() } = ctx;
+  const c = await getCandidate(db, args.id);
+  if (!['proofreading', 'proofread'].includes(c.status)) fail(409, 'The soma can be set while the cell is being proofread.');
+  const soma = cleanSoma(args.soma);
+  if (!soma) fail(400, 'Give the soma as x, y, z.');
+  if (posInt(c.task_id)) await db.patchTask(posInt(c.task_id), { ...somaTaskFields(soma), supervoxel_id: null, updated_at: now.toISOString() });
+  await db.patchCandidate(c.id, { start_vox: soma, anchor_sv: null, updated_at: now.toISOString() });
+  return list(ctx);
 }
 
 /**
@@ -774,6 +817,6 @@ async function claimGuard(sb, operation, args, opts = {}) {
 
 module.exports = {
   buildAction, restDb, claimGuard, makersOf, releaseStale, staleClaims, CLAIM_HOURS,
-  cleanEdit, cleanPoint, middle, placeOf, canSuggest, helpNoteBody, track, noteArt, NOTE_ART, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
+  cleanEdit, cleanPoint, middle, placeOf, canSuggest, helpNoteBody, track, noteArt, NOTE_ART, parseCandidates, setSoma, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
   STATUSES, PROTECTED, VEILED, MOVES, DATASET, TASK_NOTE, openNow,
 };

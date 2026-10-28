@@ -800,7 +800,10 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   const claimed = backend.tasks.find(t => t.segment_id === cell.segId && t.assigned_to === backend.userId
     && (t.status === 'assigned' || t.status === 'in_progress'));
   if (await leaveCurrentWork(claimed?.id ?? null)) {
-    openStartLink(cell.startLink);
+    // A Hunt candidate has no start link: the claim goes to its soma, the cell meant (Ames 2026-10-28, report 279).
+    if (!openStartLink(cell.startLink) && isHuntCandidate(cell) && (cell.nucCoords || cell.somaCoords)) {
+      jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+    }
     if (claimed) setWorkingTask(claimed.id);
   }
   // Give the claim its soma anchor as soon as that part of the volume loads.
