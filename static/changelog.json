@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T18:18:48Z",
+      "title": "Slim view for Quests",
+      "items": [
+        "In the Cell Library's Quests tab, the slim view now shrinks to the quest cell you are working on, with its Save, Open and Submit buttons. With slim view on, opening the Quests tab goes straight there. Thanks to toknow."
+      ]
+    },
+    {
       "at": "2026-10-28T15:34:46Z",
       "title": "Ask for access to a dataset",
       "items": [
