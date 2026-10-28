@@ -518,3 +518,14 @@ body:has(#hamburger.open) #hamburger .dropdownMenu { z-index: 1000 !important; }
 .introductionStepAnchor .chip .nge-sbx-fold:hover { background: rgba(196, 228, 255, 0.14); color: #fff; }
 .introductionStepAnchor .chip:has(.nge-tut-pencil) .nge-sbx-fold { right: 64px; }
 body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold { position: static; margin-left: -4px; }
+
+/* The fold button's mark: a chevron drawn in CSS, larger than the old
+   triangle glyph, which was too small to read as an arrow (Ames,
+   2026-10-28). Up folds the box down to the bar; down opens it again. */
+.introductionStepAnchor .chip .nge-sbx-fold { width: 26px; height: 26px; color: rgba(226, 238, 251, 0.8); font-size: 0; }
+.introductionStepAnchor .chip .nge-sbx-fold::before {
+  content: ''; display: block; width: 9px; height: 9px;
+  border-left: 2px solid currentColor; border-top: 2px solid currentColor;
+  transform: translateY(2px) rotate(45deg);
+}
+body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold::before { content: ''; transform: translateY(-2px) rotate(225deg); }
