@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T23:07:00Z",
+      "title": "One merger out of the Merger Sandbox",
+      "items": [
+        "One merger in the Merger Sandbox could refuse a correct cut, so it is out for now. There are 8.",
+        "The button that folds a sandbox box to a slim bar is now a clear arrow in the box's top corner."
+      ]
+    },
+    {
       "at": "2026-10-28T23:03:00Z",
       "title": "Blog links",
       "digest": "minor",
