@@ -24,6 +24,8 @@ export function notifKind(title: string | null | undefined, isAdmin: boolean): N
   if (ADMIN_STARTS.some(s => t.startsWith(s))) return 'admin';
   // Hunters' reports of what the answers missed (functions/hunts.js), a tab of their own (Ames 2026-10-27).
   if (t.startsWith('🔎 Hunt report')) return 'hunt';
+  // Players' suggested errors for a Hunt being built (functions/hunt_build.js), with them.
+  if (t.startsWith('💡 Hunt suggestion')) return 'hunt';
   if (TRIAGE_STARTS.some(s => t.startsWith(s)) || /tagged you on a report$/.test(t)) return 'triage';
   return 'main';
 }

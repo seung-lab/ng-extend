@@ -8,7 +8,8 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { huntCall } from '../hunt';
-import { showSuggestion, hideSuggestion, previewCut, plantSuggestion, undoPlanting, type QueueCell, type QueueSuggestion } from '../hunt_build';
+import { useProofreadingBackendStore } from '../store';
+import { showSuggestion, showPlanted, hideSuggestion, previewCut, plantSuggestion, undoPlanting, type QueueCell, type QueueSuggestion } from '../hunt_build';
 
 interface Queue { cell: QueueCell; suggestions: QueueSuggestion[] }
 const queue = ref<Queue | null>(null);
@@ -50,29 +51,45 @@ const statusWords = computed(() => {
   return s.status === 'planted' ? `✓ Planted${by}${at}. ${s.name} has the credit.` : s.status === 'skipped' ? `Skipped${by}${at}.` : s.status === 'undone' ? `Planted, then undone${by}${at}.` : `Put back${by}${at}.`;
 });
 // A merge joins whole objects: a big piece means a whole neighbor would come too (the design's warning).
-const bigPiece = computed(() => sug.value?.kind === 'merge' && (piece.value ?? 0) > 40);
+const bigPiece = computed(() => sug.value?.kind === 'merge' && (piece.value ?? 0) > 300);
 
 const GEM_COLORS = ['#5fe3f5', '#5aaaff', '#9b5cff', '#48d682', '#f5d142', '#9fd0ff'];
 const burst = Array.from({ length: 18 }, (_, i) => ({
   '--a': `${(i / 18) * 360 + (i % 3) * 7}deg`, '--d': `${70 + (i % 4) * 26}px`, '--t': `${(i % 5) * 0.05}s`, '--s': `${0.7 + (i % 3) * 0.25}`, color: GEM_COLORS[i % GEM_COLORS.length],
 }));
 
-async function load(id: number, keep?: number) {
-  const q = await huntCall<Queue>('build.queue', { id });
+/** The bell notes for these suggestions, marked read: going through them here is reading them (as Hunt reports). */
+function markNotesRead(ids: number[]) {
+  if (!ids.length) return;
+  const backend = useProofreadingBackendStore();
+  const want = new Set(ids);
+  const notes = (backend.notifications as any[]).filter(n => {
+    const m = String(n.body || '').match(/#nge-build-suggestion=(\d+)/);
+    return m && want.has(Number(m[1])) && !n.read;
+  }).map(n => n.id);
+  if (notes.length) void backend.markAllNotificationsRead(notes);
+}
+async function load(id: number, keep?: number, suggestion?: number) {
+  const q = await huntCall<Queue>('build.queue', id ? { id } : { suggestion_id: suggestion });
+  markNotesRead(q.suggestions.filter(s => s.status !== 'open').map(s => s.id));
+  if (suggestion) keep = suggestion;
   queue.value = q;
   const at = keep ? q.suggestions.findIndex(s => s.id === keep) : -1;
   if (at >= 0) return at;
   const first = q.suggestions.findIndex(s => s.status === 'open');
   return first >= 0 ? first : Math.max(0, q.suggestions.length - 1);
 }
-async function openQueue(id: number) {
+async function openQueue(id: number, suggestion?: number) {
   queue.value = null; error.value = ''; done.value = '';
   busy.value = 'load';
-  try { await step(await load(id)); }
+  try { await step(await load(id, undefined, suggestion)); }
   catch (e: any) { error.value = e?.message || String(e); }
   finally { if (busy.value === 'load') busy.value = ''; }
 }
-function onOpen(e: Event) { const id = Number((e as CustomEvent).detail?.id); if (id) void openQueue(id); }
+function onOpen(e: Event) {
+  const d = (e as CustomEvent).detail || {};
+  if (Number(d.id) || Number(d.suggestion)) void openQueue(Number(d.id) || 0, Number(d.suggestion) || undefined);
+}
 onMounted(() => document.addEventListener('nge:build-queue', onOpen));
 onUnmounted(() => { document.removeEventListener('nge:build-queue', onOpen); hideSuggestion(); });
 
@@ -81,13 +98,18 @@ async function step(i: number) {
   if (i < 0 || i >= list.length) return;
   idx.value = i; done.value = ''; error.value = ''; preview.value = ''; piece.value = null;
   note.value = list[i].admin_note || '';
+  markNotesRead([list[i].id]);
   busy.value = '';
   await goThere();
 }
 async function goThere() {
   const q = queue.value, s = sug.value; if (!q || !s || busy.value === 'go') return;
   busy.value = 'go'; error.value = '';
-  try { piece.value = (await showSuggestion(q.cell, s)).pieceL2; }
+  try {
+    // Planted: the cell as it is now, with what the planting made; otherwise the suggestion on the cell before it.
+    if (s.status === 'planted') await showPlanted(q.cell.root, s);
+    else piece.value = (await showSuggestion(q.cell, s)).pieceL2;
+  }
   catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -109,8 +131,9 @@ async function plant() {
     const out = await plantSuggestion(q.cell, s, note.value.trim()) as Queue;
     queue.value = out;
     idx.value = Math.max(0, out.suggestions.findIndex(x => x.id === s.id));
-    done.value = `Planted. ${s.name} hears it in the bell (never where).`;
-    hideSuggestion();
+    done.value = `Planted. ${s.name} hears it in the bell (never where). The view shows the cell now${s.kind === 'cut' ? ', and the piece taken off in violet' : ''}.`;
+    const now = out.suggestions.find(x => x.id === s.id);
+    if (now) await showPlanted(out.cell.root, now);
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -166,13 +189,14 @@ function close() { queue.value = null; error.value = ''; hideSuggestion(); }
       <p class="nge-bq-what"><span class="nge-bq-chip" :class="`nge-bq-chip--${sug.kind}`">{{ sug.kind === 'merge' ? 'Merge' : 'Cut' }}</span>
         from <b>{{ sug.name }}</b> <span class="nge-bq-when">{{ whenOf(sug.t) }} · {{ pointsLine }}</span></p>
       <p v-if="sug.note" class="nge-bq-note">"{{ sug.note }}"</p>
-      <p v-if="bigPiece" class="nge-bq-flag">The piece to join is big ({{ piece }} chunks): a merge joins whole objects, so all of it would come. Cut a small piece off it first, or skip.</p>
+      <p v-if="sug.kind === 'merge' && piece != null && !bigPiece && sug.status === 'open'" class="nge-bq-muted">The piece to join, in violet, has {{ piece }} level 2 {{ piece === 1 ? 'chunk' : 'chunks' }}.</p>
+      <p v-if="bigPiece" class="nge-bq-flag">The piece to join is big ({{ piece }} chunks): a merge joins whole objects, so all of it comes along. You can still plant it, or cut a smaller piece off it first.</p>
       <p v-if="statusWords" class="nge-bq-status" :class="{ 'nge-bq-status--ok': sug.status === 'planted' }">{{ statusWords }}</p>
       <p v-if="!planting && sug.status === 'open'" class="nge-bq-muted">Close the suggestions and start planting (in the Hunt builder list) to plant.</p>
       <p v-else-if="planting" class="nge-bq-veil">Veiled: players can't see this cell in Pyr until the Hunt starts.</p>
       <div class="nge-bq-actions">
         <button class="nge-bq-btn" :disabled="!!busy" @click="goThere">{{ busy === 'go' ? 'Going…' : 'Go there again' }}</button>
-        <button v-if="sug.status === 'open'" class="nge-bq-btn" :disabled="!!busy" @click="doPreview">{{ busy === 'preview' ? 'Asking…' : 'Preview' }}</button>
+        <button v-if="sug.status === 'open' && sug.kind === 'cut'" class="nge-bq-btn" :disabled="!!busy" title="Asks the graph what the cut would take off, before anything changes" @click="doPreview">{{ busy === 'preview' ? 'Asking…' : 'Preview the cut' }}</button>
         <button v-if="sug.status === 'open'" class="nge-bq-btn nge-bq-btn--plant" :disabled="!!busy || !planting" @click="plant">{{ busy === 'plant' ? 'Planting…' : `Plant it (${sug.kind})` }}</button>
         <button v-if="sug.status === 'open'" class="nge-bq-btn" :disabled="!!busy" @click="skip">{{ busy === 'skip' ? 'Skipping…' : 'Skip' }}</button>
         <button v-if="sug.status === 'planted' && (planting || queue.cell.status === 'building')" class="nge-bq-btn" :disabled="!!busy" @click="undo">{{ busy === 'undo' ? 'Undoing…' : 'Undo' }}</button>

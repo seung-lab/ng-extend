@@ -30,7 +30,7 @@ export const MY_SUGGESTIONS_LAYER = 'My suggestions';
 export type BuildKind = 'merge' | 'cut';
 /** A merge as the graph is sent it, [[sv, x, y, z], [sv, x, y, z]]; a cut {sources, sinks}; nm. */
 export type BuildEdit = any[][] | { sources: any[][]; sinks: any[][] };
-export interface GuardCell { id: number; status: string; dataset: string; root: string; protected: string[]; veil: string[]; helper: boolean; merges_each: number; cuts_each: number }
+export interface GuardCell { id: number; status: string; dataset: string; root: string; protected: string[]; veil: string[]; helper: boolean; merges_each: number; cuts_each: number; anchor_sv?: string | null }
 export interface MySuggestion { id: number; kind: BuildKind; at: number[]; note: string; status: string; t: string; edit: BuildEdit }
 export interface MineCell { id: number; root: string; dataset: string; start: number[] | null; merges_each: number; cuts_each: number; used: { merge: number; cut: number };
   /** Taking suggestions now, and until when (null: until the admins close them). */
@@ -99,17 +99,65 @@ export function buildEditGuard(kind: 'merge' | 'split', roots: string[], edit?: 
   // An invited helper's edit is kept, admins included: while suggestions are open nobody changes the cell.
   if (cell.helper && cell.status === 'suggesting' && edit) {
     void keepSuggestion(cell, kind === 'merge' ? 'merge' : 'cut', edit);
-    return `Saving it as a suggestion. Nothing was ${did}.`;
+    return `Checking it with the graph, then saving it as a suggestion. Nothing was ${did}.`;
   }
-  if (isAdmin()) return null;
+  if (isAdmin()) { adminEdit = { cell, at: Date.now() }; return null; }
   return `This cell is being made into a Hunt, so it stays as it is for now. Nothing was ${did}.`;
 }
 
+/**
+ * Would the edit work? Asked of the graph before it is kept, reading only (Ames 2026-10-27: "do they know if the
+ * merge/cut would work?"): a cut the graph says separates nothing, or a merge of two spots already on one object,
+ * is not kept, and the helper is told why. If the graph cannot be asked, the suggestion is kept as it is.
+ */
+async function wontWork(kind: BuildKind, edit: BuildEdit): Promise<string> {
+  try {
+    if (kind === 'cut') {
+      const p = await previewCut(edit);
+      if (p.illegal || p.sides.length < 2 || p.sides.some(n => !n)) return 'That cut would not work: the graph says it does not separate anything there. Move the red and blue points and try again.';
+    } else {
+      const roots = await rootsOf(svsOf('merge', edit));
+      if (roots.length === 2 && roots[0] === roots[1]) return 'Those two spots are already one object, so a merge there would do nothing. Pick a piece that is not part of the cell.';
+    }
+  } catch { /* the graph did not answer: kept as it is */ }
+  return '';
+}
+
+/**
+ * An admin's own merge or cut on a protected cell, made with the normal tools: once the graph answers, its new IDs
+ * are protected and veiled too, and the cell's ID follows (functions/hunt_build.js track). Not a Hunt place.
+ */
+let adminEdit: { cell: GuardCell; at: number } | null = null;
+try {
+  window.addEventListener('nge-graph-edit', ((e: CustomEvent) => {
+    const d = e.detail || {};
+    const was = adminEdit; adminEdit = null;
+    if (!was || Date.now() - was.at > 60_000 || !String(d.graph || '').includes(BUILD_DATASET)) return;
+    const made: string[] = Array.isArray(d.roots) ? d.roots.map(String) : [];
+    void (async () => {
+      try {
+        const cellRoot = await cellRootAfter(made, was.cell.anchor_sv ?? null);
+        await call('build.track', { id: was.cell.id, new_roots: made, cell_root: cellRoot });
+        void loadBuild(true);
+      } catch (err) { console.warn('[hunt_build] the edit was not tracked:', err); }
+    })();
+  }) as EventListener);
+} catch { /* no window */ }
+
 async function keepSuggestion(cell: GuardCell, kind: BuildKind, edit: BuildEdit) {
   const did = kind === 'merge' ? 'merged' : 'cut';
+  const no = await wontWork(kind, edit);
+  if (no) {
+    buildState.last = `${no} Nothing was saved.`;
+    buildState.lastOk = false;
+    buildState.helping = true;
+    StatusMessage.showTemporaryMessage(buildState.last, 9000);
+    return;
+  }
   try {
-    const r = await call<{ used: { merge: number; cut: number }; of: { merge: number; cut: number } }>('build.suggest', { candidate_id: cell.id, kind, edit });
-    buildState.last = `Saved as a suggestion (${kind} ${r.used[kind]} of ${r.of[kind]}). Nothing was ${did}. Thanks!`;
+    const r = await call<{ used: { merge: number; cut: number }; of: { merge: number; cut: number }; again?: boolean }>('build.suggest', { candidate_id: cell.id, kind, edit });
+    buildState.last = r.again ? `That ${kind} is in your list already. Nothing was ${did}.`
+      : `It would work, so it is in your list (${kind} ${r.used[kind]} of ${r.of[kind]}). Nothing was ${did}. Press Send to the admins when you are done.`;
     buildState.lastOk = true;
     buildState.helping = true;
     mineAt = 0; void loadBuild();
@@ -213,15 +261,15 @@ function drawPoints(name: string, annotations: any[]) {
   removeLayer(name);
   if (!annotations.length) return;
   v.layerSpecification.add(makeLayer(v.layerSpecification, name, {
-    type: 'annotation', source: { url: 'local://annotations' }, annotations, pointSize: 6, onTop: true,
+    type: 'annotation', source: { url: 'local://annotations' }, annotations, onTop: true,
     annotationProperties: [{ id: 'color', type: 'rgb', default: GOLD }],
-    shader: 'void main() { setColor(prop_color()); setPointMarkerSize(8.0); }',
+    shader: 'void main() { setColor(prop_color()); setPointMarkerSize(4.0); setPointMarkerBorderWidth(0.0); }',
   }));
 }
 /** The helper's own suggestions on screen, in a layer only they have. */
 export function drawMySuggestions() {
   if (!onBuildDataset()) return;
-  const open = buildState.mine.flatMap(c => c.suggestions.filter(s => s.status === 'open'));
+  const open = buildState.mine.flatMap(c => c.suggestions.filter(s => s.status === 'open' || s.status === 'draft'));
   if (!open.length) { removeLayer(MY_SUGGESTIONS_LAYER); return; }
   drawPoints(MY_SUGGESTIONS_LAYER, open.flatMap(s => pointsOf(s.kind, s.edit, `s${s.id}-`)));
 }
@@ -261,6 +309,13 @@ async function showOnly(ids: string[], at?: number[] | null, colors: Record<stri
   }
   if (at?.length) { try { viewer().navigationState.position.value = Float32Array.from(at.slice(0, 3)); } catch { /* no viewer */ } }
 }
+/** A bell note's Help build: the box open, on the first cell taking suggestions. */
+export async function openHelpBuild() {
+  await loadBuild(true);
+  buildState.helping = true;
+  const c = buildState.mine.find(m => m.open) ?? buildState.mine[0];
+  if (c) { try { await openBuildCell(c); } catch (e: any) { buildState.last = e?.message || String(e); buildState.lastOk = false; } }
+}
 /** A helper opens their cell. */
 export async function openBuildCell(c: { root: string; start: number[] | null }) {
   await showOnly([c.root], c.start);
@@ -295,7 +350,7 @@ async function cellRootAfter(newRoots: string[], anchorSv: string | null): Promi
   return best;
 }
 
-export interface QueueSuggestion { id: number; kind: BuildKind; edit: BuildEdit; at: number[]; note: string; status: string; t: string; name: string; admin_note: string; done_by: string; done_at: string | null; operation_id: number | null }
+export interface QueueSuggestion { id: number; kind: BuildKind; edit: BuildEdit; at: number[]; note: string; status: string; t: string; name: string; admin_note: string; done_by: string; done_at: string | null; operation_id: number | null; new_roots?: string[] }
 export interface QueueCell { id: number; root: string; status: string; dataset: string; start: number[] | null; anchor_sv: string | null; protected: string[] }
 
 /** Show a suggestion: the cell, and for a merge the piece it would join (violet), with the helper's points. */
@@ -314,6 +369,19 @@ export async function showSuggestion(cell: QueueCell, s: QueueSuggestion): Promi
   return { pieceL2 };
 }
 export function hideSuggestion() { removeLayer(SUGGESTION_LAYER); }
+
+/**
+ * A planting as it is now (Ames 2026-10-27: "I need to be able to see the cut/merge after planting"): the cell in
+ * blue and, for a cut, the piece it took off in violet, at the spot, with the helper's points.
+ */
+export async function showPlanted(cellRoot: string, s: QueueSuggestion) {
+  const pieces = s.kind === 'cut' ? (s.new_roots ?? []).filter(r => r && r !== cellRoot) : [];
+  const colors: Record<string, string> = { [cellRoot]: BLUE };
+  for (const r of pieces) colors[r] = '#9b5cff';
+  await showOnly([cellRoot, ...pieces], null, colors);
+  goToNm(s.at);
+  setTimeout(() => drawPoints(SUGGESTION_LAYER, pointsOf(s.kind, s.edit, 'q-')), 600);
+}
 
 /** What a cut would take off, before anything changes: the supervoxels on each side. */
 export async function previewCut(edit: BuildEdit): Promise<{ sides: number[]; illegal: boolean }> {

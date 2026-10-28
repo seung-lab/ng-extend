@@ -337,6 +337,13 @@ function openDetail(notif: any) {
     emit('hide');
     return;
   }
+  // A player's suggested error for a Hunt being built: the suggestions queue, at it (BuildQueueCard).
+  const sug = kindOf(notif) === 'hunt' ? String(notif.body || '').match(/#nge-build-suggestion=(\d+)/) : null;
+  if (sug) {
+    document.dispatchEvent(new CustomEvent('nge:build-queue', { detail: { suggestion: Number(sug[1]) } }));
+    emit('hide');
+    return;
+  }
   // The weekly recap opens the full Week in Science tab in the profile.
   if ((notif.title || '').startsWith('✨') && (notif.title || '').includes('Week in Science')) {
     // The week the recap is about, not the week now (Nseraf, report 250).
@@ -456,6 +463,23 @@ async function onDetailBodyClick(e: MouseEvent) {
   if (rep) {
     e.preventDefault();
     document.dispatchEvent(new CustomEvent('nge:hunt-report', { detail: { id: Number(rep[1]) } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
+  // The Hunt Builder (Ames 2026-10-27: "Can we have a button that jumps me to the Hunt Builder?"): a suggestion
+  // opens the queue at it; Help build opens the helper's box on the cell.
+  const sug = a?.getAttribute('href')?.match(/^#nge-build-suggestion=(\d+)$/);
+  if (sug) {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:build-queue', { detail: { suggestion: Number(sug[1]) } }));
+    closeDetail();
+    emit('hide');
+    return;
+  }
+  if (a?.getAttribute('href') === '#nge-help-build') {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:help-build'));
     closeDetail();
     emit('hide');
     return;

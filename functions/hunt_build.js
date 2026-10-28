@@ -97,6 +97,20 @@ function usedCounts(mine) {
 const openNow = (c, now) => c.status === 'suggesting' && !(Number.isFinite(msOf(c.suggest_until)) && now.getTime() >= msOf(c.suggest_until));
 /** A time as players read it, Eastern (the Hunts tab's zone). */
 const etWords = (iso) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
+const many = (n, one, more) => `${n} ${n === 1 ? one : more}`;
+/** The bell note's button: opens the Help build box on the cell (src/components/NotificationFeedPanel.vue). */
+const HELP_LINK = '[Help build](#nge-help-build)';
+/** The bell note that opens suggestions, in Ames's words and layout (2026-10-27). */
+function helpNoteBody(merges, cuts, until) {
+  const kinds = [merges ? `* ${many(merges, 'merge', 'merges')}` : '', cuts ? `* ${many(cuts, 'cut', 'cuts')}` : ''].filter(Boolean).join('\n');
+  return [
+    'Help build a Hunt on the Sandbox!',
+    'Open "Help build", then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is.',
+    `You may submit:\n\n${kinds}`,
+    `${until ? `Submissions close: ${etWords(until)}.\n` : ''}Where they go stays a secret until the Hunt.`,
+    HELP_LINK,
+  ].join('\n\n');
+}
 const helpersOf = (c) => (Array.isArray(c.helpers) ? c.helpers.map(String) : []);
 const isHelper = (c, uid) => helpersOf(c).includes(String(uid));
 /** Who may suggest: every player with production access (Ames 2026-10-27: "open to all users with Production
@@ -128,7 +142,7 @@ function guardView(cands, hunts, me, now, prod = false) {
     protected: roots([c.root, ...(c.protected_roots || [])]),
     veil: veilOf(c, huntOf.get(Number(c.hunt_id)) || null, now),
     helper: openNow(c, now) && canSuggest(c, me.id, prod),
-    merges_each: c.merges_each, cuts_each: c.cuts_each,
+    merges_each: c.merges_each, cuts_each: c.cuts_each, anchor_sv: c.anchor_sv || null,
   }));
 }
 
@@ -187,6 +201,7 @@ async function buildAction(action, args, ctx) {
     case 'build.mine': return mine(ctx);
     case 'build.suggest': return suggest(args, ctx);
     case 'build.take_back': return takeBack(args, ctx);
+    case 'build.send': return send(args, ctx);
     case 'build.my_note': return myNote(args, ctx);
     case 'build.list': needAdmin(); return list(ctx);
     case 'build.add': needAdmin(); return add(args, ctx);
@@ -198,6 +213,7 @@ async function buildAction(action, args, ctx) {
     case 'build.skip': needAdmin(); return skip(args, ctx);
     case 'build.undo': needAdmin(); return undo(args, ctx);
     case 'build.note': needAdmin(); return note(args, ctx);
+    case 'build.track': needAdmin(); return track(args, ctx);
     case 'build.planted': needAdmin(); return planted(args, ctx);
     case 'build.link': needAdmin(); return link(args, ctx);
     case 'build.put_back': needAdmin(); return putBack(args, ctx);
@@ -277,21 +293,60 @@ async function suggest(args, ctx) {
   if (!canSuggest(c, me.id, ctx.prod)) fail(403, 'Suggestions are open to players with production access.');
   const kind = args.kind === 'merge' ? 'merge' : args.kind === 'cut' ? 'cut' : fail(400, 'A suggestion is a merge or a cut.');
   const { edit, at_nm } = cleanEdit(kind, args.edit);
-  const used = usedCounts(await db.suggestionsBy(me.id, [c.id]));
+  const mineBefore = await db.suggestionsBy(me.id, [c.id]);
+  const used = usedCounts(mineBefore);
+  const of = { merge: c.merges_each, cut: c.cuts_each };
+  // The same edit again (a second press of Submit, or the tool sending twice: Ames 2026-10-27 "why does it show 2
+  // mergers?") is the one already kept, not a new one.
+  const same = mineBefore.find((s) => s.status !== 'taken_back' && s.kind === kind && JSON.stringify(s.edit) === JSON.stringify(edit));
+  if (same) return { suggestion: { id: same.id, kind, at: same.at_nm, status: same.status }, used, of, again: true };
   const cap = kind === 'merge' ? c.merges_each : c.cuts_each;
-  if (used[kind] >= cap) {
-    fail(409, cap ? `You have made your ${cap} ${kind} ${cap === 1 ? 'suggestion' : 'suggestions'} for this cell. Take one back to try another.`
-      : `This cell takes no ${kind} suggestions.`);
-  }
-  const row = await db.addSuggestion({ candidate_id: c.id, user_id: me.id, kind, edit, at_nm, note: String(args.note || '').slice(0, 500), status: 'open', created_at: now.toISOString() });
-  return { suggestion: { id: row.id, kind, at: at_nm, status: 'open' }, used: { ...used, [kind]: used[kind] + 1 }, of: { merge: c.merges_each, cut: c.cuts_each } };
+  const full = () => fail(409, cap ? `You have made your ${many(cap, `${kind} suggestion`, `${kind} suggestions`)} for this cell. Take one back to try another.`
+    : `This cell takes no ${kind} suggestions.`);
+  if (used[kind] >= cap) full();
+  // A draft until the helper presses Send (Ames 2026-10-27: "Should we have a submit?"). Before the draft status
+  // is in the database (supabase-hunt-build.sql), it goes straight in, as before.
+  const base = { candidate_id: c.id, user_id: me.id, kind, edit, at_nm, note: String(args.note || '').slice(0, 500), created_at: now.toISOString() };
+  let row;
+  try { row = await db.addSuggestion({ ...base, status: 'draft' }); }
+  catch (e) { if (!/check|status|23514/i.test(String(e && e.message))) throw e; row = await db.addSuggestion({ ...base, status: 'open' }); }
+  // Two at once can both pass the count: the later one goes.
+  const after = usedCounts(await db.suggestionsBy(me.id, [c.id]));
+  if (after[kind] > cap) { await db.patchSuggestion(row.id, { status: 'taken_back' }); full(); }
+  return { suggestion: { id: row.id, kind, at: at_nm, status: row.status }, used: after, of };
 }
 
 async function ownOpen(db, id, me) {
   const s = await db.suggestion(posInt(id));
   if (!s || String(s.user_id) !== String(me.id)) fail(404, 'No such suggestion.');
-  if (s.status !== 'open') fail(409, s.status === 'planted' ? 'An admin has already planted this one.' : 'An admin has already looked at this one.');
+  if (s.status !== 'open' && s.status !== 'draft') fail(409, s.status === 'planted' ? 'An admin has already planted this one.' : 'An admin has already looked at this one.');
   return s;
+}
+
+/** Send: a helper's drafts on a cell go to the admins, who hear once, with a link to the first. */
+async function send(args, ctx) {
+  const { db, me, now = new Date() } = ctx;
+  const c = await getCandidate(db, args.candidate_id);
+  if (c.status !== 'suggesting') fail(409, 'This cell is not taking suggestions now.');
+  const drafts = (await db.suggestionsBy(me.id, [c.id])).filter((s) => s.status === 'draft');
+  if (!drafts.length) return { sent: 0 };
+  for (const s of drafts) await db.patchSuggestion(s.id, { status: 'open' });
+  await tellAdmins(c, drafts, me.id, ctx);
+  return { sent: drafts.length, at: now.toISOString() };
+}
+async function tellAdmins(c, sugs, userId, ctx) {
+  const { db } = ctx;
+  if (!ctx.notify || !db.adminUserIds || !sugs.length) return;
+  try {
+    const admins = await db.adminUserIds();
+    if (!admins.length) return;
+    const name = ((await db.names([userId])) || {})[userId] || 'A player';
+    const m = sugs.filter((s) => s.kind === 'merge').length, k = sugs.length - m;
+    const what = [m ? many(m, 'merge', 'merges') : '', k ? many(k, 'cut', 'cuts') : ''].filter(Boolean).join(' and ');
+    const first = [...sugs].sort((a, b) => a.id - b.id)[0];
+    await ctx.notify(admins.map((u) => ({ user_id: u, title: `💡 Hunt suggestion: cell …${String(c.root).slice(-6)}`,
+      body: `${name} sent ${what} for a Hunt.\n\n[Go there](#nge-build-suggestion=${first.id}) to look, then plant or skip each one.` })));
+  } catch (e) { console.warn('[hunt_build] admins not told:', e && e.message); }
 }
 async function takeBack(args, ctx) {
   const { db, me } = ctx;
@@ -404,9 +459,15 @@ async function move(args, ctx) {
     }
   }
   const next = await db.patchCandidate(c.id, patch);
+  // Planting starts: drafts a helper never sent count as sent (the admins hear, one note a helper).
+  if (to === 'planting') {
+    const drafts = (await db.suggestionsFor(c.id)).filter((s) => s.status === 'draft');
+    for (const s of drafts) await db.patchSuggestion(s.id, { status: 'open' });
+    for (const uid of uniq(drafts.map((s) => String(s.user_id)))) await tellAdmins(c, drafts.filter((s) => String(s.user_id) === uid), uid, ctx);
+  }
   if (to === 'suggesting') {
     const until = next && next.suggest_until;
-    const body = `Help build a Hunt on the Sandbox! Open "Help build" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is. You have ${c.merges_each} merges and ${c.cuts_each} cuts${until ? `, until ${etWords(until)}` : ''}. Where they go stays a secret until the Hunt.`;
+    const body = helpNoteBody(c.merges_each, c.cuts_each, until);
     // Everyone with production access, through the Production editors group (it keeps itself up to date), and
     // anyone invited by name.
     const group = db.productionGroupId ? await db.productionGroupId().catch(() => null) : null;
@@ -430,7 +491,7 @@ async function setHelpers(args, ctx) {
   await db.patchCandidate(c.id, { helpers: ids, updated_at: now.toISOString() });
   if (c.status === 'suggesting' && fresh.length && notify) {
     await notify(fresh.map((uid) => ({ user_id: uid, title: 'Help build a Hunt',
-      body: `You are invited to help build a Hunt on the Sandbox. Open "Help build" in the top bar, then merge or cut the cell as you normally would: Pyr keeps each one as a suggestion and the cell stays as it is.` })));
+      body: helpNoteBody(c.merges_each, c.cuts_each, c.suggest_until) })));
   }
   return list(ctx);
 }
@@ -438,8 +499,11 @@ async function setHelpers(args, ctx) {
 /** The suggestions on one cell, oldest first, with who sent each and what became of it. */
 async function queue(args, ctx) {
   const { db } = ctx;
-  const c = await getCandidate(db, args.id);
-  const sugs = (await db.suggestionsFor(c.id)).filter((s) => s.status !== 'taken_back')
+  let cid = args.id;
+  // From an admin's bell note: the suggestion's cell.
+  if (!posInt(cid) && posInt(args.suggestion_id)) { const s = await db.suggestion(posInt(args.suggestion_id)); if (!s) fail(404, 'No such suggestion.'); cid = s.candidate_id; }
+  const c = await getCandidate(db, cid);
+  const sugs = (await db.suggestionsFor(c.id)).filter((s) => s.status !== 'taken_back' && s.status !== 'draft')
     .sort((a, b) => msOf(a.created_at) - msOf(b.created_at) || a.id - b.id);
   const names = await db.names(uniq([...sugs.map((s) => s.user_id), ...sugs.map((s) => s.done_by)].filter(Boolean)));
   return {
@@ -448,6 +512,7 @@ async function queue(args, ctx) {
     suggestions: sugs.map((s) => ({
       id: s.id, kind: s.kind, edit: s.edit, at: s.at_nm, note: s.note || '', status: s.status, t: s.created_at, name: names[s.user_id] || 'Player',
       admin_note: s.admin_note || '', done_by: names[s.done_by] || '', done_at: s.done_at || null, operation_id: s.operation_id || null,
+      new_roots: Array.isArray(s.new_roots) ? s.new_roots.map(String) : [],
     })),
   };
 }
@@ -508,6 +573,20 @@ async function note(args, ctx) {
   const { s, c } = await sugOn(db, args.id);
   await db.patchSuggestion(s.id, { admin_note: String(args.note || '').slice(0, 1000) });
   return queue({ id: c.id }, ctx);
+}
+
+/**
+ * An admin's own edit on a protected cell with the normal tools (Ames 2026-10-27: "I cut the branch smaller"): not a
+ * Hunt place, but its new IDs are protected and veiled like the rest, and the cell's ID follows it.
+ */
+async function track(args, ctx) {
+  const { db, now = new Date() } = ctx;
+  const c = await getCandidate(db, args.id);
+  if (!PROTECTED.has(c.status)) return { tracked: false };
+  const made = roots(args.new_roots);
+  const cellRoot = isRoot(args.cell_root) ? String(args.cell_root) : String(c.root);
+  await db.patchCandidate(c.id, { root: cellRoot, protected_roots: roots([...(c.protected_roots || []), c.root, ...made, cellRoot]), updated_at: now.toISOString() });
+  return { tracked: true, root: cellRoot };
 }
 
 /** The planted edits as Hunt places (reversed), for Make a Hunt from a proofread cell, with who suggested each. */
@@ -603,6 +682,12 @@ function restDb(sb) {
     patchTask: (id, row) => sb(`proofreading_tasks?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) }),
     productionGroupId: async () => { const g = await one(sb(`user_groups?name=eq.${enc('Production editors')}&select=id&limit=1`)); return g ? g.id : null; },
     insertGroupNote: (row) => one(sb('notifications', { method: 'POST', body: JSON.stringify(row) })),
+    adminUserIds: async () => {
+      const emails = (await sb('admins?select=email')).map((a) => String(a.email || '').toLowerCase()).filter(Boolean);
+      if (!emails.length) return [];
+      const list = emails.map((e) => '"' + e.replace(/["\\]/g, '') + '"').join(',');
+      return (await sb('users?select=id&middleauth_email=in.(' + enc(list) + ')')).map((u) => u.id);
+    },
     huntTimes: (ids) => sb(`hunts?id=in.${inList(ids)}&select=id,start_at,end_at,status`),
     activeAssignments: (taskIds) => sb(`task_assignments?task_id=in.${inList(taskIds)}&status=eq.active&select=task_id,user_id,claimed_at,status&limit=500`),
     /** As the pilot_task_action release does: the assignment released, the task back to pending, only if still that player's claim. */
@@ -655,6 +740,6 @@ async function claimGuard(sb, operation, args) {
 
 module.exports = {
   buildAction, restDb, claimGuard, makersOf, releaseStale, staleClaims, CLAIM_HOURS,
-  cleanEdit, cleanPoint, middle, placeOf, canSuggest, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
+  cleanEdit, cleanPoint, middle, placeOf, canSuggest, helpNoteBody, track, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
   STATUSES, PROTECTED, VEILED, MOVES, DATASET, TASK_NOTE, openNow,
 };

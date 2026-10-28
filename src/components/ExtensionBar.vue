@@ -20,7 +20,7 @@ import HuntPlacesBox from "components/HuntPlacesBox.vue";
 import HuntReportCard from "components/HuntReportCard.vue";
 import BuildQueueCard from "components/BuildQueueCard.vue";
 import HelpBuildBox from "components/HelpBuildBox.vue";
-import { buildState, startBuildWatch } from '../hunt_build';
+import { buildState, startBuildWatch, openHelpBuild } from '../hunt_build';
 import TestReviewBar from "components/TestReviewBar.vue";
 import TestQueueCard from "components/TestQueueCard.vue";
 import CellLibraryPanel from "components/CellLibraryPanel.vue";
@@ -508,6 +508,8 @@ document.addEventListener('nge:hunt-check', () => { showProfile.value = false; }
 document.addEventListener('nge:hunt-report', () => { showProfile.value = false; });
 // The Hunt Builder's suggestions queue (BuildQueueCard) works on the view too.
 document.addEventListener('nge:build-queue', () => { showProfile.value = false; });
+// A "Help build" button in a bell note: the helper's box, on the cell.
+document.addEventListener('nge:help-build', () => { showProfile.value = false; void openHelpBuild(); });
 // An admin opened a Proofreading Test try in the view (Admin Hub > Test tries).
 document.addEventListener('nge:test-review', () => { showProfile.value = false; showAccess.value = false; });
 /** Chat visibility persists across reloads so closing it stays closed.

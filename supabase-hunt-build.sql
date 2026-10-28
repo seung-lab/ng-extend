@@ -58,3 +58,8 @@ alter table hunt_suggestions enable row level security;
 -- cell before proofreading when the Hunt comes from the proofreaders' own edits).
 alter table hunt_candidates add column if not exists suggest_until timestamptz;
 alter table hunt_candidates add column if not exists hunt_root text;
+
+-- Added 2026-10-27: a helper's suggestion is a draft until they press Send.
+alter table hunt_suggestions drop constraint if exists hunt_suggestions_status_check;
+alter table hunt_suggestions add constraint hunt_suggestions_status_check
+  check (status in ('draft','open','taken_back','planted','skipped','undone','put_back'));

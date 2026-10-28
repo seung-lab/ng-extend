@@ -47,6 +47,8 @@ const notes = [];
 const ctx = (db, me, isAdmin = false, now = new Date('2026-10-28T12:00:00Z')) => ({ db, me, isAdmin, now, notify: async (rows) => { notes.push(...rows); } });
 const merge = [['111', 1000, 2000, 400], ['222', 1100, 2100, 440]];
 const cut = { sources: [['333', 0, 0, 0], ['334', 10, 0, 0]], sinks: [['444', 30, 30, 40]] };
+/** Another merge, somewhere else (the same edit twice is one suggestion). */
+const mergeAt = (k) => [[String(500 + k), 1000 + k, 2000, 400], [String(600 + k), 1100 + k, 2100, 440]];
 
 /** A candidate taken to suggestions, with P1 and P2 invited. */
 async function openCell(db) {
@@ -140,12 +142,17 @@ test('a helper suggests two merges and two cuts; a third is refused; take back f
   await openCell(db);
   const H1 = ctx(db, P1);
   await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge, note: 'thin axon' }, H1);
-  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge }, H1);
-  await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge }, H1), /your 2 merge suggestions/);
+  // The same merge again is the one already kept (Ames 2026-10-27: "why does it show 2 mergers?").
+  const again = await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge }, H1);
+  assert.equal(again.again, true);
+  assert.equal(again.used.merge, 1);
+  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: mergeAt(1) }, H1);
+  await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: mergeAt(2) }, H1), /your 2 merge suggestions/);
   const r = await B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, H1);
   assert.deepEqual(r.used, { merge: 2, cut: 1 });
+  assert.equal(r.suggestion.status, 'draft', 'a draft until Send');
   await B.buildAction('build.take_back', { id: 2 }, H1);
-  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge }, H1);
+  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: mergeAt(3) }, H1);
   // Not invited: refused. Another's suggestion: not theirs to take back.
   await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, ctx(db, P3)), /production access/);
   await assert.rejects(B.buildAction('build.take_back', { id: 1 }, ctx(db, P2)), /No such suggestion/);
@@ -181,6 +188,10 @@ test('planting: the queue is oldest first; Plant it keeps the operation and prot
   const A = await openCell(db);
   await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge }, ctx(db, P1, false, new Date('2026-10-28T12:05:00Z')));
   await B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, ctx(db, P2, false, new Date('2026-10-28T12:01:00Z')));
+  // Drafts are not in the queue until sent.
+  assert.equal((await B.buildAction('build.queue', { id: 1 }, A)).suggestions.length, 0);
+  await B.buildAction('build.send', { candidate_id: 1 }, ctx(db, P1));
+  await B.buildAction('build.send', { candidate_id: 1 }, ctx(db, P2));
   let q = await B.buildAction('build.queue', { id: 1 }, A);
   assert.deepEqual(q.suggestions.map((s) => s.name), ['annkri', 'nseraf']);
   await assert.rejects(B.buildAction('build.plant', { id: 1, operation_id: 77, new_roots: [CELL2] }, A), /start planting first/);
@@ -285,7 +296,7 @@ test('a closing time: helpers can suggest until it, then the cell waits for the 
   await assert.rejects(B.buildAction('build.move', { id: 1, to: 'suggesting', suggest_until: '2026-10-27T00:00:00Z' }, A), /in the future/);
   notes.length = 0;
   await B.buildAction('build.move', { id: 1, to: 'suggesting', suggest_until: '2026-10-30T19:00:00Z' }, A);
-  assert.match(notes[0].body, /until Oct 30, 3:00 PM ET/);
+  assert.match(notes[0].body, /Submissions close: Oct 30, 3:00 PM ET./);
   const before = ctx(db, P1, false, new Date('2026-10-30T18:59:00Z')), after = ctx(db, P1, false, new Date('2026-10-30T19:01:00Z'));
   await B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, before);
   await assert.rejects(B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, after), /have closed/);
@@ -347,4 +358,61 @@ test('a claim on a Hunt candidate is let go after 24 hours, and the player hears
   assert.match(notes[0].title, /let go/);
   // Not more than once every 5 minutes on its own.
   assert.equal(await B.releaseStale(A), 0);
+});
+
+test('each suggestion reaches the admins with a link to it in the queue; the queue opens at it', async () => {
+  const db = fakeDb();
+  db.adminUserIds = async () => [ADMIN.id];
+  const A = await openCell(db);
+  notes.length = 0;
+  const r = await B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut, note: 'hard one' }, ctx(db, P1));
+  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: merge }, ctx(db, P1));
+  assert.equal(notes.filter((x) => x.user_id === ADMIN.id).length, 0, 'not until Send');
+  const sent = await B.buildAction('build.send', { candidate_id: 1 }, ctx(db, P1));
+  assert.equal(sent.sent, 2);
+  assert.equal(notes.filter((x) => x.user_id === ADMIN.id).length, 1, 'one note for the whole set');
+  const n = notes.find((x) => x.user_id === ADMIN.id);
+  assert.match(n.title, /^💡 Hunt suggestion: cell …539437$/);
+  assert.ok(n.body.includes(`[Go there](#nge-build-suggestion=${r.suggestion.id})`));
+  assert.match(n.body, /nseraf sent 1 merge and 1 cut/);
+  const q = await B.buildAction('build.queue', { suggestion_id: r.suggestion.id }, A);
+  assert.equal(q.cell.id, 1);
+  await assert.rejects(B.buildAction('build.queue', { suggestion_id: 999 }, A), /No such suggestion/);
+});
+
+test('the opening note counts in words and carries the Help build button', async () => {
+  const db = fakeDb();
+  const groupNotes = [];
+  db.productionGroupId = async () => 42;
+  db.insertGroupNote = async (row) => { groupNotes.push(row); return row; };
+  const A = ctx(db, ADMIN, true);
+  await B.buildAction('build.add', { roots: [CELL], settings: { merges_each: 1, cuts_each: 2 } }, A);
+  Object.assign(db._t.tasks[0], { status: 'completed', assigned_to: P3.id, final_segment_id: CELL });
+  await B.buildAction('build.list', {}, A);
+  await B.buildAction('build.move', { id: 1, to: 'suggesting' }, A);
+  assert.ok(groupNotes[0].body.includes('You may submit:' + String.fromCharCode(10, 10) + '* 1 merge' + String.fromCharCode(10) + '* 2 cuts'), groupNotes[0].body);
+  assert.ok(groupNotes[0].body.startsWith('Help build a Hunt on the Sandbox!'));
+  assert.match(groupNotes[0].body, /\[Help build\]\(#nge-help-build\)/);
+});
+
+test('drafts a helper never sent count as sent when planting starts', async () => {
+  const db = fakeDb();
+  db.adminUserIds = async () => [ADMIN.id];
+  const A = await openCell(db);
+  await B.buildAction('build.suggest', { candidate_id: 1, kind: 'cut', edit: cut }, ctx(db, P1));
+  notes.length = 0;
+  await B.buildAction('build.move', { id: 1, to: 'planting' }, A);
+  assert.equal(db._t.suggestions[0].status, 'open');
+  assert.ok(notes.some((x) => x.user_id === ADMIN.id && /nseraf sent 1 cut/.test(x.body)));
+  assert.equal((await B.buildAction('build.queue', { id: 1 }, A)).suggestions.length, 1);
+});
+
+test('two at once cannot pass the limit', async () => {
+  const db = fakeDb();
+  await openCell(db);
+  const H1 = ctx(db, P1);
+  const out = await Promise.allSettled([1, 2, 3].map((k) => B.buildAction('build.suggest', { candidate_id: 1, kind: 'merge', edit: mergeAt(k) }, H1)));
+  const kept = db._t.suggestions.filter((x) => x.kind === 'merge' && x.status !== 'taken_back');
+  assert.ok(kept.length <= 2, `kept ${kept.length}`);
+  assert.ok(out.some((o) => o.status === 'rejected'));
 });
