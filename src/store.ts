@@ -7452,7 +7452,7 @@ export const useChatStore = defineStore('chat', () => {
     // A Nurro command is answered on your screen only and never posted, so
     // asking Nurro does not fill everyone's chat (Amy 2026-09-30). "!science"
     // belongs to nkem_test's public joke and is still posted.
-    if (notificationId == null && /^\s*!([a-z]+)\b/i.test(text)) {
+    if (notificationId == null && /^\s*(!([a-z]+)|@nurro)\b/i.test(text)) {
       const probe = botReply('probe', text, []);
       if (!probe || probe.name === NURRO_NAME) { askNurroPrivately(name, rank, text); return; }
     }
