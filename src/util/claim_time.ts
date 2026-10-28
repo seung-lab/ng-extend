@@ -53,6 +53,8 @@ export const claimTime = reactive({
   seconds: {} as Record<number, number>,
   /** The claim counting right now, or null when paused. */
   running: null as number | null,
+  /** When the player first worked on each claim (the first second counted), ISO. */
+  startedAt: {} as Record<number, string>,
 });
 
 interface Deps { claims: () => TimedClaim[]; signedIn: () => boolean }
@@ -86,6 +88,15 @@ export function claimTimeLabel(taskId: number | null | undefined): string {
   if (s < 60) return '';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
   return `${h ? `${h} h ` : ''}${m} min so far`;
+}
+
+/** "Started Oct 28, 11:52 AM": when the player first worked on the claim; '' before that. */
+export function claimStartedLabel(taskId: number | null | undefined): string {
+  const at = taskId ? claimTime.startedAt[taskId] : '';
+  if (!at) return '';
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return '';
+  return 'Started ' + d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function bucket(id: number) { return (pending[id] ??= { secs: 0, edits: 0, saves: 0 }); }
@@ -139,6 +150,7 @@ async function flush(): Promise<void> {
         const r: any = await taskAction('time', { step: 'beat', id, seconds: sent.secs, edits: sent.edits, saves: sent.saves });
         b.secs -= sent.secs; b.edits -= sent.edits; b.saves -= sent.saves;
         if (r && typeof r.active_seconds === 'number') serverSecs[id] = r.active_seconds;
+        if (r?.first_at && !claimTime.startedAt[id]) claimTime.startedAt[id] = r.first_at;
         show(id);
         for (const h of Array.isArray(r?.passed) ? r.passed : []) {
           emitMilestone({ event: 'hours', taskId: id, kind: r.kind || 'cell', hours: Number(h), activeSeconds: r.active_seconds });
@@ -165,6 +177,7 @@ async function loadTotals(force = false): Promise<void> {
     const rows: any[] = await taskAction('time', { step: 'mine' });
     for (const r of Array.isArray(rows) ? rows : []) {
       serverSecs[Number(r.task_id)] = Number(r.active_seconds) || 0;
+      if (r.first_at) claimTime.startedAt[Number(r.task_id)] = r.first_at;
       show(Number(r.task_id));
     }
   } catch (e: any) {

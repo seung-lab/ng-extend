@@ -16,7 +16,11 @@ export const MEC_LAYERS: { name: string; color: string }[] = [
   { name: 'True End 🟢', color: '#3ddc84' },
   { name: "Can't Fix 🔴", color: '#ff4d5e' },
   { name: 'Hits Edge 🟠', color: '#ff9a3c' },
+  // Super Quests only (Ames 2026-10-28): a place the player has checked.
+  { name: 'Checked ✅', color: '#c48cff' },
 ];
+/** The four an ordinary MEC claim opens with. */
+const CLAIM_LAYERS = MEC_LAYERS.slice(0, 4).map(l => l.name);
 
 /** "True End" and "True End 🟢" are the same layer: letters only, any case.
  *  So is "Can't Fix 🔴3": neuroglancer numbers a layer added under a name
@@ -53,19 +57,20 @@ function mergeCopies(viewer: any): void {
   }
 }
 
-/** The layers a Super Quest uses (Ames 2026-10-28: "for these we only need AIS"). */
-export const SUPER_QUEST_LAYERS = ['AIS 🐬'];
+/** The layers a Super Quest uses (Ames 2026-10-28: AIS, which is required,
+ *  Checked and True End). */
+export const SUPER_QUEST_LAYERS = ['AIS 🐬', 'Checked ✅', 'True End 🟢'];
 
-function addMissing(only?: string[]): void {
+function addMissing(only: string[] = CLAIM_LAYERS): void {
   const viewer: any = (window as any).viewer;
   if (!viewer?.layerSpecification) return;
   if (currentDatasetTag() !== 'pni_mec') return;
   mergeCopies(viewer);
   const managed: any[] = viewer?.layerManager?.managedLayers ?? [];
   const key = mecLayerKey;
-  const wanted = only ? new Set(only.map(key)) : null;
+  const wanted = new Set(only.map(key));
   // The layers this cell does not use go, when they hold no points.
-  if (wanted) {
+  {
     for (const ml of managed.slice()) {
       if (ml.archived || wanted.has(key(ml.name)) || !MEC_LAYERS.some(l => key(l.name) === key(ml.name))) continue;
       const pts = ml.layer?.localAnnotations;
@@ -76,7 +81,7 @@ function addMissing(only?: string[]): void {
   }
   const have = new Set(managed.filter(l => !l.archived).map(l => key(l.name)));
   for (const { name, color } of MEC_LAYERS) {
-    if (wanted && !wanted.has(key(name))) continue;
+    if (!wanted.has(key(name))) continue;
     if (have.has(key(name))) continue;
     viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, name, {
       type: 'annotation',

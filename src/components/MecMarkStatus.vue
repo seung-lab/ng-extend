@@ -14,8 +14,9 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer, sheetAisXyz, aisXyz, nearPoint } from '../util/mec_marks';
 import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick, addEdgeMarks, workingRoot, autoEdgeNews, undoHighlight, confirmAisAtSheet, goToXyz } from '../util/highlight';
 
-/** aisOnly: a Super Quest, which marks the AIS only (Ames 2026-10-28). */
-const props = defineProps<{ startOpen?: boolean; aisOnly?: boolean }>();
+/** superQuest: a Super Quest marks AIS (required), Checked and True End (Ames 2026-10-28). */
+const props = defineProps<{ startOpen?: boolean; superQuest?: boolean; started?: string }>();
+const SUPER_QUEST_MARKS = ['mec:ais', 'mec:checked', 'mec:end'];
 /** Find ends at the edge is put away for now (Ames 2026-10-28). */
 const SHOW_FIND_ENDS = false;
 // Open unless the player closed it (Ames 2026-10-24: "make the Marks open by
@@ -26,7 +27,26 @@ watch(open, o => { if (!props.startOpen) { try { o ? localStorage.removeItem(OPE
 const counts = ref<Record<string, number>>(mecCounts());
 const soma = ref(somaState());
 const hasStart = ref(!!startXyz());
-const marks = computed(() => MEC_KINDS.filter(k => k !== MEC_SOMA && (!props.aisOnly || k.key === 'mec:ais')));
+const marks = computed(() => (props.superQuest
+  ? SUPER_QUEST_MARKS.map(key => MEC_KINDS.find(k => k.key === key)!).filter(Boolean)
+  : MEC_KINDS.filter(k => k !== MEC_SOMA && k.key !== 'mec:checked')));
+
+// ── Hide the marks (Ames 2026-10-28: zoomed out, "all I see are
+// annotations but I want to see colored cell"). Hides the lab's layers in
+// the view; nothing is removed, and Show brings them back.
+const marksHidden = ref(false);
+function markLayers(): any[] {
+  return ((window as any).viewer?.layerManager?.managedLayers ?? []).filter((ml: any) => !ml.archived && mecKindOfLayer(ml.name));
+}
+function toggleMarks() {
+  const hide = !marksHidden.value;
+  for (const ml of markLayers()) { try { ml.setVisible(!hide); } catch { /* not ready */ } }
+  marksHidden.value = hide;
+}
+function readHidden() {
+  const ls = markLayers();
+  marksHidden.value = ls.length > 0 && ls.every(ml => ml.visible === false);
+}
 /** The mark a Ctrl + click drops, while one is picked. */
 // Shared with the Highlight box, so both always place the same mark.
 const armed = sharedLabPick;
@@ -41,6 +61,7 @@ const autoLooking = ref<number | null>(null);
 const looking = ref<number | null>(null);
 function read() {
   counts.value = mecCounts(); soma.value = somaState(); hasStart.value = !!startXyz();
+  readHidden();
   // The search on its own, while it runs.
   autoLooking.value = autoEdgeNews.looking;
   // Hits Edge placed on their own: said here too, once.
@@ -194,12 +215,13 @@ onBeforeUnmount(() => {
       <span class="nge-mms-chip" :style="{ '--k': MEC_SOMA.color }" :class="{ 'nge-mms-chip--none': soma.state === 'none' }">
         <i></i>Soma {{ soma.state === 'none' ? 'not yet' : '✓' }}
       </span>
+      <span v-if="started" class="nge-mms-started" title="When you first worked on this cell">{{ started }}</span>
       <span v-for="k in marks" :key="k.key" class="nge-mms-chip" :style="{ '--k': k.color }" :class="{ 'nge-mms-chip--none': !counts[k.key] }">
         <i></i>{{ k.label }} {{ counts[k.key] ?? 0 }}
       </span>
     </button>
     <div v-if="open" class="nge-mms-body">
-      <p class="nge-mms-how">Pick a mark (or press its number), then Ctrl + click the cell to place it.</p>
+      <p class="nge-mms-how">Pick a mark (or press its number), then Ctrl + click the cell to place it.<template v-if="superQuest"> Only the AIS is required.</template></p>
       <div class="nge-mms-list" role="radiogroup" aria-label="Mark to place">
         <button type="button" role="radio" class="nge-mms-row" :class="{ 'nge-mms-row--on': armed === MEC_SOMA.key }"
                 :aria-checked="armed === MEC_SOMA.key ? 'true' : 'false'" :style="{ '--k': MEC_SOMA.color }" @click="arm(MEC_SOMA.key)">
@@ -229,8 +251,10 @@ onBeforeUnmount(() => {
         <div v-else-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
       </div>
       <div class="nge-mms-foot">
-        <button v-if="SHOW_FIND_ENDS && !aisOnly" type="button" class="nge-mms-btn" :disabled="busy || autoLooking !== null" @click="findEdges"
+        <button v-if="SHOW_FIND_ENDS && !superQuest" type="button" class="nge-mms-btn" :disabled="busy || autoLooking !== null" @click="findEdges"
                 title="Mark Hits Edge wherever the cell reaches the end of the data, from the lab's image mask.">Find ends at the edge</button>
+        <button type="button" class="nge-mms-btn" @click="toggleMarks"
+                :title="marksHidden ? 'Show the marks again' : 'Hide the marks, to see the cell. Nothing is removed.'">{{ marksHidden ? 'Show marks' : 'Hide marks' }}</button>
         <button type="button" class="nge-mms-btn" :disabled="busy" @click="undoLast"
                 title="Remove the newest mark. All the Hits Edge marks one search placed go together.">Undo</button>
         <span v-if="looking !== null || autoLooking !== null" class="nge-mms-progress" role="status">
@@ -250,6 +274,7 @@ onBeforeUnmount(() => {
   cursor: pointer; text-align: left; font: inherit; color: inherit;
 }
 .nge-mms-head:hover .nge-mms-title { color: #fff; }
+.nge-mms-started { order: 99; flex-basis: 100%; font-size: 12px; color: rgba(200, 214, 230, 0.7); }
 .nge-mms-head:focus-visible, .nge-mms-row:focus-visible, .nge-mms-btn:focus-visible { outline: 1px solid rgba(127, 212, 255, 0.8); outline-offset: 2px; border-radius: 4px; }
 .nge-mms-caret { flex-shrink: 0; color: rgba(200, 220, 240, 0.6); transition: transform 0.15s ease; }
 .nge-mms--open .nge-mms-caret { transform: rotate(90deg); }

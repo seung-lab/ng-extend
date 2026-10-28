@@ -25,7 +25,7 @@ import {
   isLiveHelp,
   isQuestTask,
 } from '../store';
-import { claimTime, claimTimeLabel, setTimerWorkingClaim } from '../util/claim_time';
+import { claimTime, claimTimeLabel, claimStartedLabel, setTimerWorkingClaim } from '../util/claim_time';
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
@@ -3983,12 +3983,12 @@ const panelStyle = computed(() => ({
           <!-- MEC: the lab marks on the cell in view, one line that opens
                into a checklist (Ames 2026-10-24). In the Complete form
                instead while that is open. -->
-          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" :ais-only="cell.quest" />
+          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" :super-quest="cell.quest" :started="claimStartedLabel(cell.taskId)" />
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell</div>
-            <MecMarkStatus v-if="showsMecMarks(cell)" start-open :ais-only="cell.quest" class="nge-cl-complete-marks" />
+            <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="claimStartedLabel(cell.taskId)" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
               <div class="nge-cl-complete-statuses" role="radiogroup" aria-label="How did it end?">
