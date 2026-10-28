@@ -103,9 +103,9 @@ function readView() {
 }
 
 // ── Whole cell, pinned (Ames 2026-10-28) ──────────────────────────────────
-// A plain click on a cell pins the light to that spot: panning, turning and
+// A right click on a cell pins the light to that spot: panning, turning and
 // zooming the view no longer carry it along, so it stays where the player is
-// proofreading. Another click on the cell moves it there; Follow view in the
+// proofreading. Another right click on the cell moves it there; Follow view in the
 // bar (or turning the Lantern off) lets it follow the centre of the view
 // again. A click on empty space does nothing, so a missed click never loses
 // the place.
@@ -510,21 +510,25 @@ async function lightBranchUnderMouse(x: number, y: number) {
 // light there. A drag still turns the view, and Ctrl+click is still the
 // other tools' own. The click is not taken from neuroglancer: a double click
 // still shows or hides a cell as it always did.
-let down: {x: number; y: number; t: number; id: number} | null = null;
+// In Whole cell the light is pinned with a RIGHT click (Ames 2026-10-28:
+// "right click"), which in the 3D view also centres the view on the spot, so
+// the spot comes to the middle, lit; a right drag still only slides the view.
+// On a touch screen, a tap pins it.
+let down: {x: number; y: number; t: number; id: number; button: number; touch: boolean} | null = null;
 const inViewer = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('.neuroglancer-rendered-data-panel');
 function onDown(e: PointerEvent) {
   down = null;
-  if (!lantern.on || e.button !== 0) return;
+  if (!lantern.on || (e.button !== 0 && e.button !== 2)) return;
   if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || !inViewer(e.target)) return;
-  down = {x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId};
+  down = {x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, button: e.button, touch: e.pointerType === 'touch'};
 }
 function onUp(e: PointerEvent) {
   const d = down;
   down = null;
   if (!d || d.id !== e.pointerId || !lantern.on) return;
   if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 600) return;
-  if (lantern.mode === 'branch') void lightBranchUnderMouse(e.clientX, e.clientY);
-  else pinUnderMouse(e.clientX, e.clientY);
+  if (lantern.mode === 'branch') { if (d.button === 0) void lightBranchUnderMouse(e.clientX, e.clientY); return; }
+  if (d.button === 2 || d.touch) pinUnderMouse(e.clientX, e.clientY);
 }
 
 /** Call once the viewer exists. */
