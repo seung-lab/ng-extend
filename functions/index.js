@@ -2713,6 +2713,16 @@ exports.ewSheetSync = onRequest(
    }
    const who=await ewVerify(input.token);
    if(!who) throw ewErr(401,"Sign in before syncing a cell.");
+   // Pilot testers: who is on the Pyr Users sheet (Ames 2026-10-28: "if they
+   // are on that sheet then they are invited, if they are not then they came
+   // like from the web"). Admins only; read only, every tab, the email
+   // columns alone. The sheet must be shared with the Sheets identity.
+   if(input.action==='pilot_sheet') {
+    if(!(await rateLimit({ip:who.email},true,'read:pilotSheet')).ok) throw ewErr(429,'Please wait a moment.');
+    const sb=ewSb(ewServiceKey.value().trim());
+    if(!(await pilotContext(sb,who)).isAdmin) throw ewErr(403,'Admins only');
+    return res.json(await require('./sheet-sync').pilotSheetEmails(admin.applicationDefault()));
+   }
    // Annotation Quests (Ames 2026-10-12): the quest's own sheet tab is the
    // record. No proofreading task is involved: the row's Annotator Name says
    // whose cell it is, and sheet-policy.js decides what each action may write.
