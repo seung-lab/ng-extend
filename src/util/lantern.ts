@@ -24,7 +24,7 @@ import {mat4} from 'neuroglancer/util/geom';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {ngeGrapheneBranchGraph, ngeGrapheneBoxesOf, ngeGraphenePieceOf, ngeGrapheneThickness} from 'neuroglancer/datasource/graphene/frontend';
 import {clickedBranch, densestPiece, nearestPiece, type BranchGraph, type Segment} from './branch_tree';
-import {knownSomas, pickUnderMouse} from './highlight';
+import {knownSomas, pickUnderMouse, sharedLabPick} from './highlight';
 import {currentSegLayer} from '../datasets';
 
 const KEY = 'nge-lantern-v1';
@@ -103,9 +103,9 @@ function readView() {
 }
 
 // ── Whole cell, pinned (Ames 2026-10-28) ──────────────────────────────────
-// A click on a cell pins the light to that spot: panning, turning and
+// A Ctrl + click on a cell pins the light to that spot: panning, turning and
 // zooming the view no longer carry it along, so it stays where the player is
-// proofreading. Another click on the cell moves it there; Follow view in the
+// proofreading. Another Ctrl + click on the cell moves it there; Follow view in the
 // bar (or turning the Lantern off) lets it follow the centre of the view
 // again. A click on empty space does nothing, so a missed click never loses
 // the place.
@@ -510,16 +510,39 @@ async function lightBranchUnderMouse(x: number, y: number) {
 // light there. A drag still turns the view, and Ctrl+click is still the
 // other tools' own. The click is not taken from neuroglancer: a double click
 // still shows or hides a cell as it always did.
-// In Whole cell the light is placed with a plain LEFT click, as in Clicked
-// branch (Ames 2026-10-28: "I meant to say left click!"; a right click was
-// tried for a few minutes). A drag still turns the view.
-let down: {x: number; y: number; t: number; id: number; button: number} | null = null;
+// In Whole cell the light is placed with Ctrl + click (Cmd + click on a
+// Mac), as a plain click moves the view (Ames 2026-10-28: "left click moves
+// your view. maybe it should be control click"; a plain and a right click
+// were each tried first). Ctrl + click has other owners, and they keep it:
+// Merge, Cut and Find Path, Highlight while its box is open, an MEC mark
+// while one is chosen, and the Hunt's gems or any annotation tool. On a
+// touch screen, a tap places it.
+let down: {x: number; y: number; t: number; id: number} | null = null;
 const inViewer = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('.neuroglancer-rendered-data-panel');
+/** Does another tool own Ctrl + click right now? */
+function ctrlClickTaken(): boolean {
+  if (document.querySelector('.graphene-tool-status, .nge-hl-panel')) return true;
+  if (sharedLabPick.value) return true;
+  try { if (viewer?.selectedLayer?.layer?.layer?.tool?.value) return true; } catch { /* no layer */ }
+  return false;
+}
 function onDown(e: PointerEvent) {
   down = null;
-  if (!lantern.on || e.button !== 0) return;
-  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || !inViewer(e.target)) return;
-  down = {x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, button: e.button};
+  if (!lantern.on || e.button !== 0 || e.shiftKey || e.altKey || !inViewer(e.target)) return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (lantern.mode === 'branch') {
+    if (ctrl) return;
+  } else if (e.pointerType !== 'touch') {
+    if (!ctrl || ctrlClickTaken()) return;
+    // Ours: neuroglancer does not also act on it.
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  down = {x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId};
+}
+// On a Mac, Ctrl + click also asks for the context menu.
+function onContextMenu(e: MouseEvent) {
+  if (lantern.on && lantern.mode === 'cell' && e.ctrlKey && inViewer(e.target) && !ctrlClickTaken()) { e.preventDefault(); e.stopPropagation(); }
 }
 function onUp(e: PointerEvent) {
   const d = down;
@@ -562,6 +585,7 @@ export function startLantern(v: any) {
   }, {deep: true});
   window.addEventListener('pointerdown', onDown, true);
   window.addEventListener('pointerup', onUp, true);
+  window.addEventListener('contextmenu', onContextMenu, true);
   lit = lantern.on ? 1 : 0;
   apply();
 }

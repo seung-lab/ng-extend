@@ -100,7 +100,7 @@ function resetPlace() {
           <template v-if="lanternBranch.pinnedNm">Pinned.
             <button type="button" class="nge-lantern-mini nge-lantern-follow" title="Let the light follow the middle of your view again" @click="unpinLantern">Follow view</button>
           </template>
-          <template v-else>{{ isTouchRef ? 'Tap' : 'Click' }} the cell to place the light</template>
+          <template v-else>{{ isTouchRef ? 'Tap' : 'Ctrl + click' }} the cell to place the light</template>
         </span>
         <label v-if="lantern.mode === 'cell'" class="nge-lantern-set" title="How far the light reaches">
           <span>Size</span>
