@@ -45,6 +45,8 @@ const GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/18309c4c1
 const GRANTED_TITLE = '🎉 Congratulations! Your edit access has been granted!';
 // The open padlock on a dataset grant (Ames 2026-10-28).
 const DATASET_GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
+// The closed padlock on a dataset request, in the admins' bell (Ames 2026-10-28).
+const DATASET_REQUESTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-locked.png';
 const IMAGE = {request: BRAX, notes: NURRO + 'nurro-experiment-recap.png', invited: GRANTED};
 const EW_NAME_MAX = 60;
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
@@ -650,7 +652,7 @@ async function datasetRequest(a, io) {
     + `Sign in email: ${mdText(signIn)}\n\n`
     + "Add them to the dataset's group in CAVE, then press Granted in Admin Hub, Access requests."
     + noteForBell(note);
-  try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
+  try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell, image: DATASET_REQUESTED}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: DATASET_CATEGORY, user: name}); } catch (e) { console.warn('[dataset access] slack failed', e && e.message); }
   await wakeBoard(io);
   return {...(await datasetStatus(a, io)), requested: true};
@@ -695,8 +697,10 @@ async function datasetDecide(a, io) {
       if (a.mark === 'granted') {
         const short = DATASET_SHORT[row.dataset] || label;
         await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120), image: DATASET_GRANTED,
-          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!** Reload Pyr, then open it from the Dataset button.\n\n`
-            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.' + said});
+          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
+            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.'
+            // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
+            + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${row.dataset})` + said});
       } else {
         await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),
           body: `Not yet, sorry: your request for ${mdText(label)} was looked at, and access was not given this time.` + said});

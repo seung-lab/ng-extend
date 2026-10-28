@@ -132,7 +132,13 @@ async function loadOtherUser() {
 }
 loadOtherUser();
 // Clicking another name while a profile is open swaps the profile shown.
-watch(() => props.viewUserId, () => { void loadOtherUser(); });
+watch(() => props.viewUserId, () => {
+  void loadOtherUser();
+  // Opening someone's profile from inside your own (a name in Admin Hub's
+  // Pilot testers or Dataset requests) shows theirs: the Admin Hub tab stayed
+  // up, so the click seemed to do nothing (Celia D, report 284).
+  activeTab.value = 'overview';
+});
 // Your own awards are read again each time the profile opens: they were read
 // once at sign in, so one given during the session (a group award included)
 // stayed hidden until a reload (Ames 2026-10-16, Alpha 20).

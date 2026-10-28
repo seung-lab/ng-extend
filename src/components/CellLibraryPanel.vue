@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { datasetAccess } from '../util/dataset_access';
 import { reportWriteFailure } from '../util/error_reporting';
 import EditableText from './EditableText.vue';
 import { otherTabCount } from '../util/tabs';
@@ -425,7 +426,12 @@ const datasetScopedCells = computed(() => {
   const activeDs = canonicalDataset(activeDataset.value);
   // A Hunt being built (hunt_build.ts) is out of the Library for players: its cell, and any ID a planting touched.
   const building = backend.isAdmin ? null : new Set(buildState.cells.flatMap(c => c.protected));
-  const shown = building?.size ? cells.value.filter(c => !building.has(c.segId) && !((c as any).liveSegId && building.has((c as any).liveSegId))) : cells.value;
+  let shown = building?.size ? cells.value.filter(c => !building.has(c.segId) && !((c as any).liveSegId && building.has((c as any).liveSegId))) : cells.value;
+  // Hunt candidates are for players with edit access (Level 1, the retina)
+  // and admins; a Sandbox player never sees them (Ames 2026-10-28: "hunt
+  // candidates shouldn't appear in cell library for sandbox users"). While
+  // CAVE has not answered they stay hidden.
+  if (!backend.isAdmin && datasetAccess('stroeh-mouse-retina') !== 'edit') shown = shown.filter(c => !isHuntCandidate(c));
   if (!activeDs) return shown;
   return shown.filter(c => {
     const cd = canonicalDataset(c.dataset);
@@ -5487,6 +5493,11 @@ select.nge-cl-complete-type:hover {
   background: rgba(66, 213, 236, 0.06);
   border: 1px solid rgba(66, 213, 236, 0.28);
   animation: nge-cl-howto-in 0.2s ease-out both;
+  /* Scrolls on a laptop screen instead of filling the panel (M Sorek, report 293). */
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(66, 213, 236, 0.4) transparent;
 }
 @keyframes nge-cl-howto-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .nge-cl-howto-panel-head {

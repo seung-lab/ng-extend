@@ -2,6 +2,55 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T22:04:00Z",
+      "title": "Lantern: left click places the light",
+      "digest": "minor",
+      "items": [
+        "In Whole cell, a normal left click on the cell places the Lantern's light there, the same click as Clicked branch. Right click is back to just moving the view."
+      ]
+    },
+    {
+      "at": "2026-10-28T21:59:41Z",
+      "title": "Hunt candidates are for editors",
+      "items": [
+        "Hunt candidates in the Cell Library now show only to players with edit access. Thanks to \uc591\ub3d9\ud638."
+      ]
+    },
+    {
+      "at": "2026-10-28T21:56:00Z",
+      "title": "Lantern: right click to place the light",
+      "digest": "minor",
+      "items": [
+        "In Whole cell, right click the cell to place the Lantern's light there. It stays put while you move, turn and zoom.",
+        "Right click another spot to move it, or press Follow view in the Lantern bar to let it follow you again."
+      ]
+    },
+    {
+      "at": "2026-10-28T21:38:36Z",
+      "title": "Shorter MEC steps that fit the screen",
+      "digest": "minor",
+      "items": [
+        "How to map a cell in the Cell Library scrolls inside its box instead of filling a laptop screen, and MEC's steps are shorter: mark the AIS, then proofread the axon only. Thanks to Marissa.",
+        "When an admin gives you access to a dataset, your note has an Explore button that takes you straight there."
+      ]
+    },
+    {
+      "at": "2026-10-28T21:32:00Z",
+      "title": "Lantern: pin the light",
+      "digest": "minor",
+      "items": [
+        "In Whole cell, click the cell to pin the Lantern's light there. It stays put while you move, turn and zoom.",
+        "Click another spot to move it, or Follow view in the Lantern bar to let it follow you again."
+      ]
+    },
+    {
+      "at": "2026-10-28T21:26:00Z",
+      "title": "MEC slices show up sooner",
+      "items": [
+        "On MEC the blurry picture that fills the 2D view while the sharp one loads now downloads about five times less, so a new spot or a new cell shows something much sooner, and the sharp view arrives a little sooner too."
+      ]
+    },
+    {
       "at": "2026-10-28T19:03:25Z",
       "title": "A new padlock",
       "digest": "minor",

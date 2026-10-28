@@ -8,6 +8,8 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { listDatasetRequests, decideDatasetRequest, type DatasetRequestRow } from '../dataset_access_request';
+import lockIcon from '../images/lock-icon.png';
+import unlockIcon from '../images/unlock-icon.png';
 
 const rows = ref<DatasetRequestRow[]>([]);
 const loading = ref(false);
@@ -45,13 +47,14 @@ const when = (iso: string | null) => {
 <template>
   <section class="nge-dsr">
     <div class="nge-dsr-head">
+      <img :src="lockIcon" class="nge-dsr-icon" alt="" aria-hidden="true" />
       <h3>Dataset requests</h3>
       <span class="nge-dsr-sub">{{ waiting.length }} waiting</span>
       <button class="nge-dsr-btn nge-dsr-refresh" :disabled="loading" @click="load">Refresh</button>
     </div>
     <p class="nge-dsr-how">
       Players asking for one dataset (not retina, which has its own request below). For MEC, <b>Grant</b> adds them to MEC_Edit in CAVE
-      and then tells them they're in. For other datasets, add them to the dataset's group in CAVE yourself, then press <b>Granted</b>.
+      and then tells them they're in. For other datasets, add them to the dataset's group in CAVE yourself, then press <b>Grant</b>.
     </p>
     <p v-if="error" class="nge-dsr-err" role="alert">{{ error }}</p>
     <p v-else-if="!loading && !waiting.length" class="nge-dsr-how">Nobody is waiting.</p>
@@ -70,7 +73,7 @@ const when = (iso: string | null) => {
                 :title="`Add them to ${r.caveGroup} in CAVE, then tell them they're in`" @click="decide(r, 'granted')">{{ busy === r.id ? 'Granting…' : `Grant (adds to ${r.caveGroup})` }}</button>
         <button class="nge-dsr-btn" :class="{ 'nge-dsr-btn--yes': !r.caveGroup }" :disabled="busy === r.id"
                 :title="r.caveGroup ? 'You already added them in CAVE yourself: just tell them' : 'Add them to the dataset\'s group in CAVE first, then press this to tell them'"
-                @click="decide(r, 'granted', true)">{{ r.caveGroup ? 'I added them by hand' : 'Granted' }}</button>
+                @click="decide(r, 'granted', true)">{{ r.caveGroup ? 'I added them by hand' : 'Grant' }}</button>
         <button class="nge-dsr-btn" :disabled="busy === r.id" @click="decide(r, 'declined')">Not now</button>
       </div>
     </article>
@@ -82,7 +85,7 @@ const when = (iso: string | null) => {
       <div v-for="r in answered" :key="r.id" class="nge-dsr-done">
         <button class="nge-dsr-name" :disabled="!r.userId" title="Open their profile" @click="openProfile(r)">{{ r.name || r.email }}</button>
         <span class="nge-dsr-ds">{{ r.label }}</span>
-        <span class="nge-dsr-mark" :class="`nge-dsr-mark--${r.mark}`">{{ r.mark === 'granted' ? 'Granted' : 'Not now' }}</span>
+        <span class="nge-dsr-mark" :class="`nge-dsr-mark--${r.mark}`"><img :src="r.mark === 'granted' ? unlockIcon : lockIcon" class="nge-dsr-mark-icon" alt="" aria-hidden="true" />{{ r.mark === 'granted' ? 'Granted' : 'Not now' }}</span>
         <span class="nge-dsr-when">{{ when(r.markedAt) }}{{ r.markedBy ? ` by ${r.markedBy}` : '' }}</span>
         <button class="nge-dsr-btn nge-dsr-btn--small" :disabled="busy === r.id" title="Put it back on the waiting list (the player is not told)" @click="decide(r, 'waiting')">Undo</button>
       </div>
@@ -92,7 +95,11 @@ const when = (iso: string | null) => {
 
 <style scoped>
 .nge-dsr { margin: 0 0 18px; padding: 12px 14px; border: 1px solid rgba(245, 209, 66, 0.3); border-radius: 10px; background: rgba(245, 209, 66, 0.04); }
-.nge-dsr-head { display: flex; align-items: baseline; gap: 10px; }
+.nge-dsr-head { display: flex; align-items: center; gap: 10px; }
+/* The padlocks (Ames 2026-10-28): closed by the heading, open on a grant. */
+.nge-dsr-icon { width: 34px; height: 34px; object-fit: contain; margin: -4px -2px -4px 0; filter: drop-shadow(0 0 6px rgba(80, 200, 255, 0.35)); }
+.nge-dsr-mark { display: inline-flex; align-items: center; gap: 4px; }
+.nge-dsr-mark-icon { width: 16px; height: 16px; object-fit: contain; }
 .nge-dsr-head h3 { margin: 0; font-size: 1.05rem; color: #f5d142; }
 .nge-dsr-sub { color: #b6c4d4; font-size: 0.9rem; }
 .nge-dsr-refresh { margin-left: auto; }

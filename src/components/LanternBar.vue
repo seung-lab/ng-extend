@@ -5,7 +5,7 @@
  * util/lantern.ts for what the two settings do.
  */
 import { computed, ref } from 'vue';
-import { lantern, lanternBranch, LANTERN_LIMITS as L } from '../util/lantern';
+import { lantern, lanternBranch, unpinLantern, LANTERN_LIMITS as L } from '../util/lantern';
 import { isTouchRef } from '../util/mobile';
 import { spooky, callGhost, callTheReaper, shoo } from '../util/spooky';
 import { useProofreadingBackendStore } from '../store';
@@ -94,6 +94,13 @@ function resetPlace() {
         </span>
         <span v-if="lantern.mode === 'branch'" class="nge-lantern-hint" :class="{ 'is-failed': lanternBranch.status === 'failed' }" aria-live="polite">
           <span v-if="lanternBranch.status === 'finding'" class="nge-lantern-spin" aria-hidden="true"></span>{{ branchHint }}
+        </span>
+        <!-- Whole cell: the light follows the view until a click pins it (Ames 2026-10-28). -->
+        <span v-if="lantern.mode === 'cell'" class="nge-lantern-hint">
+          <template v-if="lanternBranch.pinnedNm">Pinned.
+            <button type="button" class="nge-lantern-mini nge-lantern-follow" title="Let the light follow the middle of your view again" @click="unpinLantern">Follow view</button>
+          </template>
+          <template v-else>{{ isTouchRef ? 'Tap' : 'Click' }} the cell to place the light</template>
         </span>
         <label v-if="lantern.mode === 'cell'" class="nge-lantern-set" title="How far the light reaches">
           <span>Size</span>
@@ -238,6 +245,7 @@ function resetPlace() {
   .nge-lantern-gem svg, .nge-lantern-gem.is-done svg, .nge-lantern-gem.is-failed svg { animation: none; }
   .nge-lantern-gem::after { animation: none; transform: scale(1.3); opacity: 0.6; }
 }
+.nge-lantern-follow { display: inline-flex; margin-left: 4px; height: 22px; vertical-align: middle; }
 .nge-lantern-hint.is-failed { color: #ffb4a0; white-space: normal; max-width: 260px; }
 .nge-lantern-set { display: inline-flex; align-items: center; gap: 7px; color: rgba(190, 205, 225, 0.85); }
 .nge-lantern-set > span:first-child { font: 500 10px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 208, 138, 0.72); }

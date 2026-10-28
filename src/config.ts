@@ -28,17 +28,11 @@ const RETINA_HOWTO: string[] = [
  *  so those steps of the sheet are left out. Admins can edit these in the game
  *  (howto.mec). */
 const MEC_HOWTO: string[] = [
-  `Click <b>Available</b> and choose a cell.`,
-  `<b>Claim</b> it. Its view opens with four annotation layers ready: <b>AIS 🐬</b>, <b>True End 🟢</b>, <b>Can't Fix 🔴</b> and <b>Hits Edge 🟠</b>.`,
-  `Go to the soma (the cell body): open <b>Marks</b> under your cell here (or <b>Highlight</b>, Shift+H), pick <b>Soma</b> and press <b>Go to the starting point</b>. The starting point is the cell's nucleus, inside the soma.`,
-  `If the nucleus is a separate segment, <b>merge</b> it with the soma.`,
-  `Press <b>Confirm soma here</b>: the Soma mark goes where the crosshairs are. If the starting point is not in the soma, move the crosshairs into a colored part of it first.`,
-  `Pick <b>AIS</b> in Marks: the lab's sheet has a point where the axon leaves the cell. <b>Go to the lab's AIS point</b> and check it. If it is off, move the crosshairs to where the axon leaves the cell. Then <b>Confirm AIS here</b>: the mark goes where the crosshairs are.`,
-  `Proofread the <b>axon only</b>: follow it from the AIS to every one of its ends, and ignore missed spines. Mark it as you go. In <b>Marks</b>, pick a mark and Ctrl+click the cell to place it.<br><b>AIS 🐬</b>: where the axon leaves the cell (skip it if the cell has no distinct axon).<br><b>True End 🟢</b>: every branch end where the branch naturally stops.<br><b>Can't Fix 🔴</b>: a branch that should go on, but you can't find the next piece.<br><b>Hits Edge 🟠</b>: a branch that reaches the end of the dataset.`,
-  `Pyr places <b>Hits Edge</b> marks on its own wherever the cell reaches the end of the imaged data, once the cell has loaded in 3D (<b>Find ends at the edge</b> in Marks looks again). Check each one, and delete any that is not a branch end.`,
-  `Want a layer of your own, for notes or spots to come back to? Ctrl+click (or right click) the <b>+</b> beside the layer tabs, and give it a name.`,
-  `<b>Reminder: do NOT merge mitochondria.</b>`,
-  `When the axon is done, <b>Complete</b> it here in the Cell Library, or with the &Delta; button next to its segment ID, and choose <b>Axon complete</b> (or <b>Complete</b> if you proofread the whole cell). It counts as your completed cell and is recorded in the spreadsheet, with how many of each mark you placed.`,
+  // Shortened (Ames 2026-10-28): only the AIS is marked now, and only the axon is proofread.
+  `Click <b>Available</b>, choose a cell and <b>Claim</b> it.`,
+  `Open <b>Marks</b> under your cell, pick <b>AIS</b> and press <b>Go to the lab's AIS point</b>, where the axon leaves the cell body. If it is off, move the crosshairs there, then press <b>Confirm AIS here</b>.`,
+  `Proofread the <b>axon only</b>: follow it from the AIS to every end. Skip spines and the rest of the cell. <b>Do not merge mitochondria.</b>`,
+  `When the axon is done, <b>Complete</b> it (here, or with &Delta; next to its segment ID) and choose <b>Axon complete</b>.`,
 ];
 
 export interface DatasetCaveConfig {

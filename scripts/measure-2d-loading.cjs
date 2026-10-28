@@ -8,7 +8,7 @@
  *
  * Options
  *   --base <url>         page to load; the state goes in the #! fragment
- *   --state <name>       sandbox-image | retina-image | sandbox-full | retina-full | none (no fragment)
+ *   --state <name>       sandbox-image | retina-image | sandbox-full | retina-full | mec-image | none (no fragment)
  *   --state-file <path>  a JSON state instead of a built in one
  *   --layout <xy|xy-3d|3d|4panel>   override the state's layout
  *   --scale <n>          override crossSectionScale
@@ -36,12 +36,14 @@ const { chromium } = require(PW);
 const SANDBOX_IMG = { type: 'image', source: 'precomputed://https://bossdb-open-data.s3.amazonaws.com/iarpa_microns/pinky/em', name: 'img' };
 const SANDBOX_SEG = { type: 'segmentation', source: { url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/pinky_nf_v2', subsources: { default: true, mesh: true, graph: true }, enableDefaultSubsources: true }, name: 'pinky_nf_v2' };
 const RETINA_IMG = { type: 'image', source: 'precomputed://gs://stroeh_sem_mouse_retina/image/v2', name: 'em' };
+const MEC_IMG = { type: 'image', source: 'precomputed://https://c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/img/v2', name: 'img' };
 const RETINA_SEG = { type: 'segmentation', source: { url: 'graphene://middleauth+https://minnie.microns-daf.com/segmentation/table/stroeh_mouse_retina', subsources: { default: true, mesh: true, graph: true }, enableDefaultSubsources: true }, name: 'stroeh_mouse_retina' };
 
 const STATES = {
   'sandbox-image': { dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] }, position: [73631, 63170, 344], crossSectionScale: 1.1, projectionScale: 2230, layers: [SANDBOX_IMG], layout: 'xy' },
   'sandbox-full': { dimensions: { x: [4e-9, 'm'], y: [4e-9, 'm'], z: [4e-8, 'm'] }, position: [73631, 63170, 344], crossSectionScale: 1.1, projectionScale: 2230, layers: [SANDBOX_IMG, SANDBOX_SEG], layout: 'xy-3d' },
   'retina-image': { dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [32653, 23923, 583], crossSectionScale: 3, projectionScale: 15000, layers: [RETINA_IMG], layout: 'xy' },
+  'mec-image': { dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4.5e-8, 'm'] }, position: [115000, 115000, 5000], crossSectionScale: 1, projectionScale: 15000, layers: [MEC_IMG], layout: 'xy' },
   'retina-full': { dimensions: { x: [1.6e-8, 'm'], y: [1.6e-8, 'm'], z: [4e-8, 'm'] }, position: [32653, 23923, 583], crossSectionScale: 3, projectionScale: 15000, layers: [RETINA_IMG, RETINA_SEG], layout: 'xy-3d' },
 };
 
