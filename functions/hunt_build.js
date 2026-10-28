@@ -115,7 +115,7 @@ function helpNoteBody(merges, cuts, until) {
  * The pictures on the Hunt Builder's bell notes (Ames 2026-10-27, her scythe: "I will make a couple options we can
  * use at different stages"): one per kind of note, served by the game at /hunt/<name>.png and -128.png.
  */
-const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'scythe', released: 'scythe', sentBack: 'scythe' };
+const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'scythe-gold', released: 'scythe', sentBack: 'scythe' };
 const noteArt = (ctx, kind, small = false) => (ctx && ctx.site ? `${ctx.site}/hunt/${NOTE_ART[kind] || 'scythe'}${small ? '-128' : ''}.png` : undefined);
 const helpersOf = (c) => (Array.isArray(c.helpers) ? c.helpers.map(String) : []);
 const isHelper = (c, uid) => helpersOf(c).includes(String(uid));
