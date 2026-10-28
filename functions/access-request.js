@@ -695,8 +695,10 @@ async function datasetDecide(a, io) {
       if (a.mark === 'granted') {
         const short = DATASET_SHORT[row.dataset] || label;
         await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120), image: DATASET_GRANTED,
-          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!** Reload Pyr, then open it from the Dataset button.\n\n`
-            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.' + said});
+          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!**\n\n`
+            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.'
+            // The way there (Ames 2026-10-28: "an explore the N button that lets them jump to that dataset").
+            + `\n\n[Explore ${mdText(short)} ›](#nge-open-dataset=${row.dataset})` + said});
       } else {
         await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),
           body: `Not yet, sorry: your request for ${mdText(label)} was looked at, and access was not given this time.` + said});

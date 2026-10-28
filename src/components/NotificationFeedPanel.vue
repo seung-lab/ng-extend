@@ -10,7 +10,8 @@ import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
 import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRecapTitle, yearFromRecapTitle } from '../util/recap_week';
 import { recentConsoleCount, recentConsoleText } from '../util/console_buffer';
-import { currentDatasetTag, canonicalDataset } from '../datasets';
+import { currentDatasetTag, canonicalDataset, DATASETS, switchToDataset } from '../datasets';
+import { refreshDatasetPermissions } from '../util/dataset_access';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
@@ -490,6 +491,17 @@ async function onDetailBodyClick(e: MouseEvent) {
     document.dispatchEvent(new CustomEvent('nge:build-queue', { detail: { suggestion: Number(sug[1]) } }));
     closeDetail();
     emit('hide');
+    return;
+  }
+  // "Explore MEC" on a dataset access grant (Ames 2026-10-28): CAVE is asked
+  // again (the access is new), then the dataset opens.
+  const go = a?.getAttribute('href')?.match(/^#nge-open-dataset=([a-z0-9_]{2,40})$/);
+  if (go) {
+    e.preventDefault();
+    const ds = DATASETS.find(d => d.id === go[1]);
+    closeDetail();
+    emit('hide');
+    if (ds) { await refreshDatasetPermissions(); await switchToDataset(ds); }
     return;
   }
   if (a?.getAttribute('href') === '#nge-help-build') {

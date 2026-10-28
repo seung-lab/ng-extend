@@ -51,7 +51,7 @@ const when = (iso: string | null) => {
     </div>
     <p class="nge-dsr-how">
       Players asking for one dataset (not retina, which has its own request below). For MEC, <b>Grant</b> adds them to MEC_Edit in CAVE
-      and then tells them they're in. For other datasets, add them to the dataset's group in CAVE yourself, then press <b>Granted</b>.
+      and then tells them they're in. For other datasets, add them to the dataset's group in CAVE yourself, then press <b>Grant</b>.
     </p>
     <p v-if="error" class="nge-dsr-err" role="alert">{{ error }}</p>
     <p v-else-if="!loading && !waiting.length" class="nge-dsr-how">Nobody is waiting.</p>
@@ -70,7 +70,7 @@ const when = (iso: string | null) => {
                 :title="`Add them to ${r.caveGroup} in CAVE, then tell them they're in`" @click="decide(r, 'granted')">{{ busy === r.id ? 'Granting…' : `Grant (adds to ${r.caveGroup})` }}</button>
         <button class="nge-dsr-btn" :class="{ 'nge-dsr-btn--yes': !r.caveGroup }" :disabled="busy === r.id"
                 :title="r.caveGroup ? 'You already added them in CAVE yourself: just tell them' : 'Add them to the dataset\'s group in CAVE first, then press this to tell them'"
-                @click="decide(r, 'granted', true)">{{ r.caveGroup ? 'I added them by hand' : 'Granted' }}</button>
+                @click="decide(r, 'granted', true)">{{ r.caveGroup ? 'I added them by hand' : 'Grant' }}</button>
         <button class="nge-dsr-btn" :disabled="busy === r.id" @click="decide(r, 'declined')">Not now</button>
       </div>
     </article>
