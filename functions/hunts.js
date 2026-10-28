@@ -1428,7 +1428,8 @@ function makerBadgeRow(h, site) {
     slug: `hunt-${h.id}-maker`,
     name: `${h.title}: Hunt Maker`.slice(0, 80),
     description: `Helped build ${h.title}: a suggestion of yours was planted in it. ${LINES.maker}`.slice(0, 300),
-    image_url: own ? own.image_url : `${site}/hunt/gold.png`, thumbnail_url: own ? (own.thumbnail_url || own.image_url) : `${site}/hunt/gold-128.png`,
+    // Ames's Hunt Maker scythe (2026-10-27: "let's use this as the achievement given to users at the end of the hunt").
+    image_url: own ? own.image_url : `${site}/hunt/maker.png`, thumbnail_url: own ? (own.thumbnail_url || own.image_url) : `${site}/hunt/maker-128.png`,
     created_by: h.created_by || null,
   };
 }

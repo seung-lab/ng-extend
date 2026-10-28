@@ -433,3 +433,12 @@ test('the Hunt Builder notes carry the scythe', async () => {
   assert.equal(groupNotes[0].thumbnail_url, 'https://pyr.test/hunt/scythe-128.png');
   assert.equal(notes[0].image, 'https://pyr.test/hunt/scythe.png');
 });
+
+test('the Hunt Maker Achievement wears the scythe unless an admin picked one', () => {
+  const H = require('./hunts');
+  const row = H.makerBadgeRow({ id: 9, title: 'Split Happens', created_by: null }, 'https://pyr.test');
+  assert.equal(row.slug, 'hunt-9-maker');
+  assert.equal(row.name, 'Split Happens: Hunt Maker');
+  assert.equal(row.image_url, 'https://pyr.test/hunt/maker.png');
+  assert.equal(row.thumbnail_url, 'https://pyr.test/hunt/maker-128.png');
+});

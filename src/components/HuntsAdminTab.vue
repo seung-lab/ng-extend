@@ -797,7 +797,7 @@ async function duplicate() {
           <div class="nge-hunts-prize-head"><span class="nge-hunts-medal">Helpers</span>
             <span class="nge-hunts-muted">Everyone whose suggestion was planted in this Hunt (Hunt builder), at the end.</span></div>
           <div class="nge-hunts-row">
-            <img v-if="specialById(form.makerBadge)" class="nge-hunts-special-img" :src="specialById(form.makerBadge).thumbnail_url || specialById(form.makerBadge).image_url" alt="" />
+            <img class="nge-hunts-special-img" :src="specialById(form.makerBadge) ? (specialById(form.makerBadge).thumbnail_url || specialById(form.makerBadge).image_url) : 'hunt/maker-128.png'" alt="" />
             <select v-model="form.makerBadge" class="nge-hunts-input" aria-label="Special Achievement for the helpers">
               <option value="">Made for this Hunt: {{ (form.title || 'This Hunt') + ': Hunt Maker' }}</option>
               <option v-for="b in specials" :key="b.id" :value="b.id">{{ b.name }}</option>
