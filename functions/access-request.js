@@ -45,6 +45,8 @@ const GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/18309c4c1
 const GRANTED_TITLE = '🎉 Congratulations! Your edit access has been granted!';
 // The open padlock on a dataset grant (Ames 2026-10-28).
 const DATASET_GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
+// The closed padlock on a dataset request, in the admins' bell (Ames 2026-10-28).
+const DATASET_REQUESTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-locked.png';
 const IMAGE = {request: BRAX, notes: NURRO + 'nurro-experiment-recap.png', invited: GRANTED};
 const EW_NAME_MAX = 60;
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
@@ -650,7 +652,7 @@ async function datasetRequest(a, io) {
     + `Sign in email: ${mdText(signIn)}\n\n`
     + "Add them to the dataset's group in CAVE, then press Granted in Admin Hub, Access requests."
     + noteForBell(note);
-  try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
+  try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell, image: DATASET_REQUESTED}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: DATASET_CATEGORY, user: name}); } catch (e) { console.warn('[dataset access] slack failed', e && e.message); }
   await wakeBoard(io);
   return {...(await datasetStatus(a, io)), requested: true};
