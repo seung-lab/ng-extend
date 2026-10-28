@@ -798,7 +798,10 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     return;
   }
   if (!result.ok) {
-    claimError.value = result.reason || 'Claim failed';
+    // The server's words for a second quest (supabase-interneuron-quests.sql), in the game's.
+    claimError.value = /already hold an interneuron quest/i.test(result.reason || '')
+      ? 'You already hold a Super Quest. Finish or release it first.'
+      : result.reason || 'Claim failed';
     if (claimErrorTimer) clearTimeout(claimErrorTimer);
     claimErrorTimer = setTimeout(() => { claimError.value = ''; }, 5000);
     return;
@@ -2986,10 +2989,10 @@ const panelStyle = computed(() => ({
                       title="Hunt candidates: cells that may become a Hunt. Proofread one fully, to every end. A claim on one is let go 24 hours after you claim it, so the cell is not held up.">
                 Hunt <b>{{ huntOpenCount }}</b>
               </button>
-              <!-- Interneuron quests (Ames 2026-10-28), only on a dataset that has some. -->
+              <!-- Super Quests (Ames 2026-10-28): giant MEC interneurons, only on a dataset that has some. -->
               <button v-if="questCells.length" :class="{ active: filter === 'giants', 'nge-cl-giants-tab': true }" @click="filter = 'giants'"
-                      title="Interneuron quests: giant interneurons with a great many branches, a cell that can take weeks. You hold one at a time, beside your other claims, and it never expires. The number is the quests open to claim.">
-                Interneurons <b>{{ questOpenHere }}</b>
+                      title="Super Quests: giant interneurons with a great many branches, a cell that can take weeks. You hold one at a time, beside your other claims, and it never expires. The number is the Super Quests open to claim.">
+                Super Quests <b>{{ questOpenHere }}</b>
               </button>
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
                       title="Cells you have claimed, and cells you completed">
@@ -3863,7 +3866,7 @@ const panelStyle = computed(() => ({
 
           <div v-if="filter === 'giants' && !slim" class="nge-cl-giants-intro">
             Giant interneurons with a great many branches: one can take weeks, a little at a time.
-            You hold one quest at a time, beside your other claims, and it never expires.
+            You hold one Super Quest at a time, beside your other claims, and it never expires.
             Pyr counts your active time on it, which helps the lab learn how long these cells take.
           </div>
           <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
@@ -3907,7 +3910,7 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
-                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="An interneuron quest: one at a time, it never expires, and Pyr counts your active time on it.">Interneuron quest</span>
+                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, it never expires, and Pyr counts your active time on it.">Super Quest</span>
                   <span v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-notes nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
                         title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have moved the mouse or pressed a key in the last 5 minutes. It adds up across visits and devices.">{{ claimTimeLabel(cell.taskId) }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>

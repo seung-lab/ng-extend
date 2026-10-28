@@ -43,7 +43,7 @@ async function load() {
     times.value = r?.times ?? [];
   } catch (e: any) {
     error.value = /unknown action|pilot_quest_admin|could not find the function|\(404\)/i.test(String(e?.message))
-      ? 'Interneuron quests are not switched on yet: the database part (supabase-interneuron-quests.sql) and the server function need to go in first.'
+      ? 'Super Quests are not switched on yet: the database part (supabase-interneuron-quests.sql) and the server function need to go in first.'
       : e?.message || 'Could not load the quests.';
   } finally { loading.value = false; }
 }
@@ -95,7 +95,7 @@ async function add() {
     const bad = todo.filter(l => l.problem);
     const parts = [
       r.added ? `${r.added} added` : '',
-      r.changed ? `${r.changed} already in the Cell Library, now quests` : '',
+      r.changed ? `${r.changed} already in the Cell Library, now Super Quests` : '',
       r.already ? `${r.already} already on the list` : '',
       bad.length ? `${bad.length} not read: ${bad.map(l => `"${l.text}" (${l.problem})`).join(', ')}` : '',
     ].filter(Boolean);
@@ -150,7 +150,7 @@ function downloadCsv() {
 <template>
   <section class="nge-iq">
     <div class="nge-iq-top">
-      <h2>Interneuron quests</h2>
+      <h2>Super Quests</h2>
       <span class="nge-iq-sub">MEC. A player holds one at a time, beside their other claims, and it never expires.</span>
       <button class="nge-iq-btn nge-iq-refresh" :disabled="loading" @click="load">{{ loading ? 'Loading…' : 'Refresh' }}</button>
     </div>
@@ -160,7 +160,7 @@ function downloadCsv() {
     <p class="nge-iq-how">
       One cell a line: a root ID, a root ID and its soma point, or a soma point alone
       (x, y, z as Pyr shows them; a point alone is looked up in the segmentation, so open MEC first).
-      A note for players may follow a #. A cell already in the Cell Library becomes a quest.
+      A note for players may follow a #. A cell already in the Cell Library becomes a Super Quest.
     </p>
     <textarea v-model="pasted" class="nge-iq-paste" rows="6" spellcheck="false"
               placeholder="720575940612345678, 123456, 234567, 3456 # big basket cell&#10;720575940698765432&#10;98765, 87654, 2345"
@@ -172,7 +172,7 @@ function downloadCsv() {
     <p v-if="message" class="nge-iq-msg">{{ message }}</p>
 
     <h3>The list <span class="nge-iq-sub">{{ quests.filter(q => q.status === 'pending').length }} open of {{ quests.filter(q => q.status !== 'skipped').length }}</span></h3>
-    <p v-if="!quests.length && !loading" class="nge-iq-sub">No quests yet.</p>
+    <p v-if="!quests.length && !loading" class="nge-iq-sub">No Super Quests yet.</p>
     <table v-else class="nge-iq-table">
       <thead><tr><th>Cell</th><th>State</th><th>Held by</th><th>Active time</th><th>Players</th><th></th></tr></thead>
       <tbody>
@@ -190,10 +190,10 @@ function downloadCsv() {
     <h3>Active time per claim</h3>
     <p class="nge-iq-how">
       Counted while the claimed cell is on screen, Pyr is in front, and the player used the mouse or keys in the last
-      5 minutes. Kept per claim (cell and player), across visits and devices. Every MEC claim counts, not only quests.
+      5 minutes. Kept per claim (cell and player), across visits and devices. Every MEC claim counts, not only Super Quests.
     </p>
     <div class="nge-iq-row">
-      <label class="nge-iq-sub"><input v-model="onlyQuests" type="checkbox" /> Quests only</label>
+      <label class="nge-iq-sub"><input v-model="onlyQuests" type="checkbox" /> Super Quests only</label>
       <span v-if="finished" class="nge-iq-sub">Finished cells: {{ finished.n }}, median {{ hours(finished.median) }}, mean {{ hours(Math.round(finished.mean)) }}</span>
       <button class="nge-iq-btn" :disabled="!shownTimes.length" @click="downloadCsv">Download CSV</button>
     </div>
@@ -202,7 +202,7 @@ function downloadCsv() {
       <thead><tr><th>Cell</th><th>Player</th><th>State</th><th>Active time</th><th>Days</th><th>Edits</th><th>Views saved</th><th>Last</th></tr></thead>
       <tbody>
         <tr v-for="t in shownTimes" :key="t.task_id + t.player">
-          <td><code>{{ t.segment_id }}</code><span v-if="t.kind === 'interneuron'" class="nge-iq-tag">quest</span></td>
+          <td><code>{{ t.segment_id }}</code><span v-if="t.kind === 'interneuron'" class="nge-iq-tag">Super Quest</span></td>
           <td>{{ t.player }}</td>
           <td>{{ t.status === 'completed' && t.mine ? 'Finished' : t.mine ? (STATUS[t.status] || t.status) : 'Let go' }}</td>
           <td>{{ hours(t.active_seconds) }}</td>
