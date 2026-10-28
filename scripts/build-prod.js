@@ -231,7 +231,7 @@ if (fs.existsSync(HUNT_DIR)) {
   const dest = path.join(DIST_MIN, 'hunt');
   fs.mkdirSync(dest, { recursive: true });
   for (const file of fs.readdirSync(HUNT_DIR)) {
-    if (file.endsWith('.svg') || file.endsWith('.png')) fs.copyFileSync(path.join(HUNT_DIR, file), path.join(dest, file));
+    if (/.(svg|png|jpg)$/.test(file)) fs.copyFileSync(path.join(HUNT_DIR, file), path.join(dest, file));
   }
   console.log(`Copied the Hunt's medals to ${dest}`);
 }
