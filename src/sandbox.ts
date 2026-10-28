@@ -20,7 +20,7 @@ import type { SandboxCell } from './practice_pools';
 import { supabase } from './supabase';
 import { awardSpecialOnce } from './util/special_award';
 import { useProofreadingBackendStore } from './store';
-import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, closeSidePanel, creditPractice, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
+import { BLACK_BOX_NOTE, OVER_3D, celebrateStep, focusOnFirstHint, closeSidePanel, creditPractice, movingToSandbox, practiceEarned, recordTutorialDone, practiceStatus, resetPracticeLog, stopWatching, watchPractice } from './tutorial-3';
 
 export interface SandboxWords {
   /** The sandbox's name, for the moving card. */
@@ -157,6 +157,9 @@ export function makeSandbox(cfg: SandboxConfig) {
     loadDoneFromAccount();
     stopWatching();
     // Hand back whatever is held (another example, or a tutorial's cells).
+    // Putting a cell back undoes every edit on it and can take a while; say
+    // so (Ames, 2026-10-28: "it took forever and there was no indication").
+    if (store.activeTutorial === tutorial) practiceStatus(`Putting this ${W.one} back for the next person. The next one opens in a moment.`);
     const from = store.activeTutorial, fromStep = store.getTutorialStep();
     endPractice().finally(() => {
       // Handing cells back can take seconds. If the player closed the box or
@@ -398,6 +401,8 @@ ${W.intro(cell())}`;
         // The cell loads in 3D (practice.ts sets the layout in the view
         // itself); Space brings the 2D images back.
         setTimeout(() => ensureTool(cfg.tool), 1100);
+        // Extension cells open close in on where the cell stops.
+        if (cfg.kind !== 'cut') setTimeout(() => { void focusOnFirstHint(); }, 1600);
       },
     } as Step,
 

@@ -9,7 +9,7 @@ import imgBravoNurro from './images/bravo-nurro.png';
 import imgMergeExample from './images/merge-example.jpg';
 import imgProfessorNurro from './images/professor-nurro.png';
 import { startDatasetTransition, releaseDatasetTransition } from './util/dataset_transition';
-import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, groupProgress, practiceToolOn, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
+import { beginPractice, heldPracticeIds, holdsSlot, practiceShown, currentPractice, endPractice, ensureTool, joinWaitlist, leaveWaitlist, piecesMerged, placeMergeLine, practiceLeftover, groupProgress, practiceToolOn, revealMissingPieces, stopWaitingForTutorial, tutorialNeeds, waitForTutorial, type PracticeKind } from './practice';
 import { useTutorialStore } from './store-pyr';
 import { supabase } from './supabase';
 import { SANDBOX_CELLS } from './practice_pools';
@@ -92,6 +92,32 @@ function focusOn(pts: number[][], threeD: number, twoD: number) {
   try { const z = v.navigationState.zoomFactor; z.value = z.value * twoD; } catch { /* keep the zoom */ }
 }
 
+/** Drop a hint point with no other point near it (more than 3 um from all
+ *  of them): a stray left in a saved view (Ames, 2026-10-28, the easy axon's
+ *  third gem floating off the end of a branch). Click spots come in pairs. */
+function withoutLonePoints(pts: number[][]): number[][] {
+  if (pts.length < 3) return pts;
+  const nm = (a: number[], b: number[]) => Math.hypot((a[0] - b[0]) * 4, (a[1] - b[1]) * 4, (a[2] - b[2]) * 40);
+  return pts.filter((p, i) => pts.some((q, j) => j !== i && nm(p, q) < 3000));
+}
+
+/**
+ * For the Extension Sandbox: open close in on where the cell stops (Ames,
+ * 2026-10-28: "the zoom should be much closer, by default"). Centres on the
+ * first cluster of hint points, the first missing piece, without showing
+ * the gems or the piece.
+ */
+export async function focusOnFirstHint(threeD = 0.3): Promise<void> {
+  const ex = currentPractice().example;
+  if (!ex) return;
+  let pts: number[][] = MERGE_HINT_POINTS[ex.id] ?? [];
+  if (!pts.length && MERGE_HINT_STATES[ex.id]) pts = await pointsInState(MERGE_HINT_STATES[ex.id]);
+  pts = withoutLonePoints(pts);
+  if (!pts.length) return;
+  const nm = (a: number[], b: number[]) => Math.hypot((a[0] - b[0]) * 4, (a[1] - b[1]) * 4, (a[2] - b[2]) * 40);
+  focusOn(pts.filter(p => nm(p, pts[0]) < 3000), threeD, 1);
+}
+
 async function showWhereToClick(focus?: { threeD: number; twoD: number }): Promise<boolean> {
   const ex = currentPractice().example;
   let pts: number[][] = ex ? (MERGE_HINT_POINTS[ex.id] ?? []) : [];
@@ -100,8 +126,11 @@ async function showWhereToClick(focus?: { threeD: number; twoD: number }): Promi
     try { pts = [JSON.parse(ex.point_a), JSON.parse(ex.point_b)]; } catch { pts = []; }
   }
   if (!pts.length) pts = await pointsInState(STATE_MERGE_HINTS);
+  pts = withoutLonePoints(pts);
   if (!pts.length) return false;
   if (focus) focusOn(pts, focus.threeD, focus.twoD);
+  // On an extension cell the pieces come into view with their gems.
+  void revealMissingPieces();
   // Gems in the scene, like the cut hints: they sit on the cell and neurons
   // in front hide them. They are not pickable, so a Ctrl+click right on one
   // lands on the cell underneath. Flat pins if the layer cannot be added.
