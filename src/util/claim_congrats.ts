@@ -39,10 +39,12 @@ body.nge-calm .nge-congrats, body.nge-calm .nge-congrats--out { animation: none;
   document.head.appendChild(css);
 }
 
-export function showClaimCongrats(m: ClaimMilestone) {
+export function showClaimCongrats(m: ClaimMilestone) { showClaimNotice(words(m)); }
+
+/** The same card, for any short notice about a claim (a Super Quest ending soon). */
+export function showClaimNotice({ title, sub, image = true }: { title: string; sub: string; image?: boolean }) {
   try {
     addStyles();
-    const { title, sub } = words(m);
     const box = document.createElement('div');
     box.className = 'nge-congrats';
     box.setAttribute('role', 'status');
@@ -51,7 +53,8 @@ export function showClaimCongrats(m: ClaimMilestone) {
     const text = document.createElement('div');
     const b = document.createElement('b'); b.textContent = title;
     text.append(b, document.createTextNode(sub));
-    box.append(img, text);
+    if (image) box.append(img);
+    box.append(text);
     let gone = false;
     const close = () => {
       if (gone) return;

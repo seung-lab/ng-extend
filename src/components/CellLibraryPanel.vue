@@ -26,6 +26,7 @@ import {
   isQuestTask,
 } from '../store';
 import { claimTime, claimTimeLabel, claimStartedLabel, setTimerWorkingClaim } from '../util/claim_time';
+import { showClaimNotice } from '../util/claim_congrats';
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
@@ -449,6 +450,32 @@ const questCells = computed(() => {
 const questOpenHere = computed(() => questCells.value.filter(c => c.status === 'pending').length);
 /** Every other cell: the ordinary tabs, counts and Claim a new cell. */
 /** The blog post about Super Quests (docs/blog-super-quests.md, posted from the game's blog editor). */
+// ── A Super Quest ending soon (Ames 2026-10-28: "a warning before a Super
+// Quest ends"). In its last 7 days the row says so, and once a day a notice
+// says it too. When it ends, the cell is let go (supabase-super-quest-two-months.sql).
+const QUEST_WARN_DAYS = 7;
+function questEndsSoon(cell: CellRow): string {
+  if (!cell.quest || !isMyClaim(cell)) return '';
+  const ends = backend.tasks.find(t => t.id === cell.taskId)?.quest_ends_at;
+  const d = ends ? new Date(ends) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  const days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+  if (days > QUEST_WARN_DAYS) return '';
+  const day = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return days <= 1 ? `Ends ${day}, within a day. Finish it, or save your view so your work is kept.`
+    : `Ends ${day}, in ${days} days. Finish it, or save your view so your work is kept.`;
+}
+// Set up once mounted: isMyClaim is defined further down this file.
+onMounted(() => watch(() => datasetScopedCells.value.filter(c => c.quest && isMyClaim(c)).map(c => [c.taskId, questEndsSoon(c)] as const), rows => {
+  for (const [id, line] of rows) {
+    if (!line || !id) continue;
+    const key = `nge_sq_warned_${id}`;
+    const today = new Date().toDateString();
+    try { if (localStorage.getItem(key) === today) continue; localStorage.setItem(key, today); } catch { /* private mode */ }
+    showClaimNotice({ title: 'Your Super Quest ends soon', sub: line, image: false });
+  }
+}, { immediate: true }));
+
 /** Marks' first line: when you started, and for a Super Quest, the day it is yours until. */
 function marksStartLine(cell: CellRow): string {
   const started = claimStartedLabel(cell.taskId);
@@ -3937,8 +3964,9 @@ const panelStyle = computed(() => ({
                   <!-- The Hunt candidate tag says it (its tooltip has the note) -->
                   <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
+                <div v-if="questEndsSoon(cell)" class="nge-cl-time nge-cl-quest-ends">{{ questEndsSoon(cell) }}</div>
                 <div v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
-                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have moved the mouse or pressed a key in the last 5 minutes. It adds up across visits and devices.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
+                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have done real work on it in the last 5 minutes (a mark, an annotation or highlight, a merge or split, or Save view). It adds up across visits and devices.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
               </div>
             </div>
 
@@ -4748,6 +4776,7 @@ const panelStyle = computed(() => ({
 .nge-cl-giants-tab.active { border-color: rgba(196, 140, 255, 0.7) !important; }
 .nge-cl-time { margin-top: 2px; font-size: 12px; color: #9fb3c8; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nge-cl-time--on { color: #8fe3a8; }
+.nge-cl-quest-ends { color: #ffc46b; white-space: normal; }
 .nge-cl-giants-intro { margin: 6px 0 12px; padding: 0 16px; font-size: 14px; line-height: 1.5; color: #c4d2e0; }
 .nge-cl-giants-intro a { color: #d3b0ff; text-decoration: underline; }
 .nge-cl-hunt-tab.active { border-color: rgba(66, 213, 236, 0.7) !important; }

@@ -105,5 +105,13 @@ test('one quest at a time, quests never expire and do not count against claims, 
   assert.equal((await db.query(`SELECT status FROM proofreading_tasks WHERE id=${qid}`)).rows[0].status,'pending');
   assert.equal((await time(B,'mine',{})).length>=1,true, 'the time on it is kept');
   await task(A,'claim',{id:qid});
+
+  // Soma here (supabase-super-quest-soma.sql): a point for a cell already a Super Quest is saved.
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase-super-quest-soma.sql'),'utf8'));
+  const sp=await quest(A,'add',{dataset:'pni_mec',cells:[{segment_id:'720575947567719448',point:[10,20,30],supervoxel_id:'88888888888888888'}]});
+  assert.equal(sp.changed,1);
+  const row=(await db.query("SELECT nucleus_coords,claim_point_x,supervoxel_id,quest_category FROM proofreading_tasks WHERE segment_id='720575947567719448'")).rows[0];
+  assert.deepEqual([row.nucleus_coords,row.claim_point_x,row.supervoxel_id,row.quest_category],['10, 20, 30',10,'88888888888888888','Non-Pyramidal Target']);
+  assert.equal((await quest(A,'add',{dataset:'pni_mec',cells:[{segment_id:'720575947567719448'}]})).already,1);
  } finally { await db.close(); }
 });

@@ -13,6 +13,7 @@ import { secureWrite } from '../secure_write';
 import { canonicalDataset, currentDatasetTag } from '../datasets';
 import { supervoxelAtPlace } from '../util/crosshair_cell';
 import { getRootFromSupervoxel } from '../widgets/pcg_service';
+import { useCellHistoryStore } from '../store';
 
 const DATASET = 'pni_mec';
 
@@ -120,6 +121,45 @@ async function remove(q: Quest) {
   finally { removing.value = null; }
 }
 
+// ── Soma points (Ames 2026-10-28: "I can go through and mark somas for
+// those 29 cells"). Go to cell shows it; put the crosshairs in the soma, then
+// Soma here saves that spot as the cell's point: where a claim jumps to, and
+// its anchor through edits.
+const history = useCellHistoryStore();
+const somaBusy = ref<number | null>(null);
+const somaSaved = ref<Record<number, string>>({});
+function parseXyz(s: string | null): [number, number, number] | undefined {
+  const n = (s || '').split(/[\s,]+/).map(Number).filter(v => Number.isFinite(v));
+  return n.length === 3 && n.some(v => v) ? [n[0], n[1], n[2]] : undefined;
+}
+function goToCell(q: Quest) {
+  if (canonicalDataset(currentDatasetTag()) !== DATASET) { error.value = 'Open MEC first.'; return; }
+  error.value = '';
+  history.jumpToCell(q.segment_id, parseXyz(q.nucleus_coords));
+}
+async function somaHere(q: Quest) {
+  if (somaBusy.value) return;
+  error.value = '';
+  if (canonicalDataset(currentDatasetTag()) !== DATASET) { error.value = 'Open MEC first.'; return; }
+  const pos = (window as any).viewer?.navigationState?.position?.value;
+  if (!pos || pos.length < 3) { error.value = 'Could not read the crosshairs.'; return; }
+  const point = [0, 1, 2].map(i => Math.round(pos[i]));
+  somaBusy.value = q.id;
+  try {
+    const sv = await supervoxelAtPlace(point);
+    if (!sv || sv === '0') { error.value = 'The crosshairs are on empty space. Put them inside the soma.'; return; }
+    const root = await getRootFromSupervoxel(sv);
+    // The listed ID can be older than the cell after edits, so a mismatch is asked about, not refused.
+    if (root && root !== q.segment_id && !window.confirm(`The crosshairs are on cell ${root}, not ${q.segment_id}. Save this point for ${q.segment_id} anyway?`)) return;
+    await call('add', { dataset: DATASET, cells: [{ segment_id: q.segment_id, point, supervoxel_id: sv }] });
+    q.nucleus_coords = point.join(', ');
+    somaSaved.value = { ...somaSaved.value, [q.id]: point.join(', ') };
+  } catch (e: any) {
+    error.value = e?.message || 'Could not save the soma point.';
+  } finally { somaBusy.value = null; }
+}
+const withSoma = computed(() => quests.value.filter(q => q.status !== 'skipped' && parseXyz(q.nucleus_coords)).length);
+
 function hours(s: number): string {
   if (!s) return '0';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -179,13 +219,24 @@ function downloadCsv() {
     <p v-if="message" class="nge-iq-msg">{{ message }}</p>
 
     <h3>The list <span class="nge-iq-sub">{{ quests.filter(q => q.status === 'pending').length }} open of {{ quests.filter(q => q.status !== 'skipped').length }}</span></h3>
+    <p class="nge-iq-how">
+      To set a soma: Go to cell, put the crosshairs inside the soma, then Soma here. The point is where a claim opens,
+      and it keeps the claim on the cell through edits. {{ withSoma }} of the cells have one.
+    </p>
     <p v-if="!quests.length && !loading" class="nge-iq-sub">No Super Quests yet.</p>
     <table v-else class="nge-iq-table">
-      <thead><tr><th>Cell</th><th>Category</th><th>State</th><th>Held by</th><th>Active time</th><th>Players</th><th></th></tr></thead>
+      <thead><tr><th>Cell</th><th>Category</th><th>Soma</th><th>State</th><th>Held by</th><th>Active time</th><th>Players</th><th></th></tr></thead>
       <tbody>
         <tr v-for="q in quests" :key="q.id" :class="{ 'nge-iq-off': q.status === 'skipped' }">
           <td><code>{{ q.segment_id }}</code><div v-if="q.notes" class="nge-iq-note">{{ q.notes }}</div></td>
           <td>{{ q.category || '' }}</td>
+          <td class="nge-iq-soma">
+            <span :class="{ 'nge-iq-ok': somaSaved[q.id] }">{{ q.nucleus_coords || 'none yet' }}</span>
+            <span class="nge-iq-soma-btns">
+              <button class="nge-iq-btn" title="Show this cell in the view (MEC must be open)" @click="goToCell(q)">Go to cell</button>
+              <button class="nge-iq-btn" :disabled="somaBusy === q.id" title="Save the crosshairs as this cell's soma point" @click="somaHere(q)">{{ somaBusy === q.id ? 'Saving…' : 'Soma here' }}</button>
+            </span>
+          </td>
           <td>{{ STATUS[q.status] || q.status }}</td>
           <td>{{ q.holder || '' }}</td>
           <td>{{ hours(q.active_seconds) }}</td>
@@ -197,8 +248,8 @@ function downloadCsv() {
 
     <h3>Active time per claim</h3>
     <p class="nge-iq-how">
-      Counted while the claimed cell is on screen, Pyr is in front, and the player used the mouse or keys in the last
-      5 minutes. Kept per claim (cell and player), across visits and devices. Every MEC claim counts, not only Super Quests.
+      Counted while the claimed cell is on screen, Pyr is in front, and the player did real work on it in the last
+      5 minutes: placed or moved a mark, annotation or highlight, merged or split, or saved the view. Looking around alone does not count. Kept per claim (cell and player), across visits and devices. Every MEC claim counts, not only Super Quests.
     </p>
     <div class="nge-iq-row">
       <label class="nge-iq-sub"><input v-model="onlyQuests" type="checkbox" /> Super Quests only</label>
@@ -245,6 +296,9 @@ function downloadCsv() {
 .nge-iq-table th { text-align: left; color: #9fb0c4; font-weight: 600; border-bottom: 1px solid #2f4155; padding: 4px 8px; }
 .nge-iq-table td { border-bottom: 1px solid #1c2c3d; padding: 4px 8px; vertical-align: top; }
 .nge-iq-off { opacity: 0.5; }
+.nge-iq-soma { white-space: nowrap; }
+.nge-iq-soma-btns { display: flex; gap: 6px; margin-top: 4px; }
+.nge-iq-ok { color: #7CFFB2; }
 .nge-iq-note { color: #9fb0c4; font-size: 0.85rem; }
 .nge-iq-tag { margin-left: 6px; font-size: 0.75rem; padding: 0 6px; border-radius: 6px; background: rgba(196, 140, 255, 0.14); color: #d3b0ff; }
 </style>

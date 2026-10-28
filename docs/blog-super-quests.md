@@ -22,7 +22,7 @@ The lab has picked 29 of these cells and sorted them into two groups:
 Open the Cell Library on MEC and pick the **Super Quests** chip. Each row shows the cell's group. Claim one, and it is yours:
 
 - **One at a time, for up to 2 months.** A Super Quest sits beside your other claims and does not count against them.
-- **Your time is counted.** Pyr adds up your active time on the cell and shows it on the row, such as 14 h 20 min so far. It counts only while the cell is on screen, Pyr is the tab in front, and you have used the mouse or keys in the last 5 minutes. It adds up across visits and devices. This is how the lab learns how long these cells really take, so there is no need to hurry.
+- **Your time is counted.** Pyr adds up your active time on the cell and shows it on the row, such as 14 h 20 min so far. It counts only while the cell is on screen, Pyr is the tab in front, and you have done real work on it in the last 5 minutes: placed a mark, an annotation or a highlight, merged or split, or saved your view. Looking around alone does not count. It adds up across visits and devices. This is how the lab learns how long these cells really take, so there is no need to hurry.
 - **Your work is kept.** Save view keeps your layers and marks with the claim, and the claim keeps the cell's ID through every merge and split.
 - **Marks.** Mark the AIS, where the axon leaves the cell; it is the one mark that is required. Use **True End** for a branch that stops naturally, and **Checked** for a place you have looked at and found right, so you know where you have been. **Hide marks** clears them from the view when you want to see the cell itself.
 

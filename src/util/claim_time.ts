@@ -5,7 +5,13 @@
  *   - the claimed cell is on screen (shown in the segmentation layer, under
  *     its listed ID or its ID after edits),
  *   - the Pyr tab is visible and in front,
- *   - the player used the mouse, keys or wheel in the last 5 minutes.
+ *   - the player did real work on it in the last 5 minutes (Ames 2026-10-28:
+ *     "active means actually annotating or highlighting"): placed, moved or
+ *     removed a point or a highlight in an annotation layer (the lab's marks
+ *     are such points), merged or split, or saved the view. Looking around,
+ *     turning and zooming alone do not count. A change counts only right
+ *     after the player's own click or key, so what Pyr changes by itself
+ *     never does.
  * Only one claim counts at a time: the claim being worked on when it is on
  * screen, else the first claim on screen. About once a minute the seconds go
  * to the server (supabase-interneuron-quests.sql, pilot_claim_time), which
@@ -61,6 +67,21 @@ interface Deps { claims: () => TimedClaim[]; signedIn: () => boolean }
 let deps: Deps | null = null;
 let workingId: number | null = null;
 let lastInput = 0;
+/** The last real work on a cell: a point or highlight, an edit, a saved view. */
+let lastWork = 0;
+/** A change within this long of the player's own click or key is theirs. */
+const OWN_MS = 4000;
+function work(own = false) { if (own || Date.now() - lastInput < OWN_MS) lastWork = Date.now(); }
+/** Annotation layers already listened to. */
+const watched = new WeakSet<object>();
+function watchAnnotationLayers() {
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    const src = ml?.layer?.localAnnotations;
+    if (!src?.changed || watched.has(src)) continue;
+    watched.add(src);
+    try { src.changed.add(() => work()); } catch { /* not a signal */ }
+  }
+}
 const serverSecs: Record<number, number> = {};
 const pending: Record<number, { secs: number; edits: number; saves: number }> = {};
 /** IDs an edit just gave a claim's cell, until the claim's own ID catches up. */
@@ -74,7 +95,7 @@ let stopped = false;
 /** The Cell Library says which claim is being worked on. */
 export function setTimerWorkingClaim(id: number | null) { workingId = id; }
 /** A Save view on a claim (one of the lab's extra signals). */
-export function noteClaimSave(taskId: number) { bucket(taskId).saves++; }
+export function noteClaimSave(taskId: number) { bucket(taskId).saves++; work(true); }
 /** A finished claim: the hook for "finished an interneuron" Achievements. */
 export function noteClaimFinished(taskId: number, kind?: string | null) {
   void flush().finally(() => {
@@ -128,7 +149,8 @@ function claimOnScreen(): number | null {
 function tick() {
   if (!deps || !deps.signedIn()) { claimTime.running = null; return; }
   const now = Date.now();
-  const active = document.visibilityState === 'visible' && document.hasFocus() && now - lastInput < IDLE_MS;
+  watchAnnotationLayers();
+  const active = document.visibilityState === 'visible' && document.hasFocus() && now - lastWork < IDLE_MS;
   const id = active ? claimOnScreen() : null;
   claimTime.running = id;
   if (id == null) return;
@@ -196,6 +218,7 @@ export function startClaimTimer(d: Deps) {
   // An edit on the cell being counted: one more edit for the claim, and the
   // cell's new IDs keep counting until the claim's own ID catches up.
   window.addEventListener('nge-graph-edit', ((e: CustomEvent) => {
+    work(true);
     const id = claimTime.running;
     if (id == null) return;
     const d = e.detail || {};
