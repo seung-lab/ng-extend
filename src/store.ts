@@ -5754,13 +5754,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (data.post_to_chat && !isScheduledForLater) {
       try {
         const chatStore = useChatStore();
-        if (chatStore.connected || chatStore.polling) {
-          chatStore.sendMessage(data.title, newNotifId);
+        if ((chatStore.connected || chatStore.polling) && newNotifId != null) {
           // Record that the announcement already went out, so the every-10-min
           // cron (post-due-chat-announcements.mjs) doesn't post a second copy.
-          // Only mark it when we actually sent: if chat was offline we couldn't
-          // post, so leave chat_posted_at null and let the cron be the fallback.
-          if (newNotifId != null) {
+          // Only mark it when it was really posted: if chat was offline or the
+          // server refused it, leave chat_posted_at null for a later try.
+          if (await chatStore.postAnnouncement(data.title, newNotifId)) {
             await secureWrite('notification.update', { id: newNotifId, fields: { chat_posted_at: new Date().toISOString() } })
               .catch(() => { /* the cron's copy check is the fallback */ });
           }
@@ -5793,6 +5792,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .from('notifications')
       .select('id,title')
       .eq('post_to_chat', true)
+      // Only public ones: the server refuses a chat post for any other, and a
+      // refused claim is let go below, so it would be tried again forever.
+      .eq('target_type', 'all')
       .is('chat_posted_at', null)
       .lte('send_at', now)
       // Don't announce something that already expired — this also skips a stale
@@ -5807,8 +5809,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       let claimed = false;
       try { claimed = (await secureWrite<{ claimed: boolean }>('notification.claimChatPost', { id: n.id })).claimed; }
       catch (claimErr: any) { console.warn('[admin] claim chat announcement failed:', claimErr?.message); continue; }
-      if (claimed) {
-        chatStore.sendMessage(n.title, n.id);
+      if (!claimed) continue;
+      // Posted, or the claim is let go so a later round tries again (it was
+      // set before the post, so a refused or failed post used to stay "done"
+      // for good: Ames 2026-10-27, an edit that added Post to chat).
+      if (!(await chatStore.postAnnouncement(n.title, n.id))) {
+        await secureWrite('notification.update', { id: n.id, fields: { chat_posted_at: null } }).catch(() => {});
       }
     }
   }
@@ -7465,6 +7471,20 @@ export const useChatStore = defineStore('chat', () => {
     });
   }
 
+  /** An announcement in chat for a notification: true once the server kept
+   *  it, false when chat is not open or the server refused it (only public
+   *  notifications may be posted), so the caller can try again later. */
+  async function postAnnouncement(text: string, notificationId: number): Promise<boolean> {
+    if (!connected.value && !polling.value) return false;
+    const backend = useProofreadingBackendStore();
+    const { error } = await supabase.from('chat_messages').insert({
+      name: backend.chatHandle, rank: backend.isAdmin ? 'admin' : 'player', text, dataset: currentDatasetName(), notification_id: notificationId,
+    });
+    if (error) { console.warn('[chat] announcement not posted:', error.message); return false; }
+    if (polling.value) void loadMissed();
+    return true;
+  }
+
   function askNurroPrivately(name: string, rank: string, text: string) {
     const now = new Date();
     addTimeSeparatorIfNeeded(now);
@@ -7543,7 +7563,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, markRead, disconnect, deleteMessage, onlineCount, online,
+  return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
     pinned, loadPin, pinMessage,
     panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
