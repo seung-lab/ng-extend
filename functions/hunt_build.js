@@ -111,6 +111,12 @@ function helpNoteBody(merges, cuts, until) {
     HELP_LINK,
   ].join('\n\n');
 }
+/**
+ * The pictures on the Hunt Builder's bell notes (Ames 2026-10-27, her scythe: "I will make a couple options we can
+ * use at different stages"): one per kind of note, served by the game at /hunt/<name>.png and -128.png.
+ */
+const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'scythe', released: 'scythe', sentBack: 'scythe' };
+const noteArt = (ctx, kind, small = false) => (ctx && ctx.site ? `${ctx.site}/hunt/${NOTE_ART[kind] || 'scythe'}${small ? '-128' : ''}.png` : undefined);
 const helpersOf = (c) => (Array.isArray(c.helpers) ? c.helpers.map(String) : []);
 const isHelper = (c, uid) => helpersOf(c).includes(String(uid));
 /** Who may suggest: every player with production access (Ames 2026-10-27: "open to all users with Production
@@ -252,7 +258,7 @@ async function releaseStale(ctx, force = false) {
       if (!(await db.releaseClaim(posInt(a.task_id), String(a.user_id), now))) continue;
       n++;
       if (notify) {
-        await notify([{ user_id: a.user_id, title: 'Your Hunt candidate claim was let go',
+        await notify([{ user_id: a.user_id, title: 'Your Hunt candidate claim was let go', image: noteArt(ctx, 'released'),
           body: `A claim on a Hunt candidate lasts ${CLAIM_HOURS} hours, so yours has gone back to the Cell Library for someone else. Claim it again if you are still on it: your edits are all still in the cell.` }]);
       }
     }
@@ -344,7 +350,7 @@ async function tellAdmins(c, sugs, userId, ctx) {
     const m = sugs.filter((s) => s.kind === 'merge').length, k = sugs.length - m;
     const what = [m ? many(m, 'merge', 'merges') : '', k ? many(k, 'cut', 'cuts') : ''].filter(Boolean).join(' and ');
     const first = [...sugs].sort((a, b) => a.id - b.id)[0];
-    await ctx.notify(admins.map((u) => ({ user_id: u, title: `💡 Hunt suggestion: cell …${String(c.root).slice(-6)}`,
+    await ctx.notify(admins.map((u) => ({ user_id: u, title: `💡 Hunt suggestion: cell …${String(c.root).slice(-6)}`, image: noteArt(ctx, 'admins'),
       body: `${name} sent ${what} for a Hunt.\n\n[Go there](#nge-build-suggestion=${first.id}) to look, then plant or skip each one.` })));
   } catch (e) { console.warn('[hunt_build] admins not told:', e && e.message); }
 }
@@ -454,7 +460,7 @@ async function move(args, ctx) {
     // Sent back: the task is the proofreader's again, with the admin's note.
     await db.patchTask(posInt(c.task_id), { status: 'assigned', updated_at: now.toISOString() });
     if (notify && c.proofread_by) {
-      await notify([{ user_id: c.proofread_by, title: 'A Hunt cell needs a little more proofreading',
+      await notify([{ user_id: c.proofread_by, title: 'A Hunt cell needs a little more proofreading', image: noteArt(ctx, 'sentBack'),
         body: `An admin looked at the Hunt cell you proofread and sent it back to you.${args.note ? ` Their note: ${String(args.note).slice(0, 500)}` : ''} It is in your claims again.` }]);
     }
   }
@@ -471,8 +477,8 @@ async function move(args, ctx) {
     // Everyone with production access, through the Production editors group (it keeps itself up to date), and
     // anyone invited by name.
     const group = db.productionGroupId ? await db.productionGroupId().catch(() => null) : null;
-    if (group && db.insertGroupNote) await db.insertGroupNote({ title: 'Help build a Hunt', body, target_type: 'group', target_id: String(group), send_at: now.toISOString(), created_by: (ctx.me && ctx.me.id) || null });
-    if (notify && helpersOf(c).length) await notify(helpersOf(c).map((uid) => ({ user_id: uid, title: 'Help build a Hunt', body })));
+    if (group && db.insertGroupNote) await db.insertGroupNote({ title: 'Help build a Hunt', body, image_url: noteArt(ctx, 'open') || null, thumbnail_url: noteArt(ctx, 'open', true) || null, target_type: 'group', target_id: String(group), send_at: now.toISOString(), created_by: (ctx.me && ctx.me.id) || null });
+    if (notify && helpersOf(c).length) await notify(helpersOf(c).map((uid) => ({ user_id: uid, title: 'Help build a Hunt', body, image: noteArt(ctx, 'open') })));
   }
   return { cell: next, ...(await list(ctx)) };
 }
@@ -490,7 +496,7 @@ async function setHelpers(args, ctx) {
   const fresh = ids.filter((id) => !isHelper(c, id));
   await db.patchCandidate(c.id, { helpers: ids, updated_at: now.toISOString() });
   if (c.status === 'suggesting' && fresh.length && notify) {
-    await notify(fresh.map((uid) => ({ user_id: uid, title: 'Help build a Hunt',
+    await notify(fresh.map((uid) => ({ user_id: uid, title: 'Help build a Hunt', image: noteArt(ctx, 'open'),
       body: helpNoteBody(c.merges_each, c.cuts_each, c.suggest_until) })));
   }
   return list(ctx);
@@ -541,7 +547,7 @@ async function plant(args, ctx) {
     done_by: me.id, done_at: now.toISOString() });
   await db.patchCandidate(c.id, { root: cellRoot, protected_roots: roots([...(c.protected_roots || []), c.root, ...before, ...made, cellRoot]), updated_at: now.toISOString() });
   if (notify) {
-    await notify([{ user_id: s.user_id, title: 'Your suggestion was planted',
+    await notify([{ user_id: s.user_id, title: 'Your suggestion was planted', image: noteArt(ctx, 'planted'),
       body: `An admin planted one of your ${s.kind === 'merge' ? 'merges' : 'cuts'} in a Hunt cell. Keep it a secret until the Hunt!` }]);
   }
   return queue({ id: c.id }, ctx);
@@ -740,6 +746,6 @@ async function claimGuard(sb, operation, args) {
 
 module.exports = {
   buildAction, restDb, claimGuard, makersOf, releaseStale, staleClaims, CLAIM_HOURS,
-  cleanEdit, cleanPoint, middle, placeOf, canSuggest, helpNoteBody, track, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
+  cleanEdit, cleanPoint, middle, placeOf, canSuggest, helpNoteBody, track, noteArt, NOTE_ART, usedCounts, veilOf, guardView, claimRefusal, cleanSettings,
   STATUSES, PROTECTED, VEILED, MOVES, DATASET, TASK_NOTE, openNow,
 };

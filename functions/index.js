@@ -2421,7 +2421,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-27-hunt-35-builder";
+const EW_HUNT_CODE_VERSION = "2026-10-27-hunt-36-builder";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
@@ -2462,7 +2462,7 @@ exports.ewHunt = onRequest(
       if (action.startsWith("build.")) {
         const build = require("./hunt_build");
         // Production access (CAVE edit on a production dataset, as chat's name colour): who may suggest.
-        res.json({ ok: true, data: await build.buildAction(action, args, { db: build.restDb(sb), me, isAdmin, now: new Date(), notify, production: () => ewHasProduction(token) }) });
+        res.json({ ok: true, data: await build.buildAction(action, args, { db: build.restDb(sb), me, isAdmin, now: new Date(), notify, site, production: () => ewHasProduction(token) }) });
         return;
       }
       const data = await hunts.huntAction(action, args, {

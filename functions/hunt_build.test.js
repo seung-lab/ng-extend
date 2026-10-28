@@ -416,3 +416,20 @@ test('two at once cannot pass the limit', async () => {
   assert.ok(kept.length <= 2, `kept ${kept.length}`);
   assert.ok(out.some((o) => o.status === 'rejected'));
 });
+
+test('the Hunt Builder notes carry the scythe', async () => {
+  const db = fakeDb();
+  const groupNotes = [];
+  db.productionGroupId = async () => 42;
+  db.insertGroupNote = async (row) => { groupNotes.push(row); return row; };
+  const A = { ...ctx(db, ADMIN, true), site: 'https://pyr.test' };
+  await B.buildAction('build.add', { roots: [CELL] }, A);
+  Object.assign(db._t.tasks[0], { status: 'completed', assigned_to: P3.id, final_segment_id: CELL });
+  await B.buildAction('build.list', {}, A);
+  await B.buildAction('build.helpers', { id: 1, names: 'nseraf' }, A);
+  notes.length = 0;
+  await B.buildAction('build.move', { id: 1, to: 'suggesting' }, A);
+  assert.equal(groupNotes[0].image_url, 'https://pyr.test/hunt/scythe.png');
+  assert.equal(groupNotes[0].thumbnail_url, 'https://pyr.test/hunt/scythe-128.png');
+  assert.equal(notes[0].image, 'https://pyr.test/hunt/scythe.png');
+});
