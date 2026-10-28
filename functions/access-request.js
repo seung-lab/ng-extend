@@ -398,14 +398,32 @@ const BETA_CATEGORY = 'Beta access';
 const BETA_BELL = '🔑 Beta access request';
 // Clicking the bell opens Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26).
 const LET_IN = 'Click this note, then Let them in.';
-async function betaRequested(sb, me) {
+/**
+ * Has this player a Beta request still open? Their newest one counts. A
+ * request an admin removed (Admin Hub, Beta requests) or dismissed on the
+ * triage board is not open: the player may ask again (Ames 2026-10-28: "I
+ * dismissed the request but there is no way for me to request it again").
+ */
+async function betaRequested(sb, me, io = {}) {
   if (!me) return false;
-  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id) + '&select=id&limit=1');
-  return Array.isArray(rows) && rows.length > 0;
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id)
+    + '&select=id,created_at&order=created_at.desc&limit=1');
+  const last = Array.isArray(rows) ? rows[0] : null;
+  if (!last) return false;
+  try {
+    const email = String((io.who && io.who.email) || '').toLowerCase();
+    const mark = email && io.marks ? (await io.marks.all())[email] : null;
+    if (mark && mark.mark === 'removed' && String(mark.at || '') >= String(last.created_at || '')) return false;
+  } catch (e) { /* no marks: the request stands */ }
+  try {
+    const t = await sb('feedback_triage?source=eq.site_issue&source_id=eq.' + encodeURIComponent(last.id) + '&select=status&limit=1');
+    if (Array.isArray(t) && t[0] && t[0].status === 'dismissed') return false;
+  } catch (e) { /* no triage row: the request stands */ }
+  return true;
 }
 async function betaStatus(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
-  return {invited: false, requested: await betaRequested(io.sb, io.me)};
+  return {invited: false, requested: await betaRequested(io.sb, io.me, io)};
 }
 // What a player types is checked hard (Ames 2026-10-24: "Make sure it's
 // secure like players can't inject anything"): a name is letters, spaces and
@@ -436,7 +454,7 @@ async function beta(a, io) {
   const email = betaEmail(a.email);
   const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
   const ew = eyewireOf(a);
-  if (await betaRequested(io.sb, io.me)) return {invited: false, requested: true, already: true};
+  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
