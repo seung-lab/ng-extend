@@ -1114,6 +1114,16 @@ function announceText(msg: ChatMessage): string {
  *  works server side; flip this to bring the button back. */
 const SHOW_CHAT_DELETE = false;
 
+/** "/me claps hands" (Ames 2026-10-27): shown as a quiet grey line,
+ *  "Nseraf claps hands", like the other asides. Stored as the plain message,
+ *  so nothing else changes; null when the message is not one. */
+function meAction(msg: ChatMessage): string | null {
+  if (msg.type !== 'message' || msg.notificationId) return null;
+  const text = msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('');
+  const m = /^\/me\s+(\S[\s\S]*)$/i.exec(text.trim());
+  return m ? plainChatText(m[1]).replace(/\s+/g, ' ').trim() : null;
+}
+
 /** Admin moderation: delete a message for everyone (the gateway enforces admin). */
 async function deleteChatMessage(msg: ChatMessage) {
   if (msg.id == null) return;
@@ -1459,6 +1469,12 @@ function toggleCollapse() {
                   <img v-if="achArt(msg)" class="nge-chat-ach-art" :src="achArt(msg)" alt="" />
                   <span v-else class="nge-chat-ach-star" aria-hidden="true">★</span>
                   <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b> <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span></span>
+                </div>
+
+                <!-- /me: "Nseraf claps hands", a quiet grey line. -->
+                <div v-else-if="meAction(msg)" class="nge-chat-sys nge-chat-me" :class="{ 'nge-chat-fresh': isFresh(msg) }"
+                     :data-msg-id="msg.id != null ? String(msg.id) : undefined">
+                  <b>{{ shortName(msg.name) }}</b> {{ meAction(msg) }}
                 </div>
 
                 <!-- Announcement: carries a notification id, so the whole
@@ -2319,6 +2335,7 @@ function toggleCollapse() {
   padding: 1px 4px;
 }
 .nge-chat-sys--warn { color: #c08030; }
+.nge-chat-me b { font-weight: 600; color: #8b97ad; }
 /* an achievement line: quiet like the other asides, but upright, with its art, and clickable */
 .nge-chat-ach {
   display: flex; align-items: center; gap: 7px;
