@@ -2328,6 +2328,20 @@ const betaMarkStore = {
     if (!v) await ref.delete(); else await ref.set({ email, ...v });
   },
 };
+// Dataset access requests, Granted or Not now (access-request.js,
+// access.datasetDecide, Ames 2026-10-28). A mark per request id, in Firestore.
+const datasetMarkStore = {
+  all: async () => {
+    const snap = await db.collection("dataset_request_marks").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.id) out[v.id] = { mark: v.mark, at: v.at, by: v.by || "" }; });
+    return out;
+  },
+  set: async (id, v) => {
+    const ref = db.collection("dataset_request_marks").doc(String(id));
+    if (!v) await ref.delete(); else await ref.set({ id, ...v });
+  },
+};
 async function visitorBetaRequest(req, res, args) {
   if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long. Please shorten your note." });
   if (!(await rateLimit(req, false, "visitor:beta")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
@@ -2381,7 +2395,7 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
-        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore,
+        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
         // Beta access requests post like any report (Ames 2026-10-24).
         postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {

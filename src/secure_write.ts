@@ -40,6 +40,7 @@ export type SecureAction =
   | 'outbox.add' | 'outbox.mine' | 'outbox.sent' | 'outbox.fail' | 'outbox.cancel' | 'outbox.summary'
   | 'test.status' | 'test.start' | 'test.heartbeat' | 'test.submit' | 'test.abandon' | 'test.tries' | 'test.try' | 'test.queueJoin' | 'test.queueLeave' | 'test.queueRemove'
   | 'access.betaStatus' | 'access.beta'
+  | 'access.datasetStatus' | 'access.dataset' | 'access.datasetList' | 'access.datasetDecide'
   | 'access.mine' | 'access.save' | 'access.remove' | 'access.submit' | 'access.withdraw' | 'access.list' | 'access.review' | 'access.decide' | 'access.reset'
   | 'notification.self' | 'notification.helpReply' | 'help.dropReminder' | 'notification.claimChatPost' | 'chat.achievement' | 'chat.pin' | 'chat.unpin'
   | 'hunt.current' | 'hunt.submit' | 'hunt.list' | 'hunt.read' | 'hunt.save' | 'hunt.now' | 'hunt.cancel' | 'hunt.delete' | 'hunt.award' | 'hunt.rescore'

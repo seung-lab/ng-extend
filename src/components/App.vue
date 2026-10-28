@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ExtensionBar from "components/ExtensionBar.vue";
 import SplitMergeOverlay from "components/SplitMergeOverlay.vue";
+import NoAccessNote from "components/NoAccessNote.vue";
 import Tutorial from "components/Tutorial.vue";
 import {useLoginStore} from '../store';
 import {storeToRefs} from 'pinia';
@@ -43,6 +44,7 @@ async function hardReload() {
       <ExtensionBar />
     </div>
     <SplitMergeOverlay />
+    <NoAccessNote v-if="sessions.length > 0" />
     <div id="content">
       <div id="neuroglancer-container"></div>
     </div>
