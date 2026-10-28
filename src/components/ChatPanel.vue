@@ -62,6 +62,7 @@ const inputEl = ref<HTMLTextAreaElement | null>(null);
 const searchEl = ref<HTMLInputElement | null>(null);
 // Search state lives up here because the fade rule below reads it.
 const searchOpen = ref(false);
+const tipsOpen = ref(false);
 const searchText = ref('');
 const scrollContainer = ref<HTMLDivElement | null>(null);
 const isScrolledUp = ref(false);
@@ -202,7 +203,7 @@ function onPanelFocusIn() { chatFocused.value = true; }
 document.addEventListener('pointerdown', onDocPointerDown, true);
 // Settings > "Fade chat when I click away" can switch quiet mode off.
 const isQuiet = computed(() => useUserPreferencesStore().prefs.chatFadeAway !== false
-  && !searchOpen.value && !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
+  && !searchOpen.value && !tipsOpen.value && !chatFocused.value && !collapsed.value && !isResizing.value && !isDragging.value
   && panelHeight.value > QUIET_H && !document.body.classList.contains('nge-mobile'));
 const shownHeight = computed(() => isQuiet.value ? QUIET_H : panelHeight.value);
 /** The last few messages stay faintly readable when chat fades (Amy
@@ -692,8 +693,22 @@ watch(() => chatMessages.value.length, () => {
   if (isBoo(m.parts.filter(p => p.type !== 'sender').map(p => p.text).join(''))) booGhost();
 });
 
+// ── Chat tips (Ames 2026-10-28: "Do we have a way for players to see chat
+// controls?") ─────────────────────────────────────────────────────────────
+// One short card of what chat can do, opened by the ? in the top strip or by
+// typing /help. Nothing is posted. (tipsOpen sits with searchOpen above.)
+function openTips() {
+  tipsOpen.value = true;
+  if (collapsed.value) toggleCollapse();
+}
+
 // ── Send message ──
 function send() {
+  if (/^\/help\s*$/i.test(messageInput.value.trim())) {
+    messageInput.value = '';
+    openTips();
+    return;
+  }
   // New lines are kept, but never a wall of blank ones.
   let text = messageInput.value.trim().replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
   // A view waiting on the message box goes out with the message.
@@ -796,6 +811,7 @@ function onInputKeydown(e: KeyboardEvent) {
     markSelection(e.key.toLowerCase() === 'b' ? '*' : '_');
     return;
   }
+  if (e.key === 'Escape' && tipsOpen.value) { tipsOpen.value = false; e.preventDefault(); return; }
   if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
     send();
@@ -1114,6 +1130,16 @@ function announceText(msg: ChatMessage): string {
  *  works server side; flip this to bring the button back. */
 const SHOW_CHAT_DELETE = false;
 
+/** "/me claps hands" (Ames 2026-10-27): shown as a quiet grey line,
+ *  "Nseraf claps hands", like the other asides. Stored as the plain message,
+ *  so nothing else changes; null when the message is not one. */
+function meAction(msg: ChatMessage): string | null {
+  if (msg.type !== 'message' || msg.notificationId) return null;
+  const text = msg.parts.filter(p => p.type !== 'sender').map(p => p.text).join('');
+  const m = /^\/me\s+(\S[\s\S]*)$/i.exec(text.trim());
+  return m ? plainChatText(m[1]).replace(/\s+/g, ' ').trim() : null;
+}
+
 /** Admin moderation: delete a message for everyone (the gateway enforces admin). */
 async function deleteChatMessage(msg: ChatMessage) {
   if (msg.id == null) return;
@@ -1379,6 +1405,9 @@ function toggleCollapse() {
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
         <span v-if="mentionFlash && chatStore.lastMentionFrom" class="nge-chat-mentioned-by">@ from {{ chatStore.lastMentionFrom }}</span>
         <span class="nge-chat-strip-spacer"></span>
+        <button class="nge-chat-strip-btn nge-chat-tips-btn" :class="{ 'nge-chat-tips-btn--on': tipsOpen }"
+                @click.stop="tipsOpen ? (tipsOpen = false) : openTips()" :aria-pressed="tipsOpen"
+                :title="tipsOpen ? 'Close chat tips' : 'Chat tips: what chat can do'" aria-label="Chat tips">?</button>
         <button v-if="isLoggedIn" class="nge-chat-strip-btn nge-chat-search-btn" :class="{ 'nge-chat-search-btn--on': searchOpen }"
                 @click.stop="toggleSearch" :aria-pressed="searchOpen"
                 :title="searchOpen ? 'Close search (Esc)' : 'Search chat'">
@@ -1412,6 +1441,24 @@ function toggleCollapse() {
         </div>
         <div class="nge-chat-messages-wrap">
           <div class="nge-chat-fade"></div>
+          <div v-if="tipsOpen" class="nge-chat-tips" role="dialog" aria-label="Chat tips" @click.stop>
+            <div class="nge-chat-tips-head">
+              <b>Chat tips</b>
+              <button type="button" class="nge-chat-tips-x" title="Close (Esc)" aria-label="Close chat tips" @click="tipsOpen = false">×</button>
+            </div>
+            <ul>
+              <li><code>@name</code> mentions someone and lets them know.</li>
+              <li><code>#</code> and a cell ID, like <code>#864691135012345678</code>, makes a link that opens the cell.</li>
+              <li><code>/me waves</code> shows a grey line, like <i>Nseraf waves</i>.</li>
+              <li><code>*bold*</code> and <code>_underline_</code>. Shift+Enter for a new line.</li>
+              <li>Point at a message to react (the Pyr gem too) or reply with ↩.</li>
+              <li>A pinned message from the team sits at the top. Click it to jump there, or × to hide it.</li>
+              <li>🔍 searches. Try <code>from:name</code>, <code>on:10/8</code>, <code>-word</code>, <code>"two words"</code>.</li>
+              <li>The bell sends notifications while Pyr is in the background. To hide the unread count, use Settings, Mute the chat unread count.</li>
+              <li>📍 shares your view, with a screenshot if you like. 🙂 adds an emoji.</li>
+              <li>Ask Nurro with <code>!</code>: <code>!faq</code>, <code>!cut</code>, <code>!merge</code>, <code>!online</code>. <code>!help</code> lists them all. Only you see the answer.</li>
+            </ul>
+          </div>
           <div
             class="nge-chat-messages"
             ref="scrollContainer"
@@ -1459,6 +1506,12 @@ function toggleCollapse() {
                   <img v-if="achArt(msg)" class="nge-chat-ach-art" :src="achArt(msg)" alt="" />
                   <span v-else class="nge-chat-ach-star" aria-hidden="true">★</span>
                   <span><b>{{ shortName(msg.name) }}</b> earned <b class="nge-chat-ach-name">{{ achievementOf(msg)?.name }}</b> <span class="nge-chat-ach-why">{{ achWhy(msg) }}</span></span>
+                </div>
+
+                <!-- /me: "Nseraf claps hands", a quiet grey line. -->
+                <div v-else-if="meAction(msg)" class="nge-chat-sys nge-chat-me" :class="{ 'nge-chat-fresh': isFresh(msg) }"
+                     :data-msg-id="msg.id != null ? String(msg.id) : undefined">
+                  <b>{{ shortName(msg.name) }}</b> {{ meAction(msg) }}
                 </div>
 
                 <!-- Announcement: carries a notification id, so the whole
@@ -2052,6 +2105,21 @@ function toggleCollapse() {
 .nge-chat-b { font-weight: 700; color: #f2f6fc; }
 .nge-chat-u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 /* Search */
+.nge-chat-tips-btn { font-size: 12px; font-weight: 700; padding: 1px 5px; }
+.nge-chat-tips-btn--on { color: #9fdcff !important; background: rgba(120, 190, 255, 0.14); }
+.nge-chat-tips {
+  position: absolute; z-index: 5; top: 6px; left: 6px; right: 6px; max-height: calc(100% - 12px); overflow-y: auto;
+  background: rgba(14, 20, 32, 0.97); border: 1px solid rgba(120, 190, 255, 0.28); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.45; color: #c9d6e8; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.nge-chat-tips-head { display: flex; align-items: center; margin-bottom: 4px; color: #e6eefa; font-size: 13px; }
+.nge-chat-tips-head b { flex: 1; font-weight: 600; }
+.nge-chat-tips-x { background: none; border: none; color: #8a96a8; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; border-radius: 3px; }
+.nge-chat-tips-x:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.nge-chat-tips ul { margin: 0; padding-left: 16px; }
+.nge-chat-tips li { margin: 3px 0; }
+.nge-chat-tips li::marker { color: rgba(120, 190, 255, 0.55); }
+.nge-chat-tips code { font-family: inherit; color: #9fdcff; background: rgba(120, 190, 255, 0.1); border-radius: 3px; padding: 0 3px; word-break: break-all; }
 .nge-chat-search-btn--on { color: #9fdcff !important; background: rgba(120, 190, 255, 0.14); }
 .nge-chat-search-note { padding: 6px 6px 8px; font-size: 12px; line-height: 1.4; color: rgba(190, 205, 225, 0.75); }
 .nge-chat-msg--hit { cursor: pointer; }
@@ -2319,6 +2387,7 @@ function toggleCollapse() {
   padding: 1px 4px;
 }
 .nge-chat-sys--warn { color: #c08030; }
+.nge-chat-me b { font-weight: 600; color: #8b97ad; }
 /* an achievement line: quiet like the other asides, but upright, with its art, and clickable */
 .nge-chat-ach {
   display: flex; align-items: center; gap: 7px;

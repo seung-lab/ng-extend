@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { huntState, phaseNow } from '../hunt';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
@@ -215,14 +216,25 @@ const huntNotes = computed(() => backend.notifications.filter(n => kindOf(n) ===
 const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
 const mineNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type === 'user'));
 const updateNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type !== 'user'));
-const oneList = computed(() => useUserPreferencesStore().prefs.notifOneList === true);
-const showFeedTabs = computed(() => !oneList.value);
+// One feed unless the player chose categories in Settings (Ames 2026-10-27);
+// admins keep their Admin tab either way ("there should still be admin notif
+// feeds"), beside one Pyr tab, or beside My Pyr and Pyr Updates.
+const oneList = computed(() => useUserPreferencesStore().prefs.notifCategories !== true);
+const splitMain = computed(() => !oneList.value);
+const showFeedTabs = computed(() => splitMain.value || showAdminGroup.value);
+watch(splitMain, split => { if (!split && feedTab.value === 'updates') feedTab.value = 'mine'; }, { immediate: true });
 // Player view (store.ts showAdminUi) hides the Admin and Triage tabs and
 // keeps their notes out of the single list; the Player view chip in the top
 // bar shows a dot when any are unread.
 const showAdminTab = computed(() => backend.showAdminUi && adminNotes.value.length > 0);
 const showTriageTab = computed(() => backend.showAdminUi && triageNotes.value.length > 0);
-const showHuntTab = computed(() => backend.showAdminUi && huntNotes.value.length > 0);
+// Hunt reports only matter while a Hunt is being prepared or running (an
+// admin's try of one included); the rest of the time that side is gone
+// (Ames 2026-10-27: "Hunt Reports don't need to be there always, only during
+// a Hunt or Hunt Prep").
+const huntOn = computed(() => !!huntState.test || huntState.hunts.some(h => phaseNow(h) !== 'ended'));
+const showHuntTab = computed(() => backend.showAdminUi && huntOn.value && huntNotes.value.length > 0);
+watch(huntOn, on => { backend.huntReportsShown = on; }, { immediate: true });
 const isAdminSide = (t: FeedTab): t is AdminSide => t === 'admin' || t === 'triage' || t === 'hunt';
 watch(() => backend.showAdminUi, on => { if (!on && isAdminSide(feedTab.value)) feedTab.value = 'mine'; }, { immediate: true });
 // Admin and Triage share one tab, so four tabs fit (Ames 2026-10-25: "admins
@@ -235,7 +247,7 @@ const ADMIN_SIDES: AdminSide[] = ['admin', 'triage', 'hunt'];
 const showAdminGroup = computed(() => ADMIN_SIDES.some(sideShown));
 const onAdminGroup = computed(() => isAdminSide(feedTab.value));
 const showAdminSwitch = computed(() => onAdminGroup.value && ADMIN_SIDES.filter(sideShown).length > 1);
-const adminGroupUnread = computed(() => unreadIn(adminNotes.value) + unreadIn(triageNotes.value) + unreadIn(huntNotes.value));
+const adminGroupUnread = computed(() => unreadIn(adminNotes.value) + unreadIn(triageNotes.value) + (huntOn.value ? unreadIn(huntNotes.value) : 0));
 let lastAdminSide: AdminSide = isAdminSide(feedTab.value) ? feedTab.value : 'admin';
 watch(feedTab, t => { if (isAdminSide(t)) lastAdminSide = t; });
 /** The Admin tab opens on the side with the newest unread note, else the side
@@ -249,12 +261,13 @@ function openAdminGroup() {
 }
 const shownNotes = computed(() => !showFeedTabs.value ? (backend.showAdminUi ? backend.notifications : mainNotes.value)
   : isAdminSide(feedTab.value) && backend.showAdminUi ? sideNotes(feedTab.value)
+  : !splitMain.value ? mainNotes.value
   : feedTab.value === 'updates' ? updateNotes.value : mineNotes.value);
 /** Opening the bell: the tab with the newest unread notification, or the
  *  tab used last when nothing is unread. It never moves while open. */
 watch(() => props.visible, open => {
   if (!open || !showFeedTabs.value) return;
-  const tabs: [FeedTab, any[]][] = [['mine', mineNotes.value], ['updates', updateNotes.value]];
+  const tabs: [FeedTab, any[]][] = splitMain.value ? [['mine', mineNotes.value], ['updates', updateNotes.value]] : [['mine', mainNotes.value]];
   if (showAdminTab.value) tabs.push(['admin', adminNotes.value]);
   if (showTriageTab.value) tabs.push(['triage', triageNotes.value]);
   if (showHuntTab.value) tabs.push(['hunt', huntNotes.value]);
@@ -986,6 +999,12 @@ function padRank(rank: number): string {
     </div>
 
     <div v-if="showFeedTabs" class="nge-notif-tabs" role="tablist">
+      <!-- One feed: everything that is not admin, in one Pyr tab. -->
+      <button v-if="!splitMain" class="nge-notif-tab" :class="{ 'nge-notif-tab--on': !onAdminGroup }" role="tab" :aria-selected="!onAdminGroup" @click="feedTab = 'mine'"
+              title="Your notifications and Pyr's updates. Settings can sort them into My Pyr and Pyr Updates.">
+        Pyr<b v-if="unreadIn(mainNotes) > 0">{{ unreadIn(mainNotes) }}</b>
+      </button>
+      <template v-else>
       <button class="nge-notif-tab" :class="{ 'nge-notif-tab--on': feedTab === 'mine' }" role="tab" :aria-selected="feedTab === 'mine'" @click="feedTab = 'mine'"
               title="Sent to you: replies, achievements, your week, your results">
         My Pyr<b v-if="unreadIn(mineNotes) > 0">{{ unreadIn(mineNotes) }}</b>
@@ -994,6 +1013,7 @@ function padRank(rank: number): string {
               title="Sent to everyone: Today in Pyr, announcements, blog posts, Weekly Champions, competitions">
         Pyr Updates<b v-if="unreadIn(updateNotes) > 0">{{ unreadIn(updateNotes) }}</b>
       </button>
+      </template>
       <button v-if="showAdminGroup" class="nge-notif-tab nge-notif-tab--admin" :class="{ 'nge-notif-tab--on': onAdminGroup }" role="tab" :aria-selected="onAdminGroup" @click="onAdminGroup || openAdminGroup()"
               title="Access requests, proofreading tests, players' answers to replies you asked for, triage reports and Hunt reports">
         Admin<b v-if="adminGroupUnread > 0">{{ adminGroupUnread }}</b>

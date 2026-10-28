@@ -2,6 +2,32 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T15:46:00Z",
+      "title": "Chat tips",
+      "items": [
+        "A new ? at the top of chat opens a short card of everything chat can do. Typing /help opens it too.",
+        "Saying @nurro now gets a private answer from Nurro pointing you to its ! commands, and !help mentions the chat tips."
+      ]
+    },
+    {
+      "at": "2026-10-28T15:20:00Z",
+      "title": "Actions in chat, and when your cells were last saved",
+      "items": [
+        "Type /me and an action in chat, like /me claps hands, and it shows as a grey line with your name.",
+        "In My Cells, your other claims show when their view was last saved.",
+        "In Highlight, the button that shrinks the box stays at the left when the box is open."
+      ]
+    },
+    {
+      "at": "2026-10-28T01:24:00Z",
+      "title": "One notification feed, bigger Achievements, and a Settings key",
+      "items": [
+        "Your notifications are back in one feed. To sort them into My Pyr and Pyr Updates, turn on Organize my notifications into categories in Settings.",
+        "Your profile shows your three most recent Achievements in each row, bigger.",
+        "Press Shift and S to open Settings. You can also add a Settings gear to your top bar in Settings."
+      ]
+    },
+    {
       "at": "2026-10-28T01:01:00Z",
       "title": "Help build the next Hunt",
       "digest": "headline",

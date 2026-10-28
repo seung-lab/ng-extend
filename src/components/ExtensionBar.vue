@@ -286,6 +286,13 @@ onMounted(() => {
       e.stopImmediatePropagation();
       if (!highlightOff.value) { showHighlight.value = !showHighlight.value; if (showHighlight.value) sprayHighlightIcon(); }
     }
+    // Shift+S: Settings, open and closed again (Celia, report 277).
+    if (!typing && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'S' || e.key === 's')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (showProfile.value && profileInitialTab.value === 'settings') showProfile.value = false;
+      else { profileUserId.value = null; profileInitialTab.value = 'settings'; showProfile.value = true; }
+    }
     // The other way in is the old legend: up up down down left right left
     // right B A. Flight mode is an easter egg, it is FOUND, not labeled.
     if (!typing && !showFlightMode.value) {

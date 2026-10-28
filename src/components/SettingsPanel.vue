@@ -57,7 +57,7 @@ const draftKeepDisplay = ref(true);
 const draftCellCelebration = ref(true);
 let savedCellMessage: 'full' | 'small' | 'off' = 'full';
 const draftAchievementCelebration = ref(true);
-const draftNotifOneList = ref(false);
+const draftNotifCategories = ref(false);
 const draftDailyDigest = ref(true);
 /** How the cell under the mouse is shown (wolfryder101 #181): the classic fade (default), halo or pulse. */
 const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'saturate' | 'spotlight' | 'fade' | 'none'>('fade');
@@ -144,7 +144,7 @@ onMounted(() => {
   savedCellMessage = prefsStore.prefs.cellCompleteMessage || 'full';
   draftCellCelebration.value = savedCellMessage !== 'off';
   draftAchievementCelebration.value = prefsStore.prefs.achievementCelebration !== false;
-  draftNotifOneList.value = prefsStore.prefs.notifOneList === true;
+  draftNotifCategories.value = prefsStore.prefs.notifCategories === true;
   draftDailyDigest.value = prefsStore.prefs.showDailyDigest !== false;
   draftHoverStyle.value = ngeHoverStyle.value;
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
@@ -231,7 +231,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifOneList: draftNotifOneList.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -580,9 +580,9 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftAchievementCelebration" />
               <span class="nge-settings-toggle-label">Achievement celebration</span>
             </label>
-            <label class="nge-settings-toggle" title="On: every notification in one list, as before. Off: two tabs in the bell, My Pyr for what was sent to you and Pyr Updates for what went to everyone.">
-              <input type="checkbox" v-model="draftNotifOneList" />
-              <span class="nge-settings-toggle-label">Show all notifications in one list</span>
+            <label class="nge-settings-toggle" title="Off: every notification in one list. On: tabs in the bell, My Pyr for what was sent to you and Pyr Updates for what went to everyone (and Admin, for admins).">
+              <input type="checkbox" v-model="draftNotifCategories" />
+              <span class="nge-settings-toggle-label">Organize my notifications into categories</span>
             </label>
             <label class="nge-settings-toggle" title="Today in Pyr is the short note each afternoon on what changed in Pyr that day. Off: it no longer comes to your bell. Other announcements still do.">
               <input type="checkbox" v-model="draftDailyDigest" />

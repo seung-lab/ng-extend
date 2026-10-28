@@ -571,10 +571,11 @@ onBeforeUnmount(() => {
       </div>
       <template v-else>
       <div class="nge-hl-head" title="Drag to move" @mousedown="startDrag">
-        <span class="nge-hl-title">Highlight</span>
+        <!-- The slim button stays at the left, where it is in the slim strip (toknow, report 283). -->
         <button class="nge-hl-caret" type="button" title="Shrink to a slim strip" aria-label="Shrink to a slim strip" @mousedown.stop @click="setSlim(true)">
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
+        <span class="nge-hl-title">Highlight</span>
         <button class="nge-hl-close" aria-label="Close" @click="emit('hide')">×</button>
       </div>
       <p v-if="mec" class="nge-hl-how">
@@ -770,8 +771,6 @@ onBeforeUnmount(() => {
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .nge-hl-caret:hover { background: rgba(124, 255, 178, 0.22); border-color: rgba(124, 255, 178, 0.75); box-shadow: 0 0 10px rgba(124, 255, 178, 0.35); }
-.nge-hl-head .nge-hl-caret { margin-left: auto; }
-.nge-hl-head .nge-hl-caret + .nge-hl-close { margin-left: 4px; }
 .nge-hl-panel--slim { width: auto; min-width: 0; padding: 7px 10px; }
 .nge-hl-slim { display: flex; align-items: center; gap: 8px; cursor: grab; user-select: none; }
 .nge-hl-panel--dragging .nge-hl-slim { cursor: grabbing; }

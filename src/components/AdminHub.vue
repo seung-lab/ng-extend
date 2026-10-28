@@ -1812,6 +1812,9 @@ async function sendNotification() {
         ...(thumbnailUrl ? { thumbnail_url: thumbnailUrl } : {}),
       });
       notifConfirm.value = `Updated “${notifTitle.value.trim()}”.`;
+      // Post to chat turned on for one that has already gone out: post it now,
+      // not on the next round (Ames 2026-10-27: it did not seem to send).
+      if (notifPostToChat.value && notifTargetType.value === 'all') await backend.postDueChatAnnouncements();
       cancelEdit();
       notifSendStage.value = 'list';
       await backend.loadAdminNotifications();
@@ -2602,7 +2605,8 @@ function practiceWhen(iso: string | null) {
         </p>
         <p v-else class="nge-admin-hint">Leave "Send at" empty to send immediately</p>
         <div class="nge-admin-row">
-          <label class="nge-admin-check"><input type="checkbox" v-model="notifPostToChat" /> Also post to chat</label>
+          <label class="nge-admin-check" :title="notifTargetType === 'all' ? '' : 'Only notifications sent to everyone can be posted to chat'"><input type="checkbox" v-model="notifPostToChat" :disabled="notifTargetType !== 'all'" /> Also post to chat</label>
+          <span v-if="notifTargetType !== 'all'" class="nge-admin-note-inline">Chat posts are for notifications sent to everyone.</span>
           <span v-if="notifPostToChat && isScheduledForLater" class="nge-admin-note-inline">
             Chat post happens when it sends, not now.
           </span>
