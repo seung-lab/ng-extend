@@ -442,3 +442,9 @@ test('the Hunt Maker Achievement wears the scythe unless an admin picked one', (
   assert.equal(row.image_url, 'https://pyr.test/hunt/maker.png');
   assert.equal(row.thumbnail_url, 'https://pyr.test/hunt/maker-128.png');
 });
+
+test('the planted note shows Nurro planting', () => {
+  assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'planted'), 'https://pyr.test/hunt/planted.jpg');
+  assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'planted', true), 'https://pyr.test/hunt/planted-128.jpg');
+  assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'open', true), 'https://pyr.test/hunt/scythe-128.png');
+});

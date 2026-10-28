@@ -115,8 +115,14 @@ function helpNoteBody(merges, cuts, until) {
  * The pictures on the Hunt Builder's bell notes (Ames 2026-10-27, her scythe: "I will make a couple options we can
  * use at different stages"): one per kind of note, served by the game at /hunt/<name>.png and -128.png.
  */
-const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'scythe-gold', released: 'scythe', sentBack: 'scythe' };
-const noteArt = (ctx, kind, small = false) => (ctx && ctx.site ? `${ctx.site}/hunt/${NOTE_ART[kind] || 'scythe'}${small ? '-128' : ''}.png` : undefined);
+// Planted: Nurro watering the sprouts (EyeWire art, Ames 2026-10-27: "your submission has been planted shhh").
+const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'planted.jpg', released: 'scythe', sentBack: 'scythe' };
+const noteArt = (ctx, kind, small = false) => {
+  if (!ctx || !ctx.site) return undefined;
+  const name = NOTE_ART[kind] || 'scythe', dot = name.lastIndexOf('.');
+  const [base, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '.png'];
+  return `${ctx.site}/hunt/${base}${small ? '-128' : ''}${ext}`;
+};
 const helpersOf = (c) => (Array.isArray(c.helpers) ? c.helpers.map(String) : []);
 const isHelper = (c, uid) => helpersOf(c).includes(String(uid));
 /** Who may suggest: every player with production access (Ames 2026-10-27: "open to all users with Production
