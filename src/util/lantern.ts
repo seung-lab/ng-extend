@@ -59,6 +59,10 @@ export const lantern = reactive<Saved>(load());
 
 /** Clicked branch, for the bar: what it is doing, in words a player reads. */
 export const lanternBranch = reactive({
+  /** Whole cell: where the light is pinned (nm), or null while it follows
+   *  the centre of the view (Ames 2026-10-28: "if you move the cell around
+   *  the lantern follows you around the cell"). */
+  pinnedNm: null as number[] | null,
   /** The gem at the click, in page pixels, while the branch is found. */
   marker: null as {x: number; y: number; at: number; state: 'finding' | 'done' | 'failed'} | null,
   /** idle: nothing clicked yet; finding: asking the server; lit; failed. */
@@ -86,10 +90,41 @@ function readView() {
     for (let i = 0; i < 3; i++) state.center[i] = branch.clickNm[i] / state.scaleNm[i];
     return;
   }
+  const pin = lanternBranch.pinnedNm;
+  if (pin) {
+    // Pinned: the light stays on that spot of the cell, however the view moves.
+    for (let i = 0; i < 3; i++) state.center[i] = pin[i] / state.scaleNm[i];
+    return;
+  }
   try {
     const pos = viewer.navigationState.position.value;
     for (let i = 0; i < 3; i++) state.center[i] = Number(pos[i]) || 0;
   } catch { /* the view is not up yet */ }
+}
+
+// ── Whole cell, pinned (Ames 2026-10-28) ──────────────────────────────────
+// A plain click on a cell pins the light to that spot: panning, turning and
+// zooming the view no longer carry it along, so it stays where the player is
+// proofreading. Another click on the cell moves it there; Follow view in the
+// bar (or turning the Lantern off) lets it follow the centre of the view
+// again. A click on empty space does nothing, so a missed click never loses
+// the place.
+function pinUnderMouse(x: number, y: number) {
+  try { viewer.mouseState.updateUnconditionally(); } catch { /* the last reading */ }
+  const pick = pickUnderMouse();
+  if ('error' in pick) return;
+  readScales();
+  lanternBranch.pinnedNm = [0, 1, 2].map(i => pick.global[i] * state.scaleNm[i]);
+  // The gem shows where it went, and goes.
+  markClick(x, y);
+  endMarker('done');
+  apply();
+}
+
+/** Let the light follow the centre of the view again. */
+export function unpinLantern() {
+  lanternBranch.pinnedNm = null;
+  apply();
 }
 
 // ── Lighting it, and putting it out (Ames 2026-10-10: "a cool load in/out") ──
@@ -470,24 +505,26 @@ async function lightBranchUnderMouse(x: number, y: number) {
   }
 }
 
-// A plain click (no drag, no Ctrl or Shift) in the view, while Clicked
-// branch is on. A drag still turns the view, and Ctrl+click is still the
+// A plain click (no drag, no Ctrl or Shift) in the view, while the Lantern
+// is on: in Clicked branch it lights the branch, in Whole cell it pins the
+// light there. A drag still turns the view, and Ctrl+click is still the
 // other tools' own. The click is not taken from neuroglancer: a double click
 // still shows or hides a cell as it always did.
 let down: {x: number; y: number; t: number; id: number} | null = null;
 const inViewer = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('.neuroglancer-rendered-data-panel');
 function onDown(e: PointerEvent) {
   down = null;
-  if (!lantern.on || lantern.mode !== 'branch' || e.button !== 0) return;
+  if (!lantern.on || e.button !== 0) return;
   if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || !inViewer(e.target)) return;
   down = {x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId};
 }
 function onUp(e: PointerEvent) {
   const d = down;
   down = null;
-  if (!d || d.id !== e.pointerId || !lantern.on || lantern.mode !== 'branch') return;
+  if (!d || d.id !== e.pointerId || !lantern.on) return;
   if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 600) return;
-  void lightBranchUnderMouse(e.clientX, e.clientY);
+  if (lantern.mode === 'branch') void lightBranchUnderMouse(e.clientX, e.clientY);
+  else pinUnderMouse(e.clientX, e.clientY);
 }
 
 /** Call once the viewer exists. */
@@ -496,12 +533,12 @@ export function startLantern(v: any) {
   viewer = v;
   // The light follows the centre of the view. The state object is shared with
   // the renderer, so a move only has to rewrite three numbers.
-  const moved = () => { if (lit > 0 && lantern.mode === 'cell') { readView(); (window as any).__ngeLantern && ((window as any).__ngeLantern.centerNm = Array.from(state.center, (c, i) => c * state.scaleNm[i])); } };
+  const moved = () => { if (lit > 0 && lantern.mode === 'cell' && !lanternBranch.pinnedNm) { readView(); (window as any).__ngeLantern && ((window as any).__ngeLantern.centerNm = Array.from(state.center, (c, i) => c * state.scaleNm[i])); } };
   try { viewer.navigationState.position.changed.add(moved); } catch { /* no position to follow */ }
   try { viewer.coordinateSpace.changed.add(() => { if (lit > 0) apply(); }); } catch { /* fixed scales */ }
   watch(() => lantern.on, on => {
     // Turned off: the branch goes with it, so turning it on again starts clean.
-    if (!on) { asked++; branch.keep = false; lanternBranch.status = 'idle'; lanternBranch.message = ''; lanternBranch.marker = null; }
+    if (!on) { asked++; branch.keep = false; lanternBranch.status = 'idle'; lanternBranch.message = ''; lanternBranch.marker = null; lanternBranch.pinnedNm = null; }
     run();
   });
   watch(() => lantern.mode, () => {
@@ -512,6 +549,7 @@ export function startLantern(v: any) {
     lanternBranch.status = 'idle';
     lanternBranch.message = '';
     lanternBranch.marker = null;
+    lanternBranch.pinnedNm = null;
     lit = 0;
     run();
   });
