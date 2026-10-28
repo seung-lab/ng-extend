@@ -10,6 +10,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
 import { datasetAccess } from '../util/dataset_access';
 import RequestAccessButton from './RequestAccessButton.vue';
+import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
 
 const current = ref<DatasetEntry | undefined>(undefined);
@@ -48,7 +49,7 @@ function close() {
 <template>
   <transition name="nge-noaccess">
     <div v-if="shown && current" class="nge-noaccess" role="status">
-      <span class="nge-noaccess-icon" aria-hidden="true">🔒</span>
+      <img :src="lockIcon" class="nge-noaccess-icon" alt="" aria-hidden="true" />
       <span class="nge-noaccess-text">You don't have access to <b>{{ current.shortLabel || current.label }}</b> yet, so its cells won't load.<template v-if="needsRetinaFirst(current)"> Unlock Level 1 (Retina) before moving to {{ current.shortLabel || current.label }}: send your edits from Ask for Edit Access in the menu.</template></span>
       <RequestAccessButton v-if="!needsRetinaFirst(current)" :ds="current" />
       <button type="button" class="nge-noaccess-x" title="Close" aria-label="Close" @click="close">×</button>
@@ -65,7 +66,7 @@ function close() {
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px);
   font-family: 'Inter', 'Segoe UI', sans-serif; font-size: 14px; color: #dce6f5;
 }
-.nge-noaccess-icon { font-size: 16px; }
+.nge-noaccess-icon { width: 26px; height: 26px; object-fit: contain; flex: none; }
 .nge-noaccess-text { flex: 1 1 260px; line-height: 1.4; }
 .nge-noaccess-x { font: inherit; font-size: 20px; line-height: 1; padding: 0 4px; background: none; border: none; color: rgba(220, 230, 245, 0.7); cursor: pointer; }
 .nge-noaccess-x:hover { color: #fff; }
