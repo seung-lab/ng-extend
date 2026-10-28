@@ -456,10 +456,12 @@ const filteredCells = computed(() => {
   } else if (filter.value === 'giants') {
     list = questCells.value;
   } else if (filter.value === 'mine') {
-    // My claimed cells first, then my completed cells
+    // My claimed cells first, then my completed cells. My Super Quest leads:
+    // its Marks show under it here too (Ames 2026-10-28).
+    const myQuests = questCells.value.filter(c => isMyClaim(c));
     const myClaimed = list.filter(c => isMyClaim(c));
     const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId);
-    list = [...myClaimed, ...myCompleted];
+    list = [...myQuests, ...myClaimed, ...myCompleted];
   } else if (filter.value === 'available') {
     list = list.filter(c => c.status === 'pending');
   } else if (filter.value === 'claimed') {
@@ -490,7 +492,7 @@ const rowsShown = ref(ROWS_STEP);
 watch([filter, search], () => { rowsShown.value = ROWS_STEP; });
 const shownCells = computed(() => filteredCells.value.slice(0, rowsShown.value));
 
-const myClaimCount = computed(() => libraryCells.value.filter(c => isMyClaim(c)).length);
+const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
 
 const isClaimedStatus = (s: string) => s === 'assigned' || s === 'in_progress';
 /** A paged list counts on the server. A sheet hold ("WIP", "Complete" by
@@ -3916,12 +3918,12 @@ const panelStyle = computed(() => ({
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
                   <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, it never expires, and Pyr counts your active time on it.">Super Quest{{ cell.questCategory ? ': ' + cell.questCategory : '' }}</span>
-                  <span v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-notes nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
-                        title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have moved the mouse or pressed a key in the last 5 minutes. It adds up across visits and devices.">{{ claimTimeLabel(cell.taskId) }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
                   <!-- The Hunt candidate tag says it (its tooltip has the note) -->
                   <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
                 </div>
+                <div v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
+                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have moved the mouse or pressed a key in the last 5 minutes. It adds up across visits and devices.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
               </div>
             </div>
 
@@ -4728,7 +4730,7 @@ const panelStyle = computed(() => ({
 .nge-cl-giant-cell { background: rgba(196, 140, 255, 0.14); color: #d3b0ff; text-transform: none; }
 .nge-cl-giants-tab b { color: #d3b0ff; }
 .nge-cl-giants-tab.active { border-color: rgba(196, 140, 255, 0.7) !important; }
-.nge-cl-time { color: #9fb3c8; font-variant-numeric: tabular-nums; }
+.nge-cl-time { margin-top: 2px; font-size: 12px; color: #9fb3c8; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nge-cl-time--on { color: #8fe3a8; }
 .nge-cl-giants-intro { margin: 4px 0 10px; font-size: 14px; line-height: 1.5; color: #c4d2e0; }
 .nge-cl-hunt-tab.active { border-color: rgba(66, 213, 236, 0.7) !important; }
