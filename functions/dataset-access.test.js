@@ -1,0 +1,108 @@
+'use strict';
+// Access to one dataset (Ames 2026-10-28): a player asks once per dataset, the
+// admins are told, an admin marks it Granted or Not now and the player gets a
+// bell. Against a fake database and a fake mark store.
+// Run: cd functions && node --test dataset-access.test.js
+const test = require('node:test');
+const assert = require('node:assert');
+const {handle} = require('./access-request');
+
+const MEC = {datasetId: 'pni_mec', label: 'Medial Entorhinal Cortex', caveDataset: 'HiMC'};
+
+function world() {
+  const issues = [];
+  const told = [], posted = [], players = [];
+  const marks = {};
+  const sb = async (p, init = {}) => {
+    if (p.startsWith('site_issues?')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const eq = k => (q.get(k) || '').replace(/^eq\./, '');
+      return issues.filter(i => i.category === eq('category')
+        && (!q.get('user_id') || i.user_id === eq('user_id'))
+        && (!q.get('id') || i.id === eq('id'))).slice().reverse();
+    }
+    if (p === 'site_issues' && init.method === 'POST') {
+      for (const r of JSON.parse(init.body)) {
+        issues.push({id: `00000000-0000-0000-0000-00000000000${issues.length + 1}`, created_at: new Date(Date.now() + issues.length).toISOString(), ...r});
+      }
+      return [];
+    }
+    throw new Error('unexpected ' + p);
+  };
+  const datasetMarks = {
+    all: async () => ({...marks}),
+    set: async (id, v) => { if (v) marks[id] = v; else delete marks[id]; },
+  };
+  const me = {id: 'u-player', username: 'andrearwen'};
+  const io = (over = {}) => ({sb, me, who: {email: 'player@example.org'}, isAdmin: false, isPilot: true, datasetMarks,
+    notifyAdmins: async n => { told.push(n); }, notifyPlayer: async n => { players.push(n); },
+    postIssue: async p => { posted.push(p); }, ...over});
+  return {issues, told, posted, players, marks, io};
+}
+
+test('a request: one report, a bell to every admin, a Slack post, then Requested', async () => {
+  const w = world();
+  assert.deepStrictEqual(await handle('access.datasetStatus', {}, w.io()), {requests: {}});
+  const out = await handle('access.dataset', {...MEC, note: 'I trace grid cells.'}, w.io());
+  assert.strictEqual(out.requested, true);
+  assert.strictEqual(out.requests.pni_mec.mark, null);
+  assert.strictEqual(w.issues.length, 1);
+  const r = w.issues[0];
+  assert.strictEqual(r.category, 'Dataset access');
+  assert.strictEqual(r.dataset, 'pni_mec');
+  assert.strictEqual(r.title, 'Medial Entorhinal Cortex access request from andrearwen');
+  assert.match(r.message, /CAVE dataset: HiMC/);
+  assert.match(r.message, /Sign in email: player@example\.org/);
+  assert.strictEqual(w.told.length, 1);
+  assert.match(w.told[0].title, /Medial Entorhinal Cortex, from andrearwen/);
+  assert.strictEqual(w.posted.length, 1);
+});
+
+test('asking again while it is open files nothing more', async () => {
+  const w = world();
+  await handle('access.dataset', MEC, w.io());
+  const again = await handle('access.dataset', MEC, w.io());
+  assert.strictEqual(again.already, true);
+  assert.strictEqual(w.issues.length, 1);
+  assert.strictEqual(w.told.length, 1);
+});
+
+test('retina and made up datasets are refused; a note can not carry markdown into the bell', async () => {
+  const w = world();
+  await assert.rejects(handle('access.dataset', {...MEC, datasetId: 'stroeh_mouse_retina'}, w.io()), /Unknown dataset/);
+  await assert.rejects(handle('access.dataset', {...MEC, datasetId: '../x'}, w.io()), /Unknown dataset/);
+  await assert.rejects(handle('access.dataset', {...MEC, label: '[click](http://evil)'}, w.io()), /Unknown dataset/);
+  const fly = await handle('access.dataset', {datasetId: 'flywire_public', label: 'FlyWire: Fruit Fly Brain', caveDataset: 'flywire_public'}, w.io());
+  assert.strictEqual(fly.requested, true);
+  await handle('access.dataset', {...MEC, note: '[click](http://evil)'}, w.io());
+  assert.ok(!/\[click\]\(http/.test(w.told[0].body));
+});
+
+test('only admins list and decide; Granted tells the player and shows on their status', async () => {
+  const w = world();
+  await handle('access.dataset', MEC, w.io());
+  await assert.rejects(handle('access.datasetList', {}, w.io()), /Admins only/);
+  const list = await handle('access.datasetList', {}, w.io({isAdmin: true}));
+  assert.strictEqual(list.length, 1);
+  assert.strictEqual(list[0].label, 'Medial Entorhinal Cortex');
+  assert.strictEqual(list[0].cave, 'HiMC');
+  await assert.rejects(handle('access.datasetDecide', {id: list[0].id, mark: 'granted'}, w.io()), /Admins only/);
+  const after = await handle('access.datasetDecide', {id: list[0].id, mark: 'granted'}, w.io({isAdmin: true}));
+  assert.strictEqual(after[0].mark, 'granted');
+  assert.strictEqual(w.players.length, 1);
+  assert.strictEqual(w.players[0].userId, 'u-player');
+  assert.match(w.players[0].title, /You have access to Medial Entorhinal Cortex/);
+  const status = await handle('access.datasetStatus', {}, w.io());
+  assert.strictEqual(status.requests.pni_mec.mark, 'granted');
+});
+
+test('Not now tells the player, and they may ask again', async () => {
+  const w = world();
+  await handle('access.dataset', MEC, w.io());
+  const [r] = await handle('access.datasetList', {}, w.io({isAdmin: true}));
+  await handle('access.datasetDecide', {id: r.id, mark: 'declined', note: 'Finish the MEC tutorial first.'}, w.io({isAdmin: true}));
+  assert.match(w.players[0].body, /Finish the MEC tutorial first/);
+  const again = await handle('access.dataset', MEC, w.io());
+  assert.strictEqual(again.requested, true);
+  assert.strictEqual(w.issues.length, 2);
+});

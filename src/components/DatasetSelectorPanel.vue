@@ -13,6 +13,7 @@ import { loadDatasetPermissions, datasetAccess } from '../util/dataset_access';
 import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests';
 import { useProofreadingBackendStore } from '../store';
 import { skipNextViewRestoreOffer } from '../util/view_autosave';
+import RequestAccessButton from './RequestAccessButton.vue';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -48,7 +49,7 @@ onMounted(detectCurrentDataset);
 onMounted(() => { loadDatasetPermissions(); });
 /** The dataset on screen is never shown locked, whatever the lookup says. */
 const accessOf = (ds: DatasetEntry) => ds.id === currentDatasetId.value ? 'edit' : datasetAccess(ds.caveDataset);
-const lockedTip = 'Your CAVE account does not have access to this dataset yet. Ask an EyeWire II admin to request it for you.';
+const lockedTip = 'Your CAVE account does not have access to this dataset yet. Press Request access to ask the admins.';
 const viewTip = 'You can look around here, but your CAVE account cannot save edits in this dataset.';
 
 // ── Switch dataset ──────────────────────────────────────────────────────────
@@ -269,6 +270,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                       <div class="nge-ds-variant-text">
                         <div class="nge-ds-variant-label">{{ ds.variantLabel || ds.label }}</div>
                         <div class="nge-ds-card-desc">{{ ds.description }}</div>
+                        <div v-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                       </div>
                       <div v-if="ds.id === currentDatasetId" class="nge-ds-tag">Active</div>
                       <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-tag nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
@@ -294,6 +296,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   <div class="nge-ds-card-label">{{ ds.label }}</div>
                   <div class="nge-ds-card-desc">{{ ds.description }}</div>
                   <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
+                  <div v-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                   <div v-if="showTasks(ds)" class="nge-ds-tasks">
                     <button v-if="ds.cellTasks" class="nge-ds-task" @click.stop="openTask(ds, 'available')"
                             :title="'Open the Cell Library on the cells nobody has claimed yet' + (ds.id === currentDatasetId ? '' : ', after switching here')">
@@ -547,7 +550,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
 .nge-ds-variant:hover:not(.nge-ds-active):not(.nge-ds-locked) { background: rgba(100, 200, 255, 0.06); border-color: rgba(100, 200, 255, 0.2); }
 .nge-ds-variant.nge-ds-active { background: rgba(100, 200, 255, 0.1); border-color: rgba(100, 200, 255, 0.35); cursor: default; }
 .nge-ds-variant.nge-ds-locked { cursor: not-allowed; }
-.nge-ds-variant.nge-ds-locked .nge-ds-variant-text { opacity: 0.45; }
+.nge-ds-variant.nge-ds-locked .nge-ds-variant-text > :not(.nge-ds-request) { opacity: 0.45; }
 .nge-ds-variant-text { flex: 1; }
 .nge-ds-variant-label { font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.88); margin-bottom: 2px; }
 .nge-ds-tag {
@@ -580,7 +583,9 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
 /* No CAVE access: greyed, not clickable, the reason in the tooltip. */
 .nge-ds-locked { cursor: not-allowed; }
 .nge-ds-locked .nge-ds-card-thumb { filter: grayscale(1) brightness(0.55); }
-.nge-ds-locked .nge-ds-card-text { opacity: 0.45; }
+.nge-ds-locked .nge-ds-card-text > :not(.nge-ds-request) { opacity: 0.45; }
+/* The way in stays bright on a locked card (Ames 2026-10-28). */
+.nge-ds-request { margin-top: 8px; cursor: default; }
 .nge-ds-card.nge-ds-locked:hover { background: none; border-color: rgba(255, 255, 255, 0.08); }
 .nge-ds-badge--locked { color: #c9ccd4; background: rgba(255, 255, 255, 0.08); }
 .nge-ds-badge--view { color: #e8c46a; background: rgba(232, 196, 106, 0.12); }

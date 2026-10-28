@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T15:34:46Z",
+      "title": "Ask for access to a dataset",
+      "items": [
+        "A dataset you can't open now has a Request access button, on its card in the Dataset switcher and on a note that appears when a view opens on it (from a chat link, say). The admins are told, and you get a note when they answer.",
+        "Retina's button opens its own request, with the examples it asks for, as before."
+      ]
+    },
+    {
       "at": "2026-10-28T18:16:00Z",
       "title": "Extension Sandbox fixes",
       "items": [
