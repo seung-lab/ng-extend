@@ -60,8 +60,11 @@ function mergeCopies(viewer: any): void {
 /** The layers a Super Quest uses (Ames 2026-10-28: AIS, which is required,
  *  Checked and True End). */
 export const SUPER_QUEST_LAYERS = ['AIS 🐬', 'Checked ✅', 'True End 🟢'];
+/** Taken off a Super Quest even with points in it (Ames 2026-10-28: "get rid
+ *  of hits edge"): its points were Pyr's own edge search. */
+export const SUPER_QUEST_DROP = ['Hits Edge 🟠'];
 
-function addMissing(only: string[] = CLAIM_LAYERS): void {
+function addMissing(only: string[] = CLAIM_LAYERS, drop: string[] = []): void {
   const viewer: any = (window as any).viewer;
   if (!viewer?.layerSpecification) return;
   if (currentDatasetTag() !== 'pni_mec') return;
@@ -69,6 +72,7 @@ function addMissing(only: string[] = CLAIM_LAYERS): void {
   const managed: any[] = viewer?.layerManager?.managedLayers ?? [];
   const key = mecLayerKey;
   const wanted = new Set(only.map(key));
+  const dropped = new Set(drop.map(key));
   // The layers this cell does not use go, when they hold no points.
   {
     for (const ml of managed.slice()) {
@@ -76,7 +80,7 @@ function addMissing(only: string[] = CLAIM_LAYERS): void {
       const pts = ml.layer?.localAnnotations;
       if (!pts) continue;
       let n = 0; for (const _ of pts) n++;
-      if (!n) viewer.layerManager.removeManagedLayer(ml);
+      if (!n || dropped.has(key(ml.name))) viewer.layerManager.removeManagedLayer(ml);
     }
   }
   const have = new Set(managed.filter(l => !l.archived).map(l => key(l.name)));
@@ -94,6 +98,6 @@ function addMissing(only: string[] = CLAIM_LAYERS): void {
 
 /** Add any of the four that the view lacks, once the cell's view has loaded
  *  (a start link replaces the layers, so look again a little later). */
-export function ensureMecLayers(only?: string[]): void {
-  for (const ms of [1200, 4000, 9000]) setTimeout(() => { try { addMissing(only); } catch (e) { console.warn('[mec layers]', e); } }, ms);
+export function ensureMecLayers(only?: string[], drop?: string[]): void {
+  for (const ms of [1200, 4000, 9000]) setTimeout(() => { try { addMissing(only, drop); } catch (e) { console.warn('[mec layers]', e); } }, ms);
 }

@@ -42,7 +42,7 @@ import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { ensureMecLayers, SUPER_QUEST_LAYERS } from '../util/mec_layers';
+import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
 import MecMarkStatus from './MecMarkStatus.vue';
 import { buildState } from '../hunt_build';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
@@ -645,7 +645,10 @@ function setWorkingTask(id: number | null) {
   setTimerWorkingClaim(id);
   // An MEC cell opens with the lab's AIS, True End, Can't Fix and Hits Edge
   // layers; a Super Quest with AIS only.
-  if (id) ensureMecLayers(isQuestTask(backend.tasks.find(t => t.id === id)) ? SUPER_QUEST_LAYERS : undefined);
+  if (id) {
+    const quest = isQuestTask(backend.tasks.find(t => t.id === id));
+    ensureMecLayers(quest ? SUPER_QUEST_LAYERS : undefined, quest ? SUPER_QUEST_DROP : undefined);
+  }
   try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
   try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
 }
@@ -3917,7 +3920,8 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
-                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, it never expires, and Pyr counts your active time on it.">Super Quest{{ cell.questCategory ? ': ' + cell.questCategory : '' }}</span>
+                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, it never expires, and Pyr counts your active time on it.">Super Quest</span>
+                  <span v-if="cell.quest && cell.questCategory" class="nge-cl-notes nge-cl-giant-cat" :title="cell.questCategory">{{ cell.questCategory }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
                   <!-- The Hunt candidate tag says it (its tooltip has the note) -->
                   <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
@@ -4728,6 +4732,7 @@ const panelStyle = computed(() => ({
 .nge-cl-hunt-cell { background: rgba(66, 213, 236, 0.12); color: #7fe6f5; text-transform: none; }
 .nge-cl-hunt-tab b { color: #7fe6f5; }
 .nge-cl-giant-cell { background: rgba(196, 140, 255, 0.14); color: #d3b0ff; text-transform: none; }
+.nge-cl-giant-cat { color: #d3b0ff; }
 .nge-cl-giants-tab b { color: #d3b0ff; }
 .nge-cl-giants-tab.active { border-color: rgba(196, 140, 255, 0.7) !important; }
 .nge-cl-time { margin-top: 2px; font-size: 12px; color: #9fb3c8; font-variant-numeric: tabular-nums; white-space: nowrap; }
