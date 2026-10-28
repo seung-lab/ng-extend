@@ -19,6 +19,8 @@ export interface DatasetRequestState { at: string; mark: DatasetRequestMark }
 export interface DatasetRequestRow {
   id: string; userId: string | null; name: string | null; dataset: string | null; label: string;
   cave: string; email: string; note: string; at: string;
+  /** The CAVE group Granted adds them to, or '' when that is done by hand. */
+  caveGroup: string;
   mark: DatasetRequestMark; markedAt: string | null; markedBy: string;
 }
 
@@ -77,6 +79,6 @@ export function listDatasetRequests(): Promise<DatasetRequestRow[]> {
   return secureWrite<DatasetRequestRow[]>('access.datasetList');
 }
 /** Admins: Granted, Not now, or back to waiting. The player is told. */
-export function decideDatasetRequest(id: string, mark: 'granted' | 'declined' | 'waiting', note = ''): Promise<DatasetRequestRow[]> {
-  return secureWrite<DatasetRequestRow[]>('access.datasetDecide', { id, mark, note });
+export function decideDatasetRequest(id: string, mark: 'granted' | 'declined' | 'waiting', note = '', byHand = false): Promise<DatasetRequestRow[]> {
+  return secureWrite<DatasetRequestRow[]>('access.datasetDecide', { id, mark, note, byHand });
 }
