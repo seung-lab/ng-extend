@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T01:01:00Z",
+      "title": "Help build the next Hunt",
+      "digest": "headline",
+      "items": [
+        "Some Sandbox cells are now Hunt candidates: they are listed first in the Cell Library, under a new Hunt chip, for you to claim and proofread fully. A claim on one lasts 24 hours.",
+        "When a candidate is proofread, players with production access can suggest the errors for a Hunt: open Help build in the top bar, then Cut or Merge as you normally would. Pyr checks each one would work and keeps it as your suggestion, and the cell stays as it is.",
+        "Press Send to the admins when you are done. Everyone whose suggestion is planted earns the Hunt Maker Achievement when the Hunt ends.",
+        "Cells being made into a Hunt are hidden until it starts, and cannot be claimed or edited."
+      ]
+    },
+    {
       "at": "2026-10-27T20:14:59Z",
       "title": "Drag the Pasted list taller",
       "digest": "minor",
