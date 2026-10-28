@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import imgNurroBravo from '../images/bravo-nurro.png';
-import { secureWrite } from '../secure_write';
+import { secureWrite, caveToken } from '../secure_write';
+import { functionUrl } from '../functions_base';
 import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
 import {useProofreadingBackendStore} from '../store';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
@@ -62,7 +63,29 @@ const pilotSearch = ref('');
 /** Who has joined (has a Pyr account under the invited email) and who has
  *  only been invited (Celia D, report 284). */
 const pilotWho = ref<'all' | 'joined' | 'invited'>('all');
-const PILOT_WHO = ['all', 'joined', 'invited'] as const;
+const PILOT_WHO = ['all', 'joined', 'invited', 'web'] as const;
+/** The Pyr Users sheet (Ames 2026-10-28): everyone on it was invited; a
+ *  tester who is not came from the web, by a Beta request. By email, lower
+ *  case, to the sheet tab they are on. Null until read; '' error when not. */
+const pilotSheet = ref<Record<string, string> | null>(null);
+const pilotSheetError = ref('');
+async function loadPilotSheet() {
+  pilotSheetError.value = '';
+  try {
+    const r = await fetch(functionUrl('ewSheetSync'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
+      body: JSON.stringify({ action: 'pilot_sheet', token: caveToken() }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || `The sheet could not be read (${r.status}).`);
+    pilotSheet.value = data.emails || {};
+  } catch (e: any) {
+    pilotSheet.value = null;
+    pilotSheetError.value = e?.message || 'The Pyr Users sheet could not be read.';
+  }
+}
+const pilotFromWeb = (m: { email: string }) => !!pilotSheet.value && !pilotSheet.value[m.email.toLowerCase()];
+const pilotWebCount = computed(() => pilotRows.value.filter(pilotFromWeb).length);
 const pilotJoined = (m: { email: string }) => !!pilotIds.value[m.email.toLowerCase()];
 const pilotJoinedCount = computed(() => pilotRows.value.filter(pilotJoined).length);
 function openPilotProfile(m: { email: string }) {
@@ -71,7 +94,9 @@ function openPilotProfile(m: { email: string }) {
 }
 const pilotShown = computed(() => {
   const words = pilotSearch.value.toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = pilotWho.value === 'all' ? pilotRows.value : pilotRows.value.filter(m => pilotJoined(m) === (pilotWho.value === 'joined'));
+  const rows = pilotWho.value === 'all' ? pilotRows.value
+    : pilotWho.value === 'web' ? pilotRows.value.filter(pilotFromWeb)
+      : pilotRows.value.filter(m => pilotJoined(m) === (pilotWho.value === 'joined'));
   if (!words.length) return rows;
   return rows.filter(m => {
     const hay = (m.email + ' ' + (pilotNames.value[m.email.toLowerCase()] || '')).toLowerCase();
@@ -97,6 +122,7 @@ async function loadPilot() {
   pilotError.value = error?.message || '';
   pilotRows.value = data || [];
   void loadPilotNames(pilotRows.value.map(m => m.email)).catch(() => { /* the emails still show */ });
+  void loadPilotSheet();
 }
 const pilotNote = ref('');
 /** Several emails at once, separated by commas, spaces or new lines (Ames
@@ -2545,11 +2571,14 @@ function practiceWhen(iso: string | null) {
         <span>{{ pilotSearch.trim() || pilotWho !== 'all' ? `${pilotShown.length} of ${pilotRows.length}` : `${pilotRows.length} testers` }}</span>
       </div>
       <div v-if="pilotRows.length" class="nge-pilot-who" role="tablist">
-        <button v-for="w in PILOT_WHO" :key="w" class="nge-pilot-who-btn" :class="{ 'is-on': pilotWho === w }"
+        <button v-for="w in PILOT_WHO.filter(x => x !== 'web' || pilotSheet)" :key="w" class="nge-pilot-who-btn" :class="{ 'is-on': pilotWho === w }"
                 role="tab" :aria-selected="pilotWho === w" @click="pilotWho = w">
-          {{ w === 'all' ? `All ${pilotRows.length}` : w === 'joined' ? `Joined ${pilotJoinedCount}` : `Invited, not joined ${pilotRows.length - pilotJoinedCount}` }}
+          {{ w === 'all' ? `All ${pilotRows.length}` : w === 'joined' ? `Joined ${pilotJoinedCount}` : w === 'web' ? `From the web ${pilotWebCount}` : `Invited, not joined ${pilotRows.length - pilotJoinedCount}` }}
         </button>
       </div>
+      <p v-if="pilotSheetError" class="nge-pilot-sheet-err" role="status">
+        Not checked against the Pyr Users sheet: {{ pilotSheetError }} Share the sheet with eyewire-ii-spreadsheet@eyewire-ii.iam.gserviceaccount.com (Viewer) so Pyr can read it.
+      </p>
       <p v-if="pilotRows.length && !pilotShown.length">Nobody matches "{{ pilotSearch.trim() }}".</p>
       <ul><li v-for="member in pilotShown" :key="member.email">
         <span>
@@ -2559,6 +2588,10 @@ function practiceWhen(iso: string | null) {
           <span v-if="!member.enabled">Access paused</span>
           <span v-else-if="pilotJoined(member)" class="nge-pilot-joined">Joined</span>
           <span v-else class="nge-pilot-invited" title="Invited, but nobody has signed in to Pyr with this email yet.">Invited, not joined yet</span>
+          <template v-if="pilotSheet">
+            · <span v-if="pilotFromWeb(member)" class="nge-pilot-web" title="Not on the Pyr Users sheet: they came from the web, by a Beta request.">From the web</span>
+            <span v-else class="nge-pilot-sheet" :title="`On the Pyr Users sheet, tab ${pilotSheet[member.email.toLowerCase()]}`">On the sheet</span>
+          </template>
         </span>
         <button @click="setPilot(member.email,!member.enabled)">{{ member.enabled ? 'Pause access' : 'Restore access' }}</button>
       </li></ul>
@@ -4751,6 +4784,9 @@ body.nge-practice-picking #nge-profile-modal { display: none !important; }
 li .nge-pilot-name--link { font:inherit; font-weight:700; color:#9fd3ff; background:none; border:none; padding:0; margin:0; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
 .nge-pilot-joined { color:#7CFFB2; }
 .nge-pilot-invited { color:#f5d142; }
+.nge-pilot-web { color:#ffb3e6; }
+.nge-pilot-sheet { color:#93a1b3; }
+.nge-pilot-sheet-err { color:#f5d142; font-size:0.85rem; }
 .nge-pilot-admin button { cursor:pointer; }
 .nge-beta-req li { align-items:flex-start; padding:10px 12px; margin:10px 0; border:1px solid rgba(116,133,154,0.45); border-radius:8px; background:rgba(21,36,52,0.55); }
 .nge-beta-req-meta { display:block; font-style:normal; color:#93a1b3; font-size:0.9rem; }
