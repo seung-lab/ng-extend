@@ -61,7 +61,24 @@ export const claimTime = reactive({
   running: null as number | null,
   /** When the player first worked on each claim (the first second counted), ISO. */
   startedAt: {} as Record<number, string>,
+  /** Each claim's kind and its seconds by US Eastern day ("2026-10-28"), from the server. */
+  days: {} as Record<number, { kind: string; byDay: Record<string, number> }>,
 });
+
+/** A day as the recaps count it: US Eastern, "2026-10-28". */
+const etDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+/** Seconds on Super Quests from start up to end (My Week, Month and Year in Science). */
+export function superQuestSecondsBetween(start: Date, end: Date): number {
+  const from = etDay(start), to = etDay(end);
+  let s = 0;
+  for (const { kind, byDay } of Object.values(claimTime.days)) {
+    if (kind !== 'interneuron') continue;
+    for (const [day, secs] of Object.entries(byDay)) if (day >= from && day < to) s += Number(secs) || 0;
+  }
+  return s;
+}
+/** Ask the server for the latest totals and days now. */
+export function refreshClaimTimes(): Promise<void> { return loadTotals(true); }
 
 interface Deps { claims: () => TimedClaim[]; signedIn: () => boolean }
 let deps: Deps | null = null;
@@ -200,6 +217,7 @@ async function loadTotals(force = false): Promise<void> {
     for (const r of Array.isArray(rows) ? rows : []) {
       serverSecs[Number(r.task_id)] = Number(r.active_seconds) || 0;
       if (r.first_at) claimTime.startedAt[Number(r.task_id)] = r.first_at;
+      if (r.by_day) claimTime.days[Number(r.task_id)] = { kind: String(r.kind || ''), byDay: r.by_day };
       show(Number(r.task_id));
     }
   } catch (e: any) {

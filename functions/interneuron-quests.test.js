@@ -113,5 +113,19 @@ test('one quest at a time, quests never expire and do not count against claims, 
   const row=(await db.query("SELECT nucleus_coords,claim_point_x,supervoxel_id,quest_category FROM proofreading_tasks WHERE segment_id='720575947567719448'")).rows[0];
   assert.deepEqual([row.nucleus_coords,row.claim_point_x,row.supervoxel_id,row.quest_category],['10, 20, 30',10,'88888888888888888','Non-Pyramidal Target']);
   assert.equal((await quest(A,'add',{dataset:'pni_mec',cells:[{segment_id:'720575947567719448'}]})).already,1);
+
+  // By day (supabase-super-quest-weekly.sql): the old total lands on one day, a beat adds to today, 'mine' carries both.
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase-super-quest-weekly.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase-super-quest-weekly.sql'),'utf8'));
+  const before=(await db.query('SELECT sum(seconds)::integer AS s FROM claim_active_days')).rows[0].s;
+  assert.equal(before,(await db.query('SELECT sum(active_seconds)::integer AS s FROM claim_active_time')).rows[0].s);
+  await db.exec(`UPDATE claim_active_time SET last_at=now()-interval '1 minute' WHERE task_id=${qid} AND user_id='${A}'`);
+  const qa=(await db.query(`SELECT id FROM proofreading_tasks WHERE assigned_to='${A}' AND kind='interneuron'`)).rows[0].id;
+  const b2=await time(A,'beat',{id:qa,seconds:30});
+  assert.equal(b2.active_seconds>=30,true);
+  const mineA=await time(A,'mine',{});
+  const rowA=mineA.find(r=>r.task_id===qa);
+  assert.equal(rowA.kind,'interneuron');
+  assert.equal(Object.values(rowA.by_day).reduce((x,y)=>x+y,0),rowA.active_seconds);
  } finally { await db.close(); }
 });
