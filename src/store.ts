@@ -4,6 +4,8 @@ import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
 import { taskAction } from './pilot_actions';
 import { startClaimTimer, countsTime, noteClaimSave, noteClaimFinished, type TimedClaim } from './util/claim_time';
+// A congratulations at 10, 25, 50 and 100 hours on a cell, and a finished Super Quest.
+import './util/claim_congrats';
 import { syncCellToSheet } from './sheet_sync';
 import { secureUpload } from './secure_upload';
 import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears } from './util/day_milestones';
