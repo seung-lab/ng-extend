@@ -504,3 +504,17 @@ body.nge-sbx-slim .introductionStepAnchor .chip:has(.nge-sbx-fold) .nge-chip-dra
    not behind it (Ames, 2026-10-24, Get Started's menu step). */
 body:has(#hamburger.open) .introductionStepAnchor { z-index: 2 !important; }
 body:has(#hamburger.open) #hamburger .dropdownMenu { z-index: 1000 !important; }
+
+/* The fold button sits in the box's top bar, left of the close button (and
+   of the admins' pencil), like a window control (Ames, 2026-10-28: at the
+   end of the dots it looked misplaced). On the slim bar it stays in the row. */
+.introductionStepAnchor .chip .nge-sbx-fold {
+  position: absolute; top: 9px; right: 38px; z-index: 4;
+  width: 24px; height: 24px; margin: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 4px; background: transparent;
+  color: rgba(226, 238, 251, 0.55); font-size: 12px; line-height: 1;
+}
+.introductionStepAnchor .chip .nge-sbx-fold:hover { background: rgba(196, 228, 255, 0.14); color: #fff; }
+.introductionStepAnchor .chip:has(.nge-tut-pencil) .nge-sbx-fold { right: 64px; }
+body.nge-sbx-slim .introductionStepAnchor .chip .nge-sbx-fold { position: static; margin-left: -4px; }
