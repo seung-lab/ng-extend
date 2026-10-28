@@ -664,6 +664,8 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
   waitingFor = { token, wantMerged };
   let startRoot = '';
   const startedAt = Date.now();
+  // For "a merge that brought no missing piece back".
+  let lastRoot = '', lastJoined = 0, offPiece = false;
   watchEditErrors();
   lastEditError = null;
   helpWanted = true;
@@ -751,6 +753,21 @@ export function watchPractice(wantMerged: boolean, waiting: string, finished: st
     if (wantMerged && !failed) {
       const pr = await groupProgress();
       if (token !== practiceWatch) return;
+      // A merge went through (the cell's segment changed) without bringing
+      // a missing piece back: say so. Andrearwen merged a real branch of the
+      // cell that was not one of the exercise's pieces, and read the
+      // unchanged count as her merge not being seen (2026-10-28).
+      const rootNow = currentPractice().rootA ?? '';
+      const joinedNow = pr?.joined ?? 0;
+      if (lastRoot && rootNow && rootNow !== lastRoot && joinedNow <= lastJoined) offPiece = true;
+      if (joinedNow > lastJoined) offPiece = false;
+      if (rootNow) lastRoot = rootNow;
+      lastJoined = joinedNow;
+      if (offPiece) {
+        practiceStatus('That merge went through, but it was not one of the missing pieces this exercise is about. Help me shows where they are.');
+        setTimeout(tick, 3000);
+        return;
+      }
       if (pr && pr.joined > 0 && pr.joined < pr.total) {
         practiceStatus(`Good merge! ${pr.joined} of the ${pr.total} missing pieces ${pr.joined === 1 ? 'is' : 'are'} back on. Find the ${pr.total - pr.joined === 1 ? 'last one' : 'rest'}.`);
         setTimeout(tick, 3000);

@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T18:08:00Z",
+      "title": "Merges that are not the missing piece",
+      "items": [
+        "In the Merge tutorial and the Extension Sandbox, a merge that goes through but is not one of the pieces the exercise asks for now says so, instead of leaving the count unchanged without a word."
+      ]
+    },
+    {
       "at": "2026-10-28T15:46:00Z",
       "title": "Chat tips",
       "items": [
