@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-28T19:33:00Z",
+      "at": "2026-10-28T21:26:00Z",
       "title": "MEC slices show up sooner",
       "items": [
         "On MEC the blurry picture that fills the 2D view while the sharp one loads now downloads about five times less, so a new spot or a new cell shows something much sooner, and the sharp view arrives a little sooner too."
