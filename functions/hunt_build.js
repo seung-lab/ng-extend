@@ -116,7 +116,8 @@ function helpNoteBody(merges, cuts, until) {
  * use at different stages"): one per kind of note, served by the game at /hunt/<name>.png and -128.png.
  */
 // Planted: Nurro watering the sprouts (EyeWire art, Ames 2026-10-27: "your submission has been planted shhh").
-const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'planted.jpg', released: 'scythe', sentBack: 'scythe' };
+// Planted: the sprout (Ames 2026-10-27: "growing mergers"); Nurro planting (planted.jpg) is kept as another choice.
+const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'sprout', released: 'scythe', sentBack: 'scythe' };
 const noteArt = (ctx, kind, small = false) => {
   if (!ctx || !ctx.site) return undefined;
   const name = NOTE_ART[kind] || 'scythe', dot = name.lastIndexOf('.');
@@ -193,6 +194,8 @@ const MOVES = {
   building: ['planting', 'proofread'],
   proofreading: ['dropped'],
   dropped: ['proofreading'],
+  // Proofread again (Ames 2026-10-27: "I want to reset the one I marked complete, bc I didn't actually check it").
+  put_back: ['proofreading'],
 };
 
 // ── Actions ─────────────────────────────────────────────────────────────────
@@ -462,6 +465,12 @@ async function move(args, ctx) {
   }
   // Straight from proofread to building (the proofreaders' own edits): locked and veiled from now.
   if (to === 'building' && c.status === 'proofread') patch.protected_roots = roots([...(c.protected_roots || []), c.root, c.proofread_root]);
+  // From put back or dropped: a fresh start. The task is Available again under the cell's ID now, and the old
+  // proofreader, lock and Hunt are let go. Completions already counted stay counted.
+  if (to === 'proofreading' && (c.status === 'put_back' || c.status === 'dropped')) {
+    Object.assign(patch, { proofread_by: null, proofread_at: null, proofread_root: null, protected_roots: [], hunt_id: null, hunt_root: null, suggest_until: null });
+    if (posInt(c.task_id)) await db.patchTask(posInt(c.task_id), { status: 'pending', assigned_to: null, segment_id: String(c.root), updated_at: now.toISOString() });
+  }
   if (to === 'proofreading' && c.status === 'proofread' && posInt(c.task_id)) {
     // Sent back: the task is the proofreader's again, with the admin's note.
     await db.patchTask(posInt(c.task_id), { status: 'assigned', updated_at: now.toISOString() });
@@ -736,18 +745,31 @@ function restDb(sb) {
 }
 
 /** For ewSecureWrite's pilot.task: refuse a claim on a protected cell (by its ID, or a task's). Never blocks when the table is missing. */
-async function claimGuard(sb, operation, args) {
+/**
+ * Claims, for ewSecureWrite's pilot.task: a protected cell cannot be claimed at all, and a Hunt candidate being
+ * proofread only by a player with production access (Ames 2026-10-27: "users must be production access in order to
+ * claim"). hasProduction() asks CAVE: true, false, or null when it could not be asked (then refused: never a yes by
+ * default). Admins pass the second check. Never blocks when the tables are missing.
+ */
+async function claimGuard(sb, operation, args, opts = {}) {
   if (operation !== 'claim' && operation !== 'claim_cell') return null;
-  let seg = '';
+  let seg = '', taskId = 0;
   if (operation === 'claim_cell') seg = String((args && args.segment_id) || '');
   else if (posInt(args && args.id)) {
-    const t = (await sb(`proofreading_tasks?id=eq.${posInt(args.id)}&select=segment_id&limit=1`))[0];
+    taskId = posInt(args.id);
+    const t = (await sb(`proofreading_tasks?id=eq.${taskId}&select=segment_id&limit=1`))[0];
     seg = t ? String(t.segment_id || '') : '';
   }
-  if (!isRoot(seg)) return null;
-  let cands;
-  try { cands = await restDb(sb).protectedCandidates(); } catch (e) { return null; }
-  return claimRefusal(cands, seg);
+  let cands, waiting;
+  try {
+    const db = restDb(sb);
+    [cands, waiting] = await Promise.all([db.protectedCandidates(), db.candidatesByStatus(['proofreading'])]);
+  } catch (e) { return null; }
+  if (isRoot(seg)) { const no = claimRefusal(cands, seg); if (no) return no; }
+  const isCandidate = waiting.some((c) => (taskId && posInt(c.task_id) === taskId) || (isRoot(seg) && String(c.root) === seg));
+  if (!isCandidate || opts.isAdmin) return null;
+  const prod = opts.hasProduction ? await opts.hasProduction().catch(() => null) : null;
+  return prod === true ? null : 'Hunt candidates are for players with production access.';
 }
 
 module.exports = {

@@ -256,14 +256,14 @@ function setLabAs(v: 'point' | 'stretch') {
 }
 const picked = () => allStyles.value.find(s => s.key === styleKey.value) ?? styles.value[0];
 /** The lab mark picked, when its marks are stretches. */
-const stretchKind = () => { const s = picked(); return s.lab && labAs.value === 'stretch' && !noTrace.value ? s : null; };
+const stretchKind = () => { const s = picked(); return s.lab && labAs.value === 'stretch' && !noTrace.value && !mec.value ? s : null; };
 const styleOf = (): HighlightStyle => {
   const k = stretchKind();
   return k ? { key: `${k.key}:hl`, label: k.label, layer: `${k.label} highlight`, color: k.color } : picked();
 };
 /** One click drops a mark: a lab point, or anywhere the server can't trace
  *  (MEC), a highlight spot. */
-const labOn = computed(() => !!noTrace.value || (!!allStyles.value.find(s => s.key === styleKey.value)?.lab && labAs.value === 'point'));
+const labOn = computed(() => !!noTrace.value || (!!allStyles.value.find(s => s.key === styleKey.value)?.lab && (labAs.value === 'point' || mec.value)));
 const rgbOf = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
 
 const TRACE_LIMIT_MS = 60000;
@@ -560,7 +560,7 @@ onBeforeUnmount(() => {
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--sm" type="button" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop</button>
-        <template v-if="first && !busy && !branchWay && !labOn">
+        <template v-if="first && !busy && !branchWay && !labOn && !mec">
           <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
           <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
         </template>
@@ -581,7 +581,7 @@ onBeforeUnmount(() => {
       <p v-if="mec" class="nge-hl-how">
         Pick a lab mark, then {{ isTouchRef ? 'tap' : 'Ctrl + click' }} the cell to drop it.
         <template v-if="noTrace">Or pick a highlight color to mark a spot.<br><span class="nge-hl-dim">{{ noTrace }}</span></template>
-        <template v-else>Or pick a highlight color and mark a checked stretch.</template>
+        <template v-else>Or pick a highlight color, then {{ isTouchRef ? 'tap' : 'Ctrl + click' }} where a checked stretch starts and where it ends.</template>
       </p>
       <p v-else class="nge-hl-how">
         <template v-if="isTouchRef">
@@ -596,7 +596,7 @@ onBeforeUnmount(() => {
       <div v-if="mec" class="nge-hl-mec">
         <div class="nge-hl-mec-head">
           <span>Lab marks</span><span class="nge-hl-mec-sub">axon first</span>
-          <div v-if="!noTrace" class="nge-hl-switch nge-hl-mec-as" role="radiogroup" aria-label="Lab marks as" :data-on="labAs === 'point' ? 'show' : 'hide'"
+          <div v-if="!noTrace && !mec" class="nge-hl-switch nge-hl-mec-as" role="radiogroup" aria-label="Lab marks as" :data-on="labAs === 'point' ? 'show' : 'hide'"
                title="Point: one click drops the lab's mark. Stretch: highlight a stretch in the mark's color, and its end gets the mark.">
             <button type="button" role="radio" :aria-checked="labAs === 'point' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('point')">Point</button>
             <button type="button" role="radio" :aria-checked="labAs === 'stretch' ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setLabAs('stretch')">Stretch</button>
@@ -619,7 +619,7 @@ onBeforeUnmount(() => {
           <button class="nge-hl-btn nge-hl-btn--ok" type="button" :disabled="busy" title="Put the Soma mark where the crosshairs are. Go to the starting point first to use the nucleus." @click="confirmSoma">{{ somaAt ? 'Move soma here' : 'Confirm soma here' }}</button>
         </div>
         <div v-else class="nge-hl-mec-actions">
-          <button v-if="!noTrace" class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
+          <button v-if="!noTrace && !mec" class="nge-hl-btn" type="button" :disabled="busy || !labCounts['mec:ais']" @click="colourAxon"
                   :title="labCounts['mec:ais'] ? 'Color everything beyond the AIS, away from the soma: the axon.' : 'Mark the AIS first: the axon is everything beyond it.'">Color the axon</button>
         </div>
       </div>
@@ -698,7 +698,7 @@ onBeforeUnmount(() => {
       </div>
       <!-- With one point placed: the way back to the soma, or everything
            beyond the point (Krzysztof Kruk's idea, 2026-10-09). -->
-      <div v-if="first && !busy && !branchWay && !labOn" class="nge-hl-branch">
+      <div v-if="first && !busy && !branchWay && !labOn && !mec" class="nge-hl-branch">
         <span class="nge-hl-branch-label">From here</span>
         <button class="nge-hl-btn" type="button" title="Mark the way from this point back to the soma." @click="markBranch('toward')">To soma</button>
         <button class="nge-hl-btn" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>

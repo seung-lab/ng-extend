@@ -24,6 +24,8 @@ const KIND_INFO: { key: string; label: string; hint: string }[] = [
   { key: 'mec:end', label: 'True End', hint: 'A branch end where the branch naturally stops.' },
   { key: 'mec:cantfix', label: "Can't Fix", hint: "A branch that should go on, but you can't find the next piece." },
   { key: 'mec:edge', label: 'Hits Edge', hint: 'A branch that reaches the end of the dataset.' },
+  // Super Quests only (Ames 2026-10-28).
+  { key: 'mec:checked', label: 'Checked', hint: 'A place you have checked and found right, so you know where you have been.' },
 ];
 /** The layer names and colours come from MEC_LAYERS, in the same order. */
 const LAB_KINDS: MecKind[] = KIND_INFO.map((k, i) => ({ ...k, layer: MEC_LAYERS[i].name, color: MEC_LAYERS[i].color }));
@@ -193,7 +195,8 @@ export function mecMarkSummary(): string {
   const c = mecCounts();
   const soma = somaXyz(), start = startXyz();
   const somaLine = !soma ? '' : start && samePoint(soma, start) ? 'Soma at the starting point. ' : `Soma ${soma.join(', ')}. `;
-  return somaLine + 'Marks: ' + LAB_KINDS.map(k => `${k.label} ${c[k.key]}`).join(', ');
+  // Checked (Super Quests) is named only when there are some.
+  return somaLine + 'Marks: ' + LAB_KINDS.filter(k => k.key !== 'mec:checked' || c[k.key]).map(k => `${k.label} ${c[k.key]}`).join(', ');
 }
 
 /**

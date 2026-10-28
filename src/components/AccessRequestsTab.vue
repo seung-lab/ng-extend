@@ -8,6 +8,7 @@
  */
 import { ref, computed, onMounted, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
+import DatasetRequestsList from 'components/DatasetRequestsList.vue';
 import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing, resetAccess,
   type AccessRequest, type AccessItem, type AccessFilter } from '../access_request';
 
@@ -127,6 +128,8 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
         </button>
       </div>
     </div>
+    <DatasetRequestsList />
+    <h3 class="nge-accr-retina">Retina requests</h3>
     <p class="nge-accr-how">
       Each player sends 7 cuts (red and blue Multicut points where they would cut) and 3 merges (merge points on the two pieces), placed but not submitted.
       Open an example in the view to judge every point, mark it good or redo, then ask for redos or grant edit access.
@@ -238,6 +241,7 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
 .nge-accr-row--good .nge-accr-kind { color: #7CFFB2; }
 .nge-accr-row--redo .nge-accr-kind { color: #f5d142; }
 .nge-accr-marks { color: #9fb0c4; }
+.nge-accr-retina { margin: 4px 0 0; font-size: 1.05rem; color: #e4ecf5; }
 .nge-accr-note { color: #b6c4d4; font-size: 0.9rem; white-space: pre-wrap; }
 .nge-accr-note--you { color: #e4ecf5; }
 .nge-accr-acts { white-space: nowrap; text-align: right; }

@@ -271,7 +271,7 @@ test('claims on a protected cell are refused, by its ID or any it had', () => {
 test('claimGuard reads a task\'s cell and never blocks when the tables are missing', async () => {
   const sb = async (path) => {
     if (path.startsWith('proofreading_tasks')) return [{ segment_id: CELL }];
-    if (path.startsWith('hunt_candidates')) return [{ status: 'suggesting', root: CELL, protected_roots: [] }];
+    if (path.startsWith('hunt_candidates') && path.includes('suggesting')) return [{ status: 'suggesting', root: CELL, protected_roots: [] }];
     return [];
   };
   assert.match(await B.claimGuard(sb, 'claim', { id: 7 }), /cannot be claimed/);
@@ -443,8 +443,41 @@ test('the Hunt Maker Achievement wears the scythe unless an admin picked one', (
   assert.equal(row.thumbnail_url, 'https://pyr.test/hunt/maker-128.png');
 });
 
-test('the planted note shows Nurro planting', () => {
-  assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'planted'), 'https://pyr.test/hunt/planted.jpg');
-  assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'planted', true), 'https://pyr.test/hunt/planted-128.jpg');
+test('the planted note shows the sprout', () => {
+  assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'planted'), 'https://pyr.test/hunt/sprout.png');
+  assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'planted', true), 'https://pyr.test/hunt/sprout-128.png');
   assert.equal(B.noteArt({ site: 'https://pyr.test' }, 'open', true), 'https://pyr.test/hunt/scythe-128.png');
+});
+
+test('a put back cell can be proofread again: its task is Available under its ID now', async () => {
+  const db = fakeDb();
+  const A = await openCell(db);
+  await B.buildAction('build.move', { id: 1, to: 'planting' }, A);
+  await B.buildAction('build.put_back', { id: 1, done: true, undone: [], cell_root: CELL2 }, A);
+  assert.equal(db._t.candidates[0].status, 'put_back');
+  const l = await B.buildAction('build.list', {}, A);
+  assert.deepEqual(l.cells[0].moves, ['proofreading']);
+  await B.buildAction('build.move', { id: 1, to: 'proofreading' }, A);
+  const c = db._t.candidates[0], task = db._t.tasks[0];
+  assert.equal(c.status, 'proofreading');
+  assert.equal(c.proofread_by, null);
+  assert.deepEqual(c.protected_roots, []);
+  assert.equal(task.status, 'pending');
+  assert.equal(task.assigned_to, null);
+  assert.equal(task.segment_id, CELL2);
+  assert.equal((await B.buildAction('build.guard', {}, ctx(db, P2))).cells.length, 0, 'not guarded any more');
+});
+
+test('a Hunt candidate is claimed only with production access (admins pass); CAVE not answering is a no', async () => {
+  const sb = async (path) => {
+    if (path.startsWith('proofreading_tasks')) return path.includes('id=eq.7') ? [{ segment_id: CELL }] : [{ segment_id: '648518346349000000' }];
+    if (path.startsWith('hunt_candidates') && path.includes('proofreading')) return [{ status: 'proofreading', root: CELL, task_id: 7, protected_roots: [] }];
+    return [];
+  };
+  assert.match(await B.claimGuard(sb, 'claim', { id: 7 }, { hasProduction: async () => false }), /production access/);
+  assert.match(await B.claimGuard(sb, 'claim', { id: 7 }, { hasProduction: async () => null }), /production access/);
+  assert.equal(await B.claimGuard(sb, 'claim', { id: 7 }, { hasProduction: async () => true }), null);
+  assert.equal(await B.claimGuard(sb, 'claim', { id: 7 }, { isAdmin: true }), null);
+  assert.match(await B.claimGuard(sb, 'claim_cell', { segment_id: CELL }, { hasProduction: async () => false }), /production access/);
+  assert.equal(await B.claimGuard(sb, 'claim', { id: 8 }, { hasProduction: async () => false }), null, 'another task: no check');
 });

@@ -288,12 +288,15 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
   // seconds for a short path"). There the cell's branch map comes first: one
   // fetch per cell, then every stretch is worked out here. Without one, the
   // quick path, whose staircase the color reach covers.
+  // MEC: the branch map only. Its path server takes minutes, so a failed
+  // branch map is said plainly rather than handed to it.
   if (isMec()) {
     try {
       return await addBranchHighlight(a, 'toward', style, b, stillWanted, '');
-    } catch (e) {
+    } catch (e: any) {
       if (!stillWanted()) return 0;
-      console.warn('[highlight] MEC branch map failed, trying the quick path:', e);
+      console.warn('[highlight] MEC branch map failed:', e);
+      throw new Error(/different cells|too much/.test(String(e?.message)) ? e.message : "Pyr couldn't read this cell's branch map. Try again in a moment.");
     }
   }
   let nm: number[][] | null = null;
@@ -681,7 +684,8 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
   // on screen that touch the edge (no server call, but the whole cell, and a
   // branch running along the edge counts too).
   let graph: BranchGraph | null = null;
-  if (!traceOffReason()) {
+  // MEC's data is not a box, so its edge comes from the image mask below.
+  if (!traceOffReason() && !isMec()) {
     try { graph = await branchGraphOf(layer, root); } catch (e) { console.warn('[highlight] no branch map, using the meshes:', e); }
   }
   if (!stillWanted()) return { added: 0, already: 0, axonOnly: false };
@@ -1123,7 +1127,10 @@ async function autoEdgeTick() {
   } catch (e) { console.warn('[highlight] Hits Edge on its own failed:', e); }
   finally { autoBusy = false; autoEdgeNews.looking = null; }
 }
+/** Off for now (Ames 2026-10-28: "get rid of hits edge"). */
+const AUTO_EDGE_MARKS = false;
 /** Call once the viewer exists. */
 export function startAutoEdgeMarks() {
+  if (!AUTO_EDGE_MARKS) return;
   setInterval(() => { void autoEdgeTick(); }, 4000);
 }

@@ -14,16 +14,22 @@ const GOOD = {name: 'New Player', email: 'New.Player@Example.org'};
 
 function world() {
   const issues = [];
+  const triage = [];
   const told = [], posted = [];
   const sb = async (p, init = {}) => {
     if (p.startsWith('site_issues?')) {
       const q = new URLSearchParams(p.split('?')[1]);
       const cat = (q.get('category') || '').replace(/^eq\./, '');
       const uid = (q.get('user_id') || '').replace(/^eq\./, '');
-      return issues.filter(i => i.category === cat && i.user_id === uid).map(i => ({id: i.id}));
+      return issues.filter(i => i.category === cat && i.user_id === uid).slice().reverse().map(i => ({id: i.id, created_at: i.created_at}));
+    }
+    if (p.startsWith('feedback_triage?')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const sid = (q.get('source_id') || '').replace(/^eq\./, '');
+      return triage.filter(t => t.source_id === sid);
     }
     if (p === 'site_issues' && init.method === 'POST') {
-      for (const r of JSON.parse(init.body)) issues.push({id: 'i' + (issues.length + 1), ...r});
+      for (const r of JSON.parse(init.body)) issues.push({id: 'i' + (issues.length + 1), created_at: new Date(Date.now() + issues.length).toISOString(), ...r});
       return [];
     }
     throw new Error('unexpected ' + p);
@@ -32,7 +38,7 @@ function world() {
   const io = (over = {}) => ({sb, me, who: {email: 'signin@example.org'}, isAdmin: false, isPilot: false,
     notifyAdmins: async n => { told.push(n); }, notifyReviewers: async () => { throw new Error('beta goes to every admin'); },
     postIssue: async p => { posted.push(p); }, ...over});
-  return {issues, told, posted, io};
+  return {issues, triage, told, posted, io};
 }
 
 test('a tester or an admin is invited, and nothing is filed', async () => {
@@ -130,4 +136,23 @@ test('a failed bell or Slack post still keeps the request', async () => {
   const out = await handle('access.beta', GOOD, w.io({notifyAdmins: async () => { throw new Error('down'); }, postIssue: async () => { throw new Error('down'); }}));
   assert.strictEqual(out.requested, true);
   assert.strictEqual(w.issues.length, 1);
+});
+
+test('a request an admin removed, or dismissed on the triage board, may be sent again', async () => {
+  const w = world();
+  await handle('access.beta', GOOD, w.io());
+  assert.strictEqual((await handle('access.betaStatus', {}, w.io())).requested, true);
+  // Removed in the Admin Hub, after the request.
+  const marks = {'signin@example.org': {mark: 'removed', at: new Date(Date.now() + 1000).toISOString()}};
+  const removed = w.io({marks: {all: async () => marks}});
+  assert.strictEqual((await handle('access.betaStatus', {}, removed)).requested, false);
+  const again = await handle('access.beta', GOOD, removed);
+  assert.strictEqual(again.requested, true);
+  assert.strictEqual(w.issues.length, 2);
+  // Only "On the list" keeps it open.
+  marks['signin@example.org'] = {mark: 'listed', at: new Date(Date.now() + 2000).toISOString()};
+  assert.strictEqual((await handle('access.betaStatus', {}, w.io({marks: {all: async () => marks}}))).requested, true);
+  // Dismissed on the triage board.
+  w.triage.push({source_id: w.issues[1].id, status: 'dismissed'});
+  assert.strictEqual((await handle('access.betaStatus', {}, w.io())).requested, false);
 });

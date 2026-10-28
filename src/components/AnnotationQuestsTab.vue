@@ -40,11 +40,19 @@ const you = ref('');
 /** The row last clicked, opened or jumped to (Ames 2026-10-13: "I have no
  *  idea what cell I'm on"). */
 const current = ref('');
+/** The Cell Library's slim bar (toknow, report 288): only the quest cell you
+ *  are on (the active one, else the one you last opened, else your first). */
+const props = defineProps<{ slim?: boolean }>();
 
 const myKeys = computed(() => new Set([you.value, backend.userName, backend.username].map(nameKey).filter(Boolean)));
 const isMine = (r: QuestRow) => !!r.annotator && myKeys.value.has(nameKey(r.annotator));
 const isDone = (r: QuestRow) => !!r.status;
 const mine = computed(() => rows.value.filter(r => isMine(r) && !isDone(r)));
+const mineShown = computed(() => {
+  if (!props.slim) return mine.value;
+  const pick = mine.value.find(isActive) ?? mine.value.find(r => r.segmentId === current.value) ?? mine.value[0];
+  return pick ? [pick] : [];
+});
 /** When to use the status chosen, in the lab's words (its reference sheet). */
 const statusHint = computed(() => QUEST_STATUS_GUIDE[form.value.status] || '');
 /** At the limit of cells held at once: Claim waits for a Submit or a Release. */
@@ -322,7 +330,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 
 <template>
   <div class="nge-aq">
-    <div class="nge-aq-head">
+    <div v-if="!slim" class="nge-aq-head">
       <div class="nge-aq-titlerow">
         <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
         <button ref="infoEl" class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp, 'nge-aq-info--nudge': nudging }" @click="toggleHelp" title="How to do a Cilia Quest">
@@ -350,9 +358,10 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
       <div v-if="loading && !rows.length" class="nge-aq-empty">Reading the quest sheet…</div>
       <template v-else-if="rows.length">
         <!-- Yours: taken, not yet submitted -->
-        <template v-if="mine.length">
-          <div class="nge-aq-section">Yours</div>
-          <template v-for="r in mine" :key="r.segmentId">
+        <div v-if="slim && !mineShown.length" class="nge-aq-empty nge-aq-empty--tight">No quest cell of yours yet. Open the full view to claim one.</div>
+        <template v-if="mineShown.length">
+          <div v-if="!slim" class="nge-aq-section">Yours</div>
+          <template v-for="r in mineShown" :key="r.segmentId">
             <div class="nge-aq-row nge-aq-row--mine" :class="{ 'nge-aq-row--current': current === r.segmentId && !isActive(r), 'nge-aq-row--active': isActive(r) }">
               <div class="nge-aq-row-left">
                 <span class="nge-aq-pip nge-aq-pip--claimed"></span>
@@ -401,6 +410,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
           </template>
         </template>
 
+        <template v-if="!slim">
         <!-- Open: nobody's yet -->
         <div class="nge-aq-section">Open <span class="nge-aq-count">{{ available.length }}</span>
           <button v-if="nextRoom > 0" class="nge-aq-btn nge-aq-btn--take nge-aq-btn--next" :disabled="!!busy" @click="takeNext"
@@ -484,6 +494,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               </div>
             </div>
           </template>
+        </template>
         </template>
       </template>
       <div v-else-if="!loading && !error" class="nge-aq-empty">The quest sheet has no cells yet.</div>

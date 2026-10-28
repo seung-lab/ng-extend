@@ -34,6 +34,10 @@ export interface DatasetEntry {
   label: string;
   /** Compact name for inline UI (chat chips, badges) where `label` is too long. */
   shortLabel: string;
+  /** Production levels (Ames 2026-10-28): the retina is Level 1, earned with
+   *  edit access; MEC is Level 2, asked for once Level 1 is unlocked. Shown on
+   *  the dataset's card. */
+  level?: number;
   /** Shortest name, for the top bar's "Data:" button. */
   abbrev: string;
   /** Organism the volume comes from; drives the species icon. */
@@ -132,6 +136,7 @@ export function isDatasetShown(ds: DatasetEntry): boolean {
 export const DATASETS: DatasetEntry[] = [
   {
     id: 'stroeh_mouse_retina',
+    level: 1,
     origin: 'Princeton',
     section: 'production',
     cellTasks: true,
@@ -539,12 +544,14 @@ export const DATASETS: DatasetEntry[] = [
   },
   {
     id: 'pni_mec',
+    level: 2,
     origin: 'Princeton',
     section: 'production',
     cellTasks: true,
-    // Highlight's lab marks need no server; tracing stays off, for the
-    // reason highlightOff gives (2026-10-02).
-    highlightNoTrace: "MEC's server can't trace along a cell yet, so here marks are spots, not stretches.",
+    // Highlight traces on MEC by the cell's branch map only, never the path
+    // server (highlight.ts addHighlight). The branch map answers in about 2 s;
+    // MEC keeps no piece positions, so the chunk middles stand in (Ames's
+    // console test, 2026-10-28).
     caveDataset: 'HiMC',
     thumbnail: thumbMec,
     label: 'Medial Entorhinal Cortex',

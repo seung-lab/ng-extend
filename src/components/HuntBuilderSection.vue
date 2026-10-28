@@ -109,7 +109,8 @@ async function move(r: Row, to: string) {
       : to === 'building' && r.status === 'proofread' ? 'The cell is locked and hidden from players now. Make the Hunt from the proofreaders\' edits when you are ready.'
       : to === 'planting' ? 'Suggestions are closed and the cell is veiled: players can\'t see it in Pyr now. Go through them to plant.'
       : to === 'building' ? 'Planting is done. Make the Hunt from it when you are ready.'
-      : to === 'proofreading' && r.status === 'proofread' ? 'Sent back to the proofreader, with your note.' : `Done: ${STATUS_WORD[to] || to}.`;
+      : to === 'proofreading' && r.status === 'proofread' ? 'Sent back to the proofreader, with your note.'
+      : to === 'proofreading' && r.status === 'put_back' ? 'Back to Proofreading: its task is Available in the Cell Library again, for anyone to claim.' : `Done: ${STATUS_WORD[to] || to}.`;
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
@@ -214,7 +215,8 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
             <span class="nge-hb-admin-id">…{{ r.root.slice(-6) }}</span>
             <span class="nge-hb-admin-chip">{{ STATUS_WORD[r.status] }}</span>
             <span class="nge-hb-admin-who">{{ who(r) }}</span>
-            <button v-if="r.status === 'dropped'" class="nge-hb-admin-btn nge-hb-admin-btn--small" :disabled="!!busy" @click="move(r, 'proofreading')">Bring back</button>
+            <button v-if="r.status === 'dropped' || r.status === 'put_back'" class="nge-hb-admin-btn nge-hb-admin-btn--small" :disabled="!!busy"
+                    title="Back to stage 1: its Cell Library task is Available again, under the cell's ID now, for anyone to claim and proofread" @click="move(r, 'proofreading')">{{ r.status === 'put_back' ? 'Proofread again' : 'Bring back' }}</button>
           </span>
         </li>
       </ul>
