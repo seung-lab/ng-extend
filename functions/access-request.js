@@ -690,7 +690,10 @@ async function datasetDecide(a, io) {
     try {
       if (a.mark === 'granted') {
         await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120),
-          body: `You're in! An admin gave you access to ${mdText(label)}. Reload Pyr, then open it from the Dataset button.` + said});
+          body: `Congratulations, you're in! An admin gave you access to ${mdText(label)}. Reload Pyr, then open it from the Dataset button.
+
+`
+            + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.' + said});
       } else {
         await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),
           body: `Not yet, sorry: your request for ${mdText(label)} was looked at, and access was not given this time.` + said});
