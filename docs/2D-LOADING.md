@@ -202,6 +202,46 @@ live 6 grey episodes per run, 6.6 and 8.0 s in total (2 runs); with the fix
 none in 3 runs, and the first full view equally fast (about 8 s). On the fast
 link, scrolling steadily, none either way except one at the start on live.
 
+## MEC (report 290, 2026-10-28)
+
+Nik: "MEC 2D too slow to load". The MEC image
+(`c10s.pni.princeton.edu/mec_alignment_2025-09/alignment/img/v2`, unchanged
+since 2025-12-23) is laid out unlike the other datasets:
+
+| Level | Chunk | Encoding | On the wire |
+|---|---|---|---|
+| 16 nm | 2048x2048x1 | raw (gzip) | 3.5 MB, one slice deep |
+| 32 nm | 256x256x32 | raw (gzip) | 1.8 MB |
+| 64 nm and coarser | 256x256x32 | JPEG | 0.7 to 0.8 MB |
+
+The server answers in about 0.15 s and sends 3 to 12 MB/s here, HTTP/1.1. So
+the cost is bytes. At crossSectionScale 1 the single 2D panel (Pyr shows
+xy-3d) needs four 16 nm chunks, 14.5 MB, for every slice: the chunks are one
+slice deep, so each slice step fetches a fresh 14.5 MB. Every coarse level has
+2 MiB uncompressed chunks, so the fallback rule kept the nearest one, 32 nm,
+which is stored raw: 9 chunks and 16 MB per view, more than the sharp view.
+
+Fix (`sliceview/base.ts` `selectFallbackScales`): the expensive fallback kept
+is the nearest one not stored raw, when there is one. MEC now keeps 64 nm
+JPEG (4 chunks, 3.2 MB). A pyramid raw throughout (the Sandbox) and cheap ones
+(Retina) are unchanged.
+
+Measured with `--state mec-image` (x 115000, y 115000, z 5000), one run each,
+live / fix:
+
+| | full | bytes per cold view | blurry picture |
+|---|---|---|---|
+| fast link | 3.4 s / 2.4 s | 30.8 MB / 17.9 MB | 16.5 MB / 3.6 MB |
+| 20 Mbps | 16.3 s / 14.7 s | same | about 6.6 s / 1.4 s of transfer |
+| one slice step, 20 Mbps | 6.3 s / 6.2 s | 14.5 MB both | stays on screen both |
+
+What Pyr cannot fix: the 14.5 MB per slice at 16 nm. Rechunking that level
+like the others (256x256x32, JPEG) would cut a slice step to well under 1 MB
+on average; that is the PNI lab's data. Super Quests (deployed 18:45 UTC the
+same day) were checked and are not a cause: the claim timer reads a few layer
+fields once a second and sends one small request a minute, and the MEC layers
+it adds are local annotation layers that fetch nothing.
+
 ## Open items
 
 - The curated production start states (nglstate 5631012797153280 and
