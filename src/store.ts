@@ -4445,6 +4445,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    * full year also get the big centre celebration. A first count of old days
    * is a correction, not a day earned just now, so it celebrates nothing.
    */
+  const DAY_NOTES_OFF = true;
   function celebrateDays(before: unknown, now: unknown, recounted: boolean) {
     if (recounted || typeof before !== 'number' || typeof now !== 'number' || now <= before) return;
     // Loyalty achievements listen for this (AchievementToast.vue); the note is
@@ -4453,6 +4454,12 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       (window as any).__ngeLoyaltyDays = { before, now };
       document.dispatchEvent(new CustomEvent('nge:loyalty-days', { detail: { before, now } }));
     } catch { /* no document */ }
+    // The Loyalty Achievements (badge_definitions.ts) now mark these same days
+    // with their own note, art and celebration, so the older "Day 60 at
+    // EyeWire II" note doubled up (Ames 2026-10-28: "is this right? two
+    // notifications?"). It is no longer sent; the profile still counts the
+    // days to the next step.
+    if (DAY_NOTES_OFF) return;
     const reached = dayMilestonesReached(before, now);
     const days = reached[reached.length - 1];
     if (!days || !userId.value) return;
