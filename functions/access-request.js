@@ -43,6 +43,8 @@ const BRAX = 'https://raw.githubusercontent.com/seung-lab/ng-extend/ee4677eeb1a5
 // Fly neurons by neurotransmitter on access granted (Ames 2026-10-16), pinned the same way.
 const GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/18309c4c1fc327d83e7dfff540f83485f8bf52b9/static/access/fly-neurons-by-neurotransmitter.jpg';
 const GRANTED_TITLE = '🎉 Congratulations! Your edit access has been granted!';
+// The open padlock on a dataset grant (Ames 2026-10-28).
+const DATASET_GRANTED = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
 const IMAGE = {request: BRAX, notes: NURRO + 'nurro-experiment-recap.png', invited: GRANTED};
 const EW_NAME_MAX = 60;
 const LINK_MAX = 2000, NOTE_MAX = 1000, FEEDBACK_MAX = 2000, DECIDE_MAX = 4000, AFFIL_MAX = 200;
@@ -585,6 +587,8 @@ const DATASET_CATEGORY = 'Dataset access';
  *  here is still granted by hand in CAVE (Ames 2026-10-28: "can we make a way
  *  for me to grant access?"). MEC_Edit, group 217, made by Marissa. */
 const DATASET_CAVE_GROUPS = {pni_mec: {id: 217, name: 'MEC_Edit'}};
+/** The short name a player knows a dataset by, for the bell. */
+const DATASET_SHORT = {pni_mec: 'MEC'};
 const DATASET_BELL = '🔓 Dataset access request';
 const DATASET_MARKS = ['granted', 'declined', 'waiting'];
 const DS_ID = /^[a-z0-9_]{2,40}$/;
@@ -689,10 +693,9 @@ async function datasetDecide(a, io) {
     const said = note ? '\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
     try {
       if (a.mark === 'granted') {
-        await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120),
-          body: `Congratulations, you're in! An admin gave you access to ${mdText(label)}. Reload Pyr, then open it from the Dataset button.
-
-`
+        const short = DATASET_SHORT[row.dataset] || label;
+        await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120), image: DATASET_GRANTED,
+          body: `Congratulations, you're in!\n\n**Your access to ${mdText(short)} has been granted!** Reload Pyr, then open it from the Dataset button.\n\n`
             + 'Please use your new power with care: this is a real dataset, and your edits directly change the connectome.' + said});
       } else {
         await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),

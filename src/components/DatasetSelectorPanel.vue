@@ -14,6 +14,7 @@ import { QUEST_DATASET, questState, questOpenCount } from '../annotation_quests'
 import { useProofreadingBackendStore } from '../store';
 import { skipNextViewRestoreOffer } from '../util/view_autosave';
 import RequestAccessButton from './RequestAccessButton.vue';
+import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
 
 const emit = defineEmits({ hide: null });
@@ -280,11 +281,11 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                       <div class="nge-ds-variant-text">
                         <div class="nge-ds-variant-label">{{ ds.variantLabel || ds.label }}</div>
                         <div class="nge-ds-card-desc">{{ ds.description }}</div>
-                        <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked">🔒 Unlock Level 1 (Retina) before moving to {{ ds.shortLabel || ds.label }}.</div>
+                        <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked"><img :src="lockIcon" class="nge-ds-lock" alt="" aria-hidden="true" /> Unlock Level 1 (Retina) before moving to {{ ds.shortLabel || ds.label }}.</div>
                         <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                       </div>
                       <div v-if="ds.id === currentDatasetId" class="nge-ds-tag">Active</div>
-                      <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-tag nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
+                      <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-tag nge-ds-badge--locked"><img :src="lockIcon" class="nge-ds-lock" alt="" aria-hidden="true" /> No access</div>
                       <div v-else-if="accessOf(ds) === 'view'" class="nge-ds-tag nge-ds-badge--view">View only</div>
                     </div>
                   </div>
@@ -307,7 +308,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   <div class="nge-ds-card-label">{{ ds.label }}<span v-if="ds.level" class="nge-ds-level" :title="ds.level === 1 ? 'Level 1: unlocked with retina edit access' : `Level ${ds.level}: ask for it once Level ${ds.level - 1} is unlocked`">Level {{ ds.level }}</span></div>
                   <div class="nge-ds-card-desc">{{ ds.description }}</div>
                   <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
-                  <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked">🔒 Unlock Level 1 (Retina) before moving to {{ ds.shortLabel || ds.label }}.</div>
+                  <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked"><img :src="lockIcon" class="nge-ds-lock" alt="" aria-hidden="true" /> Unlock Level 1 (Retina) before moving to {{ ds.shortLabel || ds.label }}.</div>
                   <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                   <!-- The Sandbox: one way in, the tutorial you are on (Ames 2026-10-28). -->
                   <div v-if="ds.section === 'sandbox'" class="nge-ds-tasks">
@@ -332,7 +333,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   </div>
                   </div>
                   <div v-if="ds.id === currentDatasetId" class="nge-ds-badge">Active</div>
-                  <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-badge nge-ds-badge--locked"><span aria-hidden="true">🔒</span> No access</div>
+                  <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-badge nge-ds-badge--locked"><img :src="lockIcon" class="nge-ds-lock" alt="" aria-hidden="true" /> No access</div>
                   <div v-else-if="accessOf(ds) === 'view'" class="nge-ds-badge nge-ds-badge--view">View only</div>
                 </div></template>
                 </template>
@@ -605,7 +606,9 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
 .nge-ds-locked .nge-ds-card-text > :not(.nge-ds-request) { opacity: 0.45; }
 /* The way in stays bright on a locked card (Ames 2026-10-28). */
 .nge-ds-request { margin-top: 8px; cursor: default; }
-.nge-ds-request--locked { font-size: 12px; color: #b6c4d4; opacity: 0.85; }
+.nge-ds-request--locked { font-size: 12px; color: #b6c4d4; opacity: 0.85; display: flex; align-items: center; gap: 6px; }
+/* The padlock (Ames 2026-10-28), in place of the emoji. */
+.nge-ds-lock { width: 16px; height: 16px; object-fit: contain; vertical-align: -3px; flex: none; }
 .nge-ds-level { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; vertical-align: middle;
   color: #9fd3ff; background: rgba(100, 200, 255, 0.12); border: 1px solid rgba(100, 200, 255, 0.35); }
 .nge-ds-locked .nge-ds-level { opacity: 1; }
