@@ -5433,8 +5433,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     const at = Date.parse(String((n as any).send_at || (n as any).created_at || ''));
     return Number.isFinite(at) && Date.now() - at > UPDATE_STALE_MS;
   }
+  /** Whether Hunt reports count right now: only during a Hunt or its
+   *  preparation (NotificationFeedPanel keeps this in step with the Hunts;
+   *  Ames 2026-10-27). Off, the bell's counts leave them out. */
+  const huntReportsShown = ref(true);
+  const counted = (n: { title?: string | null }) => huntReportsShown.value || notifKind(n.title, isAdmin.value) !== 'hunt';
   const unreadNotificationCount = computed(() =>
-    notifications.value.filter(n => !notifRead(n)).length
+    notifications.value.filter(n => !notifRead(n) && counted(n)).length
   );
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
@@ -5444,7 +5449,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Unread in the bell's Admin and Triage tabs together: the dot on the
    *  Player view chip, so admin alerts still show while those tabs are hidden. */
   const unreadStaffNotificationCount = computed(() =>
-    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) !== 'main').length
+    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) !== 'main' && counted(n)).length
   );
 
   // The bell used to ask for the 50 newest notifications in full, twice a
@@ -6423,7 +6428,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // Admin Hub
     isAdmin, checkAdmin, isBlogAuthor, playerView, setPlayerView, showAdminUi,
     // Notifications
-    notifications, notificationReads, notifRead, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
+    notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
     markNotificationRead, markAllNotificationsRead,
