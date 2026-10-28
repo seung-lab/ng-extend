@@ -83,8 +83,71 @@ async function open(p: Post | null) {
     docEl.value.querySelectorAll('figure').forEach(f => { if (!f.querySelector('figcaption')) f.appendChild(document.createElement('figcaption')); });
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); document.execCommand('styleWithCSS', false, 'false'); } catch { /* old browser */ }
   }
+  savedSnapshot.value = snapshot();
+  const local = readLocal(id.value);
+  offerLocal.value = local && local.html !== (docEl.value?.innerHTML ?? '') ? local : null;
 }
-function back() { editing.value = false; message.value = ''; problem.value = ''; void load(); }
+function back() {
+  keepLocalNow();
+  editing.value = false; message.value = ''; problem.value = ''; void load();
+}
+
+// ── Never lose a post (Ames 2026-10-28: "I edited the whole blog AND IT
+// DIDN'T SAVE bc the site refreshed") ───────────────────────────────────
+// Every change is kept in this browser a moment after you stop typing, by
+// post (a new post under "new"). Opening the post again offers it back while
+// it differs from what the server has. A save to the server clears it. A
+// reload or a closed tab with unsaved work asks first.
+const LOCAL_PREFIX = 'nge_blog_unsaved_';
+interface LocalCopy { id: number | null; title: string; slug: string; summary: string; coverUrl: string; html: string; at: string; }
+const localKey = (pid: number | null) => LOCAL_PREFIX + (pid ?? 'new');
+function readLocal(pid: number | null): LocalCopy | null {
+  try { const v = JSON.parse(localStorage.getItem(localKey(pid)) || 'null'); return v && typeof v.html === 'string' ? v : null; } catch { return null; }
+}
+function clearLocal(pid: number | null) { try { localStorage.removeItem(localKey(pid)); } catch { /* storage blocked */ } }
+/** What is on the page now, to tell whether it changed. */
+const snapshot = () => JSON.stringify([title.value, slug.value, summary.value, coverUrl.value, docEl.value?.innerHTML ?? '']);
+const savedSnapshot = ref('');
+const unsaved = () => editing.value && !!docEl.value && snapshot() !== savedSnapshot.value;
+function keepLocalNow() {
+  if (!unsaved()) return;
+  const copy: LocalCopy = { id: id.value, title: title.value, slug: slug.value, summary: summary.value,
+    coverUrl: coverUrl.value, html: docEl.value?.innerHTML ?? '', at: new Date().toISOString() };
+  try { localStorage.setItem(localKey(id.value), JSON.stringify(copy)); } catch { /* storage full or blocked */ }
+}
+let keepTimer: ReturnType<typeof setTimeout> | null = null;
+function keepLocalSoon() {
+  if (keepTimer) clearTimeout(keepTimer);
+  keepTimer = setTimeout(() => { keepTimer = null; keepLocalNow(); }, 800);
+}
+watch([title, slug, summary, coverUrl], () => { if (editing.value) keepLocalSoon(); });
+/** An unsaved copy that differs from the post: offered at the top of the editor. */
+const offerLocal = ref<LocalCopy | null>(null);
+function restoreLocal() {
+  const c = offerLocal.value;
+  offerLocal.value = null;
+  if (!c || !docEl.value) return;
+  title.value = c.title; slug.value = c.slug; summary.value = c.summary; coverUrl.value = c.coverUrl;
+  slugTouched.value = true;
+  docEl.value.innerHTML = c.html || EMPTY;
+  message.value = 'Your unsaved changes are back. Save or publish to keep them.';
+}
+function dropLocal() { if (offerLocal.value) clearLocal(offerLocal.value.id); offerLocal.value = null; }
+// Leaving the page with unsaved work: kept here, and the browser asks first.
+function onLeave(e: BeforeUnloadEvent) {
+  if (!unsaved()) return;
+  keepLocalNow();
+  e.preventDefault();
+  e.returnValue = '';
+}
+function onHide() { if (document.hidden) keepLocalNow(); }
+window.addEventListener('beforeunload', onLeave);
+document.addEventListener('visibilitychange', onHide);
+onBeforeUnmount(() => {
+  keepLocalNow();
+  window.removeEventListener('beforeunload', onLeave);
+  document.removeEventListener('visibilitychange', onHide);
+});
 
 const bodyText = () => docEl.value ? documentToMarkdown(docEl.value) : '';
 function togglePreview() {
@@ -117,7 +180,10 @@ async function save(next: 'draft' | 'published') {
       : 'Could not save: ' + (error?.message || 'no answer from the server');
     return;
   }
+  clearLocal(id.value);
   id.value = (data as any).id;
+  clearLocal(id.value);
+  savedSnapshot.value = snapshot();
   status.value = (data as any).status;
   publishedAt.value = (data as any).published_at ?? null;
   slugTouched.value = true;
@@ -447,6 +513,11 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
         <button class="nge-blog-btn" @click="back">← All posts</button>
         <span class="nge-blog-pill" :class="'nge-blog-pill--' + status">{{ id === null ? 'New post' : status === 'published' ? 'Published' : 'Draft' }}</span>
       </div>
+      <div v-if="offerLocal" class="nge-blog-restore" role="status">
+        <span>You have unsaved changes to this post from {{ when(offerLocal.at) }}.</span>
+        <button class="nge-blog-btn nge-blog-btn--primary" @click="restoreLocal">Restore them</button>
+        <button class="nge-blog-btn" @click="dropLocal">Discard</button>
+      </div>
 
       <label class="nge-blog-field">
         <span>Title</span>
@@ -515,7 +586,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
           </form>
 
           <div v-show="!showPreview" ref="docEl" class="nge-blog-doc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Post"
-               spellcheck="true" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
+               spellcheck="true" @input="keepLocalSoon" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
           <div v-if="showPreview" class="nge-blog-doc nge-blog-doc--preview" v-html="previewHtml"></div>
         </div>
         <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Click a picture or video and press Delete to remove it.</p>
@@ -544,6 +615,11 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 </template>
 
 <style scoped>
+.nge-blog-restore {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px;
+  border-radius: 8px; border: 1px solid rgba(245, 209, 66, 0.5); background: rgba(245, 209, 66, 0.08); color: #f3e7b5;
+}
+.nge-blog-restore span { flex: 1 1 260px; }
 .nge-blog { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 24px; overflow-y: auto; max-height: calc(90 * var(--nge-vh, 1vh) - 100px);
   /* A page width of its own: long lines of text must not stretch the profile window. */
   width: min(900px, calc(100 * var(--nge-vw, 1vw) - 48px)); max-width: 100%; box-sizing: border-box;
