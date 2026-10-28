@@ -654,6 +654,15 @@ const savedViewAt = ref<Record<number, number>>({});
 const showsMecMarks = (cell: CellRow) => canonicalDataset(cell.dataset) === 'pni_mec' && isWorkingClaim(cell) && cell.status !== 'completed';
 const isWorkingClaim = (cell: CellRow) =>
   !!cell.taskId && isMyClaim(cell) && (cell.taskId === workingTaskId || cell.segId === jumpedSegId.value);
+/** When a claim's view was last saved, for the My Cells row (toknow, report
+ *  282). A save (by Save view, or the save made when you leave a claim) is
+ *  what stamps the claim's updated time once it has a saved view. */
+function savedAtLabel(cell: CellRow): { text: string; title: string } {
+  const t = backend.tasks.find(x => x.id === cell.taskId);
+  if (!t?.working_link || !t.updated_at) return { text: 'Not saved yet', title: 'No view saved for this claim yet. Save view keeps your layers and camera with it.' };
+  return { text: `Saved ${relativeTime(t.updated_at)}`, title: `View last saved ${new Date(t.updated_at).toLocaleString()}` };
+}
+
 async function saveClaimView(cell: CellRow) {
   if (!cell.taskId || savingView.value) return;
   savingView.value = cell.taskId;
@@ -3892,6 +3901,10 @@ const panelStyle = computed(() => ({
                 @click="saveClaimView(cell)"
                 title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
               ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+              <!-- Your other open claims: when their view was last saved, in the
+                   spot Save view takes on the one you are working on. -->
+              <span v-else-if="isMyClaim(cell) && cell.taskId && cell.status !== 'completed'" class="nge-cl-saved-at"
+                    :title="savedAtLabel(cell).title">{{ savedAtLabel(cell).text }}</span>
 
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
@@ -4707,6 +4720,7 @@ const panelStyle = computed(() => ({
   color: #a86;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-saved-at { align-self: center; font-size: 11px; color: rgba(200, 212, 228, 0.6); white-space: nowrap; padding: 0 4px; }
 .nge-cl-btn--saveview {
   border-color: rgba(100, 200, 255, 0.3);
   color: #8fd3ff;
