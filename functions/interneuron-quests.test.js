@@ -74,5 +74,17 @@ test('one quest at a time, quests never expire and do not count against claims, 
   assert.equal(rep.quests.length,3);
   assert.equal(rep.times[0].player,'bee');
   assert.equal(rep.quests.find(q=>q.id===ids[0]).active_seconds>36000,true);
+
+  // Categories (supabase-super-quest-categories.sql): the two lists go in, a demo cell already there is relabelled.
+  await db.exec("INSERT INTO proofreading_tasks(segment_id,dataset,kind) VALUES('720575947582584839','pni_mec','interneuron')");
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase-super-quest-categories.sql'),'utf8'));
+  const cats=(await db.query("SELECT quest_category AS c,count(*)::integer AS n FROM proofreading_tasks WHERE dataset='pni_mec' AND kind='interneuron' AND quest_category IS NOT NULL GROUP BY 1 ORDER BY 1")).rows;
+  assert.deepEqual(cats,[{c:'Non-Pyramidal Target',n:12},{c:'Pyramidal Target',n:17}]);
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase-super-quest-categories.sql'),'utf8'));
+  assert.equal((await db.query("SELECT count(*)::integer AS n FROM proofreading_tasks WHERE quest_category IS NOT NULL")).rows[0].n,29);
+  const more=await quest(A,'add',{dataset:'pni_mec',category:'Pyramidal Target',cells:[{segment_id:'900'},{segment_id:'500'}]});
+  assert.deepEqual([more.added,more.changed],[1,1]);
+  await assert.rejects(()=>quest(A,'add',{dataset:'pni_mec',category:'x'.repeat(61),cells:[{segment_id:'901'}]}),/Invalid category/);
+  assert.equal((await quest(A,'report',{dataset:'pni_mec'})).quests.find(q=>q.segment_id==='900').category,'Pyramidal Target');
  } finally { await db.close(); }
 });

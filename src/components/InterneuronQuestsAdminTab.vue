@@ -16,8 +16,8 @@ import { getRootFromSupervoxel } from '../widgets/pcg_service';
 
 const DATASET = 'pni_mec';
 
-interface Quest { id: number; segment_id: string; status: string; notes: string | null; final_segment_id: string | null; nucleus_coords: string | null; holder: string | null; active_seconds: number; players: number }
-interface TimeRow { task_id: number; segment_id: string; kind: string; status: string; mine: boolean; player: string; active_seconds: number; days: number; beats: number; edits: number; views_saved: number; milestones: number[]; first_at: string; last_at: string }
+interface Quest { id: number; segment_id: string; category?: string | null; status: string; notes: string | null; final_segment_id: string | null; nucleus_coords: string | null; holder: string | null; active_seconds: number; players: number }
+interface TimeRow { task_id: number; segment_id: string; kind: string; category?: string | null; status: string; mine: boolean; player: string; active_seconds: number; days: number; beats: number; edits: number; views_saved: number; milestones: number[]; first_at: string; last_at: string }
 interface Line { root?: string; point?: number[]; supervoxel?: string; note?: string; text: string; problem?: string }
 
 const quests = ref<Quest[]>([]);
@@ -29,6 +29,9 @@ const pasted = ref('');
 const adding = ref(false);
 const removing = ref<number | null>(null);
 const onlyQuests = ref(false);
+/** The category new cells go into; players see it on the row. */
+const category = ref('Pyramidal Target');
+const categories = computed(() => [...new Set(['Pyramidal Target', 'Non-Pyramidal Target', ...quests.value.map(q => q.category || '').filter(Boolean)])]);
 
 async function call<T = any>(operation: string, args: Record<string, any>): Promise<T> {
   return secureWrite<T>('quest.admin', { operation, args });
@@ -91,11 +94,11 @@ async function add() {
     const good = todo.filter(l => !l.problem && l.root);
     const cells = good.map(l => ({ segment_id: l.root, point: l.point, supervoxel_id: l.supervoxel, note: l.note }));
     if (!cells.length) { error.value = 'No line could be read.'; return; }
-    const r = await call<{ added: number; changed: number; already: number; bad: string[] }>('add', { dataset: DATASET, cells });
+    const r = await call<{ added: number; changed: number; already: number; bad: string[] }>('add', { dataset: DATASET, category: category.value.trim() || undefined, cells });
     const bad = todo.filter(l => l.problem);
     const parts = [
       r.added ? `${r.added} added` : '',
-      r.changed ? `${r.changed} already in the Cell Library, now Super Quests` : '',
+      r.changed ? `${r.changed} already in the Cell Library or in another category, now in this one` : '',
       r.already ? `${r.already} already on the list` : '',
       bad.length ? `${bad.length} not read: ${bad.map(l => `"${l.text}" (${l.problem})`).join(', ')}` : '',
     ].filter(Boolean);
@@ -134,9 +137,9 @@ const finished = computed(() => {
 });
 
 function downloadCsv() {
-  const head = ['task_id', 'root_id', 'kind', 'status', 'finished_by_this_player', 'player', 'active_hours', 'days', 'heartbeats', 'edits', 'views_saved', 'milestones_hours', 'first', 'last'];
+  const head = ['task_id', 'root_id', 'kind', 'category', 'status', 'finished_by_this_player', 'player', 'active_hours', 'days', 'heartbeats', 'edits', 'views_saved', 'milestones_hours', 'first', 'last'];
   const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const rows = shownTimes.value.map(t => [t.task_id, t.segment_id, t.kind, t.status, t.status === 'completed' && t.mine ? 'yes' : '', t.player,
+  const rows = shownTimes.value.map(t => [t.task_id, t.segment_id, t.kind, t.category || '', t.status, t.status === 'completed' && t.mine ? 'yes' : '', t.player,
     (t.active_seconds / 3600).toFixed(2), t.days, t.beats, t.edits, t.views_saved, (t.milestones || []).join(' '), t.first_at, t.last_at]);
   const csv = [head, ...rows].map(r => r.map(esc).join(',')).join('\n');
   const a = document.createElement('a');
@@ -166,6 +169,10 @@ function downloadCsv() {
               placeholder="720575940612345678, 123456, 234567, 3456 # big basket cell&#10;720575940698765432&#10;98765, 87654, 2345"
               @keydown.stop @keyup.stop @keypress.stop />
     <div class="nge-iq-row">
+      <label class="nge-iq-sub">Category
+        <input v-model="category" class="nge-iq-cat" list="nge-iq-cats" maxlength="60" @keydown.stop @keyup.stop @keypress.stop />
+        <datalist id="nge-iq-cats"><option v-for="c in categories" :key="c" :value="c" /></datalist>
+      </label>
       <span class="nge-iq-sub">{{ lines.length }} line{{ lines.length === 1 ? '' : 's' }}<template v-if="needsLookup">, points looked up when you add</template></span>
       <button class="nge-iq-btn nge-iq-primary" :disabled="adding || !lines.length" @click="add">{{ adding ? 'Adding…' : 'Add to the list' }}</button>
     </div>
@@ -174,10 +181,11 @@ function downloadCsv() {
     <h3>The list <span class="nge-iq-sub">{{ quests.filter(q => q.status === 'pending').length }} open of {{ quests.filter(q => q.status !== 'skipped').length }}</span></h3>
     <p v-if="!quests.length && !loading" class="nge-iq-sub">No Super Quests yet.</p>
     <table v-else class="nge-iq-table">
-      <thead><tr><th>Cell</th><th>State</th><th>Held by</th><th>Active time</th><th>Players</th><th></th></tr></thead>
+      <thead><tr><th>Cell</th><th>Category</th><th>State</th><th>Held by</th><th>Active time</th><th>Players</th><th></th></tr></thead>
       <tbody>
         <tr v-for="q in quests" :key="q.id" :class="{ 'nge-iq-off': q.status === 'skipped' }">
           <td><code>{{ q.segment_id }}</code><div v-if="q.notes" class="nge-iq-note">{{ q.notes }}</div></td>
+          <td>{{ q.category || '' }}</td>
           <td>{{ STATUS[q.status] || q.status }}</td>
           <td>{{ q.holder || '' }}</td>
           <td>{{ hours(q.active_seconds) }}</td>
@@ -202,7 +210,7 @@ function downloadCsv() {
       <thead><tr><th>Cell</th><th>Player</th><th>State</th><th>Active time</th><th>Days</th><th>Edits</th><th>Views saved</th><th>Last</th></tr></thead>
       <tbody>
         <tr v-for="t in shownTimes" :key="t.task_id + t.player">
-          <td><code>{{ t.segment_id }}</code><span v-if="t.kind === 'interneuron'" class="nge-iq-tag">Super Quest</span></td>
+          <td><code>{{ t.segment_id }}</code><span v-if="t.kind === 'interneuron'" class="nge-iq-tag">{{ t.category || 'Super Quest' }}</span></td>
           <td>{{ t.player }}</td>
           <td>{{ t.status === 'completed' && t.mine ? 'Finished' : t.mine ? (STATUS[t.status] || t.status) : 'Let go' }}</td>
           <td>{{ hours(t.active_seconds) }}</td>
@@ -231,6 +239,7 @@ function downloadCsv() {
 .nge-iq-btn { font: inherit; font-size: 0.9rem; padding: 4px 12px; border-radius: 6px; border: 1px solid #3b4b5e; background: #152434; color: #c9d6e6; cursor: pointer; }
 .nge-iq-btn:disabled { opacity: 0.5; cursor: default; }
 .nge-iq-primary { border-color: #9fd3ff; color: #fff; background: #183049; }
+.nge-iq-cat { font: inherit; font-size: 0.9rem; margin-left: 6px; padding: 3px 8px; width: 200px; background: #0f1b28; color: #e4ecf5; border: 1px solid #2f4155; border-radius: 6px; }
 .nge-iq-paste { width: 100%; box-sizing: border-box; font: 0.9rem/1.4 ui-monospace, monospace; background: #0f1b28; color: #e4ecf5; border: 1px solid #2f4155; border-radius: 8px; padding: 8px; }
 .nge-iq-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .nge-iq-table th { text-align: left; color: #9fb0c4; font-weight: 600; border-bottom: 1px solid #2f4155; padding: 4px 8px; }

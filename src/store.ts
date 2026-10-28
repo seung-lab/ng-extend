@@ -3555,6 +3555,8 @@ export interface ProofreadingTask {
   /** 'interneuron': a long term quest (supabase-interneuron-quests.sql). One
    *  at a time, never expires, not counted against the claim limit. */
   kind?: 'cell' | 'interneuron' | null;
+  /** A Super Quest's category, such as "Pyramidal Target" (supabase-super-quest-categories.sql). */
+  quest_category?: string | null;
 }
 
 /** An interneuron quest: a claim of its own kind, listed apart in the Cell Library. */

@@ -353,6 +353,7 @@ const cells = computed(() => {
         // What the lab's AI predicts this cell is (the sheet's AI column).
         aiType: item.aiType || '',
         quest: isQuestTask(task),
+        questCategory: task?.quest_category || '',
       };
     });
 
@@ -381,6 +382,7 @@ const cells = computed(() => {
         // A quest has no sheet row: its ID after edits shows as on any claim.
         liveSegId: (backend.liveRoots[t.id] && backend.liveRoots[t.id] !== t.segment_id) ? backend.liveRoots[t.id] : null as string | null,
         quest: isQuestTask(t),
+        questCategory: t.quest_category || '',
       }));
 
     // A paged list (Retina) holds only some of the tasks: the sheet rows it
@@ -409,6 +411,7 @@ const cells = computed(() => {
     svId: t.supervoxel_id ?? null,
     nucleusId: t.final_nucleus_id ?? null,
     quest: isQuestTask(t),
+    questCategory: t.quest_category || '',
   }));
 });
 
@@ -440,7 +443,8 @@ const huntOpenCount = computed(() => huntCells.value.filter(c => c.status !== 'c
 const questCells = computed(() => {
   const qs = datasetScopedCells.value.filter(c => c.quest && c.status !== 'skipped');
   const rank = (c: CellRow) => (isMyClaim(c) ? 0 : c.status === 'pending' ? 1 : c.status === 'completed' ? 3 : 2);
-  return qs.slice().sort((a, b) => rank(a) - rank(b));
+  // Within each, by category ("Pyramidal Target", "Non-Pyramidal Target").
+  return qs.slice().sort((a, b) => rank(a) - rank(b) || (a.questCategory || '~').localeCompare(b.questCategory || '~'));
 });
 const questOpenHere = computed(() => questCells.value.filter(c => c.status === 'pending').length);
 /** Every other cell: the ordinary tabs, counts and Claim a new cell. */
@@ -3910,7 +3914,7 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
-                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, it never expires, and Pyr counts your active time on it.">Super Quest</span>
+                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, it never expires, and Pyr counts your active time on it.">Super Quest{{ cell.questCategory ? ': ' + cell.questCategory : '' }}</span>
                   <span v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-notes nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
                         title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have moved the mouse or pressed a key in the last 5 minutes. It adds up across visits and devices.">{{ claimTimeLabel(cell.taskId) }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
@@ -4725,7 +4729,7 @@ const panelStyle = computed(() => ({
 .nge-cl-giants-tab.active { border-color: rgba(196, 140, 255, 0.7) !important; }
 .nge-cl-time { color: #9fb3c8; font-variant-numeric: tabular-nums; }
 .nge-cl-time--on { color: #8fe3a8; }
-.nge-cl-giants-intro { margin: 2px 0 8px; font-size: 11px; line-height: 1.45; color: #9fb3c8; }
+.nge-cl-giants-intro { margin: 4px 0 10px; font-size: 14px; line-height: 1.5; color: #c4d2e0; }
 .nge-cl-hunt-tab.active { border-color: rgba(66, 213, 236, 0.7) !important; }
 .nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
 .nge-cl-complete-ai b { color: #c9b2ff; }
