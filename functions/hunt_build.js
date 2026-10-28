@@ -116,7 +116,8 @@ function helpNoteBody(merges, cuts, until) {
  * use at different stages"): one per kind of note, served by the game at /hunt/<name>.png and -128.png.
  */
 // Planted: Nurro watering the sprouts (EyeWire art, Ames 2026-10-27: "your submission has been planted shhh").
-const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'planted.jpg', released: 'scythe', sentBack: 'scythe' };
+// Planted: the sprout (Ames 2026-10-27: "growing mergers"); Nurro planting (planted.jpg) is kept as another choice.
+const NOTE_ART = { open: 'scythe', admins: 'scythe', planted: 'sprout', released: 'scythe', sentBack: 'scythe' };
 const noteArt = (ctx, kind, small = false) => {
   if (!ctx || !ctx.site) return undefined;
   const name = NOTE_ART[kind] || 'scythe', dot = name.lastIndexOf('.');
@@ -744,18 +745,31 @@ function restDb(sb) {
 }
 
 /** For ewSecureWrite's pilot.task: refuse a claim on a protected cell (by its ID, or a task's). Never blocks when the table is missing. */
-async function claimGuard(sb, operation, args) {
+/**
+ * Claims, for ewSecureWrite's pilot.task: a protected cell cannot be claimed at all, and a Hunt candidate being
+ * proofread only by a player with production access (Ames 2026-10-27: "users must be production access in order to
+ * claim"). hasProduction() asks CAVE: true, false, or null when it could not be asked (then refused: never a yes by
+ * default). Admins pass the second check. Never blocks when the tables are missing.
+ */
+async function claimGuard(sb, operation, args, opts = {}) {
   if (operation !== 'claim' && operation !== 'claim_cell') return null;
-  let seg = '';
+  let seg = '', taskId = 0;
   if (operation === 'claim_cell') seg = String((args && args.segment_id) || '');
   else if (posInt(args && args.id)) {
-    const t = (await sb(`proofreading_tasks?id=eq.${posInt(args.id)}&select=segment_id&limit=1`))[0];
+    taskId = posInt(args.id);
+    const t = (await sb(`proofreading_tasks?id=eq.${taskId}&select=segment_id&limit=1`))[0];
     seg = t ? String(t.segment_id || '') : '';
   }
-  if (!isRoot(seg)) return null;
-  let cands;
-  try { cands = await restDb(sb).protectedCandidates(); } catch (e) { return null; }
-  return claimRefusal(cands, seg);
+  let cands, waiting;
+  try {
+    const db = restDb(sb);
+    [cands, waiting] = await Promise.all([db.protectedCandidates(), db.candidatesByStatus(['proofreading'])]);
+  } catch (e) { return null; }
+  if (isRoot(seg)) { const no = claimRefusal(cands, seg); if (no) return no; }
+  const isCandidate = waiting.some((c) => (taskId && posInt(c.task_id) === taskId) || (isRoot(seg) && String(c.root) === seg));
+  if (!isCandidate || opts.isAdmin) return null;
+  const prod = opts.hasProduction ? await opts.hasProduction().catch(() => null) : null;
+  return prod === true ? null : 'Hunt candidates are for players with production access.';
 }
 
 module.exports = {

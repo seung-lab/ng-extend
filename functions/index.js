@@ -1863,7 +1863,7 @@ exports.ewSecureWrite = onRequest(
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
           // A Hunt being built on the Sandbox (hunt_build.js) cannot be claimed, even outside the Cell Library.
           if (action === "pilot.task") {
-            const no = await require("./hunt_build").claimGuard(sb, args.operation, args.args || {});
+            const no = await require("./hunt_build").claimGuard(sb, args.operation, args.args || {}, { isAdmin, hasProduction: () => ewHasProduction(token) });
             if (no) throw ewErr(409, no);
           }
           const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};
@@ -2421,7 +2421,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-28-hunt-40-builder";
+const EW_HUNT_CODE_VERSION = "2026-10-28-hunt-41-builder";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
