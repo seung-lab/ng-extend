@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T15:23:00Z",
+      "title": "Marks land where you put them",
+      "items": [
+        "On MEC, Confirm soma here, Move AIS here and the other marks now land exactly at the crosshairs or where you click, in every layer. Some layers counted in other units, and the mark landed off the soma."
+      ]
+    },
+    {
       "at": "2026-10-28T15:20:00Z",
       "title": "Actions in chat, and when your cells were last saved",
       "items": [

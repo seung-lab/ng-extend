@@ -16,6 +16,7 @@ import { currentDatasetTag } from '../datasets';
 import { MEC_LAYERS, mecLayerKey } from './mec_layers';
 import { useProofreadingBackendStore } from '../store';
 import { Uint64 } from 'neuroglancer/util/uint64';
+import { layerToView } from './annotation_coords';
 
 export interface MecKind { key: string; label: string; layer: string; color: string; hint: string; }
 const KIND_INFO: { key: string; label: string; hint: string }[] = [
@@ -76,8 +77,9 @@ export function mecCounts(): Record<string, number> {
 export function somaXyz(): number[] | null {
   let last: number[] | null = null;
   try {
-    for (const ann of mecLayers().get(MEC_SOMA)?.layer?.localAnnotations ?? []) {
-      if (ann.type === 0 && ann.point) last = [0, 1, 2].map(i => Math.round(ann.point[i]));
+    const src = mecLayers().get(MEC_SOMA)?.layer?.localAnnotations;
+    for (const ann of src ?? []) {
+      if (ann.type === 0 && ann.point) last = layerToView(src, ann.point).map(v => Math.round(v));
     }
   } catch { /* not loaded */ }
   return last && last.every(Number.isFinite) ? last : null;
@@ -164,8 +166,9 @@ export async function sheetAisXyz(): Promise<number[] | null> {
 export function aisXyz(): number[] | null {
   let last: number[] | null = null;
   try {
-    for (const ann of mecLayers().get(MEC_AIS)?.layer?.localAnnotations ?? []) {
-      if (ann.type === 0 && ann.point) last = [0, 1, 2].map(i => Math.round(ann.point[i]));
+    const src = mecLayers().get(MEC_AIS)?.layer?.localAnnotations;
+    for (const ann of src ?? []) {
+      if (ann.type === 0 && ann.point) last = layerToView(src, ann.point).map(v => Math.round(v));
     }
   } catch { /* not loaded */ }
   return last;
@@ -406,7 +409,8 @@ async function edgeWhy() {
     // Points are in the viewer's units (16, 16, 45 nm on MEC); the mask is 512, 512, 45.
     let scales = [16, 16, 45];
     try { scales = Array.from((window as any).viewer.coordinateSpace.value.scales as ArrayLike<number>).map(v => v / 1e-9); } catch { /* default */ }
-    const nm = [0, 1, 2].map(i => ann.point[i] * scales[i]);
+    const view = layerToView(edge.layer.localAnnotations, ann.point);
+    const nm = [0, 1, 2].map(i => view[i] * scales[i]);
     const px = Math.floor(nm[0] / resNm[0]), py = Math.floor(nm[1] / resNm[1]), z = Math.round(nm[2] / resNm[2]);
     const tiles = new Map<string, Uint8Array | null>();
     for (const dx of [-60, 0, 60]) for (const dy of [-60, 0, 60]) {

@@ -16,6 +16,7 @@ import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
 import { setNgeMeshTint, type NgeMeshTint } from 'neuroglancer/mesh/nge_tint';
 import { mat4 } from 'neuroglancer/util/geom';
 import { isTouchRef } from './mobile';
+import { viewToLayer, layerToView } from './annotation_coords';
 import { StatusMessage } from 'neuroglancer/status';
 import { strokeRuns } from './stroke_shape';
 
@@ -361,7 +362,7 @@ export function knownSomas(root: string): number[][] {
       for (const ann of managed.layer?.localAnnotations ?? []) {
         const pt = ann.point ?? ann.pointA;
         if (!pt || pt.length < 3) continue;
-        const p = Array.from(pt as ArrayLike<number>).slice(0, 3);
+        const p = layerToView(managed.layer.localAnnotations, pt);
         if (p.every(Number.isFinite)) out.push(p);
       }
     } catch { /* not loaded */ }
@@ -400,7 +401,7 @@ function rememberSoma(pick: Pick, scalesNm: number[]) {
       return;
     }
     managed.layer?.localAnnotations?.add({
-      id: `soma_${Date.now().toString(36)}`, type: 0 /* POINT */, point: Float32Array.from(pick.global), properties: [], description,
+      id: `soma_${Date.now().toString(36)}`, type: 0 /* POINT */, point: viewToLayer(managed.layer.localAnnotations, pick.global), properties: [], description,
     }, true).dispose();
   } catch (e) { console.warn('[highlight] could not keep the soma point:', e); }
 }
@@ -535,7 +536,7 @@ export const sharedLabPick = ref<string | null>(null);
 export async function addHighlightSpot(pick: Pick, style: HighlightStyle): Promise<void> {
   const src = await strokeSource(style);
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
-  src.add({ id: `${mark}_0`, type: POINT, point: Float32Array.from(pick.global), properties: [], description: `${style.label}: cell ${pick.root}` }, true).dispose();
+  src.add({ id: `${mark}_0`, type: POINT, point: viewToLayer(src, pick.global), properties: [], description: `${style.label}: cell ${pick.root}` }, true).dispose();
   setLatestMark(mark);
 }
 
@@ -592,7 +593,7 @@ async function addLabPoint(kind: MecKind, point: ArrayLike<number>, description:
     for (const id of old) { const ref = src.getReference(id); try { src.delete(ref); } finally { ref.dispose(); } }
   }
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
-  src.add({ id: `${mark}_0`, type: POINT, point: Float32Array.from(point), properties: [], description }, true).dispose();
+  src.add({ id: `${mark}_0`, type: POINT, point: viewToLayer(src, point), properties: [], description }, true).dispose();
   setLatestMark(mark);
 }
 
@@ -602,7 +603,7 @@ function aisPointNm(scalesNm: number[]): number[] | null {
   let last: number[] | null = null;
   try {
     for (const ann of managed?.layer?.localAnnotations ?? []) {
-      if (ann.type === POINT && ann.point) last = [0, 1, 2].map(i => ann.point[i] * (scalesNm[i] || 1));
+      if (ann.type === POINT && ann.point) { const v = layerToView(managed.layer.localAnnotations, ann.point); last = [0, 1, 2].map(i => v[i] * (scalesNm[i] || 1)); }
     }
   } catch { /* not loaded */ }
   return last;
@@ -710,7 +711,7 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
   const marked: number[][] = [];
   try {
     for (const ann of mecLayers().get(MEC_EDGE)?.layer?.localAnnotations ?? []) {
-      if (ann.type === POINT && ann.point) marked.push([0, 1, 2].map(i => ann.point[i] * (scalesNm[i] || 1)));
+      if (ann.type === POINT && ann.point) { const v = layerToView(mecLayers().get(MEC_EDGE).layer.localAnnotations, ann.point); marked.push([0, 1, 2].map(i => v[i] * (scalesNm[i] || 1))); }
     }
   } catch { /* none */ }
   const fresh = ends.filter(e => !marked.some(m => Math.hypot(m[0] - e[0], m[1] - e[1], m[2] - e[2]) < 4000));
@@ -720,7 +721,7 @@ export async function addEdgeMarks(root: string, stillWanted: () => boolean = ()
   const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
   fresh.forEach((p, i) => {
     src.add({
-      id: `${mark}_${i}`, type: POINT, point: Float32Array.from(p.map((v, k) => v / (scalesNm[k] || 1))), properties: [],
+      id: `${mark}_${i}`, type: POINT, point: viewToLayer(src, p.map((v, k) => v / (scalesNm[k] || 1))), properties: [],
       description: `Hits Edge, found by Pyr: cell ${root}`,
     }, true).dispose();
   });
@@ -908,7 +909,8 @@ function buildTint(): NgeMeshTint | null {
       // Every point in an MEC layer glows on the cell, placed here or by hand.
       if (style.lab) {
         if (ann.type !== POINT || !ann.point) continue;
-        const p = [0, 1, 2].map(i => ann.point[i] * scalesNm[i]);
+        const v = layerToView(src, ann.point);
+        const p = [0, 1, 2].map(i => v[i] * scalesNm[i]);
         segs.push({ a: p, b: p, rgb, ball: true });
         continue;
       }
@@ -916,7 +918,8 @@ function buildTint(): NgeMeshTint | null {
       const isLatest = latestPrefix !== null && String(ann.id).startsWith(latestPrefix);
       // A highlight spot (where the server can't trace, MEC): a glow there.
       if (ann.type === POINT && ann.point) {
-        const p = [0, 1, 2].map(i => ann.point[i] * scalesNm[i]);
+        const v = layerToView(src, ann.point);
+        const p = [0, 1, 2].map(i => v[i] * scalesNm[i]);
         segs.push({ a: p, b: p, rgb: isLatest ? rgbLatest : rgb, latest: isLatest, ball: true });
         continue;
       }
