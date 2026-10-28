@@ -23,7 +23,9 @@ import {
   jumpAddsToView,
   LIVE_HELP,
   isLiveHelp,
+  isQuestTask,
 } from '../store';
+import { claimTime, claimTimeLabel, setTimerWorkingClaim } from '../util/claim_time';
 import { getDatasetCaveConfig } from '../config';
 import { setCellComplete, activeCaveServer, getCellStatus, saveCellType, getLastCellTypeProblem, labelAxonComplete } from '../widgets/lightbulb_service';
 import { explainCellType } from '../data/cell_type_glossary';
@@ -153,7 +155,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -350,6 +352,7 @@ const cells = computed(() => {
         liveSegId: (task && backend.liveRoots[task.id] && backend.liveRoots[task.id] !== item.segId) ? backend.liveRoots[task.id] : null as string | null,
         // What the lab's AI predicts this cell is (the sheet's AI column).
         aiType: item.aiType || '',
+        quest: isQuestTask(task),
       };
     });
 
@@ -375,7 +378,9 @@ const cells = computed(() => {
         startLink: '',
         svId: t.supervoxel_id ?? null,
         nucleusId: t.final_nucleus_id ?? null,
-        liveSegId: null as string | null,
+        // A quest has no sheet row: its ID after edits shows as on any claim.
+        liveSegId: (backend.liveRoots[t.id] && backend.liveRoots[t.id] !== t.segment_id) ? backend.liveRoots[t.id] : null as string | null,
+        quest: isQuestTask(t),
       }));
 
     // A paged list (Retina) holds only some of the tasks: the sheet rows it
@@ -403,6 +408,7 @@ const cells = computed(() => {
     startLink: '',
     svId: t.supervoxel_id ?? null,
     nucleusId: t.final_nucleus_id ?? null,
+    quest: isQuestTask(t),
   }));
 });
 
@@ -428,10 +434,23 @@ const isHuntCandidate = (c: { notes?: string | null }) => /^Hunt (cell|candidate
 /** Hunt candidates on this dataset, every state: the Hunt chip shows only when there are some (Ames 2026-10-27). */
 const huntCells = computed(() => datasetScopedCells.value.filter(isHuntCandidate));
 const huntOpenCount = computed(() => huntCells.value.filter(c => c.status !== 'completed').length);
+/** Interneuron quests (Ames 2026-10-28): giant MEC interneurons, a claim of
+ *  their own kind, listed apart. The chip shows only on a dataset that has
+ *  some. Yours comes first, then the open ones, then the rest. */
+const questCells = computed(() => {
+  const qs = datasetScopedCells.value.filter(c => c.quest && c.status !== 'skipped');
+  const rank = (c: CellRow) => (isMyClaim(c) ? 0 : c.status === 'pending' ? 1 : c.status === 'completed' ? 3 : 2);
+  return qs.slice().sort((a, b) => rank(a) - rank(b));
+});
+const questOpenHere = computed(() => questCells.value.filter(c => c.status === 'pending').length);
+/** Every other cell: the ordinary tabs, counts and Claim a new cell. */
+const libraryCells = computed(() => datasetScopedCells.value.filter(c => !c.quest));
 const filteredCells = computed(() => {
-  let list = datasetScopedCells.value;
+  let list = libraryCells.value;
   if (filter.value === 'hunt') {
     list = huntCells.value;
+  } else if (filter.value === 'giants') {
+    list = questCells.value;
   } else if (filter.value === 'mine') {
     // My claimed cells first, then my completed cells
     const myClaimed = list.filter(c => isMyClaim(c));
@@ -467,7 +486,7 @@ const rowsShown = ref(ROWS_STEP);
 watch([filter, search], () => { rowsShown.value = ROWS_STEP; });
 const shownCells = computed(() => filteredCells.value.slice(0, rowsShown.value));
 
-const myClaimCount = computed(() => datasetScopedCells.value.filter(c => isMyClaim(c)).length);
+const myClaimCount = computed(() => libraryCells.value.filter(c => isMyClaim(c)).length);
 
 const isClaimedStatus = (s: string) => s === 'assigned' || s === 'in_progress';
 /** A paged list counts on the server. A sheet hold ("WIP", "Complete" by
@@ -485,14 +504,14 @@ const heldShift = computed(() => {
 const serverCounts = computed(() => (backend.tasksPaged ? backend.taskCounts : null));
 const availableCount = computed(() => serverCounts.value
   ? Math.max(0, serverCounts.value.available - heldShift.value.claimed - heldShift.value.completed)
-  : datasetScopedCells.value.filter(c => c.status === 'pending').length);
+  : libraryCells.value.filter(c => c.status === 'pending').length);
 const completedCount = computed(() => serverCounts.value
   ? serverCounts.value.completed + heldShift.value.completed
-  : datasetScopedCells.value.filter(c => c.status === 'completed').length);
+  : libraryCells.value.filter(c => c.status === 'completed').length);
 const claimedCount = computed(() => serverCounts.value
   ? serverCounts.value.claimed + heldShift.value.claimed
-  : datasetScopedCells.value.filter(c => isClaimedStatus(c.status)).length);
-const allCount = computed(() => serverCounts.value ? serverCounts.value.all : datasetScopedCells.value.length);
+  : libraryCells.value.filter(c => isClaimedStatus(c.status)).length);
+const allCount = computed(() => serverCounts.value ? serverCounts.value.all : libraryCells.value.length);
 
 // ── Paged list (Retina): Load more, tabs and search reach the server ─────
 /** The server tab behind a cell tab; My Cells is always loaded in full. */
@@ -617,6 +636,7 @@ if (!workingSet) setTimeout(() => { if (!workingSet && !otherTabCount()) working
 function setWorkingTask(id: number | null) {
   workingTaskId = id;
   workingSet = true;
+  setTimerWorkingClaim(id);
   // An MEC cell opens with the lab's AIS, True End, Can't Fix and Hits Edge layers.
   if (id) ensureMecLayers();
   try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
@@ -755,8 +775,9 @@ async function claimCell(cell: typeof cells.value[0]) {
 async function claimCellNow(cell: typeof cells.value[0]) {
   if (!isLoggedIn.value) return;
   claimError.value = '';
-  // The limit is per dataset (10 on Retina, 8 elsewhere).
-  const held = heldHere(await backend.loadMyActiveClaims());
+  // The limit is per dataset (10 on Retina, 8 elsewhere). An interneuron
+  // quest has its own: one at a time, which the server checks.
+  const held = cell.quest ? [] : heldHere(await backend.loadMyActiveClaims());
   if (held.length >= backend.claimLimitFor()) { pendingClaim = cell; showClaimLimit(held); return; }
   // Derive claim point: use cell's existing claim point, parse nucCoords, or use viewer position
   let point: ClaimPoint;
@@ -782,8 +803,8 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     claimErrorTimer = setTimeout(() => { claimError.value = ''; }, 5000);
     return;
   }
-  // Write claim to Google Sheet (best-effort)
-  syncCellToSheet('claim', cell.segId, undefined, cell.dataset).catch(showSheetError);
+  // Write claim to Google Sheet (best-effort). A quest added by root ID has no row there.
+  if (inSheet(cell)) syncCellToSheet('claim', cell.segId, undefined, cell.dataset).catch(showSheetError);
   await backend.loadTasks();
   // Open the cell's curated starting view (sheet "Start link", column E), so
   // the claimer lands with its Soma / True End / Can't Fix / Hits Edge / Notes
@@ -792,6 +813,8 @@ async function claimCellNow(cell: typeof cells.value[0]) {
     && (t.status === 'assigned' || t.status === 'in_progress'));
   if (await leaveCurrentWork(claimed?.id ?? null)) {
     openStartLink(cell.startLink);
+    // A quest has no start view: go to the cell.
+    if (cell.quest && !cell.startLink) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
     if (claimed) setWorkingTask(claimed.id);
   }
   // Give the claim its soma anchor as soon as that part of the volume loads.
@@ -812,8 +835,10 @@ function showClaimLimit(held: ProofreadingTask[]) {
 /** Your active claims in the dataset on screen (the limit is per dataset). */
 function heldHere(held: ProofreadingTask[]): ProofreadingTask[] {
   const here = canonicalDataset(getCurrentDatasetName());
-  return held.filter(t => canonicalDataset((t as any).dataset) === here);
+  return held.filter(t => canonicalDataset((t as any).dataset) === here && !isQuestTask(t));
 }
+/** An interneuron quest added by root ID is in no sheet: nothing is written there for it. */
+const inSheet = (cell: { quest?: boolean; index?: string }) => !cell.quest || !!cell.index;
 
 // ── Batch claim (Amy 2026-09-30): fill your claims in one click ─────────
 // Claims the next available cells from the list, top down, up to your limit
@@ -822,7 +847,7 @@ const batchClaiming = ref<{ done: number; total: number } | null>(null);
 const batchRoom = computed(() => Math.max(0, backend.claimLimitFor() - backend.myActiveClaimCount()));
 /** A cell Claim N can take: available, with a point to claim it at. */
 function claimable(c: CellRow): boolean {
-  if (c.status !== 'pending' || !c.segId) return false;
+  if (c.status !== 'pending' || !c.segId || c.quest) return false;
   const p = c.claimPoint ?? parseCoords(c.somaCoords || c.nucCoords);
   return !!(p[0] || p[1] || p[2]);
 }
@@ -1149,7 +1174,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
       nums.length === 3 ? (nums as [number, number, number]) : undefined);
   }
   // Write completion to the source sheet, including the Final Link.
-  syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
+  if (inSheet(cell)) syncCellToSheet('complete', cell.segId, undefined, cell.dataset, done.link, done.notes, done.status, done.cellType).catch(showSheetError);
   const loggedViaCave = await cavePromise;
   if (!loggedViaCave && proofread) {
     // Log as mark_complete for stats (CAVE write didn't record it)
@@ -2668,7 +2693,7 @@ const slimEmpty = ref(false);
 const slim = computed(() => slimCell.value !== null || slimEmpty.value);
 /** The rows the cell list draws: one in the slim view, none on the empty bar. */
 const listCells = computed(() => (slimCell.value ? [slimCell.value] : slimEmpty.value ? [] : shownCells.value));
-const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed', 'hunt'];
+const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed', 'hunt', 'giants'];
 /** The cell the caret shrinks to: the one on screen, else the claim being
  *  worked on, else your first claim. */
 function currentCell(): CellRow | null {
@@ -2694,7 +2719,7 @@ function collapseToCurrent() {
   void collapseTo(currentCell());
 }
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
-const nextAvailableCell = computed(() => datasetScopedCells.value.find(c => c.status === 'pending') ?? null);
+const nextAvailableCell = computed(() => libraryCells.value.find(c => c.status === 'pending') ?? null);
 /** A paged list may hold no available cell yet while the server has more. */
 const canClaimNew = computed(() => !!nextAvailableCell.value || (backend.tasksPaged && !backend.taskPages.available.done));
 /** The top available cell, reading more of the paged list when the loaded
@@ -2960,6 +2985,11 @@ const panelStyle = computed(() => ({
               <button v-if="huntCells.length" :class="{ active: filter === 'hunt', 'nge-cl-hunt-tab': true }" @click="filter = 'hunt'"
                       title="Hunt candidates: cells that may become a Hunt. Proofread one fully, to every end. A claim on one is let go 24 hours after you claim it, so the cell is not held up.">
                 Hunt <b>{{ huntOpenCount }}</b>
+              </button>
+              <!-- Interneuron quests (Ames 2026-10-28), only on a dataset that has some. -->
+              <button v-if="questCells.length" :class="{ active: filter === 'giants', 'nge-cl-giants-tab': true }" @click="filter = 'giants'"
+                      title="Interneuron quests: giant interneurons with a great many branches, a cell that can take weeks. You hold one at a time, beside your other claims, and it never expires. The number is the quests open to claim.">
+                Interneurons <b>{{ questOpenHere }}</b>
               </button>
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
                       title="Cells you have claimed, and cells you completed">
@@ -3831,6 +3861,11 @@ const panelStyle = computed(() => ({
           </div>
           <div v-else-if="filteredCells.length === 0 && !backend.loading && !slim" class="nge-cl-no-results">No matching cells</div>
 
+          <div v-if="filter === 'giants' && !slim" class="nge-cl-giants-intro">
+            Giant interneurons with a great many branches: one can take weeks, a little at a time.
+            You hold one quest at a time, beside your other claims, and it never expires.
+            Pyr counts your active time on it, which helps the lab learn how long these cells take.
+          </div>
           <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
           <img v-if="slim" :src="neuronIcon" class="nge-cl-icon nge-cl-slim-icon" alt="" aria-hidden="true" />
           <button v-if="slim" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
@@ -3872,6 +3907,9 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
+                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="An interneuron quest: one at a time, it never expires, and Pyr counts your active time on it.">Interneuron quest</span>
+                  <span v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-notes nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
+                        title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have moved the mouse or pressed a key in the last 5 minutes. It adds up across visits and devices.">{{ claimTimeLabel(cell.taskId) }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
                   <!-- The Hunt candidate tag says it (its tooltip has the note) -->
                   <span v-if="cell.notes && !/^Hunt (cell|candidate)/.test(cell.notes)" class="nge-cl-notes">{{ cell.notes }}</span>
@@ -4679,6 +4717,12 @@ const panelStyle = computed(() => ({
 .nge-cl-ai-type { background: rgba(178, 140, 255, 0.14); color: #c9b2ff; text-transform: none; }
 .nge-cl-hunt-cell { background: rgba(66, 213, 236, 0.12); color: #7fe6f5; text-transform: none; }
 .nge-cl-hunt-tab b { color: #7fe6f5; }
+.nge-cl-giant-cell { background: rgba(196, 140, 255, 0.14); color: #d3b0ff; text-transform: none; }
+.nge-cl-giants-tab b { color: #d3b0ff; }
+.nge-cl-giants-tab.active { border-color: rgba(196, 140, 255, 0.7) !important; }
+.nge-cl-time { color: #9fb3c8; font-variant-numeric: tabular-nums; }
+.nge-cl-time--on { color: #8fe3a8; }
+.nge-cl-giants-intro { margin: 2px 0 8px; font-size: 11px; line-height: 1.45; color: #9fb3c8; }
 .nge-cl-hunt-tab.active { border-color: rgba(66, 213, 236, 0.7) !important; }
 .nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
 .nge-cl-complete-ai b { color: #c9b2ff; }

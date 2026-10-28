@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T15:27:00Z",
+      "title": "Interneuron quests on MEC, and your time on each cell",
+      "items": [
+        "MEC has interneuron quests: giant interneurons with a great many branches, listed under a new Interneurons chip in the Cell Library. One can take weeks, a little at a time.",
+        "You hold one interneuron quest at a time, beside your other claims, and it never expires.",
+        "Each MEC claim shows your active time on it, such as 14 h 20 min so far. It counts while the cell is on screen, Pyr is in front, and you have moved the mouse or pressed a key in the last 5 minutes, and it adds up across visits and devices."
+      ]
+    },
+    {
       "at": "2026-10-28T01:24:00Z",
       "title": "One notification feed, bigger Achievements, and a Settings key",
       "items": [

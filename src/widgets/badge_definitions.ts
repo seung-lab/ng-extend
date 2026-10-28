@@ -24,6 +24,11 @@
  * review page https://claude.ai/artifact/QohCgVUUsdJ4zMPLzjH7LH and copied in
  * from there. Edit them there first, then copy them here, so the two agree.
  * After changing a name or a threshold: node scripts/build-achievement-thresholds.js
+ *
+ * Interneuron quests (Ames 2026-10-28, art to come): onClaimMilestone in
+ * src/util/claim_time.ts hears each hour milestone a claim passes (10, 25, 50
+ * and 100 hours, recorded on the server in claim_active_time.milestones) and
+ * each finished quest. Award from there, or from those rows server side.
  */
 
 /**

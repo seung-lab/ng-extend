@@ -1859,6 +1859,13 @@ exports.ewSecureWrite = onRequest(
             out = await sb("rpc/pilot_task_reopen", { method: "POST", body: JSON.stringify({ p_user: me.id, p_args: args.args || {} }) });
             break;
           }
+          // Active time on a claim, about once a minute while the player
+          // works on it (supabase-interneuron-quests.sql caps each beat).
+          if (action === "pilot.task" && args.operation === "time") {
+            const step = args.args && args.args.step === "mine" ? "mine" : "beat";
+            out = await sb("rpc/pilot_claim_time", { method: "POST", body: JSON.stringify({ p_user: me.id, p_action: step, p_args: args.args || {} }) });
+            break;
+          }
           const allowed = action === "pilot.task" ? ["claim","claim_cell","release","complete","heartbeat","save_link"] : ["claim","heartbeat","begin_reset","check_reset","finish_reset"];
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
           // A Hunt being built on the Sandbox (hunt_build.js) cannot be claimed, even outside the Cell Library.
@@ -1871,6 +1878,14 @@ exports.ewSecureWrite = onRequest(
           break;
         }
         // ── admins ──
+        // Interneuron quests: add cells to the list, take one off, and the
+        // active time report (supabase-interneuron-quests.sql).
+        case "quest.admin": {
+          needAdmin();
+          if (!["add", "remove", "report"].includes(args.operation)) throw ewErr(400, "Unknown quest action");
+          out = await sb("rpc/pilot_quest_admin", { method: "POST", body: JSON.stringify({ p_user: me.id, p_action: args.operation, p_args: args.args || {} }) });
+          break;
+        }
         case "notification.insert": {
           needAdmin();
           const row = { ...ewPick(args.row, EW_NOTIF_FIELDS), created_by: (me && me.id) || null };
