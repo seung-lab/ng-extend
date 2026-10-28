@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T21:38:36Z",
+      "title": "Shorter MEC steps that fit the screen",
+      "digest": "minor",
+      "items": [
+        "How to map a cell in the Cell Library scrolls inside its box instead of filling a laptop screen, and MEC's steps are shorter: mark the AIS, then proofread the axon only. Thanks to Marissa.",
+        "When an admin gives you access to a dataset, your note has an Explore button that takes you straight there."
+      ]
+    },
+    {
       "at": "2026-10-28T21:32:00Z",
       "title": "Lantern: pin the light",
       "digest": "minor",
