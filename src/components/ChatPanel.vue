@@ -537,20 +537,35 @@ const searchHits = computed<ChatMessage[]>(() => {
   const q = chatQuery.value;
   // a day that could not be read finds nothing, rather than everything
   if (!q || q.badDate) return [];
-  return chatMessages.value.filter(m => m.type === 'message' && m.rank !== 'pin' && matchesChatQuery(q, m.name || '', messageText(m), m.dateTime.getTime()));
+  return chatMessages.value.filter(m => m.type === 'message' && m.rank !== 'pin' && inSearchRange(m) && matchesChatQuery(q, m.name || '', messageText(m), m.dateTime.getTime()));
 });
-// A search for a day further back than chat has loaded brings the earlier
-// messages in by itself, a page at a time, until it reaches that day (or
-// the start of chat, or forty pages).
+// Search reaches back fourteen days and no further (Ames 2026-10-10: "we
+// don't need ALL history"). While a search is open, the earlier messages of
+// those fourteen days are brought in by themselves, a page at a time, so the
+// search covers the whole stretch without a button to keep pressing. A day
+// asked for with on: or after: stops the loading as soon as it is reached.
+const SEARCH_DAYS = 14;
+const searchFloor = () => Date.now() - SEARCH_DAYS * 86_400_000;
+const oldestLoaded = () => chatMessages.value.find(m => m.type !== 'time')?.dateTime.getTime() ?? Date.now();
+/** Is there more of the searchable stretch still to bring in? */
+const searchCanReachBack = computed(() => {
+  void chatMessages.value.length;
+  if (!chatQuery.value || !chatStore.hasMoreHistory) return false;
+  const goal = Math.max(searchFloor(), chatQuery.value.fromTime ?? 0);
+  return oldestLoaded() > goal;
+});
 let searchPages = 0;
-watch(searchText, () => { searchPages = 0; });
+/** Earlier messages could not be brought in (offline, say): search what is here. */
+const searchStalled = ref(false);
+watch(searchText, () => { searchPages = 0; searchStalled.value = false; });
 watch([chatQuery, () => chatMessages.value.length, () => chatStore.loadingHistory], () => {
-  const q = chatQuery.value;
-  if (!q || q.fromTime == null || chatStore.loadingHistory || !chatStore.hasMoreHistory || searchPages >= 40) return;
-  const first = chatMessages.value.find(m => m.type !== 'time');
-  if (first && first.dateTime.getTime() > q.fromTime) { searchPages++; void chatStore.loadOlder(); }
+  if (!searchCanReachBack.value || chatStore.loadingHistory || searchStalled.value || searchPages >= 120) return;
+  searchPages++;
+  void Promise.resolve(chatStore.loadOlder()).then(n => { if (!n) searchStalled.value = true; }, () => { searchStalled.value = true; });
 });
-const searchingBack = computed(() => !!chatQuery.value && chatQuery.value.fromTime != null && chatStore.loadingHistory);
+const searchingBack = computed(() => !!chatQuery.value && !searchStalled.value && (chatStore.loadingHistory || searchCanReachBack.value));
+/** The search does not look at messages older than the fourteen days. */
+const inSearchRange = (m: ChatMessage) => m.dateTime.getTime() >= searchFloor();
 /** What the list draws: everything, or only the matches while searching. */
 /** Announcements this player closed with their × (Ames 2026-10-23: "I want
  *  to be able to X to delete these and the Today in Pyr update"). Hidden in
@@ -662,6 +677,21 @@ const isPinRow = (m: ChatMessage) => m.type === 'message' && m.rank === 'pin';
 const pinRowSays = (m: ChatMessage) => (String(m.dataset || '') === 'pin:none' ? 'took the pinned message down' : 'pinned a message');
 const isPinnedMsg = (m: ChatMessage) => m.id != null && chatStore.pinned?.messageId === String(m.id);
 const pinBusy = ref(false);
+// How an admin pins: right click the React button on a message, then Pin.
+// There is no pin button on the messages themselves.
+const pinMenuFor = ref<string | null>(null);
+const canPin = (m: ChatMessage) => backendStore.showAdminUi && m.id != null && m.rank !== 'bot' && m.rank !== 'pin' && !m.notificationId;
+function openPinMenu(m: ChatMessage, e: MouseEvent) {
+  if (!canPin(m)) return;            // everyone else keeps the browser's own menu
+  e.preventDefault();
+  e.stopPropagation();
+  pickerFor.value = null;
+  pinMenuFor.value = pinMenuFor.value === String(m.id) ? null : String(m.id);
+}
+async function pinFromMenu(m: ChatMessage) {
+  pinMenuFor.value = null;
+  await togglePin(m);
+}
 async function togglePin(m: ChatMessage | null) {
   if (pinBusy.value) return;
   pinBusy.value = true;
@@ -959,6 +989,7 @@ function toggleMore(e: MouseEvent) {
 }
 function togglePicker(id: string, e?: MouseEvent) {
   pickerMore.value = false;
+  pinMenuFor.value = null;
   pickerFor.value = pickerFor.value === id ? null : id;
   if (e && pickerFor.value) {
     placeInlinePicker(e);
@@ -1055,7 +1086,7 @@ function reactedByMe(list: Array<{ userId: string }>) {
 }
 function closePopovers(e: MouseEvent) {
   const t = e.target as HTMLElement;
-  if (!t.closest?.('.nge-chat-react-add') && !t.closest?.('.nge-chat-react-more')) pickerFor.value = null;
+  if (!t.closest?.('.nge-chat-react-add') && !t.closest?.('.nge-chat-react-more')) { pickerFor.value = null; pinMenuFor.value = null; }
   if (!t.closest?.('.nge-chat-share')) shareMenuOpen.value = false;
   if (!t.closest?.('.nge-chat-emoji')) emojiOpen.value = false;
 }
@@ -1465,17 +1496,17 @@ function toggleCollapse() {
             @scroll="handleScroll" @wheel.passive="markScrolling"
           >
             <div class="nge-chat-messages-inner">
-              <div v-if="isLoggedIn && chatMessages.length" class="nge-chat-history-top">
+              <div v-if="isLoggedIn && chatMessages.length && !searchOpen" class="nge-chat-history-top">
                 <button v-if="chatStore.hasMoreHistory" class="nge-chat-history-btn" :disabled="chatStore.loadingHistory"
-                        @click="chatStore.loadOlder()">{{ chatStore.loadingHistory ? 'Loading…' : chatQuery ? 'Search earlier messages too' : 'Load earlier messages' }}</button>
+                        @click="chatStore.loadOlder()">{{ chatStore.loadingHistory ? 'Loading…' : 'Load earlier messages' }}</button>
                 <span v-else>Beginning of chat</span>
               </div>
               <div v-if="searchOpen" class="nge-chat-search-note" role="status">
-                <template v-if="!chatQuery">Type to search. Use -word to leave messages out, "two words" for a phrase, from:name for one player, and on:10/8, after:yesterday or before:2026-10-01 for a day.</template>
+                <template v-if="!chatQuery">Type to search the last 14 days. Use -word to leave messages out, "two words" for a phrase, from:name for one player, and on:10/8 or after:yesterday for a day.</template>
                 <template v-else-if="chatQuery.badDate">That day could not be read: "{{ chatQuery.badDate }}". Try today, yesterday, 10/8 or 2026-10-08.</template>
-                <template v-else-if="searchingBack">Looking further back…</template>
-                <template v-else-if="!searchHits.length">No messages match{{ chatStore.hasMoreHistory ? ' in what is loaded so far.' : '.' }}</template>
-                <template v-else>{{ searchHits.length.toLocaleString() }} {{ searchHits.length === 1 ? 'message' : 'messages' }}. Click one to see it in the conversation.</template>
+                <template v-else-if="searchingBack">{{ searchHits.length ? searchHits.length.toLocaleString() + ' so far. ' : '' }}Looking back through the last 14 days…</template>
+                <template v-else-if="!searchHits.length">No messages match in the last 14 days.</template>
+                <template v-else>{{ searchHits.length.toLocaleString() }} {{ searchHits.length === 1 ? 'message' : 'messages' }} in the last 14 days. Click one to see it in the conversation.</template>
               </div>
               <template v-for="(msg, i) in listedMessages" :key="msg.id ?? ('i' + i)">
                 <div v-if="msg === firstNewMsg" class="nge-chat-new-line" role="separator"><span>New since you left</span></div>
@@ -1648,13 +1679,18 @@ function toggleCollapse() {
                   <template v-if="msg.id != null && isLoggedIn">
                     <span class="nge-chat-react-add">
                       <button v-if="msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-reply-btn" @click.stop="startReply(msg)" title="Reply">↩</button>
-                      <button v-if="backendStore.showAdminUi && msg.rank !== 'bot' && !msg.notificationId" class="nge-chat-react-plus nge-chat-pin-btn" :class="{ 'is-on': isPinnedMsg(msg) }" :disabled="pinBusy"
-                              @click.stop="togglePin(msg)" :title="isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin this message for everyone'"><svg class="nge-chat-pin-ico" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.7 1.7 14.3 6.3M10.7 2.7 7 6.4 4 7l5 5 .6-3 3.7-3.7M6.4 9.6 2.2 13.8"/></svg></button>
-                      <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) }"
-                              @click.stop="togglePicker(String(msg.id), $event)" title="React">☺+</button>
+                      <button class="nge-chat-react-plus" :class="{ 'nge-chat-react-plus--open': pickerFor === String(msg.id) || pinMenuFor === String(msg.id) }"
+                              @click.stop="togglePicker(String(msg.id), $event)" @contextmenu="openPinMenu(msg, $event)"
+                              :data-nge-own-menu="canPin(msg) ? '' : undefined"
+                              :title="canPin(msg) ? 'React. Right click to pin this message.' : 'React'">☺+</button>
                       <span v-if="pickerFor === String(msg.id)" class="nge-chat-react-picker nge-chat-react-picker--placed" :style="inlinePickerPlace">
                         <button v-for="e in CHAT_REACTION_QUICK" :key="e" :title="e === CHAT_REACTION_GEM ? 'Pyr gem' : undefined" @click.stop="react(String(msg.id), e)"><img v-if="e === CHAT_REACTION_GEM" :src="pyrGemUrl" class="nge-chat-gem" alt="Pyr gem" /><template v-else>{{ e }}</template></button>
                         <button class="nge-chat-react-more-btn" :class="{ 'nge-chat-react-more-btn--open': pickerMore }" :aria-expanded="pickerMore" title="More reactions" @click.stop="toggleMore($event)">+</button>
+                      </span>
+                      <!-- Admins: a right click on React offers the pin (Ames 2026-10-10:
+                           no pin button on every message). -->
+                      <span v-if="pinMenuFor === String(msg.id)" class="nge-chat-react-picker nge-chat-pin-menu" role="menu">
+                        <button type="button" role="menuitem" :disabled="pinBusy" @click.stop="pinFromMenu(msg)">📌 {{ isPinnedMsg(msg) ? 'Unpin for everyone' : 'Pin for everyone' }}</button>
                       </span>
                     </span>
                     <div v-if="Object.keys(reactionsOf(msg)).length" class="nge-chat-react-row">
@@ -2086,10 +2122,9 @@ function toggleCollapse() {
 .nge-chat-pin-x:hover:not(:disabled), .nge-chat-pin-x:focus-visible { color: #fff6d6; border-color: rgba(230, 199, 96, 0.5); outline: none; }
 .nge-chat-pin-line { font-size: 12px; font-style: normal; color: #8f98a8; }
 .nge-chat-pin-line b { font-weight: 600; color: #c9d4e6; }
-.nge-chat-pin-btn { font-size: 11px; display: inline-flex; align-items: center; color: #e6eefc; }
-.nge-chat-pin-ico { display: inline-block; vertical-align: -1.5px; flex: 0 0 auto; }
-.nge-chat-pin-btn.is-on { color: #f3d98a; }
-.nge-chat-pin-btn.is-on { background: rgba(230, 199, 96, 0.25); border-color: rgba(230, 199, 96, 0.6); }
+.nge-chat-pin-menu { border-color: rgba(230, 199, 96, 0.45); }
+.nge-chat-pin-menu button { width: auto; padding: 3px 10px; font-size: 12px; white-space: nowrap; color: #f1e3b0; }
+.nge-chat-pin-menu button:hover:not(:disabled) { color: #fff6d6; }
 /* Your own messages: a bar on the left edge, drawn inside the row so nothing
    moves (Krzysztof 2026-10-09). */
 .nge-chat-msg--mine { box-shadow: inset 2px 0 0 rgba(124, 200, 255, 0.85); }

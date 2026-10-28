@@ -272,6 +272,10 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('contextmenu', (e: MouseEvent) => {
     const target = e.target as Element | null;
     if (!target || typeof target.closest !== 'function') return;
+    // A control that has a right click menu of its own (the admin's pin, on
+    // chat's React button) handles the click itself. Stopping it here, as is
+    // done for the rest of chat below, meant its handler never ran.
+    if (target.closest('[data-nge-own-menu]')) return;
     if (target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) {
       e.stopPropagation();
       return;
