@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-28T15:27:00Z",
+      "at": "2026-10-28T18:36:00Z",
       "title": "Super Quests on MEC, and your time on each cell",
       "items": [
         "MEC has Super Quests: help discover giant interneurons, cell types that have never been mapped before. They are under a new Super Quests chip in the Cell Library, and one can take weeks, a little at a time.",
@@ -16,6 +16,63 @@
         "Pyr congratulates you at 10, 25, 50 and 100 hours of active time on one cell, and when you finish a Super Quest.",
         "Find ends at the edge is put away for now on MEC cells, and Pyr no longer places Hits Edge marks by itself.",
         "Each MEC claim shows your active time on it, such as 14 h 20 min so far. It counts while the cell is on screen, Pyr is in front, and you have done real work on it in the last 5 minutes: a mark, an annotation or highlight, a merge or split, or Save view. It adds up across visits and devices."
+      ]
+    },
+    {
+      "at": "2026-10-28T18:33:39Z",
+      "title": "Highlight stays open after a refresh",
+      "digest": "minor",
+      "items": [
+        "If the Highlight box was open when you refreshed the page, it opens again, as merge and cut mode do. Thanks to Nik."
+      ]
+    },
+    {
+      "at": "2026-10-28T18:30:51Z",
+      "title": "Slim view for Quests",
+      "items": [
+        "In the Cell Library's Quests tab, the slim view now shrinks to the quest cell you are working on, with its Save, Open and Submit buttons. With slim view on, opening the Quests tab goes straight there. Thanks to toknow."
+      ]
+    },
+    {
+      "at": "2026-10-28T18:30:51Z",
+      "title": "Ask for access to a dataset",
+      "items": [
+        "A dataset you can't open now has a Request access button, on its card in the Dataset switcher and on a note that appears when a view opens on it (from a chat link, say). The admins are told, and you get a note when they answer.",
+        "Production data comes in levels: the retina is Level 1, unlocked with retina edit access (send your edits from Ask for Edit Access). Medial Entorhinal Cortex is Level 2: once Level 1 is unlocked, you can ask for it.",
+        "The Sandbox card in the Dataset switcher has one button, Start here, which opens the tutorial you are on, or the next one."
+      ]
+    },
+    {
+      "at": "2026-10-28T18:16:00Z",
+      "title": "Extension Sandbox fixes",
+      "items": [
+        "Every Extension Sandbox cell now opens on the cell alone, close in on where it stops early.",
+        "Help me shows the missing pieces along with their gems, and a stray hint point is gone.",
+        "Moving on to the next cell says so while the last one is put back, instead of waiting without a word."
+      ]
+    },
+    {
+      "at": "2026-10-28T18:08:00Z",
+      "title": "Merges that are not the missing piece",
+      "items": [
+        "In the Merge tutorial and the Extension Sandbox, a merge that goes through but is not one of the pieces the exercise asks for now says so, instead of leaving the count unchanged without a word."
+      ]
+    },
+    {
+      "at": "2026-10-28T15:46:00Z",
+      "title": "Chat tips",
+      "items": [
+        "A new ? at the top of chat opens a short card of everything chat can do. Typing /help opens it too.",
+        "Saying @nurro now gets a private answer from Nurro pointing you to its ! commands, and !help mentions the chat tips."
+      ]
+    },
+    {
+      "at": "2026-10-28T15:20:00Z",
+      "title": "Actions in chat, and when your cells were last saved",
+      "items": [
+        "Type /me and an action in chat, like /me claps hands, and it shows as a grey line with your name.",
+        "In My Cells, your other claims show when their view was last saved.",
+        "In Highlight, the button that shrinks the box stays at the left when the box is open."
       ]
     },
     {

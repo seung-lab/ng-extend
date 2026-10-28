@@ -398,14 +398,32 @@ const BETA_CATEGORY = 'Beta access';
 const BETA_BELL = '🔑 Beta access request';
 // Clicking the bell opens Admin Hub, Pilot testers, Beta requests (Ames 2026-10-26).
 const LET_IN = 'Click this note, then Let them in.';
-async function betaRequested(sb, me) {
+/**
+ * Has this player a Beta request still open? Their newest one counts. A
+ * request an admin removed (Admin Hub, Beta requests) or dismissed on the
+ * triage board is not open: the player may ask again (Ames 2026-10-28: "I
+ * dismissed the request but there is no way for me to request it again").
+ */
+async function betaRequested(sb, me, io = {}) {
   if (!me) return false;
-  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id) + '&select=id&limit=1');
-  return Array.isArray(rows) && rows.length > 0;
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(BETA_CATEGORY) + '&user_id=eq.' + encodeURIComponent(me.id)
+    + '&select=id,created_at&order=created_at.desc&limit=1');
+  const last = Array.isArray(rows) ? rows[0] : null;
+  if (!last) return false;
+  try {
+    const email = String((io.who && io.who.email) || '').toLowerCase();
+    const mark = email && io.marks ? (await io.marks.all())[email] : null;
+    if (mark && mark.mark === 'removed' && String(mark.at || '') >= String(last.created_at || '')) return false;
+  } catch (e) { /* no marks: the request stands */ }
+  try {
+    const t = await sb('feedback_triage?source=eq.site_issue&source_id=eq.' + encodeURIComponent(last.id) + '&select=status&limit=1');
+    if (Array.isArray(t) && t[0] && t[0].status === 'dismissed') return false;
+  } catch (e) { /* no triage row: the request stands */ }
+  return true;
 }
 async function betaStatus(a, io) {
   if (io.isAdmin || io.isPilot) return {invited: true, requested: false};
-  return {invited: false, requested: await betaRequested(io.sb, io.me)};
+  return {invited: false, requested: await betaRequested(io.sb, io.me, io)};
 }
 // What a player types is checked hard (Ames 2026-10-24: "Make sure it's
 // secure like players can't inject anything"): a name is letters, spaces and
@@ -436,7 +454,7 @@ async function beta(a, io) {
   const email = betaEmail(a.email);
   const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
   const ew = eyewireOf(a);
-  if (await betaRequested(io.sb, io.me)) return {invited: false, requested: true, already: true};
+  if (await betaRequested(io.sb, io.me, io)) return {invited: false, requested: true, already: true};
   // The sign in email is the one Pilot testers needs; it comes from the
   // server's own check of their sign in, never from the form.
   const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
@@ -548,8 +566,128 @@ async function betaMark(a, io) {
   return io.marks.all();
 }
 
+// ── Access to one dataset (Ames 2026-10-28) ──────────────────────────────
+// "You don't have access to MEC yet. Can we make this have a button to
+// request access?" A player asks from the note on a view they can't load, or
+// from a locked card in the dataset switcher. The request is a report on the
+// triage board (category Dataset access, as Beta requests are), a bell to
+// every admin and a Slack post. An admin adds the player to that dataset's
+// group in CAVE by hand, then presses Granted (or Not now) in the Admin Hub,
+// and the player gets a bell. The decision is a mark per request, kept in
+// io.datasetMarks (Firestore in index.js), so this needs no new table.
+// Retina has its own request with examples (above) and does not come here.
+//   access.datasetStatus  a player: their requests, by dataset id.
+//   access.dataset        a player: {datasetId, label, caveDataset, note}.
+//   access.datasetList    admins: every request, newest first, with its mark.
+//   access.datasetDecide  admins: {id, mark: 'granted' | 'declined' | 'waiting', note}.
+const DATASET_CATEGORY = 'Dataset access';
+const DATASET_BELL = '🔓 Dataset access request';
+const DATASET_MARKS = ['granted', 'declined', 'waiting'];
+const DS_ID = /^[a-z0-9_]{2,40}$/;
+const UUID = /^[0-9a-f-]{36}$/i;
+function datasetOf(a) {
+  const id = String(a.datasetId || '');
+  if (!DS_ID.test(id) || id === 'stroeh_mouse_retina') fail(400, 'Unknown dataset.');
+  const label = cleanText(a.label, 60, 'The dataset name', true);
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} .'()&,:-]*$/u.test(label)) fail(400, 'Unknown dataset.');
+  const cave = cleanText(a.caveDataset, 60, 'The CAVE dataset') || '';
+  if (cave && !/^[A-Za-z0-9_.-]+$/.test(cave)) fail(400, 'Unknown dataset.');
+  return {id, label, cave};
+}
+const labelOf = title => String(title || '').split(' access request from ')[0];
+const lineOf = (message, lead) => (String(message || '').split('\n').find(l => l.startsWith(lead)) || '').slice(lead.length).trim();
+async function datasetRows(sb, filter) {
+  const rows = await sb('site_issues?category=eq.' + encodeURIComponent(DATASET_CATEGORY) + filter
+    + '&select=id,user_id,user_name,dataset,title,message,created_at&order=created_at.desc&limit=300');
+  return Array.isArray(rows) ? rows : [];
+}
+async function datasetStatus(a, io) {
+  if (!io.me) return {requests: {}};
+  const marks = await io.datasetMarks.all();
+  const out = {};
+  // Newest first: a dataset's latest request is the one that counts.
+  for (const r of await datasetRows(io.sb, '&user_id=eq.' + encodeURIComponent(io.me.id))) {
+    if (!r.dataset || out[r.dataset]) continue;
+    out[r.dataset] = {at: r.created_at, mark: (marks[r.id] && marks[r.id].mark) || null};
+  }
+  return {requests: out};
+}
+async function datasetRequest(a, io) {
+  if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
+  const ds = datasetOf(a);
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  // Tiers (Ames 2026-10-28): edit access on the retina comes first. Asked of
+  // CAVE with the player's own sign in; when CAVE can't be asked, nobody is
+  // held back (an admin still decides).
+  if (!io.isAdmin && io.canEditRetina && (await io.canEditRetina()) === false) {
+    fail(403, 'Every dataset starts with the retina: first send your edits for retina edit access (menu, Ask for Edit Access). Then you can ask for this one.');
+  }
+  const now = await datasetStatus(a, io);
+  const open = now.requests[ds.id];
+  // One open request per dataset; asking again after Not now is fine.
+  if (open && !open.mark) return {...now, already: true};
+  const name = String(io.me.username || io.me.display_name || 'A player').slice(0, 80);
+  const signIn = String((io.who && io.who.email) || '').toLowerCase().slice(0, BETA_EMAIL_MAX);
+  const message = [
+    `${name} asks for access to ${ds.label}.`,
+    `Dataset id: ${ds.id}`,
+    ds.cave ? `CAVE dataset: ${ds.cave}` : '',
+    `Sign in email: ${signIn}`,
+    "To let them in, add them to this dataset's group in CAVE, then press Granted in Admin Hub, Access requests.",
+    note ? `Their note: ${note}` : '',
+  ].filter(Boolean).join('\n');
+  const title = `${ds.label} access request from ${name}`.slice(0, 120);
+  await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: DATASET_CATEGORY, title, message, dataset: ds.id, user_id: io.me.id, user_name: name}])});
+  const bell = `${mdText(name)} asks for access to ${mdText(ds.label)}${ds.cave ? ` (CAVE dataset ${mdText(ds.cave)})` : ''}.\n\n`
+    + `Sign in email: ${mdText(signIn)}\n\n`
+    + "Add them to the dataset's group in CAVE, then press Granted in Admin Hub, Access requests."
+    + noteForBell(note);
+  try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
+  try { if (io.postIssue) await io.postIssue({title, message, category: DATASET_CATEGORY, user: name}); } catch (e) { console.warn('[dataset access] slack failed', e && e.message); }
+  await wakeBoard(io);
+  return {...(await datasetStatus(a, io)), requested: true};
+}
+async function datasetList(a, io) {
+  needAdmin(io.isAdmin);
+  const marks = await io.datasetMarks.all();
+  return (await datasetRows(io.sb, '')).map(r => ({
+    id: r.id, userId: r.user_id, name: r.user_name, dataset: r.dataset, label: labelOf(r.title),
+    cave: lineOf(r.message, 'CAVE dataset:'), email: lineOf(r.message, 'Sign in email:'), note: lineOf(r.message, 'Their note:'),
+    at: r.created_at, mark: (marks[r.id] && marks[r.id].mark) || null, markedAt: (marks[r.id] && marks[r.id].at) || null,
+    markedBy: (marks[r.id] && marks[r.id].by) || '',
+  }));
+}
+async function datasetDecide(a, io) {
+  needAdmin(io.isAdmin);
+  const id = String(a.id || '');
+  if (!UUID.test(id)) fail(400, 'Unknown request.');
+  if (!DATASET_MARKS.includes(a.mark)) fail(400, 'Unknown mark.');
+  const row = (await datasetRows(io.sb, '&id=eq.' + encodeURIComponent(id)))[0];
+  if (!row) fail(404, 'That request is gone.');
+  const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  await io.datasetMarks.set(id, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
+  const label = labelOf(row.title);
+  if (row.user_id && a.mark !== 'waiting') {
+    const said = note ? '\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
+    try {
+      if (a.mark === 'granted') {
+        await io.notifyPlayer({userId: row.user_id, title: `🔓 You have access to ${label}`.slice(0, 120),
+          body: `You're in! An admin gave you access to ${mdText(label)}. Reload Pyr, then open it from the Dataset button.` + said});
+      } else {
+        await io.notifyPlayer({userId: row.user_id, title: `About your ${label} access request`.slice(0, 120),
+          body: `Not yet, sorry: your request for ${mdText(label)} was looked at, and access was not given this time.` + said});
+      }
+    } catch (e) { console.warn('[dataset access] player bell failed', e && e.message); }
+  }
+  return datasetList(a, io);
+}
+
 async function handle(action, args, io) {
   const a = args || {};
+  if (action === 'access.datasetStatus') return datasetStatus(a, io);
+  if (action === 'access.dataset') return datasetRequest(a, io);
+  if (action === 'access.datasetList') return datasetList(a, io);
+  if (action === 'access.datasetDecide') return datasetDecide(a, io);
   if (action === 'access.betaStatus') return betaStatus(a, io);
   if (action === 'access.beta') return beta(a, io);
   if (action === 'access.betaMarks') return betaMarks(a, io);

@@ -1,5 +1,5 @@
 import { practiceAction } from './pilot_actions';
-import { SANDBOX_IDS } from './practice_pools';
+import { EXTENSION_CELLS, SANDBOX_IDS } from './practice_pools';
 /**
  * practice.ts — resettable practice cells for the Cut & Merge tutorial.
  *
@@ -1040,8 +1040,10 @@ async function showExample(ex: PracticeExample, view: PracticeView = 'start') {
     return;
   }
   // A cell missing pieces (Extension Sandbox) opens on the cell alone:
-  // finding where it stops and what belongs there is the exercise.
-  if (CHECK_GROUPS[ex.id]) {
+  // finding where it stops and what belongs there is the exercise. Every
+  // extension cell, one piece or several (Ames, 2026-10-24: the one-piece
+  // cell opened with its piece already showing, "half way complete").
+  if (CHECK_GROUPS[ex.id] || EXTENSION_CELLS.some(c => c.id === ex.id)) {
     showOnlyAndKeep(ex, [session.rootA], [[session.rootA, PURPLE]]);
     return;
   }
@@ -1140,6 +1142,25 @@ export async function cellIsJoined(id: string): Promise<boolean | null> {
     if (roots.some(r => !r)) return null;
     return roots.every(r => r === roots[0]);
   } catch { return null; }
+}
+
+/**
+ * Help on an extension cell: show the missing pieces too, in yellow. The
+ * cell opens alone, so without this the hint gems sat over empty space
+ * (Ames, 2026-10-28: "a help point floating in space").
+ */
+export async function revealMissingPieces(): Promise<void> {
+  const ex = session.example;
+  if (!ex || !EXTENSION_CELLS.some(c => c.id === ex.id)) return;
+  const pieces = (CHECK_GROUPS[ex.id] ?? [ex.supervoxel_a, ex.supervoxel_b]).slice(1);
+  const cellRoot = await rootOfSupervoxel(ex, CHECK_GROUPS[ex.id]?.[0] ?? ex.supervoxel_a);
+  const roots = (await Promise.all(pieces.map(sv => rootOfSupervoxel(ex, sv)))).filter((r): r is string => !!r && r !== cellRoot);
+  if (!roots.length) return;
+  const layer = segLayer(ex.dataset);
+  const set = layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? layer?.displayState?.rootSegments;
+  if (!set) return;
+  for (const r of roots) { try { set.add(Uint64.parseString(r)); } catch { /* skip a bad id */ } }
+  colorSegments(ex.dataset, roots.map(r => [r, YELLOW] as [string, number]));
 }
 
 /** True when the two pieces currently share a root. */

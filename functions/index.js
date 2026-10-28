@@ -1870,7 +1870,7 @@ exports.ewSecureWrite = onRequest(
           if(!allowed.includes(args.operation)) throw ewErr(400,"Unknown pilot action");
           // A Hunt being built on the Sandbox (hunt_build.js) cannot be claimed, even outside the Cell Library.
           if (action === "pilot.task") {
-            const no = await require("./hunt_build").claimGuard(sb, args.operation, args.args || {});
+            const no = await require("./hunt_build").claimGuard(sb, args.operation, args.args || {}, { isAdmin, hasProduction: () => ewHasProduction(token) });
             if (no) throw ewErr(409, no);
           }
           const payload={p_user:me.id,p_action:args.operation,p_args:args.args||{}};
@@ -2343,6 +2343,20 @@ const betaMarkStore = {
     if (!v) await ref.delete(); else await ref.set({ email, ...v });
   },
 };
+// Dataset access requests, Granted or Not now (access-request.js,
+// access.datasetDecide, Ames 2026-10-28). A mark per request id, in Firestore.
+const datasetMarkStore = {
+  all: async () => {
+    const snap = await db.collection("dataset_request_marks").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.id) out[v.id] = { mark: v.mark, at: v.at, by: v.by || "" }; });
+    return out;
+  },
+  set: async (id, v) => {
+    const ref = db.collection("dataset_request_marks").doc(String(id));
+    if (!v) await ref.delete(); else await ref.set({ id, ...v });
+  },
+};
 async function visitorBetaRequest(req, res, args) {
   if (Buffer.byteLength(JSON.stringify(req.body || {})) > 4000) return res.status(413).json({ error: "That is too long. Please shorten your note." });
   if (!(await rateLimit(req, false, "visitor:beta")).ok) return res.status(429).json({ error: "Please wait a little while, then try again." });
@@ -2396,7 +2410,19 @@ exports.ewAccessRequest = onRequest(
         return rows.length ? sb("notifications", { method: "POST", body: JSON.stringify(rows) }) : null;
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
-        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore,
+        wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
+        // Can this player edit the retina? From CAVE, with their own sign in
+        // (dataset access tiers, Ames 2026-10-28). null when CAVE can't say.
+        canEditRetina: async () => {
+          try {
+            const r = await fetch("https://global.daf-apis.com/auth/api/v1/user/cache", {
+              headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return null;
+            const u = await r.json();
+            const perms = [...((u.permissions_v2 || {})["stroeh-mouse-retina"] || []), ...((u.permissions_v2_ignore_tos || {})["stroeh-mouse-retina"] || [])];
+            return perms.includes("edit");
+          } catch (e) { return null; }
+        },
         // Beta access requests post like any report (Ames 2026-10-24).
         postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
@@ -2436,7 +2462,7 @@ exports.ewAccessRequest = onRequest(
 // deploy of the shared gateway from a checkout without hunts.js can never take
 // it away. The answer key lives in hunt_keys, read only here. Every rule is in
 // hunts.js (tested in hunts.test.js); this wires the database, the bell and chat.
-const EW_HUNT_CODE_VERSION = "2026-10-27-hunt-39-builder";
+const EW_HUNT_CODE_VERSION = "2026-10-28-hunt-41-builder";
 exports.ewHunt = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 20 },
   async (req, res) => {
@@ -2702,6 +2728,16 @@ exports.ewSheetSync = onRequest(
    }
    const who=await ewVerify(input.token);
    if(!who) throw ewErr(401,"Sign in before syncing a cell.");
+   // Pilot testers: who is on the Pyr Users sheet (Ames 2026-10-28: "if they
+   // are on that sheet then they are invited, if they are not then they came
+   // like from the web"). Admins only; read only, every tab, the email
+   // columns alone. The sheet must be shared with the Sheets identity.
+   if(input.action==='pilot_sheet') {
+    if(!(await rateLimit({ip:who.email},true,'read:pilotSheet')).ok) throw ewErr(429,'Please wait a moment.');
+    const sb=ewSb(ewServiceKey.value().trim());
+    if(!(await pilotContext(sb,who)).isAdmin) throw ewErr(403,'Admins only');
+    return res.json(await require('./sheet-sync').pilotSheetEmails(admin.applicationDefault()));
+   }
    // Annotation Quests (Ames 2026-10-12): the quest's own sheet tab is the
    // record. No proofreading task is involved: the row's Annotator Name says
    // whose cell it is, and sheet-policy.js decides what each action may write.

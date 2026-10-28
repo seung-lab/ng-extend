@@ -40,7 +40,7 @@ import TeamsTab from './TeamsTab.vue';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
-import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
+import { QUEST_DATASET, questState, questOpenCount, listQuests, questWork } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
@@ -721,6 +721,15 @@ const savedViewAt = ref<Record<number, number>>({});
 const showsMecMarks = (cell: CellRow) => canonicalDataset(cell.dataset) === 'pni_mec' && isWorkingClaim(cell) && cell.status !== 'completed';
 const isWorkingClaim = (cell: CellRow) =>
   !!cell.taskId && isMyClaim(cell) && (cell.taskId === workingTaskId || cell.segId === jumpedSegId.value);
+/** When a claim's view was last saved, for the My Cells row (toknow, report
+ *  282). A save (by Save view, or the save made when you leave a claim) is
+ *  what stamps the claim's updated time once it has a saved view. */
+function savedAtLabel(cell: CellRow): { text: string; title: string } {
+  const t = backend.tasks.find(x => x.id === cell.taskId);
+  if (!t?.working_link || !t.updated_at) return { text: 'Not saved yet', title: 'No view saved for this claim yet. Save view keeps your layers and camera with it.' };
+  return { text: `Saved ${relativeTime(t.updated_at)}`, title: `View last saved ${new Date(t.updated_at).toLocaleString()}` };
+}
+
 async function saveClaimView(cell: CellRow) {
   if (!cell.taskId || savingView.value) return;
   savingView.value = cell.taskId;
@@ -2740,7 +2749,17 @@ const slimCell = computed<CellRow | null>(() => {
  *  last claim just completed. It offers "Claim a new cell" (Ames 2026-10-21,
  *  report 191: "slim view on" with nothing to shrink to left the panel full). */
 const slimEmpty = ref(false);
-const slim = computed(() => slimCell.value !== null || slimEmpty.value);
+/** Slim on the Quests tab: the bar shows the quest cell you are on (toknow,
+ *  report 288: "show current Quest cell in slim Cell Library when I select
+ *  Quests tab"). */
+const slimQuest = ref(false);
+const slim = computed(() => slimCell.value !== null || slimEmpty.value || slimQuest.value);
+// With slim view on, opening the Quests tab while a quest is under way goes
+// straight to that cell's slim bar (toknow, report 288).
+watch(filter, f => {
+  if (f === 'quests' && slimMode.value && questWork.active) { slimQuest.value = true; void nextTick(clampPanelPos); }
+  else if (f !== 'quests') slimQuest.value = false;
+});
 /** The rows the cell list draws: one in the slim view, none on the empty bar. */
 const listCells = computed(() => (slimCell.value ? [slimCell.value] : slimEmpty.value ? [] : shownCells.value));
 const CELL_TABS = ['mine', 'all', 'available', 'completed', 'claimed', 'hunt', 'giants'];
@@ -2765,6 +2784,13 @@ function setSlimMode(on: boolean) {
 }
 function collapseToCurrent() {
   setSlimMode(true);
+  if (filter.value === 'quests') {
+    showTabSettings.value = false;
+    showHowTo.value = false;
+    slimQuest.value = true;
+    void nextTick(clampPanelPos);
+    return;
+  }
   // Nothing to shrink to yet: the bar alone, with "Claim a new cell".
   void collapseTo(currentCell());
 }
@@ -2908,7 +2934,7 @@ async function collapseTo(cell: CellRow | null) {
   morphIntoSlim(ghost, el, parts);
 }
 function expandFull() {
-  if (!slimSeg.value && !slimEmpty.value) return;
+  if (!slimSeg.value && !slimEmpty.value && !slimQuest.value) return;
   // Hide the slim row before the full list renders (a long list takes a
   // moment), so the panel never flashes open ahead of the beam.
   if (panelEl.value && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -2916,6 +2942,7 @@ function expandFull() {
   }
   slimSeg.value = null;
   slimEmpty.value = false;
+  slimQuest.value = false;
   void nextTick(() => {
     clampPanelPos();
     // revealWithBeam waits for the panel to settle (the clamp above moves it
@@ -3511,12 +3538,15 @@ const panelStyle = computed(() => ({
 
         <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
         <div v-else-if="filter === 'quests'" class="nge-cl-list">
-          <annotation-quests-tab v-if="questsHere" />
+          <annotation-quests-tab v-if="questsHere" :slim="slimQuest" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
             <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
             <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
                     title="Switch this view to the quests' dataset">Switch to {{ questDatasetName }}</button>
           </div>
+          <button v-if="slimQuest" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
 
         <!-- ═══ CAST TAB (one example of each retinal cell type) ═══ -->
@@ -3983,6 +4013,10 @@ const panelStyle = computed(() => ({
                 @click="saveClaimView(cell)"
                 title="Save your current view (annotations, layers, camera) to this claim. The ↗ button opens it again."
               ><span v-if="savingView === cell.taskId" class="nge-cl-spin" />{{ savingView === cell.taskId ? 'Saving…' : savedViewAt[cell.taskId] ? 'Saved ✓' : 'Save view' }}</button>
+              <!-- Your other open claims: when their view was last saved, in the
+                   spot Save view takes on the one you are working on. -->
+              <span v-else-if="isMyClaim(cell) && cell.taskId && cell.status !== 'completed'" class="nge-cl-saved-at"
+                    :title="savedAtLabel(cell).title">{{ savedAtLabel(cell).text }}</span>
 
               <button
                 class="nge-cl-btn nge-cl-btn--jump"
@@ -4807,6 +4841,7 @@ const panelStyle = computed(() => ({
   color: #a86;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-saved-at { align-self: center; font-size: 11px; color: rgba(200, 212, 228, 0.6); white-space: nowrap; padding: 0 4px; }
 .nge-cl-btn--saveview {
   border-color: rgba(100, 200, 255, 0.3);
   color: #8fd3ff;
