@@ -8,7 +8,7 @@
 import { ref } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
-import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
+import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, ngeGrapheneChunkGrid, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
 import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
 import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
@@ -894,6 +894,25 @@ export function setExtraTintBoxes(boxes: ExtraTintBox[] | null) {
 }
 
 const MAX_VOXELS = 6e6;   // 24 MB of RGBA at most
+/** MEC keeps no piece positions, so a stretch there runs through the
+ *  middles of the blocks of the volume its pieces are in, which can lie
+ *  microns off the branch: the color came out patchy (Ames 2026-10-28, the
+ *  same as Lantern's Clicked branch, 2026-10-27). So, as Lantern does, the
+ *  blocks along a stretch are colored whole, as near its line as this. */
+const BLOCK_WIDE_NM = 6000;
+/** A block bigger than this on a side is left to the line alone. */
+const BLOCK_MAX_NM = 30000;
+let gridAsked = false;
+/** The block grid (nm) when stretches here are colored block by block. */
+function blockGrid(): { originNm: number[]; sizeNm: number[] } | undefined {
+  if (!isMec()) return undefined;
+  const layer = currentSegLayer()?.layer;
+  if (!(layer instanceof SegmentationUserLayer)) return undefined;
+  const grid = ngeGrapheneChunkGrid(layer, gridAsked ? undefined : () => scheduleTint());
+  gridAsked = true;
+  if (!grid || grid.sizeNm.some(s => !(s > 0) || s > BLOCK_MAX_NM)) return undefined;
+  return grid;
+}
 const hexRgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 
 function buildTint(): NgeMeshTint | null {
@@ -902,7 +921,8 @@ function buildTint(): NgeMeshTint | null {
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).slice(0, 3).map(x => x / 1e-9);
   if (scalesNm.length < 3) return null;
   // Every stroke segment, in nanometres.
-  const segs: { a: number[]; b: number[]; rgb: number[]; latest?: boolean; ball?: boolean }[] = [];
+  const segs: { a: number[]; b: number[]; rgb: number[]; latest?: boolean; ball?: boolean; blocky?: boolean }[] = [];
+  const grid = blockGrid();
   for (const { managed, src, style } of highlightLayers()) {
     if (managed.visible === false) continue;
     const rgb = hexRgb(style.color);
@@ -930,13 +950,13 @@ function buildTint(): NgeMeshTint | null {
       if (ann.type === POLYLINE && ann.points) {
         const rgbHere = isLatest ? rgbLatest : rgb;
         const ps = (ann.points as ArrayLike<number>[]).map(q => [0, 1, 2].map(i => q[i] * scalesNm[i]));
-        for (let k = 0; k + 1 < ps.length; k++) segs.push({ a: ps[k], b: ps[k + 1], rgb: rgbHere, latest: isLatest });
+        for (let k = 0; k + 1 < ps.length; k++) segs.push({ a: ps[k], b: ps[k + 1], rgb: rgbHere, latest: isLatest, blocky: !!grid });
         continue;
       }
       if (ann.type !== LINE) continue;
       segs.push({
         a: [0, 1, 2].map(i => ann.pointA[i] * scalesNm[i]),
-        b: [0, 1, 2].map(i => ann.pointB[i] * scalesNm[i]), rgb: isLatest ? rgbLatest : rgb, latest: isLatest,
+        b: [0, 1, 2].map(i => ann.pointB[i] * scalesNm[i]), rgb: isLatest ? rgbLatest : rgb, latest: isLatest, blocky: !!grid,
       });
     }
   }
@@ -948,8 +968,9 @@ function buildTint(): NgeMeshTint | null {
   // reads as marked from a distance.
   const rBall = r * BALL_SCALE;
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  const rWide = Math.max(r, BLOCK_WIDE_NM);
   for (const s of segs) for (const p of [s.a, s.b]) for (let i = 0; i < 3; i++) {
-    const rr = s.ball ? rBall : r;
+    const rr = s.ball ? rBall : s.blocky ? rWide : r;
     lo[i] = Math.min(lo[i], p[i] - rr); hi[i] = Math.max(hi[i], p[i] + rr);
   }
   for (const b of extraTintBoxes) for (let i = 0; i < 3; i++) {
@@ -979,9 +1000,24 @@ function buildTint(): NgeMeshTint | null {
   // The newest mark is painted last, so where it overlaps an older mark its
   // lighter colour is the one that shows.
   segs.sort((x, y) => Number(!!x.latest) - Number(!!y.latest));
+  // A block's number, from a point in nm (blocky stretches only).
+  const blockKey = (p: number[]) => {
+    const k = [0, 1, 2].map(i => Math.floor((p[i] - grid!.originNm[i]) / grid!.sizeNm[i]));
+    return (k[0] * 65536 + k[1]) * 65536 + k[2];
+  };
   for (const s of segs) {
-    const { a, b, rgb } = s;
-    const r = s.ball ? rBall : rLine;
+    const { a, rgb } = s;
+    const b = s.b;
+    const rTube = s.ball ? rBall : rLine;
+    // The blocks this stretch passes through, found by stepping along it.
+    let blocks: Set<number> | null = null;
+    if (s.blocky && grid) {
+      blocks = new Set();
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      const steps = Math.max(1, Math.ceil(len / (Math.min(...grid.sizeNm) / 4)));
+      for (let k = 0; k <= steps; k++) blocks.add(blockKey([0, 1, 2].map(i => a[i] + (b[i] - a[i]) * k / steps)));
+    }
+    const r = blocks ? rWide : rTube;
     const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const len2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] || 1;
     const i0 = [0, 1, 2].map(i => Math.max(0, Math.floor((Math.min(a[i], b[i]) - r - lo[i]) / cell)));
@@ -998,7 +1034,9 @@ function buildTint(): NgeMeshTint | null {
           const ex = px - t * d[0], ey = py - t * d[1], ez = pz - t * d[2];
           const dist = Math.sqrt(ex * ex + ey * ey + ez * ez);
           if (dist >= r) continue;
-          const alpha = Math.min(1, (r - dist) / soft);
+          let alpha = dist < rTube ? Math.min(1, (rTube - dist) / soft) : 0;
+          if (blocks && alpha < 1 && blocks.has(blockKey([lo[0] + (x + 0.5) * cell, lo[1] + (y + 0.5) * cell, lo[2] + (z + 0.5) * cell]))) alpha = 1;
+          if (alpha <= 0) continue;
           const A = Math.round(alpha * 255);
           // The strongest mark wins a cell; the newest wins a tie.
           if (s.latest ? A < data[o + 3] : A <= data[o + 3]) continue;
@@ -1017,7 +1055,7 @@ function buildTint(): NgeMeshTint | null {
     m[12 + i] = -lo[i] / (dims[i] * cell);
   }
   // For checking from the console and in tests.
-  (window as any).__ngeHighlightTint = { segments: segs.length, boxes: extraTintBoxes.length, dims: [nx, ny, nz], cellNm: cell, radiusNm: r };
+  (window as any).__ngeHighlightTint = { segments: segs.length, boxes: extraTintBoxes.length, dims: [nx, ny, nz], cellNm: cell, radiusNm: r, blockGridNm: grid ?? null };
   const glowSeg = segs.find(s => s.latest);
   const glow = glowSeg ? glowSeg.rgb.map(c => c / 255) as [number, number, number] : undefined;
   return { data, dims: [nx, ny, nz], gridFromGlobal: m, glow };

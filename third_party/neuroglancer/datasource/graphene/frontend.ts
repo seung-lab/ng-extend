@@ -1643,6 +1643,8 @@ class GrapheneGraphServerInterface {
     if (url === '') {
       return Promise.reject(GRAPH_SERVER_NOT_SPECIFIED);
     }
+    const table = url.match(/\/table\/([^/?#]+)/)?.[1];
+    if (table && NGE_FIND_PATH_BY_BRANCH_MAP.has(table)) return this.ngeFindPathByBranchMap(first, second, annotationToNanometers);
 
     const promise =
         cancellableFetchSpecialOk(this.credentialsProvider, `${url}/graph/find_path?int64_as_str=1&precision_mode=${Number(precisionMode)}`, {
@@ -1717,6 +1719,44 @@ class GrapheneGraphServerInterface {
       sides: groups.map((g: any) => Array.isArray(g) ? g.map(String) : []),
       illegal: json['illegal_split'] === true,
     };
+  }
+
+  /** Find Path worked out here, from the cell's branch map: the fewest
+   *  pieces from one click to the other, through each piece's point (its
+   *  block's middle where the dataset keeps no positions), with the two
+   *  clicks as the ends. Coarser than the server's path, but seconds, not
+   *  minutes (MEC, Ames 2026-10-28: "can we use this to hackily make find
+   *  path work?"). */
+  async ngeFindPathByBranchMap(first: SegmentSelection, second: SegmentSelection, annotationToNanometers: Float64Array): Promise<number[][]> {
+    const status = new StatusMessage(true);
+    status.setText('Finding a path along the cell');
+    try {
+      const [edges, from, to] = await Promise.all([
+        this.ngeBranchEdges(String(first.rootId)),
+        this.ngePieceOf(String(first.segmentId)),
+        this.ngePieceOf(String(second.segmentId)),
+      ]);
+      const adj = new Map<string, string[]>();
+      const link = (p: string, q: string) => { let l = adj.get(p); if (!l) adj.set(p, l = []); l.push(q); };
+      for (const [p, q] of edges) { link(p, q); link(q, p); }
+      const prev = new Map<string, string|null>([[from, null]]);
+      const queue = [from];
+      for (let i = 0; i < queue.length && !prev.has(to); i++) {
+        for (const n of adj.get(queue[i]) ?? []) if (!prev.has(n)) { prev.set(n, queue[i]); queue.push(n); }
+      }
+      if (!prev.has(to)) throw new Error('Path finding failed: those two points are not joined along this cell.');
+      const ids: string[] = [];
+      for (let n: string|null = to; n !== null; n = prev.get(n) ?? null) ids.unshift(n);
+      const points = await this.ngePiecePoints(ids);
+      const nm: number[][] = [
+        Array.from(first.position, (v, i) => v * annotationToNanometers[i]),
+        ...ids.map(id => points.get(id)).filter((p): p is number[] => !!p),
+        Array.from(second.position, (v, i) => v * annotationToNanometers[i]),
+      ];
+      return nm.map(p => p.map((v, i) => v / annotationToNanometers[i]));
+    } finally {
+      status.dispose();
+    }
   }
 
   /** The links between the pieces of a cell, as pairs of piece ids. */
@@ -1831,6 +1871,9 @@ class GrapheneGraphServerInterface {
   }
   /** Half the size of a level 2 chunk, in nanometers, per dataset. */
   private ngeChunkHalf = new Map<string, number[]>();
+  /** The grid of level 2 blocks, in nanometers: where block 0 starts and
+   *  each block's size, per dataset, once its description is read. */
+  ngeChunkGrid = new Map<string, {originNm: number[], sizeNm: number[]}>();
 
   /** Where a piece's chunk of the volume is, read from the piece's id. A
    *  level 2 id is, from the top bit down: the layer, then the chunk's x, y
@@ -1856,6 +1899,7 @@ class GrapheneGraphServerInterface {
         const offset: number[] = info?.['chunks_start_at_voxel_offset'] && Array.isArray(scale?.['voxel_offset']) ? scale['voxel_offset'] : [0, 0, 0];
         const mask = (BigInt(1) << BigInt(bits)) - BigInt(1);
         this.ngeChunkHalf.set(key, [0, 1, 2].map(k => chunk[k] * res[k] / 2));
+        this.ngeChunkGrid.set(key, {originNm: [0, 1, 2].map(k => offset[k] * res[k]), sizeNm: [0, 1, 2].map(k => chunk[k] * res[k])});
         return (id: string) => {
           let n: bigint;
           try { n = BigInt(id); } catch { return undefined; }
@@ -3089,6 +3133,24 @@ export async function ngeGrapheneBoxesOf(layer: SegmentationUserLayer, ids: stri
   const connection = layer.graphConnection.value;
   if (!(connection instanceof GraphConnection)) throw new Error('This layer has no proofreading graph.');
   return (connection.graph.graphServer as any).ngeChunkBoxes(ids);
+}
+
+/** Graph tables whose Find Path is worked out from the branch map, not the
+ *  server: MEC's path server takes minutes (1 min 34 s for a short path,
+ *  Ames 2026-10-24) and it keeps no piece positions. */
+export const NGE_FIND_PATH_BY_BRANCH_MAP = new Set<string>(['pni_mec']);
+
+/** The dataset's grid of level 2 blocks, in nanometers, if its description
+ *  has been read; else undefined, and `then` is called once it has. */
+export function ngeGrapheneChunkGrid(layer: SegmentationUserLayer, then?: () => void): {originNm: number[], sizeNm: number[]}|undefined {
+  const connection = layer.graphConnection.value;
+  if (!(connection instanceof GraphConnection)) return undefined;
+  const server = connection.graph.graphServer as any;
+  const m = String(server.url ?? '').match(/^(https:\/\/[^/]+)\/segmentation\/(?:api\/v1\/)?table\/([^/?#]+)/);
+  if (!m) return undefined;
+  const grid = server.ngeChunkGrid?.get(`${m[1]}/${m[2]}`);
+  if (!grid && then) server.ngeChunkMiddle(m[1], m[2]).then(then, () => {});
+  return grid;
 }
 
 /** The piece each of a FEW supervoxels belongs to, one request each, a few

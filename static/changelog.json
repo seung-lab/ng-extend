@@ -6,6 +6,7 @@
       "title": "Highlight between two points on MEC",
       "items": [
         "On MEC, pick a highlight color, then click where a checked stretch starts and where it ends: Pyr colors the cell between them, along its branches.",
+        "On MEC, Highlight now colors the whole stretch of branch, not patches of it, and Find Path draws its path in seconds.",
         "On MEC, Confirm soma here, Move AIS here and the other marks now land exactly at the crosshairs or where you click. Before, a mark could land off the soma."
       ]
     },
