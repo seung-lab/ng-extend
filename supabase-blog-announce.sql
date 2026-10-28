@@ -25,13 +25,14 @@ DECLARE
 BEGIN
   IF NEW.status IS DISTINCT FROM 'published' THEN RETURN NEW; END IF;
   IF NEW.slug IS NULL OR btrim(NEW.slug) = '' OR NEW.title IS NULL THEN RETURN NEW; END IF;
-  link := 'https://connectome.quest/blog/post.html?p=' || NEW.slug;
+  -- the post's own page (connectome.quest/blog/<slug>/, built by the site)
+  link := 'https://connectome.quest/blog/' || NEW.slug || '/';
 
   -- Already announced: only keep its picture in step with the post's.
-  IF EXISTS (SELECT 1 FROM public.notifications n WHERE position(link IN n.body) > 0) THEN
+  IF EXISTS (SELECT 1 FROM public.notifications n WHERE (position(link IN n.body) > 0 OR position('post.html?p=' || NEW.slug || ')' IN n.body) > 0)) THEN
     UPDATE public.notifications n
        SET image_url = cover, thumbnail_url = cover
-     WHERE position(link IN n.body) > 0
+     WHERE (position(link IN n.body) > 0 OR position('post.html?p=' || NEW.slug || ')' IN n.body) > 0)
        AND n.image_url IS DISTINCT FROM cover;
     RETURN NEW;
   END IF;

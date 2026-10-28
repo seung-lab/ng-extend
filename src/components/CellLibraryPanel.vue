@@ -490,7 +490,7 @@ function marksStartLine(cell: CellRow): string {
   const until = d && !Number.isNaN(d.getTime()) ? `Yours until ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.` : '';
   return [started && started + '.', until].filter(Boolean).join(' ');
 }
-const SUPER_QUEST_BLOG = 'https://connectome.quest/blog/post.html?p=super-quests';
+const SUPER_QUEST_BLOG = 'https://connectome.quest/blog/super-quests-mec-inhibitory-interneurons/';
 const libraryCells = computed(() => datasetScopedCells.value.filter(c => !c.quest));
 const filteredCells = computed(() => {
   let list = libraryCells.value;

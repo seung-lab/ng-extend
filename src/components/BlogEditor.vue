@@ -45,7 +45,11 @@ const previewHtml = ref('');
 const docEl = ref<HTMLElement | null>(null);
 const confirmDelete = ref(false);
 
-const postUrl = computed(() => `${SITE}post.html?p=${encodeURIComponent(slug.value)}`);
+// Each post has its own page at connectome.quest/blog/<slug>/, built from the
+// published posts every 15 minutes (seunglabdata tools/build-blog.mjs). That
+// page is what a shared link previews with the post's title and picture. In
+// the first minutes after publishing it falls back to post.html by itself.
+const postUrl = computed(() => `${SITE}${encodeURIComponent(slug.value)}/`);
 watch(title, t => { if (!slugTouched.value && id.value === null) slug.value = blogSlug(t); });
 
 async function load() {
@@ -526,7 +530,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
       <label class="nge-blog-field">
         <span>Web address</span>
         <div class="nge-blog-slug">
-          <code>connectome.quest/blog/post.html?p=</code>
+          <code>connectome.quest/blog/</code>
           <input v-model="slug" maxlength="80" placeholder="made-from-the-title" @input="slugTouched = true" />
         </div>
       </label>
