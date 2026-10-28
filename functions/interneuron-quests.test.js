@@ -86,5 +86,24 @@ test('one quest at a time, quests never expire and do not count against claims, 
   assert.deepEqual([more.added,more.changed],[1,1]);
   await assert.rejects(()=>quest(A,'add',{dataset:'pni_mec',category:'x'.repeat(61),cells:[{segment_id:'901'}]}),/Invalid category/);
   assert.equal((await quest(A,'report',{dataset:'pni_mec'})).quests.find(q=>q.segment_id==='900').category,'Pyramidal Target');
+
+  // Two months (supabase-super-quest-two-months.sql; the pg_cron part is not in PGlite).
+  await db.exec("ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS claimed_at timestamptz DEFAULT now()");
+  const twoMonths=fs.readFileSync(path.join(__dirname,'../supabase-super-quest-two-months.sql'),'utf8').split(/^COMMIT;/m)[0]+'COMMIT;';
+  await db.exec(twoMonths);
+  const held=(await db.query(`SELECT a.task_id,(a.expires_at=a.claimed_at+interval '60 days') AS two,t.quest_ends_at=a.expires_at AS shown FROM task_assignments a JOIN proofreading_tasks t ON t.id=a.task_id WHERE t.kind='interneuron' AND a.status='active'`)).rows;
+  assert.equal(held.length,1); assert.equal(held[0].two,true); assert.equal(held[0].shown,true);
+  const qid=held[0].task_id;
+  await task(B,'heartbeat',{id:qid});
+  await task(B,'claim',{id:qid});
+  assert.equal((await db.query(`SELECT expires_at=claimed_at+interval '60 days' AS two FROM task_assignments WHERE task_id=${qid} AND status='active'`)).rows[0].two,true);
+  // An ordinary claim keeps its 30 minutes.
+  assert.equal((await db.query(`SELECT expires_at<now()+interval '1 hour' AS short FROM task_assignments a JOIN proofreading_tasks t ON t.id=a.task_id WHERE t.kind='cell' AND a.status='active' LIMIT 1`)).rows[0].short,true);
+  assert.equal((await db.query('SELECT public.ew_release_expired_super_quests() AS n')).rows[0].n,0);
+  await db.exec(`UPDATE task_assignments SET claimed_at=now()-interval '61 days',expires_at=now() WHERE task_id=${qid} AND status='active'`);
+  assert.equal((await db.query('SELECT public.ew_release_expired_super_quests() AS n')).rows[0].n,1);
+  assert.equal((await db.query(`SELECT status FROM proofreading_tasks WHERE id=${qid}`)).rows[0].status,'pending');
+  assert.equal((await time(B,'mine',{})).length>=1,true, 'the time on it is kept');
+  await task(A,'claim',{id:qid});
  } finally { await db.close(); }
 });

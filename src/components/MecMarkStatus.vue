@@ -215,7 +215,7 @@ onBeforeUnmount(() => {
       <span class="nge-mms-chip" :style="{ '--k': MEC_SOMA.color }" :class="{ 'nge-mms-chip--none': soma.state === 'none' }">
         <i></i>Soma {{ soma.state === 'none' ? 'not yet' : '✓' }}
       </span>
-      <span v-if="started" class="nge-mms-started" title="When you first worked on this cell">{{ started }}</span>
+      <span v-if="started" class="nge-mms-started" title="When you first worked on this cell. A Super Quest is yours for 2 months from when you claimed it.">{{ started }}</span>
       <span v-for="k in marks" :key="k.key" class="nge-mms-chip" :style="{ '--k': k.color }" :class="{ 'nge-mms-chip--none': !counts[k.key] }">
         <i></i>{{ k.label }} {{ counts[k.key] ?? 0 }}
       </span>

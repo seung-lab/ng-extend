@@ -3559,6 +3559,8 @@ export interface ProofreadingTask {
   kind?: 'cell' | 'interneuron' | null;
   /** A Super Quest's category, such as "Pyramidal Target" (supabase-super-quest-categories.sql). */
   quest_category?: string | null;
+  /** When a Super Quest claim ends, 2 months after it was claimed (supabase-super-quest-two-months.sql). */
+  quest_ends_at?: string | null;
 }
 
 /** An interneuron quest: a claim of its own kind, listed apart in the Cell Library. */

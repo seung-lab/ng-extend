@@ -449,6 +449,14 @@ const questCells = computed(() => {
 const questOpenHere = computed(() => questCells.value.filter(c => c.status === 'pending').length);
 /** Every other cell: the ordinary tabs, counts and Claim a new cell. */
 /** The blog post about Super Quests (docs/blog-super-quests.md, posted from the game's blog editor). */
+/** Marks' first line: when you started, and for a Super Quest, the day it is yours until. */
+function marksStartLine(cell: CellRow): string {
+  const started = claimStartedLabel(cell.taskId);
+  const ends = cell.quest ? backend.tasks.find(t => t.id === cell.taskId)?.quest_ends_at : null;
+  const d = ends ? new Date(ends) : null;
+  const until = d && !Number.isNaN(d.getTime()) ? `Yours until ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.` : '';
+  return [started && started + '.', until].filter(Boolean).join(' ');
+}
 const SUPER_QUEST_BLOG = 'https://connectome.quest/blog/post.html?p=super-quests';
 const libraryCells = computed(() => datasetScopedCells.value.filter(c => !c.quest));
 const filteredCells = computed(() => {
@@ -3990,12 +3998,12 @@ const panelStyle = computed(() => ({
           <!-- MEC: the lab marks on the cell in view, one line that opens
                into a checklist (Ames 2026-10-24). In the Complete form
                instead while that is open. -->
-          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" :super-quest="cell.quest" :started="claimStartedLabel(cell.taskId)" />
+          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" :super-quest="cell.quest" :started="marksStartLine(cell)" />
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell</div>
-            <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="claimStartedLabel(cell.taskId)" class="nge-cl-complete-marks" />
+            <MecMarkStatus v-if="showsMecMarks(cell)" start-open :super-quest="cell.quest" :started="marksStartLine(cell)" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
               <div class="nge-cl-complete-statuses" role="radiogroup" aria-label="How did it end?">
