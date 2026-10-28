@@ -324,6 +324,27 @@ const quietOnLoad = computed(() => QUIET_TEST_HOST && !startedHere.value);
 setTutorialOnScreen(() => !quietOnLoad.value && !!activeStep.value);
 const resumeName = computed(() => TUTORIAL_NAMES[store.activeTutorial] ?? 'the tutorial');
 function continueTutorial() { resumeDecided.value = true; }
+/**
+ * "Start here" on the Sandbox card (Ames 2026-10-28: "it should just say Start
+ * Here and that will open whatever tutorial they are in"). A tutorial under
+ * way comes back where it was; one finished leads to the next (Get Started,
+ * then Merge, then Cut); after Cut, the way on is Ask for Edit Access.
+ */
+document.addEventListener('nge:start-here', () => {
+    const t = store.activeTutorial;
+    const inside = t != null && t !== SITE_TOUR && currentStep.value >= 0 && currentStep.value < steps.value.length;
+    if (inside) {
+        startedHere.value = true;
+        resumeDecided.value = true;
+        if (t === 3 || t === 5) document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: t } }));
+        return;
+    }
+    const next = t === 1 ? 3 : t === 3 ? 5 : t === 5 ? 0 : 1;
+    startedHere.value = true;
+    if (next === 1) { store.activeTutorial = 1; store.setTutorialStep(0); return; }
+    if (next === 0) { document.dispatchEvent(new CustomEvent('nge:access-open')); return; }
+    document.dispatchEvent(new CustomEvent('nge:tutorial-start', { detail: { id: next } }));
+});
 function exitFromPrompt() { resumeDecided.value = true; exitIntro(); }
 
 const exitIntro = () => {

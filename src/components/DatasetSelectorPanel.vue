@@ -48,6 +48,10 @@ onMounted(detectCurrentDataset);
 
 // ── Access (from CAVE): locked cards are greyed and do not switch ───────────
 onMounted(() => { loadDatasetPermissions(); });
+function startHere() {
+  emit('hide');
+  document.dispatchEvent(new CustomEvent('nge:start-here'));
+}
 // The retina request (Request access on its card) opens its own panel; this
 // window would hide it (Ames 2026-10-28: "Request access didn't do anything").
 const onAccessOpen = () => emit('hide');
@@ -305,7 +309,14 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
                   <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked">🔒 Unlock Level 1 (retina edit access) before moving to {{ ds.shortLabel || ds.label }}.</div>
                   <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
-                  <div v-if="showTasks(ds)" class="nge-ds-tasks">
+                  <!-- The Sandbox: one way in, the tutorial you are on (Ames 2026-10-28). -->
+                  <div v-if="ds.section === 'sandbox'" class="nge-ds-tasks">
+                    <button class="nge-ds-task" @click.stop="startHere"
+                            title="Open the tutorial you are on, or the next one">
+                      Start here<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
+                    </button>
+                  </div>
+                  <div v-else-if="showTasks(ds)" class="nge-ds-tasks">
                     <button v-if="ds.cellTasks" class="nge-ds-task" @click.stop="openTask(ds, 'available')"
                             :title="'Open the Cell Library on the cells nobody has claimed yet' + (ds.id === currentDatasetId ? '' : ', after switching here')">
                       Available cells<span class="nge-ds-task-arrow" aria-hidden="true">›</span>
