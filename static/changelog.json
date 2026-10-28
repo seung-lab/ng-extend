@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T23:55:00Z",
+      "title": "Chat search reaches back two weeks",
+      "digest": "minor",
+      "items": [
+        "Searching chat looks through the last 14 days, bringing in the earlier messages by itself."
+      ]
+    },
+    {
       "at": "2026-10-28T23:07:00Z",
       "title": "One merger out of the Merger Sandbox",
       "items": [
