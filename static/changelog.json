@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-28T22:12:00Z",
+      "title": "Lantern: Ctrl + click places the light",
+      "digest": "minor",
+      "items": [
+        "In Whole cell, Ctrl + click (Cmd + click on a Mac) the cell to place the Lantern's light there. A plain click no longer moves it.",
+        "When Highlight, Merge, Cut or another tool that uses Ctrl + click is open, the click stays theirs."
+      ]
+    },
+    {
       "at": "2026-10-28T22:04:00Z",
       "title": "Lantern: left click places the light",
       "digest": "minor",
