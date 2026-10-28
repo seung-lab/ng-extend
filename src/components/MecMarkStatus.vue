@@ -10,11 +10,14 @@
  * Highlight's lab marks (highlight.ts), in the same layers, so they mix.
  * Counts every point in the lab's layers, placed here, in Highlight or by hand.
  */
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { MEC_KINDS, MEC_SOMA, mecCounts, somaState, startXyz, mecKindOfLayer, sheetAisXyz, aisXyz, nearPoint } from '../util/mec_marks';
 import { mecStyles, pickUnderMouse, addLabMark, confirmSomaAtStart, goToStart, sharedLabPick, addEdgeMarks, workingRoot, autoEdgeNews, undoHighlight, confirmAisAtSheet, goToXyz } from '../util/highlight';
 
-const props = defineProps<{ startOpen?: boolean }>();
+/** aisOnly: a Super Quest, which marks the AIS only (Ames 2026-10-28). */
+const props = defineProps<{ startOpen?: boolean; aisOnly?: boolean }>();
+/** Find ends at the edge is put away for now (Ames 2026-10-28). */
+const SHOW_FIND_ENDS = false;
 // Open unless the player closed it (Ames 2026-10-24: "make the Marks open by
 // default on MEC claims"); a close is remembered in this browser.
 const OPEN_KEY = 'nge_mec_marks_closed';
@@ -23,7 +26,7 @@ watch(open, o => { if (!props.startOpen) { try { o ? localStorage.removeItem(OPE
 const counts = ref<Record<string, number>>(mecCounts());
 const soma = ref(somaState());
 const hasStart = ref(!!startXyz());
-const marks = MEC_KINDS.filter(k => k !== MEC_SOMA);
+const marks = computed(() => MEC_KINDS.filter(k => k !== MEC_SOMA && (!props.aisOnly || k.key === 'mec:ais')));
 /** The mark a Ctrl + click drops, while one is picked. */
 // Shared with the Highlight box, so both always place the same mark.
 const armed = sharedLabPick;
@@ -226,7 +229,7 @@ onBeforeUnmount(() => {
         <div v-else-if="armed && armed !== MEC_SOMA.key" class="nge-mms-sub"><span>{{ hintOf(armed) }}</span></div>
       </div>
       <div class="nge-mms-foot">
-        <button type="button" class="nge-mms-btn" :disabled="busy || autoLooking !== null" @click="findEdges"
+        <button v-if="SHOW_FIND_ENDS && !aisOnly" type="button" class="nge-mms-btn" :disabled="busy || autoLooking !== null" @click="findEdges"
                 title="Mark Hits Edge wherever the cell reaches the end of the data, from the lab's image mask.">Find ends at the edge</button>
         <button type="button" class="nge-mms-btn" :disabled="busy" @click="undoLast"
                 title="Remove the newest mark. All the Hits Edge marks one search placed go together.">Undo</button>

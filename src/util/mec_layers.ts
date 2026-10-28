@@ -53,15 +53,30 @@ function mergeCopies(viewer: any): void {
   }
 }
 
-function addMissing(): void {
+/** The layers a Super Quest uses (Ames 2026-10-28: "for these we only need AIS"). */
+export const SUPER_QUEST_LAYERS = ['AIS 🐬'];
+
+function addMissing(only?: string[]): void {
   const viewer: any = (window as any).viewer;
   if (!viewer?.layerSpecification) return;
   if (currentDatasetTag() !== 'pni_mec') return;
   mergeCopies(viewer);
   const managed: any[] = viewer?.layerManager?.managedLayers ?? [];
   const key = mecLayerKey;
+  const wanted = only ? new Set(only.map(key)) : null;
+  // The layers this cell does not use go, when they hold no points.
+  if (wanted) {
+    for (const ml of managed.slice()) {
+      if (ml.archived || wanted.has(key(ml.name)) || !MEC_LAYERS.some(l => key(l.name) === key(ml.name))) continue;
+      const pts = ml.layer?.localAnnotations;
+      if (!pts) continue;
+      let n = 0; for (const _ of pts) n++;
+      if (!n) viewer.layerManager.removeManagedLayer(ml);
+    }
+  }
   const have = new Set(managed.filter(l => !l.archived).map(l => key(l.name)));
   for (const { name, color } of MEC_LAYERS) {
+    if (wanted && !wanted.has(key(name))) continue;
     if (have.has(key(name))) continue;
     viewer.layerSpecification.add(makeLayer(viewer.layerSpecification, name, {
       type: 'annotation',
@@ -74,6 +89,6 @@ function addMissing(): void {
 
 /** Add any of the four that the view lacks, once the cell's view has loaded
  *  (a start link replaces the layers, so look again a little later). */
-export function ensureMecLayers(): void {
-  for (const ms of [1200, 4000, 9000]) setTimeout(() => { try { addMissing(); } catch (e) { console.warn('[mec layers]', e); } }, ms);
+export function ensureMecLayers(only?: string[]): void {
+  for (const ms of [1200, 4000, 9000]) setTimeout(() => { try { addMissing(only); } catch (e) { console.warn('[mec layers]', e); } }, ms);
 }

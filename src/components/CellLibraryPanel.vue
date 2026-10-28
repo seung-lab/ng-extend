@@ -42,7 +42,7 @@ import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
 import { QUEST_DATASET, questState, questOpenCount, listQuests } from '../annotation_quests';
 import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
-import { ensureMecLayers } from '../util/mec_layers';
+import { ensureMecLayers, SUPER_QUEST_LAYERS } from '../util/mec_layers';
 import MecMarkStatus from './MecMarkStatus.vue';
 import { buildState } from '../hunt_build';
 import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
@@ -641,8 +641,9 @@ function setWorkingTask(id: number | null) {
   workingTaskId = id;
   workingSet = true;
   setTimerWorkingClaim(id);
-  // An MEC cell opens with the lab's AIS, True End, Can't Fix and Hits Edge layers.
-  if (id) ensureMecLayers();
+  // An MEC cell opens with the lab's AIS, True End, Can't Fix and Hits Edge
+  // layers; a Super Quest with AIS only.
+  if (id) ensureMecLayers(isQuestTask(backend.tasks.find(t => t.id === id)) ? SUPER_QUEST_LAYERS : undefined);
   try { sessionStorage.setItem(WORKING_KEY, id ? String(id) : ''); } catch {}
   try { id ? localStorage.setItem(WORKING_KEY, String(id)) : localStorage.removeItem(WORKING_KEY); } catch {}
 }
@@ -3980,12 +3981,12 @@ const panelStyle = computed(() => ({
           <!-- MEC: the lab marks on the cell in view, one line that opens
                into a checklist (Ames 2026-10-24). In the Complete form
                instead while that is open. -->
-          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" />
+          <MecMarkStatus v-if="showsMecMarks(cell) && !(completing && completing.key === cellKey(cell))" :ais-only="cell.quest" />
           <!-- Complete: the finished cell's link, and the crosshairs inside it,
                before anything is written (Amy 2026-09-28). -->
           <div v-if="completing && completing.key === cellKey(cell)" class="nge-cl-complete">
             <div class="nge-cl-complete-title">Complete this cell</div>
-            <MecMarkStatus v-if="showsMecMarks(cell)" start-open class="nge-cl-complete-marks" />
+            <MecMarkStatus v-if="showsMecMarks(cell)" start-open :ais-only="cell.quest" class="nge-cl-complete-marks" />
             <template v-if="completeStatusesFor(cell.dataset).length">
               <label class="nge-cl-complete-label">How did it end?</label>
               <div class="nge-cl-complete-statuses" role="radiogroup" aria-label="How did it end?">
