@@ -33,6 +33,7 @@ const MEC_HOWTO: string[] = [
   `Open <b>Marks</b> under your cell, pick <b>AIS</b> and press <b>Go to the lab's AIS point</b>, where the axon leaves the cell body. If it is off, move the crosshairs there, then press <b>Confirm AIS here</b>.`,
   `Proofread the <b>axon only</b>: follow it from the AIS to every end. Skip spines and the rest of the cell. <b>Do not merge mitochondria.</b>`,
   `When the axon is done, <b>Complete</b> it (here, or with &Delta; next to its segment ID) and choose <b>Axon complete</b>.`,
+  `Example proofread cells: <a href="https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5179547678932992" target="_blank" rel="noopener">Stellate &amp; Pyramidal ↗</a>`,
 ];
 
 export interface DatasetCaveConfig {
@@ -250,7 +251,8 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypesUrl:     'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718150469386240',
     instructionsUrl:  'https://docs.google.com/spreadsheets/d/1cGit_jEzUa3idCqM0w_KRW4P42KKN9RnPK4Zafa9Nzw/edit?gid=1005852930#gid=1005852930',
     howToSteps:       MEC_HOWTO,
-    howToKey:         'howto.mec',
+    // v2 (Ames 2026-10-28): the short steps; the long edit saved as howto.mec stays behind.
+    howToKey:         'howto.mec.v2',
     // Root ids and camera lifted from the team proofreading state
     // (nglstate 6641601003126784), so they resolve in the pni_mec graph.
     defaultSegments:  ['720575947322423718', '720575947401560895', '720575947322485926'],
