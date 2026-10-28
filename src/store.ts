@@ -1036,6 +1036,11 @@ export interface UserPreferences {
   /** Settings: every notification in one list instead of My Pyr and Pyr
    *  Updates (Ames 2026-10-25). */
   notifOneList?: boolean;
+  /** Settings, "Organize my notifications into categories": the bell's
+   *  tabs (My Pyr, Pyr Updates, and Admin for admins). Off by default, so
+   *  the bell is one feed (Ames 2026-10-27: "default it back to 1 feed and
+   *  put an option to organize my notifs into categories in settings"). */
+  notifCategories?: boolean;
   /** Settings, "Show Today in Pyr": false keeps the daily update out of the
    *  bell (Ames 2026-10-25). */
   showDailyDigest?: boolean;
@@ -1176,7 +1181,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'showDailyDigest'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

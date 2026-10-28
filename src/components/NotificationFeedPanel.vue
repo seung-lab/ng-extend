@@ -215,7 +215,8 @@ const huntNotes = computed(() => backend.notifications.filter(n => kindOf(n) ===
 const mainNotes = computed(() => backend.notifications.filter(n => kindOf(n) === 'main'));
 const mineNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type === 'user'));
 const updateNotes = computed(() => mainNotes.value.filter((n: any) => n.target_type !== 'user'));
-const oneList = computed(() => useUserPreferencesStore().prefs.notifOneList === true);
+// One feed unless the player chose categories in Settings (Ames 2026-10-27).
+const oneList = computed(() => useUserPreferencesStore().prefs.notifCategories !== true);
 const showFeedTabs = computed(() => !oneList.value);
 // Player view (store.ts showAdminUi) hides the Admin and Triage tabs and
 // keeps their notes out of the single list; the Player view chip in the top
