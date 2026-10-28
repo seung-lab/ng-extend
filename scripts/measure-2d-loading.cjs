@@ -149,8 +149,18 @@ function scaleKeyOf(u) {
 }
 
 // A step after the cold load: z+16 (slices), x+700 / y-400 (screen pixels, converted
-// with the current zoom), zoom*2 (crossSectionScale multiplied).
+// with the current zoom), zoom*2 (crossSectionScale multiplied), to:x/y/z (a jump).
 async function applyStep(page, step) {
+  // to:x/y/z jumps to that position, as a right click in 3D or a link does.
+  const j = step.match(/^to:(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)$/);
+  if (j) {
+    await page.evaluate(xyz => {
+      const p = window.viewer.navigationState.position; const arr = p.value;
+      for (let i = 0; i < 3; ++i) arr[i] = xyz[i];
+      p.changed.dispatch();
+    }, [Number(j[1]), Number(j[2]), Number(j[3])]);
+    return;
+  }
   const m = step.match(/^(x|y|z|zoom)([+\-*\/])(\d+(?:\.\d+)?)$/);
   if (!m) throw new Error('bad step ' + step);
   await page.evaluate(([axis, op, n]) => {
