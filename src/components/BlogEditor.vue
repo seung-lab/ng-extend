@@ -11,6 +11,12 @@
  * buttons"). The page is an editable area; the toolbar formats what is
  * selected. On save the document becomes the blog's safe stored text
  * (util/blog_document.ts), so nothing an author pastes can carry code.
+ *
+ * The same editor runs on the blog itself (Ames 2026-10-28: an Edit button
+ * on each post at connectome.quest/blog), packaged by
+ * scripts/build-blog-site-editor.cjs with src/blog_site/editor.ts. There it
+ * is given `site` and the post to open (`startSlug`: a slug, or '' for a
+ * new post), and it tells the page when it is closed.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { supabase } from '../supabase';
@@ -22,6 +28,9 @@ interface Post {
   id: number; slug: string; title: string; summary: string | null; body: string; cover_url: string | null;
   status: 'draft' | 'published'; author_name: string; published_at: string | null; updated_at: string;
 }
+
+const props = defineProps<{ site?: boolean; startSlug?: string | null }>();
+const emit = defineEmits<{ (e: 'close'): void }>();
 
 const SITE = 'https://connectome.quest/blog/';
 const posts = ref<Post[]>([]);
@@ -61,7 +70,20 @@ async function load() {
   if (error) { problem.value = 'Could not load posts: ' + error.message; return; }
   posts.value = (data ?? []) as Post[];
 }
-onMounted(load);
+onMounted(async () => {
+  await load();
+  // On the blog: go straight to the post the Edit button was pressed on.
+  if (props.startSlug == null) return;
+  const p = props.startSlug ? posts.value.find(x => x.slug === props.startSlug) : null;
+  if (props.startSlug && !p && !problem.value) problem.value = 'That post could not be opened. Only blog authors can edit posts.';
+  else void open(p ?? null);
+});
+/** On the blog: put the editor away (the page asks first if work is unsaved). */
+function closeEditor() {
+  if (unsaved() && !window.confirm('Leave the editor? Your changes are kept in this browser and offered back next time.')) return;
+  keepLocalNow();
+  emit('close');
+}
 
 const EMPTY = '<p><br></p>';
 async function open(p: Post | null) {
@@ -489,7 +511,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 </script>
 
 <template>
-  <div class="nge-blog">
+  <div class="nge-blog" :class="{ 'nge-blog--site': site }">
     <!-- List -->
     <template v-if="!editing">
       <div class="nge-blog-head">
@@ -497,7 +519,10 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
           <h3>Blog</h3>
           <p>Posts appear on <a :href="SITE" target="_blank" rel="noopener noreferrer">connectome.quest/blog</a> as soon as you publish.</p>
         </div>
-        <button class="nge-blog-btn nge-blog-btn--primary" @click="open(null)">Write a post</button>
+        <span class="nge-blog-head-actions">
+          <button class="nge-blog-btn nge-blog-btn--primary" @click="open(null)">Write a post</button>
+          <button v-if="site" class="nge-blog-btn" @click="closeEditor">Close</button>
+        </span>
       </div>
       <p v-if="problem" class="nge-blog-problem" role="alert">{{ problem }}</p>
       <p v-if="loading" class="nge-blog-note">Loading posts...</p>
@@ -515,7 +540,10 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
     <template v-else>
       <div class="nge-blog-head">
         <button class="nge-blog-btn" @click="back">← All posts</button>
-        <span class="nge-blog-pill" :class="'nge-blog-pill--' + status">{{ id === null ? 'New post' : status === 'published' ? 'Published' : 'Draft' }}</span>
+        <span class="nge-blog-head-actions">
+          <span class="nge-blog-pill" :class="'nge-blog-pill--' + status">{{ id === null ? 'New post' : status === 'published' ? 'Published' : 'Draft' }}</span>
+          <button v-if="site" class="nge-blog-btn" @click="closeEditor">Close editor</button>
+        </span>
       </div>
       <div v-if="offerLocal" class="nge-blog-restore" role="status">
         <span>You have unsaved changes to this post from {{ when(offerLocal.at) }}.</span>
@@ -619,6 +647,9 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 </template>
 
 <style scoped>
+/* On the blog page: the editor takes the page's width and scrolls with it. */
+.nge-blog.nge-blog--site { max-height: none; overflow: visible; width: 100%; border-radius: 14px; background: #0d1626; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25); }
+.nge-blog-head-actions { display: inline-flex; align-items: center; gap: 8px; }
 .nge-blog-restore {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px;
   border-radius: 8px; border: 1px solid rgba(245, 209, 66, 0.5); background: rgba(245, 209, 66, 0.08); color: #f3e7b5;

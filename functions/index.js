@@ -1655,7 +1655,9 @@ exports.guideFeedback = onRequest(
 const { authorizeData, isPersonalProfileEdit } = require("./community-data");
 const { syncProductionGroup } = require("./production-group");
 const EW_SB = "https://javthknksdcrlhiaaptj.supabase.co/rest/v1/";
-const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^http:\/\/localhost(:\d+)?$/];
+// connectome.quest: the blog's own editor (Ames 2026-10-28). Who may write is
+// still decided per request (blog_authors), as from the game.
+const EW_ORIGINS = [/^https:\/\/([a-z0-9-]+-dot-)?brain-wire-dot-seung-lab\.ue\.r\.appspot\.com$/, /^https:\/\/connectome\.quest$/, /^http:\/\/localhost(:\d+)?$/];
 const ewIdentityCache = new Map(); // token -> { email, caveId, at }
 
 // Production access, for the colour of a name in chat (Ames 2026-10-06):
