@@ -10,6 +10,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
 import { datasetAccess } from '../util/dataset_access';
 import RequestAccessButton from './RequestAccessButton.vue';
+import { needsRetinaFirst } from '../dataset_access_request';
 
 const current = ref<DatasetEntry | undefined>(undefined);
 function detect() {
@@ -48,7 +49,7 @@ function close() {
   <transition name="nge-noaccess">
     <div v-if="shown && current" class="nge-noaccess" role="status">
       <span class="nge-noaccess-icon" aria-hidden="true">🔒</span>
-      <span class="nge-noaccess-text">You don't have access to <b>{{ current.shortLabel || current.label }}</b> yet, so its cells won't load.</span>
+      <span class="nge-noaccess-text">You don't have access to <b>{{ current.shortLabel || current.label }}</b> yet, so its cells won't load.<template v-if="needsRetinaFirst(current)"> Every dataset starts with the retina: send your edits for retina edit access first, then you can ask for this one.</template></span>
       <RequestAccessButton :ds="current" />
       <button type="button" class="nge-noaccess-x" title="Close" aria-label="Close" @click="close">×</button>
     </div>

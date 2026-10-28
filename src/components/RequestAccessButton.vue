@@ -7,7 +7,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import type { DatasetEntry } from '../datasets';
-import { loadMyDatasetRequests, requestDatasetAccess, requestStateOf, RETINA_ID } from '../dataset_access_request';
+import { loadMyDatasetRequests, requestDatasetAccess, requestStateOf, needsRetinaFirst, RETINA_ID } from '../dataset_access_request';
 
 const props = defineProps<{ ds: DatasetEntry }>();
 const busy = ref(false);
@@ -15,21 +15,26 @@ const error = ref('');
 onMounted(() => { void loadMyDatasetRequests(); });
 
 const state = computed(() => requestStateOf(props.ds));
+/** Not yet an editor on the retina: that comes first (Ames 2026-10-28). */
+const retinaFirst = computed(() => needsRetinaFirst(props.ds));
 const label = computed(() => {
   if (busy.value) return 'Sending…';
   if (props.ds.id === RETINA_ID) return 'Request access';
+  if (retinaFirst.value && state.value !== 'granted') return 'First: retina edit access';
   if (state.value === 'open') return 'Requested ✓';
   if (state.value === 'granted') return 'Granted: reload Pyr';
   return state.value === 'declined' ? 'Ask again' : 'Request access';
 });
 const title = computed(() => props.ds.id === RETINA_ID
   ? 'Retina access is given after a short test: open the request and send your examples.'
+  : retinaFirst.value && state.value !== 'granted'
+    ? `Every dataset starts with the retina: send your edits for retina edit access first. Once you can edit there, you can ask for ${props.ds.label}.`
   : state.value === 'open' ? 'Your request is with the admins. You will get a note when they answer.'
     : state.value === 'granted' ? 'An admin gave you access. Reload Pyr, then open it.'
       : `Ask the admins for access to ${props.ds.label}. You will get a note when they answer.`);
 
 async function ask() {
-  if (busy.value || (state.value === 'open' && props.ds.id !== RETINA_ID)) return;
+  if (busy.value || (state.value === 'open' && props.ds.id !== RETINA_ID && !retinaFirst.value)) return;
   if (state.value === 'granted') { location.reload(); return; }
   busy.value = true; error.value = '';
   try { await requestDatasetAccess(props.ds); }
@@ -40,7 +45,7 @@ async function ask() {
 
 <template>
   <span class="nge-req-access">
-    <button type="button" class="nge-req-access-btn" :class="{ 'is-sent': state === 'open' && ds.id !== RETINA_ID }"
+    <button type="button" class="nge-req-access-btn" :class="{ 'is-sent': state === 'open' && ds.id !== RETINA_ID && !retinaFirst }"
             :disabled="busy" :title="title" @click.stop="ask">{{ label }}</button>
     <span v-if="error" class="nge-req-access-err" role="alert">{{ error }}</span>
   </span>

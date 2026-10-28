@@ -6,7 +6,7 @@
       "title": "Ask for access to a dataset",
       "items": [
         "A dataset you can't open now has a Request access button, on its card in the Dataset switcher and on a note that appears when a view opens on it (from a chat link, say). The admins are told, and you get a note when they answer.",
-        "Retina's button opens its own request, with the examples it asks for, as before."
+        "Every dataset starts with the retina: until you can edit there, the button says so and opens the retina request, where you send your edits. Retina's own button opens that request too, as before."
       ]
     },
     {
