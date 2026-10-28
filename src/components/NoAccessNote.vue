@@ -49,8 +49,8 @@ function close() {
   <transition name="nge-noaccess">
     <div v-if="shown && current" class="nge-noaccess" role="status">
       <span class="nge-noaccess-icon" aria-hidden="true">🔒</span>
-      <span class="nge-noaccess-text">You don't have access to <b>{{ current.shortLabel || current.label }}</b> yet, so its cells won't load.<template v-if="needsRetinaFirst(current)"> Every dataset starts with the retina: send your edits for retina edit access first, then you can ask for this one.</template></span>
-      <RequestAccessButton :ds="current" />
+      <span class="nge-noaccess-text">You don't have access to <b>{{ current.shortLabel || current.label }}</b> yet, so its cells won't load.<template v-if="needsRetinaFirst(current)"> Unlock Level 1 (retina edit access) before moving to {{ current.shortLabel || current.label }}: send your edits from Ask for Edit Access in the menu.</template></span>
+      <RequestAccessButton v-if="!needsRetinaFirst(current)" :ds="current" />
       <button type="button" class="nge-noaccess-x" title="Close" aria-label="Close" @click="close">×</button>
     </div>
   </transition>
