@@ -849,6 +849,10 @@ export async function setCellComplete(
 
   // localStorage fallback — save locally so UI still works (keyed by rootId)
   const fallbackPos = pointOverride ?? getViewerPosition();
+  // caveWrites (MEC): the edit log below is the record; CAVE gets a copy.
+  if (complete && dsCfg.annotationLog && dsCfg.caveWrites && cellStatusTable) {
+    void copyToCave(caveServer, cellStatusTable, 'complete', fallbackPos);
+  }
   setLocalAnnotation(segKey(rootId), {isComplete: complete});
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
     detail: { segId: rootId, status: { isComplete: complete } },
@@ -1130,6 +1134,8 @@ export async function saveCellType(
 
   // localStorage fallback — save locally so UI still works (keyed by rootId)
   setLocalAnnotation(segKey(rootId), {cellType});
+  // caveWrites (MEC): the edit log below is the record; CAVE gets a copy.
+  if (dsCfg.annotationLog && dsCfg.caveWrites && cellTypeTable) void copyToCave(caveServer, cellTypeTable, cellType, pos);
   console.info(`[lightbulb] Saved cell type locally for ${segKey(rootId)} (CAVE unavailable)`);
   // Update local cell history so Profile UI reflects immediately
   try {
@@ -1171,7 +1177,7 @@ export async function labelAxonComplete(caveServer: string, rootId: string, pt?:
   const dsCfg = getActiveDatasetConfig();
   const pos = pt ?? getViewerPosition();
   let inCave = false;
-  if (!dsCfg.annotationLog && caveServer && dsCfg.cellStatusTable) {
+  if ((!dsCfg.annotationLog || dsCfg.caveWrites) && caveServer && dsCfg.cellStatusTable) {
     const tag = dsCfg.cellStatusSchema === 'bound_tag_user' ? 'axon complete' : encodeTag('axon complete');
     const res = await fetch(annotationBaseUrl(caveServer, dsCfg.cellStatusTable, dsCfg.alignedVolume), {
       method: 'POST', headers: authHeaders(caveServer),
@@ -1189,4 +1195,20 @@ export async function labelAxonComplete(caveServer: string, rootId: string, pt?:
     }
   } catch (e) { console.warn('[lightbulb] axon complete: edit log failed', e); }
   return inCave;
+}
+
+/** A copy of a mark in a CAVE table, for a dataset whose record is the edit
+ *  log (caveWrites): a point, the tag, the player stamped by the server
+ *  (bound_tag_user). A failure is reported, never shown to the player.
+ *  True when CAVE took it. */
+async function copyToCave(caveServer: string, table: string, tag: string, pos: ArrayLike<number>): Promise<boolean> {
+  const dsCfg = getActiveDatasetConfig();
+  if (!caveServer || !table) return false;
+  const res = await fetch(annotationBaseUrl(caveServer, table, dsCfg.alignedVolume), {
+    method: 'POST', headers: authHeaders(caveServer),
+    body: JSON.stringify({ annotations: [{ pt: { position: Array.from(pos).slice(0, 3) }, tag }] }),
+  }).catch(e => { console.warn('[lightbulb] copy to CAVE: network error', e); return null; });
+  if (res?.ok) { console.info(`[lightbulb] copied "${tag}" to ${table}`); return true; }
+  reportWriteFailure('cave_write', `copy of ${tag} to ${table}: ${res ? res.status : 'network error'}`, res ? (await res.text().catch(() => '')).slice(0, 300) : '');
+  return false;
 }

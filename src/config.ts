@@ -96,6 +96,13 @@ export interface DatasetCaveConfig {
    *  (server-stamped user, cell ID, point) and read back from there. Each row
    *  keeps its point, so the log can be replayed into CAVE once it exists. */
   annotationLog?: 'edit_log';
+  /** With annotationLog: also post each completion ("complete"), Axon complete
+   *  label ("axon complete") and cell type to the CAVE tables, as well as the
+   *  edit log. The edit log stays what Pyr reads and counts, until the
+   *  dataset's materialize service can read the tables back. A CAVE write
+   *  that fails is reported and never blocks the player (MEC, Ames
+   *  2026-10-28: "aren't these our own cave tables? we can do it"). */
+  caveWrites?: boolean;
   /** Proofreading instructions for this dataset, linked from the Cell
    *  Library header (MEC only for now, Ames 2026-09-29). */
   instructionsUrl?: string;
@@ -251,6 +258,10 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // Still true 2026-09-28: hc.himc-cave.com annotation returns 400
     // invalid_table_id for pni_mec and materialize 503. Log to Supabase (Ames).
     annotationLog:    'edit_log',
+    // The tables exist and take writes since 2026-10-28 (aligned volume
+    // pni_mec registered with the annotation service for HiMC; materialize
+    // still down, so reads stay on the edit log).
+    caveWrites:       true,
     cellTypesState:   MEC_CELL_TYPES_STATE,
     // Ames's labelled view (2026-09-29).
     cellTypesUrl:     'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5718150469386240',
