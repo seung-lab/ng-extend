@@ -11,6 +11,8 @@
 import { ref } from 'vue';
 import { secureWrite } from './secure_write';
 import type { DatasetEntry } from './datasets';
+import { datasetAccess } from './util/dataset_access';
+import { useProofreadingBackendStore } from './store';
 
 export type DatasetRequestMark = 'granted' | 'declined' | null;
 export interface DatasetRequestState { at: string; mark: DatasetRequestMark }
@@ -21,6 +23,7 @@ export interface DatasetRequestRow {
 }
 
 export const RETINA_ID = 'stroeh_mouse_retina';
+const RETINA_CAVE = 'stroeh-mouse-retina';
 
 /** This player's requests, by dataset id; null until read. */
 export const myDatasetRequests = ref<Record<string, DatasetRequestState> | null>(null);
@@ -36,6 +39,20 @@ export function loadMyDatasetRequests(force = false): Promise<void> {
   return reading;
 }
 
+/**
+ * Tiers (Ames 2026-10-28): a Sandbox player can't ask for another dataset
+ * straight away. First they earn edit access on the retina by sending their
+ * edits (the retina request, access_request.ts); with that, they may ask for
+ * MEC and the rest. True when CAVE says they can't edit the retina yet. While
+ * CAVE has not answered, nothing is held back.
+ */
+export function needsRetinaFirst(ds: DatasetEntry | undefined): boolean {
+  if (!ds || ds.id === RETINA_ID) return false;
+  try { if (useProofreadingBackendStore().isAdmin) return false; } catch { /* no store yet */ }
+  const retina = datasetAccess(RETINA_CAVE);
+  return retina !== 'edit' && retina !== 'unknown';
+}
+
 /** Where this player's request for a dataset stands. */
 export function requestStateOf(ds: DatasetEntry | undefined): 'none' | 'open' | 'granted' | 'declined' {
   const r = ds ? myDatasetRequests.value?.[ds.id] : undefined;
@@ -45,7 +62,7 @@ export function requestStateOf(ds: DatasetEntry | undefined): 'none' | 'open' | 
 
 /** Ask for access. Retina opens its own request panel. Throws a sentence. */
 export async function requestDatasetAccess(ds: DatasetEntry, note = ''): Promise<void> {
-  if (ds.id === RETINA_ID) {
+  if (ds.id === RETINA_ID || needsRetinaFirst(ds)) {
     document.dispatchEvent(new CustomEvent('nge:access-open'));
     return;
   }

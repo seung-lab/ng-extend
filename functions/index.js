@@ -2396,6 +2396,18 @@ exports.ewAccessRequest = onRequest(
       };
       const data = await require("./access-request").handle(action, args, { sb, me, who, isAdmin, isPilot,
         wake: wakeBetaBoard, marks: betaMarkStore, principles: principlesStore, datasetMarks: datasetMarkStore,
+        // Can this player edit the retina? From CAVE, with their own sign in
+        // (dataset access tiers, Ames 2026-10-28). null when CAVE can't say.
+        canEditRetina: async () => {
+          try {
+            const r = await fetch("https://global.daf-apis.com/auth/api/v1/user/cache", {
+              headers: { Authorization: `Bearer ${token}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return null;
+            const u = await r.json();
+            const perms = [...((u.permissions_v2 || {})["stroeh-mouse-retina"] || []), ...((u.permissions_v2_ignore_tos || {})["stroeh-mouse-retina"] || [])];
+            return perms.includes("edit");
+          } catch (e) { return null; }
+        },
         // Beta access requests post like any report (Ames 2026-10-24).
         postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {

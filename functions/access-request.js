@@ -598,6 +598,12 @@ async function datasetRequest(a, io) {
   if (!io.me) fail(400, 'Your Pyr profile is not ready yet. Reload the page, then try again.');
   const ds = datasetOf(a);
   const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
+  // Tiers (Ames 2026-10-28): edit access on the retina comes first. Asked of
+  // CAVE with the player's own sign in; when CAVE can't be asked, nobody is
+  // held back (an admin still decides).
+  if (!io.isAdmin && io.canEditRetina && (await io.canEditRetina()) === false) {
+    fail(403, 'Every dataset starts with the retina: first send your edits for retina edit access (menu, Ask for Edit Access). Then you can ask for this one.');
+  }
   const now = await datasetStatus(a, io);
   const open = now.requests[ds.id];
   // One open request per dataset; asking again after Not now is fine.

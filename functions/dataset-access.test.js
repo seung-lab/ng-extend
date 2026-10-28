@@ -106,3 +106,14 @@ test('Not now tells the player, and they may ask again', async () => {
   assert.strictEqual(again.requested, true);
   assert.strictEqual(w.issues.length, 2);
 });
+
+test('tiers: no retina edit access, no request; an admin, or CAVE not answering, is not held back', async () => {
+  const w = world();
+  await assert.rejects(handle('access.dataset', MEC, w.io({canEditRetina: async () => false})), /starts with the retina/);
+  assert.strictEqual(w.issues.length, 0);
+  assert.strictEqual((await handle('access.dataset', MEC, w.io({canEditRetina: async () => null}))).requested, true);
+  const w2 = world();
+  assert.strictEqual((await handle('access.dataset', MEC, w2.io({isAdmin: true, canEditRetina: async () => false}))).requested, true);
+  const w3 = world();
+  assert.strictEqual((await handle('access.dataset', MEC, w3.io({canEditRetina: async () => true}))).requested, true);
+});
