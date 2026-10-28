@@ -154,7 +154,7 @@ function downloadCsv() {
   <section class="nge-iq">
     <div class="nge-iq-top">
       <h2>Super Quests</h2>
-      <span class="nge-iq-sub">MEC. A player holds one at a time, beside their other claims, and it never expires.</span>
+      <span class="nge-iq-sub">MEC. A player holds one at a time, beside their other claims, for up to 2 months.</span>
       <button class="nge-iq-btn nge-iq-refresh" :disabled="loading" @click="load">{{ loading ? 'Loading…' : 'Refresh' }}</button>
     </div>
     <p v-if="error" class="nge-iq-err">{{ error }}</p>

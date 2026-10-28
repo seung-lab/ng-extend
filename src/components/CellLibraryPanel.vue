@@ -448,6 +448,8 @@ const questCells = computed(() => {
 });
 const questOpenHere = computed(() => questCells.value.filter(c => c.status === 'pending').length);
 /** Every other cell: the ordinary tabs, counts and Claim a new cell. */
+/** The blog post about Super Quests (docs/blog-super-quests.md, posted from the game's blog editor). */
+const SUPER_QUEST_BLOG = 'https://connectome.quest/blog/post.html?p=super-quests';
 const libraryCells = computed(() => datasetScopedCells.value.filter(c => !c.quest));
 const filteredCells = computed(() => {
   let list = libraryCells.value;
@@ -3001,7 +3003,7 @@ const panelStyle = computed(() => ({
               </button>
               <!-- Super Quests (Ames 2026-10-28): giant MEC interneurons, only on a dataset that has some. -->
               <button v-if="questCells.length" :class="{ active: filter === 'giants', 'nge-cl-giants-tab': true }" @click="filter = 'giants'"
-                      title="Super Quests: giant interneurons with a great many branches, a cell that can take weeks. You hold one at a time, beside your other claims, and it never expires. The number is the Super Quests open to claim.">
+                      title="Super Quests: giant interneurons that have never been mapped before. One can take weeks. You hold one at a time, beside your other claims, for up to 2 months. The number is the Super Quests open to claim.">
                 Super Quests <b>{{ questOpenHere }}</b>
               </button>
               <button v-if="tabShown('mine')" :class="{ active: filter === 'mine' }" @click="filter = 'mine'"
@@ -3875,9 +3877,10 @@ const panelStyle = computed(() => ({
           <div v-else-if="filteredCells.length === 0 && !backend.loading && !slim" class="nge-cl-no-results">No matching cells</div>
 
           <div v-if="filter === 'giants' && !slim" class="nge-cl-giants-intro">
-            Giant interneurons with a great many branches: one can take weeks, a little at a time.
-            You hold one Super Quest at a time, beside your other claims, and it never expires.
+            Help discover giant interneurons. These cell types have never been mapped before!
+            You may hold one Super Quest at a time for up to 2 months.
             Pyr counts your active time on it, which helps the lab learn how long these cells take.
+            For more info, see <a :href="SUPER_QUEST_BLOG" target="_blank" rel="noopener">the Super Quests blog post</a>.
           </div>
           <!-- The Cell Library's neuron stays on the slim bar (Ames 2026-10-20) -->
           <img v-if="slim" :src="neuronIcon" class="nge-cl-icon nge-cl-slim-icon" alt="" aria-hidden="true" />
@@ -3920,7 +3923,7 @@ const panelStyle = computed(() => ({
                   <span v-if="cell.assignedTo" class="nge-cl-claimer">{{ getCachedUserName(cell.assignedTo) }}</span>
                   <span v-else-if="cell.sheetHold" class="nge-cl-claimer" title="Marked this way in the cell sheet, so it is not offered to claim. A gamemaster clears it there.">{{ cell.sheetAssignee ? cell.sheetAssignee + ' · ' : '' }}{{ cell.sheetHold }}</span>
                   <span v-if="cell.aiType" class="nge-cl-badge nge-cl-ai-type" :title="aiTypeTitle(cell.aiType)">AI: {{ cell.aiType }}</span>
-                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, it never expires, and Pyr counts your active time on it.">Super Quest</span>
+                  <span v-if="cell.quest" class="nge-cl-badge nge-cl-giant-cell" title="A Super Quest: one at a time, for up to 2 months, and Pyr counts your active time on it.">Super Quest</span>
                   <span v-if="cell.quest && cell.questCategory" class="nge-cl-notes nge-cl-giant-cat" :title="cell.questCategory">{{ cell.questCategory }}</span>
                   <span v-if="/^Hunt (cell|candidate)/.test(cell.notes || '')" class="nge-cl-badge nge-cl-hunt-cell" title="Proofread this one fully, to every end. It may become a Hunt. A claim on it is let go 24 hours after you claim it.">Hunt candidate</span>
                   <!-- The Hunt candidate tag says it (its tooltip has the note) -->
@@ -4737,7 +4740,8 @@ const panelStyle = computed(() => ({
 .nge-cl-giants-tab.active { border-color: rgba(196, 140, 255, 0.7) !important; }
 .nge-cl-time { margin-top: 2px; font-size: 12px; color: #9fb3c8; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nge-cl-time--on { color: #8fe3a8; }
-.nge-cl-giants-intro { margin: 4px 0 10px; font-size: 14px; line-height: 1.5; color: #c4d2e0; }
+.nge-cl-giants-intro { margin: 6px 0 12px; padding: 0 16px; font-size: 14px; line-height: 1.5; color: #c4d2e0; }
+.nge-cl-giants-intro a { color: #d3b0ff; text-decoration: underline; }
 .nge-cl-hunt-tab.active { border-color: rgba(66, 213, 236, 0.7) !important; }
 .nge-cl-complete-ai { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: rgba(214, 226, 245, 0.8); }
 .nge-cl-complete-ai b { color: #c9b2ff; }
