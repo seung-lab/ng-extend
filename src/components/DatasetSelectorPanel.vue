@@ -280,7 +280,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                       <div class="nge-ds-variant-text">
                         <div class="nge-ds-variant-label">{{ ds.variantLabel || ds.label }}</div>
                         <div class="nge-ds-card-desc">{{ ds.description }}</div>
-                        <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked">🔒 Unlock Level 1 (retina edit access) before moving to {{ ds.shortLabel || ds.label }}.</div>
+                        <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked">🔒 Unlock Level 1 (Retina) before moving to {{ ds.shortLabel || ds.label }}.</div>
                         <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                       </div>
                       <div v-if="ds.id === currentDatasetId" class="nge-ds-tag">Active</div>
@@ -307,7 +307,7 @@ async function openTask(ds: DatasetEntry, tab: TaskTab) {
                   <div class="nge-ds-card-label">{{ ds.label }}<span v-if="ds.level" class="nge-ds-level" :title="ds.level === 1 ? 'Level 1: unlocked with retina edit access' : `Level ${ds.level}: ask for it once Level ${ds.level - 1} is unlocked`">Level {{ ds.level }}</span></div>
                   <div class="nge-ds-card-desc">{{ ds.description }}</div>
                   <div v-if="ds.origin" class="nge-ds-origin">From {{ ds.origin }}</div>
-                  <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked">🔒 Unlock Level 1 (retina edit access) before moving to {{ ds.shortLabel || ds.label }}.</div>
+                  <div v-if="accessOf(ds) === 'none' && needsRetinaFirst(ds)" class="nge-ds-request nge-ds-request--locked">🔒 Unlock Level 1 (Retina) before moving to {{ ds.shortLabel || ds.label }}.</div>
                   <div v-else-if="accessOf(ds) === 'none'" class="nge-ds-request"><RequestAccessButton :ds="ds" /></div>
                   <!-- The Sandbox: one way in, the tutorial you are on (Ames 2026-10-28). -->
                   <div v-if="ds.section === 'sandbox'" class="nge-ds-tasks">
