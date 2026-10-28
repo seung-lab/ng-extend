@@ -13,7 +13,10 @@ function world() {
   const issues = [];
   const told = [], posted = [], players = [];
   const marks = {};
+  const caveIds = {'u-player': 3072};
+  const grants = [];
   const sb = async (p, init = {}) => {
+    if (p.startsWith('users?')) return [{cave_user_id: caveIds[(new URLSearchParams(p.split('?')[1]).get('id') || '').replace(/^eq\./, '')]}];
     if (p.startsWith('site_issues?')) {
       const q = new URLSearchParams(p.split('?')[1]);
       const eq = k => (q.get(k) || '').replace(/^eq\./, '');
@@ -36,8 +39,9 @@ function world() {
   const me = {id: 'u-player', username: 'andrearwen'};
   const io = (over = {}) => ({sb, me, who: {email: 'player@example.org'}, isAdmin: false, isPilot: true, datasetMarks,
     notifyAdmins: async n => { told.push(n); }, notifyPlayer: async n => { players.push(n); },
+    grantCave: async (caveId, group) => { grants.push({caveId, group}); return {ok: true}; },
     postIssue: async p => { posted.push(p); }, ...over});
-  return {issues, told, posted, players, marks, io};
+  return {issues, told, posted, players, marks, caveIds, grants, io};
 }
 
 test('a request: one report, a bell to every admin, a Slack post, then Requested', async () => {
@@ -116,4 +120,26 @@ test('tiers: no retina edit access, no request; an admin, or CAVE not answering,
   assert.strictEqual((await handle('access.dataset', MEC, w2.io({isAdmin: true, canEditRetina: async () => false}))).requested, true);
   const w3 = world();
   assert.strictEqual((await handle('access.dataset', MEC, w3.io({canEditRetina: async () => true}))).requested, true);
+});
+
+test('Granted on MEC adds the player to MEC_Edit (217) first; with no CAVE id it refuses, by hand it skips CAVE', async () => {
+  const w = world();
+  await handle('access.dataset', MEC, w.io());
+  const [r] = await handle('access.datasetList', {}, w.io({isAdmin: true}));
+  assert.strictEqual(r.caveGroup, 'MEC_Edit');
+  await handle('access.datasetDecide', {id: r.id, mark: 'granted'}, w.io({isAdmin: true}));
+  assert.deepStrictEqual(w.grants, [{caveId: 3072, group: 217}]);
+  assert.strictEqual(w.players.length, 1);
+  // CAVE refusing: nothing marked, nobody told.
+  const w2 = world();
+  await handle('access.dataset', MEC, w2.io());
+  const [r2] = await handle('access.datasetList', {}, w2.io({isAdmin: true}));
+  await assert.rejects(handle('access.datasetDecide', {id: r2.id, mark: 'granted'}, w2.io({isAdmin: true, grantCave: async () => ({ok: false, status: 403})})), /did not add them to MEC_Edit/);
+  assert.strictEqual(w2.players.length, 0);
+  assert.strictEqual(w2.marks[r2.id], undefined);
+  // No CAVE id known: refused; by hand works.
+  w2.caveIds['u-player'] = null;
+  await assert.rejects(handle('access.datasetDecide', {id: r2.id, mark: 'granted'}, w2.io({isAdmin: true})), /CAVE id/);
+  await handle('access.datasetDecide', {id: r2.id, mark: 'granted', byHand: true}, w2.io({isAdmin: true}));
+  assert.strictEqual(w2.players.length, 1);
 });

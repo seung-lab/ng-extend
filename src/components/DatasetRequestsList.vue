@@ -27,9 +27,9 @@ onMounted(load);
 const waiting = computed(() => rows.value.filter(r => !r.mark));
 const answered = computed(() => rows.value.filter(r => r.mark));
 
-async function decide(r: DatasetRequestRow, mark: 'granted' | 'declined' | 'waiting') {
+async function decide(r: DatasetRequestRow, mark: 'granted' | 'declined' | 'waiting', byHand = false) {
   busy.value = r.id; error.value = '';
-  try { rows.value = await decideDatasetRequest(r.id, mark, notes.value[r.id] || ''); delete notes.value[r.id]; }
+  try { rows.value = await decideDatasetRequest(r.id, mark, notes.value[r.id] || '', byHand); delete notes.value[r.id]; }
   catch (e: any) { error.value = e?.message || 'That was not saved.'; }
   finally { busy.value = ''; }
 }
@@ -50,8 +50,8 @@ const when = (iso: string | null) => {
       <button class="nge-dsr-btn nge-dsr-refresh" :disabled="loading" @click="load">Refresh</button>
     </div>
     <p class="nge-dsr-how">
-      Players asking for one dataset (not retina, which has its own request below). Add them to that dataset's group in CAVE,
-      then press <b>Granted</b>: they get a note saying they're in.
+      Players asking for one dataset (not retina, which has its own request below). For MEC, <b>Grant</b> adds them to MEC_Edit in CAVE
+      and then tells them they're in. For other datasets, add them to the dataset's group in CAVE yourself, then press <b>Granted</b>.
     </p>
     <p v-if="error" class="nge-dsr-err" role="alert">{{ error }}</p>
     <p v-else-if="!loading && !waiting.length" class="nge-dsr-how">Nobody is waiting.</p>
@@ -66,7 +66,11 @@ const when = (iso: string | null) => {
       <div v-if="r.note" class="nge-dsr-note">“{{ r.note }}”</div>
       <div class="nge-dsr-actions">
         <input v-model="notes[r.id]" class="nge-dsr-input" maxlength="500" placeholder="A note for them (optional)" />
-        <button class="nge-dsr-btn nge-dsr-btn--yes" :disabled="busy === r.id" @click="decide(r, 'granted')">Granted</button>
+        <button v-if="r.caveGroup" class="nge-dsr-btn nge-dsr-btn--yes" :disabled="busy === r.id"
+                :title="`Add them to ${r.caveGroup} in CAVE, then tell them they're in`" @click="decide(r, 'granted')">{{ busy === r.id ? 'Granting…' : `Grant (adds to ${r.caveGroup})` }}</button>
+        <button class="nge-dsr-btn" :class="{ 'nge-dsr-btn--yes': !r.caveGroup }" :disabled="busy === r.id"
+                :title="r.caveGroup ? 'You already added them in CAVE yourself: just tell them' : 'Add them to the dataset\'s group in CAVE first, then press this to tell them'"
+                @click="decide(r, 'granted', true)">{{ r.caveGroup ? 'I added them by hand' : 'Granted' }}</button>
         <button class="nge-dsr-btn" :disabled="busy === r.id" @click="decide(r, 'declined')">Not now</button>
       </div>
     </article>

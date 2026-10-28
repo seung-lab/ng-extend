@@ -2435,16 +2435,17 @@ exports.ewAccessRequest = onRequest(
         notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
-        // Add a player to Eyewire_2_Edit. 422 means already a member: as good.
-        grantCave: async (caveId) => {
+        // Add a player to Eyewire_2_Edit, or the group a dataset request
+        // names (MEC_Edit). 422 means already a member: as good.
+        grantCave: async (caveId, group = ACCESS_CAVE_GROUP) => {
           try {
-            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/group/${ACCESS_CAVE_GROUP}/user`, {
+            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/group/${group}/user`, {
               method: "POST", headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}`, "Content-Type": "application/json" },
               body: JSON.stringify({ user_id: caveId }), redirect: "error", signal: AbortSignal.timeout(15000),
             });
             let error = "";
             if (!r.ok && r.status !== 422) { try { error = String((await r.text()) || "").slice(0, 200); } catch (e) { error = ""; } }
-            console.log("[access] CAVE grant", caveId, "group", ACCESS_CAVE_GROUP, "status", r.status);
+            console.log("[access] CAVE grant", caveId, "group", group, "status", r.status);
             return { ok: r.ok || r.status === 422, status: r.status, already: r.status === 422, error };
           } catch (e) { return { ok: false, error: String(e && e.message).slice(0, 200) }; }
         },

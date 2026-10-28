@@ -581,6 +581,10 @@ async function betaMark(a, io) {
 //   access.datasetList    admins: every request, newest first, with its mark.
 //   access.datasetDecide  admins: {id, mark: 'granted' | 'declined' | 'waiting', note}.
 const DATASET_CATEGORY = 'Dataset access';
+/** The CAVE group Granted adds a player to, by dataset id. A dataset not
+ *  here is still granted by hand in CAVE (Ames 2026-10-28: "can we make a way
+ *  for me to grant access?"). MEC_Edit, group 217, made by Marissa. */
+const DATASET_CAVE_GROUPS = {pni_mec: {id: 217, name: 'MEC_Edit'}};
 const DATASET_BELL = '🔓 Dataset access request';
 const DATASET_MARKS = ['granted', 'declined', 'waiting'];
 const DS_ID = /^[a-z0-9_]{2,40}$/;
@@ -651,6 +655,7 @@ async function datasetList(a, io) {
   needAdmin(io.isAdmin);
   const marks = await io.datasetMarks.all();
   return (await datasetRows(io.sb, '')).map(r => ({
+    caveGroup: (DATASET_CAVE_GROUPS[r.dataset] && DATASET_CAVE_GROUPS[r.dataset].name) || '',
     id: r.id, userId: r.user_id, name: r.user_name, dataset: r.dataset, label: labelOf(r.title),
     cave: lineOf(r.message, 'CAVE dataset:'), email: lineOf(r.message, 'Sign in email:'), note: lineOf(r.message, 'Their note:'),
     at: r.created_at, mark: (marks[r.id] && marks[r.id].mark) || null, markedAt: (marks[r.id] && marks[r.id].at) || null,
@@ -665,8 +670,21 @@ async function datasetDecide(a, io) {
   const row = (await datasetRows(io.sb, '&id=eq.' + encodeURIComponent(id)))[0];
   if (!row) fail(404, 'That request is gone.');
   const note = cleanText(a.note, BETA_NOTE_MAX, 'Your note') || '';
-  await io.datasetMarks.set(id, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
   const label = labelOf(row.title);
+  // Granted adds them in CAVE first, where Pyr knows the dataset's group; the
+  // player is told only once CAVE has them. "I added them by hand" skips it.
+  const group = DATASET_CAVE_GROUPS[row.dataset];
+  if (a.mark === 'granted' && group && a.byHand !== true) {
+    const u = row.user_id ? (await io.sb('users?id=eq.' + encodeURIComponent(row.user_id) + '&select=cave_user_id&limit=1'))[0] : null;
+    const caveId = Number(u && u.cave_user_id);
+    if (!Number.isSafeInteger(caveId) || caveId <= 0) {
+      fail(409, `Pyr doesn't know this player's CAVE id. Add them to ${group.name} in CAVE by hand, then press "I added them by hand". Nothing was sent.`);
+    }
+    if (!io.grantCave) fail(503, 'Granting in CAVE is not set up on the server. Nothing was sent.');
+    const r = await io.grantCave(caveId, group.id);
+    if (!r || !r.ok) fail(502, `CAVE did not add them to ${group.name}${r && r.status ? ` (${r.status})` : ''}${r && r.error ? `: ${r.error}` : ''}. Nothing was sent to the player.`);
+  }
+  await io.datasetMarks.set(id, a.mark === 'waiting' ? null : {mark: a.mark, at: new Date().toISOString(), by: (io.who && io.who.email) || ''});
   if (row.user_id && a.mark !== 'waiting') {
     const said = note ? '\n\n' + note.split('\n').map(l => mdText(l)).join('\n\n') : '';
     try {
