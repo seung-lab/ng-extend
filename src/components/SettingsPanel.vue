@@ -513,6 +513,40 @@ const props = defineProps<{ embedded?: boolean }>();
               <span class="nge-settings-toggle-label">Show a counter on the Undelete icon</span>
             </label>
           </div>
+
+          <!-- On the left, with who you are (Ames 2026-10-29: "switching datasets should be on the left"). -->
+          <div class="nge-settings-section nge-set-card--datasets" :class="{ 'nge-set-folded': isFolded('datasets') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('datasets')" title="Fold or unfold this box" @click.prevent="toggleFold('datasets')" @keydown.enter.prevent="toggleFold('datasets')" @keydown.space.prevent="toggleFold('datasets')">Switching datasets<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
+            <label class="nge-settings-toggle">
+              <input type="checkbox" v-model="draftBareSwitch" />
+              <span class="nge-settings-toggle-label">Open datasets without the starter cells (loads faster)</span>
+            </label>
+            <p class="nge-settings-hint nge-sv-hint">Show in the dataset selector: extra datasets to explore. There is nothing to proofread or claim in them.</p>
+          <label v-for="ds in OPTIONAL_DATASETS" :key="ds.id" class="nge-settings-toggle nge-sv-extra">
+            <input type="checkbox" :checked="draftExtra.includes(ds.id)" @change="toggleDraftExtra(ds.id, $event)" />
+            <span class="nge-settings-toggle-label">{{ ds.label }}</span>
+          </label>
+          <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
+            <div class="nge-sv-row">
+              <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
+                <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
+              </select>
+            </div>
+            <div class="nge-sv-row">
+              <input v-model="svLink" class="nge-sv-input" type="url" placeholder="Paste a share link" @keydown.stop @keyup.stop />
+              <button class="nge-sv-btn" type="button" @click="setStartView">Use this view</button>
+            </div>
+            <p v-if="svError" class="nge-sv-error">{{ svError }}</p>
+            <ul v-if="Object.keys(draftStartViews).length" class="nge-sv-list">
+              <li v-for="(link, seg) in draftStartViews" :key="seg">
+                <span class="nge-sv-name">{{ labelFor(String(seg)) }}</span>
+                <span class="nge-sv-link" :title="link">{{ link }}</span>
+                <button class="nge-sv-clear" type="button" @click="clearStartView(String(seg))">Remove</button>
+              </li>
+            </ul>
+            <p class="nge-settings-hint">Click Save below to keep these.</p>
+          </div>
         </div>
         <div class="nge-set-col nge-set-col--topbar">
           <div class="nge-set-col-head"><span class="nge-set-col-title">Display</span><span class="nge-set-col-sub">what you see</span></div>
@@ -664,39 +698,6 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="asia">Asia</option>
               </select>
             </label>
-          </div>
-
-          <div class="nge-settings-section nge-set-card--datasets" :class="{ 'nge-set-folded': isFolded('datasets') }">
-            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('datasets')" title="Fold or unfold this box" @click.prevent="toggleFold('datasets')" @keydown.enter.prevent="toggleFold('datasets')" @keydown.space.prevent="toggleFold('datasets')">Switching datasets<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
-            <p class="nge-settings-hint">What opens when you switch to a dataset.</p>
-            <label class="nge-settings-toggle">
-              <input type="checkbox" v-model="draftBareSwitch" />
-              <span class="nge-settings-toggle-label">Open datasets without the starter cells (loads faster)</span>
-            </label>
-            <p class="nge-settings-hint nge-sv-hint">Show in the dataset selector: extra datasets to explore. There is nothing to proofread or claim in them.</p>
-          <label v-for="ds in OPTIONAL_DATASETS" :key="ds.id" class="nge-settings-toggle nge-sv-extra">
-            <input type="checkbox" :checked="draftExtra.includes(ds.id)" @change="toggleDraftExtra(ds.id, $event)" />
-            <span class="nge-settings-toggle-label">{{ ds.label }}</span>
-          </label>
-          <p class="nge-settings-hint nge-sv-hint">Your own start view: pick a dataset and paste a share link made in it. It opens instead of the starter view whenever you switch there.</p>
-            <div class="nge-sv-row">
-              <select v-model="svDataset" class="nge-sv-select" @change="pickStartViewDataset">
-                <option v-for="ds in DATASETS" :key="ds.id" :value="segLayerName(ds)">{{ ds.label }}</option>
-              </select>
-            </div>
-            <div class="nge-sv-row">
-              <input v-model="svLink" class="nge-sv-input" type="url" placeholder="Paste a share link" @keydown.stop @keyup.stop />
-              <button class="nge-sv-btn" type="button" @click="setStartView">Use this view</button>
-            </div>
-            <p v-if="svError" class="nge-sv-error">{{ svError }}</p>
-            <ul v-if="Object.keys(draftStartViews).length" class="nge-sv-list">
-              <li v-for="(link, seg) in draftStartViews" :key="seg">
-                <span class="nge-sv-name">{{ labelFor(String(seg)) }}</span>
-                <span class="nge-sv-link" :title="link">{{ link }}</span>
-                <button class="nge-sv-clear" type="button" @click="clearStartView(String(seg))">Remove</button>
-              </li>
-            </ul>
-            <p class="nge-settings-hint">Click Save below to keep these.</p>
           </div>
 
           <!-- Everything that brings back neuroglancer's own way of working, in
