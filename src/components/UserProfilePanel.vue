@@ -2014,11 +2014,13 @@ onUnmounted(() => clearTimeout(stageTimer));
                     @click.stop="historyStore.toggleFavorite(cell.segId)"
                     title="Toggle favorite"
                   >{{ cell.isFavorite ? '★' : '☆' }}</button>
+                  <!-- Its spot is kept on every row, so the columns line up (Ames 2026-10-29). -->
+                  <span v-else class="nge-cell-fav nge-cell-fav--none" aria-hidden="true"></span>
                   <span class="nge-cell-pip" :class="cellStatusClass(cell)">{{ cellStatusIcon(cell) }}</span>
                   <span class="nge-cell-id" @click="handleJumpToCell(cell.segId)">
                     {{ cell.nickname || truncateId(cell.segId) }}
                   </span>
-                  <span class="nge-cell-type" v-if="cell.cellType" @click="handleJumpToCell(cell.segId)">{{ cell.cellType }}</span>
+                  <span class="nge-cell-type" :title="cell.cellType || ''" @click="handleJumpToCell(cell.segId)">{{ cell.cellType || '' }}</span>
                   <span class="nge-cell-time" @click="handleJumpToCell(cell.segId)">{{ relativeTime(cell.updatedAt) }}</span>
                   <button
                     v-if="!cell.serverOnly"
@@ -2026,6 +2028,7 @@ onUnmounted(() => clearTimeout(stageTimer));
                     @click.stop="promptNickname(cell.segId)"
                     title="Rename this cell"
                   >✎</button>
+                  <span v-else class="nge-cell-rename" aria-hidden="true"></span>
                 </div>
               </div>
               <button v-if="recentCells.length > RECENT_SHOWN" class="nge-cell-list-more" @click="activeTab = 'myCells'">{{ (recentCells.length - RECENT_SHOWN).toLocaleString() }} more in {{ viewingOtherUser ? 'All cells' : 'My cells' }} →</button>
@@ -3951,10 +3954,17 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   font-style: normal;
 }
 
+/* Rows and headings share one grid: star, tick, segment, type, when, rename
+   (Ames 2026-10-29: "these are all out of alignment"). */
+.nge-cell-list-columns,
+.nge-cell-row {
+  display: grid !important;
+  grid-template-columns: 18px 16px minmax(0, 1fr) minmax(0, 1.2fr) 64px 18px;
+  column-gap: 6px;
+}
 .nge-cell-list-columns {
-  display: flex;
   align-items: center;
-  padding: 0 2px 4px 42px; /* align with cell rows (past fav + pip) */
+  padding: 0 8px 4px;
   border-bottom: 1px solid rgba(74, 158, 255, 0.08);
   margin-bottom: 2px;
 }
@@ -3965,9 +3975,9 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   letter-spacing: 0.08em;
   color: rgba(180, 195, 220, 0.55);
 }
-.nge-cell-col-label--id { flex: 1; }
-.nge-cell-col-label--type { width: 110px; text-align: left; }
-.nge-cell-col-label--time { width: 64px; text-align: right; padding-right: 18px; }
+.nge-cell-col-label--id { grid-column: 3; }
+.nge-cell-col-label--type { grid-column: 4; text-align: left; }
+.nge-cell-col-label--time { grid-column: 5; text-align: right; }
 
 .nge-cell-list-more {
   display: block; margin: 6px 0 0 auto;
@@ -4071,7 +4081,6 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 150px;
 }
 
 .nge-cell-type {
@@ -4086,6 +4095,7 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 
 .nge-cell-time {
   flex-shrink: 0;
+  text-align: right;
   font-size: 0.92em;
   color: #889;
   white-space: nowrap;
