@@ -84,6 +84,17 @@ function addMissing(only: string[] = CLAIM_LAYERS, drop: string[] = []): void {
     }
   }
   const have = new Set(managed.filter(l => !l.archived).map(l => key(l.name)));
+  // A layer the cell's own view brought keeps the lab's colour, and True End
+  // came in orange, like Hits Edge (Nseraf, report 296: "kinda confusing
+  // having two tabs of the same colour"). Each of these layers takes its
+  // mark's colour, the one its emoji and the Marks list show.
+  for (const ml of managed) {
+    if (ml.archived) continue;
+    const want = MEC_LAYERS.find(l => key(l.name) === key(ml.name))?.color;
+    const c = ml.layer?.annotationDisplayState?.color;
+    if (!want || !c) continue;
+    try { if (String(c.toString()).toLowerCase() !== want) c.restoreState(want); } catch { /* not loaded yet: the next look */ }
+  }
   for (const { name, color } of MEC_LAYERS) {
     if (!wanted.has(key(name))) continue;
     if (have.has(key(name))) continue;

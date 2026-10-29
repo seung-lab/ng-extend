@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-29T13:21:03Z",
+      "title": "Reports and MEC tabs",
+      "digest": "minor",
+      "items": [
+        "Submit an issue starts with no type picked: choose Bug, Idea or Other yourself, and Enter no longer sends it before you're done. Thanks to toknow.",
+        "On MEC, the True End tab is green like its mark, so it no longer looks like Hits Edge. Thanks to Nik."
+      ]
+    },
+    {
       "at": "2026-10-28T23:55:00Z",
       "title": "Chat search reaches back two weeks",
       "digest": "minor",

@@ -29,7 +29,9 @@ const ISSUE_URL =
 // No Data problem (Ames 2026-10-19: not needed). Old reports keep theirs, and
 // the server still accepts it.
 const CATEGORIES = ['Bug', 'Idea', 'Other'] as const;
-const category = ref<typeof CATEGORIES[number]>('Bug');
+/** None picked to start with: the player chooses (toknow, report 301: "do
+ *  not select any type ... let player select it manually"). */
+const category = ref<typeof CATEGORIES[number] | null>(null);
 const message = ref('');
 /** A short title (Celia #178: "a title section for bug or idea submission
  *  would be nice to get a fast overview of what the user is asking for"). */
@@ -103,8 +105,9 @@ async function submit() {
   const details = detailsOpen.value ? message.value.trim() : '';
   // The report itself: their details, or just the short line when that is all.
   const text = details || heading;
-  if (!heading || sending.value) {
-    if (!heading) error.value = 'Say in a few words what it is.';
+  if (!heading || !category.value || sending.value) {
+    if (!category.value) error.value = 'Choose Bug, Idea or Other first.';
+    else if (!heading) error.value = 'Say in a few words what it is.';
     return;
   }
   sending.value = true;
@@ -440,7 +443,7 @@ onBeforeUnmount(() => {
             v-for="c in CATEGORIES" :key="c"
             class="nge-fb-chip"
             :class="{ 'nge-fb-chip--active': category === c }"
-            @click="category = c"
+            @click="category = c; error = ''"
           >{{ c }}</button>
         </div>
 
@@ -450,7 +453,7 @@ onBeforeUnmount(() => {
           :maxlength="TITLE_MAX"
           placeholder="In a few words, what is it?"
           aria-label="In a few words, what is it?"
-          @keydown.stop @keyup.stop @keypress.stop @keydown.enter.prevent="submit"
+          @keydown.stop @keyup.stop @keypress.stop @keydown.enter.prevent
           @input="error = ''"
         />
         <button v-if="!detailsOpen" type="button" class="nge-fb-more" @click="detailsOpen = true">+ Add details (optional)</button>
