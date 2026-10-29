@@ -24,6 +24,9 @@ export interface DatasetTransition {
   /** Stay up until releaseDatasetTransition() (or 25 s), for loads that
    *  take as long as they take. */
   hold?: boolean;
+  /** How long a held card may stay up (25 s if unset). The proofreading
+   *  test waits on the server for minutes at times. */
+  maxMs?: number;
 }
 
 const KEY = 'nge-ds-transition';
@@ -40,6 +43,13 @@ export function startDatasetTransition(ds: Omit<DatasetTransition, 't0'>) {
   datasetTransition.resumed = false;
   datasetTransition.released = false;
   try { sessionStorage.setItem(KEY, JSON.stringify(t)); } catch { /* private mode */ }
+}
+
+/** New words on the card that is up, without playing it again from the
+ *  start (Ames 2026-10-29: the test's card played twice). */
+export function updateDatasetTransitionSteps(id: string, steps: string[]) {
+  const t = datasetTransition.current;
+  if (t && t.id === id) t.steps = steps;
 }
 
 /** After a reload: continue a transition that started in the last 20 s. */

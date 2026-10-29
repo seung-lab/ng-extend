@@ -24,6 +24,10 @@ import { endPractice } from '../practice';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
+import { datasetTransition } from '../util/dataset_transition';
+/** The proofreading test's loading card is up: the box under it waits
+ *  hidden (Ames 2026-10-29: "there is a box behind the box"). */
+const testCardUp = computed(() => String(datasetTransition.current?.id || '').startsWith('proofreading-test'));
 import { getStartedFinished, reveal, runMoment, setTutorialBusy, setTutorialOnScreen, SITE_TOUR, tutorialFinished, tutorialStepReveals, verifyStepIcons } from '../util/toolbar_staging';
 import badgeCitizenScientist from '../images/badge-citizen-scientist.png';
 import badgeClearanceLevel2 from '../images/badge-clearance-level-2.png';
@@ -384,10 +388,15 @@ const exitIntro = () => {
     <TutorialStep v-else-if="activeStep" :key="activeStep.index" :step="activeStep.step" :first="activeStep.first"
         :last="activeStep.last" :stepIndex="activeStep.shownIndex" :totalSteps="activeStep.shownTotal" :partLabel="activeStep.partLabel" :boxIndex="activeStep.index"
         v-on:next="next"
+        :class="{ 'nge-tut-under-card': testCardUp }"
         v-on:back="back" v-on:exitIntro="exitIntro" />
     </template>
 
 </template>
+
+<style>
+.introductionStep.nge-tut-under-card { visibility: hidden; }
+</style>
 
 <style scoped>
 .nge-tut-resume {

@@ -527,6 +527,18 @@ function observeChip() {
         chipObserver.observe(el);
     }
 }
+// A step whose words follow what is happening (the proofreading test's
+// result box: "Scoring your cell", then the score) shows the new words where
+// it stands. The box used to keep what it said when it opened, so a score
+// that came back still read "one moment" (Ames 2026-10-29: "I submitted but
+// no score?").
+watch(() => [props.step.title, props.step.text, props.step.html, props.step.nextLabel, props.step.image] as const, async ([title, text, html0, nextLabel, image]) => {
+    if (!computedStep.value.title && !computedStep.value.html) return; // not placed yet: updateChipPosition fills it
+    let html = html0;
+    if (text) html = await marked.parse(text);
+    if (html) html = html.replace(/<a\s+(?![^>]*target=)([^>]*href="https?:[^>]*)>/gi, '<a target="_blank" rel="noopener" $1>');
+    computedStep.value = { ...computedStep.value, title, html, nextLabel, image };
+});
 watch(ready, (r) => { if (r) nextTick(observeChip); });
 watch(() => computedStep.value, () => nextTick(observeChip));
 

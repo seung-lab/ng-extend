@@ -63,7 +63,7 @@ function play() {
   for (let i = stepIdx.value + 1; i < nSteps; i++) {
     timers.push(window.setTimeout(() => { stepIdx.value = i; }, i * stepMs - elapsed.value));
   }
-  const maxMs = t.hold ? 25000 : MAX_MS;
+  const maxMs = t.maxMs ?? (t.hold ? 25000 : MAX_MS);
   const tick = () => {
     const age = Date.now() - t.t0;
     const ready = t.hold ? datasetTransition.released : (!datasetTransition.resumed || viewerReady());
@@ -207,7 +207,7 @@ onBeforeUnmount(clearTimers);
           <span class="nge-dst-grid" aria-hidden="true"></span>
         </div>
         <div class="nge-dst-status">
-          <span class="nge-dst-step">{{ STEPS[stepIdx] }}</span>
+          <span class="nge-dst-step">{{ STEPS[Math.min(stepIdx, STEPS.length - 1)] }}</span>
           <span class="nge-dst-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         </div>
         <div class="nge-dst-bar" :class="{ 'nge-dst-bar--hold': datasetTransition.current.hold }" aria-hidden="true"><span></span></div>
