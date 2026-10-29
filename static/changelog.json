@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-29T19:51:00Z",
+      "title": "A quicker loading sign in 2D",
+      "items": [
+        "When the 2D picture is still coming in, a small spinner with Loading now shows at the top of the view after under a second, in place of the larger cell card that waited two and a half seconds."
+      ]
+    },
+    {
       "at": "2026-10-29T14:55:00Z",
       "title": "MEC jumps show the new spot sooner",
       "items": [
