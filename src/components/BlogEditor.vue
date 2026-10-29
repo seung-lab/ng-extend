@@ -265,11 +265,23 @@ function caretInto(node: Node, atEnd = false) {
   sel?.addRange(r);
   savedRange = r.cloneRange();
 }
-/** Put a block after the one holding the caret, with a fresh paragraph to carry on in. */
+/** Put a block after the one holding the caret (or where "+" was pressed,
+ *  between two blocks), with a paragraph after it to carry on in. */
 function insertBlock(node: HTMLElement) {
   const el = docEl.value;
   if (!el) return;
   el.focus();
+  if (insertAt !== null) {
+    el.insertBefore(node, el.children[insertAt] ?? null);
+    insertAt = null;
+    gap.value = null;
+    let after = node.nextElementSibling as HTMLElement | null;
+    if (!after) { after = document.createElement('p'); after.appendChild(document.createElement('br')); node.after(after); }
+    caretInto(after);
+    keepLocalSoon();
+    refreshState();
+    return;
+  }
   const here = currentBlock();
   const emptyHere = here && here.tagName === 'P' && !here.textContent?.trim() && !here.querySelector('img');
   if (here) here.after(node); else el.appendChild(node);
@@ -336,6 +348,76 @@ function toggleCallout() {
   }
   refreshState();
 }
+// ── Add a block between blocks (Ames 2026-10-29: "more like squarespace
+// editor where I can add an image in between text blocks") ──────────────
+// Move the mouse over the post: a "+" and a line show at the nearest place
+// between two blocks (or above the first, or below the last). Press it to
+// put a picture, a video or anything else exactly there, wherever the
+// cursor happens to be.
+const docWrap = ref<HTMLElement | null>(null);
+const gap = ref<{ y: number; index: number } | null>(null);   // y from the top of the post area
+const gapMenu = ref(false);
+let insertAt: number | null = null;                             // where the next block goes, or null: at the caret
+const GAP_REACH = 16;                                            // px from a boundary that shows the "+"
+function onDocMove(e: MouseEvent) {
+  if (gapMenu.value || showPreview.value) return;
+  const wrap = docWrap.value, doc = docEl.value;
+  if (!wrap || !doc || (e.target as HTMLElement).closest('.nge-blog-gap')) return;
+  const top = wrap.getBoundingClientRect().top;
+  const blocks = Array.from(doc.children) as HTMLElement[];
+  const places: { y: number; index: number }[] = [];
+  if (!blocks.length) places.push({ y: doc.offsetTop + 18, index: 0 });
+  blocks.forEach((b, i) => {
+    const r = b.getBoundingClientRect();
+    if (i === 0) places.push({ y: Math.max(4, r.top - top - 6), index: 0 });
+    const next = blocks[i + 1];
+    const y = next ? (r.bottom - top + next.getBoundingClientRect().top - top) / 2 : r.bottom - top + 8;
+    places.push({ y, index: i + 1 });
+  });
+  const py = e.clientY - top;
+  let best: { y: number; index: number } | null = null, far = Infinity;
+  for (const g of places) { const d = Math.abs(g.y - py); if (d < far) { far = d; best = g; } }
+  gap.value = best && far <= GAP_REACH ? best : null;
+}
+function onDocLeave() { if (!gapMenu.value) gap.value = null; }
+function closeGap() { gapMenu.value = false; gap.value = null; }
+function onGapAway(e: MouseEvent) {
+  if (gapMenu.value && !(e.target as HTMLElement).closest('.nge-blog-gap')) closeGap();
+}
+onMounted(() => document.addEventListener('mousedown', onGapAway, true));
+onBeforeUnmount(() => document.removeEventListener('mousedown', onGapAway, true));
+type GapKind = 'text' | 'heading' | 'image' | 'pair' | 'video' | 'button' | 'divider' | 'callout' | 'quote';
+async function addAtGap(kind: GapKind) {
+  const at = gap.value?.index ?? null;
+  gapMenu.value = false;
+  if (at === null || !docEl.value) return;
+  insertAt = at;
+  const para = (tag = 'p') => { const p = document.createElement(tag); p.appendChild(document.createElement('br')); return p; };
+  if (kind === 'text' || kind === 'heading') {
+    const p = para(kind === 'heading' ? 'h2' : 'p');
+    docEl.value.insertBefore(p, docEl.value.children[at] ?? null);
+    insertAt = null; gap.value = null;
+    docEl.value.focus();
+    caretInto(p);
+    refreshState();
+    return;
+  }
+  if (kind === 'callout' || kind === 'quote') {
+    const box = document.createElement(kind === 'callout' ? 'aside' : 'blockquote');
+    if (kind === 'callout') box.className = 'blog-post__callout';
+    const p = para();
+    box.appendChild(p);
+    insertBlock(box);
+    caretInto(p);
+    return;
+  }
+  if (kind === 'divider') { insertBlock(document.createElement('hr')); return; }
+  if (kind === 'video' || kind === 'button') { void openAsk(kind); return; }     // applyAsk puts it at insertAt
+  if (kind === 'image') await addImage(); else await addImagePair();
+  insertAt = null;                                                                 // a cancelled picker
+  gap.value = null;
+}
+
 function addDivider() {
   restoreSelection();
   insertBlock(document.createElement('hr'));
@@ -343,6 +425,8 @@ function addDivider() {
 
 // Small questions asked under the toolbar (a link, a button, a video).
 const ask = ref<null | 'link' | 'button' | 'video'>(null);
+// A question put away without an answer: the next block goes to the caret again.
+watch(() => ask.value, v => { if (!v) setTimeout(() => { insertAt = null; }, 0); });
 const askUrl = ref('');
 const askText = ref('');
 const askError = ref('');
@@ -617,11 +701,30 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
             <span v-if="askError" class="nge-blog-problem" role="alert">{{ askError }}</span>
           </form>
 
-          <div v-show="!showPreview" ref="docEl" class="nge-blog-doc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Post"
-               spellcheck="true" @input="keepLocalSoon" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
-          <div v-if="showPreview" class="nge-blog-doc nge-blog-doc--preview" v-html="previewHtml"></div>
+          <div ref="docWrap" class="nge-blog-docwrap" @mousemove="onDocMove" @mouseleave="onDocLeave">
+            <div v-show="!showPreview" ref="docEl" class="nge-blog-doc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Post"
+                 spellcheck="true" @input="keepLocalSoon" @paste="onPaste" @click="onDocClick" @keydown.stop="onDocKey" @keyup.stop @keypress.stop></div>
+            <div v-if="showPreview" class="nge-blog-doc nge-blog-doc--preview" v-html="previewHtml"></div>
+            <!-- "+" between blocks: add a picture, a video and so on exactly here -->
+            <div v-if="gap && !showPreview" class="nge-blog-gap" :style="{ top: gap.y + 'px' }">
+              <span class="nge-blog-gap-line" aria-hidden="true"></span>
+              <button type="button" class="nge-blog-gap-plus" :class="{ on: gapMenu }" title="Add something here" aria-label="Add something here"
+                      :aria-expanded="gapMenu" @mousedown.prevent @click="gapMenu = !gapMenu">+</button>
+              <div v-if="gapMenu" class="nge-blog-gap-menu" role="menu" @mousedown.prevent @keydown.esc="closeGap">
+                <button type="button" role="menuitem" @click="addAtGap('image')"><span aria-hidden="true">🖼</span>Image</button>
+                <button type="button" role="menuitem" @click="addAtGap('pair')"><span aria-hidden="true">◫</span>Two images</button>
+                <button type="button" role="menuitem" @click="addAtGap('video')"><span aria-hidden="true">▶</span>Video</button>
+                <button type="button" role="menuitem" @click="addAtGap('text')"><span aria-hidden="true">¶</span>Text</button>
+                <button type="button" role="menuitem" @click="addAtGap('heading')"><span aria-hidden="true">H</span>Heading</button>
+                <button type="button" role="menuitem" @click="addAtGap('quote')"><span aria-hidden="true">❝</span>Quote</button>
+                <button type="button" role="menuitem" @click="addAtGap('callout')"><span aria-hidden="true">!</span>Callout</button>
+                <button type="button" role="menuitem" @click="addAtGap('button')"><span aria-hidden="true">⬭</span>Button</button>
+                <button type="button" role="menuitem" @click="addAtGap('divider')"><span aria-hidden="true">―</span>Divider</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Click a picture or video and press Delete to remove it.</p>
+        <p v-show="!showPreview" class="nge-blog-help">Write as you would in any document. Select text and use the buttons to format it. Move the mouse between two paragraphs and press + to add a picture, video or more right there. Click a picture or video and press Delete to remove it.</p>
       </div>
 
       <p v-if="problem" class="nge-blog-problem" role="alert">{{ problem }}</p>
@@ -739,6 +842,20 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog-doc :deep(.blog-post__button) { display: inline-block; padding: 8px 14px; border-radius: 9px; background: #e6c760; color: #10131c; font-weight: 700; text-decoration: none; }
 .nge-blog-doc :deep(::selection) { background: rgba(127, 212, 255, 0.35); }
 
+.nge-blog-docwrap { position: relative; }
+.nge-blog-doc { padding-left: 42px !important; }
+.nge-blog-gap { position: absolute; left: 0; right: 0; height: 0; z-index: 3; pointer-events: none; }
+.nge-blog-gap-line { position: absolute; left: 40px; right: 14px; top: -1px; border-top: 2px dashed rgba(127, 212, 255, 0.65); }
+.nge-blog-gap-plus { pointer-events: auto; position: absolute; left: 9px; top: -13px; width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  border: 0; cursor: pointer; font: inherit; font-size: 18px; font-weight: 700; line-height: 26px; text-align: center; color: #06121f; background: #7fd4ff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); transition: transform 0.12s ease; }
+.nge-blog-gap-plus:hover, .nge-blog-gap-plus.on { transform: scale(1.12) rotate(90deg); }
+.nge-blog-gap-menu { pointer-events: auto; position: absolute; left: 40px; top: 14px; display: grid; grid-template-columns: repeat(3, auto); gap: 4px; padding: 8px;
+  border-radius: 12px; background: #0d1526; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); }
+.nge-blog-gap-menu button { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 8px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 0.95em; color: #dce6f5; white-space: nowrap; text-align: left; }
+.nge-blog-gap-menu button span { width: 18px; text-align: center; opacity: 0.8; }
+.nge-blog-gap-menu button:hover, .nge-blog-gap-menu button:focus-visible { background: rgba(127, 212, 255, 0.14); outline: none; }
 .nge-blog-help { margin: 0; font-size: 0.85em; color: rgba(220, 230, 245, 0.6); }
 .nge-blog-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .nge-blog-note { color: rgba(220, 230, 245, 0.7); margin: 0; }
@@ -797,6 +914,11 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog--site .nge-blog-doc :deep(pre) { background: #e9edf3; }
 .nge-blog--site .nge-blog-doc :deep(figcaption) { color: #5a6578; }
 .nge-blog--site .nge-blog-doc :deep(::selection) { background: rgba(10, 114, 134, 0.22); }
+.nge-blog--site .nge-blog-gap-line { border-top-color: rgba(10, 114, 134, 0.55); }
+.nge-blog--site .nge-blog-gap-plus { color: #ffffff; background: #0a7286; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.25); }
+.nge-blog--site .nge-blog-gap-menu { background: #ffffff; border-color: rgba(20, 30, 50, 0.16); box-shadow: 0 12px 32px rgba(20, 30, 50, 0.18); }
+.nge-blog--site .nge-blog-gap-menu button { color: #151b27; }
+.nge-blog--site .nge-blog-gap-menu button:hover, .nge-blog--site .nge-blog-gap-menu button:focus-visible { background: #eef4f7; }
 .nge-blog--site .nge-blog-problem { color: #b3263a; }
 .nge-blog--site .nge-blog-ok { color: #157a45; }
 </style>
