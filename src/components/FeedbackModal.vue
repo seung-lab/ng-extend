@@ -29,9 +29,8 @@ const ISSUE_URL =
 // No Data problem (Ames 2026-10-19: not needed). Old reports keep theirs, and
 // the server still accepts it.
 const CATEGORIES = ['Bug', 'Idea', 'Other'] as const;
-/** None picked to start with: the player chooses (toknow, report 301: "do
- *  not select any type ... let player select it manually"). */
-const category = ref<typeof CATEGORIES[number] | null>(null);
+/** Bug to start with (Ames 2026-10-29: "I like having bug preselected"). */
+const category = ref<typeof CATEGORIES[number]>('Bug');
 const message = ref('');
 /** A short title (Celia #178: "a title section for bug or idea submission
  *  would be nice to get a fast overview of what the user is asking for"). */
@@ -105,9 +104,8 @@ async function submit() {
   const details = detailsOpen.value ? message.value.trim() : '';
   // The report itself: their details, or just the short line when that is all.
   const text = details || heading;
-  if (!heading || !category.value || sending.value) {
-    if (!category.value) error.value = 'Choose Bug, Idea or Other first.';
-    else if (!heading) error.value = 'Say in a few words what it is.';
+  if (!heading || sending.value) {
+    if (!heading) error.value = 'Say in a few words what it is.';
     return;
   }
   sending.value = true;
