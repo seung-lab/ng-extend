@@ -648,7 +648,7 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 
 <style scoped>
 /* On the blog page: the editor takes the page's width and scrolls with it. */
-.nge-blog.nge-blog--site { max-height: none; overflow: visible; width: 100%; border-radius: 14px; background: #0d1626; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25); }
+.nge-blog.nge-blog--site { max-height: none; overflow: visible; width: 100%; border-radius: 14px; }
 .nge-blog-head-actions { display: inline-flex; align-items: center; gap: 8px; }
 .nge-blog-restore {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px;
@@ -744,4 +744,59 @@ const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(unde
 .nge-blog-note { color: rgba(220, 230, 245, 0.7); margin: 0; }
 .nge-blog-problem { margin: 0; color: #ff9aa8; }
 .nge-blog-ok { margin: 0; color: #8ef0b8; }
+</style>
+
+<style scoped>
+/* ── On the blog page: light, like the blog it sits in (Ames 2026-10-29:
+      "make the composer light bg"). In the game the editor stays dark.
+      The post area is drawn like the published post, so what you write is
+      what readers see. Colors are the blog's own (seunglabdata styles.css,
+      body.blog-light). ── */
+.nge-blog--site { color: #151b27; background: #ffffff; border: 1px solid rgba(20, 30, 50, 0.14); box-shadow: 0 10px 30px rgba(20, 30, 50, 0.10); }
+.nge-blog--site a { color: #0a7286; }
+.nge-blog--site .nge-blog-head h3, .nge-blog--site .nge-blog-row-title { color: #0b101a; }
+.nge-blog--site .nge-blog-head p, .nge-blog--site .nge-blog-row-meta, .nge-blog--site .nge-blog-note,
+.nge-blog--site .nge-blog-field > span, .nge-blog--site .nge-blog-slug code, .nge-blog--site .nge-blog-help { color: #5a6578; }
+.nge-blog--site .nge-blog-btn { color: #151b27; background: #ffffff; border-color: rgba(20, 30, 50, 0.22); }
+.nge-blog--site .nge-blog-btn:hover:not(:disabled) { background: #eef2f7; }
+.nge-blog--site .nge-blog-btn--primary { color: #ffffff; background: #0a7286; border-color: #0a7286; }
+.nge-blog--site .nge-blog-btn--primary:hover:not(:disabled) { background: #08606f; }
+.nge-blog--site .nge-blog-btn--danger { color: #b3263a; border-color: rgba(179, 38, 58, 0.45); }
+.nge-blog--site .nge-blog-btn:focus-visible, .nge-blog--site .nge-blog-row:focus-visible, .nge-blog--site .nge-blog-tool:focus-visible { outline-color: #0a7286; }
+.nge-blog--site .nge-blog-row { background: #f7f9fc; border-color: rgba(20, 30, 50, 0.12); }
+.nge-blog--site .nge-blog-row:hover { background: #eef2f7; }
+.nge-blog--site .nge-blog-pill { color: #3a4557; border-color: rgba(20, 30, 50, 0.25); }
+.nge-blog--site .nge-blog-pill--published { color: #157a45; border-color: rgba(21, 122, 69, 0.45); }
+.nge-blog--site input, .nge-blog--site textarea { color: #151b27; background: #ffffff; border-color: rgba(20, 30, 50, 0.22); }
+.nge-blog--site input::placeholder, .nge-blog--site textarea::placeholder { color: #8a93a3; }
+.nge-blog--site input:focus, .nge-blog--site textarea:focus { border-color: #0a7286; }
+.nge-blog--site .nge-blog-cover img { border-color: rgba(20, 30, 50, 0.18); }
+.nge-blog--site .nge-blog-restore { color: #6b4e00; background: #fff7dc; border-color: rgba(170, 130, 20, 0.45); }
+
+.nge-blog--site .nge-blog-editor { background: #ffffff; border-color: rgba(20, 30, 50, 0.22); }
+.nge-blog--site .nge-blog-editor:focus-within { border-color: #0a7286; }
+.nge-blog--site .nge-blog-tools { top: 0; background: #f4f6fa; border-bottom-color: rgba(20, 30, 50, 0.14); }
+.nge-blog--site .nge-blog-tool { color: #151b27; }
+.nge-blog--site .nge-blog-tool:hover:not(:disabled) { background: #e3e8ef; }
+.nge-blog--site .nge-blog-tool.on { color: #0a7286; border-color: rgba(10, 114, 134, 0.55); background: rgba(10, 114, 134, 0.08); }
+.nge-blog--site .nge-blog-style { color: #151b27; background: #ffffff; border-color: rgba(20, 30, 50, 0.22); color-scheme: light; }
+.nge-blog--site .nge-blog-sep { background: rgba(20, 30, 50, 0.16); }
+.nge-blog--site .nge-blog-ask { border-bottom-color: rgba(20, 30, 50, 0.14); }
+
+.nge-blog--site .nge-blog-doc { color: #151b27; font-size: 1.1em; }
+.nge-blog--site .nge-blog-doc :deep(h2), .nge-blog--site .nge-blog-doc :deep(h3) {
+  font-family: 'Orbitron', ui-sans-serif, system-ui, sans-serif; font-weight: 600; font-size: 15px; line-height: 1.4;
+  letter-spacing: 0.18em; text-transform: uppercase; margin: 30px 0 10px; color: #0a7286; }
+.nge-blog--site .nge-blog-doc :deep(h3) { font-size: 13.5px; }
+.nge-blog--site .nge-blog-doc :deep(strong), .nge-blog--site .nge-blog-doc :deep(b) { color: #0b101a; }
+.nge-blog--site .nge-blog-doc :deep(a) { color: #0a7286; }
+.nge-blog--site .nge-blog-doc :deep(li::marker) { color: #17a2bd; }
+.nge-blog--site .nge-blog-doc :deep(hr) { border-top-color: rgba(20, 30, 50, 0.18); }
+.nge-blog--site .nge-blog-doc :deep(blockquote) { border-left-color: #17a2bd; background: rgba(23, 162, 189, 0.07); padding: 8px 0 8px 16px; }
+.nge-blog--site .nge-blog-doc :deep(aside) { background: rgba(230, 199, 96, 0.2); border-color: rgba(170, 130, 20, 0.5); }
+.nge-blog--site .nge-blog-doc :deep(pre) { background: #e9edf3; }
+.nge-blog--site .nge-blog-doc :deep(figcaption) { color: #5a6578; }
+.nge-blog--site .nge-blog-doc :deep(::selection) { background: rgba(10, 114, 134, 0.22); }
+.nge-blog--site .nge-blog-problem { color: #b3263a; }
+.nge-blog--site .nge-blog-ok { color: #157a45; }
 </style>

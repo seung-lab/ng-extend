@@ -6,7 +6,7 @@
  * scripts/build-blog-site-editor.cjs into the site's assets/blog-editor.js.
  * The blog loads it only when an author presses Edit or Write a post
  * (assets/blog-edit.js on the site), and calls
- *   window.PyrBlogEditor.open(host, slug)   slug '' for a new post
+ *   window.PyrBlogEditor.open(host, slug)   slug '' for a new post, '*' for the list
  *
  * Signing in is the same Google sign in Pyr uses: the CAVE sign in popup
  * hands back a token, kept in this site's storage under the same name Pyr
@@ -70,7 +70,8 @@ async function open(host: HTMLElement, slug: string, onClose: () => void): Promi
   if (author === false) throw new Error('Only blog authors can write and edit posts. Ask Ames to add you.');
   try { localStorage.setItem('pyr-blog-author', '1'); } catch { /* storage blocked */ }
   if (app) { app.unmount(); app = null; }
-  app = createApp(BlogEditor, { site: true, startSlug: slug, onClose: () => { close(); onClose(); } });
+  // '*' opens the list of posts (connectome.quest/blog/write), '' a new post.
+  app = createApp(BlogEditor, { site: true, startSlug: slug === '*' ? undefined : slug, onClose: () => { close(); onClose(); } });
   app.mount(host);
 }
 function close() { if (app) { app.unmount(); app = null; } }
