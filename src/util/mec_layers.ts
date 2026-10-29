@@ -12,12 +12,13 @@ import { makeLayer } from 'neuroglancer/layer';
 import { currentDatasetTag } from '../datasets';
 
 export const MEC_LAYERS: { name: string; color: string }[] = [
-  { name: 'AIS 🐬', color: '#4dd8f0' },
+  // Violet, apart from the light blue of the cell tabs (Ames 2026-10-29).
+  { name: 'AIS 🐬', color: '#9b6bff' },
   { name: 'True End 🟢', color: '#3ddc84' },
   { name: "Can't Fix 🔴", color: '#ff4d5e' },
   { name: 'Hits Edge 🟠', color: '#ff9a3c' },
   // Super Quests only (Ames 2026-10-28): a place the player has checked.
-  { name: 'Checked ✅', color: '#c48cff' },
+  { name: 'Checked ✅', color: '#4dd8f0' },
 ];
 /** The four an ordinary MEC claim opens with. */
 const CLAIM_LAYERS = MEC_LAYERS.slice(0, 4).map(l => l.name);
