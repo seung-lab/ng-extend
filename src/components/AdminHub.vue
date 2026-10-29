@@ -384,8 +384,12 @@ async function loadReporters(rows: TriageRow[]) {
     for (const i of data) next[i.id] = { name: i.user_name || 'Unknown player', category: i.category || '', at: i.created_at || '', title: String(i.title || '').trim() || undefined, message: String(i.message || '').trim(),
       url: web(i.url), shot: web(i.screenshot_url) };
     reporters.value = next;
+    // Dataset access requests are answered in Access requests, not here
+    // (Ames 2026-10-29: "take them out of triage").
+    triageRows.value = triageRows.value.filter(r => reporterOf(r)?.category !== DATASET_ACCESS_CATEGORY);
   } catch (e) { console.warn('[triage] could not load who submitted:', e); }
 }
+const DATASET_ACCESS_CATEGORY = 'Dataset access';
 const reporterOf = (r: TriageRow) => (r.source === 'site_issue' ? reporters.value[r.source_id] : undefined);
 
 // ── Let them in from a Beta access card (Ames 2026-10-26: "so admin could
