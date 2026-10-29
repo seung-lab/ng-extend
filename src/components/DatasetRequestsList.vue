@@ -9,8 +9,18 @@
 import { computed, onMounted, ref } from 'vue';
 import { listDatasetRequests, decideDatasetRequest, type DatasetRequestRow } from '../dataset_access_request';
 import { DATASETS, canonicalDataset } from '../datasets';
-/** A CAVE dataset by the name players know it by (MEC for HiMC). */
-const dsName = (cave: string) => DATASETS.find(d => d.caveDataset === cave && !d.hidden)?.abbrev || cave;
+/** The datasets whose access matters here (Ames 2026-10-29: "we only care
+ *  about Retina and MEC and BANC"; not the sandboxes or public datasets). */
+const WATCHED = [
+  { cave: 'stroeh-mouse-retina', tag: 'stroeh_mouse_retina', name: 'Retina' },
+  { cave: 'HiMC', tag: 'pni_mec', name: 'MEC' },
+  { cave: 'BANC', tag: 'brain_and_nerve_cord', name: 'BANC' },
+];
+type Level = 'edit' | 'view' | 'none';
+const LEVEL_WORDS: Record<Level, string> = { edit: 'can edit', view: 'view only', none: 'no access' };
+const levelOf = (a: NonNullable<DatasetRequestRow['access']>, cave: string): Level =>
+  a.edit.includes(cave) ? 'edit' : a.view.includes(cave) ? 'view' : 'none';
+const watchedEdits = (h: NonNullable<DatasetRequestRow['history']>) => h.datasets.filter(d => WATCHED.some(w => w.tag === d.dataset));
 /** A Pyr dataset tag by its short name. */
 const tagName = (tag: string) => DATASETS.find(d => canonicalDataset(d.id) === tag)?.abbrev || tag;
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -83,23 +93,14 @@ const when = (iso: string | null) => {
       </div>
       <div class="nge-dsr-meta">{{ r.email }}</div>
       <div v-if="r.access" class="nge-dsr-access">
-        <span class="nge-dsr-access-label">Can edit</span>
-        <span v-if="!r.access.edit.length" class="nge-dsr-none">nothing yet</span>
-        <span v-for="d in r.access.edit" :key="'e' + d" class="nge-dsr-chip nge-dsr-chip--edit">{{ dsName(d) }}</span>
-        <template v-if="r.access.view.length">
-          <span class="nge-dsr-access-label">View only</span>
-          <span v-for="d in r.access.view" :key="'v' + d" class="nge-dsr-chip">{{ dsName(d) }}</span>
-        </template>
-        <template v-if="r.access.groups.length">
-          <span class="nge-dsr-access-label">Groups</span>
-          <span class="nge-dsr-groups">{{ r.access.groups.join(', ') }}</span>
-        </template>
+        <span v-for="w in WATCHED" :key="w.cave" class="nge-dsr-chip"
+          :class="'nge-dsr-chip--' + levelOf(r.access, w.cave)">{{ w.name }}: {{ LEVEL_WORDS[levelOf(r.access, w.cave)] }}</span>
       </div>
       <div v-else class="nge-dsr-meta nge-dsr-none">Their CAVE access could not be read.</div>
       <div v-if="r.history" class="nge-dsr-history">
         <span v-if="r.history.joined">On Pyr {{ since(r.history.joined) }} (joined {{ day(r.history.joined) }})</span>
-        <span v-if="!r.history.datasets.length" class="nge-dsr-none">No edits yet</span>
-        <span v-for="h in r.history.datasets" :key="h.dataset"
+        <span v-if="!watchedEdits(r.history).length" class="nge-dsr-none">No Retina or MEC edits yet</span>
+        <span v-for="h in watchedEdits(r.history)" :key="h.dataset"
           :title="'First edit ' + day(h.first) + ', latest ' + day(h.last)">
           {{ tagName(h.dataset) }}: editing {{ since(h.first) }}, last {{ since(h.last) === 'today' ? 'today' : since(h.last) + ' ago' }}
         </span>
@@ -154,11 +155,9 @@ const when = (iso: string | null) => {
 .nge-dsr-note { color: #e4ecf5; margin-top: 4px; white-space: pre-wrap; }
 /* What they can already do (Ames 2026-10-29). */
 .nge-dsr-access { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 6px; font-size: 0.85rem; }
-.nge-dsr-access-label { color: #8fa3b8; margin-left: 4px; }
-.nge-dsr-access-label:first-child { margin-left: 0; }
 .nge-dsr-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); color: #cfd8e6; }
 .nge-dsr-chip--edit { border-color: rgba(124, 255, 178, 0.55); color: #7CFFB2; }
-.nge-dsr-groups { color: #b6c4d4; }
+.nge-dsr-chip--none { border-style: dashed; color: #8fa3b8; }
 .nge-dsr-history { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; font-size: 0.85rem; color: #b6c4d4; }
 .nge-dsr-none { color: #8fa3b8; font-style: italic; }
 .nge-dsr-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
