@@ -1126,7 +1126,8 @@ async function rateLimit(req, loggedIn, prefix = "a", admin = false) {
   // reads cost the sheet nothing; they get limits of their own.
   const QUEST_READS = prefix === "read:quests";
   // Beta access from connectome.quest (Ames 2026-10-26): a person asks once.
-  const VISITOR = prefix === "visitor:beta";
+  // and the symposium RSVP (visitor:rsvp, 2026-10-29) shares the same small allowance.
+  const VISITOR = prefix.startsWith("visitor:");
   // Players: 60 a minute, 5,000 a day (Ames 2026-10-24: "players don't need
   // that high of a limit"). Admins get the bigger allowance below.
   // Admins get far more room (Ames 2026-10-24: "you can give me a higher
@@ -2699,6 +2700,41 @@ exports.ewSecureUpload = onRequest(
    if(!r.ok)throw ewErr(502,"Image storage is temporarily unavailable.");
    return res.json({url:url.replace("/object/","/object/public/")});
   }catch(e){return res.status(e.status||500).json({error:e.status?e.message:"Image upload failed."});}
+ }
+);
+
+// RSVPs for the MEC symposium from connectome.quest/symposium/ (Ames
+// 2026-10-29). No sign in. Each RSVP is kept in Firestore first (so nothing is
+// lost if the sheet is unreachable) and then added as a row to Ames's sheet,
+// written by the Cell Library's sheet identity (symposium-rsvp.js).
+exports.ewSymposiumRsvp = onRequest(
+ {region:"us-central1",serviceAccount:`eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`,cors:[/^https:\/\/(www\.)?connectome\.quest$/,/^http:\/\/localhost(:\d+)?$/],invoker:"public",maxInstances:5},
+ async(req,res)=>{
+  res.set("Cache-Control","no-store");
+  if(req.method!=="POST") return res.status(405).json({error:"POST only"});
+  if(Buffer.byteLength(JSON.stringify(req.body||{}))>8000) return res.status(413).json({error:"That is too long. Please shorten your question."});
+  try {
+   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
+   const plan=planRsvp(req.body||{});
+   if(!(await rateLimit(req,false,"visitor:rsvp")).ok) throw ewErr(429,"Please wait a little while, then try again.");
+   const ref=db.collection("symposium_rsvps").doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
+   const before=await ref.get();
+   if(before.exists) plan.row[4]="Sent again (latest answers)";
+   await ref.set({name:plan.row[1],email:plan.email,question:plan.row[3],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
+   try {
+    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!A:E")+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+      {method:"POST",body:JSON.stringify({values:[plan.row]})});
+    await ref.update({sheet:true});
+   } catch(e) {
+    // Kept in Firestore (sheet:false) to add later; the person is still on the list.
+    console.error("[ewSymposiumRsvp] sheet append failed:",e.message);
+   }
+   return res.json({ok:true,again:before.exists});
+  } catch(e) {
+   if(e.status) return res.status(e.status).json({error:e.message});
+   console.error("[ewSymposiumRsvp]",e.message);
+   return res.status(500).json({error:"That did not go through. Please try again."});
+  }
  }
 );
 
