@@ -2437,6 +2437,28 @@ exports.ewAccessRequest = onRequest(
         notifyAdmins: async ({ title, body, image }) => note(await adminUserIds(sb), title, body, image),
         notifyPlayer: ({ userId, title, body, image }) => note([userId], title, body, image),
         postSlack: (p) => postAccessRequestToSlack(slackBotToken.value(), p),
+        // A player's CAVE access, read with the admin token: the datasets they
+        // can edit or view, and their groups (Ames 2026-10-29: "we need to see
+        // what other permissions users have"). null when CAVE can't say.
+        caveAccessOf: async (caveId) => {
+          const get = async (path) => {
+            const r = await fetch(`https://global.daf-apis.com/auth/api/v1/user/${caveId}/${path}`, {
+              headers: { Authorization: `Bearer ${ewCaveToken.value().trim()}` }, redirect: "error", signal: AbortSignal.timeout(8000) });
+            return r.ok ? r.json() : null;
+          };
+          try {
+            const [perms, groups] = await Promise.all([get("permissions"), get("group")]);
+            if (!perms) return null;
+            const merged = {};
+            for (const src of [perms.permissions_v2_ignore_tos, perms.permissions_v2]) {
+              for (const [ds, list] of Object.entries(src || {})) merged[ds] = [...new Set([...(merged[ds] || []), ...list])];
+            }
+            const edit = Object.keys(merged).filter(ds => merged[ds].includes("edit")).sort();
+            const view = Object.keys(merged).filter(ds => !merged[ds].includes("edit") && merged[ds].includes("view")).sort();
+            const names = Array.isArray(groups) ? groups.map(g => String((g && g.name) || g)).filter(Boolean).sort() : [];
+            return { edit, view, groups: names };
+          } catch (e) { return null; }
+        },
         // Add a player to Eyewire_2_Edit, or the group a dataset request
         // names (MEC_Edit). 422 means already a member: as good.
         grantCave: async (caveId, group = ACCESS_CAVE_GROUP) => {

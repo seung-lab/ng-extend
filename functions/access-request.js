@@ -606,6 +606,24 @@ function datasetOf(a) {
 }
 const labelOf = title => String(title || '').split(' access request from ')[0];
 const lineOf = (message, lead) => (String(message || '').split('\n').find(l => l.startsWith(lead)) || '').slice(lead.length).trim();
+/** The datasets a player edits in on Pyr, by edit_log tag. */
+const EDIT_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'pinky_nf_v2'];
+/** A player's first and latest split or merge in each of those, where they
+ *  have any: [{dataset, first, last}]. */
+async function editHistory(sb, userId) {
+  const one = async (ds, dir) => {
+    try {
+      const r = await sb('edit_log?user_id=eq.' + encodeURIComponent(userId) + '&dataset=eq.' + ds
+        + '&operation=in.(split,merge)&select=timestamp&order=timestamp.' + dir + '&limit=1');
+      return Array.isArray(r) && r[0] ? r[0].timestamp : null;
+    } catch (e) { return null; }
+  };
+  const out = await Promise.all(EDIT_DATASETS.map(async ds => {
+    const [first, last] = await Promise.all([one(ds, 'asc'), one(ds, 'desc')]);
+    return first ? {dataset: ds, first, last} : null;
+  }));
+  return out.filter(Boolean);
+}
 async function datasetRows(sb, filter) {
   const rows = await sb('site_issues?category=eq.' + encodeURIComponent(DATASET_CATEGORY) + filter
     + '&select=id,user_id,user_name,dataset,title,message,created_at&order=created_at.desc&limit=300');
@@ -643,14 +661,14 @@ async function datasetRequest(a, io) {
     `Dataset id: ${ds.id}`,
     ds.cave ? `CAVE dataset: ${ds.cave}` : '',
     `Sign in email: ${signIn}`,
-    "To let them in, add them to this dataset's group in CAVE, then press Granted in Admin Hub, Access requests.",
+    'To answer, open Admin Hub, Access requests, Dataset requests: Grant adds them to the CAVE group.',
     note ? `Their note: ${note}` : '',
   ].filter(Boolean).join('\n');
   const title = `${ds.label} access request from ${name}`.slice(0, 120);
   await io.sb('site_issues', {method: 'POST', body: JSON.stringify([{category: DATASET_CATEGORY, title, message, dataset: ds.id, user_id: io.me.id, user_name: name}])});
   const bell = `${mdText(name)} asks for access to ${mdText(ds.label)}${ds.cave ? ` (CAVE dataset ${mdText(ds.cave)})` : ''}.\n\n`
     + `Sign in email: ${mdText(signIn)}\n\n`
-    + "Add them to the dataset's group in CAVE, then press Granted in Admin Hub, Access requests."
+    + 'Open Admin Hub, Access requests, Dataset requests: Grant adds them to the CAVE group.'
     + noteForBell(note);
   try { await io.notifyAdmins({title: `${DATASET_BELL}: ${ds.label}, from ${name}`, body: bell, image: DATASET_REQUESTED}); } catch (e) { console.warn('[dataset access] bell failed', e && e.message); }
   try { if (io.postIssue) await io.postIssue({title, message, category: DATASET_CATEGORY, user: name}); } catch (e) { console.warn('[dataset access] slack failed', e && e.message); }
@@ -660,7 +678,28 @@ async function datasetRequest(a, io) {
 async function datasetList(a, io) {
   needAdmin(io.isAdmin);
   const marks = await io.datasetMarks.all();
-  return (await datasetRows(io.sb, '')).map(r => ({
+  const rows = await datasetRows(io.sb, '');
+  // What each player waiting for an answer can already do in CAVE, and how
+  // long they have been at it here (Ames 2026-10-29: "how long they have been
+  // in the other datasets").
+  const access = {};
+  const history = {};
+  const waiting = [...new Set(rows.filter(r => r.user_id && !(marks[r.id] && marks[r.id].mark)).map(r => r.user_id))].slice(0, 25);
+  if (waiting.length) {
+    const users = await io.sb('users?id=in.(' + waiting.map(encodeURIComponent).join(',') + ')&select=id,cave_user_id,created_at');
+    await Promise.all((Array.isArray(users) ? users : []).map(async u => {
+      const caveId = Number(u.cave_user_id);
+      const [cave, days] = await Promise.all([
+        io.caveAccessOf && Number.isSafeInteger(caveId) && caveId > 0 ? io.caveAccessOf(caveId) : null,
+        editHistory(io.sb, u.id),
+      ]);
+      access[u.id] = cave;
+      history[u.id] = {joined: u.created_at || null, datasets: days};
+    }));
+  }
+  return rows.map(r => ({
+    access: access[r.user_id] || null,
+    history: history[r.user_id] || null,
     caveGroup: (DATASET_CAVE_GROUPS[r.dataset] && DATASET_CAVE_GROUPS[r.dataset].name) || '',
     id: r.id, userId: r.user_id, name: r.user_name, dataset: r.dataset, label: labelOf(r.title),
     cave: lineOf(r.message, 'CAVE dataset:'), email: lineOf(r.message, 'Sign in email:'), note: lineOf(r.message, 'Their note:'),

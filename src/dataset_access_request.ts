@@ -19,6 +19,12 @@ export interface DatasetRequestState { at: string; mark: DatasetRequestMark }
 export interface DatasetRequestRow {
   id: string; userId: string | null; name: string | null; dataset: string | null; label: string;
   cave: string; email: string; note: string; at: string;
+  /** What they can already do in CAVE, by CAVE dataset, and their groups;
+   *  null when not read (answered, or CAVE could not say). */
+  access: { edit: string[]; view: string[]; groups: string[] } | null;
+  /** When they joined Pyr, and their first and latest edit in each dataset
+   *  (by Pyr dataset tag). null when not read. */
+  history: { joined: string | null; datasets: { dataset: string; first: string; last: string }[] } | null;
   /** The CAVE group Granted adds them to, or '' when that is done by hand. */
   caveGroup: string;
   mark: DatasetRequestMark; markedAt: string | null; markedBy: string;

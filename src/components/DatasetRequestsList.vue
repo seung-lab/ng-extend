@@ -8,6 +8,22 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { listDatasetRequests, decideDatasetRequest, type DatasetRequestRow } from '../dataset_access_request';
+import { DATASETS, canonicalDataset } from '../datasets';
+/** A CAVE dataset by the name players know it by (MEC for HiMC). */
+const dsName = (cave: string) => DATASETS.find(d => d.caveDataset === cave && !d.hidden)?.abbrev || cave;
+/** A Pyr dataset tag by its short name. */
+const tagName = (tag: string) => DATASETS.find(d => canonicalDataset(d.id) === tag)?.abbrev || tag;
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+/** "3 weeks", "4 months": how long ago. */
+function since(iso: string | null): string {
+  if (!iso) return '';
+  const d = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
+  if (d < 1) return 'today';
+  if (d < 14) return d + (d === 1 ? ' day' : ' days');
+  if (d < 61) return Math.floor(d / 7) + ' weeks';
+  const m = Math.floor(d / 30.4);
+  return m < 24 ? m + ' months' : Math.floor(d / 365) + ' years';
+}
 import lockIcon from '../images/lock-icon.png';
 import unlockIcon from '../images/unlock-icon.png';
 
@@ -66,6 +82,28 @@ const when = (iso: string | null) => {
         <span class="nge-dsr-when">{{ when(r.at) }}</span>
       </div>
       <div class="nge-dsr-meta">{{ r.email }}</div>
+      <div v-if="r.access" class="nge-dsr-access">
+        <span class="nge-dsr-access-label">Can edit</span>
+        <span v-if="!r.access.edit.length" class="nge-dsr-none">nothing yet</span>
+        <span v-for="d in r.access.edit" :key="'e' + d" class="nge-dsr-chip nge-dsr-chip--edit">{{ dsName(d) }}</span>
+        <template v-if="r.access.view.length">
+          <span class="nge-dsr-access-label">View only</span>
+          <span v-for="d in r.access.view" :key="'v' + d" class="nge-dsr-chip">{{ dsName(d) }}</span>
+        </template>
+        <template v-if="r.access.groups.length">
+          <span class="nge-dsr-access-label">Groups</span>
+          <span class="nge-dsr-groups">{{ r.access.groups.join(', ') }}</span>
+        </template>
+      </div>
+      <div v-else class="nge-dsr-meta nge-dsr-none">Their CAVE access could not be read.</div>
+      <div v-if="r.history" class="nge-dsr-history">
+        <span v-if="r.history.joined">On Pyr {{ since(r.history.joined) }} (joined {{ day(r.history.joined) }})</span>
+        <span v-if="!r.history.datasets.length" class="nge-dsr-none">No edits yet</span>
+        <span v-for="h in r.history.datasets" :key="h.dataset"
+          :title="'First edit ' + day(h.first) + ', latest ' + day(h.last)">
+          {{ tagName(h.dataset) }}: editing {{ since(h.first) }}, last {{ since(h.last) === 'today' ? 'today' : since(h.last) + ' ago' }}
+        </span>
+      </div>
       <div v-if="r.note" class="nge-dsr-note">“{{ r.note }}”</div>
       <div class="nge-dsr-actions">
         <input v-model="notes[r.id]" class="nge-dsr-input" maxlength="500" placeholder="A note for them (optional)" />
@@ -114,6 +152,15 @@ const when = (iso: string | null) => {
 .nge-dsr-when { margin-left: auto; color: #8fa3b8; font-size: 0.85rem; }
 .nge-dsr-meta { color: #8fa3b8; font-size: 0.85rem; margin-top: 2px; }
 .nge-dsr-note { color: #e4ecf5; margin-top: 4px; white-space: pre-wrap; }
+/* What they can already do (Ames 2026-10-29). */
+.nge-dsr-access { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 6px; font-size: 0.85rem; }
+.nge-dsr-access-label { color: #8fa3b8; margin-left: 4px; }
+.nge-dsr-access-label:first-child { margin-left: 0; }
+.nge-dsr-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); color: #cfd8e6; }
+.nge-dsr-chip--edit { border-color: rgba(124, 255, 178, 0.55); color: #7CFFB2; }
+.nge-dsr-groups { color: #b6c4d4; }
+.nge-dsr-history { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; font-size: 0.85rem; color: #b6c4d4; }
+.nge-dsr-none { color: #8fa3b8; font-style: italic; }
 .nge-dsr-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .nge-dsr-input { flex: 1 1 200px; font: inherit; font-size: 0.9rem; padding: 5px 8px; border: 1px solid #74859a; border-radius: 6px; background: #152434; color: #f1f5f9; }
 .nge-dsr-btn { font: inherit; font-size: 0.9rem; padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.06); color: #e4ecf5; cursor: pointer; }

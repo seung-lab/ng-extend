@@ -15,8 +15,20 @@ function world() {
   const marks = {};
   const caveIds = {'u-player': 3072};
   const grants = [];
+  const edits = [];
   const sb = async (p, init = {}) => {
-    if (p.startsWith('users?')) return [{cave_user_id: caveIds[(new URLSearchParams(p.split('?')[1]).get('id') || '').replace(/^eq\./, '')]}];
+    if (p.startsWith('users?')) {
+      const id = new URLSearchParams(p.split('?')[1]).get('id') || '';
+      if (id.startsWith('in.(')) return id.slice(4, -1).split(',').map(u => ({id: u, cave_user_id: caveIds[u], created_at: '2026-09-01T00:00:00Z'}));
+      return [{cave_user_id: caveIds[id.replace(/^eq\./, '')]}];
+    }
+    if (p.startsWith('edit_log?')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const hit = edits.filter(e => q.get('dataset') === 'eq.' + e.dataset && q.get('user_id') === 'eq.' + e.user_id)
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      if (q.get('order') === 'timestamp.desc') hit.reverse();
+      return hit.slice(0, 1);
+    }
     if (p.startsWith('site_issues?')) {
       const q = new URLSearchParams(p.split('?')[1]);
       const eq = k => (q.get(k) || '').replace(/^eq\./, '');
@@ -41,7 +53,7 @@ function world() {
     notifyAdmins: async n => { told.push(n); }, notifyPlayer: async n => { players.push(n); },
     grantCave: async (caveId, group) => { grants.push({caveId, group}); return {ok: true}; },
     postIssue: async p => { posted.push(p); }, ...over});
-  return {issues, told, posted, players, marks, caveIds, grants, io};
+  return {issues, told, posted, players, marks, caveIds, grants, edits, io};
 }
 
 test('a request: one report, a bell to every admin, a Slack post, then Requested', async () => {
@@ -142,4 +154,24 @@ test('Granted on MEC adds the player to MEC_Edit (217) first; with no CAVE id it
   await assert.rejects(handle('access.datasetDecide', {id: r2.id, mark: 'granted'}, w2.io({isAdmin: true})), /CAVE id/);
   await handle('access.datasetDecide', {id: r2.id, mark: 'granted', byHand: true}, w2.io({isAdmin: true}));
   assert.strictEqual(w2.players.length, 1);
+});
+
+test('the list shows what a waiting player can do in CAVE and how long they have edited each dataset', async () => {
+  const w = world();
+  w.edits.push({user_id: 'u-player', dataset: 'stroeh_mouse_retina', timestamp: '2026-09-10T00:00:00Z'},
+    {user_id: 'u-player', dataset: 'stroeh_mouse_retina', timestamp: '2026-10-20T00:00:00Z'});
+  await handle('access.dataset', MEC, w.io());
+  const asked = [];
+  const caveAccessOf = async id => { asked.push(id); return {edit: ['stroeh-mouse-retina'], view: ['pinky100'], groups: ['Eyewire_2_Edit']}; };
+  const [r] = await handle('access.datasetList', {}, w.io({isAdmin: true, caveAccessOf}));
+  assert.deepStrictEqual(asked, [3072]);
+  assert.deepStrictEqual(r.access.edit, ['stroeh-mouse-retina']);
+  assert.strictEqual(r.history.joined, '2026-09-01T00:00:00Z');
+  assert.deepStrictEqual(r.history.datasets, [{dataset: 'stroeh_mouse_retina', first: '2026-09-10T00:00:00Z', last: '2026-10-20T00:00:00Z'}]);
+  // Once answered, CAVE is not asked again.
+  await handle('access.datasetDecide', {id: r.id, mark: 'granted', byHand: true}, w.io({isAdmin: true}));
+  const [r2] = await handle('access.datasetList', {}, w.io({isAdmin: true, caveAccessOf}));
+  assert.strictEqual(asked.length, 1);
+  assert.strictEqual(r2.access, null);
+  assert.strictEqual(r2.history, null);
 });
