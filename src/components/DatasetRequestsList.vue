@@ -126,7 +126,6 @@ const when = (iso: string | null) => {
         <span class="nge-dsr-ds">{{ r.label }}</span>
         <span class="nge-dsr-mark" :class="`nge-dsr-mark--${r.mark}`"><img :src="r.mark === 'granted' ? unlockIcon : lockIcon" class="nge-dsr-mark-icon" alt="" aria-hidden="true" />{{ r.mark === 'granted' ? 'Granted' : 'Not now' }}</span>
         <span class="nge-dsr-when">{{ when(r.markedAt) }}{{ r.markedBy ? ` by ${r.markedBy}` : '' }}</span>
-        <button class="nge-dsr-btn nge-dsr-btn--small" :disabled="busy === r.id" title="Put it back on the waiting list (the player is not told)" @click="decide(r, 'waiting')">Undo</button>
       </div>
     </template>
   </section>
