@@ -16,6 +16,7 @@ import AccessRequestsTab from 'components/AccessRequestsTab.vue';
 import HuntsAdminTab from 'components/HuntsAdminTab.vue';
 import InterneuronQuestsAdminTab from 'components/InterneuronQuestsAdminTab.vue';
 import TestTriesTab from 'components/TestTriesTab.vue';
+import TutorialTimesTab from 'components/TutorialTimesTab.vue';
 import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
@@ -45,7 +46,7 @@ const backend = useProofreadingBackendStore();
 const props = defineProps<{ initialSubTab?: string; standalone?: boolean }>();
 
 // Sub-tab: 'notifications' | 'groups' | 'badges' | 'triage'
-const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts' | 'interneurons' | 'tutorialEdits'>(
+const adminSubTab = ref<'notifications' | 'groups' | 'badges' | 'triage' | 'practice' | 'pilot' | 'celltypes' | 'access' | 'tests' | 'hunts' | 'interneurons' | 'tutorialEdits' | 'tutorialTimes'>(
   props.initialSubTab === 'triage' || props.initialSubTab === 'groups' || props.initialSubTab === 'badges' || props.initialSubTab === 'practice' || props.initialSubTab === 'pilot' || props.initialSubTab === 'access' || props.initialSubTab === 'tests' || props.initialSubTab === 'tutorialEdits' || props.initialSubTab === 'hunts' || props.initialSubTab === 'interneurons'
     ? props.initialSubTab
     : 'notifications');
@@ -2496,10 +2497,12 @@ function practiceWhen(iso: string | null) {
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'hunts' }" @click="adminSubTab = 'hunts'" title="Timed merger hunts, with gold, silver and bronze Achievements">Hunts</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'interneurons' }" @click="adminSubTab = 'interneurons'" title="Super Quests (giant MEC interneurons), and the active time players spend on each claim">Super Quests</button>
       <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tutorialEdits' }" @click="adminSubTab = 'tutorialEdits'" title="Tutorial boxes admins reworded, and suggestions waiting for approval">Tutorial edits</button>
+      <button class="nge-admin-subtab" :class="{ 'nge-admin-subtab--active': adminSubTab === 'tutorialTimes' }" @click="adminSubTab = 'tutorialTimes'" title="How long players spend on each tutorial box">Tutorial times</button>
     </div>
 
     <!-- ── Tutorial edits (Ames 2026-10-25): the pencil on a tutorial box ── -->
     <TutorialEditsTab v-if="adminSubTab === 'tutorialEdits'" />
+    <TutorialTimesTab v-if="adminSubTab === 'tutorialTimes'" />
 
     <!-- ── Access requests (Ames 2026-10-16): the Dataset Access form, in the game ── -->
     <AccessRequestsTab v-if="adminSubTab === 'access'" />
