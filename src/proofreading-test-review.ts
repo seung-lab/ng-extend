@@ -171,15 +171,17 @@ function gems(color: string, pts: number[][]): Record<string, any> {
 }
 
 /** The annotation layers: their points, and pins on what they missed (red:
- *  a small piece is easier to find with a pin) and fixed (green, off). */
+ *  a small piece is easier to find with a pin) and fixed (green, off). The
+ *  branch ends get no pins (Ames 2026-10-29: "we don't need the ends marked
+ *  here"): a pin on every end crowded out the pieces. */
 function reviewLayers(t: TestTryDetail): Record<string, any>[] {
   const p = tryParts(t), pts = pointsByEnd(t);
   return [
     { name: LAYERS.onEnd, ...gems(RIGHT, pts.onEnd) },
     { name: LAYERS.offEnd, ...gems(WRONG, pts.offEnd) },
-    { name: LAYERS.missed, ...pointLayer(WRONG, placed([...p.damage, ...p.missed, ...p.endsMissed])) },
+    { name: LAYERS.missed, ...pointLayer(WRONG, placed([...p.damage, ...p.missed])) },
     // Off at first: on when an admin wants to see what they did find.
-    { name: LAYERS.fixed, ...pointLayer(RIGHT, placed([...p.fixed, ...p.endsFound]), false) },
+    { name: LAYERS.fixed, ...pointLayer(RIGHT, placed(p.fixed), false) },
   ];
 }
 
