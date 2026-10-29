@@ -2714,15 +2714,15 @@ exports.ewSymposiumRsvp = onRequest(
   if(req.method!=="POST") return res.status(405).json({error:"POST only"});
   if(Buffer.byteLength(JSON.stringify(req.body||{}))>8000) return res.status(413).json({error:"That is too long. Please shorten your question."});
   try {
-   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
+   const {planRsvp,SYMPOSIUM_SHEET_ID,SYMPOSIUM_TAB,NOTE_COLUMN,SHEET_RANGE}=require("./symposium-rsvp"),{sheetsApi}=require("./sheet-sync");
    const plan=planRsvp(req.body||{});
    if(!(await rateLimit(req,false,"visitor:rsvp")).ok) throw ewErr(429,"Please wait a little while, then try again.");
    const ref=db.collection("symposium_rsvps").doc(crypto.createHash("sha256").update(plan.email).digest("hex"));
    const before=await ref.get();
-   if(before.exists) plan.row[4]="Sent again (latest answers)";
-   await ref.set({name:plan.row[1],email:plan.email,question:plan.row[3],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
+   if(before.exists) plan.row[NOTE_COLUMN]="Sent again (latest answers)";
+   await ref.set({name:plan.row[1],email:plan.email,username:plan.row[3],question:plan.row[4],at:new Date().toISOString(),times:(before.exists?(before.data().times||1):0)+1,sheet:false});
    try {
-    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!A:E")+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+    await sheetsApi(admin.applicationDefault(),SYMPOSIUM_SHEET_ID+"/values/"+encodeURIComponent(SYMPOSIUM_TAB+"!"+SHEET_RANGE)+":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
       {method:"POST",body:JSON.stringify({values:[plan.row]})});
     await ref.update({sheet:true});
    } catch(e) {

@@ -25,13 +25,19 @@ function planRsvp(input, now = new Date()) {
   if (input.website) fail(400, 'That did not go through. Please try again.');          // bot trap
   const name = oneLine(input.name, 120);
   const email = oneLine(input.email, 254).toLowerCase();
+  // Pyr username, optional (Ames 2026-10-29), so the RSVP can be matched to a player.
+  const username = oneLine(input.username, 40).replace(/^@+/, '');
   const question = String(input.question ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, ' ').trim().slice(0, 2000);
   if (!name) fail(400, 'Please add your name.');
   if (!EMAIL.test(email)) fail(400, 'Please check your email address.');
+  // Sheet columns: Submitted (UTC), Name, Email, Pyr username, Questions, Note.
   return {
     email,
-    row: [now.toISOString().replace('T', ' ').slice(0, 19), plain(name), plain(email), plain(question), ''],
+    row: [now.toISOString().replace('T', ' ').slice(0, 19), plain(name), plain(email), plain(username), plain(question), ''],
   };
 }
 
-module.exports = { planRsvp, SYMPOSIUM_SHEET_ID, SYMPOSIUM_TAB };
+const NOTE_COLUMN = 5;
+const SHEET_RANGE = 'A:F';
+
+module.exports = { planRsvp, SYMPOSIUM_SHEET_ID, SYMPOSIUM_TAB, NOTE_COLUMN, SHEET_RANGE };
