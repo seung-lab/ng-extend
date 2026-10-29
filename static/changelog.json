@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-29T13:44:01Z",
+      "title": "Highlight colours follow the tabs on MEC",
+      "digest": "minor",
+      "items": [
+        "On MEC, picking a mark in Highlight selects its layer tab, and clicking a mark's tab (True End, Hits Edge and the rest) picks its colour in Highlight. Thanks to Nik."
+      ]
+    },
+    {
       "at": "2026-10-29T13:35:38Z",
       "title": "Reports and MEC tabs",
       "digest": "minor",

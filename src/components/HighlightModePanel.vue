@@ -14,7 +14,7 @@ import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
 import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
-import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz } from '../util/mec_marks';
+import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz, mecKindOfLayer } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
 const panelEl = ref<HTMLElement | null>(null);
@@ -503,7 +503,42 @@ let countTimer: ReturnType<typeof setInterval> | undefined;
 // as Ctrl+click does (report 135). With Merge, Cut or Find Path open the tap
 // is theirs, as Ctrl+click is.
 let stopTouchTaps = () => { /* set on mount */ };
+
+// ── The colour and the layer tab go together on MEC (Nseraf, report 295:
+// "when I change a colour in highlight it also changes the annotation tab
+// and vice versa"). Picking a colour selects its layer's tab, when the view
+// has it; clicking a mark's tab picks its colour.
+/** The layer a colour's points go in, when the view has it. */
+function layerOfStyle(key: string): any {
+  const v = (window as any).viewer;
+  const s = allStyles.value.find(x => x.key === key);
+  if (!v || !s) return null;
+  return (v.layerManager.managedLayers as any[]).find(l => !l.archived
+    && (s.lab ? mecKindOfLayer(l.name)?.key === s.key : l.name === s.layer)) ?? null;
+}
+watch(styleKey, k => {
+  if (!mec.value) return;
+  try {
+    const v = (window as any).viewer;
+    const ml = layerOfStyle(k);
+    if (ml && v.selectedLayer.layer !== ml) v.selectedLayer.layer = ml;
+  } catch { /* no viewer yet */ }
+});
+function onSelectedLayer() {
+  if (!mec.value) return;
+  const name = (window as any).viewer?.selectedLayer?.layer?.name;
+  if (!name) return;
+  const lab = mecKindOfLayer(name);
+  const s = lab ? allStyles.value.find(x => x.key === lab.key) : styles.value.find(x => x.layer === name);
+  if (s && s.key !== styleKey.value) styleKey.value = s.key;
+}
+let stopSelectedWatch = () => { /* set on mount */ };
 onMounted(() => {
+  try {
+    const sel = (window as any).viewer.selectedLayer.changed;
+    sel.add(onSelectedLayer);
+    stopSelectedWatch = () => sel.remove(onSelectedLayer);
+  } catch { /* no viewer yet */ }
   // Opening Highlight closes Find Path, whose Ctrl+click would otherwise take
   // every point (Ames 2026-10-18: "highlight doesn't work"). Merge and Cut
   // stay open, with H+click for highlights.
@@ -522,6 +557,7 @@ onMounted(() => {
   requestAnimationFrame(clampPos);
 });
 onBeforeUnmount(() => {
+  stopSelectedWatch();
   stopLayerWatch();
   stopTouchTaps();
   if (countTimer) clearInterval(countTimer);
