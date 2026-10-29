@@ -2593,7 +2593,7 @@ exports.ewCommunityData = onRequest(
       // Own settings are personal, not pilot data: any signed in player may save them.
       // Personal, not pilot data: creating your profile, your own settings, and
       // your own username / name / flag / bio / avatar.
-      if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","user_views","blog_posts"].includes(input.table) && !isPersonalProfileEdit(input)) requirePilot(context);
+      if(!read && !(input.table==="users" && input.method==="POST") && !["user_settings","user_views","blog_posts","tutorial_step_events"].includes(input.table) && !isPersonalProfileEdit(input)) requirePilot(context);
       const plan=authorizePilotData(input,context)||authorizeData(input,context);
       if(plan.table==="special_badge_awards" && !isAdmin && plan.body) {
         const rows=Array.isArray(plan.body)?plan.body:[plan.body];

@@ -149,8 +149,25 @@ function scaleKeyOf(u) {
 }
 
 // A step after the cold load: z+16 (slices), x+700 / y-400 (screen pixels, converted
-// with the current zoom), zoom*2 (crossSectionScale multiplied).
+// with the current zoom), zoom*2 (crossSectionScale multiplied), to:x/y/z (a jump), scroll:N
+// (N slices in quick succession), and a>b (a without waiting, then b timed).
 async function applyStep(page, step) {
+  // scroll:N steps N slices forward, one every 80 ms, as a quick scroll does.
+  const s = step.match(/^scroll:(\d+)$/);
+  if (s) {
+    for (let i = 0; i < Number(s[1]); ++i) { await applyStep(page, 'z+1'); await page.waitForTimeout(80); }
+    return;
+  }
+  // to:x/y/z jumps to that position, as a right click in 3D or a link does.
+  const j = step.match(/^to:(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)$/);
+  if (j) {
+    await page.evaluate(xyz => {
+      const p = window.viewer.navigationState.position; const arr = p.value;
+      for (let i = 0; i < 3; ++i) arr[i] = xyz[i];
+      p.changed.dispatch();
+    }, [Number(j[1]), Number(j[2]), Number(j[3])]);
+    return;
+  }
   const m = step.match(/^(x|y|z|zoom)([+\-*\/])(\d+(?:\.\d+)?)$/);
   if (!m) throw new Error('bad step ' + step);
   await page.evaluate(([axis, op, n]) => {
@@ -176,10 +193,15 @@ async function measure(page, cdp, tag) {
   const onCdp = e => { try { proto.set(e.response.url, e.response.protocol); } catch (e2) {} };
   cdp.on('Network.responseReceived', onCdp);
 
+  // scroll:8>to:x/y/z runs the parts before the last one first, without waiting for the view, and
+  // times only the last: a jump made while a quick scroll is still loading.
+  const parts = tag.split('>');
+  for (const part of parts.slice(0, -1)) await applyStep(page, part);
+  const last = parts[parts.length - 1];
   const tStart = Date.now();
-  if (tag === 'warm') await page.reload({ waitUntil: 'commit' });
-  else if (tag === 'cold') await page.goto(url, { waitUntil: 'commit' });
-  else await applyStep(page, tag);
+  if (last === 'warm') await page.reload({ waitUntil: 'commit' });
+  else if (last === 'cold') await page.goto(url, { waitUntil: 'commit' });
+  else await applyStep(page, last);
   const samples = [];
   let tViewer = null, tFirst = null, tFull = null, fullSince = null, lastSample = null, firstNeed = null, firstHave = null;
   const deadline = tStart + timeout;

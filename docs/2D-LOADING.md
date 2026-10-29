@@ -242,6 +242,43 @@ same day) were checked and are not a cause: the claim timer reads a few layer
 fields once a second and sends one small request a minute, and the MEC layers
 it adds are local annotation layers that fetch nothing.
 
+## MEC: a black 2D view after a jump (Nik, 2026-10-29)
+
+Nik's recordings (Brave and Firefox, 1 Gbps, about 30 cells shown) after the
+report 290 fix: scrolling a little better, but after each jump (a right click
+on a far branch) the 2D view went fully black for about 2 s, then blurry, then
+sharp. A jump of more than 32 slices needs new chunks at every level, the
+coarsest too, since no level is downsampled in z.
+
+Cause (`chunk_manager/backend.ts`): when the view moves on, a chunk still
+downloading drops to the RECENT tier but keeps downloading; neuroglancer only
+cancels it when its 100-slot pool is full, which it rarely is. Scrolling at
+16 nm keeps a dozen or more 3.5 MB MEC chunks in flight on one HTTP/1.1 host,
+so after a jump the new spot's chunks waited behind the old spot's. The
+Sandbox prefetch fix (`SPECULATIVE_YIELDS_TO_VISIBLE`) covered prefetch only.
+
+Fix: `STALE_YIELDS_TO_VISIBLE`. When a VISIBLE chunk is promoted, the RECENT
+downloads still in flight at that queue level are cancelled first.
+
+Measured with `scroll:8>to:x/y/z` (8 slices at 80 ms, then a jump without
+waiting), `--state mec-image`, fast link. Blank is the time until the new spot
+shows anything.
+
+| Jump | live: blank, full, MB | fix: blank, full, MB |
+|---|---|---|
+| to 125000/105000/5600 (3 live runs, 2 fix runs) | 1.2 to 1.5 s, 1.6 to 3.5 s, 155 to 174 | 0.55 s, 0.55 s, 62 to 73 |
+| to 170000/120000/3000 | 0.44 s, 0.44 to 0.66 s, 56 | 0.54 s, 0.54 s, 63 to 65 |
+| to 110000/125000/7500 | 0.45 to 0.56 s, 0.45 to 0.99 s, 73 | 0.54 s, 0.54 s, 55 to 65 |
+
+Retina (one run each, live / fix): cold 3.9 / 4.6 s, a slab 0.88 / 1.07 s, a
+pan 0.56 / 0.56 s, a scroll and jump 1.30 / 1.20 s, same bytes: within noise.
+
+Not measured: a session with about 30 cells shown, as Nik has. The graphene
+chunked-graph layer asks the CAVE server for the leaves of every shown cell in
+every chunk on screen (about 0.5 s each on MEC's server, in the same download
+pool), so many cells may still slow a jump down. Firefox also logs WebGL
+pipeline stall warnings (readPixels, getBufferSubData) from picking.
+
 ## Open items
 
 - The curated production start states (nglstate 5631012797153280 and

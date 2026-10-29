@@ -53,6 +53,11 @@ const columns = {
   // Instructions the lab edits in the game (supabase-site-texts.sql). Anyone
   // reads; admins write. A key with no row shows the text in the code.
   site_texts: 'key,body,updated_by,updated_by_name,updated_at',
+  // Time on each tutorial box (supabase-tutorial-step-events.sql, Ames
+  // 2026-10-29). Admins read; any signed in player adds their own rows.
+  tutorial_step_events: 'id,user_id,tutorial,step,box,item,seconds,left_by,help,build,run,created_at',
+  // Per box, across everyone (a view over the rows above). Admins only.
+  tutorial_step_stats: 'tutorial,step,last_box,n,players,median_s,p90_s,help_rate,closes',
 };
 const writable = {
   users: 'display_name,username,flag,bio,favorite_badge,avatar_json,avatar_thumbnail_url,avatar_coins_spent,avatar_updated_at,tutorial_active,tutorial_1_step,tutorial_2_step,tutorial_3_step,last_edit_at,updated_at,total_edits,total_merges,total_splits,cells_completed,current_streak,longest_streak,total_annotations,favorite_badges,favorite_badges_bronze,trophy_order',
@@ -70,7 +75,9 @@ const writable = {
   user_views: 'dataset,state,updated_at',
   blog_posts: 'slug,title,summary,body,cover_url,status,published_at',
   site_texts: 'key,body',
+  tutorial_step_events: 'tutorial,step,box,item,seconds,left_by,help,build,run',
 };
+const LEFT_BY = new Set(['next', 'back', 'close', 'auto', 'other']);
 function authorizeData(input, ctx) {
   const {table} = input;
   if (!Object.hasOwn(columns, table)) fail(400, 'Unsupported table');
@@ -111,7 +118,7 @@ function authorizeData(input, ctx) {
     } else if (table === 'admins' && !ctx.isAdmin) {
       // Supports the existing maybeSingle admin-status check without exposing addresses.
       scope('id.is.null');
-    } else if (table === 'feedback_triage') {
+    } else if (table === 'feedback_triage' || table === 'tutorial_step_events' || table === 'tutorial_step_stats') {
       admin();
     } else if (table === 'site_issues' && !ctx.isAdmin) {
       scope('user_id.eq.'+own());
@@ -144,6 +151,7 @@ function authorizeData(input, ctx) {
   if (['user_groups','user_group_members'].includes(table)) admin();
   else if (!(table === 'users' && method === 'POST' && ctx.who?.email)) own();
   if (table === 'site_issues' && method !== 'POST') admin();
+  if (table === 'tutorial_step_events' && method !== 'POST') fail(403, 'This record is append only.');
   // Site texts: admins save (an upsert by key) or delete (back to the code's text).
   if (table === 'site_texts') {
     admin();
@@ -299,6 +307,17 @@ function authorizeData(input, ctx) {
       for (const k of Object.keys(row)) delete row[k];
       row.user_id = own(); row.name = me.username || me.display_name || 'Player'; row.last_seen_at = ctx.now;
       if (dataset) row.dataset = dataset;
+    }
+    if (table === 'tutorial_step_events') {
+      const int = (k, lo, hi) => { const v = Number(row[k]); if (!Number.isInteger(v) || v < lo || v > hi) fail(400, `Invalid ${k}.`); row[k] = v; };
+      int('tutorial', 1, 50); int('step', 0, 200); int('seconds', 0, 3600); int('help', 0, 50);
+      if (!LEFT_BY.has(row.left_by)) fail(400, 'Invalid left_by.');
+      for (const [k, max] of [['box', 120], ['item', 80], ['build', 40], ['run', 40]]) {
+        if (row[k] == null) { row[k] = null; continue; }
+        if (typeof row[k] !== 'string') fail(400, `Invalid ${k}.`);
+        row[k] = row[k].slice(0, max);
+      }
+      row.user_id = own();
     }
     if (table === 'user_groups' && method === 'POST') row.created_by = own();
     if (table === 'user_group_members' && method === 'POST') row.added_by = own();
