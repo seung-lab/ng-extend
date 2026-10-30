@@ -1232,6 +1232,9 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // (sheet_sync.ts marksProofread).
   const proofread = marksProofread(done.status);
   const cavePromise = proofread ? writeCaveCompletion(cell, done) : Promise.resolve(true);
+  // The view it was finished in stays with the claim, for anyone jumping to
+  // the completed cell (report 308). The server only takes it on an open claim.
+  if (done.link) await backend.saveWorkingLink(cell.taskId, done.link).catch(() => false);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Axon complete: labelled as such, not marked proofread (lightbulb_service).
@@ -2802,6 +2805,18 @@ function collapseToCurrent() {
   // Nothing to shrink to yet: the bar alone, with "Claim a new cell".
   void collapseTo(currentCell());
 }
+// The library opens the way it was left (st0ck53y, report 306): slim stays
+// slim once the claims are in. Opened to a given tab, or to complete a cell,
+// it stays full, since it was opened for that.
+onMounted(() => {
+  if (!slimMode.value || props.initialTab) return;
+  const go = () => {
+    if (slim.value || pendingCompleteRequest.value || !CELL_TABS.includes(filter.value)) return;
+    void collapseTo(currentCell());
+  };
+  if (!backend.loading) { void nextTick(go); return; }
+  const stop = watch(() => backend.loading, loading => { if (!loading) { stop(); go(); } });
+});
 /** The next cell "Claim a new cell" takes: the top of the Available tab. */
 const nextAvailableCell = computed(() => libraryCells.value.find(c => c.status === 'pending') ?? null);
 /** A paged list may hold no available cell yet while the server has more. */
@@ -2971,7 +2986,13 @@ async function onRowJump(cell: CellRow) {
   else {
     const left = await prepareJump(cell.segId);
     if (!left.ok) return;
-    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep, cell.liveSegId);
+    // A completed cell opens as it was finished, not as it started (Nseraf,
+    // report 308: two pyramids merged showed the merged segment, not the two
+    // final ones): its saved view, else its final segment.
+    const done = cell.status === 'completed';
+    const view = done ? backend.tasks.find(x => x.id === cell.taskId)?.working_link : null;
+    if (view && openStartLink(view)) jumpedSegId.value = cell.segId;
+    else jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, left.keep, (done && cell.finalSegId) || cell.liveSegId);
   }
   if (slimMode.value && jumpedSegId.value === cell.segId) void collapseTo(cell);
 }
