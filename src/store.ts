@@ -6826,7 +6826,8 @@ export const useChatStore = defineStore('chat', () => {
   // trigger stamps joined_at when someone returns after 2+ minutes away
   // (supabase-chat-presence-and-link-screenshots.sql). So a join notice can't
   // be forged, unlike the old open broadcast the security fix removed.
-  const ONLINE_MS = 90_000;
+  // A hidden tab's heartbeat can come up to about 2 minutes apart.
+  const ONLINE_MS = 150_000;
   const HEARTBEAT_MS = 60_000;
   const online = ref<Record<string, { name: string; lastSeen: number; dataset?: string }>>({});
   /** Bumped every 30 s so onlineCount re-evaluates as people go stale. */
@@ -6988,13 +6989,12 @@ export const useChatStore = defineStore('chat', () => {
   let presenceRetryAt = 0;
   const presenceTakesDataset = () => Date.now() >= presenceRetryAt;
   const presenceWithoutDataset = () => { presenceRetryAt = Date.now() + 5 * 60_000; };
-  // A tab left open in the background wakes now and then: its timers slow
-  // down, its heartbeat comes after 2+ minutes of silence, and the database
-  // counts that as a join (Nseraf, report 307: people joining at 2 to 5 am,
-  // several times a minute). A hidden tab that has gone quiet stays quiet
-  // until someone looks at it.
+  // Online means the tab is open, looked at or not (Ames 2026-10-30), so a
+  // hidden tab keeps its heartbeat even with its timers slowed down. One that
+  // was asleep (a closed laptop, a frozen tab) stays quiet until someone looks
+  // at it, so it never announces anyone at 3 am (Nseraf, report 307).
   let lastBeatAt = 0;
-  const BEAT_GONE_MS = 110_000;
+  const BEAT_GONE_MS = 10 * 60_000;
   function beatWhenBack() { if (!document.hidden) void heartbeat(); }
   async function heartbeat() {
     if (document.hidden && Date.now() - lastBeatAt > BEAT_GONE_MS) return;
@@ -7039,15 +7039,20 @@ export const useChatStore = defineStore('chat', () => {
     // tab) is not news: Ames saw "celiad joined the chat" three times in a
     // row. Only announce people who weren't here.
     const wasOnline = !!online.value[row.user_id];
+    // Seen a short while ago: a slowed tab or a reload, not someone arriving.
+    const seenLately = seen - (lastSeenBy.get(row.user_id) ?? 0) < BACK_AFTER_MS;
+    lastSeenBy.set(row.user_id, seen);
     online.value[row.user_id] = { name: row.name, lastSeen: seen, ...(row.dataset ? { dataset: row.dataset } : {}) };
     // joined_at is only moved on a real (re)join, so a routine heartbeat is silent.
-    if (row.user_id !== me && !wasOnline && Math.abs(seen - joined) < 5000 && mayAnnounce('join', row.user_id)) sysLine('join', row.name);
+    if (row.user_id !== me && !wasOnline && !seenLately && Math.abs(seen - joined) < 5000 && mayAnnounce('join', row.user_id)) sysLine('join', row.name);
   }
 
   // Two tabs, a reload or a shaky connection can still come and go: one line
   // per person per quarter hour (report 307).
   const ANNOUNCE_EVERY_MS = 15 * 60_000;
   const announced = new Map<string, number>();
+  const lastSeenBy = new Map<string, number>();
+  const BACK_AFTER_MS = 15 * 60_000;
   function mayAnnounce(kind: 'join' | 'leave', userId: string): boolean {
     const key = `${kind}:${userId}`, now = Date.now();
     if (now - (announced.get(key) ?? 0) < ANNOUNCE_EVERY_MS) return false;
