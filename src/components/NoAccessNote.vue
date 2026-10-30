@@ -6,10 +6,11 @@
  * button to ask for access (Ames 2026-10-28). Closing it hides it for that
  * dataset until the next visit.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, type DatasetEntry } from '../datasets';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset, datasetLocked, switchToDataset, type DatasetEntry } from '../datasets';
 import { datasetAccess } from '../util/dataset_access';
 import RequestAccessButton from './RequestAccessButton.vue';
+import { StatusMessage } from 'neuroglancer/status';
 import lockIcon from '../images/lock-icon.png';
 import { needsRetinaFirst } from '../dataset_access_request';
 
@@ -35,6 +36,15 @@ onMounted(() => {
   }, 500);
 });
 onUnmounted(() => { off?.(); if (timer) clearInterval(timer); });
+
+// A link or a remembered dataset can land on Retina without edit access: it
+// goes to the Sandbox instead (report 304).
+watch(() => datasetLocked(current.value), locked => {
+  if (!locked) return;
+  const sandbox = findDatasetByCanonical('pinky_nf_v2');
+  StatusMessage.showTemporaryMessage('Retina opens once you unlock Level 1, so this opened the Sandbox.', 6000);
+  if (sandbox) void switchToDataset(sandbox);
+});
 
 const closed = ref<Set<string>>(new Set());
 const shown = computed(() => {

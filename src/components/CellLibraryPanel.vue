@@ -47,7 +47,7 @@ import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '..
 import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
 import MecMarkStatus from './MecMarkStatus.vue';
 import { buildState } from '../hunt_build';
-import { findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
+import { datasetLocked, findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
 import scytheIcon from '../../static/tags/scythe-icon.png';
 import { scoutPinSvg } from '../data/toolbar-icons';
@@ -2058,7 +2058,7 @@ const castHere = computed(() => canonicalDataset(activeDataset.value || getCurre
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
 /** No access to the quests' dataset: this button was a way around the lock
  *  on the dataset switcher (양동호, report 304). */
-const questsLocked = computed(() => !backend.isAdmin && datasetAccess(questDatasetEntry.value?.caveDataset) === 'none');
+const questsLocked = computed(() => datasetLocked(questDatasetEntry.value));
 /** The quests' dataset as the top bar names it, "Retina" (Ames 2026-10-13:
  *  "this should say Switch to Retina"; its longer name reads "EyeWire II"). */
 const questDatasetName = computed(() => (questDatasetEntry.value && datasetAbbrev(questDatasetEntry.value.id)) || 'Retina');

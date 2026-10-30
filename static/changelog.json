@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-10-30T14:13:17Z",
+      "at": "2026-10-30T14:19:49Z",
       "title": "Marks, undo, chat lines and completed cells",
       "digest": "minor",
       "items": [
@@ -10,11 +10,12 @@
         "Removing a segment that has marks on it now asks whether to delete them, and says how many of each. Thanks to annkri.",
         "Chat says someone joined only when they really came back: a tab left open in the background no longer announces them, and each person gets one line per quarter hour. Thanks to Nik.",
         "Jumping to a completed cell in the Cell Library now opens the view its proofreader finished with, not the cell as it started. Thanks to Nik.",
-        "The Cell Library now opens slim if you left it slim. Thanks to st0ck53y."
+        "The Cell Library now opens slim if you left it slim. Thanks to st0ck53y.",
+        "Retina, its 2D images included, now opens once you have unlocked Level 1 with the edit test. A link to it opens the Sandbox until then. Thanks to 양동호."
       ]
     },
     {
-      "at": "2026-10-30T13:58:46Z",
+      "at": "2026-10-30T14:19:49Z",
       "title": "Notes on your cells",
       "items": [
         "You can write yourself a note on any cell in the segment list, in the cell's Δ menu. The note shows under the cell's ID and is saved with your view, so it comes back when you reopen it and travels with links you share. It follows the cell when you cut or merge. Thanks to annkri."

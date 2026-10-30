@@ -23,7 +23,8 @@ import thumbManc from '../static/images/datasets/manc.jpg';
 import thumbHemibrain from '../static/images/datasets/hemibrain.jpg';
 import thumbMcns from '../static/images/datasets/mcns.jpg';
 import thumbMaol from '../static/images/datasets/maol.jpg';
-import { useLayersStore, useUserPreferencesStore } from './store';
+import { useLayersStore, useUserPreferencesStore, useProofreadingBackendStore } from './store';
+import { StatusMessage } from 'neuroglancer/status';
 import { datasetAccess } from './util/dataset_access';
 import { getDatasetCaveConfig, cellTypesForDataset, cellTypeLabel } from './config';
 export { cellTypeLabel };
@@ -749,7 +750,24 @@ export function datasetSpeciesIcon(name: string | undefined | null): string {
  * Returns true on success. Caller is responsible for any post-switch action
  * (e.g. navigating to a segment) — wait one tick before doing so.
  */
+/** Retina, 2D EM included, opens once a player has edit access, earned with
+ *  the edit test (Ames 2026-10-29, report 304: "I don't think we should take
+ *  them even to retina 2d EM until they have passed the edit test"). While
+ *  CAVE has not answered, nobody is held back. The lock is in the game: the EM
+ *  files themselves are public. */
+export function datasetLocked(ds: DatasetEntry | undefined): boolean {
+  if (!ds || ds.id !== 'stroeh_mouse_retina') return false;
+  const access = datasetAccess(ds.caveDataset);
+  if (access === 'edit' || access === 'unknown') return false;
+  try { if (useProofreadingBackendStore().isAdmin) return false; } catch { /* store not ready */ }
+  return true;
+}
+
 export async function switchToDataset(ds: DatasetEntry, opts: {forJump?: boolean} = {}): Promise<boolean> {
+  if (datasetLocked(ds)) {
+    StatusMessage.showTemporaryMessage('Retina opens once you unlock Level 1: send your edits with Ask for Edit Access in the menu.', 6000);
+    return false;
+  }
   try {
     const layerStore = useLayersStore();
     // Offer the player's autosaved view of the new dataset once it is up,
