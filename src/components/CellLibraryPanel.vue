@@ -2056,6 +2056,9 @@ const questsHere = computed(() => canonicalDataset(activeDataset.value || getCur
  *  on the Retina only. */
 const castHere = computed(() => canonicalDataset(activeDataset.value || getCurrentDatasetName()) === CAST_DATASET);
 const questDatasetEntry = computed(() => findDatasetByCanonical(QUEST_DATASET));
+/** No access to the quests' dataset: this button was a way around the lock
+ *  on the dataset switcher (양동호, report 304). */
+const questsLocked = computed(() => !backend.isAdmin && datasetAccess(questDatasetEntry.value?.caveDataset) === 'none');
 /** The quests' dataset as the top bar names it, "Retina" (Ames 2026-10-13:
  *  "this should say Switch to Retina"; its longer name reads "EyeWire II"). */
 const questDatasetName = computed(() => (questDatasetEntry.value && datasetAbbrev(questDatasetEntry.value.id)) || 'Retina');
@@ -3570,7 +3573,8 @@ const panelStyle = computed(() => ({
           <annotation-quests-tab v-if="questsHere" :slim="slimQuest" />
           <div v-else class="nge-cl-empty nge-cl-quests-elsewhere">
             <div class="nge-cl-quests-elsewhere-text">Quests are on <b>{{ questDatasetName }}</b> for now. You are on <b>{{ datasetDisplayName(activeDataset || getCurrentDatasetName()) || 'another dataset' }}</b>.</div>
-            <button v-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
+            <div v-if="questsLocked" class="nge-cl-quests-elsewhere-text">Unlock Level 1 ({{ questDatasetName }}) to take them.</div>
+            <button v-else-if="questDatasetEntry" class="nge-cl-btn nge-cl-btn--claim nge-cl-quests-switch" @click="switchToQuestDataset"
                     title="Switch this view to the quests' dataset">Switch to {{ questDatasetName }}</button>
           </div>
           <button v-if="slimQuest" class="nge-cl-slim-expand" title="Full view" aria-label="Full view" @click="expandAndStay">
