@@ -5,6 +5,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACCESS_TITLE = '🔑 Access update';
 const RETINA_GRANT = '🎉 Congratulations! Your edit access has been granted!';
 const DATASET_GRANT = '🔓 You have access to ';
+// The open padlock on a dataset grant.
+const ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
 
 const names = list => [...new Set(list.map(n => String(n || 'Someone').trim()))].join(', ');
 
@@ -52,6 +54,6 @@ export async function sendAccessUpdate({ get, post, now, day, dryRun, preview })
   const ids = new Set(admins.map(a => a.user_id).filter(Boolean));
   if (emails) for (const u of await get('users', `select=id&middleauth_email=in.(${emails})`)) ids.add(u.id);
   if (!ids.size) throw new Error('no admins to tell');
-  await post('notifications', [...ids].map(id => ({ title, body, target_type: 'user', target_id: id, send_at: now.toISOString(), post_to_chat: false })));
+  await post('notifications', [...ids].map(id => ({ title, body, target_type: 'user', target_id: id, send_at: now.toISOString(), post_to_chat: false, image_url: ART, thumbnail_url: ART })));
   console.log(`[access update] sent to ${ids.size} admin(s).`);
 }

@@ -1075,6 +1075,7 @@ const foldedAchievements = computed(() => {
   return hidden;
 });
 /** A grant's line (functions/access-request.js): only the server's own rank is drawn this way. */
+const ACCESS_LINE_ART = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/access/access-granted.png';
 const isAccessLine = (msg: ChatMessage) => msg.type === 'message' && msg.rank === 'achievement' && /^access:[a-z0-9_]+$/.test(String(msg.dataset || ''));
 const achTrack = (msg: ChatMessage) => achievementOf(msg)?.track || '';
 const achArt = (msg: ChatMessage) => achievementOf(msg)?.art || '';
@@ -1550,7 +1551,7 @@ function toggleCollapse() {
 
                 <!-- "Nseraf now has edit access to MEC": said when they next come in. -->
                 <div v-else-if="isAccessLine(msg)" class="nge-chat-sys nge-chat-ach nge-chat-ach--access" :class="{ 'nge-chat-fresh': isFresh(msg) }">
-                  <span class="nge-chat-ach-star" aria-hidden="true">🔓</span>
+                  <img class="nge-chat-ach-art" :src="ACCESS_LINE_ART" alt="" />
                   <span><b>{{ shortName(msg.name) }}</b> {{ msg.parts.map(p => p.text || '').join('') }}</span>
                 </div>
 
