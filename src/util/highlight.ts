@@ -18,6 +18,9 @@ import { mat4 } from 'neuroglancer/util/geom';
 import { isTouchRef } from './mobile';
 import { StatusMessage } from 'neuroglancer/status';
 import { strokeRuns } from './stroke_shape';
+import { supervoxelAtPlace } from './crosshair_cell';
+import { rootsAt } from './cell_history';
+import { ancestorAmong } from '../widgets/pcg_service';
 
 export interface HighlightStyle {
   key: string; label: string; layer: string; color: string;
@@ -862,14 +865,78 @@ function cellOfMark(m: { mark: string; style: HighlightStyle }): string {
   return '';
 }
 
-/** How many marks were made on these cells, by kind, lab marks included. */
-export function marksOfCells(roots: string[]): { label: string; n: number }[] {
+/** A mark or hand placed point, wherever it is now. */
+export interface TrackedMark { label: string; style: HighlightStyle; ids: string[]; }
+
+/** Where an annotation starts, in viewer coordinates. */
+function startOf(ann: any): number[] | null {
+  if (ann.point) return Array.from(ann.point as ArrayLike<number>).slice(0, 3);
+  const pts = ann.points;
+  if (!pts?.length) return null;
+  const first = pts[0];
+  return (typeof first === 'number' ? Array.from(pts as ArrayLike<number>) : Array.from(first as ArrayLike<number>)).slice(0, 3);
+}
+
+/**
+ * The marks on these cells as they are NOW (Ames 2026-10-30: "we need to be
+ * able to track them after merge and split, that's the whole point of
+ * proofreading"). The id a mark was placed on goes out of date with the first
+ * edit, so each is followed by its place: the piece of the volume there, and
+ * the cell that piece belongs to today. Where a place can't be read (a volume
+ * not stored raw, a point off the cell), by the cell's history instead: the id
+ * it was placed on is an ancestor of the cell. After a split that can also
+ * count a mark on the other half, which is why the player is asked.
+ */
+export async function marksNowOn(roots: string[]): Promise<TrackedMark[]> {
   const want = new Set(roots.map(String));
-  const counts = new Map<string, number>();
+  const items: (TrackedMark & { at: number[] | null; cell: string; piece?: string })[] = [];
   for (const m of listHighlights()) {
-    if (want.has(cellOfMark(m))) counts.set(m.style.label, (counts.get(m.style.label) ?? 0) + 1);
+    const src = managedLayer(m.style.layer)?.layer?.localAnnotations;
+    let at: number[] | null = null;
+    for (const ann of src ?? []) if (String(ann.id).startsWith(m.mark + '_')) { at = startOf(ann); break; }
+    items.push({ label: m.style.label, style: m.style, ids: m.ids, at, cell: cellOfMark(m) });
   }
-  return [...counts].map(([label, n]) => ({ label, n }));
+  for (const { src, style } of highlightLayers()) {
+    if (!style.lab) continue;
+    for (const ann of src) {
+      if (!String(ann.id).startsWith(ID_PREFIX)) items.push({ label: style.label, style, ids: [String(ann.id)], at: startOf(ann), cell: '' });
+    }
+  }
+  for (let i = 0; i < items.length; i += 8) {
+    await Promise.all(items.slice(i, i + 8).map(async it => {
+      const sv = it.at ? await supervoxelAtPlace(it.at).catch(() => null) : null;
+      if (sv && sv !== '0') it.piece = sv;
+    }));
+  }
+  const pieces = [...new Set(items.map(it => it.piece).filter(Boolean) as string[])];
+  const rootOf = new Map<string, string>();
+  if (pieces.length) {
+    try { (await rootsAt(pieces, Date.now() - 2000)).forEach((r, i) => rootOf.set(pieces[i], r)); } catch (e) { console.warn('[highlight] marks not followed by place:', e); }
+  }
+  const ancestors = new Map<string, boolean>();
+  const descends = async (cell: string) => {
+    if (!ancestors.has(cell)) {
+      let hit = want.has(cell);
+      for (const r of want) if (!hit) hit = !!(await ancestorAmong(r, [cell]).catch(() => null));
+      ancestors.set(cell, hit);
+    }
+    return ancestors.get(cell)!;
+  };
+  const out: TrackedMark[] = [];
+  for (const it of items) {
+    const now = it.piece ? rootOf.get(it.piece) : undefined;
+    if (now ? want.has(now) : (!!it.cell && await descends(it.cell))) out.push({ label: it.label, style: it.style, ids: it.ids });
+  }
+  return out;
+}
+
+/** Remove what marksNowOn found. */
+export function removeTrackedMarks(marks: TrackedMark[]) {
+  for (const m of marks) {
+    try { removeIds(m.style, m.ids); } catch (e) { console.warn('[highlight] a mark was already gone:', e); }
+    for (const id of m.ids) handPointAt.delete(id);
+    if (latestMark && m.ids.some(id => id.startsWith(latestMark + '_'))) setLatestMark(null);
+  }
 }
 
 /** Remove only the highlights that were made on these cells (each mark's

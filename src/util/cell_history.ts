@@ -118,7 +118,7 @@ async function fetchSample(root: string): Promise<string[]> {
 
 /** The cell each block belonged to at a moment, in one request. Sent and
  *  read as raw 64 bit numbers, so 18 digit ids are never rounded. */
-async function rootsAt(ids: string[], at: number): Promise<string[]> {
+export async function rootsAt(ids: string[], at: number): Promise<string[]> {
   const pcg = getPcgInfo();
   if (!pcg) throw Error('no graph');
   const body = new BigUint64Array(ids.map(id => BigInt(id)));

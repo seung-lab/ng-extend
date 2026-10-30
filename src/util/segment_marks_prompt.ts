@@ -10,16 +10,17 @@
  */
 import { reactive } from 'vue';
 import { currentSegLayer } from '../datasets';
-import { marksOfCells, removeHighlightsOfCells } from './highlight';
+import { marksNowOn, removeTrackedMarks, type TrackedMark } from './highlight';
 
-export const segmentMarksPrompt = reactive<{ roots: string[]; counts: { label: string; n: number }[] }>({ roots: [], counts: [] });
+export const segmentMarksPrompt = reactive<{ counts: { label: string; n: number }[] }>({ counts: [] });
+let found: TrackedMark[] = [];
 
 export function deleteSegmentMarks() {
-  removeHighlightsOfCells(segmentMarksPrompt.roots);
+  removeTrackedMarks(found);
   keepSegmentMarks();
 }
 export function keepSegmentMarks() {
-  segmentMarksPrompt.roots = [];
+  found = [];
   segmentMarksPrompt.counts = [];
 }
 
@@ -37,17 +38,20 @@ let pending = new Set<string>();
 let added = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-function decide() {
+async function decide() {
   timer = null;
   const roots = [...pending];
   const replaced = added;
   pending = new Set();
   added = false;
   if (replaced || !roots.length || roots.length > MAX_REMOVED) return;
-  const counts = marksOfCells(roots);
-  if (!counts.length) return;
-  segmentMarksPrompt.roots = roots;
-  segmentMarksPrompt.counts = counts;
+  let marks: TrackedMark[] = [];
+  try { marks = await marksNowOn(roots); } catch (e) { console.warn('[marks] could not look for this segment\'s marks:', e); }
+  if (!marks.length) return;
+  const counts = new Map<string, number>();
+  for (const m of marks) counts.set(m.label, (counts.get(m.label) ?? 0) + 1);
+  found = marks;
+  segmentMarksPrompt.counts = [...counts].map(([label, n]) => ({ label, n }));
 }
 
 function onChanged(group: any) {
