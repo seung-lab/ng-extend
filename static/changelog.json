@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-10-30T14:03:00Z",
+      "title": "Emoji panel closes when you send",
+      "digest": "minor",
+      "items": [
+        "Sending a chat message now closes the emoji panel, so it no longer stays open over the chat. Thanks to Nik."
+      ]
+    },
+    {
       "at": "2026-10-29T14:55:00Z",
       "title": "MEC jumps show the new spot sooner",
       "items": [
