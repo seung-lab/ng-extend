@@ -1,11 +1,12 @@
 /**
  * nge: a player's own note on a cell in the Seg panel (annkri, report 303:
  * "could it be possible to write comments on segments, like you can on
- * annotations"). Notes are saved in the segmentation layer's state
- * (`ngeNotes`, {id: text}), so they go with autosave, Save view and share
- * links, the way an annotation's description does. There is no table and no
- * moderation. A shared link carries the text to someone else's screen, so it
- * is only ever put on the page as plain text (textContent, title, value).
+ * annotations"). Notes are written in the cell's Δ menu and read under its ID.
+ * They are saved in the segmentation layer's state (`ngeNotes`, {id: text}),
+ * so they go with autosave, Save view and share links, the way an annotation's
+ * description does. There is no table and no moderation. A shared link carries
+ * the text to someone else's screen, so it is only ever put on the page as
+ * plain text (textContent, title, value).
  */
 import {NullarySignal} from 'neuroglancer/util/signal';
 
@@ -19,10 +20,10 @@ const JOIN = ' / ';
 
 /** One line of text: no line breaks, control characters or the invisible
  *  marks that reverse text, which could disguise what a shared note says. */
-function cleanNote(text: string, max: number): string {
+function cleanNote(text: string): string {
   return text.replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]+/g, ' ')
       .trim()
-      .slice(0, max);
+      .slice(0, NOTE_STORED_MAX_LENGTH);
 }
 
 export class SegmentNotes {
@@ -35,7 +36,7 @@ export class SegmentNotes {
 
   /** Empty text removes the note. */
   set(id: string, text: string) {
-    const clean = cleanNote(text, NOTE_MAX_LENGTH);
+    const clean = cleanNote(text);
     if (clean === (this.notes.get(id) ?? '')) return;
     if (clean) this.notes.set(id, clean); else this.notes.delete(id);
     this.changed.dispatch();
@@ -52,7 +53,7 @@ export class SegmentNotes {
     for (const id of gone) this.notes.delete(id);
     for (const id of came) {
       const all = [...new Set([this.notes.get(id), ...texts].filter(t => t !== undefined))];
-      this.notes.set(id, cleanNote(all.join(JOIN), NOTE_STORED_MAX_LENGTH));
+      this.notes.set(id, cleanNote(all.join(JOIN)));
     }
     this.changed.dispatch();
   }
@@ -62,7 +63,7 @@ export class SegmentNotes {
     if (json && typeof json === 'object' && !Array.isArray(json)) {
       for (const [id, text] of Object.entries(json)) {
         if (!/^\d+$/.test(id) || typeof text !== 'string') continue;
-        const clean = cleanNote(text, NOTE_STORED_MAX_LENGTH);
+        const clean = cleanNote(text);
         if (clean) this.notes.set(id, clean);
       }
     }
@@ -83,14 +84,11 @@ export class SegmentNotes {
   }
 }
 
-/** Put a row's note and pencil in step with the notes. */
+/** Put a row's note in step with the notes. */
 export function updateNoteRow(row: HTMLElement, notes: SegmentNotes) {
   const id = row.dataset.id;
   if (id === undefined) return;
   const text = notes.get(id);
-  row.classList.toggle('nge-seg-has-note', text !== undefined);
-  const pencil = row.querySelector<HTMLElement>('.nge-seg-note-edit');
-  if (pencil) pencil.title = text === undefined ? 'Add a note' : 'Edit your note';
   let el = row.querySelector<HTMLElement>(':scope > .nge-seg-note');
   if (text === undefined) {
     el?.remove();
@@ -105,96 +103,58 @@ export function updateNoteRow(row: HTMLElement, notes: SegmentNotes) {
   el.title = text;
 }
 
-/** The pencil on a row, and the row's note if it has one. */
+const notesOfRow = new WeakMap<HTMLElement, SegmentNotes>();
+
+/** A row of cells in the list can hold a note. Search results cannot: they
+ *  are not in the view, so a note on one would not be saved. */
 export function addNoteToRow(row: HTMLElement, notes: SegmentNotes) {
-  const pencil = document.createElement('button');
-  pencil.type = 'button';
-  pencil.className = 'nge-seg-note-edit';
-  pencil.textContent = '✎';
-  // the row selects, drags and picks on these: the pencil only opens the note
-  pencil.addEventListener('mousedown', e => e.stopPropagation());
-  pencil.addEventListener('pointerdown', e => e.stopPropagation());
-  pencil.addEventListener('click', e => {
-    e.stopPropagation();
-    e.preventDefault();
-    const id = row.dataset.id;
-    if (id !== undefined) openNoteEditor(pencil, notes, id);
-  });
-  row.children[0].appendChild(pencil);
+  notesOfRow.set(row, notes);
   updateNoteRow(row, notes);
 }
 
-function openNoteEditor(anchor: HTMLElement, notes: SegmentNotes, id: string) {
-  document.querySelector('.nge-seg-note-popup')?.remove();
-  const pop = document.createElement('div');
-  pop.className = 'nge-seg-note-popup';
-  const head = document.createElement('div');
-  head.className = 'nge-seg-note-popup-title';
-  head.textContent = 'Your note on this cell';
+/** The Δ menu's note section for the cell on this row, if it can hold one. It
+ *  saves as you type, so closing the menu never loses anything. */
+export function makeNoteEditor(row: HTMLElement|null, id: string, onEscape: () => void): HTMLElement|undefined {
+  const notes = row ? notesOfRow.get(row) : undefined;
+  if (notes === undefined) return undefined;
+  const section = document.createElement('div');
+  section.className = 'nge-lb-section nge-lb-note';
+  const title = document.createElement('div');
+  title.className = 'nge-lb-section-title';
+  title.textContent = 'Your note';
   const box = document.createElement('textarea');
-  box.maxLength = NOTE_MAX_LENGTH;
-  box.rows = 3;
-  box.spellcheck = true;
+  box.className = 'nge-lb-note-box';
+  box.rows = 2;
+  box.placeholder = 'Add a note on this cell';
+  box.value = notes.get(id) ?? '';
   // a note joined by a merge can be longer than what can be typed
-  box.value = (notes.get(id) ?? '').slice(0, NOTE_MAX_LENGTH);
-  const hint = document.createElement('div');
-  hint.className = 'nge-seg-note-popup-hint';
-  hint.textContent = 'Saved with this view. Anyone you share the view with can read it.';
+  box.maxLength = Math.max(NOTE_MAX_LENGTH, box.value.length);
   const foot = document.createElement('div');
-  foot.className = 'nge-seg-note-popup-foot';
+  foot.className = 'nge-lb-note-foot';
+  const hint = document.createElement('span');
+  hint.textContent = 'Saved with this view. Anyone you share it with can read it.';
   const count = document.createElement('span');
-  count.className = 'nge-seg-note-popup-count';
+  count.className = 'nge-lb-note-count';
   const showCount = () => { count.textContent = `${box.value.length} / ${NOTE_MAX_LENGTH}`; };
   showCount();
-  box.addEventListener('input', showCount);
-  const close = () => {
-    pop.remove();
-    document.removeEventListener('mousedown', outside, true);
-  };
-  const save = () => {
+  box.addEventListener('input', () => {
+    showCount();
     notes.set(id, box.value);
-    close();
-  };
-  const outside = (e: MouseEvent) => {
-    if (!pop.contains(e.target as Node)) close();
-  };
-  const makeButton = (text: string, onClick: () => void) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = text;
-    b.addEventListener('click', onClick);
-    return b;
-  };
-  const saveButton = makeButton('Save', save);
-  saveButton.classList.add('nge-seg-note-popup-save');
-  foot.append(count);
-  if (notes.get(id) !== undefined) {
-    foot.append(makeButton('Remove', () => {
-      notes.set(id, '');
-      close();
-    }));
-  }
-  foot.append(saveButton);
+  });
   // Typing here is not a shortcut for the game behind it.
-  for (const type of ['keydown', 'keyup', 'keypress']) {
-    pop.addEventListener(type, e => e.stopPropagation());
+  for (const type of ['keyup', 'keypress']) {
+    box.addEventListener(type, e => e.stopPropagation());
   }
   box.addEventListener('keydown', e => {
+    e.stopPropagation();
     if (e.key === 'Escape') {
-      close();
-    } else if (e.key === 'Enter' && !e.shiftKey) {
+      onEscape();
+    } else if (e.key === 'Enter') {
       e.preventDefault();
-      save();
+      box.blur();
     }
   });
-  pop.append(head, box, hint, foot);
-  document.body.appendChild(pop);
-  const r = anchor.getBoundingClientRect();
-  const {width, height} = pop.getBoundingClientRect();
-  pop.style.left = `${Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))}px`;
-  const below = r.bottom + 4;
-  pop.style.top = `${below + height > window.innerHeight - 8 ? Math.max(8, r.top - height - 4) : below}px`;
-  document.addEventListener('mousedown', outside, true);
-  box.focus();
-  box.setSelectionRange(box.value.length, box.value.length);
+  foot.append(hint, count);
+  section.append(title, box, foot);
+  return section;
 }

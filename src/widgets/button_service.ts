@@ -5,6 +5,7 @@ import {addPastedSegments, segmentLabels, segmentLabelsChanged, setPlaceCellLoad
 import {StatusMessage} from 'neuroglancer/status';
 import {cellAtCrosshair, supervoxelAtPlace} from '../util/crosshair_cell';
 import {getPcgInfo} from './pcg_service';
+import {makeNoteEditor} from 'neuroglancer/ui/nge_segment_notes';
 import {openCellHistory} from '../util/cell_history';
 import {setStatedColor} from './widget_utils';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
@@ -1032,6 +1033,10 @@ export class ButtonService {
     // "it *can* give away stuff added (mergers)"). Admins keep it.
     const hasHistory = !!getPcgInfo() && !(isLiveHuntCell(segmentIDString) && !useProofreadingBackendStore().isAdmin);
 
+    // ── Your note (annkri, report 303) ──────────────────────────────────
+    const noteSection = makeNoteEditor(
+        parent.closest<HTMLElement>('.neuroglancer-segment-list-entry'), segmentIDString, () => contextMenu.hide());
+
     // ── Section 4: Claim Cell ────────────────────────────────────────────
     const claimSection = document.createElement('div');
     claimSection.classList.add('nge-lb-section');
@@ -1343,9 +1348,13 @@ export class ButtonService {
       exploreNote.classList.add('nge-lb-readonly-note');
       exploreNote.textContent = 'This dataset is here to look around. There is nothing to proofread, label or claim in it.';
       exploreSection.append(exploreTitle, exploreNote);
-      menu.append(br(), exploreSection, br(), colorSection, br());
+      menu.append(br(), exploreSection, br());
+      if (noteSection) menu.append(noteSection, br());
+      menu.append(colorSection, br());
     } else {
-      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection, colorSection, br());
+      menu.append(br(), completionSection, br(), cellTypeSection, br(), sheetSection);
+      if (noteSection) menu.append(noteSection, br());
+      menu.append(colorSection, br());
       if (hasHistory) menu.append(historySection, br());
       menu.append(claimSection, br(), helpSection, br());
     }

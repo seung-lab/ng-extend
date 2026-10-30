@@ -2111,43 +2111,21 @@ body.nge-cursor-xl .nge-3d-panel.neuroglancer-rendered-data-panel {
   }
 }
 
-/* A player's note on a cell (annkri, report 303): the pencil sits with the
-   row's copy button, shows on hover and stays lit once the cell has a note;
-   the note reads on its own line under the ID. */
-.neuroglancer-segment-list-entry-sticky > .nge-seg-note-edit {
-  order: 3 !important; flex: none; width: 18px; height: 18px; padding: 0; margin-left: 2px;
-  background: none; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; line-height: 18px;
-  color: rgba(200, 215, 240, 0.7);
-}
-.neuroglancer-segment-list-entry-sticky > .nge-seg-note-edit:hover { color: #fff; background: rgba(120, 170, 255, 0.18); }
-.neuroglancer-segment-list-entry.nge-seg-has-note .nge-seg-note-edit { color: #f5d142; }
-@media (hover: hover) {
-  .neuroglancer-segment-list-entry:not(:hover):not(.nge-seg-has-note) .nge-seg-note-edit { visibility: hidden; }
-}
+/* A player's note on a cell (annkri, report 303): read under the ID, written
+   in the cell's Δ menu. */
 .neuroglancer-segment-list-entry > .nge-seg-note {
   flex-basis: 100%; order: 99; min-width: 0; margin-left: 24px; font-family: Inter, system-ui, sans-serif;
   font-size: 11.5px; line-height: 15px; color: #f5e6a0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.nge-seg-note-popup {
-  position: fixed; z-index: 10000; width: 280px; box-sizing: border-box; padding: 10px; border-radius: 8px;
-  background: rgba(12, 18, 32, 0.98); border: 1px solid rgba(140, 180, 235, 0.35);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); font-family: Inter, system-ui, sans-serif; font-size: 12px;
-  color: rgba(220, 230, 245, 0.95);
-}
-.nge-seg-note-popup-title { margin-bottom: 6px; color: rgba(200, 215, 240, 0.85); }
-.nge-seg-note-popup textarea {
+.nge-lb-note-box {
   display: block; width: 100%; box-sizing: border-box; resize: vertical; padding: 6px; border-radius: 5px;
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(140, 180, 235, 0.3); color: #fff;
-  font: inherit; outline: none;
+  font: 12px Inter, system-ui, sans-serif; outline: none;
 }
-.nge-seg-note-popup textarea:focus { border-color: rgba(140, 180, 235, 0.8); }
-.nge-seg-note-popup-hint { margin-top: 6px; font-size: 11px; color: rgba(200, 215, 240, 0.65); }
-.nge-seg-note-popup-foot { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-.nge-seg-note-popup-count { margin-right: auto; font-size: 11px; color: rgba(200, 215, 240, 0.65); }
-.nge-seg-note-popup-foot button {
-  padding: 3px 10px; border-radius: 5px; cursor: pointer; font: inherit; color: inherit;
-  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(140, 180, 235, 0.3);
+.nge-lb-note-box:focus { border-color: rgba(140, 180, 235, 0.8); }
+.nge-lb-note-foot {
+  display: flex; justify-content: space-between; gap: 8px; margin-top: 4px;
+  font: 11px Inter, system-ui, sans-serif; color: rgba(200, 215, 240, 0.65);
 }
-.nge-seg-note-popup-foot button:hover { background: rgba(120, 170, 255, 0.18); }
-.nge-seg-note-popup-foot .nge-seg-note-popup-save { background: rgba(74, 158, 255, 0.35); color: #fff; }
+.nge-lb-note-count { flex: none; }
