@@ -17,7 +17,7 @@
       "at": "2026-10-30T13:58:46Z",
       "title": "Notes on your cells",
       "items": [
-        "Every cell in the segment list now has a pencil, so you can write yourself a note on it. The note shows under the cell's ID and is saved with your view, so it comes back when you reopen it and travels with links you share. It follows the cell when you cut or merge. Thanks to annkri."
+        "You can write yourself a note on any cell in the segment list, in the cell's Δ menu. The note shows under the cell's ID and is saved with your view, so it comes back when you reopen it and travels with links you share. It follows the cell when you cut or merge. Thanks to annkri."
       ]
     },
     {
