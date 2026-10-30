@@ -13,7 +13,7 @@ import { claimTouchTaps } from '../util/touch_tap';
 import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, handPointsToUndo, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
 import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz, mecKindOfLayer } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
@@ -91,6 +91,8 @@ const messageBad = ref(false);
 /** A small count shown after the message, e.g. "74 points". */
 const stat = ref('');
 const markCount = ref(0);
+/** Points placed by hand this session: Undo takes them too (report 310). */
+const handCount = ref(0);
 const hHeld = ref(false);
 
 // ── The path-search loader, across the top of the box while a path is traced
@@ -238,6 +240,7 @@ watch([ctrlHeld, hHeld], () => document.body.classList.toggle('nge-highlight-arm
 function say(text: string, bad = false, count = '') { message.value = text; messageBad.value = bad; stat.value = count; }
 function refresh() {
   markCount.value = listHighlights().length;
+  handCount.value = handPointsToUndo();
   shown.value = highlightsShown();
   mec.value = isMec();
   noTrace.value = traceOffReason();
@@ -601,7 +604,7 @@ onBeforeUnmount(() => {
           <button class="nge-hl-btn nge-hl-btn--sm" type="button" title="Mark every branch beyond this point, away from the soma. Where two cells are wrongly joined, the other cell can be marked too." @click="markBranch('away')">Beyond</button>
         </template>
         <span class="nge-hl-slim-step" :class="{ 'nge-hl-bad': messageBad }" :title="slimStep">{{ busy ? 'Tracing' : slimStep }}</span>
-        <button class="nge-hl-btn nge-hl-btn--sm" type="button" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
+        <button class="nge-hl-btn nge-hl-btn--sm" type="button" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
         <span class="nge-hl-count" :title="`${markCount} ${markCount === 1 ? 'mark' : 'marks'}`">{{ markCount }}</span>
         <button class="nge-hl-close" type="button" aria-label="Close" @click="emit('hide')">×</button>
       </div>
@@ -696,7 +699,7 @@ onBeforeUnmount(() => {
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--main" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
         <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
-        <button class="nge-hl-btn" :disabled="busy || (!markCount && !first)" @click="undo">Undo</button>
+        <button class="nge-hl-btn" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn" :disabled="busy || !markCount" @click="clearAll">Clear all</button>
       </div>
       <label class="nge-hl-width" title="How far out from the middle of the branch the color reaches. Wider covers thick branches and their spines; narrower keeps the color off neighboring branches.">

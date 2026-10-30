@@ -87,6 +87,31 @@ export function highlightNameTaken(label: string, styles: HighlightStyle[]): boo
 /** The highlight layers in the view, each with the style it is drawn in.
  *  Found by what they hold (hl_ strokes), not by this player's colour list,
  *  so a shared view's marks show in the colours they were made with. */
+// Points placed by hand in a lab layer, with the annotation tab's point tool,
+// have the tool's own ids and no time in them. Undo took the newest mark made
+// through Highlight and skipped them (Nseraf, report 310: "it doesn't always
+// remove the last annotation placed"), so note when each one arrives. Points
+// already there when a layer is first seen (a saved view, the lab's) are not
+// noted: they are the cell's record and Undo leaves them.
+const handPointAt = new Map<string, number>();
+const watchedSources = new WeakSet<object>();
+function watchHandPoints(src: any) {
+  if (watchedSources.has(src)) return;
+  watchedSources.add(src);
+  const known = new Set<string>();
+  for (const ann of src) known.add(String(ann.id));
+  try {
+    src.changed.add(() => {
+      for (const ann of src) {
+        const id = String(ann.id);
+        if (known.has(id)) continue;
+        known.add(id);
+        if (!id.startsWith(ID_PREFIX)) handPointAt.set(id, Date.now());
+      }
+    });
+  } catch { /* no signal: Undo keeps to Highlight's own marks */ }
+}
+
 function highlightLayers(): { managed: any; src: any; style: HighlightStyle }[] {
   const styles = highlightStyles();
   const out: { managed: any; src: any; style: HighlightStyle }[] = [];
@@ -97,6 +122,7 @@ function highlightLayers(): { managed: any; src: any; style: HighlightStyle }[] 
     // The lab's MEC layers, however the player's copy spells them.
     const kind = mecKindOfLayer(managed.name);
     if (kind) {
+      watchHandPoints(src);
       out.push({ managed, src, style: { key: kind.key, label: kind.label, layer: managed.name, color: kind.color, lab: true } });
       continue;
     }
@@ -789,10 +815,35 @@ function removeIds(style: HighlightStyle, ids: string[]) {
   }
 }
 
+/** How many points placed by hand this session Undo could take. */
+export function handPointsToUndo(): number {
+  let n = 0;
+  for (const { src, style } of highlightLayers()) {
+    if (!style.lab) continue;
+    for (const ann of src) if (handPointAt.has(String(ann.id))) n++;
+  }
+  return n;
+}
+
 /** Remove the newest mark. False when there is none. */
 export function undoHighlight(): boolean {
   const marks = listHighlights();
   const last = marks[marks.length - 1];
+  // A point placed by hand after that mark is the newest thing there is.
+  const markAt = last ? parseInt(last.mark.slice(ID_PREFIX.length), 36) || 0 : 0;
+  let hand: { id: string; style: HighlightStyle; at: number } | null = null;
+  for (const { src, style } of highlightLayers()) {
+    if (!style.lab) continue;
+    for (const ann of src) {
+      const at = handPointAt.get(String(ann.id));
+      if (at && at >= markAt && (!hand || at >= hand.at)) hand = { id: String(ann.id), style, at };
+    }
+  }
+  if (hand) {
+    removeIds(hand.style, [hand.id]);
+    handPointAt.delete(hand.id);
+    return true;
+  }
   if (!last) return false;
   removeIds(last.style, last.ids);
   if (last.mark === latestMark) setLatestMark(null);
