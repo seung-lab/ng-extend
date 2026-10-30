@@ -850,6 +850,28 @@ export function undoHighlight(): boolean {
   return true;
 }
 
+/** The cell a mark was made on (its first stroke names it). */
+function cellOfMark(m: { mark: string; style: HighlightStyle }): string {
+  const src = managedLayer(m.style.layer)?.layer?.localAnnotations;
+  if (!src) return '';
+  for (const ann of src) {
+    if (!String(ann.id).startsWith(m.mark + '_')) continue;
+    const hit = String(ann.description ?? '').match(/cell (\d+)\s*$/);
+    if (hit) return hit[1];
+  }
+  return '';
+}
+
+/** How many marks were made on these cells, by kind, lab marks included. */
+export function marksOfCells(roots: string[]): { label: string; n: number }[] {
+  const want = new Set(roots.map(String));
+  const counts = new Map<string, number>();
+  for (const m of listHighlights()) {
+    if (want.has(cellOfMark(m))) counts.set(m.style.label, (counts.get(m.style.label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, n]) => ({ label, n }));
+}
+
 /** Remove only the highlights that were made on these cells (each mark's
  *  first stroke names the cell it was made on). Returns how many marks went. */
 export function removeHighlightsOfCells(roots: string[]): number {
@@ -857,15 +879,7 @@ export function removeHighlightsOfCells(roots: string[]): number {
   if (!want.size) return 0;
   let gone = 0;
   for (const m of listHighlights()) {
-    const src = managedLayer(m.style.layer)?.layer?.localAnnotations;
-    if (!src) continue;
-    let cell = '';
-    for (const ann of src) {
-      if (!String(ann.id).startsWith(m.mark + '_')) continue;
-      const hit = String(ann.description ?? '').match(/cell (\d+)\s*$/);
-      if (hit) { cell = hit[1]; break; }
-    }
-    if (!want.has(cell)) continue;
+    if (!want.has(cellOfMark(m))) continue;
     removeIds(m.style, m.ids);
     if (m.mark === latestMark) setLatestMark(null);
     gone++;
