@@ -736,6 +736,7 @@ function openTips() {
 function send() {
   if (/^\/help\s*$/i.test(messageInput.value.trim())) {
     messageInput.value = '';
+    emojiOpen.value = false;
     openTips();
     return;
   }
@@ -752,6 +753,7 @@ function send() {
   replyingTo.value = null;
   messageInput.value = '';
   mentionQuery.value = null;
+  emojiOpen.value = false;         // sent, so the emoji panel is done too (Nik, #305)
   inputEl.value?.focus();
 }
 
