@@ -6988,7 +6988,17 @@ export const useChatStore = defineStore('chat', () => {
   let presenceRetryAt = 0;
   const presenceTakesDataset = () => Date.now() >= presenceRetryAt;
   const presenceWithoutDataset = () => { presenceRetryAt = Date.now() + 5 * 60_000; };
+  // A tab left open in the background wakes now and then: its timers slow
+  // down, its heartbeat comes after 2+ minutes of silence, and the database
+  // counts that as a join (Nseraf, report 307: people joining at 2 to 5 am,
+  // several times a minute). A hidden tab that has gone quiet stays quiet
+  // until someone looks at it.
+  let lastBeatAt = 0;
+  const BEAT_GONE_MS = 110_000;
+  function beatWhenBack() { if (!document.hidden) void heartbeat(); }
   async function heartbeat() {
+    if (document.hidden && Date.now() - lastBeatAt > BEAT_GONE_MS) return;
+    lastBeatAt = Date.now();
     if (presenceTakesDataset()) {
       const { error } = await supabase.from('chat_presence').upsert({ dataset: currentDatasetTag() }, { onConflict: 'user_id' });
       if (!error) return;
@@ -7018,7 +7028,7 @@ export const useChatStore = defineStore('chat', () => {
       const old = payload.old || {};
       const name = old.name || online.value[old.user_id]?.name;
       if (old.user_id) delete online.value[old.user_id];
-      if (name && old.user_id !== me) sysLine('leave', name);
+      if (name && old.user_id !== me && mayAnnounce('leave', old.user_id)) sysLine('leave', name);
       return;
     }
     const row = payload.new || {};
@@ -7031,7 +7041,18 @@ export const useChatStore = defineStore('chat', () => {
     const wasOnline = !!online.value[row.user_id];
     online.value[row.user_id] = { name: row.name, lastSeen: seen, ...(row.dataset ? { dataset: row.dataset } : {}) };
     // joined_at is only moved on a real (re)join, so a routine heartbeat is silent.
-    if (row.user_id !== me && !wasOnline && Math.abs(seen - joined) < 5000) sysLine('join', row.name);
+    if (row.user_id !== me && !wasOnline && Math.abs(seen - joined) < 5000 && mayAnnounce('join', row.user_id)) sysLine('join', row.name);
+  }
+
+  // Two tabs, a reload or a shaky connection can still come and go: one line
+  // per person per quarter hour (report 307).
+  const ANNOUNCE_EVERY_MS = 15 * 60_000;
+  const announced = new Map<string, number>();
+  function mayAnnounce(kind: 'join' | 'leave', userId: string): boolean {
+    const key = `${kind}:${userId}`, now = Date.now();
+    if (now - (announced.get(key) ?? 0) < ANNOUNCE_EVERY_MS) return false;
+    announced.set(key, now);
+    return true;
   }
 
   function addTimeSeparatorIfNeeded(date: Date) {
@@ -7459,6 +7480,7 @@ export const useChatStore = defineStore('chat', () => {
     };
     openChannel();
     window.addEventListener('pagehide', leavePresence);
+    document.addEventListener('visibilitychange', beatWhenBack);
     connecting = false; // channel is now assigned; the guard above holds
   }
 
@@ -7582,6 +7604,7 @@ export const useChatStore = defineStore('chat', () => {
       if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
       if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
       window.removeEventListener('pagehide', leavePresence);
+      document.removeEventListener('visibilitychange', beatWhenBack);
       online.value = {};
       const old = channel;
       channel = null;
