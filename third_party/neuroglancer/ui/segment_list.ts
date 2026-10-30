@@ -49,6 +49,7 @@ import {makeIcon} from 'neuroglancer/widget/icon';
 import {addPastedSegments, clearPastedSegments, getPastedSegments, listFilterOf, loadCellAtPlace, parsePastedIds, placeFrom, requestSegmentLabels, segmentLabels, segmentLabelsChanged, segmentMatchesFilter} from 'neuroglancer/ui/nge_pasted_segments';
 import {StatusMessage} from 'neuroglancer/status';
 import {ngeChoose, ngeConfirm} from 'neuroglancer/ui/nge_confirm';
+import {addNoteToRow, SegmentNotes, updateNoteRow} from 'neuroglancer/ui/nge_segment_notes';
 import {FOLDER_MIN_HEIGHT, openColorPalette, pickedSegments, SegmentFolders, touchPick} from 'neuroglancer/ui/nge_segment_folders';
 
 const tempUint64 = new Uint64();
@@ -99,7 +100,7 @@ class StarredSegmentsListSource extends SegmentListSource {
       public segmentationDisplayState: SegmentationDisplayState,
       public parentElement: HTMLElement, public mode: ListMode = 'inview',
       protected filterText?: WatchableValueInterface<string>,
-      protected folders?: SegmentFolders) {
+      protected folders?: SegmentFolders, protected notes?: SegmentNotes) {
     super(segmentationDisplayState, parentElement);
     this.update();
     const group = segmentationDisplayState.segmentationGroupState.value;
@@ -177,7 +178,9 @@ class StarredSegmentsListSource extends SegmentListSource {
   render = (index: number) => {
     const {explicitSegments} = this;
     const id = explicitSegments![index];
-    return this.segmentWidgetFactory.get(id);
+    const row = this.segmentWidgetFactory.get(id);
+    if (this.notes !== undefined) addNoteToRow(row, this.notes);
+    return row;
   };
 }
 
@@ -1860,6 +1863,7 @@ export class SegmentDisplayTab extends Tab {
                       segmentQuery, segmentPropertyMap, layer.displayState, parent));
                   const group = layer.displayState.segmentationGroupState.value;
                   const folders: SegmentFolders = (layer as any).ngeFolders;
+                  const notes: SegmentNotes = (layer as any).ngeNotes;
                   const list = context.registerDisposer(
                       new VirtualList({source: listSource, horizontalScroll: true}));
                   const segList = context.registerDisposer(new SegmentListGroupQuery(
@@ -1912,7 +1916,7 @@ export class SegmentDisplayTab extends Tab {
                   };
                   const makeSection = (owner: RefCounted, mode: ListMode): Section => {
                     const source = owner.registerDisposer(new StarredSegmentsListSource(
-                        layer.displayState, parent, mode, segmentQuery, folders));
+                        layer.displayState, parent, mode, segmentQuery, folders, notes));
                     // a segment's row is the same wherever it sits in the list
                     const vlist = owner.registerDisposer(new VirtualList(
                         {source, horizontalScroll: true, keepRowsOnSplice: true}));
@@ -1924,6 +1928,11 @@ export class SegmentDisplayTab extends Tab {
                     if (mode === 'pasted') vlist.element.classList.add('nge-seg-list--pasted');
                     owner.registerDisposer(layer.bindSegmentListWidth(vlist.element));
                     owner.registerDisposer(new MouseEventBinder(vlist.element, getDefaultSelectBindings()));
+                    // a row with a note is taller: the list is told
+                    owner.registerDisposer(notes.changed.add(() => vlist.forEachRenderedItem(row => {
+                      updateNoteRow(row, notes);
+                      (vlist as any).remeasureItem?.(row);
+                    })));
                     source.segmentWidgetFactory = new SegmentWidgetWithExtraColumnsFactory(
                         source.segmentationDisplayState, source.parentElement,
                         property => queryIncludesColumn(undefined, property.id));

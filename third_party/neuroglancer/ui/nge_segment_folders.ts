@@ -7,6 +7,7 @@
  * opens with the same folders. Only membership is kept here: the order of the
  * cells inside a folder is the list's own order, which drag still changes.
  */
+import type {SegmentNotes} from 'neuroglancer/ui/nge_segment_notes';
 import {NullarySignal} from 'neuroglancer/util/signal';
 
 export interface SegmentFolder {
@@ -314,7 +315,8 @@ export const FOLDER_COLORS = ['#4a9eff', '#7cffb2', '#f5d142', '#c084fc', '#fb92
  */
 export function followReplacements(
     selectedSegments: {changed: {add(fn: (x: any, add: boolean) => void): () => void}},
-    folders: SegmentFolders, pasted?: () => {ids: string[], changed: NullarySignal}) {
+    folders: SegmentFolders, pasted?: () => {ids: string[], changed: NullarySignal},
+    notes?: SegmentNotes) {
   let removed: string[] = [];
   let added: string[] = [];
   let pending = false;
@@ -324,6 +326,7 @@ export function followReplacements(
     removed = [];
     added = [];
     if (!gone.length || !came.length) return;
+    notes?.replace(gone.filter(id => !came.includes(id)), came.filter(id => !gone.includes(id)));
     const fresh = came.filter(id => !gone.includes(id) && !folders.folderOf(id));
     if (!fresh.length) return;
     const home = gone.map(id => folders.folderOf(id)).find(f => f !== undefined);

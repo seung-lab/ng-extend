@@ -16,6 +16,7 @@
 
 import {FOLDERS_JSON_KEY, followReplacements, SegmentFolders} from 'neuroglancer/ui/nge_segment_folders';
 import {getPastedSegments} from 'neuroglancer/ui/nge_pasted_segments';
+import {NOTES_JSON_KEY, SegmentNotes} from 'neuroglancer/ui/nge_segment_notes';
 import 'neuroglancer/segmentation_user_layer.css';
 
 import {CoordinateTransformSpecification, emptyValidCoordinateSpace} from 'neuroglancer/coordinate_transform';
@@ -444,13 +445,17 @@ export class SegmentationUserLayer extends Base {
   /** nge: the Seg panel's folders (ui/nge_segment_folders.ts). */
   ngeFolders = new SegmentFolders();
 
+  /** nge: the player's notes on cells (ui/nge_segment_notes.ts). */
+  ngeNotes = new SegmentNotes();
+
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
     this.ngeFolders.changed.add(this.specificationChanged.dispatch);
+    this.ngeNotes.changed.add(this.specificationChanged.dispatch);
     // nge: a replaced ID's new pieces stay where the old one was.
     this.registerDisposer(registerNestedSync((context, group) => {
       context.registerDisposer(followReplacements(
-          group.selectedSegments, this.ngeFolders, () => getPastedSegments(group)));
+          group.selectedSegments, this.ngeFolders, () => getPastedSegments(group), this.ngeNotes));
     }, this.displayState.segmentationGroupState));
     this.registerDisposer(registerNestedSync((context, group) => {
       context.registerDisposer(group.specificationChanged.add(this.specificationChanged.dispatch));
@@ -702,6 +707,7 @@ export class SegmentationUserLayer extends Base {
     this.displayState.segmentationGroupState.value.restoreState(specification);
     this.displayState.segmentationColorGroupState.value.restoreState(specification);
     this.ngeFolders.restoreState(specification[FOLDERS_JSON_KEY]);
+    this.ngeNotes.restoreState(specification[NOTES_JSON_KEY]);
   }
 
   toJSON() {
@@ -732,11 +738,14 @@ export class SegmentationUserLayer extends Base {
       Object.assign(x, this.displayState.segmentationColorGroupState.value.toJSON());
     }
     const {selectedSegments} = this.displayState.segmentationGroupState.value;
-    const folders = this.ngeFolders.toJSON(id => {
+    const inList = (id: string) => {
       const u = new Uint64();
       return u.tryParseString(id) && selectedSegments.has(u);
-    });
+    };
+    const folders = this.ngeFolders.toJSON(inList);
     if (folders !== undefined) x[FOLDERS_JSON_KEY] = folders;
+    const notes = this.ngeNotes.toJSON(inList);
+    if (notes !== undefined) x[NOTES_JSON_KEY] = notes;
     return x;
   }
 
