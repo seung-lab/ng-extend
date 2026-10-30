@@ -5519,6 +5519,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifLimit.value += NOTIF_PAGE;
     await loadNotifications();
   }
+  let grantLinesAsked = false;
   async function loadNotifications(opts: { newOnly?: boolean } = {}) {
     if (!userId.value) return;
     const now = new Date().toISOString();
@@ -5544,6 +5545,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
     const { data: allNotifs } = await query;
     if (!allNotifs) return;
+    // A grant is said in chat the next time the player comes in, not when the
+    // admin approves it (Ames 2026-10-30): only the first load of a visit
+    // looks, so a grant that lands mid visit waits for the next one.
+    if (!grantLinesAsked) {
+      grantLinesAsked = true;
+      if ((allNotifs as any[]).some(n => n.target_type === 'user' && String(n.send_at) >= '2026-10-30' && (n.title === '🎉 Congratulations! Your edit access has been granted!' || String(n.title || '').startsWith('🔓 You have access to ')))) {
+        void secureWrite('access.grantLines').catch(() => {});
+      }
+    }
     if (!newOnly) notificationsHaveMore.value = allNotifs.length >= notifLimit.value;
     for (const n of allNotifs as any[]) if (Number(n.id) > notifMaxId) notifMaxId = Number(n.id);
     notifCheckedAt = now;

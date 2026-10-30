@@ -398,7 +398,7 @@ function openDetail(notif: any) {
   const accessTitle = String(notif.title || '');
   // A dataset access request opens the same tab, where Dataset requests has
   // Granted (Ames 2026-10-28).
-  if (accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
+  if (accessTitle.startsWith('🔑 Access update') || accessTitle.startsWith('🔬 Retina access request from') || (accessTitle.startsWith('🔓 Dataset access request') && backend.isAdmin)) {
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'access' } }));
     emit('hide');
     return;

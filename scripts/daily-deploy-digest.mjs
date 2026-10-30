@@ -41,6 +41,8 @@
 
 import { countCompletions } from './weekly-completions.mjs';
 
+import { sendAccessUpdate } from './access-update.mjs';
+
 const LIVE_URL = process.env.PYR_LIVE_URL ||
     'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com';
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -375,6 +377,12 @@ function easternMinutes(d) {
   const sinceMs = Math.max(last ?? (nowMs - DAY_MS), nowMs - MAX_LOOKBACK_MS);
   console.log(`[digest] window ${new Date(sinceMs).toISOString()} to ${now.toISOString()}` +
       (last ? ' (since the last digest)' : ' (no earlier digest found: the last 24 hours)'));
+
+  // The admins' note on access (Ames 2026-10-30), sent even on a day with no deploy.
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    try { await sendAccessUpdate({ get: supabaseGet, post: supabasePost, now, day: easternDay(now), dryRun, preview }); }
+    catch (e) { console.warn('[access update] failed:', e?.message || e); }
+  }
 
   const entries = (await liveChangelog())
       .filter(e => e.atMs > sinceMs && e.atMs <= nowMs)

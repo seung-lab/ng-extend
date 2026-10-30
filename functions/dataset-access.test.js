@@ -175,3 +175,24 @@ test('the list shows what a waiting player can do in CAVE and how long they have
   assert.strictEqual(r2.access, null);
   assert.strictEqual(r2.history, null);
 });
+
+// The chat line for a grant (Ames 2026-10-30).
+test('a grant is said in chat once, on the next visit', async () => {
+  const lines = [], asked = [];
+  const sb = async (p, init = {}) => {
+    if (p.startsWith('notifications?')) { asked.push(decodeURIComponent(p)); return [
+      {title: '🎉 Congratulations! Your edit access has been granted!', body: 'x'},
+      {title: '🔓 You have access to Medial Entorhinal Cortex', body: '[Explore MEC ›](#nge-open-dataset=pni_mec)'}]; }
+    if (p === 'chat_messages') { lines.push(JSON.parse(init.body)); return []; }
+    if (p.startsWith('chat_messages?')) return lines.filter(l => p.includes(encodeURIComponent(l.dataset)));
+    return [];
+  };
+  const io = {sb, me: {id: 'u-1', username: 'Rae'}};
+  assert.equal((await handle('access.grantLines', {}, io)).announced, 2);
+  assert.deepEqual(lines.map(l => [l.name, l.rank, l.text, l.dataset]), [
+    ['Rae', 'achievement', 'now has edit access to the Retina', 'access:stroeh_mouse_retina'],
+    ['Rae', 'achievement', 'now has edit access to MEC', 'access:pni_mec']]);
+  assert.equal((await handle('access.grantLines', {}, io)).announced, 0);
+  assert.ok(asked[0].includes('target_id=eq.u-1') && asked[0].includes('send_at=gte.2026-10-30'));
+  assert.equal((await handle('access.grantLines', {}, {sb, me: null})).announced, 0);
+});
