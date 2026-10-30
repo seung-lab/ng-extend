@@ -256,8 +256,8 @@ test('in a Hunt: the veil lifts for the cell alone at the start; put back after 
   assert.equal(done.left, 0);
   assert.equal(db._t.candidates[0].status, 'put_back');
   assert.equal((await B.buildAction('build.guard', {}, ctx(db, P2))).cells.length, 0, 'put back: nothing guarded');
-  // The makers: whoever had one planted.
-  assert.deepEqual(await B.makersOf(db, 5), [P1.id]);
+  // The makers: whoever proofread the cell in phase 1, and whoever had one planted.
+  assert.deepEqual((await B.makersOf(db, 5)).sort(), [P1.id, P3.id].sort());
 });
 
 test('claims on a protected cell are refused, by its ID or any it had', () => {
@@ -498,4 +498,13 @@ test('candidates pasted with their soma: the claim point and the jump go there; 
   assert.equal(db._t.tasks[1].nucleus_coords, '10, 20, 30');
   assert.equal(db._t.tasks[1].supervoxel_id, null, 'pinned again at the soma');
   await assert.rejects(B.buildAction('build.soma', { id: 2, soma: [1, 2] }, A), /x, y, z/);
+});
+
+test('the Hunt Maker goes to phase 1 proofreaders too, once each', async () => {
+  const db = fakeDb();
+  db._t.candidates.push({ id: 1, hunt_id: 9, proofread_by: P3.id, status: 'in_hunt', protected_roots: [], helpers: [] },
+    { id: 2, hunt_id: 9, proofread_by: P1.id, status: 'in_hunt', protected_roots: [], helpers: [] },
+    { id: 3, hunt_id: 8, proofread_by: P2.id, status: 'in_hunt', protected_roots: [], helpers: [] });
+  db._t.suggestions.push({ id: 1, candidate_id: 1, user_id: P1.id, status: 'planted' }, { id: 2, candidate_id: 1, user_id: P2.id, status: 'skipped' });
+  assert.deepEqual((await B.makersOf(db, 9)).sort(), [P1.id, P3.id].sort(), 'P1 proofread and was planted: once');
 });

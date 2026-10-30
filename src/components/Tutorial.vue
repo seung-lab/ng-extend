@@ -21,6 +21,7 @@ import { extensionSteps as steps13, extensionContinue, extensionRestart, extensi
 import { steps as steps10 } from '../tutorial-ca3-tour';
 import { steps as steps11, TEST_TUTORIAL, abandonTest, testContinue, testQueueNext } from '../proofreading-test';
 import { endPractice } from '../practice';
+import { startTutorialTiming } from '../tutorial_timing';
 import { practiceEarned, recordTutorialDone, stopWatching } from '../tutorial-3';
 import { practiceShown } from '../practice';
 import { currentTest } from '../proofreading-test';
@@ -43,6 +44,8 @@ const STEPS_MAP: Record<number, typeof steps1> = { 1: steps1, 2: steps2, 3: step
 // The real lengths, for the landing's "is a tutorial under way" test in
 // store.ts (isUserInActiveTutorial), which cannot import the step lists.
 (window as any).__ngeTutorialLengths = Object.fromEntries(Object.entries(STEPS_MAP).map(([n, s]) => [n, s.length]));
+// Time on each box, for Admin Hub > Tutorial times (src/tutorial_timing.ts).
+startTutorialTiming();
 const steps = computed(() => STEPS_MAP[store.activeTutorial] ?? steps1);
 
 const currentStep = computed(() => {

@@ -703,11 +703,18 @@ async function putBack(args, ctx) {
 }
 
 /** Helpers with a planted suggestion in a Hunt: the maker Achievement goes to them at the end (hunts.js finalize). */
+/**
+ * Everyone who helped build a Hunt, for the Hunt Maker Achievement at its end: whoever had a suggestion planted in it,
+ * and whoever proofread its candidate cells in phase 1 (Ames 2026-10-29: "yes include phase 1 proofreaders").
+ */
 async function makersOf(db, huntId) {
   const cands = await db.candidatesForHunt(huntId);
   if (!cands.length) return [];
   const sugs = (await Promise.all(cands.map((c) => db.suggestionsFor(c.id)))).flat();
-  return uniq(sugs.filter((s) => s.status === 'planted' || s.status === 'put_back').map((s) => String(s.user_id)));
+  return uniq([
+    ...cands.map((c) => c.proofread_by).filter(Boolean).map(String),
+    ...sugs.filter((s) => s.status === 'planted' || s.status === 'put_back').map((s) => String(s.user_id)),
+  ]);
 }
 
 // ── The database (Supabase REST, service role) ──────────────────────────────
@@ -721,7 +728,7 @@ function restDb(sb) {
     candidate: (id) => one(sb(`hunt_candidates?id=eq.${id}&select=*&limit=1`)),
     candidatesByStatus: (st) => sb(`hunt_candidates?status=in.(${st.join(',')})&select=*&limit=500`),
     protectedCandidates: () => sb(`hunt_candidates?status=in.(${[...PROTECTED].join(',')})&select=id,dataset,status,root,protected_roots,helpers,hunt_id,merges_each,cuts_each&limit=500`),
-    candidatesForHunt: (id) => sb(`hunt_candidates?hunt_id=eq.${posInt(id)}&select=id&limit=50`),
+    candidatesForHunt: (id) => sb(`hunt_candidates?hunt_id=eq.${posInt(id)}&select=id,proofread_by&limit=50`),
     addCandidate: (row) => one(sb('hunt_candidates', { method: 'POST', body: JSON.stringify(row) })),
     patchCandidate: (id, row) => one(sb(`hunt_candidates?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(row) })),
     suggestion: (id) => one(sb(`hunt_suggestions?id=eq.${id}&select=*&limit=1`)),

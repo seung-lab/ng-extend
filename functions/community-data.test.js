@@ -241,3 +241,17 @@ test('site texts: anyone reads, only admins save or delete, by key, stamped with
  assert.equal(plan('site_texts','DELETE','key=eq.howto.retina',undefined,admin).method,'DELETE');
  assert.throws(()=>plan('site_texts','POST','on_conflict=updated_by',body,admin),/conflict target/);
 });
+
+test('tutorial step timings: players add their own, admins read', () => {
+  const row = {tutorial: 13, step: 0, box: 'Can you finish this cell?', item: 'abc', seconds: 42, left_by: 'next', help: 1, build: 'deadbee', run: 'r1', user_id: b};
+  const p = plan('tutorial_step_events', 'POST', '', [row]);
+  assert.equal(p.body[0].user_id, a);
+  assert.equal(p.body[0].seconds, 42);
+  assert.throws(() => plan('tutorial_step_events', 'POST', '', [{...row, left_by: 'teleport'}]), /left_by/);
+  assert.throws(() => plan('tutorial_step_events', 'POST', '', [{...row, seconds: 99999}]), /seconds/);
+  assert.throws(() => plan('tutorial_step_events', 'PATCH', 'id=eq.1', {seconds: 1}), /append only/);
+  assert.throws(() => plan('tutorial_step_events', 'GET', 'select=*'), /Admins only/);
+  assert.throws(() => plan('tutorial_step_stats', 'GET', 'select=*'), /Admins only/);
+  assert.equal(plan('tutorial_step_stats', 'GET', 'select=*', undefined, {...user, isAdmin: true}).table, 'tutorial_step_stats');
+  assert.throws(() => plan('tutorial_step_stats', 'POST', '', {n: 1}), /verified action/);
+});
