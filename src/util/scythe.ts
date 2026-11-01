@@ -79,9 +79,12 @@ const TIP = [2, 124], HANDLE = [178, 176];
 const CURSOR_SCALE = 48 / 192;
 /** The picture's size at the height of the swing, as the model's (MODEL_PX). */
 const FLAT_SCALE = 120 / 192;
-const SWOOP_MS = 480;
+const SWOOP_MS = 560;
 /** The swing's parts, as shares of it: growing and winding up, then the cut. */
-const WINDUP = 0.3, HIT = 0.5;
+const WINDUP = 0.3, HIT = 0.65;
+/** How far the whole scythe travels sideways each side of the click, in pixels:
+ *  the width of the swoop (Ames 2026-11-01: "more x axis width"). */
+const SWEEP_PX = 85;
 const WIND_DEG = 42, FOLLOW_DEG = -35;
 let swoopTimer: ReturnType<typeof setTimeout> | null = null;
 /** Ames's 3D scythe (static/halloween/scythe.glb), once it has loaded; until
@@ -98,27 +101,24 @@ function loadSwoopModel() {
 const MODEL_TIP = [-0.437, 0.204, 0], MODEL_HANDLE = [0.297, -0.5, 0], MODEL_PX = 120;
 /** It leans: the tip starts behind the cell and comes on toward the eye. */
 const WIND_LEAN = -50, FOLLOW_LEAN = 45;
-/** The swing's turn at time t, its size so far and how solid it is. */
+/** The swing at time t: one eased motion from the top of the wind up, through
+ *  the click halfway, to the end of the follow through, with no join in it
+ *  (Ames 2026-11-01: "needs easing on the swoop"). */
 function swingAt(t: number) {
-  let deg: number, lean: number, grown = 1, opacity = 1;
+  let at: number, grown = 1, opacity = 1;
   if (t < WINDUP) {
     const k = t / WINDUP;
     grown = k * k * (3 - 2 * k);
-    deg = WIND_DEG * grown;
-    lean = WIND_LEAN * grown;
-  } else if (t < HIT) {
-    // Slow at the top of the swing, fastest at the cut.
-    const k = (t - WINDUP) / (HIT - WINDUP);
-    deg = WIND_DEG * (1 - k * k);
-    lean = WIND_LEAN * (1 - k * k);
+    at = grown;
   } else {
-    const k = (t - HIT) / (1 - HIT);
-    const e = 1 - (1 - k) * (1 - k);
-    deg = FOLLOW_DEG * e;
-    lean = FOLLOW_LEAN * e;
-    opacity = 1 - k * k;
+    const k = (t - WINDUP) / (1 - WINDUP);
+    const eased = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(2 - 2 * k, 3) / 2;
+    at = 1 - 2 * eased;
+    if (k > 0.6) opacity = 1 - Math.pow((k - 0.6) / 0.4, 2);
   }
-  return {deg, lean, grown, opacity};
+  const deg = at >= 0 ? WIND_DEG * at : -FOLLOW_DEG * at;
+  const lean = at >= 0 ? WIND_LEAN * at : -FOLLOW_LEAN * at;
+  return {deg, lean, grown, opacity, sweep: SWEEP_PX * at};
 }
 /** Lean about the up axis, then turn in the plane of the screen. Screen y is
  *  up here, so a clockwise turn (the picture's deg) is negative. */
@@ -133,9 +133,11 @@ function swingTurn(deg: number, lean: number) {
 const SWING_ARM = [0, 1, 2].map(i => (MODEL_TIP[i] - MODEL_HANDLE[i]) * MODEL_PX);
 /** How far the blade's tip is from the click at time t, in pixels, y up. */
 function tipOffset(t: number): number[] {
-  const {deg, lean, grown} = swingAt(t);
+  const {deg, lean, grown, sweep} = swingAt(t);
   const turned = swingTurn(deg, lean)(SWING_ARM);
-  return [0, 1, 2].map(i => (turned[i] - SWING_ARM[i]) * grown);
+  const off = [0, 1, 2].map(i => (turned[i] - SWING_ARM[i]) * grown);
+  off[0] += sweep;
+  return off;
 }
 
 /** A small trail of sparks left along the blade's path, from the start of the
@@ -151,7 +153,7 @@ function trail(x: number, y: number, ms: number) {
   document.body.appendChild(cv);
   const LIFE = 420;
   const sparks: Array<{x: number, y: number, vx: number, vy: number, born: number, life: number, r: number, c: string}> = [];
-  const COUNT = 46, FROM = WINDUP - 0.05, TO = 0.8;
+  const COUNT = 46, FROM = WINDUP + 0.12, TO = 0.92;
   for (let i = 0; i < COUNT; i++) {
     const t = FROM + (TO - FROM) * (i / (COUNT - 1));
     const tip = tipOffset(t);
@@ -277,9 +279,9 @@ function swoop(x: number, y: number): number {
   // Where the blade's tip is, off the click, with the scythe turned deg about
   // its handle end (which rests where it would be at full size, unturned).
   const armX = TIP[0] - HANDLE[0], armY = TIP[1] - HANDLE[1];
-  const pose = (deg: number, scale: number, grown: number, opacity: number, offset: number): Keyframe => {
+  const pose = (deg: number, scale: number, grown: number, sweep: number, opacity: number, offset: number): Keyframe => {
     const r = deg * Math.PI / 180;
-    const dx = (armX * Math.cos(r) - armY * Math.sin(r) - armX) * grown * FLAT_SCALE;
+    const dx = (armX * Math.cos(r) - armY * Math.sin(r) - armX) * grown * FLAT_SCALE + sweep;
     const dy = (armX * Math.sin(r) + armY * Math.cos(r) - armY) * grown * FLAT_SCALE;
     return {offset, opacity, transform: `translate(${dx}px, ${dy}px) rotate(${deg}deg) scale(${scale})`};
   };
@@ -287,21 +289,8 @@ function swoop(x: number, y: number): number {
   const STEPS = 24;
   for (let i = 0; i <= STEPS; i++) {
     const t = i / STEPS;
-    let deg: number, grown = 1, opacity = 1;
-    if (t < WINDUP) {
-      const k = t / WINDUP;
-      grown = k * k * (3 - 2 * k);
-      deg = WIND_DEG * grown;
-    } else if (t < HIT) {
-      // Slow at the top of the swing, fastest at the cut.
-      const k = (t - WINDUP) / (HIT - WINDUP);
-      deg = WIND_DEG * (1 - k * k);
-    } else {
-      const k = (t - HIT) / (1 - HIT);
-      deg = FOLLOW_DEG * (1 - (1 - k) * (1 - k));
-      opacity = 1 - k * k;
-    }
-    frames.push(pose(deg, CURSOR_SCALE + (FLAT_SCALE - CURSOR_SCALE) * grown, grown, opacity, t));
+    const {deg, grown, opacity, sweep} = swingAt(t);
+    frames.push(pose(deg, CURSOR_SCALE + (FLAT_SCALE - CURSOR_SCALE) * grown, grown, sweep, opacity, t));
   }
   const anim = el.animate(frames, {duration: ms, fill: 'forwards'});
   anim.onfinish = anim.oncancel = () => el.remove();
