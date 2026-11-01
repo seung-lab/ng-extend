@@ -67,6 +67,7 @@ export const PYR_KEYS: PyrKey[] = [
   { keys: ['backslash'], label: 'Show or hide the top bar', group: 'Panels', owner: 'ExtensionBar', where: 'With Magic Top Bar on in Settings' },
   // Found, not labeled (ExtensionBar).
   { keys: ['shift+keyf'], label: 'Flight mode', group: 'Tools', owner: 'ExtensionBar', hidden: true },
+  { keys: ['shift+keyr'], label: 'Scythe reap on or off', group: 'Tools', owner: 'scythe', where: '3D' },
   { keys: ['keyp'], label: 'Send a pulse along the cell under the mouse', group: 'Tools', owner: 'pulse_key', where: '3D' },
   { keys: ['escape'], label: 'Leave the merge or cut tool', group: 'Tools', owner: 'main' },
   ...UNDELETE_KEYS.map(k => ({ ...k, group: 'Editing' as const, owner: 'undelete' })),

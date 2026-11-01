@@ -894,8 +894,43 @@ function openTodoBoard() {
 const noteDrafts = ref<Record<string, string>>({});
 const noteOpen = ref<Record<string, boolean>>({});
 const noteSaving = ref<string | null>(null);
+// A picture on a note (Celia, report 313): pasted or picked, kept with the To
+// do board's images (no 7 day cleanup), and saved in the note as its link, which
+// the note draws as the picture.
+const noteImages = ref<Record<string, { preview: string; url?: string; uploading: boolean; error?: string }>>({});
+const isNoteImage = (href?: string) => !!href && /\/admin-uploads\/todo-images\/[^?#]+\.(png|jpe?g|gif|webp)$/i.test(href);
+function dropNoteImage(row: TriageRow) {
+  const img = noteImages.value[row.id];
+  if (img?.preview) URL.revokeObjectURL(img.preview);
+  delete noteImages.value[row.id];
+}
+async function attachNoteImage(row: TriageRow, file: File | null | undefined) {
+  if (!file) return;
+  dropNoteImage(row);
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { noteImages.value[row.id] = { preview: '', uploading: false, error: 'Use a PNG, JPEG, GIF or WebP image.' }; return; }
+  const preview = URL.createObjectURL(file);
+  noteImages.value[row.id] = { preview, uploading: true };
+  try {
+    const { secureUpload } = await import('../secure_upload');
+    const url = await secureUpload(file, 'todo' as any);
+    if (noteImages.value[row.id]?.preview === preview) noteImages.value[row.id] = { preview, url, uploading: false };
+  } catch (e: any) {
+    if (noteImages.value[row.id]?.preview === preview) noteImages.value[row.id] = { preview, uploading: false, error: e?.message || 'The image did not upload.' };
+  }
+}
+function onNotePaste(e: ClipboardEvent, row: TriageRow) {
+  const file = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+  if (file) { e.preventDefault(); void attachNoteImage(row, file); }
+}
+function onNoteFile(e: Event, row: TriageRow) {
+  const input = e.target as HTMLInputElement;
+  void attachNoteImage(row, input.files?.[0]);
+  input.value = '';
+}
 async function saveNote(row: TriageRow) {
-  const text = (noteDrafts.value[row.id] || '').trim();
+  const img = noteImages.value[row.id];
+  if (img?.uploading) return;
+  const text = [(noteDrafts.value[row.id] || '').trim(), img?.url || ''].filter(Boolean).join('\n');
   if (!text || noteSaving.value) return;
   noteSaving.value = row.id;
   try {
@@ -903,6 +938,7 @@ async function saveNote(row: TriageRow) {
     row.admin_notes = r?.admin_notes || [...(row.admin_notes || []), { by: backend.userName || 'you', text, at: new Date().toISOString() }];
     noteDrafts.value[row.id] = '';
     noteOpen.value[row.id] = false;
+    dropNoteImage(row);
   } catch (e: any) {
     triageError.value = e?.message ?? String(e);
   } finally {
@@ -3225,14 +3261,21 @@ function practiceWhen(iso: string | null) {
           <div class="nge-triage-notes" @click.stop>
             <div v-for="(n, i) in row.admin_notes || []" :key="i" class="nge-triage-note nge-triage-admin-note">
               <span class="nge-triage-spec-label">Note</span>
-              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
+              <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
             </div>
             <template v-if="noteOpen[row.id]">
               <textarea v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
-                        placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her."
+                        placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her. Paste a screenshot to add it."
+                        @paste="onNotePaste($event, row)"
                         @keydown.stop @keyup.stop @keypress.stop></textarea>
+              <div v-if="noteImages[row.id]" class="nge-triage-reply-attach">
+                <img v-if="noteImages[row.id].preview" :src="noteImages[row.id].preview" alt="The image going with this note" />
+                <span class="nge-triage-reply-attach-state">{{ noteImages[row.id].error || (noteImages[row.id].uploading ? 'Uploading…' : 'Goes with this note.') }}</span>
+                <button class="nge-admin-action-btn" type="button" @click="dropNoteImage(row)">Remove</button>
+              </div>
               <div class="nge-triage-actions">
-                <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id || !noteDrafts[row.id]?.trim()" @click="saveNote(row)">{{ noteSaving === row.id ? 'Saving…' : 'Save note' }}</button>
+                <label class="nge-admin-action-btn nge-triage-note-pick">🖼 Add image<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="onNoteFile($event, row)" /></label>
+                <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id || noteImages[row.id]?.uploading || !(noteDrafts[row.id]?.trim() || noteImages[row.id]?.url)" @click="saveNote(row)">{{ noteSaving === row.id ? 'Saving…' : 'Save note' }}</button>
                 <button class="nge-admin-action-btn" :disabled="noteSaving === row.id" @click="noteOpen[row.id] = false">Cancel</button>
               </div>
             </template>
@@ -4571,6 +4614,9 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 .nge-triage-admin-note { border-left: 2px solid rgba(160, 140, 255, 0.6); padding-left: 8px; }
 .nge-triage-note-btn { align-self: flex-start; }
 /* An image going with a reply to the submitter. */
+.nge-triage-note-pic { display: block; margin: 6px 0 2px; }
+.nge-triage-note-pic img { display: block; max-width: min(420px, 100%); max-height: 280px; border-radius: 6px; border: 1px solid rgba(120, 140, 170, 0.45); }
+.nge-triage-note-pick { cursor: pointer; }
 .nge-triage-reply-attach { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .nge-triage-reply-attach img { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(120, 170, 255, 0.35); }
 .nge-triage-reply-attach-state { flex: 1 1 auto; font-size: 12px; opacity: 0.8; }

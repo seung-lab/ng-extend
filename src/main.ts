@@ -7,6 +7,7 @@ import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
+import {startScytheControls} from './util/scythe';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { recoverCellHistory } from './util/cell_history';
 import { startAnnotationClickSelect } from './util/annotation_click_select';
@@ -234,6 +235,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // layer.tool.value on activation, leaving store.toolActive stale.
   const escHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
+    // Escape with the scythe in hand puts only the scythe away (util/scythe.ts).
+    if (document.body.classList.contains('nge-scythe')) return;
     const store = useSplitMergeOverlayStore();
     const toolDomPresent = !!(
       document.querySelector('.graphene-multicut') ||
@@ -433,6 +436,7 @@ function setupViewer() {
   startLantern(viewer);
   startSpooky(viewer);
   startPumpkin(viewer);
+  startScytheControls();
   startInvalidSegmentWatch(viewer);
   recoverCellHistory();
   startAnnotationClickSelect(viewer);
