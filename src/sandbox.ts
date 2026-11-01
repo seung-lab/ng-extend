@@ -105,6 +105,7 @@ export function makeSandbox(cfg: SandboxConfig) {
   const askAgain = ref(false);
   /** For Tutorial.vue: the main button on that box starts a new run. */
   function restart(): boolean {
+    solvedNow.value = false;
     if (!askAgain.value) return false;
     askAgain.value = false;
     done.value = [];
@@ -319,6 +320,7 @@ export function makeSandbox(cfg: SandboxConfig) {
   let checkingNext = false;
   function next(): boolean {
     if (askAgain.value) return false;
+    if (solvedNow.value) { useTutorialStore().setTutorialStep(1); return true; }
     if (checkingNext) return true;
     checkingNext = true;
     const store = useTutorialStore();
@@ -362,6 +364,9 @@ ${W.intro(cell())}`;
         syncSlim();
         // Asking whether to go again: no cell is taken until they say yes.
         if (askAgain.value) return;
+        // Back from the success box to look again (Luis Alonso, 2026-10-31):
+        // this cell stays, still solved, and Next goes straight on.
+        if (solvedNow.value) return;
         // One is assigned at a time, and players work in parallel (Ames,
         // 2026-10-08): if this one is taken, another this player has NOT
         // solved is given instead. Never a solved one while unsolved ones

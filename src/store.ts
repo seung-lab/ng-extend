@@ -4262,7 +4262,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       mergesAllTime: result.total_merges ?? 0,
       splitsAllTime: result.total_splits ?? 0,
       cellsSubmitted: result.cells_completed ?? 0,
-      currentStreak: result.current_streak ?? 0,
+      currentStreak: Math.max(result.current_streak ?? 0, streakFloor),
       longestStreak: result.longest_streak ?? 0,
       ...(result.last_edit_date ? { lastEditDate: result.last_edit_date } : {}),
       ...(typeof result.total_days === 'number' ? { totalDays: result.total_days } : {}),
@@ -4426,6 +4426,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  only these titles, only when the saved streak has reached the number,
    *  and never the same one twice within six days. */
   async function sendStreakMilestone(days: number) {
+    // The chip agrees with the note (lalonso: "shows 1 when my notification
+    // says 2"): a slower answer read before the streak grew can't undo it.
+    streakFloor = Math.max(streakFloor, days);
+    const stats = useUserStatsStore();
+    if (stats.stats.currentStreak < days) stats.setStats({ currentStreak: days });
     if (!isStreakMilestone(days) || !userId.value) return;
     const next = nextStreakMilestone(days);
     const art = 'https://raw.githubusercontent.com/seung-lab/ng-extend/eyewire-ii-community/static/nurro';
@@ -4650,6 +4655,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   // (supabase-streak-local-days.sql). Days used to be UTC days, which end at
   // 8 pm in New York, so an evening session broke or skipped a day.
   const VISIT_KEY = 'nge-streak-visit';
+  let streakFloor = 0;
   let visitStreak: { currentStreak: number; longestStreak: number; lastEditDate: string; totalDays?: number } | null = null;
   let visiting = false;
   async function recordVisit() {
@@ -4701,7 +4707,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
           mergesAllTime: data.total_merges || 0,
           splitsAllTime: data.total_splits || 0,
           cellsSubmitted: data.cells_completed || 0,
-          currentStreak: data.current_streak || 0,
+          currentStreak: Math.max(data.current_streak || 0, streakFloor),
           longestStreak: data.longest_streak || 0,
           lastEditDate: data.last_edit_date || '',
         });

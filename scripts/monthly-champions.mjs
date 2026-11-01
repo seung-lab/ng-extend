@@ -35,6 +35,19 @@ const PLACE_NTH = { gold: '1st', silver: '2nd', bronze: '3rd' };
  *  2026-10-26: cups for edits, neuron awards for cells). Each new winner gets
  *  a New Achievement card. Safe to run again: an award held is not given or
  *  announced twice. */
+/** 10 am Eastern today, or now if that has passed (Ames 2026-11-01: "It
+ *  should announce around say 10 am ET the first of the month"). The job runs
+ *  just after midnight; the awards are saved then and the news waits for 10.
+ *  chat-announcements.yml posts the chat line when the time comes. */
+function announceAt(now = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23',
+    year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(now).map(p => [p.type, Number(p.value)]));
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const offset = asUtc - Math.floor(now.getTime() / 1000) * 1000;
+  const at = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 10) - offset);
+  return (at > now ? at : now).toISOString();
+}
+
 /** One award's row in special_badges. */
 function awardBadge(month, metric, place, art, what) {
   return {
@@ -63,7 +76,7 @@ async function giveMonthlyAwards(month, lists, names, dry) {
         title: `🏅 New Achievement: ${badge.name}`,
         body: `You earned the "${badge.name}" award! ${reason}. Thank you for mapping the brain with us.`,
         image_url: badge.image_url, thumbnail_url: badge.thumbnail_url,
-        target_type: 'user', target_id: r.user_id, send_at: new Date().toISOString(), post_to_chat: false,
+        target_type: 'user', target_id: r.user_id, send_at: announceAt(), post_to_chat: false,
       });
     }
   }
@@ -150,7 +163,10 @@ async function main() {
     console.log(`[champions] Corrected the saved broadcast for ${month.label}.`);
     return;
   }
-  const row = { title, body, target_type: 'all', target_id: null, send_at: new Date().toISOString(), post_to_chat: false };
+  // A test goes to its testers at once, and not to chat.
+  const row = testTo.length
+    ? { title, body, target_type: 'all', target_id: null, send_at: new Date().toISOString(), post_to_chat: false }
+    : { title, body, target_type: 'all', target_id: null, send_at: announceAt(), post_to_chat: true };
   await db.send('POST', 'notifications', testTo.length ? testTo.map(id => ({ ...row, target_type: 'user', target_id: id })) : row);
   console.log(`[champions] Posted ${title}: ${editors.length} editors, ${completers.length} completers.`);
 }

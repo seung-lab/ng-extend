@@ -756,11 +756,22 @@ async function saveClaimView(cell: CellRow) {
   }
 }
 
+/** Is any of this cell's IDs showing? */
+function claimInView(cell: CellRow): boolean {
+  try {
+    const shown = new Set<string>();
+    for (const id of currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? []) shown.add(String(id));
+    return [cell.segId, cell.liveSegId, cell.finalSegId].some(id => !!id && shown.has(String(id)));
+  } catch { return true; }
+}
+
 /** Go to one of your claims with its own layers. */
 async function switchToClaim(cell: CellRow) {
   // Already working on this claim: its layers are loaded, so just move the
   // camera. Reloading its saved view would drop anything done since the save.
-  if (!cell.taskId || cell.taskId === workingTaskId) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+  // (Only if it IS on screen: a cell claimed after a Super Quest was added to
+  // the quest's cell, Nseraf 2026-10-30. It replaces it now.)
+  if (!cell.taskId || (cell.taskId === workingTaskId && claimInView(cell))) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
   // A quest on screen is saved and its layers put away BEFORE the claim's
   // view is saved or opened, so they never end up in the claim (annkri #145).
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
