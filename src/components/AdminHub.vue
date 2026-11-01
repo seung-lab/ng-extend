@@ -910,6 +910,15 @@ async function saveNote(row: TriageRow) {
   }
 }
 
+// A tag typed in the card's comment box (Ames 2026-11-01): that box waits for
+// a decision and tells nobody, so a tag there goes out as a note, now.
+const hasTag = (text?: string) => /(^|\s)@\p{L}/u.test(text || '');
+async function sendCommentTag(row: TriageRow) {
+  noteDrafts.value[row.id] = triageNotes.value[row.id] || '';
+  await saveNote(row);
+  if (!noteDrafts.value[row.id]) triageNotes.value[row.id] = '';
+}
+
 async function loadTriage() {
   triageLoading.value = true;
   triageError.value = '';
@@ -3237,9 +3246,13 @@ function practiceWhen(iso: string | null) {
             v-model="triageNotes[row.id]"
             class="nge-triage-message nge-triage-comment"
             rows="2"
-            placeholder="Comment (optional), saved with your decision"
+            placeholder="Comment (optional), saved with your decision. Type @Celia or @Marissa to tag them."
             @keydown.stop @keyup.stop @keypress.stop
           ></textarea>
+          <div v-if="row.status === 'proposed' && hasTag(triageNotes[row.id])" class="nge-triage-actions">
+            <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id" title="Saves this as a note on the card and notifies who you tagged, in Pyr and in the report's Slack thread. Nothing else on the card changes."
+                    @click="sendCommentTag(row)">{{ noteSaving === row.id ? 'Sending…' : '💬 Send tag' }}</button>
+          </div>
           <!-- The decision first (Ames 2026-10-05), then the other tools. -->
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
             <button v-if="isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id || suggestAsked(row)"
