@@ -1472,8 +1472,8 @@ function padRank(rank: number): string {
   --tab-fill: #0a1326;
   position: relative; isolation: isolate;
   flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  height: 25px; padding: 3px 11px 0 7px; box-sizing: border-box;
-  font: 500 9.5px/1 'Orbitron', 'Inter', sans-serif; letter-spacing: 0.02em;
+  height: 27px; padding: 3px 11px 0 7px; box-sizing: border-box;
+  font: 600 12.5px/1 'Inter', system-ui, sans-serif;
   color: #9db1cb; border: 0; border-radius: 0;
   background: linear-gradient(180deg, var(--tab-edge) 0%, var(--tab-edge) 38%, transparent 96%);
   clip-path: polygon(5px 3px, calc(100% - 10px) 3px, 100% 13px, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 8px);
@@ -1487,12 +1487,14 @@ function padRank(rank: number): string {
 }
 .nge-notif-subtab:hover { --tab-edge: rgba(111, 196, 255, 0.7); --tab-fill: #0e1b36; color: #d6e4f6; }
 .nge-notif-subtab--on, .nge-notif-subtab--on:hover {
-  color: #fff; font-weight: 700;
+  /* Only the edge lights and a faint tint: a full fill made the words hard to
+     read (Ames 2026-11-01). */
+  color: #fff;
   background: linear-gradient(180deg, #e6d6ff 0%, #c8a4ff 34%, rgba(200, 164, 255, 0) 96%);
 }
 .nge-notif-subtab--on::before {
   inset: 3px 1px 1px 1px;
-  background: linear-gradient(180deg, #6a45b0, #41297a 80%);
+  background: linear-gradient(180deg, #2c2150, #171230 80%);
 }
 .nge-notif-subtab b {
   min-width: 14px; padding: 2px 4px; box-sizing: border-box;
