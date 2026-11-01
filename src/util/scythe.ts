@@ -81,13 +81,34 @@ const CURSOR_SCALE = 36 / 192;
 const FLAT_SCALE = 120 / 192;
 const SWOOP_MS = 840;
 /** The swing's parts, as shares of it: growing and winding up, the cut at HIT,
- *  the follow through, then back down to the cursor from RETURN. */
-const WINDUP = 0.25, HIT = 0.5, RETURN = 0.75;
+ *  the follow through to SWING_END, and back down to the cursor from RETURN, which
+ *  starts before the follow through ends so the scythe never stops. */
+const WINDUP = 0.25, SWING_END = 0.8, HIT = (WINDUP + SWING_END) / 2, RETURN = 0.68;
 /** How far the whole scythe travels sideways each side of the click, in pixels:
  *  the width of the swoop (Ames 2026-11-01: "more x axis width"). */
-const SWEEP_PX = 85, FOLLOW_SWEEP_PX = 170;
+const SWEEP_PX = 55, FOLLOW_SWEEP_PX = 110;
 const WIND_DEG = 42, FOLLOW_DEG = -70;
 let swoopTimer: ReturnType<typeof setTimeout> | null = null;
+/** How big the swing is for the zoom, 1 at full size (Ames 2026-11-01: "it should
+ *  scale with zoom like it looks massive when I am zoomed out"). Full size down
+ *  to about a quarter of a micron a pixel, then smaller, never below the cursor. */
+const FULL_NM_PER_PX = 300, MIN_SWING_SIZE = 0.4;
+function swingSize(y: number): number {
+  const viewer = viewerNow();
+  try {
+    const scales = viewer.coordinateSpace.value.scales;
+    const minNm = Math.min(Number(scales[0]), Number(scales[1]), Number(scales[2])) * 1e9;
+    let height = 0;
+    for (const pn of viewer.display.panels) {
+      if (!pn?.element?.classList?.contains('nge-3d-panel')) continue;
+      const r = pn.element.getBoundingClientRect();
+      if (y >= r.top && y <= r.bottom) height = r.height;
+    }
+    const nmPerPx = viewer.projectionScale.value * minNm / (height || window.innerHeight);
+    return Math.max(MIN_SWING_SIZE, Math.min(1, Math.pow(FULL_NM_PER_PX / nmPerPx, 0.7)));
+  } catch { return 1; }
+}
+
 /** Ames's 3D scythe (static/halloween/scythe.glb), once it has loaded; until
  *  then, or if it cannot load, the picture swings instead. */
 let swoopModel: NgePropMesh | null = null;
@@ -116,20 +137,23 @@ function swingAt(t: number) {
   if (t < WINDUP) {
     grown = smooth(t / WINDUP);
     at = grown;
-  } else if (t < RETURN) {
-    const k = (t - WINDUP) / (RETURN - WINDUP);
+  } else {
+    const k = Math.min(1, (t - WINDUP) / (SWING_END - WINDUP));
     const eased = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(2 - 2 * k, 3) / 2;
     at = 1 - 2 * eased;
-  } else {
-    // Back to the cursor, nothing left over: it ends the size and shape it began.
+  }
+  if (t > RETURN) {
     returned = smooth((t - RETURN) / (1 - RETURN));
     grown = 1 - returned;
-    at = -grown;
   }
   // From top (at 1) through the cut (0) to the end of the follow through (-1),
   // with no kink at the cut, whatever the two ends' sizes.
   const span = (top: number, end: number) => (top - end) / 2 * at + (top + end) / 2 * at * at;
-  return {deg: span(WIND_DEG, FOLLOW_DEG), lean: span(WIND_LEAN, FOLLOW_LEAN), grown, returned, tilt: TILT_DEG * grown, sweep: span(SWEEP_PX, -FOLLOW_SWEEP_PX)};
+  // Home: it does not swing back the way it came (Ames 2026-11-01: "only the
+  // end looks slightly off"). It carries on round the same way as it shrinks,
+  // and lands upright on the cursor having made a full turn.
+  const spin = -(360 + FOLLOW_DEG) * returned;
+  return {deg: span(WIND_DEG, FOLLOW_DEG) + spin, lean: span(WIND_LEAN, FOLLOW_LEAN) * grown, grown, returned, tilt: TILT_DEG * grown, sweep: span(SWEEP_PX, -FOLLOW_SWEEP_PX) * grown};
 }
 /** Tilt into the screen, lean about the up axis, then turn in the plane of the
  *  screen. Screen y is up here, so a clockwise turn (the picture's deg) is
@@ -158,7 +182,7 @@ function tipOffset(t: number): number[] {
 /** A small trail of sparks left along the blade's path, from the start of the
  *  cut on: they hang where they were left, drift apart and go out. */
 const TRAIL_COLORS = ['#19d3ff', '#00b7ff', '#58e6ff', '#0a9bff', '#b8f6ff'];
-function trail(x: number, y: number, ms: number) {
+function trail(x: number, y: number, ms: number, size: number) {
   const cv = document.createElement('canvas');
   const R = 340, D = R * 2;
   cv.width = cv.height = D;
@@ -168,13 +192,13 @@ function trail(x: number, y: number, ms: number) {
   document.body.appendChild(cv);
   const LIFE = 700;
   const sparks: Array<{x: number, y: number, vx: number, vy: number, born: number, life: number, r: number, c: string}> = [];
-  const COUNT = 240, FROM = WINDUP + 0.1, TO = RETURN - 0.04;
+  const COUNT = 240, FROM = WINDUP + 0.1, TO = SWING_END - 0.04;
   for (let i = 0; i < COUNT; i++) {
     const t = FROM + (TO - FROM) * (i / (COUNT - 1));
-    const tip = tipOffset(t);
+    const tip = tipOffset(t).map(v => v * size);
     const {deg, lean, tilt} = swingAt(t);
     const arm = swingTurn(deg, lean, tilt)(SWING_ARM);
-    const along = Math.random() * Math.random() * 0.45;
+    const along = Math.random() * Math.random() * 0.45 * size;
     sparks.push({
       x: R + tip[0] - arm[0] * along + (Math.random() - 0.5) * 8, y: R - tip[1] + arm[1] * along + (Math.random() - 0.5) * 8,
       vx: (Math.random() - 0.5) * 44, vy: (Math.random() - 0.5) * 44 + 12,
@@ -207,7 +231,7 @@ function trail(x: number, y: number, ms: number) {
  *  laid out in pixels on the view through the point under the mouse, turned,
  *  and that layout is carried over to the viewer's coordinates. False: no
  *  view or point to swing in, so the picture does it. */
-function swoop3D(x: number, y: number, ms: number): boolean {
+function swoop3D(x: number, y: number, ms: number, size: number): boolean {
   const viewer = viewerNow();
   const mouse = viewer?.mouseState;
   let panel: any = null;
@@ -251,8 +275,8 @@ function swoop3D(x: number, y: number, ms: number): boolean {
     // waits for it, so it goes out as it lands.
     prop.alpha = !active && t > 0.9 ? (1 - t) / 0.1 : 1;
     const turn = swingTurn(deg, lean, tilt);
-    const scale = MODEL_PX * (MODEL_CURSOR_SCALE + (1 - MODEL_CURSOR_SCALE) * grown);
-    const tipAt = tipOffset(t);
+    const scale = MODEL_PX * (MODEL_CURSOR_SCALE + (size - MODEL_CURSOR_SCALE) * grown);
+    const tipAt = tipOffset(t).map(v => v * size);
     // Home to where the mouse is now, not where it clicked.
     tipAt[0] += moved[0] * returned;
     tipAt[1] -= moved[1] * returned;
@@ -297,8 +321,9 @@ function swoop(x: number, y: number): number {
   document.body.classList.add('nge-scythe-swoop');
   if (swoopTimer) clearTimeout(swoopTimer);
   swoopTimer = setTimeout(() => document.body.classList.remove('nge-scythe-swoop'), ms);
-  trail(x, y, ms);
-  if (swoopModel && swoop3D(x, y, ms)) return ms * HIT;
+  const size = swingSize(y);
+  trail(x, y, ms, size);
+  if (swoopModel && swoop3D(x, y, ms, size)) return ms * HIT;
   const el = document.createElement('img');
   el.src = scytheImage;
   el.alt = '';
@@ -310,8 +335,8 @@ function swoop(x: number, y: number): number {
   const armX = TIP[0] - HANDLE[0], armY = TIP[1] - HANDLE[1];
   const pose = (deg: number, scale: number, grown: number, sweep: number, opacity: number, offset: number): Keyframe => {
     const r = deg * Math.PI / 180;
-    const dx = (armX * Math.cos(r) - armY * Math.sin(r) - armX) * grown * FLAT_SCALE + sweep;
-    const dy = (armX * Math.sin(r) + armY * Math.cos(r) - armY) * grown * FLAT_SCALE;
+    const dx = (armX * Math.cos(r) - armY * Math.sin(r) - armX) * grown * FLAT_SCALE * size + sweep * size;
+    const dy = (armX * Math.sin(r) + armY * Math.cos(r) - armY) * grown * FLAT_SCALE * size;
     return {offset, opacity, transform: `translate(${dx}px, ${dy}px) rotate(${deg}deg) scale(${scale})`};
   };
   const frames: Keyframe[] = [];
@@ -319,7 +344,7 @@ function swoop(x: number, y: number): number {
   for (let i = 0; i <= STEPS; i++) {
     const t = i / STEPS;
     const {deg, grown, sweep} = swingAt(t);
-    frames.push(pose(deg, CURSOR_SCALE + (FLAT_SCALE - CURSOR_SCALE) * grown, grown, sweep, 1, t));
+    frames.push(pose(deg, CURSOR_SCALE + (FLAT_SCALE * size - CURSOR_SCALE) * grown, grown, sweep, 1, t));
   }
   const anim = el.animate(frames, {duration: ms, fill: 'forwards'});
   anim.onfinish = anim.oncancel = () => el.remove();
