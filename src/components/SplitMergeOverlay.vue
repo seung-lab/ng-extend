@@ -5,7 +5,7 @@ import { ngeCutPointScale } from 'neuroglancer/annotation/point';
 import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points';
-import { scytheActive, startScythe, stopScythe } from '../util/scythe';
+import { reapAfterCut, setReapAfterCut } from '../util/scythe';
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -108,8 +108,6 @@ watch(() => store.activeGroup, (now, before) => {
 });
 const isBlueActive = computed(() => store.activeGroup === 'blue');
 const totalPoints = computed(() => store.redPointCount + store.bluePointCount);
-// The scythe belongs to cut mode, and goes when it does.
-watch(() => store.toolActive, t => { if (t !== 'multicut') stopScythe(); });
 
 const isSubmitting = computed(() => store.submitting);
 const isPendingClose = computed(() => store.pendingClose);
@@ -420,9 +418,9 @@ function cancelTool() {
                     :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">{{ previewBusy ? 'Previewing…' : 'Preview' }}</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <!-- Clears a piece from view; never edits (src/util/scythe.ts). -->
-            <button v-if="!tutorialOnScreen" type="button" role="switch" class="nge-smo-reap" :class="{ 'is-on': scytheActive }" :aria-checked="scytheActive" :disabled="totalPoints > 0 && !scytheActive"
-                    @click="scytheActive ? stopScythe() : startScythe()"
-                    :title="totalPoints > 0 ? 'Submit or clear your cut points first' : scytheActive ? 'On: click a piece in 3D to reap it from view. Ctrl+Z brings it back. Esc turns this off.' : 'Turn on, then click a piece in 3D to reap it from view. Ctrl+Z brings it back.'">
+            <button v-if="!tutorialOnScreen" type="button" role="switch" class="nge-smo-reap" :class="{ 'is-on': reapAfterCut }" :aria-checked="reapAfterCut"
+                    @click="setReapAfterCut(!reapAfterCut)"
+                    title="On: after each cut, your next click on a piece in 3D reaps it from view, then the cursor goes back to normal. Ctrl+Z brings a piece back. Shift+R takes up the scythe any time.">
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 22 L11 4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M12 3 C7 1.5 2.5 5.5 1 13 C4.5 9 8.5 7.5 14 7 Z" fill="#fff"/></svg>
               Scythe reap
               <span class="nge-smo-reap-track"><span class="nge-smo-reap-knob"></span></span>
