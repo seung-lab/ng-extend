@@ -53,7 +53,7 @@ function ensureStyle() {
   if (document.getElementById('nge-scythe-style')) return;
   const st = document.createElement('style');
   st.id = 'nge-scythe-style';
-  st.textContent = `body.nge-scythe .nge-3d-panel, body.nge-scythe .nge-3d-panel * { cursor: url("${scytheCursor}") 2 32, crosshair !important; }
+  st.textContent = `body.nge-scythe .nge-3d-panel, body.nge-scythe .nge-3d-panel * { cursor: url("${scytheCursor}") 1 31, crosshair !important; }
 body.nge-scythe-swoop .nge-3d-panel, body.nge-scythe-swoop .nge-3d-panel * { cursor: none !important; }`;
   document.head.appendChild(st);
 }
@@ -75,7 +75,7 @@ function cellUnderMouse(): {id: any, key: string, visible: any} | null {
 
 /** The picture's blade tip and handle end, in pixels (static/tags/scythe-reap.png),
  *  and how much smaller the cursor is. */
-const TIP = [8, 128], HANDLE = [188, 184];
+const TIP = [2, 124], HANDLE = [178, 176];
 const CURSOR_SCALE = 48 / 192;
 /** The picture's size at the height of the swing, as the model's (MODEL_PX). */
 const FLAT_SCALE = 120 / 192;
