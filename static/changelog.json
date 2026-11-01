@@ -2,6 +2,23 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-01T12:02:28Z",
+      "title": "Safer jumps, tidier chat and tutorial fixes",
+      "digest": "minor",
+      "items": [
+        "Jumping to a claimed cell you already have on screen no longer reopens an older saved view, and a claim on screen is saved before you jump away. Thanks to toknow and annkri.",
+        "Removing a segment now counts its marks where they are today, following them through your merges and cuts.",
+        "Having a tab open keeps you online, and coming back to it no longer announces you in chat. Thanks to Nik.",
+        "Chat opens in its clicked away view, and stays open after a reload if you left it open. Thanks to Celia.",
+        "The Couldn't save chip now opens a box saying your work is safe and what it is waiting for.",
+        "Going Back in a sandbox keeps a solved cell solved. Thanks to Luis Alonso.",
+        "On MEC, jumping to a newly claimed cell after a Super Quest replaces the old cell. Thanks to Nik.",
+        "The streak in the top bar now matches your streak notification. Thanks to lalonso.",
+        "Tutorials: how to remove a gem, a clearer intro to layers, the right key to hide a layer (Shift and its number), and the bounding box stays on. Thanks to lalonso and Luis Alonso.",
+        "Monthly Champions and awards now go out at 10 am ET on the 1st."
+      ]
+    },
+    {
       "at": "2026-10-30T15:22:00Z",
       "title": "A quicker loading sign in 2D",
       "items": [
