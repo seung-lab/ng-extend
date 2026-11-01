@@ -2318,6 +2318,15 @@ export function UserLayerWithAnnotationsMixin<TBase extends {new (...args: any[]
 export type UserLayerWithAnnotations =
     InstanceType<ReturnType<typeof UserLayerWithAnnotationsMixin>>;
 
+/** nge: the text Pyr writes on its own marks ("Hits Edge: cell 7205...",
+ *  util/highlight.ts) is not a note, and is not shown as one (Ames 2026-11-01).
+ *  A note written on the mark takes its place. */
+const ngeAutoDescription = /^(?:.*: )?cell \d+\s*$|^Soma of cell \d+|^(?:Soma|AIS), confirmed$/;
+function ngeNoteOf(annotation: Annotation): string {
+  const text = annotation.description || '';
+  return ngeAutoDescription.test(text) ? '' : text;
+}
+
 export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annotation: Annotation, state: AnnotationLayerState, gridTemplate: string, globalDimensionIndices: number[], localDimensionIndices: number[]): [HTMLDivElement, number[]] {
     const chunkTransform = state.chunkTransform.value as ChunkTransformParameters;
     const element = document.createElement('div');
@@ -2387,14 +2396,14 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       box.rows = 2;
       box.maxLength = 2000;
       box.placeholder = 'Write a note. Enter saves, Esc cancels.';
-      box.value = annotation.description || '';
+      box.value = ngeNoteOf(annotation);
       if (noteText) noteText.style.display = 'none';
       let done = false;
       const close = (save: boolean) => {
         if (done) return;
         done = true;
         const text = box.value.trim();
-        if (save && text !== (annotation.description || '')) {
+        if (save && text !== ngeNoteOf(annotation)) {
           const ref = state.source.getReference(annotation.id);
           try {
             const now = ref.value;
@@ -2427,10 +2436,10 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       const noteButton = document.createElement('button');
       noteButton.type = 'button';
       noteButton.className = 'nge-ann-row-note';
-      noteButton.title = annotation.description ? 'Edit the note' : 'Add a note';
+      noteButton.title = ngeNoteOf(annotation) ? 'Edit the note' : 'Add a note';
       noteButton.setAttribute('aria-label', noteButton.title);
       noteButton.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.6 12 2.5 13.5 4 10.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
-      noteButton.classList.toggle('nge-ann-row-note--has', !!annotation.description);
+      noteButton.classList.toggle('nge-ann-row-note--has', !!ngeNoteOf(annotation));
       noteButton.addEventListener('mousedown', event => event.stopPropagation());
       noteButton.addEventListener('click', event => {
         event.stopPropagation();
@@ -2474,11 +2483,11 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
           localDimensionIndices, chunkTransform.modelTransform.localToRenderLayerDimensions);
       maybeAddDeleteButton();
     });
-    if (annotation.description) {
+    if (ngeNoteOf(annotation)) {
       ++numRows;
       const description = document.createElement('div');
       description.classList.add('neuroglancer-annotation-description');
-      description.textContent = annotation.description;
+      description.textContent = ngeNoteOf(annotation);
       element.appendChild(description);
       noteText = description;
     }
