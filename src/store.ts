@@ -7092,7 +7092,7 @@ export const useChatStore = defineStore('chat', () => {
     return {
       type: 'message',
       name: r.name,
-      rank: r.user_id ? (r.rank || 'player') : 'player',
+      rank: r.user_id || (r.rank === 'bot' && r.name === NURRO_NAME) ? (r.rank || 'player') : 'player',
       time: formatTime(date),
       dateTime: date,
       parts: parseMessageParts(r.name, r.text, r.dataset),
@@ -7424,7 +7424,8 @@ export const useChatStore = defineStore('chat', () => {
     channel = mine;
     mine.on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload => {
       const row = payload.new;
-      if (!row.user_id) return;
+      // No sender: only Nurro's own lines, the Monthly Champions announcement.
+      if (!row.user_id && !(row.rank === 'bot' && row.name === NURRO_NAME)) return;
       notePinRow(row);
       const date = new Date(row.created_at);
       addTimeSeparatorIfNeeded(date);
@@ -7439,7 +7440,12 @@ export const useChatStore = defineStore('chat', () => {
       const target = mine && row.notification_id == null ? onlineTarget(row.text || '') : null;
       if (target) void answerOnline(target);
       // nkem_test takes a beat to answer, like it used to.
-      const reply = botReplyTo(chatMessages.value[chatMessages.value.length - 1], true);
+      // Lines sent close together can arrive out of order (Ames 2026-11-01).
+      const pushed = chatMessages.value[chatMessages.value.length - 1], before = chatMessages.value[chatMessages.value.length - 2];
+      if (before && before.dateTime.getTime() > pushed.dateTime.getTime()) {
+        chatMessages.value = [...chatMessages.value].sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
+      }
+      const reply = botReplyTo(pushed, true);
       if (reply && (reply.name !== NURRO_NAME || mine)) setTimeout(() => { reply.dateTime = new Date(); reply.time = formatTime(reply.dateTime); chatMessages.value.push(reply); }, 900);
       if (row.user_id !== backend.userId) {
         // A direct @mention always gets through, even with chat muted.

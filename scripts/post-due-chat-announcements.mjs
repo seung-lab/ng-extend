@@ -131,6 +131,7 @@ async function postMonthlyChampions(n) {
     if (dryRun) { console.log(`[chat-announce] DRY-RUN Nurro: ${intro}`); }
     else if (!(await rest(`chat_messages?name=eq.Nurro&text=eq.${encodeURIComponent(intro)}&select=id&limit=1`)).length) {
       await insertChat({ name: 'Nurro', rank: 'bot', text: intro });
+      await new Promise(r => setTimeout(r, 1500));
     }
     for (const { badge, user } of lines) {
       const text = `earned the ${badge.name} award`, line = `achievement:special:${badge.id}`;
@@ -138,6 +139,8 @@ async function postMonthlyChampions(n) {
       // Once each, as functions/index.js chat.achievement does.
       if ((await rest(`chat_messages?user_id=eq.${user.id}&dataset=eq.${encodeURIComponent(line)}&select=id&limit=1`)).length) continue;
       await insertChat({ user_id: user.id, name: user.username || user.display_name || 'Player', rank: 'achievement', text, dataset: line });
+      // One at a time, so they read in order and land like a roll call.
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
   return true;
