@@ -22,7 +22,8 @@ export function launchFireworks(count: number, host?: HTMLElement) {
     playFx(fireworkBurst, {
       host, scale,
       x: width * (0.12 + 0.76 * ((i * 0.618 + 0.2) % 1)),
-      y: height * (0.22 + 0.2 * ((i * 0.382) % 1)),
+      // Behind a big card only the top edge shows, so they go off up there.
+      y: height * (host ? 0.04 + 0.08 * ((i * 0.382) % 1) : 0.22 + 0.2 * ((i * 0.382) % 1)),
       delay: i * 0.7,
       options: { palette: COLOURS[i % COLOURS.length], seed: 9 + i * 7 },
     });
