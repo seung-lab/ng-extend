@@ -2377,6 +2377,69 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       rowActions.appendChild(deleteButton);
     };
 
+    // nge: a pencil on the row writes its note right there, under the row,
+    // with the Selection panel left alone (Ames 2026-11-01).
+    let noteText: HTMLElement|undefined;
+    const openNoteEditor = () => {
+      if (element.querySelector('.nge-ann-note-editor')) return;
+      const box = document.createElement('textarea');
+      box.className = 'nge-ann-note-editor';
+      box.rows = 2;
+      box.maxLength = 2000;
+      box.placeholder = 'Write a note. Enter saves, Esc cancels.';
+      box.value = annotation.description || '';
+      if (noteText) noteText.style.display = 'none';
+      let done = false;
+      const close = (save: boolean) => {
+        if (done) return;
+        done = true;
+        const text = box.value.trim();
+        if (save && text !== (annotation.description || '')) {
+          const ref = state.source.getReference(annotation.id);
+          try {
+            const now = ref.value;
+            if (now) {
+              state.source.update(ref, {...now, description: text ? text : undefined});
+              state.source.commit(ref);
+            }
+          } finally {
+            ref.dispose();
+          }
+          return;  // the list draws the row again, with the note
+        }
+        box.remove();
+        if (noteText) noteText.style.display = '';
+      };
+      for (const type of ['mousedown', 'click', 'dblclick', 'contextmenu', 'keyup', 'keypress', 'wheel']) {
+        box.addEventListener(type, event => event.stopPropagation());
+      }
+      box.addEventListener('keydown', event => {
+        event.stopPropagation();
+        if (event.key === 'Escape') { event.preventDefault(); close(false); }
+        else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); close(true); }
+      });
+      box.addEventListener('blur', () => close(true));
+      element.appendChild(box);
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    };
+    if (!state.source.readonly) {
+      const noteButton = document.createElement('button');
+      noteButton.type = 'button';
+      noteButton.className = 'nge-ann-row-note';
+      noteButton.title = annotation.description ? 'Edit the note' : 'Add a note';
+      noteButton.setAttribute('aria-label', noteButton.title);
+      noteButton.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.6 12 2.5 13.5 4 10.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+      noteButton.classList.toggle('nge-ann-row-note--has', !!annotation.description);
+      noteButton.addEventListener('mousedown', event => event.stopPropagation());
+      noteButton.addEventListener('click', event => {
+        event.stopPropagation();
+        event.preventDefault();
+        openNoteEditor();
+      });
+      rowActions.appendChild(noteButton);
+    }
+
     const columnWidths: number[] = [];
 
     let numRows = 0;
@@ -2417,6 +2480,7 @@ export function makeAnnotationListElement(layer: UserLayerWithAnnotations, annot
       description.classList.add('neuroglancer-annotation-description');
       description.textContent = annotation.description;
       element.appendChild(description);
+      noteText = description;
     }
     icon.style.gridRow = `span ${numRows}`;
     // Added last and pinned to the first line: placed earlier, it sat in the

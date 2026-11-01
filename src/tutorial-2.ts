@@ -625,11 +625,8 @@ This is your new layer's side panel. Let's give the layer a name of its own.
     text: `
 The Pyr gem tool is already picked. <strong>CTRL+CLICK anywhere on the cell</strong> to drop a gem. Try placing a few!
 
-Each gem is listed in the panel: click one there to add a note to it, or use the trash icon on its row to remove it. Your gems stay with you for the rest of the tutorial. Press Next when you're ready to move on.`,
+Each gem is listed in the panel. Hover its row: the pencil adds a note to it, and the trash icon removes it. Your gems stay with you for the rest of the tutorial. Press Next when you're ready to move on.`,
     position: OVER_3D,
-    // A click on a gem no longer reopens a closed Selection panel, and that
-    // panel is where its note is written: open it for this step.
-    onEnter: () => { try { (window as any).viewer.selectionDetailsState.location.visible = true; } catch { /* no viewer yet */ } },
   },
   {
     part: "Part 2 of 4 · Working with cells",

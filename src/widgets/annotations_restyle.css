@@ -718,3 +718,12 @@ textarea.neuroglancer-annotation-details-description:focus {
 .neuroglancer-annotation-toolbox .neuroglancer-icon,
 .neuroglancer-annotation-toolbox .neuroglancer-icon.nge-polyline-tool { width: 42px; min-width: 42px; padding: 0; box-sizing: border-box; }
 .neuroglancer-annotation-toolbox input.neuroglancer-color-widget { width: 42px; margin: 0; box-sizing: border-box; }
+
+/* The note on a row (Ames 2026-11-01): a pencil beside jump and delete, always
+   showing once the row has a note; the note reads in full under the row, and
+   is written in a box right there. */
+.nge-ann-row-note { box-sizing: border-box; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: #e8d27a; opacity: 0.8; cursor: pointer; }
+.nge-ann-row-note:hover { opacity: 1; color: #fff3b8; background: rgba(245, 209, 66, 0.18); }
+.nge-ann-row-note--has { visibility: visible; }
+.neuroglancer-annotation-list-entry > .neuroglancer-annotation-description { white-space: pre-wrap; overflow-wrap: anywhere; text-overflow: clip; }
+.nge-ann-note-editor { grid-column: dim / -1; box-sizing: border-box; width: 100%; margin: 3px 0 4px; padding: 4px 6px; resize: vertical; font: 12px/1.35 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.9); border: 1px solid rgba(245, 209, 66, 0.55); border-radius: 5px; outline: none; }
