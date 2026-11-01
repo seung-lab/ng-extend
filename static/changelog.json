@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-01T13:16:29Z",
+      "title": "See through the slice in 3D",
+      "digest": "minor",
+      "items": [
+        "A new slider beside Sections in the 3D view sets how solid the 2D slice is there, so you can see the cells behind it. The 2D view stays as it is. Thanks to lalonso."
+      ]
+    },
+    {
       "at": "2026-11-01T12:49:18Z",
       "title": "Notes right on your annotations",
       "digest": "minor",
