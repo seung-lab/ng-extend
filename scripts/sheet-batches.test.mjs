@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {nextBatch} from './sheet-batches.mjs';
+import {nextBatch, untouched} from './sheet-batches.mjs';
 
 const batch = {sheetId: 'NEW', size: 2, whenLeft: 1, skipIndexes: ['3']};
 const cells = [1, 2, 3, 4, 5].map(i => ({index: String(i), point: [i, i, i]}));
@@ -28,6 +28,14 @@ test('tasks from other sources do not hold the batch back', () => {
   const r = nextBatch(cells, [task(1, 'pending', null, 'x/OLD/edit'), task(2, 'pending', null, 'x/OLD/edit'), {status: 'pending', assigned_to: null, notes: 'Hunt cell'}], batch);
   assert.equal(r.unclaimed, 0);
   assert.equal(r.candidates[0].index, '1');
+});
+test('only a cell nobody has proofread is untouched', () => {
+  assert.equal(untouched({}, '121'), true);
+  assert.equal(untouched({121: {n_mergers: 1, n_splits: 0}}, '121'), true);
+  assert.equal(untouched({121: {n_mergers: 2, n_splits: 0}}, '121'), false);
+  assert.equal(untouched({121: {n_mergers: 1, n_splits: 1}}, '121'), false);
+  assert.equal(untouched({121: {n_mergers: 1, n_splits: 0}, 5: {n_mergers: 1, n_splits: 0}}, '121'), false);
+  assert.equal(untouched({5: {n_mergers: 1, n_splits: 0}}, '121'), false);
 });
 test('a finished list is never due', () => {
   assert.equal(nextBatch([cells[0]], [task(1, 'completed', 'a')], batch).due, false);

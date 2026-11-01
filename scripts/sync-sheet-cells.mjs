@@ -47,7 +47,7 @@
  *               --statuses.
  */
 
-import { nextBatch } from './sheet-batches.mjs';
+import { nextBatch, untouched } from './sheet-batches.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -98,6 +98,12 @@ const SHEETS = [
         sheetId: '1lAX3pMqhevs-1JSs4VkWYQIIFKmQp1KDF2ND8QuZVXo',
         size: 50,
         whenLeft: 10,
+        // Players start from a cell nobody has proofread (Ames 2026-11-01). A
+        // cell with other edits is passed over: its pre-edit ID cannot be
+        // edited, and undoing edits would reverse other people's work. User
+        // 121's single merge (Forrest Collman) is on 92 listed cells; on 59 it
+        // is the only edit, and the one read was from December 2022: setup.
+        setupEditor: '121',
         // Measured 2026-11-01: their cell covers under 30 um2 of a 12 um box
         // around the point, where most somas cover 60 to 140, so the point may
         // not be in a cell body. #73's cell was already a Sandbox task.
@@ -250,6 +256,7 @@ async function resolvePoints(byPoint, points) {
   const py = process.env.PYTHON || 'python3';
   const args = [new URL('./resolve_points.py', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), byPoint.cloudpath, byPoint.resolution];
   if (byPoint.nucleus) args.push('--nucleus');
+  if (byPoint.batch) args.push('--edits');
   const r = spawnSync(py, args,
     { input: JSON.stringify(points), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`resolve_points failed: ${(r.stderr || '').slice(-800)}`);
@@ -321,7 +328,8 @@ async function syncBatchSheet(cfg) {
   console.log(`[cells] list rows: ${cells.length}, not added yet: ${candidates.length}, unclaimed now: ${unclaimed} (next batch at ${batch.whenLeft} or fewer)`);
   if (!due) { console.log('[cells] nothing to add'); return 0; }
 
-  // A point can land on nothing, or on a cell already listed, so keep going
+  // A point can land on nothing, on a cell already listed or on one already
+  // proofread, so keep going
   // down the list until the batch is full.
   const roots = new Set(tasks.map(t => String(t.segment_id)));
   const toInsert = [];
@@ -333,6 +341,7 @@ async function syncBatchSheet(cfg) {
       const r = resolved[i];
       if (!r || r.root === '0') { console.log(`[cells] #${c.index} ${c.coords}: no cell at this point, skipped`); return; }
       if (roots.has(r.root)) { console.log(`[cells] #${c.index} ${c.coords}: cell ${r.root} is already listed, skipped`); return; }
+      if (!untouched(r.editors, batch.setupEditor)) { console.log(`[cells] #${c.index} ${c.coords}: cell ${r.root} has been proofread, skipped`); return; }
       roots.add(r.root);
       toInsert.push({
         segment_id: r.root,

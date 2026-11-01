@@ -4,6 +4,14 @@
  * batch at a time, in the sheet's order, once few of the last ones are left.
  */
 
+/** True when nobody has proofread this cell: no edits at all, or only the
+ *  setup merge (Ames 2026-11-01: players start from the pre-proofread cell).
+ *  @param editors {user id: {n_mergers, n_splits}} from the cell's history */
+export function untouched(editors, setupEditor) {
+  return Object.entries(editors || {}).every(([user, e]) =>
+    user === setupEditor && (e.n_mergers || 0) <= 1 && !(e.n_splits || 0));
+}
+
 /** @param cells rows of the sheet: {index, point:[x,y,z]}
  *  @param tasks the dataset's tasks: {status, assigned_to, notes, source_sheet_url, claim_point_x, _y, _z}
  *  @param batch {sheetId, size, whenLeft, skipIndexes}

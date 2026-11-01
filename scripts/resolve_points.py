@@ -19,6 +19,9 @@ covers) and, when a cell is found, replaces sv/root with a supervoxel and
 root of the CELL. A cell covering under MIN_SHARE of the ring is not
 trusted: the entry keeps the nucleus and gets "cell": null.
 
+--edits: also report who has edited each cell, as "editors":
+{user id: {"n_mergers": 1, "n_splits": 0}, ...} (Sandbox, Ames 2026-11-01).
+
 Token: CAVE_SERVICE_TOKEN (falls back to ~/.cloudvolume/secrets for local runs).
 """
 import json
@@ -79,6 +82,19 @@ def cell_around(cv, cv_agg, cv_sv, mip, point, nucleus_root):
     return (root if share >= MIN_SHARE else None), round(share, 3), (sv[0][0] if sv else None)
 
 
+def editors_of(cloudpath, token, root):
+    import requests
+    if not token:
+        with open(os.path.expanduser('~/.cloudvolume/secrets/cave-secret.json')) as f:
+            token = json.load(f)['token']
+    base = cloudpath.replace('graphene://', '').replace('middleauth+', '').replace('/segmentation/table/', '/segmentation/api/v1/table/')
+    def read():
+        r = requests.get(f'{base}/root/{root}/change_log', headers={'Authorization': f'Bearer {token}'}, timeout=60)
+        r.raise_for_status()
+        return r.json().get('user_info', {})
+    return retry(read, f'history {root}')
+
+
 def main():
     cloudpath, res = sys.argv[1], [float(v) for v in sys.argv[2].split(',')]
     nucleus = '--nucleus' in sys.argv[3:]
@@ -118,6 +134,9 @@ def main():
                 o['cell'] = str(cell)
                 o['sv'], o['root'] = str(cell_sv), str(cell)
             print(f"[resolve] {o['point']}: nucleus {o['nucleus']} cell {o['cell']} ({share:.0%} of the ring)", file=sys.stderr)
+    if '--edits' in sys.argv[3:]:
+        for o in out:
+            o['editors'] = editors_of(cloudpath, token, o['root']) if o['root'] != '0' else {}
     json.dump(out, sys.stdout)
 
 
