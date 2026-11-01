@@ -44,6 +44,7 @@ import {MultipleScaleBarTextures, ScaleBarOptions} from 'neuroglancer/widget/sca
 import {RPC, SharedObject} from 'neuroglancer/worker_rpc';
 import {PerspectiveViewAnnotationLayer} from 'neuroglancer/annotation/renderlayer';
 import {drawNgeProps, ngeHasProps} from 'neuroglancer/perspective_view/nge_props';
+import {ngeSliceAlpha} from 'neuroglancer/perspective_view/nge_slice_alpha';
 
 export interface PerspectiveViewerState extends RenderedDataViewerState {
   wireFrame: WatchableValueInterface<boolean>;
@@ -275,6 +276,24 @@ export class PerspectivePanel extends RenderedDataPanel {
       showSliceViewsLabel.className = 'perspective-panel-show-slice-views neuroglancer-noselect';
       showSliceViewsLabel.appendChild(document.createTextNode('Sections'));
       showSliceViewsLabel.appendChild(showSliceViewsCheckbox.element);
+      // nge: how solid the slice is in this view (report 322).
+      const alphaSlider = document.createElement('input');
+      alphaSlider.type = 'range';
+      alphaSlider.min = '0.05';
+      alphaSlider.max = '1';
+      alphaSlider.step = '0.05';
+      alphaSlider.value = String(Math.max(0.05, ngeSliceAlpha.value));
+      alphaSlider.className = 'perspective-panel-show-slice-views nge-slice-opacity';
+      alphaSlider.title = 'How solid the slice is in 3D. Lower it to see the cells behind it.';
+      alphaSlider.setAttribute('aria-label', 'Slice opacity in 3D');
+      for (const type of ['mousedown', 'pointerdown', 'click', 'dblclick', 'wheel', 'keydown', 'keyup']) {
+        alphaSlider.addEventListener(type, event => event.stopPropagation());
+      }
+      alphaSlider.addEventListener('input', () => { ngeSliceAlpha.value = Number(alphaSlider.value); });
+      const showAlphaSlider = () => { alphaSlider.style.display = viewer.showSliceViews.value ? '' : 'none'; };
+      showAlphaSlider();
+      this.registerDisposer(viewer.showSliceViews.changed.add(showAlphaSlider));
+      showSliceViewsLabel.appendChild(alphaSlider);
       this.element.appendChild(showSliceViewsLabel);
     }
     // nge: the 3D view, for its lighter cursor (ng-override.css).
@@ -286,6 +305,7 @@ export class PerspectivePanel extends RenderedDataPanel {
     this.registerDisposer(viewer.showScaleBar.changed.add(() => this.scheduleRedraw()));
     this.registerDisposer(viewer.scaleBarOptions.changed.add(() => this.scheduleRedraw()));
     this.registerDisposer(viewer.showSliceViews.changed.add(() => this.scheduleRedraw()));
+    this.registerDisposer(ngeSliceAlpha.changed.add(() => this.scheduleRedraw()));
     this.registerDisposer(viewer.showAxisLines.changed.add(() => this.scheduleRedraw()));
     this.registerDisposer(
         viewer.crossSectionBackgroundColor.changed.add(() => this.scheduleRedraw()));
@@ -763,6 +783,17 @@ export class PerspectivePanel extends RenderedDataPanel {
     } = renderContext;
 
     const showSliceViews = this.viewer.showSliceViews.value;
+    // nge: see-through, it is blended over what is already drawn, colour only:
+    // it hides nothing behind it, and clicks go through to the cells.
+    const {gl} = this;
+    const alpha = ngeSliceAlpha.value;
+    const faded = alpha < 1;
+    if (faded) {
+      gl.drawBuffers(this.offscreenFramebuffer.singleAttachmentList);
+      gl.depthMask(false);
+      gl.enable(WebGL2RenderingContext.BLEND);
+      gl.blendFunc(WebGL2RenderingContext.SRC_ALPHA, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA);
+    }
     for (const [sliceView, unconditional] of this.sliceViews) {
       if (!unconditional && !showSliceViews) {
         continue;
@@ -793,7 +824,12 @@ export class PerspectivePanel extends RenderedDataPanel {
       backgroundColor[3] = 1;
       sliceViewRenderHelper.draw(
           sliceView.offscreenFramebuffer.colorBuffers[0].texture, mat,
-          vec4.fromValues(factor, factor, factor, 1), tempVec4, 0, 0, 1, 1);
+          vec4.fromValues(factor, factor, factor, alpha), tempVec4, 0, 0, 1, 1, faded);
+    }
+    if (faded) {
+      gl.disable(WebGL2RenderingContext.BLEND);
+      gl.depthMask(true);
+      renderContext.bindFramebuffer();
     }
   }
 

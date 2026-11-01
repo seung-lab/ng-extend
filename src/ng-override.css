@@ -2129,3 +2129,6 @@ body.nge-cursor-xl .nge-3d-panel.neuroglancer-rendered-data-panel {
   font: 11px Inter, system-ui, sans-serif; color: rgba(200, 215, 240, 0.65);
 }
 .nge-lb-note-count { flex: none; }
+
+/* How solid the 2D slice is in the 3D view (report 322). */
+input.nge-slice-opacity { width: 70px; height: 12px; margin: 0 0 0 6px; vertical-align: middle; accent-color: #7ee0ff; cursor: pointer; }
