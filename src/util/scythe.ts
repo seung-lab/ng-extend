@@ -26,6 +26,9 @@ import {rememberRemoved} from './undelete';
 import {useUserPreferencesStore} from '../store';
 import scytheCursor from '../../static/tags/scythe-reap-cursor.png';
 import scytheImage from '../../static/tags/scythe-reap.png';
+import {setNgeProps, type NgeProp, type NgePropMesh} from 'neuroglancer/perspective_view/nge_props';
+import {mat4} from 'neuroglancer/util/geom';
+import {loadGlbModel} from './glb';
 
 const CRUMBLE_MS = 2800;
 
@@ -70,36 +73,184 @@ function cellUnderMouse(): {id: any, key: string, visible: any} | null {
   return {id: id.clone ? id.clone() : id, key: `${id.low},${id.high}`, visible};
 }
 
-/** The picture's blade tip and handle end, in pixels (static/tags/scythe-reap.png). */
+/** The picture's blade tip and handle end, in pixels (static/tags/scythe-reap.png),
+ *  and how much smaller the cursor is. */
 const TIP = [8, 128], HANDLE = [188, 184];
-const SWOOP_MS = 420;
+const CURSOR_SCALE = 48 / 192;
+const SWOOP_MS = 700;
+/** The swing's parts, as shares of it: growing and winding up, then the cut. */
+const WINDUP = 0.4, HIT = 0.7;
+const WIND_DEG = 42, FOLLOW_DEG = -35;
 let swoopTimer: ReturnType<typeof setTimeout> | null = null;
-/** The scythe swings about its handle end, the blade's tip passing through
- *  (x, y) halfway, standing in for the cursor. Returns how long until
- *  the blade reaches the cell (Ames 2026-11-01: "swoop on reap like it is
- *  slicing the branch away"). Reduced motion: no swoop. */
+/** Ames's 3D scythe (static/halloween/scythe.glb), once it has loaded; until
+ *  then, or if it cannot load, the picture swings instead. */
+let swoopModel: NgePropMesh | null = null;
+let swoopModelAsked = false;
+function loadSwoopModel() {
+  if (swoopModelAsked) return;
+  swoopModelAsked = true;
+  loadGlbModel('halloween/scythe.glb').then(m => { swoopModel = m; }, e => console.warn('[scythe] the 3D scythe could not be loaded:', e?.message));
+}
+/** Where the blade's tip and the handle's end are in the model, as glb.ts
+ *  leaves it, and its size on screen at full size, in pixels. */
+const MODEL_TIP = [-0.463, -0.003, 0], MODEL_HANDLE = [0.396, -0.5, 0], MODEL_PX = 190;
+/** It leans: the tip starts behind the cell and comes on toward the eye. */
+const WIND_LEAN = -50, FOLLOW_LEAN = 45;
+/** The swing's turn at time t, its size so far and how solid it is. */
+function swingAt(t: number) {
+  let deg: number, lean: number, grown = 1, opacity = 1;
+  if (t < WINDUP) {
+    const k = t / WINDUP;
+    grown = k * k * (3 - 2 * k);
+    deg = WIND_DEG * grown;
+    lean = WIND_LEAN * grown;
+  } else if (t < HIT) {
+    // Slow at the top of the swing, fastest at the cut.
+    const k = (t - WINDUP) / (HIT - WINDUP);
+    deg = WIND_DEG * (1 - k * k);
+    lean = WIND_LEAN * (1 - k * k);
+  } else {
+    const k = (t - HIT) / (1 - HIT);
+    const e = 1 - (1 - k) * (1 - k);
+    deg = FOLLOW_DEG * e;
+    lean = FOLLOW_LEAN * e;
+    opacity = 1 - k * k;
+  }
+  return {deg, lean, grown, opacity};
+}
+/** The model in the scene, so branches in front of the blade hide it: it is
+ *  laid out in pixels on the view through the point under the mouse, turned,
+ *  and that layout is carried over to the viewer's coordinates. False: no
+ *  view or point to swing in, so the picture does it. */
+function swoop3D(x: number, y: number, ms: number): boolean {
+  const viewer = viewerNow();
+  const mouse = viewer?.mouseState;
+  let panel: any = null;
+  for (const pn of viewer?.display?.panels ?? []) {
+    if (!pn?.element?.classList?.contains('nge-3d-panel')) continue;
+    const r = pn.element.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) panel = pn;
+  }
+  const pp = panel?.projectionParameters?.value;
+  if (!pp || !mouse?.position) return false;
+  const info = pp.displayDimensionRenderInfo;
+  const at = [0, 1, 2].map(i => mouse.position[info.displayDimensionIndices[i]] ?? 0);
+  const nm = [0, 1, 2].map(i => (info.displayDimensionScales[i] || 1e-9) * 1e9);
+  const rect = panel.element.getBoundingClientRect();
+  const place = () => {
+    const now = panel.projectionParameters.value;
+    const vp = now.viewProjectionMat, inv = now.invViewProjectionMat;
+    const w = vp[3] * at[0] + vp[7] * at[1] + vp[11] * at[2] + vp[15];
+    if (w <= 0) return null;
+    const ndc = [0, 1, 2].map(i => (vp[i] * at[0] + vp[i + 4] * at[1] + vp[i + 8] * at[2] + vp[i + 12]) / w);
+    const back = (a: number, b: number, c: number) => {
+      const g = inv[3] * a + inv[7] * b + inv[11] * c + inv[15];
+      return [0, 1, 2].map(i => (inv[i] * a + inv[i + 4] * b + inv[i + 8] * c + inv[i + 12]) / g);
+    };
+    const base = back(ndc[0], ndc[1], ndc[2]);
+    // One pixel right and up on screen, in nm; the same length toward the eye.
+    const right = back(ndc[0] + 2 / rect.width, ndc[1], ndc[2]).map((v, i) => (v - base[i]) * nm[i]);
+    const up = back(ndc[0], ndc[1] + 2 / rect.height, ndc[2]).map((v, i) => (v - base[i]) * nm[i]);
+    const eye = back(ndc[0], ndc[1], ndc[2] - 0.001).map((v, i) => (v - base[i]) * nm[i]);
+    const px = Math.hypot(right[0], right[1], right[2]);
+    const eyeLen = Math.hypot(eye[0], eye[1], eye[2]) || 1;
+    const toEye = eye.map(v => v / eyeLen * px);
+    return {right: right.map((v, i) => v / nm[i]), up: up.map((v, i) => v / nm[i]), toEye: toEye.map((v, i) => v / nm[i])};
+  };
+  const prop: NgeProp = {mesh: swoopModel!, modelMat: mat4.create(), alpha: 1, dissolve: 0, seed: 0.5, glow: [0.08, 0.08, 0.1], rim: [1, 0.85, 0.5], shade: 1};
+  const arm = [0, 1, 2].map(i => (MODEL_TIP[i] - MODEL_HANDLE[i]) * MODEL_PX);
+  const set = (t: number) => {
+    const axes = place();
+    if (!axes) { prop.alpha = 0; return; }
+    const {deg, lean, grown, opacity} = swingAt(t);
+    prop.alpha = opacity;
+    // Screen y is up here, so a clockwise turn (the picture's deg) is negative.
+    const a = -deg * Math.PI / 180, b = lean * Math.PI / 180;
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+    // Lean about the up axis, then turn in the plane of the screen.
+    const turn = (v: number[]) => {
+      const vx = v[0] * cb + v[2] * sb, vz = -v[0] * sb + v[2] * cb;
+      return [vx * ca - v[1] * sa, vx * sa + v[1] * ca, vz];
+    };
+    const scale = MODEL_PX * (CURSOR_SCALE + (1 - CURSOR_SCALE) * grown);
+    const turned = turn(arm);
+    const tipAt = [0, 1, 2].map(i => (turned[i] - arm[i]) * grown);
+    const tipModel = turn(MODEL_TIP);
+    const toGlobal = (q: number[], k: number) => axes.right[k] * q[0] + axes.up[k] * q[1] + axes.toEye[k] * q[2];
+    const m = prop.modelMat;
+    for (let col = 0; col < 3; col++) {
+      const q = turn([col === 0 ? 1 : 0, col === 1 ? 1 : 0, col === 2 ? 1 : 0]).map(v => v * scale);
+      for (let k = 0; k < 3; k++) m[col * 4 + k] = toGlobal(q, k);
+    }
+    const origin = [0, 1, 2].map(i => tipAt[i] - tipModel[i] * scale);
+    for (let k = 0; k < 3; k++) m[12 + k] = at[k] + toGlobal(origin, k);
+  };
+  set(0);
+  setNgeProps([prop], 'scythe');
+  const start = performance.now();
+  const step = () => {
+    const t = Math.min(1, (performance.now() - start) / ms);
+    set(t);
+    try { viewer.display.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    if (t < 1) requestAnimationFrame(step); else setNgeProps([], 'scythe');
+  };
+  requestAnimationFrame(step);
+  return true;
+}
+/** The cursor grows into the full scythe, winding up, then swings about its
+ *  handle end with the blade's tip passing through (x, y), and fades as it
+ *  follows through (Ames 2026-11-01: "swoop on reap like it is slicing the
+ *  branch away", "the cursor zoom larger and transition INTO the scythe").
+ *  It starts exactly over the cursor, which is hidden meanwhile. Returns how
+ *  long until the blade reaches the cell. Reduced motion: no swoop. */
 function swoop(x: number, y: number): number {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
   ensureStyle();
+  // window.__ngeSwoopMs slows it down, for a look at it frame by frame.
+  const ms = Number((window as any).__ngeSwoopMs) || SWOOP_MS;
   document.body.classList.add('nge-scythe-swoop');
   if (swoopTimer) clearTimeout(swoopTimer);
-  swoopTimer = setTimeout(() => document.body.classList.remove('nge-scythe-swoop'), SWOOP_MS);
+  swoopTimer = setTimeout(() => document.body.classList.remove('nge-scythe-swoop'), ms);
+  if (swoopModel && swoop3D(x, y, ms)) return ms * HIT;
   const el = document.createElement('img');
   el.src = scytheImage;
   el.alt = '';
-  el.style.cssText = `position:fixed;left:${x + (HANDLE[0] - TIP[0]) - HANDLE[0]}px;top:${y + (HANDLE[1] - TIP[1]) - HANDLE[1]}px;`
-    + `width:192px;height:192px;pointer-events:none;z-index:20000;transform-origin:${HANDLE[0]}px ${HANDLE[1]}px;`;
+  el.style.cssText = `position:fixed;left:${x - TIP[0]}px;top:${y - TIP[1]}px;width:192px;height:192px;`
+    + `pointer-events:none;z-index:20000;transform-origin:${TIP[0]}px ${TIP[1]}px;`;
   document.body.appendChild(el);
-  // Tip high to tip low: a downward cut.
-  const anim = el.animate([
-    {transform: 'rotate(42deg)', opacity: 0, offset: 0},
-    {transform: 'rotate(30deg)', opacity: 1, offset: 0.2, easing: 'cubic-bezier(.5, 0, .9, .6)'},
-    {transform: 'rotate(0deg)', opacity: 1, offset: 0.5, easing: 'cubic-bezier(.2, .6, .4, 1)'},
-    {transform: 'rotate(-32deg)', opacity: 0, offset: 1},
-  ], {duration: SWOOP_MS, fill: 'forwards'});
+  // Where the blade's tip is, off the click, with the scythe turned deg about
+  // its handle end (which rests where it would be at full size, unturned).
+  const armX = TIP[0] - HANDLE[0], armY = TIP[1] - HANDLE[1];
+  const pose = (deg: number, scale: number, grown: number, opacity: number, offset: number): Keyframe => {
+    const r = deg * Math.PI / 180;
+    const dx = (armX * Math.cos(r) - armY * Math.sin(r) - armX) * grown;
+    const dy = (armX * Math.sin(r) + armY * Math.cos(r) - armY) * grown;
+    return {offset, opacity, transform: `translate(${dx}px, ${dy}px) rotate(${deg}deg) scale(${scale})`};
+  };
+  const frames: Keyframe[] = [];
+  const STEPS = 24;
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS;
+    let deg: number, grown = 1, opacity = 1;
+    if (t < WINDUP) {
+      const k = t / WINDUP;
+      grown = k * k * (3 - 2 * k);
+      deg = WIND_DEG * grown;
+    } else if (t < HIT) {
+      // Slow at the top of the swing, fastest at the cut.
+      const k = (t - WINDUP) / (HIT - WINDUP);
+      deg = WIND_DEG * (1 - k * k);
+    } else {
+      const k = (t - HIT) / (1 - HIT);
+      deg = FOLLOW_DEG * (1 - (1 - k) * (1 - k));
+      opacity = 1 - k * k;
+    }
+    frames.push(pose(deg, CURSOR_SCALE + (1 - CURSOR_SCALE) * grown, grown, opacity, t));
+  }
+  const anim = el.animate(frames, {duration: ms, fill: 'forwards'});
   anim.onfinish = anim.oncancel = () => el.remove();
-  setTimeout(() => el.remove(), SWOOP_MS + 200);
-  return SWOOP_MS / 2;
+  setTimeout(() => el.remove(), ms + 200);
+  return ms * HIT;
 }
 
 function reap(cell: {id: any, key: string, visible: any}, x: number, y: number) {
@@ -118,8 +269,9 @@ function reap(cell: {id: any, key: string, visible: any}, x: number, y: number) 
   if (document.body.classList.contains('nge-calm')) { hide(); return; }
   // window.__ngeCrumbleMs slows it down, for a look at it frame by frame.
   const ms = Number((window as any).__ngeCrumbleMs) || CRUMBLE_MS;
-  playVanish();
   const hit = swoop(x, y);
+  // The sound starts with the cut, not the wind up.
+  setTimeout(playVanish, hit * WINDUP / HIT);
   setTimeout(() => {
     ngeCrumble(cell.key, ms);
     try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
@@ -179,6 +331,7 @@ export function startScythe(once = false) {
     vanish = new Audio('sfx/scythe-vanish.mp3');
     vanish.preload = 'auto';
     new Image().src = scytheImage;
+    loadSwoopModel();
   }
   ensureStyle();
   document.body.classList.add('nge-scythe');
