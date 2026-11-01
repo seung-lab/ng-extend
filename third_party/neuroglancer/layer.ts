@@ -1163,7 +1163,9 @@ export class TrackableDataSelectionState extends RefCounted implements
       // soon reading "Annotation not found" (Ames 2026-10-24: "why this
       // selection box keeps being activated"). They are still selected; the
       // panel just is not forced open for them.
-      if ((userLayer as any).type !== 'segmentation') this.location.visible = true;
+      // nge: a selection no longer reopens the panel you closed (Ames
+      // 2026-11-01); only the pin toggle, an explicit ask, does.
+      if ((userLayer as any).type !== 'segmentation' && pin === 'toggle') this.location.visible = true;
       if (pin === true) {
         this.pin.value = true;
       } else if (pin === 'toggle') {

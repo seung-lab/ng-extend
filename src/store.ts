@@ -5834,6 +5834,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .eq('target_type', 'all')
       .is('chat_posted_at', null)
       .lte('send_at', now)
+      // Monthly Champions is the job's: Nurro and each winner's award line
+      // (scripts/post-due-chat-announcements.mjs), not one announcement here.
+      .not('title', 'like', '🏆 Monthly Champions,%')
       // Don't announce something that already expired — this also skips a stale
       // backlog of expired test notifications when this poster first ships.
       .or(`expires_at.is.null,expires_at.gt.${now}`)

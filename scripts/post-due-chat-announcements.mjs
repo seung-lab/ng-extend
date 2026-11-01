@@ -119,8 +119,8 @@ async function postMonthlyChampions(n) {
   const ids = [...new Set(awards.map(a => a.user_id))];
   const users = new Map((await rest(`users?id=in.(${ids.join(',')})&select=id,username,display_name`)).map(u => [u.id, u]));
   const sections = [
-    { metric: 'edits', intro: `🎉 Congratulations to ${monthName}'s Top Editors!` },
-    { metric: 'cells', intro: `🧬 And to ${monthName}'s Top Contributors, who completed the most cells!` },
+    { metric: 'edits', intro: `Congratulations to ${monthName}'s Top Editors! 🎉` },
+    { metric: 'cells', intro: `And to ${monthName}'s Top Contributors, who completed the most cells! 🧠` },
   ];
   for (const { metric, intro } of sections) {
     const lines = PLACES.flatMap(place => {
