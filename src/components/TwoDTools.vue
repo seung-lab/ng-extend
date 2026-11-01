@@ -1,17 +1,45 @@
 <script setup lang="ts">
 /** The 2D Tools box, a prototype (util/two_d_tools.ts). */
-import { computed, onMounted } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { twoD, startTwoDTools, addPair, setSide, renamePair, removePair, goTo, jumpAcross, removeShape, clearSlice, capture, downloadCompare, LASSO_COLORS, type JumpPair } from '../util/two_d_tools';
 
 onMounted(startTwoDTools);
 const shapesHere = computed(() => twoD.shapes.filter(s => s.z === twoD.z));
 const hasCapture = computed(() => twoD.captures.some(Boolean));
+// Drag the box by its head, kept on screen. It stays where you left it.
+const POS_KEY = 'nge_2d_tools_pos';
+const box = ref<HTMLElement | null>(null);
+const pos = ref<{ left: number; top: number } | null>((() => {
+  try { const v = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); return Number.isFinite(v?.left) && Number.isFinite(v?.top) ? v : null; } catch { return null; }
+})());
+function keepOnScreen(left: number, top: number) {
+  const r = box.value?.getBoundingClientRect();
+  return {
+    left: Math.max(0, Math.min(left, window.innerWidth - (r?.width ?? 300))),
+    top: Math.max(0, Math.min(top, window.innerHeight - 40)),
+  };
+}
+function startDrag(e: MouseEvent) {
+  if (e.button !== 0 || (e.target as HTMLElement).closest('button') || !box.value) return;
+  e.preventDefault();
+  const r = box.value.getBoundingClientRect();
+  const dx = e.clientX - r.left, dy = e.clientY - r.top;
+  const move = (m: MouseEvent) => { pos.value = keepOnScreen(m.clientX - dx, m.clientY - dy); };
+  const up = () => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    try { localStorage.setItem(POS_KEY, JSON.stringify(pos.value)); } catch { /* blocked */ }
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+watch(() => twoD.open, open => { if (open && pos.value) void nextTick(() => { pos.value = keepOnScreen(pos.value!.left, pos.value!.top); }); });
 const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputElement).value.trim());
 </script>
 
 <template>
-  <div v-if="twoD.open" class="nge-2d" @keydown.stop @keyup.stop @keypress.stop>
-    <div class="nge-2d-head">
+  <div v-if="twoD.open" ref="box" class="nge-2d" :style="pos ? { left: pos.left + 'px', top: pos.top + 'px' } : undefined" @keydown.stop @keyup.stop @keypress.stop>
+    <div class="nge-2d-head" title="Drag to move" @mousedown="startDrag">
       <span class="nge-2d-title">2D Tools <span class="nge-2d-tag">prototype</span></span>
       <button type="button" class="nge-2d-x" aria-label="Close" @click="twoD.open = false; twoD.lasso = false">×</button>
     </div>
@@ -68,7 +96,7 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
 .nge-2d-open { position: absolute; top: 8px; right: 40px; z-index: 5; padding: 3px 9px; font: 600 11px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.82); border: 1px solid rgba(126, 224, 255, 0.45); border-radius: 6px; cursor: pointer; }
 .nge-2d-open:hover { background: rgba(30, 60, 90, 0.9); }
 .nge-2d { position: fixed; left: 360px; top: 100px; z-index: 900; width: 300px; max-height: calc(100vh - 170px); overflow-y: auto; padding: 10px 12px; font: 12px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.95); border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 10px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5); }
-.nge-2d-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.nge-2d-head { cursor: move; user-select: none; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .nge-2d-title { font-weight: 700; font-size: 13px; }
 .nge-2d-tag { margin-left: 4px; padding: 0 5px; font-size: 10px; font-weight: 600; color: #ffd24d; border: 1px solid rgba(255, 210, 77, 0.5); border-radius: 8px; }
 .nge-2d section { padding: 7px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
