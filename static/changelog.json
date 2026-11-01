@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-01T12:25:41Z",
+      "title": "Champions in chat, and fewer pop-ups",
+      "digest": "minor",
+      "items": [
+        "Monthly Champions now get a proper announcement in chat: Nurro congratulates the Top Editors and Top Contributors, then gold, silver and bronze each get their moment.",
+        "Clicking an annotation no longer reopens the Selection panel if you closed it. The Selection icon in the top bar brings it back.",
+        "In the Cilia Quest, submitting a cell now opens your next claimed cell. Thanks to toknow."
+      ]
+    },
+    {
       "at": "2026-11-01T12:02:28Z",
       "title": "Safer jumps, tidier chat and tutorial fixes",
       "digest": "minor",

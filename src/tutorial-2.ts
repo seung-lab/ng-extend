@@ -627,6 +627,9 @@ The Pyr gem tool is already picked. <strong>CTRL+CLICK anywhere on the cell</str
 
 Each gem is listed in the panel: click one there to add a note to it, or use the trash icon on its row to remove it. Your gems stay with you for the rest of the tutorial. Press Next when you're ready to move on.`,
     position: OVER_3D,
+    // A click on a gem no longer reopens a closed Selection panel, and that
+    // panel is where its note is written: open it for this step.
+    onEnter: () => { try { (window as any).viewer.selectionDetailsState.location.visible = true; } catch { /* no viewer yet */ } },
   },
   {
     part: "Part 2 of 4 · Working with cells",
