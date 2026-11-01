@@ -193,9 +193,11 @@ function stopResize() {
 // Click away and chat shrinks to its latest messages, background fading out;
 // click back in and it takes its full size again. The bottom edge stays put.
 const QUIET_H = 150;
-// Clicked away stays clicked away after a reload (Celia, report 2026-10-30).
+// Chat opens in its clicked away view, and left open stays open after a
+// reload (Celia, report 316; Ames 2026-11-01: "should already be on this by
+// default").
 const FADED_KEY = 'nge_chat_faded';
-const chatFocused = ref((() => { try { return localStorage.getItem(FADED_KEY) !== '1'; } catch { return true; } })());
+const chatFocused = ref((() => { try { return localStorage.getItem(FADED_KEY) === '0'; } catch { return false; } })());
 watch(chatFocused, v => { try { localStorage.setItem(FADED_KEY, v ? '0' : '1'); } catch { /* a private window */ } });
 function onDocPointerDown(e: PointerEvent) {
   const t = e.target as HTMLElement | null;
