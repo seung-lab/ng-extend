@@ -6,6 +6,7 @@ import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points';
 import { scytheActive, startScythe, stopScythe } from '../util/scythe';
+import scytheIcon from '../../static/tags/scythe-reap.png';
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -420,9 +421,9 @@ function cancelTool() {
                     :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">{{ previewBusy ? 'Previewing…' : 'Preview' }}</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
             <!-- Clears a piece from view; never edits (src/util/scythe.ts). -->
-            <button v-if="!tutorialOnScreen" class="nge-smo-action-btn clear-btn" :disabled="totalPoints > 0 && !scytheActive"
+            <button v-if="!tutorialOnScreen" class="nge-smo-action-btn clear-btn nge-smo-reap" :class="{ 'is-on': scytheActive }" :aria-pressed="scytheActive" :disabled="totalPoints > 0 && !scytheActive"
                     @click="scytheActive ? stopScythe() : startScythe()"
-                    :title="totalPoints > 0 ? 'Submit or clear your cut points first' : 'Your cursor becomes a scythe: click a piece in 3D to remove it from view. Ctrl+Z brings it back.'">Scythe destroy</button>
+                    :title="totalPoints > 0 ? 'Submit or clear your cut points first' : scytheActive ? 'Click a piece in 3D to reap it. Click here or press Esc to put the scythe away.' : 'Your next click in 3D reaps a piece from view. Ctrl+Z brings it back.'"><img :src="scytheIcon" alt="" />Scythe reap</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
           </div>
 
@@ -528,6 +529,12 @@ function cancelTool() {
 </template>
 
 <style scoped>
+.nge-smo-reap { display: inline-flex; align-items: center; gap: 5px; }
+.nge-smo-reap img { width: 18px; height: 18px; }
+.nge-smo-reap.is-on {
+  color: #ffe9a8; border-color: #e8b93e; background: rgb(232 185 62 / .18);
+  box-shadow: 0 0 10px rgb(232 185 62 / .5);
+}
 .nge-split-merge-overlay {
   position: fixed;
   /* On the bottom edge (Krzysztof: a bare 28px strip showed under it), and
