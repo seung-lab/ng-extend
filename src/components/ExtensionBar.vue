@@ -34,6 +34,7 @@ import HighlightModePanel from "components/HighlightModePanel.vue";
 import TeamPanel from "components/TeamPanel.vue";
 import VersionNotice from "components/VersionNotice.vue";
 import SegmentMarksPrompt from './SegmentMarksPrompt.vue';
+import TwoDTools from './TwoDTools.vue';
 import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import PhotoMode from "components/PhotoMode.vue";
@@ -1663,6 +1664,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- "Now entering <dataset>" after a dataset switch (survives the reload). -->
   <DatasetTransition />
   <SegmentMarksPrompt />
+  <TwoDTools />
 </template>
 
 <style>
