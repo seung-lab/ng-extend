@@ -710,10 +710,16 @@ setCastClaimHooks({
   reopen(id) { setWorkingTask(id); },
 });
 /** Save the view to the claim being worked on. False = stay put. */
+/** Claims completed or released here: finished, whatever the list says yet. */
+const endedClaims = new Set<number>();
 async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
   // Nothing marked as the working claim, but one of yours is on screen: that
   // is the work, so it is saved too (annkri: lost a cell opening a help request).
-  const id = workingTaskId ?? myOpenClaims.value.find(claimInView)?.taskId ?? null;
+  // Only when it is plainly that one, and never a claim just completed or let
+  // go: the list may not have dropped it yet, and the server refuses a save on
+  // it, which asked "could not be saved" over nothing (Nseraf, report 339).
+  const onScreen = myOpenClaims.value.filter(c => c.taskId != null && !endedClaims.has(c.taskId) && claimInView(c));
+  const id = workingTaskId ?? (onScreen.length === 1 ? onScreen[0].taskId : null);
   if (!id || id === nextTaskId) return true;
   const t = backend.tasks.find(x => x.id === id);
   if (!t || t.assigned_to !== backend.userId || (t.status !== 'assigned' && t.status !== 'in_progress')) return true;
@@ -1023,6 +1029,7 @@ async function releaseHeld(t: ProofreadingTask) {
   releasing.add(key);
   let ok = false;
   try { ok = await backend.releaseTaskById(t.id); } finally { releasing.delete(key); }
+  if (ok) endedClaims.add(t.id);
   if (ok && workingTaskId === t.id) setWorkingTask(null);
   if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
   const held = heldHere(await backend.loadMyActiveClaims());
@@ -1259,6 +1266,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // the completed cell (report 308). The server only takes it on an open claim.
   if (done.link) await backend.saveWorkingLink(cell.taskId, done.link).catch(() => false);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  endedClaims.add(cell.taskId);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Axon complete: labelled as such, not marked proofread (lightbulb_service).
   if (done.status === AXON_COMPLETE) {
@@ -1353,6 +1361,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
   }
   if (completing.value?.key === cellKey(cell)) completing.value = null;
   if (slimSeg.value === cell.segId) expandFull();
+  if (cell.taskId) endedClaims.add(cell.taskId);
   if (cell.taskId && workingTaskId === cell.taskId) setWorkingTask(null);
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
