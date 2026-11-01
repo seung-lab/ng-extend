@@ -88,7 +88,8 @@ const packed = (hex: number) => ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 
 
 /** October, and 1 November, in the player's own time. */
 export function pumpkinSeason(now = new Date()): boolean {
-  return now.getMonth() === 9 || (now.getMonth() === 10 && now.getDate() === 1);
+  // Ends with October (Ames 2026-11-01: "we gotta turn off the pumpkins").
+  return now.getMonth() === 9;
 }
 
 interface PatchState { supervoxel: string | null; current: string[]; askedAt: number; painted: Set<string>; prop: NgeProp | null; meshSeen: boolean }

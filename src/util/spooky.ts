@@ -55,7 +55,7 @@ function newYorkNow(now: Date): { month: number; day: number; hour: number } | n
 }
 export function inSeason(now = new Date()): boolean {
   const m = now.getMonth(), d = now.getDate();
-  if (m === 10) return d <= 1;                     // 1 November, the player's own day
+  // Ends with October (Ames 2026-11-01).
   if (m !== 9) return false;
   if (d >= 24) return true;                        // from the 24th it has started everywhere
   const ny = newYorkNow(now);
