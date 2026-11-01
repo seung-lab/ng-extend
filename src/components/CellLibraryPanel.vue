@@ -237,7 +237,7 @@ async function loadCellsForActiveDataset() {
   // No fallback sheet: borrowing the pinky sheet here tagged its rows with the
   // current dataset, so MEC listed pinky cells (6485... ids) that have no
   // segmentation in the MEC graph (Ames 2026-09-28). A dataset without its own
-  // segment-ID sheet (MEC, MICrONS) lists only its Supabase tasks.
+  // segment-ID sheet (MEC, Sandbox, MICrONS) lists only its Supabase tasks.
   const sheetUrl = cfg.cellLibrarySheetUrl;
   if (!sheetUrl) { queue.items = []; return; }
   if (queue.sheetUrl !== sheetUrl || queue.items.length === 0) {
@@ -432,6 +432,8 @@ const datasetScopedCells = computed(() => {
   // candidates shouldn't appear in cell library for sandbox users"). While
   // CAVE has not answered they stay hidden.
   if (!backend.isAdmin && datasetAccess('stroeh-mouse-retina') !== 'edit') shown = shown.filter(c => !isHuntCandidate(c));
+  // The Sandbox's earlier cells stay hidden, on every tab (Ames 2026-11-01: replaced by the list of somas).
+  if (getDatasetCaveConfig(activeDataset.value).cellsFromTasks) shown = shown.filter(c => c.status !== 'skipped');
   if (!activeDs) return shown;
   return shown.filter(c => {
     const cd = canonicalDataset(c.dataset);

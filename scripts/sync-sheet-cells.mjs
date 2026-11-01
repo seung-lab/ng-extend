@@ -47,6 +47,8 @@
  *               --statuses.
  */
 
+import { nextBatch, untouched } from './sheet-batches.mjs';
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -83,8 +85,31 @@ const SHEETS = [
     url: 'https://docs.google.com/spreadsheets/d/10cPvkLYU5zGDe7AJ6SHjhMcfdqXyiPM4W4qgob2g70w/edit?gid=37544110',
   },
   {
+    // Sandbox (Ames 2026-11-01): a list of soma positions, no segment IDs and
+    // no progress columns. Pyr keeps the progress, and writes nothing here.
+    // The list is far longer than the Cell Library should be, so 50 at a time
+    // (scripts/sheet-batches.mjs).
     dataset: 'pinky_nf_v2',
-    url: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    url: 'https://docs.google.com/spreadsheets/d/1lAX3pMqhevs-1JSs4VkWYQIIFKmQp1KDF2ND8QuZVXo/edit?gid=930129917',
+    byPoint: {
+      cloudpath: 'graphene://https://minnie.microns-daf.com/segmentation/table/pinky_nf_v2',
+      resolution: '4,4,40',
+      batch: {
+        sheetId: '1lAX3pMqhevs-1JSs4VkWYQIIFKmQp1KDF2ND8QuZVXo',
+        size: 50,
+        whenLeft: 10,
+        // Players start from a cell nobody has proofread (Ames 2026-11-01). A
+        // cell with other edits is passed over: its pre-edit ID cannot be
+        // edited, and undoing edits would reverse other people's work. User
+        // 121's single merge (Forrest Collman) is on 92 listed cells; on 59 it
+        // is the only edit, and the one read was from December 2022: setup.
+        setupEditor: '121',
+        // Measured 2026-11-01: their cell covers under 30 um2 of a 12 um box
+        // around the point, where most somas cover 60 to 140, so the point may
+        // not be in a cell body. #73's cell was already a Sandbox task.
+        skipIndexes: ['73', '122', '124', '127', '129', '138', '143', '168', '170', '171', '172', '174', '221', '225', '226', '256', '261', '298', '339'],
+      },
+    },
   },
   {
     // MEC (Ames 2026-09-28): rows carry "Starting XYZ Coords", not segment
@@ -184,7 +209,7 @@ function extractCells(rows) {
 
 /** Rows of a coordinate sheet: {index, point:[x,y,z], coords, typeA, typeB, ais, notes}. */
 function extractPointCells(rows) {
-  const keys = ['startingxyz', 'startingcoord', 'startcoord'];
+  const keys = ['startingxyz', 'startingcoord', 'startcoord', 'coordinates'];
   let headerIdx = -1;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     const h = rows[i].map(c => c.toLowerCase().replace(/[^a-z0-9]/g, ''));
@@ -231,6 +256,7 @@ async function resolvePoints(byPoint, points) {
   const py = process.env.PYTHON || 'python3';
   const args = [new URL('./resolve_points.py', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'), byPoint.cloudpath, byPoint.resolution];
   if (byPoint.nucleus) args.push('--nucleus');
+  if (byPoint.batch) args.push('--edits');
   const r = spawnSync(py, args,
     { input: JSON.stringify(points), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`resolve_points failed: ${(r.stderr || '').slice(-800)}`);
@@ -277,6 +303,64 @@ async function syncPointSheet(cfg) {
     return toInsert.length;
   }
   for (let i = 0; i < toInsert.length; i += 500) await insertTasks(toInsert.slice(i, i + 500));
+  console.log(`[cells] inserted ${toInsert.length} new cell(s)`);
+  return toInsert.length;
+}
+
+/** A list sheet: add its next cells once few of the last ones are unclaimed. */
+async function syncBatchSheet(cfg) {
+  const { batch } = cfg.byPoint;
+  console.log(`\n[cells] === ${cfg.dataset} (next ${batch.size} of a list) ===`);
+  const res = await fetch(csvUrlFor(cfg.url));
+  if (!res.ok) throw new Error(`sheet fetch ${res.status}`);
+  const cells = extractPointCells(parseCsv(await res.text()));
+  const tasks = [];
+  for (let offset = 0; ; offset += 1000) {
+    const url = `${SUPABASE_URL}/rest/v1/proofreading_tasks?select=segment_id,status,assigned_to,notes,source_sheet_url,claim_point_x,claim_point_y,claim_point_z`
+      + `&dataset=eq.${encodeURIComponent(cfg.dataset)}&order=id&limit=1000&offset=${offset}`;
+    const r = await fetch(url, { headers: supabaseHeaders });
+    if (!r.ok) throw new Error(`read tasks ${r.status}: ${await r.text()}`);
+    const page = await r.json();
+    tasks.push(...page);
+    if (page.length < 1000) break;
+  }
+  const { unclaimed, due, candidates } = nextBatch(cells, tasks, batch);
+  console.log(`[cells] list rows: ${cells.length}, not added yet: ${candidates.length}, unclaimed now: ${unclaimed} (next batch at ${batch.whenLeft} or fewer)`);
+  if (!due) { console.log('[cells] nothing to add'); return 0; }
+
+  // A point can land on nothing, on a cell already listed or on one already
+  // proofread, so keep going
+  // down the list until the batch is full.
+  const roots = new Set(tasks.map(t => String(t.segment_id)));
+  const toInsert = [];
+  for (let at = 0; at < candidates.length && toInsert.length < batch.size;) {
+    const slice = candidates.slice(at, at + batch.size - toInsert.length);
+    at += slice.length;
+    const resolved = await resolvePoints(cfg.byPoint, slice.map(c => c.point));
+    slice.forEach((c, i) => {
+      const r = resolved[i];
+      if (!r || r.root === '0') { console.log(`[cells] #${c.index} ${c.coords}: no cell at this point, skipped`); return; }
+      if (roots.has(r.root)) { console.log(`[cells] #${c.index} ${c.coords}: cell ${r.root} is already listed, skipped`); return; }
+      if (!untouched(r.editors, batch.setupEditor)) { console.log(`[cells] #${c.index} ${c.coords}: cell ${r.root} has been proofread, skipped`); return; }
+      roots.add(r.root);
+      toInsert.push({
+        segment_id: r.root,
+        supervoxel_id: r.sv,
+        dataset: cfg.dataset,
+        soma_coords: c.coords,
+        claim_point_x: c.point[0], claim_point_y: c.point[1], claim_point_z: c.point[2],
+        notes: `Sheet #${c.index}`,
+        status: 'pending',
+        source_sheet_url: cfg.url,
+      });
+    });
+  }
+  if (dryRun) {
+    console.log(`[cells] DRY-RUN would insert ${toInsert.length}: ${toInsert.map(t => t.notes.slice(7)).join(' ')}`);
+    console.log(toInsert.slice(0, 3).map(t => `${t.notes} (${t.soma_coords}) -> ${t.segment_id}`).join(' | '));
+    return toInsert.length;
+  }
+  if (toInsert.length) await insertTasks(toInsert);
   console.log(`[cells] inserted ${toInsert.length} new cell(s)`);
   return toInsert.length;
 }
@@ -602,7 +686,7 @@ async function retireOldSource(dataset, sheetId) {
   for (const cfg of targets) {
     try {
       if (refreshNucleus) { if (cfg.byPoint?.nucleus) added += await refreshNucleusTasks(cfg); continue; }
-      added += await (cfg.byPoint ? syncPointSheet(cfg) : syncSheet(cfg));
+      added += await (cfg.byPoint?.batch ? syncBatchSheet(cfg) : cfg.byPoint ? syncPointSheet(cfg) : syncSheet(cfg));
     }
     catch (e) { console.error(`[cells] ${cfg.dataset} failed:`, e.message); failed++; }
   }
