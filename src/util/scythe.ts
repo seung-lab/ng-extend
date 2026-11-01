@@ -1,17 +1,19 @@
 /**
  * Scythe reap (Ames 2026-10-25: "scythe swipe to make the branch crumble
  * away"; 2026-11-01: a button in cut mode, "more gently explode outward",
- * "then fade away", her own sound and scythe picture, "a seamless UI").
+ * "then fade away", Ames's own sound and scythe picture, "a seamless UI",
+ * "a toggle on/off not a button").
  *
- * The cut bar's Scythe reap toggle (SplitMergeOverlay.vue) arms the next
- * click: the cursor over the 3D view is the scythe, and a click on a cell
- * bursts it into chunks that drift outward and fade (mesh/frontend.ts
- * ngeCrumble, all in the shader), then all is back to normal. There is no
- * box to dismiss. The cell ends up hidden: unticked in the segment list, still
+ * The cut bar's Scythe reap switch (SplitMergeOverlay.vue) turns it on: the
+ * cursor over the 3D view is the scythe, and each click on a cell bursts it
+ * into particles that fly outward and darken away (mesh/frontend.ts
+ * ngeCrumble, all in the shader), as the scythe swoops through it. It stays on
+ * until switched off. There is no box to
+ * dismiss. The cell ends up hidden: unticked in the segment list, still
  * in it, and Undelete (Ctrl+Z) brings it back. Nothing is merged, split or
  * changed in the data. A click that misses every cell goes to the viewer as
- * usual and the scythe stays armed, so the view can be turned to line up the
- * piece. The toggle, Escape or leaving cut mode disarms it. Calm screen: no
+ * usual, so the view can be turned to line up the piece. The switch, Escape or
+ * leaving cut mode turns it off. Calm screen: no
  * burst, the cell just goes.
  *
  * The cell under the mouse is neuroglancer's own pick (mouseState), not a
@@ -20,12 +22,15 @@
 import {ref} from 'vue';
 import {ngeCrumble, ngeCrumbleClear} from 'neuroglancer/mesh/frontend';
 import {rememberRemoved} from './undelete';
+import {useUserPreferencesStore} from '../store';
 import scytheCursor from '../../static/tags/scythe-reap-cursor.png';
+import scytheImage from '../../static/tags/scythe-reap.png';
+import {runScytheSwing} from './holo_trace';
 
-const CRUMBLE_MS = 1600;
+const CRUMBLE_MS = 2800;
 
 const viewerNow = (): any => (window as any).viewer;
-/** The next click is the scythe's, for the cut bar's toggle. */
+/** The scythe is on, for the cut bar's switch. */
 export const scytheActive = ref(false);
 let active = false;
 /** Cells crumbling now, by key (`low,high`), so none is reaped twice. */
@@ -56,7 +61,35 @@ function cellUnderMouse(): {id: any, key: string, visible: any} | null {
   return {id: id.clone ? id.clone() : id, key: `${id.low},${id.high}`, visible};
 }
 
-function reap(cell: {id: any, key: string, visible: any}) {
+/** The picture's blade tip and handle end, in pixels (static/tags/scythe-reap.png). */
+const TIP = [8, 128], HANDLE = [188, 184];
+const SWOOP_MS = 420;
+/** The scythe swings about its handle end, the blade's tip passing through
+ *  (x, y) halfway, with a streak of light behind it. Returns how long until
+ *  the blade reaches the cell (Ames 2026-11-01: "swoop on reap like it is
+ *  slicing the branch away"). Reduced motion: no swoop. */
+function swoop(x: number, y: number): number {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
+  const el = document.createElement('img');
+  el.src = scytheImage;
+  el.alt = '';
+  el.style.cssText = `position:fixed;left:${x + (HANDLE[0] - TIP[0]) - HANDLE[0]}px;top:${y + (HANDLE[1] - TIP[1]) - HANDLE[1]}px;`
+    + `width:192px;height:192px;pointer-events:none;z-index:20000;transform-origin:${HANDLE[0]}px ${HANDLE[1]}px;`;
+  document.body.appendChild(el);
+  // Tip high to tip low: a downward cut.
+  const anim = el.animate([
+    {transform: 'rotate(42deg)', opacity: 0, offset: 0},
+    {transform: 'rotate(30deg)', opacity: 1, offset: 0.2, easing: 'cubic-bezier(.5, 0, .9, .6)'},
+    {transform: 'rotate(0deg)', opacity: 1, offset: 0.5, easing: 'cubic-bezier(.2, .6, .4, 1)'},
+    {transform: 'rotate(-32deg)', opacity: 0, offset: 1},
+  ], {duration: SWOOP_MS, fill: 'forwards'});
+  anim.onfinish = anim.oncancel = () => el.remove();
+  setTimeout(() => el.remove(), SWOOP_MS + 200);
+  runScytheSwing(x, y);
+  return SWOOP_MS / 2;
+}
+
+function reap(cell: {id: any, key: string, visible: any}, x: number, y: number) {
   if (crumbling.has(cell.key)) return;
   crumbling.add(cell.key);
   const hide = () => {
@@ -72,16 +105,25 @@ function reap(cell: {id: any, key: string, visible: any}) {
   if (document.body.classList.contains('nge-calm')) { hide(); return; }
   // window.__ngeCrumbleMs slows it down, for a look at it frame by frame.
   const ms = Number((window as any).__ngeCrumbleMs) || CRUMBLE_MS;
-  ngeCrumble(cell.key, ms);
   playVanish();
-  try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
-  setTimeout(hide, ms);
+  const hit = swoop(x, y);
+  setTimeout(() => {
+    ngeCrumble(cell.key, ms);
+    try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+    setTimeout(hide, ms);
+  }, hit);
 }
 
 /** Ames's Scythe Vanish, fetched when the scythe is picked up. Each burst gets
  *  its own copy, so a sweep across several cells can overlap. */
 let vanish: HTMLAudioElement | null = null;
 function playVanish() {
+  // Silent with the volume off (Ames 2026-11-01): the bottom right control's
+  // saved choice (RadioPlayer.vue). A player who never chose has it on.
+  try {
+    const radio = useUserPreferencesStore().prefs.radio;
+    if (radio && (radio.on === false || radio.volume === 0)) return;
+  } catch { /* no preferences yet: as a player who never chose */ }
   try { void (vanish?.cloneNode() as HTMLAudioElement | undefined)?.play().catch(() => { /* no sound */ }); } catch { /* no sound */ }
 }
 
@@ -97,8 +139,7 @@ function onDown(e: PointerEvent) {
   e.preventDefault();
   e.stopPropagation();
   swallowUntil = performance.now() + 600;
-  reap(cell);
-  stopScythe();
+  reap(cell, e.clientX, e.clientY);
 }
 function onKey(e: KeyboardEvent) {
   if (active && e.key === 'Escape') { e.stopPropagation(); stopScythe(); }
@@ -114,7 +155,7 @@ function unhook() {
   window.removeEventListener('click', swallow, true);
 }
 
-/** Arm the next click. */
+/** Switch the scythe on. */
 export function startScythe() {
   if (active || !viewerNow()) return;
   active = true;
@@ -123,6 +164,7 @@ export function startScythe() {
   if (!vanish) {
     vanish = new Audio('sfx/scythe-vanish.mp3');
     vanish.preload = 'auto';
+    new Image().src = scytheImage;
   }
   ensureStyle();
   document.body.classList.add('nge-scythe');
@@ -134,7 +176,7 @@ export function startScythe() {
   window.addEventListener('keydown', onKey, true);
 }
 
-/** Back to normal. A cell already bursting still goes. */
+/** Switch it off. A cell already bursting still goes. */
 export function stopScythe() {
   if (!active) return;
   active = false;
