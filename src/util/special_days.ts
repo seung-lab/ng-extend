@@ -42,7 +42,12 @@ export function celebrateSpecialDay() {
   try {
     if (JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').achievementCelebration === false) return;
     if (localStorage.getItem(key)) return;
-    localStorage.setItem(key, '1');
   } catch { /* no storage: it may go off again next time */ }
-  setTimeout(() => launchFireworks(6), 4000);
+  // Only once the player can see them: signed in, and on this tab.
+  const waiting = setInterval(() => {
+    if (document.hidden || document.querySelector('.nge-login-blocker')) return;
+    clearInterval(waiting);
+    try { localStorage.setItem(key, '1'); } catch { /* as above */ }
+    setTimeout(() => launchFireworks(6), 4000);
+  }, 2000);
 }
