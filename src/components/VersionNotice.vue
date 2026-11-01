@@ -17,6 +17,14 @@ startVersionWatch();
 
 const folded = ref(false);
 const panelEl = ref<HTMLElement | null>(null);
+// The chip's x (Nseraf, report 340): the reminder goes, the update still waits
+// for the next reload.
+const dismissed = ref(false);
+let dismissedAt = 0;
+async function dismiss() {
+  dismissed.value = true;
+  try { dismissedAt = (await readChanges()).since.length; } catch { dismissedAt = Infinity; }
+}
 const reloading = ref(false);
 
 watch(() => version.newer, async (now, was) => {
@@ -24,6 +32,10 @@ watch(() => version.newer, async (now, was) => {
   // the next time it is opened, not the one from an earlier update.
   changes.value = null;
   if (showChanges.value) void loadChanges();
+  // Waved away: it stays away until an update has something new for players.
+  if (dismissed.value) {
+    try { if ((await readChanges()).since.length > dismissedAt) dismissed.value = false; } catch { /* stays away */ }
+  }
   // The first newer version opens the panel. One after that changes nothing:
   // the player has already been told, and has the chip.
   if (!now || was) return;
@@ -95,11 +107,12 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
       </div>
     </div>
   </Teleport>
-  <Teleport v-if="version.newer && folded" :to="inBar ? '.nge-toolbar-icons' : 'body'">
+  <Teleport v-if="version.newer && folded && !dismissed" :to="inBar ? '.nge-toolbar-icons' : 'body'">
     <button type="button" class="nge-ver-chip" :class="{ 'nge-ver-chip--bar': inBar }" :disabled="reloading"
             title="A newer version of Pyr is out. Click to reload and get it." @click="reload">
       <span class="nge-ver-pip" aria-hidden="true"></span>{{ reloading ? 'Reloading' : 'Update ready' }}
     </button>
+    <button type="button" class="nge-ver-chip-x" :class="{ 'nge-ver-chip-x--bar': inBar }" title="Hide this. The update comes with your next reload." aria-label="Hide the update reminder" @click="dismiss">×</button>
   </Teleport>
 </template>
 
@@ -192,6 +205,9 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
   .nge-ver, .nge-ver-corner, .nge-ver-changes { animation: none; }
 }
 /* In the top bar it is one of the row's own items, first in line. */
+.nge-ver-chip-x { position: fixed; z-index: 10001; left: calc(50% + 70px); top: 50px; width: 18px; height: 18px; padding: 0; font: 700 13px/1 system-ui, sans-serif; color: #cfe6ff; background: rgba(8, 14, 26, 0.95); border: 1px solid rgba(124, 196, 255, 0.5); border-radius: 50%; cursor: pointer; }
+.nge-ver-chip-x:hover { color: #fff; background: rgba(60, 100, 150, 0.95); }
+#extensionBar .nge-ver-chip-x.nge-ver-chip-x--bar, .nge-ver-chip-x.nge-ver-chip-x--bar { position: static; order: -1; margin: 0 8px 0 -4px; flex: 0 0 auto; align-self: center; }
 .nge-ver-chip.nge-ver-chip--bar { position: static; transform: none; order: -1; margin-right: 8px; flex-shrink: 0; }
 /* The bar strips its buttons bare; this one keeps its outline and its light. */
 #extensionBar .nge-ver-chip.nge-ver-chip--bar {
