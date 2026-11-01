@@ -79,14 +79,14 @@ const TIP = [2, 124], HANDLE = [178, 176];
 const CURSOR_SCALE = 36 / 192;
 /** The picture's size at the height of the swing, as the model's (MODEL_PX). */
 const FLAT_SCALE = 120 / 192;
-const SWOOP_MS = 780;
+const SWOOP_MS = 840;
 /** The swing's parts, as shares of it: growing and winding up, the cut at HIT,
  *  the follow through, then back down to the cursor from RETURN. */
 const WINDUP = 0.25, HIT = 0.5, RETURN = 0.75;
 /** How far the whole scythe travels sideways each side of the click, in pixels:
  *  the width of the swoop (Ames 2026-11-01: "more x axis width"). */
-const SWEEP_PX = 85;
-const WIND_DEG = 42, FOLLOW_DEG = -35;
+const SWEEP_PX = 85, FOLLOW_SWEEP_PX = 170;
+const WIND_DEG = 42, FOLLOW_DEG = -70;
 let swoopTimer: ReturnType<typeof setTimeout> | null = null;
 /** Ames's 3D scythe (static/halloween/scythe.glb), once it has loaded; until
  *  then, or if it cannot load, the picture swings instead. */
@@ -126,9 +126,10 @@ function swingAt(t: number) {
     grown = 1 - returned;
     at = -grown;
   }
-  const deg = at >= 0 ? WIND_DEG * at : -FOLLOW_DEG * at;
-  const lean = at >= 0 ? WIND_LEAN * at : -FOLLOW_LEAN * at;
-  return {deg, lean, grown, returned, tilt: TILT_DEG * grown, sweep: SWEEP_PX * at};
+  // From top (at 1) through the cut (0) to the end of the follow through (-1),
+  // with no kink at the cut, whatever the two ends' sizes.
+  const span = (top: number, end: number) => (top - end) / 2 * at + (top + end) / 2 * at * at;
+  return {deg: span(WIND_DEG, FOLLOW_DEG), lean: span(WIND_LEAN, FOLLOW_LEAN), grown, returned, tilt: TILT_DEG * grown, sweep: span(SWEEP_PX, -FOLLOW_SWEEP_PX)};
 }
 /** Tilt into the screen, lean about the up axis, then turn in the plane of the
  *  screen. Screen y is up here, so a clockwise turn (the picture's deg) is
@@ -156,25 +157,28 @@ function tipOffset(t: number): number[] {
 
 /** A small trail of sparks left along the blade's path, from the start of the
  *  cut on: they hang where they were left, drift apart and go out. */
-const TRAIL_COLORS = ['#ffd978', '#ffb347', '#7fd4ff', '#ffffff'];
+const TRAIL_COLORS = ['#19d3ff', '#00b7ff', '#58e6ff', '#0a9bff', '#b8f6ff'];
 function trail(x: number, y: number, ms: number) {
   const cv = document.createElement('canvas');
-  const R = 220, D = R * 2;
+  const R = 340, D = R * 2;
   cv.width = cv.height = D;
   cv.style.cssText = `position:fixed;left:${x - R}px;top:${y - R}px;width:${D}px;height:${D}px;pointer-events:none;z-index:20001;`;
   const g = cv.getContext('2d');
   if (!g) return;
   document.body.appendChild(cv);
-  const LIFE = 420;
+  const LIFE = 700;
   const sparks: Array<{x: number, y: number, vx: number, vy: number, born: number, life: number, r: number, c: string}> = [];
-  const COUNT = 46, FROM = WINDUP + 0.1, TO = RETURN - 0.04;
+  const COUNT = 240, FROM = WINDUP + 0.1, TO = RETURN - 0.04;
   for (let i = 0; i < COUNT; i++) {
     const t = FROM + (TO - FROM) * (i / (COUNT - 1));
     const tip = tipOffset(t);
+    const {deg, lean, tilt} = swingAt(t);
+    const arm = swingTurn(deg, lean, tilt)(SWING_ARM);
+    const along = Math.random() * Math.random() * 0.45;
     sparks.push({
-      x: R + tip[0] + (Math.random() - 0.5) * 5, y: R - tip[1] + (Math.random() - 0.5) * 5,
-      vx: (Math.random() - 0.5) * 26, vy: (Math.random() - 0.5) * 26 + 10,
-      born: t * ms, life: LIFE * (0.6 + 0.6 * Math.random()), r: 0.7 + Math.random() * 1.3,
+      x: R + tip[0] - arm[0] * along + (Math.random() - 0.5) * 8, y: R - tip[1] + arm[1] * along + (Math.random() - 0.5) * 8,
+      vx: (Math.random() - 0.5) * 44, vy: (Math.random() - 0.5) * 44 + 12,
+      born: t * ms, life: LIFE * (0.5 + 0.7 * Math.random()), r: 0.9 + Math.random() * 1.9,
       c: TRAIL_COLORS[i % TRAIL_COLORS.length],
     });
   }
@@ -183,6 +187,7 @@ function trail(x: number, y: number, ms: number) {
   const step = () => {
     const now = performance.now() - start;
     g.clearRect(0, 0, D, D);
+    g.globalCompositeOperation = 'lighter';
     for (const p of sparks) {
       const age = now - p.born;
       if (age < 0 || age > p.life) continue;
