@@ -91,6 +91,10 @@ export interface DatasetCaveConfig {
    *  (server-stamped user, cell ID, point) and read back from there. Each row
    *  keeps its point, so the log can be replayed into CAVE once it exists. */
   annotationLog?: 'edit_log';
+  /** No segment-ID sheet, but the Cell Library tasks are still the list a
+   *  completion is matched against (Sandbox, Ames 2026-11-01: its cells come
+   *  a batch at a time from a list of soma positions). */
+  cellsFromTasks?: boolean;
   /** Proofreading instructions for this dataset, linked from the Cell
    *  Library header (MEC only for now, Ames 2026-09-29). */
   instructionsUrl?: string;
@@ -177,7 +181,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
     skipStateUrlIfTutorialActive: true,
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
   pinky_training3: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -188,7 +192,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     cellTypeTable:    'cell_type_dev',
     cellTypeSchema:   'bound_tag',
     defaultSegments:  ['648518346355727683'],
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
   // Same pinky100 volume as the other pinky rows, different PCG table. Without
   // this key `getDatasetCaveConfig('pinky_training6')` matched nothing and fell
@@ -207,7 +211,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     // Taken from a working pinky_training6 state, so these resolve in THIS
     // table's graph. Root ids are per PCG table and do not carry across.
     defaultSegments:  ['648518346354708544', '648518346355322263'],
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
   pinky_nf_v2: {
     caveServer:       'https://minnie.microns-daf.com',
@@ -220,7 +224,7 @@ export const CAVE_CONFIGS_BY_DATASET: Record<string, DatasetCaveConfig> = {
     defaultSegments:  ['648518346355727683'],
     defaultStateUrl:  'https://eyewire-ii-community-dot-brain-wire-dot-seung-lab.ue.r.appspot.com/#!middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5631012797153280',
     skipStateUrlIfTutorialActive: true,
-    cellLibrarySheetUrl: 'https://docs.google.com/spreadsheets/d/1SdepJzadXMz5TC-5DFZxUyDJk7efEPP39HE0hmUAJjU/edit',
+    cellsFromTasks:   true,
   },
 
   // ── Minnie (MICrONS) ────────────────────────────────────────────────────

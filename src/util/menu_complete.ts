@@ -54,9 +54,9 @@ export async function planMenuCompletion(segId: string): Promise<MenuCompletionP
   const cfg = getDatasetCaveConfig(dataset);
   const sheetUrl = cfg.cellLibrarySheetUrl;
   if (!sheetUrl) {
-    // No segment-ID sheet (MEC): the Cell Library tasks are the list. The
-    // server writes the sheet by the task's starting point (sheet-policy.js).
-    if (cfg.annotationLog) await planFromTasks(plan);
+    // No segment-ID sheet (MEC, Sandbox): the Cell Library tasks are the list.
+    // MEC's server writes the sheet by the task's starting point (sheet-policy.js).
+    if (cfg.annotationLog || cfg.cellsFromTasks) await planFromTasks(plan);
     return plan;
   }
 
