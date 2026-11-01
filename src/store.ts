@@ -5301,6 +5301,10 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       noteClaimSave(taskId);
       return true;
     } catch (e: any) {
+      // The claim has ended (completed or released, from any menu): nothing is
+      // left to save to, so that is no failure to warn a player about (Nseraf,
+      // reports 339 and 341).
+      if (/no longer active/i.test(String(e?.message))) return true;
       console.warn('[backend] saveWorkingLink error:', e.message);
       return false;
     }
