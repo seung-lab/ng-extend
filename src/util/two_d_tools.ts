@@ -143,7 +143,9 @@ function onDown(e: MouseEvent) {
   if (!twoD.lasso || e.button !== 0 || e.ctrlKey || !attachedTo) return;
   const target = e.target as HTMLElement;
   if (target.closest?.('button, input, label')) return;
-  e.stopPropagation();
+  // The panel's own mouse handling sits on this same element, so stopping the
+  // event's travel is not enough: this is what keeps the view from panning.
+  e.stopImmediatePropagation();
   e.preventDefault();
   const panel = slicePanel();
   const cam = camera(panel);
@@ -174,7 +176,7 @@ function onDown(e: MouseEvent) {
   window.addEventListener('mousemove', move, true);
   window.addEventListener('mouseup', up, true);
 }
-const swallow = (e: Event) => { if (twoD.lasso && (e as MouseEvent).button === 0 && !(e.target as HTMLElement).closest?.('button, input, label')) e.stopPropagation(); };
+const swallow = (e: Event) => { if (twoD.lasso && (e as MouseEvent).button === 0 && !(e.target as HTMLElement).closest?.('button, input, label')) e.stopImmediatePropagation(); };
 
 function attach(panel: any) {
   const el: HTMLElement = panel.element;

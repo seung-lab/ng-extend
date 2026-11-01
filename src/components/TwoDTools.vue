@@ -67,7 +67,7 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
 .nge-2d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
 .nge-2d-open { position: absolute; top: 8px; right: 40px; z-index: 5; padding: 3px 9px; font: 600 11px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.82); border: 1px solid rgba(126, 224, 255, 0.45); border-radius: 6px; cursor: pointer; }
 .nge-2d-open:hover { background: rgba(30, 60, 90, 0.9); }
-.nge-2d { position: fixed; left: 16px; bottom: 76px; z-index: 900; width: 300px; max-height: calc(100vh - 170px); overflow-y: auto; padding: 10px 12px; font: 12px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.95); border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 10px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5); }
+.nge-2d { position: fixed; left: 360px; top: 100px; z-index: 900; width: 300px; max-height: calc(100vh - 170px); overflow-y: auto; padding: 10px 12px; font: 12px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.95); border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 10px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5); }
 .nge-2d-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .nge-2d-title { font-weight: 700; font-size: 13px; }
 .nge-2d-tag { margin-left: 4px; padding: 0 5px; font-size: 10px; font-weight: 600; color: #ffd24d; border: 1px solid rgba(255, 210, 77, 0.5); border-radius: 8px; }
@@ -76,21 +76,21 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
 .nge-2d-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .nge-2d-pair { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
 .nge-2d-name { flex: 1 1 auto; min-width: 0; padding: 2px 5px; font: inherit; color: inherit; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; }
-.nge-2d-btn { padding: 3px 8px; font: inherit; color: #e8eef5; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; cursor: pointer; white-space: nowrap; }
-.nge-2d-btn:hover:not(:disabled) { background: rgba(126, 224, 255, 0.18); }
-.nge-2d-btn:disabled { opacity: 0.4; cursor: default; }
-.nge-2d-btn--set { border-color: rgba(61, 255, 154, 0.6); color: #7cffb2; }
-.nge-2d-btn--ask { border-color: rgba(255, 210, 77, 0.6); color: #ffd24d; }
-.nge-2d-btn--go { color: #7ee0ff; font-weight: 700; }
-.nge-2d-btn--on { background: rgba(126, 224, 255, 0.28); border-color: #7ee0ff; }
-.nge-2d-btn--wide { width: 100%; }
-.nge-2d-x { padding: 0 4px; font-size: 15px; line-height: 1; color: #9fb4c9; background: none; border: 0; cursor: pointer; }
-.nge-2d-x:hover { color: #fff; }
-.nge-2d-dot { width: 17px; height: 17px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
-.nge-2d-dot--on { border-color: #fff; }
+.nge-2d button.nge-2d-btn { padding: 3px 8px; font: inherit; color: #e8eef5; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.nge-2d button.nge-2d-btn:hover:not(:disabled) { background: rgba(126, 224, 255, 0.18); }
+.nge-2d button.nge-2d-btn:disabled { opacity: 0.4; cursor: default; }
+.nge-2d button.nge-2d-btn--set { border-color: rgba(61, 255, 154, 0.6); color: #7cffb2; }
+.nge-2d button.nge-2d-btn--ask { border-color: rgba(255, 210, 77, 0.6); color: #ffd24d; }
+.nge-2d button.nge-2d-btn--go { color: #7ee0ff; font-weight: 700; }
+.nge-2d button.nge-2d-btn--on { background: rgba(126, 224, 255, 0.28); border-color: #7ee0ff; }
+.nge-2d button.nge-2d-btn--wide { width: 100%; }
+.nge-2d button.nge-2d-x { padding: 0 4px; font-size: 15px; line-height: 1; color: #9fb4c9; background: none; border: 0; cursor: pointer; }
+.nge-2d button.nge-2d-x:hover { color: #fff; }
+.nge-2d button.nge-2d-dot { width: 17px; height: 17px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
+.nge-2d button.nge-2d-dot--on { border-color: #fff; }
 .nge-2d-shapes { margin-top: 6px; }
-.nge-2d-chip { padding: 0 6px; font: inherit; color: inherit; background: none; border: 1px solid; border-radius: 9px; cursor: pointer; }
-.nge-2d-link { padding: 0; font: inherit; color: #7ee0ff; background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.nge-2d button.nge-2d-chip { padding: 0 6px; font: inherit; color: inherit; background: none; border: 1px solid; border-radius: 9px; cursor: pointer; }
+.nge-2d button.nge-2d-link { padding: 0; font: inherit; color: #7ee0ff; background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .nge-2d-small { font-size: 11px; color: #9fb4c9; }
 .nge-2d-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 7px; }
 .nge-2d-shot { margin: 0; min-width: 0; }
