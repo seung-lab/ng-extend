@@ -53,7 +53,7 @@ function ensureStyle() {
   if (document.getElementById('nge-scythe-style')) return;
   const st = document.createElement('style');
   st.id = 'nge-scythe-style';
-  st.textContent = `body.nge-scythe .nge-3d-panel, body.nge-scythe .nge-3d-panel * { cursor: url("${scytheCursor}") 1 31, crosshair !important; }
+  st.textContent = `body.nge-scythe .nge-3d-panel, body.nge-scythe .nge-3d-panel * { cursor: url("${scytheCursor}") 0 23, crosshair !important; }
 body.nge-scythe-swoop .nge-3d-panel, body.nge-scythe-swoop .nge-3d-panel * { cursor: none !important; }`;
   document.head.appendChild(st);
 }
@@ -76,12 +76,13 @@ function cellUnderMouse(): {id: any, key: string, visible: any} | null {
 /** The picture's blade tip and handle end, in pixels (static/tags/scythe-reap.png),
  *  and how much smaller the cursor is. */
 const TIP = [2, 124], HANDLE = [178, 176];
-const CURSOR_SCALE = 48 / 192;
+const CURSOR_SCALE = 36 / 192;
 /** The picture's size at the height of the swing, as the model's (MODEL_PX). */
 const FLAT_SCALE = 120 / 192;
-const SWOOP_MS = 560;
-/** The swing's parts, as shares of it: growing and winding up, then the cut. */
-const WINDUP = 0.3, HIT = 0.65;
+const SWOOP_MS = 780;
+/** The swing's parts, as shares of it: growing and winding up, the cut at HIT,
+ *  the follow through, then back down to the cursor from RETURN. */
+const WINDUP = 0.25, HIT = 0.5, RETURN = 0.75;
 /** How far the whole scythe travels sideways each side of the click, in pixels:
  *  the width of the swoop (Ames 2026-11-01: "more x axis width"). */
 const SWEEP_PX = 85;
@@ -100,42 +101,55 @@ function loadSwoopModel() {
  *  leaves it, and its size on screen at full size, in pixels. */
 const MODEL_TIP = [-0.437, 0.204, 0], MODEL_HANDLE = [0.297, -0.5, 0], MODEL_PX = 120;
 /** It leans: the tip starts behind the cell and comes on toward the eye. */
-const WIND_LEAN = -50, FOLLOW_LEAN = 45;
+const WIND_LEAN = -65, FOLLOW_LEAN = 60;
+/** Through the swing the blade lies tilted into the screen (Ames 2026-11-01:
+ *  "tilt sideways as though into the screen"). */
+const TILT_DEG = -50;
+/** The model's size at the cursor, against MODEL_PX. */
+const MODEL_CURSOR_SCALE = 0.33;
+const smooth = (k: number) => k * k * (3 - 2 * k);
 /** The swing at time t: one eased motion from the top of the wind up, through
  *  the click halfway, to the end of the follow through, with no join in it
  *  (Ames 2026-11-01: "needs easing on the swoop"). */
 function swingAt(t: number) {
-  let at: number, grown = 1, opacity = 1;
+  let at: number, grown = 1, returned = 0;
   if (t < WINDUP) {
-    const k = t / WINDUP;
-    grown = k * k * (3 - 2 * k);
+    grown = smooth(t / WINDUP);
     at = grown;
-  } else {
-    const k = (t - WINDUP) / (1 - WINDUP);
+  } else if (t < RETURN) {
+    const k = (t - WINDUP) / (RETURN - WINDUP);
     const eased = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(2 - 2 * k, 3) / 2;
     at = 1 - 2 * eased;
-    if (k > 0.6) opacity = 1 - Math.pow((k - 0.6) / 0.4, 2);
+  } else {
+    // Back to the cursor, nothing left over: it ends the size and shape it began.
+    returned = smooth((t - RETURN) / (1 - RETURN));
+    grown = 1 - returned;
+    at = -grown;
   }
   const deg = at >= 0 ? WIND_DEG * at : -FOLLOW_DEG * at;
   const lean = at >= 0 ? WIND_LEAN * at : -FOLLOW_LEAN * at;
-  return {deg, lean, grown, opacity, sweep: SWEEP_PX * at};
+  return {deg, lean, grown, returned, tilt: TILT_DEG * grown, sweep: SWEEP_PX * at};
 }
-/** Lean about the up axis, then turn in the plane of the screen. Screen y is
- *  up here, so a clockwise turn (the picture's deg) is negative. */
-function swingTurn(deg: number, lean: number) {
-  const a = -deg * Math.PI / 180, b = lean * Math.PI / 180;
-  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+/** Tilt into the screen, lean about the up axis, then turn in the plane of the
+ *  screen. Screen y is up here, so a clockwise turn (the picture's deg) is
+ *  negative. */
+function swingTurn(deg: number, lean: number, tilt: number) {
+  const a = -deg * Math.PI / 180, b = lean * Math.PI / 180, c = tilt * Math.PI / 180;
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cc = Math.cos(c), sc = Math.sin(c);
   return (v: number[]) => {
-    const vx = v[0] * cb + v[2] * sb, vz = -v[0] * sb + v[2] * cb;
-    return [vx * ca - v[1] * sa, vx * sa + v[1] * ca, vz];
+    const vy = v[1] * cc - v[2] * sc, vz0 = v[1] * sc + v[2] * cc;
+    const vx = v[0] * cb + vz0 * sb, vz = -v[0] * sb + vz0 * cb;
+    return [vx * ca - vy * sa, vx * sa + vy * ca, vz];
   };
 }
 const SWING_ARM = [0, 1, 2].map(i => (MODEL_TIP[i] - MODEL_HANDLE[i]) * MODEL_PX);
 /** How far the blade's tip is from the click at time t, in pixels, y up. */
 function tipOffset(t: number): number[] {
-  const {deg, lean, grown, sweep} = swingAt(t);
-  const turned = swingTurn(deg, lean)(SWING_ARM);
-  const off = [0, 1, 2].map(i => (turned[i] - SWING_ARM[i]) * grown);
+  const {deg, lean, grown, sweep, tilt} = swingAt(t);
+  const turned = swingTurn(deg, lean, tilt)(SWING_ARM);
+  // Measured from the pose at the cut, so the tip is on the click just then.
+  const atCut = swingTurn(0, 0, tilt)(SWING_ARM);
+  const off = [0, 1, 2].map(i => (turned[i] - atCut[i]) * grown);
   off[0] += sweep;
   return off;
 }
@@ -153,7 +167,7 @@ function trail(x: number, y: number, ms: number) {
   document.body.appendChild(cv);
   const LIFE = 420;
   const sparks: Array<{x: number, y: number, vx: number, vy: number, born: number, life: number, r: number, c: string}> = [];
-  const COUNT = 46, FROM = WINDUP + 0.12, TO = 0.92;
+  const COUNT = 46, FROM = WINDUP + 0.1, TO = RETURN - 0.04;
   for (let i = 0; i < COUNT; i++) {
     const t = FROM + (TO - FROM) * (i / (COUNT - 1));
     const tip = tipOffset(t);
@@ -227,11 +241,16 @@ function swoop3D(x: number, y: number, ms: number): boolean {
   const set = (t: number) => {
     const axes = place();
     if (!axes) { prop.alpha = 0; return; }
-    const {deg, lean, grown, opacity} = swingAt(t);
-    prop.alpha = opacity;
-    const turn = swingTurn(deg, lean);
-    const scale = MODEL_PX * (CURSOR_SCALE + (1 - CURSOR_SCALE) * grown);
+    const {deg, lean, grown, returned, tilt} = swingAt(t);
+    // With the scythe put away (the one click after a cut) no scythe cursor
+    // waits for it, so it goes out as it lands.
+    prop.alpha = !active && t > 0.9 ? (1 - t) / 0.1 : 1;
+    const turn = swingTurn(deg, lean, tilt);
+    const scale = MODEL_PX * (MODEL_CURSOR_SCALE + (1 - MODEL_CURSOR_SCALE) * grown);
     const tipAt = tipOffset(t);
+    // Home to where the mouse is now, not where it clicked.
+    tipAt[0] += moved[0] * returned;
+    tipAt[1] -= moved[1] * returned;
     const tipModel = turn(MODEL_TIP);
     const toGlobal = (q: number[], k: number) => axes.right[k] * q[0] + axes.up[k] * q[1] + axes.toEye[k] * q[2];
     const m = prop.modelMat;
@@ -242,6 +261,9 @@ function swoop3D(x: number, y: number, ms: number): boolean {
     const origin = [0, 1, 2].map(i => tipAt[i] - tipModel[i] * scale);
     for (let k = 0; k < 3; k++) m[12 + k] = at[k] + toGlobal(origin, k);
   };
+  const moved = [0, 0];
+  const onMove = (e: PointerEvent) => { moved[0] = e.clientX - x; moved[1] = e.clientY - y; };
+  window.addEventListener('pointermove', onMove, true);
   set(0);
   setNgeProps([prop], 'scythe');
   const start = performance.now();
@@ -249,7 +271,9 @@ function swoop3D(x: number, y: number, ms: number): boolean {
     const t = Math.min(1, (performance.now() - start) / ms);
     set(t);
     try { viewer.display.scheduleRedraw(); } catch { /* nothing to redraw */ }
-    if (t < 1) requestAnimationFrame(step); else setNgeProps([], 'scythe');
+    if (t < 1) { requestAnimationFrame(step); return; }
+    setNgeProps([], 'scythe');
+    window.removeEventListener('pointermove', onMove, true);
   };
   requestAnimationFrame(step);
   return true;
@@ -289,8 +313,8 @@ function swoop(x: number, y: number): number {
   const STEPS = 24;
   for (let i = 0; i <= STEPS; i++) {
     const t = i / STEPS;
-    const {deg, grown, opacity, sweep} = swingAt(t);
-    frames.push(pose(deg, CURSOR_SCALE + (FLAT_SCALE - CURSOR_SCALE) * grown, grown, sweep, opacity, t));
+    const {deg, grown, sweep} = swingAt(t);
+    frames.push(pose(deg, CURSOR_SCALE + (FLAT_SCALE - CURSOR_SCALE) * grown, grown, sweep, 1, t));
   }
   const anim = el.animate(frames, {duration: ms, fill: 'forwards'});
   anim.onfinish = anim.oncancel = () => el.remove();
