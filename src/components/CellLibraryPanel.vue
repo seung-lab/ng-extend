@@ -709,7 +709,9 @@ setCastClaimHooks({
 });
 /** Save the view to the claim being worked on. False = stay put. */
 async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
-  const id = workingTaskId;
+  // Nothing marked as the working claim, but one of yours is on screen: that
+  // is the work, so it is saved too (annkri: lost a cell opening a help request).
+  const id = workingTaskId ?? myOpenClaims.value.find(claimInView)?.taskId ?? null;
   if (!id || id === nextTaskId) return true;
   const t = backend.tasks.find(x => x.id === id);
   if (!t || t.assigned_to !== backend.userId || (t.status !== 'assigned' && t.status !== 'in_progress')) return true;
@@ -761,7 +763,8 @@ function claimInView(cell: CellRow): boolean {
   try {
     const shown = new Set<string>();
     for (const id of currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments ?? []) shown.add(String(id));
-    return [cell.segId, cell.liveSegId, cell.finalSegId].some(id => !!id && shown.has(String(id)));
+    const now = cell.taskId ? backend.currentRoots[cell.taskId] : null;
+    return [cell.segId, cell.liveSegId, cell.finalSegId, now].some(id => !!id && shown.has(String(id)));
   } catch { return true; }
 }
 
@@ -771,7 +774,14 @@ async function switchToClaim(cell: CellRow) {
   // camera. Reloading its saved view would drop anything done since the save.
   // (Only if it IS on screen: a cell claimed after a Super Quest was added to
   // the quest's cell, Nseraf 2026-10-30. It replaces it now.)
-  if (!cell.taskId || (cell.taskId === workingTaskId && claimInView(cell))) return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+  // The same with nothing marked as the working claim (a second tab, say): the
+  // cell on screen IS the work. Opening its saved view over it threw away
+  // everything since that save (toknow, report 325: "All edits and highlight
+  // marks lost").
+  if (!cell.taskId || ((cell.taskId === workingTaskId || !workingTaskId) && claimInView(cell))) {
+    if (cell.taskId && !workingTaskId) setWorkingTask(cell.taskId);
+    return jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, true, cell.liveSegId);
+  }
   // A quest on screen is saved and its layers put away BEFORE the claim's
   // view is saved or opened, so they never end up in the claim (annkri #145).
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));

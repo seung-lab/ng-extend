@@ -292,6 +292,31 @@ watch(activeStep, (now) => {
     // Live site: say so if one of them did not reach the top bar.
     verifyStepIcons(ids, where);
 }, { immediate: true });
+// The bounding box stays on through every tutorial (Ames 2026-11-01, Luis
+// Alonso's report 333: it shows where a cell can go). A step's view can load a
+// little later and bring its own settings, so look again after the load.
+function ensureBoundingBox() {
+    const v = (window as any).viewer;
+    if (!v) return;
+    try { if (v.showDefaultAnnotations && !v.showDefaultAnnotations.value) v.showDefaultAnnotations.value = true; } catch { /* not ready */ }
+    for (const ml of v.layerManager?.managedLayers ?? []) {
+        for (const ds of ml.layer?.dataSources ?? []) {
+            const loaded: any = ds.loadState;
+            if (!loaded?.subsources) continue;
+            let changed = false;
+            for (const sub of loaded.subsources) {
+                if (sub.subsourceEntry?.id === 'bounds' && !sub.enabled) { sub.enabled = true; changed = true; }
+            }
+            if (changed) { loaded.enableDefaultSubsources = false; loaded.enabledSubsourcesChanged.dispatch(); }
+        }
+    }
+}
+watch(activeStep, step => {
+    if (!step) return;
+    ensureBoundingBox();
+    for (const ms of [2000, 6000]) setTimeout(() => { if (activeStep.value) ensureBoundingBox(); }, ms);
+}, { immediate: true });
+
 // Edits made in a tutorial, on a practice cell or in the test are not a
 // player's own first edit.
 setTutorialBusy(() => !!activeStep.value || practiceShown()
