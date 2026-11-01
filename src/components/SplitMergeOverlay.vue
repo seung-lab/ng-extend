@@ -5,6 +5,7 @@ import { ngeCutPointScale } from 'neuroglancer/annotation/point';
 import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points';
+import { reapAfterCut, setReapAfterCut } from '../util/scythe';
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -416,6 +417,14 @@ function cancelTool() {
             <button class="nge-smo-action-btn clear-btn" :disabled="!cutReady || previewBusy" @click="previewCut"
                     :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">{{ previewBusy ? 'Previewing…' : 'Preview' }}</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
+            <!-- Clears a piece from view; never edits (src/util/scythe.ts). -->
+            <button v-if="!tutorialOnScreen" type="button" role="switch" class="nge-smo-reap" :class="{ 'is-on': reapAfterCut }" :aria-checked="reapAfterCut"
+                    @click="setReapAfterCut(!reapAfterCut)"
+                    title="On: after each cut, your next click on a piece in 3D reaps it from view, then the cursor goes back to normal. Ctrl+Z brings a piece back. Shift+R takes up the scythe any time.">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 22 L11 4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M12 3 C7 1.5 2.5 5.5 1 13 C4.5 9 8.5 7.5 14 7 Z" fill="#fff"/></svg>
+              Scythe reap
+              <span class="nge-smo-reap-track"><span class="nge-smo-reap-knob"></span></span>
+            </button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
           </div>
 
@@ -521,6 +530,23 @@ function cancelTool() {
 </template>
 
 <style scoped>
+.nge-smo-reap {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px; pointer-events: auto;
+  font: inherit; font-size: 12px; font-weight: 600; color: #fff; background: none; border: 0; cursor: pointer; white-space: nowrap;
+}
+.nge-smo-reap:disabled { opacity: .45; cursor: not-allowed; }
+.nge-smo-reap-track {
+  position: relative; width: 28px; height: 15px; border-radius: 999px;
+  background: rgb(255 255 255 / .16); border: 1px solid rgb(255 255 255 / .45);
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.nge-smo-reap-knob {
+  position: absolute; top: 2px; left: 2px; width: 9px; height: 9px; border-radius: 50%;
+  background: #fff; transition: transform .15s ease;
+}
+.nge-smo-reap.is-on .nge-smo-reap-track { background: #e8b93e; border-color: #ffe08a; box-shadow: 0 0 8px rgb(232 185 62 / .7); }
+.nge-smo-reap.is-on .nge-smo-reap-knob { transform: translateX(13px); }
+@media (prefers-reduced-motion: reduce) { .nge-smo-reap-track, .nge-smo-reap-knob { transition: none; } }
 .nge-split-merge-overlay {
   position: fixed;
   /* On the bottom edge (Krzysztof: a bare 28px strip showed under it), and
