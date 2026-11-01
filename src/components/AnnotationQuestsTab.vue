@@ -314,6 +314,8 @@ async function send(r: QuestRow, e?: Event) {
     const link = await mintShortStateLink();
     if (!link) throw new Error('A share link of this view could not be made. Sign in and try again.');
     const placed = points.value;
+    const at = mine.value.findIndex(m => m.segmentId === r.segmentId);
+    const afterThis = [...mine.value.slice(at + 1), ...mine.value.slice(0, Math.max(at, 0))];
     await submitQuest(r.segmentId, { status: form.value.status, splitMerged: form.value.splitMerged, link, notes: form.value.notes });
     open.value = '';
     if (isActive(r)) { setActiveQuest(null); markQuestOnScreen(null); }
@@ -321,6 +323,13 @@ async function send(r: QuestRow, e?: Event) {
     await load();
     // The celebration: a toast with the counts, and confetti (AchievementToast.vue).
     document.dispatchEvent(new CustomEvent('nge:quest-complete', { detail: { index: r.index, points: placed, done: mineDone.value, origin } }));
+    // On to your next claimed cell (toknow, report 326), the one after this in
+    // your list. With none left, the view stays where it is.
+    const next = afterThis.find(x => mine.value.some(m => m.segmentId === x.segmentId));
+    if (next) {
+      message.value = `${r.index || 'The cell'} is submitted. Thank you. Opening ${label(next)}.`;
+      try { await openCell(next); } catch (e) { console.warn('[quests] the next cell did not open:', e); }
+    }
   } catch (e: any) { error.value = e?.message || String(e); }
   finally { busy.value = ''; }
 }
