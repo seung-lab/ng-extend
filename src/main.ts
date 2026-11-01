@@ -234,6 +234,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // layer.tool.value on activation, leaving store.toolActive stale.
   const escHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
+    // Escape with the scythe in hand puts only the scythe away (util/scythe.ts).
+    if (document.body.classList.contains('nge-scythe')) return;
     const store = useSplitMergeOverlayStore();
     const toolDomPresent = !!(
       document.querySelector('.graphene-multicut') ||
