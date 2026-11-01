@@ -45,12 +45,12 @@ let active = false;
 const crumbling = new Set<string>();
 let swallowUntil = 0;
 
-/** Ames's scythe for the cursor; the hot spot is the ring on the blade's tip. */
+/** Ames's scythe for the cursor; the hot spot is the blade's tip. */
 function ensureStyle() {
   if (document.getElementById('nge-scythe-style')) return;
   const st = document.createElement('style');
   st.id = 'nge-scythe-style';
-  st.textContent = `body.nge-scythe .nge-3d-panel, body.nge-scythe .nge-3d-panel * { cursor: url("${scytheCursor}") 10 38, crosshair !important; }
+  st.textContent = `body.nge-scythe .nge-3d-panel, body.nge-scythe .nge-3d-panel * { cursor: url("${scytheCursor}") 2 32, crosshair !important; }
 body.nge-scythe-swoop .nge-3d-panel, body.nge-scythe-swoop .nge-3d-panel * { cursor: none !important; }`;
   document.head.appendChild(st);
 }
