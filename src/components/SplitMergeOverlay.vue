@@ -5,6 +5,7 @@ import { ngeCutPointScale } from 'neuroglancer/annotation/point';
 import { useTutorialStore } from '../store-pyr';
 import { exitGrapheneTool } from '../widgets/graphene_tool_utils';
 import { undoStaleCutClear, forgetStaleCutClear } from '../util/stale_cut_points';
+import { scytheActive, startScythe, stopScythe } from '../util/scythe';
 import { currentSegLayer } from '../datasets';
 import { isTouchRef } from '../util/mobile';
 import { Uint64 } from 'neuroglancer/util/uint64';
@@ -107,6 +108,8 @@ watch(() => store.activeGroup, (now, before) => {
 });
 const isBlueActive = computed(() => store.activeGroup === 'blue');
 const totalPoints = computed(() => store.redPointCount + store.bluePointCount);
+// The scythe belongs to cut mode, and goes when it does.
+watch(() => store.toolActive, t => { if (t !== 'multicut') stopScythe(); });
 
 const isSubmitting = computed(() => store.submitting);
 const isPendingClose = computed(() => store.pendingClose);
@@ -416,6 +419,10 @@ function cancelTool() {
             <button class="nge-smo-action-btn clear-btn" :disabled="!cutReady || previewBusy" @click="previewCut"
                     :title="cutReady ? 'Show in 3D, in red and blue, which side of the cut each part of the cell would fall on. Nothing is cut.' : 'Place a red and a blue point first'">{{ previewBusy ? 'Previewing…' : 'Preview' }}</button>
             <button class="nge-smo-action-btn clear-btn" @click="clearPoints" title="Clear all points">Clear</button>
+            <!-- Clears a piece from view; never edits (src/util/scythe.ts). -->
+            <button v-if="!tutorialOnScreen" class="nge-smo-action-btn clear-btn" :disabled="totalPoints > 0 && !scytheActive"
+                    @click="scytheActive ? stopScythe() : startScythe()"
+                    :title="totalPoints > 0 ? 'Submit or clear your cut points first' : 'Your cursor becomes a scythe: click a piece in 3D to remove it from view. Ctrl+Z brings it back.'">Scythe destroy</button>
             <button class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Exit cut mode"><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
           </div>
 

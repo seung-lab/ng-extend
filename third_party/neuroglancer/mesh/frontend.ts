@@ -353,15 +353,16 @@ function ngePulseFor(gl: GL, shader: ShaderProgram, key: string, hovered: boolea
 const ngeLanternPos = new Float32Array(3);
 
 // ── EyeWire II scythe (src/util/scythe.ts, Ames 2026-10-25) ────────────────
-// A cell swiped with the scythe crumbles away: it breaks into chunks (a few
-// percent of the view across) that drop down the screen one after another,
-// each falling to dust as it goes. All in the shader, keyed to one segment;
-// nothing in the data changes. The scythe hides the cell once it is gone.
-const ngeCrumbles = new Map<string, {t0: number, ms: number}>();
+// A cell clicked with the scythe bursts apart (Ames 2026-11-01: "more gently
+// explode outward", "then fade away"): it breaks into chunks (a few percent
+// of the view across) that drift out from the click, slowing as they go, and
+// fade. All in the shader, keyed to one segment; nothing in the data changes.
+// The scythe hides the cell once it is gone.
+const ngeCrumbles = new Map<string, {t0: number, ms: number, center: Float32Array}>();
 /** Start crumbling the cell with this key (`low,high`, getObjectKey). It
  *  stays crumbled (gone) until ngeCrumbleClear. */
 export function ngeCrumble(key: string, ms: number) {
-  ngeCrumbles.set(key, {t0: performance.now(), ms});
+  ngeCrumbles.set(key, {t0: performance.now(), ms, center: ngePulseCenter.slice()});
 }
 export function ngeCrumbleClear(key: string) {
   ngeCrumbles.delete(key);
@@ -374,8 +375,9 @@ function ngeCrumbleFor(gl: GL, shader: ShaderProgram, key: string) {
   }
   const t = Math.min(1, (performance.now() - c.t0) / c.ms);
   if (t < 1) ngePulseRunning = true;
-  // Chunks about 3% of the view across, in nm.
-  gl.uniform4f(shader.uniform('uNgeCrumble'), Math.max(1e-4, t), Math.max(1, ngePulseViewNm * 0.03), 0, 0);
+  gl.uniform3fv(shader.uniform('uNgeCrumbleCenter'), c.center);
+  // Chunks about 3% of the view across; they drift about 12% of it, in nm.
+  gl.uniform4f(shader.uniform('uNgeCrumble'), Math.max(1e-4, t), Math.max(1, ngePulseViewNm * 0.03), ngePulseViewNm * 0.12, 0);
 }
 
 export class MeshShaderManager {
@@ -575,8 +577,10 @@ export class MeshShaderManager {
         builder.addUniform('highp vec3', 'uNgePulseScale');
         builder.addUniform('highp vec4', 'uNgePulseColor');
         builder.addUniform('highp vec4', 'uNgeRim');
-        // Scythe crumble: x how far along (0 off, 1 gone), y chunk size, nm.
+        // Scythe burst: x how far along (0 off, 1 gone), y chunk size, z how
+        // far they drift, nm. The centre is where the scythe clicked.
         builder.addUniform('highp vec4', 'uNgeCrumble');
+        builder.addUniform('highp vec3', 'uNgeCrumbleCenter');
         builder.addVarying('highp vec4', 'vNgeCrumble');
         const crumbleHash = `
 highp float ngeCrumbleHash(highp vec3 p3) {
@@ -780,14 +784,19 @@ if (uNgeShell.w > 0.5) {
 }
 vNgeCrumble = vec4(0.0);
 if (uNgeCrumble.x > 0.0) {
-  // EyeWire II scythe: each chunk waits its turn, then drops and drifts.
+  // EyeWire II scythe: each chunk starts a moment apart and drifts out from
+  // the click, slowing as it goes.
   highp vec3 crumbleAt = (uNgeModel * vec4(vertexPosition, 1.0)).xyz * uNgePulseScale / uNgeCrumble.y;
   highp float crumbleH = ngeCrumbleHash(floor(crumbleAt));
-  highp float crumbleWait = crumbleH * 0.5;
+  highp float crumbleWait = crumbleH * 0.25;
   highp float crumbleT = clamp((uNgeCrumble.x - crumbleWait) / (1.0 - crumbleWait), 0.0, 1.0);
-  gl_Position.y -= crumbleT * crumbleT * 1.4 * gl_Position.w;
-  gl_Position.x += (fract(crumbleH * 91.7) - 0.5) * 0.3 * crumbleT * gl_Position.w;
-  vColor.rgb *= 1.0 - 0.45 * crumbleT;
+  highp vec3 crumbleFrom = (floor(crumbleAt) + 0.5) * uNgeCrumble.y - uNgeCrumbleCenter * uNgePulseScale;
+  highp vec3 crumbleJitter = vec3(crumbleH, fract(crumbleH * 91.7), fract(crumbleH * 47.3)) - 0.5;
+  highp vec3 crumbleDir = normalize(crumbleFrom / max(length(crumbleFrom), 1.0) + 0.8 * crumbleJitter + vec3(1e-3));
+  highp float crumbleEase = 1.0 - pow(1.0 - crumbleT, 3.0);
+  highp vec3 crumbleMove = crumbleDir * crumbleEase * uNgeCrumble.z * (0.6 + 0.8 * fract(crumbleH * 13.1));
+  gl_Position += uModelViewProjection * vec4(inverse(mat3(uNgeModel)) * (crumbleMove / uNgePulseScale), 0.0);
+  vColor.rgb *= 1.0 - 0.5 * smoothstep(0.35, 1.0, crumbleT);
   vNgeCrumble = vec4(crumbleAt, crumbleT);
 }
 `;
@@ -795,12 +804,13 @@ if (uNgeCrumble.x > 0.0) {
         builder.setFragmentMain(`
 if (uNgeCrumble.x > 0.0) {
   // A triangle that spans two chunks is torn between them: drop it, so the
-  // chunks come apart cleanly. Each chunk falls to dust as it goes.
+  // chunks come apart cleanly. Each chunk fades as it goes: fewer and fewer
+  // of its pixels are drawn, which reads as see-through on a solid cell.
   highp vec3 crumbleCell = floor(vNgeCrumble.xyz);
-  highp float crumbleWait = ngeCrumbleHash(crumbleCell) * 0.5;
+  highp float crumbleWait = ngeCrumbleHash(crumbleCell) * 0.25;
   highp float crumbleT = clamp((uNgeCrumble.x - crumbleWait) / (1.0 - crumbleWait), 0.0, 1.0);
   if (abs(crumbleT - vNgeCrumble.w) > 0.02) discard;
-  if (ngeCrumbleHash(floor(vNgeCrumble.xyz * 5.0) + 7.0) < crumbleT * 1.08 - 0.08 || uNgeCrumble.x >= 1.0) discard;
+  if (ngeCrumbleHash(vec3(floor(gl_FragCoord.xy), 3.0)) < smoothstep(0.35, 1.0, crumbleT) || uNgeCrumble.x >= 1.0) discard;
 }
 if (vNgeHolo.w > 0.5) {
   if (vNgeHolo.z > 0.5) {

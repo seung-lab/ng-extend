@@ -1,34 +1,33 @@
 /**
- * The scythe (Ames 2026-10-25: "after you cut a piece you can hammer
- * (instead let's use Scythe, since that's sort of a long running inside joke
- * with grim reaper) so scythe swipe to make the branch crumble away").
+ * The scythe (Ames 2026-10-25: "scythe swipe to make the branch crumble
+ * away"; 2026-11-01: "we just want it to be a button in cut mode", "more
+ * gently explode outward", "then fade away", and no sound).
  *
- * After a cut, a small bar at the top offers the scythe. With it, the cursor
- * over the 3D view is a scythe, and a click on a cell (or a drag that starts
- * on one and sweeps across others) makes each cell crumble away: it breaks
- * into chunks that fall and turn to dust (mesh/frontend.ts ngeCrumble, all
- * in the shader). Then the cell is hidden: unticked in the segment list,
- * still in it, and Undelete (Ctrl+Z) brings it back. Nothing is merged,
- * split or changed in the data. A click that misses every cell goes to the
- * viewer as usual, so the view can still be turned. Done or Escape puts the
- * scythe away. Calm screen: no crumble, the cell just goes.
+ * The cut bar's Scythe destroy button (SplitMergeOverlay.vue) makes the cursor
+ * over the 3D view a scythe. A click on a cell (or a drag that starts on one
+ * and sweeps across others) bursts it into chunks that drift outward and fade
+ * (mesh/frontend.ts ngeCrumble, all in the shader). Then the cell is hidden:
+ * unticked in the segment list, still in it, and Undelete (Ctrl+Z) brings it
+ * back. Nothing is merged, split or changed in the data. A click that misses
+ * every cell goes to the viewer as usual, so the view can still be turned.
+ * Done, Escape or leaving cut mode puts the scythe away. Calm screen: no
+ * burst, the cell just goes.
  *
  * The pattern is the pumpkin hammer's (pumpkin.ts startSmashing). The cell
  * under the mouse is neuroglancer's own pick (mouseState), not a guess from
  * the screen.
  */
+import {ref} from 'vue';
 import {ngeCrumble, ngeCrumbleClear} from 'neuroglancer/mesh/frontend';
 import {rememberRemoved} from './undelete';
 
-const CRUMBLE_MS = 1400;
-/** How long the offer stays after a cut. */
-const OFFER_MS = 20_000;
+const CRUMBLE_MS = 1600;
 
-let viewer: any = null;
+const viewerNow = (): any => (window as any).viewer;
+/** The scythe is in hand, for the cut bar's button. */
+export const scytheActive = ref(false);
 let active = false;
 let bar: HTMLDivElement | null = null;
-let offer: HTMLDivElement | null = null;
-let offerTimer: ReturnType<typeof setTimeout> | null = null;
 /** Cells crumbling now, by key (`low,high`), so a sweep takes each once. */
 const crumbling = new Set<string>();
 /** The mouse is held after a hit: cells swept over crumble too. */
@@ -87,38 +86,17 @@ function makeBar(text: string, buttons: Array<{label: string, quiet?: boolean, a
   return el;
 }
 
-/** A soft swish, made on the spot: noise swept through a band filter. */
-function swish() {
-  try {
-    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
-    const ac: AudioContext = new AC();
-    const len = Math.floor(ac.sampleRate * 0.4);
-    const buf = ac.createBuffer(1, len, ac.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let k = 0; k < len; k++) d[k] = (Math.random() * 2 - 1) * Math.sin(Math.PI * k / len);
-    const src = ac.createBufferSource();
-    src.buffer = buf;
-    const f = ac.createBiquadFilter();
-    f.type = 'bandpass';
-    f.Q.value = 1.2;
-    f.frequency.setValueAtTime(700, ac.currentTime);
-    f.frequency.exponentialRampToValueAtTime(3800, ac.currentTime + 0.35);
-    const g = ac.createGain();
-    g.gain.value = 0.3;
-    src.connect(f).connect(g).connect(ac.destination);
-    src.start();
-    src.onended = () => { ac.close(); };
-  } catch { /* no sound */ }
-}
-
 /** The cell under the mouse in a 3D view, with the set it is shown from. */
 function cellUnderMouse(): {id: any, key: string, visible: any} | null {
-  const ms = viewer?.mouseState;
+  const ms = viewerNow()?.mouseState;
   if (!ms?.active) return null;
   const rl = ms.pickedRenderLayer;
   const id = ms.pickedValue;
   if (!rl || !id || (id.low === 0 && id.high === 0)) return null;
-  const visible = rl.displayState?.segmentationGroupState?.value?.visibleSegments;
+  const group = rl.displayState?.segmentationGroupState?.value;
+  // A cut in progress draws its own set of pieces; those are not for the scythe.
+  if (group?.useTemporaryVisibleSegments?.value) return null;
+  const visible = group?.visibleSegments;
   if (!visible?.has?.(id)) return null;
   return {id: id.clone ? id.clone() : id, key: `${id.low},${id.high}`, visible};
 }
@@ -137,11 +115,10 @@ function reap(cell: {id: any, key: string, visible: any}) {
     setTimeout(() => { ngeCrumbleClear(cell.key); crumbling.delete(cell.key); }, 300);
   };
   if (document.body.classList.contains('nge-calm')) { hide(); return; }
-  swish();
   // window.__ngeCrumbleMs slows it down, for a look at it frame by frame.
   const ms = Number((window as any).__ngeCrumbleMs) || CRUMBLE_MS;
   ngeCrumble(cell.key, ms);
-  try { viewer?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
+  try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   setTimeout(hide, ms);
 }
 
@@ -173,9 +150,9 @@ function onKey(e: KeyboardEvent) {
 
 /** Hand the player the scythe. */
 export function startScythe() {
-  hideOffer();
-  if (active || !viewer) return;
+  if (active || !viewerNow()) return;
   active = true;
+  scytheActive.value = true;
   document.body.classList.add('nge-scythe');
   // pointerdown and mousedown both: neuroglancer listens for mousedown
   window.addEventListener('pointerdown', onDown, true);
@@ -185,13 +162,14 @@ export function startScythe() {
   window.addEventListener('mouseup', swallow, true);
   window.addEventListener('click', swallow, true);
   window.addEventListener('keydown', onKey, true);
-  bar = makeBar('Swipe a piece to clear it away', [{label: 'Done', act: () => stopScythe()}]);
+  bar = makeBar('Click a piece to remove it', [{label: 'Done', act: () => stopScythe()}]);
 }
 
 /** Put the scythe away. Cells already crumbling still go. */
 export function stopScythe() {
   if (!active) return;
   active = false;
+  scytheActive.value = false;
   sweeping = false;
   document.body.classList.remove('nge-scythe');
   window.removeEventListener('pointerdown', onDown, true);
@@ -203,31 +181,4 @@ export function stopScythe() {
   window.removeEventListener('keydown', onKey, true);
   bar?.remove();
   bar = null;
-}
-
-function hideOffer() {
-  if (offerTimer) { clearTimeout(offerTimer); offerTimer = null; }
-  offer?.remove();
-  offer = null;
-}
-
-/** After a cut: the scythe is offered for a while. */
-function offerScythe() {
-  if (active) return;
-  hideOffer();
-  offer = makeBar('Clear a cut-off piece away?', [
-    {label: 'Pick up the scythe', act: () => startScythe()},
-    {label: 'Not now', quiet: true, act: () => hideOffer()},
-  ]);
-  offerTimer = setTimeout(hideOffer, OFFER_MS);
-}
-
-/** Call once the viewer exists. */
-export function startScytheOffers(v: any) {
-  if (viewer) return;
-  viewer = v;
-  // graphene frontend.ts: the server took a split.
-  window.addEventListener('nge-graph-edit', (e: Event) => {
-    if ((e as CustomEvent).detail?.kind === 'split') offerScythe();
-  });
 }
