@@ -10,6 +10,8 @@
  * Self-contained: one canvas, no neuroglancer, no network.
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { collectBurst, fireworkBurst, lootBeam } from '../vendor/pixelfx/pyr.js';
+import { fxRamp, playFx } from '../util/pixelfx';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
 import nurroDance from '../../static/nurro/nurro-dance.png';
 import nurroConfetti from '../../static/nurro/nurro-confetti.png';
@@ -163,7 +165,9 @@ function lock() {
     const pts = [0, 100, 300, 500, 800][full.length] * level.value;
     score.value += pts;
     lines.value += full.length;
+    const levelBefore = level.value;
     level.value = 1 + Math.floor(lines.value / 10);
+    pixelsForClear(full, level.value > levelBefore);
     cheerFor(full.length);
   } else if (!spawn()) {
     gameOver();
@@ -179,6 +183,21 @@ function finishClear() {
   ];
   clearing = null;
   if (!spawn()) gameOver();
+}
+
+/** PixelFX over the well (Ames 2026-11-01): a burst in each row's colour as it
+ *  merges, fireworks for four at once, a pillar of light on a new level. */
+function pixelsForClear(rows: number[], levelledUp: boolean) {
+  const host = canvasEl.value?.parentElement ?? undefined;
+  rows.forEach((r, i) => {
+    const color = board[r][COLS >> 1]?.color ?? '#00c8ff';
+    playFx(collectBurst, { host, x: W / 2, y: (r + 0.5) * CELL, anchorY: -30, delay: i * 0.08, options: { palette: fxRamp(color), seed: 3 + r } });
+  });
+  if (rows.length >= 4) {
+    playFx(fireworkBurst, { host, x: W * 0.32, y: H * 0.3, delay: 0.15 });
+    playFx(fireworkBurst, { host, x: W * 0.68, y: H * 0.22, delay: 0.55, options: { seed: 21 } });
+  }
+  if (levelledUp) playFx(lootBeam, { host, x: W / 2, y: H, layer: 'back', scale: 3, lasts: 1.8, options: { palette: fxRamp('#f5d142') } });
 }
 
 function cheerFor(n: number) {

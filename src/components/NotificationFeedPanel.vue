@@ -15,6 +15,7 @@ import { refreshDatasetPermissions } from '../util/dataset_access';
 import ScreenshotDialog from 'components/ScreenshotDialog.vue';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import ConfettiCelebration from 'components/ConfettiCelebration.vue';
+import { launchFireworks } from '../util/special_days';
 import { isCalm } from '../util/calm';
 declare const NGE_BUILD: string | undefined;
 import pyrIcon from '../../static/badges/pyr/neuron-icon-white.png';
@@ -937,6 +938,7 @@ watch(champions, c => { if (c) void loadChampionIds(); });
 // Opening a Champions card: blue, purple and yellow confetti behind it, a
 // bigger burst for the month. Not for players who asked for calm.
 const champConfetti = ref<InstanceType<typeof ConfettiCelebration> | null>(null);
+const detailBackdrop = ref<HTMLElement | null>(null);
 watch(() => champions.value && openNotif.value, async (open, was) => {
   if (!open || open === was || isCalm()) return;
   await nextTick();
@@ -945,6 +947,8 @@ watch(() => champions.value && openNotif.value, async (open, was) => {
   if (!champions.value) return;
   const kind = champions.value?.kind;
   const monthly = kind === 'Monthly Champions';
+  // Pixel fireworks behind the card for the month and the year (Ames 2026-11-01).
+  if (monthly || kind === 'Pyr Year Champions') launchFireworks(monthly ? 4 : 8, detailBackdrop.value ?? undefined);
   // The year: a fanfare of four waves, the last one gold.
   if (kind === 'Pyr Year Champions') {
     champConfetti.value?.trigger('champions', 3.5);
@@ -1105,7 +1109,7 @@ function padRank(rank: number): string {
   <!-- ═══ Detail overlay (separate Teleport so it's not clipped by panel) ═══ -->
   <Teleport to="body">
     <Transition name="nge-notif-detail">
-      <div v-if="openNotif" class="nge-notif-detail-backdrop" :class="{ 'nge-notif-detail-backdrop--preview': openNotif.preview }" @click.self="closeDetail">
+      <div v-if="openNotif" ref="detailBackdrop" class="nge-notif-detail-backdrop" :class="{ 'nge-notif-detail-backdrop--preview': openNotif.preview }" @click.self="closeDetail">
         <!-- Champions: confetti falls behind the card (Ames 2026-10-26). -->
         <ConfettiCelebration v-if="champions" ref="champConfetti" inline />
         <div
