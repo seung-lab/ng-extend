@@ -248,6 +248,15 @@ if (fs.existsSync(HALLOWEEN_DIR)) {
   }
   console.log(`Copied the Halloween models to ${dest}`);
 }
+const SFX_DIR = path.join(STATIC_DIR, 'sfx');
+if (fs.existsSync(SFX_DIR)) {
+  const dest = path.join(DIST_MIN, 'sfx');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(SFX_DIR)) {
+    if (file.endsWith('.mp3')) fs.copyFileSync(path.join(SFX_DIR, file), path.join(dest, file));
+  }
+  console.log(`Copied the sound effects to ${dest}`);
+}
 
 // ── Stamp bundle URLs with a build version ──────────────────────────────────
 // The App Engine edge caches every path for 10 minutes. A cache-busted page

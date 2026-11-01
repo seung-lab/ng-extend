@@ -230,6 +230,16 @@ if (fs.existsSync(HALLOWEEN)) {
   console.log(`Copied Halloween models → ${dest}`);
 }
 
+// ── Sound effects (src/util/scythe.ts plays /sfx/<name>.mp3) ─────────────────
+const SFX = path.join(__dirname, '..', 'static', 'sfx');
+if (fs.existsSync(SFX)) {
+  const dest = path.join(__dirname, '..', 'dist', 'dev', 'sfx');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(SFX)) {
+    if (file.endsWith('.mp3')) fs.copyFileSync(path.join(SFX, file), path.join(dest, file));
+  }
+}
+
 console.log('Starting dev server...');
 const proc = spawn(process.execPath, args, { stdio: 'inherit', shell: false });
 proc.on('exit', code => process.exit(code ?? 0));

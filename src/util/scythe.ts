@@ -1,7 +1,7 @@
 /**
  * The scythe (Ames 2026-10-25: "scythe swipe to make the branch crumble
  * away"; 2026-11-01: "we just want it to be a button in cut mode", "more
- * gently explode outward", "then fade away", and no sound).
+ * gently explode outward", "then fade away"; Ames's own sound, Scythe Vanish).
  *
  * The cut bar's Scythe destroy button (SplitMergeOverlay.vue) makes the cursor
  * over the 3D view a scythe. A click on a cell (or a drag that starts on one
@@ -118,8 +118,16 @@ function reap(cell: {id: any, key: string, visible: any}) {
   // window.__ngeCrumbleMs slows it down, for a look at it frame by frame.
   const ms = Number((window as any).__ngeCrumbleMs) || CRUMBLE_MS;
   ngeCrumble(cell.key, ms);
+  playVanish();
   try { viewerNow()?.display?.scheduleRedraw(); } catch { /* nothing to redraw */ }
   setTimeout(hide, ms);
+}
+
+/** Ames's Scythe Vanish, fetched when the scythe is picked up. Each burst gets
+ *  its own copy, so a sweep across several cells can overlap. */
+let vanish: HTMLAudioElement | null = null;
+function playVanish() {
+  try { void (vanish?.cloneNode() as HTMLAudioElement | undefined)?.play().catch(() => { /* no sound */ }); } catch { /* no sound */ }
 }
 
 function swallow(e: Event) {
@@ -153,6 +161,10 @@ export function startScythe() {
   if (active || !viewerNow()) return;
   active = true;
   scytheActive.value = true;
+  if (!vanish) {
+    vanish = new Audio('sfx/scythe-vanish.mp3');
+    vanish.preload = 'auto';
+  }
   document.body.classList.add('nge-scythe');
   // pointerdown and mousedown both: neuroglancer listens for mousedown
   window.addEventListener('pointerdown', onDown, true);
