@@ -6290,6 +6290,13 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (who === userId.value && myBadgeAwards.value.has(key)) return true;
     return !!savedAwards.value[who]?.has(key);
   }
+  /** A saved award on the old ladder (Legacy Achievements): read as saved, on every site. */
+  function holdsLegacy(who: string | null | undefined, track: string, badgeId: number): boolean {
+    if (!who) return false;
+    const key = badgeAwardKey(track, badgeId);
+    if (who === userId.value && myBadgeAwards.value.has(key)) return true;
+    return !!savedAwards.value[who]?.has(key);
+  }
   async function recordBadgeAward(track: string, badgeId: number) {
     if (!userId.value || badgeId == null) return;
     if (achievementTestTrack(track)) return;   // the new ladders save nothing from a test site
@@ -6548,7 +6555,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
-    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved,
+    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved, holdsLegacy,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload

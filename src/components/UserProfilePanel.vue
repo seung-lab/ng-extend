@@ -24,7 +24,7 @@ import MyCellsTab from 'components/MyCellsTab.vue';
 import { isMobileRef } from '../util/mobile';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
-import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, LEGACY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
 import {useIssueTagStore, type IssueTag} from '../store';
@@ -580,6 +580,24 @@ function isBadgeEarned(badge: BadgeDefinition): boolean {
   return backendStore.holdsSaved(props.viewUserId || backendStore.userId, badge.track, badge.id);
 }
 
+/** Legacy Achievements: saved on the old ladder, or reached by its old number. */
+function isLegacyEarned(badge: BadgeDefinition): boolean {
+  if (statForTrack(badge.track) >= badge.threshold) return true;
+  return backendStore.holdsLegacy(props.viewUserId || backendStore.userId, badge.track, badge.id);
+}
+const legacyCells = computed(() => LEGACY_BADGES.filter(b => b.track === 'exploration' && isLegacyEarned(b)).reverse());
+const legacyEdits = computed(() => LEGACY_BADGES.filter(b => b.track === 'building' && isLegacyEarned(b)).reverse());
+function onLegacyClick(badge: BadgeDefinition) {
+  selectedSpecialBadge.value = null;
+  selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
+}
+/** A favorite's Achievement: the new ladder first, else the old one it was chosen from. */
+function favoriteDef(slug: string): BadgeDefinition | null {
+  const found = BADGE_DEFINITIONS.find(b => b.slug === slug);
+  if (found && isBadgeEarned(found)) return found;
+  return LEGACY_BADGES.find(b => b.slug === slug && isLegacyEarned(b)) || null;
+}
+
 function onBadgeClick(badge: BadgeDefinition) {
   if (!isBadgeEarned(badge)) return;
   selectedSpecialBadge.value = null;
@@ -646,8 +664,8 @@ const latestEarnedBadge = computed(() => {
 const favoriteBadgeSlug = computed(() => viewingOtherUser.value ? String(otherUserProfile.value?.favorite_badge || '') : backendStore.favoriteBadgeSlug);
 const favoriteBadge = computed<BadgeDefinition | null>(() => {
   if (favoriteBadgeSlug.value) {
-    const found = BADGE_DEFINITIONS.find(b => b.slug === favoriteBadgeSlug.value);
-    if (found && isBadgeEarned(found)) return found;
+    const found = favoriteDef(favoriteBadgeSlug.value);
+    if (found) return found;
   }
   return null;
 });
@@ -692,8 +710,8 @@ type FavTier = 'gold' | 'silver' | 'bronze';
 interface FavItem { slug: string; name: string; img: string; gold: boolean; tier: FavTier; def?: BadgeDefinition; award?: any }
 function favItem(slug: string, tier: FavTier): FavItem | null {
   const gold = tier === 'gold';
-  const def = BADGE_DEFINITIONS.find(b => b.slug === slug);
-  if (def) return isBadgeEarned(def) ? { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, tier, def } : null;
+  const def = favoriteDef(slug);
+  if (def) return { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, tier, def };
   const award = profileSpecialBadges.value.find((a: any) => specialSlug(a) === slug);
   const img = award?.badge?.thumbnail_url || award?.badge?.image_url;
   return award && img ? { slug, name: award.badge?.name || 'Award', img, gold, tier, award } : null;
@@ -2595,6 +2613,50 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
             </div>
           </div>
 
+          <!-- Legacy Achievements (Ames 2026-11-02): what this player earned on the old cell and edit
+               ladders, always at the foot of the case. -->
+          <div v-if="legacyCells.length + legacyEdits.length > 0" class="nge-trophy-track nge-trophy-track--legacy" style="order: 100;">
+            <div class="nge-trophy-track-label" style="color: #c9d4e6;">Legacy Achievements
+              <span class="nge-trophy-track-count">{{ legacyCells.length + legacyEdits.length }} earned before the update</span>
+            </div>
+            <div v-if="legacyCells.length" class="nge-trophy-legacy-sub">Cell Completions</div>
+            <div v-if="legacyCells.length" class="nge-trophy-grid">
+              <div
+                v-for="badge in legacyCells"
+                :key="'legacy-' + badge.id"
+                class="nge-trophy-badge nge-trophy-badge--exploration nge-trophy-badge--legacy"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                }"
+                @click="onLegacyClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
+              </div>
+            </div>
+            <div v-if="legacyEdits.length" class="nge-trophy-legacy-sub">Editor Achievements</div>
+            <div v-if="legacyEdits.length" class="nge-trophy-grid">
+              <div
+                v-for="badge in legacyEdits"
+                :key="'legacy-' + badge.id"
+                class="nge-trophy-badge nge-trophy-badge--building nge-trophy-badge--legacy"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                }"
+                @click="onLegacyClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Special Awards -->
           <div v-if="plainSpecialBadges.length > 0" class="nge-trophy-track" :class="{ 'is-dragging': draggingSection === 'special', 'is-drop': dropSection === 'special' }" :style="sectionOrder('special')" @dragover="sectionDragOver('special', $event)" @drop.prevent="sectionDrop('special')">
             <div class="nge-trophy-track-label">★ Special Awards
@@ -4483,6 +4545,8 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* Sections in the player's own order: dragged by the grip in the heading */
 .nge-trophy-main { display: flex; flex-direction: column; }
 .nge-trophy-track { transition: opacity 0.15s ease, box-shadow 0.15s ease; border-radius: 10px; }
+.nge-trophy-track--legacy { margin-top: 8px; padding-top: 18px; border-top: 1px solid rgba(160, 180, 210, 0.14); }
+.nge-trophy-legacy-sub { font-size: 0.78em; font-weight: 600; letter-spacing: 0.04em; color: rgba(190, 205, 228, 0.7); margin: 10px 0 8px; }
 .nge-trophy-track.is-dragging { opacity: 0.45; }
 .nge-trophy-track.is-drop { box-shadow: 0 -3px 0 0 rgba(120, 190, 255, 0.85); }
 .nge-trophy-track-move { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.15s ease; }
@@ -4501,16 +4565,17 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 @media (min-width: 901px) {
   body:not(.nge-mobile) .nge-profile-shell--trophy { width: calc(97 * var(--nge-vw, 1vw)); max-width: none; height: calc(94 * var(--nge-vh, 1vh)); max-height: calc(94 * var(--nge-vh, 1vh)); }
   body:not(.nge-mobile) .nge-profile-body--trophy > .nge-trophy-scroll {
-    display: grid; grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
+    /* one third for the Achievement on show, two thirds for the case (Ames 2026-11-02) */
+    display: grid; grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr);
     overflow: hidden; padding: 0;
   }
   body:not(.nge-mobile) .nge-trophy-side {
     --trophy-icon: min(300px, calc(24 * var(--nge-vw, 1vw)), calc(38 * var(--nge-vh, 1vh)));
     overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-    padding: 28px 22px 22px; border-right: 1px solid rgba(74, 158, 255, 0.1);
+    padding: 36px 40px 32px; border-right: 1px solid rgba(74, 158, 255, 0.1);
   }
   body:not(.nge-mobile) .nge-trophy-main {
-    overflow-y: auto; padding: 22px 26px 26px;
+    overflow-y: auto; padding: 32px 48px 40px;
     scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
   }
   body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured {
@@ -4965,7 +5030,8 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 .nge-profile-modal .nge-profile-body--admin { width: 100%; max-width: 720px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--week { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--dstats { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
-.nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1200px; align-self: center; }
+/* the Trophy Case takes the frame like the Overview (Ames 2026-11-02) */
+.nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1880px; align-self: center; }
 /* the Overview keeps the proportions it has at 1920 px: on a wider screen
    (Ames 2026-10-13, a 2560 px window: "look how bad this looks on a super
    wide screen") the rows no longer stretch, the body is capped and centred
