@@ -844,6 +844,9 @@ async function markInProgress(row: TriageRow, later = false) {
         : `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
+      // Deciding a card is reading its reply, as Done does: an unread one kept
+      // the card on the board after Later (Ames 2026-11-02).
+      ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
     } });
     if (later) { await loadTriage(); return; }
     triageOpen.value.progress = true;
