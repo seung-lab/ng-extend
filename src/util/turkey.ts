@@ -123,7 +123,9 @@ function groundAt(x: number, box: DOMRect | null): number {
   return window.innerHeight - box.top - 8;
 }
 
-const HOP_MS = 520, HURRY = 4;
+// Sent away, he gobbles goodbye, then trots off at twice his walk (Ames:
+// four times was too fast, and he forgot to gobble).
+const HOP_MS = 520, HURRY = 2, BYE_MS = 1300;
 
 /** One walk across the bottom of the screen. Resolves when it has gone. */
 export async function visit(): Promise<void> {
@@ -138,7 +140,7 @@ export async function visit(): Promise<void> {
     // Turned a little toward the screen, so it shows more than its side.
     const walkYaw = dir * (Math.PI / 2 - 0.45);
     const stopAt = from + dir * (W + BOX) * (0.3 + Math.random() * 0.35);
-    let x = from, y = 0, stoppedAt = -1, stopped = false, leaving = false, last = performance.now();
+    let x = from, y = 0, stoppedAt = -1, stopped = false, leaving = -1, last = performance.now();
     let jump: { from: number; to: number; t0: number } | null = null;
     t.face(walkYaw);
     c.style.display = h.style.display = 'block';
@@ -156,14 +158,17 @@ export async function visit(): Promise<void> {
         // Calm screen on the way: gone at once.
         if (!mayMove()) { done(); return; }
         // Switched off on the way (the button or Settings): off he hurries.
-        if (turkeyHidden()) leaving = true;
+        if (turkeyHidden() && leaving < 0) { leaving = now; t.gobble(); }
         let pace = 1, yaw = walkYaw;
-        if (!stopped && !leaving && (x - stopAt) * dir >= 0) {
+        if (!stopped && leaving < 0 && (x - stopAt) * dir >= 0) {
           stopped = true; stoppedAt = now; t.gobble();
           if (GOBBLE_SOUND) { try { const a = new Audio(GOBBLE_SOUND); a.volume = 0.5; a.play().catch(() => {}); } catch { /* no sound */ } }
         }
-        if (!leaving && stoppedAt >= 0 && now - stoppedAt < STOP_MS) { pace = 0; yaw = dir * 0.35; }
-        const speed = leaving ? HURRY : pace;
+        if (leaving < 0 && stoppedAt >= 0 && now - stoppedAt < STOP_MS) { pace = 0; yaw = dir * 0.35; }
+        if (leaving >= 0) {
+          if (now - leaving < BYE_MS) { pace = 0; yaw = dir * 0.35; } else pace = HURRY;
+        }
+        const speed = pace;
         x += dir * SPEED * speed * dt;
         // Up onto the chat box and down again: a hop that starts just
         // before the edge, so he lands on it rather than walking through.
