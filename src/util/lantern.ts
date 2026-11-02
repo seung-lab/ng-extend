@@ -518,7 +518,14 @@ async function lightBranchUnderMouse(x: number, y: number) {
 // while one is chosen, and the Hunt's gems or any annotation tool. On a
 // touch screen, a tap places it.
 let down: {x: number; y: number; t: number; id: number} | null = null;
-const inViewer = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('.neuroglancer-rendered-data-panel');
+// The view itself, not a button drawn on it: the corner buttons that switch
+// 2D on and off sit inside the panel, and a click on one read as a click on
+// empty space, which let go of the lit branch (wolfryder101, report 347).
+const inViewer = (t: EventTarget | null) => {
+  const el = t as HTMLElement | null;
+  return !!el?.closest?.('.neuroglancer-rendered-data-panel')
+    && !el.closest('button, a, input, select, textarea, [role="button"], .neuroglancer-data-panel-layout-controls');
+};
 /** Does another tool own Ctrl + click right now? */
 function ctrlClickTaken(): boolean {
   if (document.querySelector('.graphene-tool-status, .nge-hl-panel')) return true;
