@@ -1698,7 +1698,12 @@ function notifCategory(n: any): string {
   const t = n.title || '';
   if (t.includes('Weekly Champions') || t.includes('Monthly Champions') || t.includes('Year Champions')) return 'weeklyChampions';
   if (t.includes('Week in Science') || t.includes('Month in Science') || t.includes('Year in Science')) return 'weeklyRecap';
-  if (t.includes('Response to your help request')) return 'helpResponse';
+  if (t.includes('Response to your help request') || t.includes('Was your help request answered')) return 'helpResponse';
+  // Sent one by one from the triage board, or by the robot to admins (Ames
+  // 2026-11-02: Announcements is for what we composed, not these).
+  if (/update on your report|replied to your feedback|Reply to your question from/i.test(t)) return 'reportReply';
+  if (/^(🗂|🎉 Fixed|🔑 |🔬 |🔓 |📋 |Proofreading Test:)/u.test(t) || /tagged you on a report$/.test(t)) return 'adminAlert';
+  if (/^Today in Pyr/.test(t)) return 'daily';
   if (t === '✨ New Achievement!' || t === 'New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
   return 'announcement';
@@ -1711,6 +1716,9 @@ const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'personalBadge',   label: 'Personal badges' },
   { key: 'weeklyRecap',     label: 'Weekly, monthly and yearly recaps' },
   { key: 'helpResponse',    label: 'Help replies' },
+  { key: 'reportReply',     label: 'Replies to reports' },
+  { key: 'adminAlert',      label: 'Alerts to admins' },
+  { key: 'daily',           label: 'Today in Pyr' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
 // Default ON: the admin's own broadcasts + the global weekly champions post.
