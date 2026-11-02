@@ -3,7 +3,7 @@
  * with Krzysztof Kruk and annkri: help across a misalignment in the 2D view.
  *
  *   Jump pairs   two saved spots, A and B, and a jump between them.
- *   Lasso        a coloured outline, filled, on one slice.
+ *   Lasso        a colored outline, filled, on one slice.
  *   Compare      two captures of the 2D view, side by side, to download.
  *
  * Kept in this browser, by dataset. The shapes are drawn on a canvas of their
@@ -13,7 +13,12 @@
 import { reactive } from 'vue';
 import { currentDatasetTag } from '../datasets';
 
-export interface JumpPair { id: string; name: string; a: number[] | null; b: number[] | null; }
+export interface JumpPair {
+  id: string; name: string; a: number[] | null; b: number[] | null;
+  /** Scrolling into the slices between A and B lands on the far side instead:
+   *  the faulty slices are skipped (Ames 2026-11-02). */
+  skip?: boolean;
+}
 export interface LassoShape { id: string; z: number; color: string; points: number[][]; }
 
 export const LASSO_COLORS = ['#ff5d73', '#ffd24d', '#3dff9a', '#4dd8f0', '#b388ff', '#ff9a3c'];
@@ -38,11 +43,22 @@ const viewerOf = (): any => (window as any).viewer;
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 // ── Saved in this browser, by dataset ────────────────────────────────────
+/** Known bad stretches, ready made (Ames 2026-11-02: "black spill issues in
+ *  between 149881, 128038, 2649 and 149717, 128044, 2664" on MEC). Skip
+ *  starts off: the pair's shift is measured at one place, so skipping
+ *  everywhere would throw players elsewhere in the slice sideways. Removing
+ *  one keeps it removed. */
+const PRESETS: Record<string, JumpPair[]> = {
+  pni_mec: [
+    { id: 'preset-mec-black-spill-2649', name: 'Black spill, z 2650 to 2663', a: [149881, 128038, 2649], b: [149717, 128044, 2664], skip: false },
+  ],
+};
+let dismissed: string[] = [];
 let loadedFor = '';
 const storageKey = (tag: string) => `nge_2d_tools_${tag}`;
 function save() {
   if (!loadedFor) return;
-  try { localStorage.setItem(storageKey(loadedFor), JSON.stringify({ pairs: twoD.pairs, shapes: twoD.shapes })); } catch { /* full or blocked */ }
+  try { localStorage.setItem(storageKey(loadedFor), JSON.stringify({ pairs: twoD.pairs, shapes: twoD.shapes, dismissed })); } catch { /* full or blocked */ }
 }
 function loadForDataset() {
   const tag = currentDatasetTag() || 'unknown';
@@ -52,6 +68,12 @@ function loadForDataset() {
   try { saved = JSON.parse(localStorage.getItem(storageKey(tag)) || 'null'); } catch { /* start empty */ }
   twoD.pairs = Array.isArray(saved?.pairs) ? saved.pairs : [];
   twoD.shapes = Array.isArray(saved?.shapes) ? saved.shapes : [];
+  dismissed = Array.isArray(saved?.dismissed) ? saved.dismissed : [];
+  for (const preset of PRESETS[tag] ?? []) {
+    if (!dismissed.includes(preset.id) && !twoD.pairs.some(p => p.id === preset.id)) {
+      twoD.pairs.unshift({ ...preset, a: preset.a && [...preset.a], b: preset.b && [...preset.b] });
+    }
+  }
 }
 
 // ── The 2D panel and its camera ──────────────────────────────────────────
@@ -90,6 +112,40 @@ function fromPanel(cam: NonNullable<ReturnType<typeof camera>>, u: number, v: nu
 }
 
 // ── The overlay ──────────────────────────────────────────────────────────
+// ── The offer at a known bad stretch (Ames 2026-11-02: "add the skip button
+// if user is in that section") ───────────────────────────────────────────
+// On the 2D view, whether or not this box is open: on those slices, or a
+// couple either side, and near where the stretch was measured, a button to
+// jump over it. Nobody is moved without choosing to.
+const OFFER_SLICES = 2;
+const OFFER_RADIUS = 6000;   // voxels from where the pair was measured
+let offerEl: HTMLDivElement | null = null;
+let offerFor: JumpPair | null = null;
+function offerPair(): JumpPair | null {
+  const at = position();
+  if (!at) return null;
+  for (const p of twoD.pairs) {
+    if (!p.id.startsWith('preset-') || !p.a || !p.b) continue;
+    const [lo, hi] = p.a[2] < p.b[2] ? [p.a, p.b] : [p.b, p.a];
+    if (at[2] < lo[2] - OFFER_SLICES || at[2] > hi[2] + OFFER_SLICES) continue;
+    const near = Math.hypot(at[0] - lo[0], at[1] - lo[1]) < OFFER_RADIUS || Math.hypot(at[0] - hi[0], at[1] - hi[1]) < OFFER_RADIUS;
+    if (near) return p;
+  }
+  return null;
+}
+function showOffer() {
+  if (!offerEl) return;
+  const p = offerPair();
+  if (p !== offerFor) {
+    offerFor = p;
+    if (p) {
+      const z = [p.a![2], p.b![2]].sort((x, y) => x - y);
+      (offerEl.firstChild as HTMLElement).textContent = `${p.name.startsWith('Black spill') ? 'Black spill' : 'Bad slices'}: z ${z[0] + 1} to ${z[1] - 1}`;
+    }
+  }
+  offerEl.style.display = p ? '' : 'none';
+}
+
 let canvas: HTMLCanvasElement | null = null;
 let button: HTMLButtonElement | null = null;
 let attachedTo: HTMLElement | null = null;
@@ -194,12 +250,37 @@ function attach(panel: any) {
   button.addEventListener('mousedown', e => e.stopPropagation());
   button.addEventListener('click', e => { e.stopPropagation(); twoD.open = !twoD.open; if (!twoD.open) twoD.lasso = false; });
   el.appendChild(button);
+  offerEl = document.createElement('div');
+  offerEl.className = 'nge-2d-offer';
+  offerEl.style.display = 'none';
+  const offerText = document.createElement('span');
+  const offerGo = document.createElement('button');
+  offerGo.type = 'button';
+  offerGo.textContent = 'Jump over';
+  offerGo.title = 'Go to the matching place on the far side (J)';
+  offerGo.addEventListener('mousedown', e => e.stopPropagation());
+  offerGo.addEventListener('click', e => { e.stopPropagation(); if (offerFor) jumpAcross(offerFor); });
+  // Its (i): what this is, in a line, on hover or tap.
+  const offerInfo = document.createElement('button');
+  offerInfo.type = 'button';
+  offerInfo.className = 'nge-2d-offer-i';
+  offerInfo.textContent = 'i';
+  const why = 'These slices are damaged (a black spill), so the cell seems to break here. Jump over takes you to the matching place on the far side, at the same zoom. The J key does the same. More in 2D Tools.';
+  offerInfo.title = why;
+  offerInfo.setAttribute('aria-label', why);
+  offerInfo.addEventListener('mousedown', e => e.stopPropagation());
+  offerInfo.addEventListener('click', e => { e.stopPropagation(); twoD.open = true; });
+  offerEl.append(offerText, offerInfo, offerGo);
+  el.appendChild(offerEl);
   el.addEventListener('mousedown', onDown, true);
   el.addEventListener('pointerdown', swallow, true);
 }
 function detach() {
   canvas?.remove();
   button?.remove();
+  offerEl?.remove();
+  offerEl = null;
+  offerFor = null;
   attachedTo?.removeEventListener('mousedown', onDown, true);
   attachedTo?.removeEventListener('pointerdown', swallow, true);
   canvas = button = attachedTo = null;
@@ -218,21 +299,40 @@ export function startTwoDTools() {
     attach(panel);
     if (attachedTo) attachedTo.style.cursor = twoD.lasso ? 'crosshair' : '';
     drawOverlay(panel);
+    showOffer();
   };
   frame();
-  window.addEventListener('keydown', e => { if (e.key === 'Escape' && twoD.lasso) twoD.lasso = false; });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && twoD.lasso) twoD.lasso = false;
+    const t = e.target as HTMLElement | null;
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'j' || e.key === 'J') && slicePanel()) {
+      const pair = nearestPair();
+      if (pair) { e.preventDefault(); e.stopPropagation(); jumpAcross(pair); }
+    }
+  }, true);
+  const watchPosition = () => {
+    const nav = viewerOf()?.navigationState?.position;
+    if (!nav?.changed) { setTimeout(watchPosition, 500); return; }
+    nav.changed.add(onPositionChanged);
+  };
+  watchPosition();
 }
 
 // ── Jump pairs ───────────────────────────────────────────────────────────
 export function addPair() {
   if (twoD.pairs.length >= MAX_PAIRS) { twoD.note = `${MAX_PAIRS} pairs is the most here. Remove one first.`; return; }
-  twoD.pairs.push({ id: newId(), name: `Jump ${twoD.pairs.length + 1}`, a: position(), b: null });
+  twoD.pairs.push({ id: newId(), name: `Jump ${twoD.pairs.length + 1}`, a: position(), b: null, skip: true });
   twoD.note = 'A is set here. Go to the other side, then press Set B.';
   save();
 }
 export function setSide(pair: JumpPair, side: 'a' | 'b') { pair[side] = position(); twoD.note = ''; save(); }
 export function renamePair(pair: JumpPair, name: string) { pair.name = name.slice(0, 40) || pair.name; save(); }
-export function removePair(pair: JumpPair) { twoD.pairs = twoD.pairs.filter(p => p.id !== pair.id); save(); }
+export function removePair(pair: JumpPair) {
+  twoD.pairs = twoD.pairs.filter(p => p.id !== pair.id);
+  if (pair.id.startsWith('preset-') && !dismissed.includes(pair.id)) dismissed.push(pair.id);
+  save();
+}
 /** Straight there, keeping the zoom, with no reload of the view (Krzysztof's
  *  point: it is what makes going back and forth quick). */
 export function goTo(p: number[] | null) {
@@ -242,12 +342,57 @@ export function goTo(p: number[] | null) {
   for (let i = 0; i < 3; i++) next[i] = p[i];
   nav.value = next;
 }
-/** To whichever side you are not on. */
+/** To whichever side you are not on. From where you are, so a place you
+ *  moved to on one side lands on the matching place on the other (the pair's
+ *  shift between A and B). */
 export function jumpAcross(pair: JumpPair) {
   if (!pair.a || !pair.b) return;
   const at = position();
-  const dist = (q: number[]) => (at ? Math.abs(at[2] - q[2]) + Math.abs(at[0] - q[0]) + Math.abs(at[1] - q[1]) : 0);
-  goTo(dist(pair.a) <= dist(pair.b) ? pair.b : pair.a);
+  if (!at) return;
+  const fromA = Math.abs(at[2] - pair.a[2]) <= Math.abs(at[2] - pair.b[2]);
+  const [from, to] = fromA ? [pair.a, pair.b] : [pair.b, pair.a];
+  goTo([at[0] + to[0] - from[0], at[1] + to[1] - from[1], to[2]]);
+}
+export function toggleSkip(pair: JumpPair) { pair.skip = !pair.skip; save(); }
+
+/** J: across the pair nearest the slice you are on. */
+function nearestPair(): JumpPair | null {
+  const at = position();
+  if (!at) return null;
+  let best: JumpPair | null = null, bestD = Infinity;
+  for (const p of twoD.pairs) {
+    if (!p.a || !p.b) continue;
+    const d = Math.min(Math.abs(at[2] - p.a[2]), Math.abs(at[2] - p.b[2]));
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+
+// Skipping the faulty slices: scrolling from A's side into the slices between
+// A and B lands on B's side, shifted as the pair is, and the same coming back.
+// Only a step that crosses into the gap triggers it, so a jump into the middle
+// (a link, a search) stays put.
+let lastZ: number | null = null;
+let skipping = false;
+function onPositionChanged() {
+  const at = position();
+  if (!at) return;
+  const z = at[2], before = lastZ;
+  lastZ = z;
+  if (skipping || before === null || before === z) return;
+  for (const p of twoD.pairs) {
+    if (!p.skip || !p.a || !p.b || p.a[2] === p.b[2]) continue;
+    const [lo, hi] = p.a[2] < p.b[2] ? [p.a, p.b] : [p.b, p.a];
+    if (!(z > lo[2] && z < hi[2])) continue;
+    let to: number[] | null = null, from: number[] | null = null;
+    if (before <= lo[2]) { from = lo; to = hi; }
+    else if (before >= hi[2]) { from = hi; to = lo; }
+    if (!to || !from) continue;
+    skipping = true;
+    try { goTo([at[0] + to[0] - from[0], at[1] + to[1] - from[1], to[2]]); } finally { skipping = false; }
+    lastZ = to[2];
+    return;
+  }
 }
 
 // ── Lasso ────────────────────────────────────────────────────────────────

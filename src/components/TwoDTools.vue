@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** The 2D Tools box, a prototype (util/two_d_tools.ts). */
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { twoD, startTwoDTools, addPair, setSide, renamePair, removePair, goTo, jumpAcross, removeShape, clearSlice, capture, downloadCompare, LASSO_COLORS, type JumpPair } from '../util/two_d_tools';
+import { twoD, startTwoDTools, addPair, setSide, renamePair, removePair, goTo, jumpAcross, toggleSkip, removeShape, clearSlice, capture, downloadCompare, LASSO_COLORS, type JumpPair } from '../util/two_d_tools';
 
 onMounted(startTwoDTools);
 const shapesHere = computed(() => twoD.shapes.filter(s => s.z === twoD.z));
@@ -54,8 +54,8 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
 
     <div v-if="help" class="nge-2d-help">
       <p>For working across a misalignment, where the cell jumps between slices.</p>
-      <p><b>Jump pairs:</b> on one side, press <b>+ New pair</b> to save spot A. Scroll to the other side and press <b>Set B</b>. Then <b>⇄</b> takes you back and forth at the same zoom, and <b>A</b> or <b>B</b> goes straight to one side. Click the name to rename it.</p>
-      <p><b>Lasso:</b> press <b>Lasso</b>, pick a colour and drag around a shape in the 2D view. It stays on that slice only. Scrolling still changes slices, and Esc stops drawing. Remove a shape with its × chip.</p>
+      <p><b>Jump pairs:</b> on one side, press <b>+ New pair</b> to save spot A. Scroll to the other side and press <b>Set B</b>. Then <b>⇄</b>, or the <b>J</b> key, takes you across at the same zoom, to the matching place on the other side. <b>A</b> or <b>B</b> goes straight to one side. With <b>Skip</b> on, scrolling into the slices between A and B lands you on the far side, so the bad slices are stepped over. Known bad stretches come ready made, and offer <b>Jump over</b> when you reach them. Click the name to rename it.</p>
+      <p><b>Lasso:</b> press <b>Lasso</b>, pick a color and drag around a shape in the 2D view. It stays on that slice only. Scrolling still changes slices, and Esc stops drawing. Remove a shape with its × chip.</p>
       <p><b>Compare:</b> press <b>Capture 1</b> on one slice and <b>Capture 2</b> on another. <b>View large</b> shows them side by side, and <b>Download</b> saves both in one picture, lassos included.</p>
       <p class="nge-2d-small">From an idea and player script by Nseraf, Krzysztof Kruk and annkri. Drag this box by its top.</p>
     </div>
@@ -65,9 +65,10 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
       <div v-for="p in twoD.pairs" :key="p.id" class="nge-2d-pair">
         <input class="nge-2d-name" :value="p.name" maxlength="40" aria-label="Name of this pair" @change="onName(p, $event)" />
         <button type="button" class="nge-2d-btn" :class="{ 'nge-2d-btn--set': p.a }" :title="p.a ? 'Go to A' : 'Set A here'" @click="p.a ? goTo(p.a) : setSide(p, 'a')">A</button>
-        <button type="button" class="nge-2d-btn nge-2d-btn--go" :disabled="!p.a || !p.b" title="Jump to the other side" @click="jumpAcross(p)">⇄</button>
+        <button type="button" class="nge-2d-btn nge-2d-btn--go" :disabled="!p.a || !p.b" title="Jump to the other side (J)" @click="jumpAcross(p)">⇄</button>
         <button v-if="p.b" type="button" class="nge-2d-btn nge-2d-btn--set" title="Go to B" @click="goTo(p.b)">B</button>
         <button v-else type="button" class="nge-2d-btn nge-2d-btn--ask" title="Set B here" @click="setSide(p, 'b')">Set B</button>
+        <button type="button" class="nge-2d-btn nge-2d-btn--skip" :class="{ 'nge-2d-btn--on': p.skip }" :aria-pressed="!!p.skip" :disabled="!p.a || !p.b" title="Skip the slices between A and B when scrolling" @click="toggleSkip(p)">Skip</button>
         <button type="button" class="nge-2d-x" :aria-label="'Remove ' + p.name" title="Remove" @click="removePair(p)">×</button>
       </div>
       <button type="button" class="nge-2d-btn nge-2d-btn--wide" @click="addPair">+ New pair, A here</button>
@@ -77,7 +78,7 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
       <div class="nge-2d-label">Lasso</div>
       <div class="nge-2d-row">
         <button type="button" class="nge-2d-btn" :class="{ 'nge-2d-btn--on': twoD.lasso }" :aria-pressed="twoD.lasso" @click="twoD.lasso = !twoD.lasso">{{ twoD.lasso ? 'Drawing: Esc to stop' : 'Lasso' }}</button>
-        <button v-for="c in LASSO_COLORS" :key="c" type="button" class="nge-2d-dot" :class="{ 'nge-2d-dot--on': twoD.color === c }" :style="{ background: c }" :aria-label="'Colour ' + c" @click="twoD.color = c"></button>
+        <button v-for="c in LASSO_COLORS" :key="c" type="button" class="nge-2d-dot" :class="{ 'nge-2d-dot--on': twoD.color === c }" :style="{ background: c }" :aria-label="'Color ' + c" @click="twoD.color = c"></button>
       </div>
       <div v-if="shapesHere.length" class="nge-2d-row nge-2d-shapes">
         <span class="nge-2d-small">On this slice:</span>
@@ -126,6 +127,11 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
 <style>
 .nge-2d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
 .nge-2d-open { position: absolute; top: 8px; right: 40px; z-index: 5; padding: 3px 9px; font: 600 11px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.82); border: 1px solid rgba(126, 224, 255, 0.45); border-radius: 6px; cursor: pointer; }
+.nge-2d-offer { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 11px; font: 600 12px/1.3 system-ui, sans-serif; color: #f3e7b5; background: rgba(20, 16, 4, 0.9); border: 1px solid rgba(255, 210, 77, 0.6); border-radius: 8px; white-space: nowrap; }
+.nge-2d-offer button { padding: 3px 10px; font: inherit; color: #05080f; background: #ffd24d; border: 0; border-radius: 5px; cursor: pointer; }
+.nge-2d-offer button:hover { background: #ffe58a; }
+.nge-2d-offer button.nge-2d-offer-i { width: 18px; height: 18px; padding: 0; font: italic 700 11px/16px Georgia, serif; color: #ffd24d; background: none; border: 1px solid rgba(255, 210, 77, 0.6); border-radius: 50%; }
+.nge-2d-offer button.nge-2d-offer-i:hover { color: #05080f; background: #ffd24d; }
 .nge-2d-open:hover { background: rgba(30, 60, 90, 0.9); }
 .nge-2d { position: fixed; left: 360px; top: 100px; z-index: 900; width: 300px; max-height: calc(100vh - 170px); overflow-y: auto; padding: 10px 12px; font: 12px/1.4 system-ui, sans-serif; color: #e8eef5; background: rgba(8, 14, 26, 0.95); border: 1px solid rgba(126, 224, 255, 0.35); border-radius: 10px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5); }
 .nge-2d-head { cursor: move; user-select: none; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
