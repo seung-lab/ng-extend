@@ -32,7 +32,7 @@ import { currentDatasetTag } from '../datasets';
 import { huntNoteNow } from '../hunt';
 import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
-import { turkeySeason, callTurkey } from '../util/turkey';
+import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
 // (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
@@ -50,6 +50,7 @@ function togglePatch() { askPatch.value = false; togglePumpkin(); }
 function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
 function smashPatch() { askPatch.value = false; smashPumpkins(); }
 const showTurkeyBtn = turkeySeason();
+function turkeyTitle(): string { return turkeyHidden() ? 'Bring the turkey back' : 'Send the turkey away'; }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -1829,9 +1830,9 @@ function toggleCollapse() {
                     @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
             <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" @toggle="togglePatch()" />
             <!-- The turkey button (Ames 2026-11-02), Thanksgiving week only:
-                 calls the turkey out for a walk, or makes it hop if it is out. -->
-            <button v-if="showTurkeyBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn"
-                    @mousedown.prevent @click.stop="callTurkey()" title="Call the turkey" aria-label="Call the turkey">🦃</button>
+                 the turkey on and off, grey while off, as the pumpkin's is. -->
+            <button v-if="showTurkeyBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: turkeyHidden() }"
+                    @mousedown.prevent @click.stop="toggleTurkey()" :title="turkeyTitle()" :aria-label="turkeyTitle()">🦃</button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"

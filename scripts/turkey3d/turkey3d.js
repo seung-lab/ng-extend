@@ -78,7 +78,8 @@ function rig(gltf) {
     feet.forEach((foot, i) => {
       foot.position.copy(footRest[i]);
       foot.position.y += Math.max(0, Math.sin(phase + i * Math.PI)) * 0.1 * walking - bob;
-      foot.position.z += Math.cos(phase + i * Math.PI) * 0.055 * walking;
+      // A lifted foot swings forward (the game's had it swinging back).
+      foot.position.z -= Math.cos(phase + i * Math.PI) * 0.055 * walking;
     });
     left.rotation.z = -reaction * (0.15 + Math.abs(Math.sin(age * 16)) * 0.35);
     right.rotation.z = -left.rotation.z;

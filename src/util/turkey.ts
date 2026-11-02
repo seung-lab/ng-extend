@@ -16,11 +16,11 @@
  * turkey.glb, about 360 KB) are fetched the first time the turkey comes out,
  * and it is drawn only while it walks.
  *
- * The chat bar's turkey button (and Call the Turkey in the palette) calls it
- * out at any time in the week.
+ * Where the chat box is, he hops up onto it and walks along its top.
  *
- * Settings, "Show the Thanksgiving turkey" (userPrefs.hideTurkey) turns the
- * timed walks off, and Calm screen keeps it away altogether.
+ * The turkey button by the chat box, Settings ("Show the Thanksgiving
+ * turkey") and the palette are one switch (userPrefs.hideTurkey). Calm
+ * screen keeps it away too.
  *
  * Silent for now. A gobble sound can go in GOBBLE_SOUND below.
  */
@@ -59,10 +59,10 @@ function load(): Promise<Turkey3d> {
   cv = document.createElement('canvas');
   cv.className = 'nge-turkey';
   cv.setAttribute('aria-hidden', 'true');
-  cv.style.cssText = `position:fixed;left:0;bottom:0;width:${BOX}px;height:${BOX}px;pointer-events:none;z-index:9000;display:none;will-change:transform;`;
+  cv.style.cssText = `position:fixed;left:0;bottom:-10px;width:${BOX}px;height:${BOX}px;pointer-events:none;z-index:9000;display:none;will-change:transform;`;
   hit = document.createElement('div');
   hit.title = 'Happy Thanksgiving! Click the turkey';
-  hit.style.cssText = `position:fixed;left:0;bottom:6px;width:${BOX * 0.42}px;height:${BOX * 0.5}px;z-index:9001;cursor:pointer;display:none;will-change:transform;`;
+  hit.style.cssText = `position:fixed;left:0;bottom:0;width:${BOX * 0.42}px;height:${BOX * 0.5}px;z-index:9001;cursor:pointer;display:none;will-change:transform;`;
   document.body.append(cv, hit);
   loading = new Promise<void>((resolve, reject) => {
     if ((window as any).PyrTurkey3d) { resolve(); return; }
@@ -89,72 +89,103 @@ function schedule(range: number[]) {
 
 /** Calm screen and reduced motion always keep it away. */
 const mayMove = () => turkeySeason() && !isCalm() && !reduced() && !document.hidden;
-/** The timed walks also stop when the Settings switch is off. */
 const mayShow = () => mayMove() && !turkeyHidden();
 
-let hopNow: (() => void) | null = null;
-
-/** The chat bar's turkey button and the palette's Call the Turkey: out it
- *  comes, even with the timed walks switched off, and if it is already out,
- *  it hops. Calm screen still keeps it away. */
-export function callTurkey() {
-  if (hopNow) { hopNow(); return; }
-  void visit(true);
+/**
+ * The chat box's turkey button, and Turn the Turkey on/off in the palette
+ * (Ames 2026-11-02: "clicking the turkey button should make him go away",
+ * "and click should grey it out"). An on and off switch, the same one as in
+ * Settings: off, the turkey hurries off the screen and the button goes grey;
+ * on, he comes straight out for a walk.
+ */
+export function toggleTurkey() {
+  const hide = !turkeyHidden();
+  try { useUserPreferencesStore().save({ hideTurkey: hide }); } catch { return; }
+  if (!hide) void visit();
 }
 
-/** One walk across the bottom of the screen. Resolves when it has gone.
- *  `asked`: the player called it, so the Settings switch does not matter. */
-export async function visit(asked = false): Promise<void> {
-  const ok = asked ? mayMove : mayShow;
-  if (walking || !ok()) return;
+/** The chat box the turkey hops up onto: the whole chat panel while it is
+ *  open, or just its input bar while it sits quiet (its messages faded). */
+function chatBox(): DOMRect | null {
+  const low = (el: Element | null) => {
+    const r = el?.getBoundingClientRect();
+    // Only a box sitting low on the screen, so he never leaps to the top.
+    return r && r.width && r.top > window.innerHeight * 0.55 ? r : null;
+  };
+  const panel = document.querySelector('.nge-chat-float');
+  const open = panel && !panel.classList.contains('nge-chat-float--quiet') && !panel.classList.contains('nge-chat-float--collapsed') ? low(panel) : null;
+  return open ?? low(document.querySelector('.nge-chat-input-wrap'));
+}
+
+/** How high (px above the bottom of the screen) the ground is under x. */
+function groundAt(x: number, box: DOMRect | null): number {
+  if (!box || x < box.left + 8 || x > box.right - 8) return 0;
+  return window.innerHeight - box.top - 8;
+}
+
+const HOP_MS = 520, HURRY = 4;
+
+/** One walk across the bottom of the screen. Resolves when it has gone. */
+export async function visit(): Promise<void> {
+  if (walking || !mayShow()) return;
   walking = true;
   try {
     const t = await load();
-    if (!cv || !hit || !ok()) return;
+    if (!cv || !hit || !mayShow()) return;
     const c = cv, h = hit;
     const rightward = Math.random() < 0.5, dir = rightward ? 1 : -1;
     const W = window.innerWidth, from = rightward ? -BOX : W, to = rightward ? W : -BOX;
     // Turned a little toward the screen, so it shows more than its side.
     const walkYaw = dir * (Math.PI / 2 - 0.45);
     const stopAt = from + dir * (W + BOX) * (0.3 + Math.random() * 0.35);
-    let x = from, stoppedAt = -1, stopped = false, last = performance.now();
+    let x = from, y = 0, stoppedAt = -1, stopped = false, leaving = false, last = performance.now();
+    let jump: { from: number; to: number; t0: number } | null = null;
     t.face(walkYaw);
     c.style.display = h.style.display = 'block';
     const place = () => {
-      c.style.transform = `translateX(${Math.round(x)}px)`;
-      h.style.transform = `translateX(${Math.round(x + BOX * 0.29)}px)`;
+      c.style.transform = `translate(${Math.round(x)}px,${-Math.round(y)}px)`;
+      h.style.transform = `translate(${Math.round(x + BOX * 0.29)}px,${-Math.round(y)}px)`;
     };
     place();
     const onClick = (e: Event) => { e.preventDefault(); e.stopPropagation(); t.hop(); };
     h.addEventListener('pointerdown', onClick);
-    hopNow = () => t.hop();
     await new Promise<void>(done => {
       const step = (now: number) => {
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
-        // Calm screen or the switch turned off on the way: gone at once.
-        if (!ok()) { done(); return; }
+        // Calm screen on the way: gone at once.
+        if (!mayMove()) { done(); return; }
+        // Switched off on the way (the button or Settings): off he hurries.
+        if (turkeyHidden()) leaving = true;
         let pace = 1, yaw = walkYaw;
-        if (!stopped && (x - stopAt) * dir >= 0) {
+        if (!stopped && !leaving && (x - stopAt) * dir >= 0) {
           stopped = true; stoppedAt = now; t.gobble();
           if (GOBBLE_SOUND) { try { const a = new Audio(GOBBLE_SOUND); a.volume = 0.5; a.play().catch(() => {}); } catch { /* no sound */ } }
         }
-        if (stoppedAt >= 0 && now - stoppedAt < STOP_MS) { pace = 0; yaw = dir * 0.35; }
-        x += dir * SPEED * pace * dt;
+        if (!leaving && stoppedAt >= 0 && now - stoppedAt < STOP_MS) { pace = 0; yaw = dir * 0.35; }
+        const speed = leaving ? HURRY : pace;
+        x += dir * SPEED * speed * dt;
+        // Up onto the chat box and down again: a hop that starts just
+        // before the edge, so he lands on it rather than walking through.
+        const feet = x + BOX / 2, ground = groundAt(feet + dir * 34, chatBox());
+        if (jump) {
+          const q = Math.min(1, (now - jump.t0) / HOP_MS);
+          y = jump.from + (jump.to - jump.from) * q + Math.sin(q * Math.PI) * (26 + Math.max(0, jump.to - jump.from) * 0.35);
+          if (q >= 1) { y = jump.to; jump = null; }
+        } else if (Math.abs(ground - y) > 2) {
+          if (pace > 0) { jump = { from: y, to: ground, t0: now }; t.hop(); }
+        }
         place();
-        t.frame(pace, yaw);
+        t.frame(Math.min(1, speed), yaw);
         if ((to - x) * dir <= 0) { done(); return; }
         requestAnimationFrame(step);
       };
       requestAnimationFrame(step);
     });
     h.removeEventListener('pointerdown', onClick);
-    hopNow = null;
     c.style.display = h.style.display = 'none';
   } catch { /* no turkey this time */ } finally {
     walking = false;
-    hopNow = null;
-
   }
 }
 
