@@ -8,8 +8,8 @@
  *   - the player did real work on it in the last 5 minutes (Ames 2026-10-28:
  *     "active means actually annotating or highlighting"): placed, moved or
  *     removed a point or a highlight in an annotation layer (the lab's marks
- *     are such points), merged or split, or saved the view. Looking around,
- *     turning and zooming alone do not count. A change counts only right
+ *     are such points), merged or split, saved the view, or (since Ames
+ *     2026-11-02) moved, turned or zoomed the view. A change counts only right
  *     after the player's own click or key, so what Pyr changes by itself
  *     never does.
  * Only one claim counts at a time: the claim being worked on when it is on
@@ -89,6 +89,19 @@ let lastWork = 0;
 /** A change within this long of the player's own click or key is theirs. */
 const OWN_MS = 4000;
 function work(own = false) { if (own || Date.now() - lastInput < OWN_MS) lastWork = Date.now(); }
+/** Looking counts as work too (Ames 2026-11-02: "count looking and moving as
+ *  active time"): the player moving, zooming or turning the view themself, in
+ *  2D or 3D. A view that moves on its own (a spin, a jump) does not count:
+ *  only a change within OWN_MS of their own click, key or scroll. */
+let navWatched: any = null;
+function watchNavigation() {
+  const v = (window as any).viewer;
+  if (!v || navWatched === v) return;
+  navWatched = v;
+  for (const state of [v.navigationState, v.perspectiveNavigationState]) {
+    try { state?.changed?.add(() => work()); } catch { /* not a signal */ }
+  }
+}
 /** Annotation layers already listened to. */
 const watched = new WeakSet<object>();
 function watchAnnotationLayers() {
@@ -167,6 +180,7 @@ function tick() {
   if (!deps || !deps.signedIn()) { claimTime.running = null; return; }
   const now = Date.now();
   watchAnnotationLayers();
+  watchNavigation();
   const active = document.visibilityState === 'visible' && document.hasFocus() && now - lastWork < IDLE_MS;
   const id = active ? claimOnScreen() : null;
   claimTime.running = id;

@@ -4061,7 +4061,7 @@ const panelStyle = computed(() => ({
                 </div>
                 <div v-if="questEndsSoon(cell)" class="nge-cl-time nge-cl-quest-ends">{{ questEndsSoon(cell) }}</div>
                 <div v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
-                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have done real work on it in the last 5 minutes (a mark, an annotation or highlight, a merge or split, or Save view). It adds up across visits and devices.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
+                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have worked on it in the last 5 minutes: moving, turning or zooming the view, a mark, a highlight, a merge or cut, or Save view.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
               </div>
             </div>
 
