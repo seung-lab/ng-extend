@@ -102,6 +102,12 @@ function resetPlace() {
           </template>
           <template v-else>{{ isTouchRef ? 'Tap' : 'Ctrl + click' }} the cell to place the light</template>
         </span>
+        <!-- Hide checked: what is marked Checked stays dark, so only what is left to check is lit (Ames 2026-11-02). -->
+        <button type="button" class="nge-lantern-done" :class="{ 'is-on': lantern.hideDone }" :aria-pressed="lantern.hideDone"
+                title="Keep the parts you marked Checked in the dark, so only what is left to check is lit" @click="lantern.hideDone = !lantern.hideDone">
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Hide checked
+        </button>
         <label v-if="lantern.mode === 'cell'" class="nge-lantern-set" title="How far the light reaches">
           <span>Size</span>
           <input type="range" v-model.number="lantern.sizeUm" :min="L.sizeUm.min" :max="L.sizeUm.max" :step="L.sizeUm.step" @keydown.stop />
@@ -245,6 +251,14 @@ function resetPlace() {
   .nge-lantern-gem svg, .nge-lantern-gem.is-done svg, .nge-lantern-gem.is-failed svg { animation: none; }
   .nge-lantern-gem::after { animation: none; transform: scale(1.3); opacity: 0.6; }
 }
+.nge-lantern-done {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid rgba(255, 196, 110, 0.28); border-radius: 7px;
+  background: none; cursor: pointer; font: 500 11px/1.2 'Inter', system-ui, sans-serif; color: rgba(190, 205, 225, 0.85); white-space: nowrap;
+}
+.nge-lantern-done svg { opacity: 0.35; }
+.nge-lantern-done:hover, .nge-lantern-done:focus-visible { color: #fff; outline: none; background: rgba(255, 196, 110, 0.1); }
+.nge-lantern-done.is-on { color: #1a1206; background: #ffc878; border-color: #ffc878; }
+.nge-lantern-done.is-on svg { opacity: 1; }
 .nge-lantern-follow { display: inline-flex; margin-left: 4px; height: 22px; vertical-align: middle; }
 .nge-lantern-hint.is-failed { color: #ffb4a0; white-space: normal; max-width: 260px; }
 .nge-lantern-set { display: inline-flex; align-items: center; gap: 7px; color: rgba(190, 205, 225, 0.85); }

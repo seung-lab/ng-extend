@@ -32,6 +32,10 @@ export interface NgeLantern {
   /** "Clicked branch": only what this map marks is lit, and the reach
    *  (centre and radiusNm) spreads the light out along it from the click. */
   mask?: NgeLanternMask|null;
+  /** "Hide checked": the colour (rgb 0..1) of the Checked highlight. What
+   *  the highlight tint paints in it stays in shadow, so only the parts still
+   *  to check are lit (Ames 2026-11-02). Null: lit as usual. */
+  doneRgb?: [number, number, number]|null;
 }
 
 /** A map of the lit branch: one byte a cell, 255 lit, 0 not, x fastest. */

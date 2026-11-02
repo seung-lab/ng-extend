@@ -493,6 +493,8 @@ export class MeshShaderManager {
       }
       // x: 1 lights round the lantern, 2 lights the mapped branch.
       gl.uniform3f(shader.uniform('uNgeLanternLight'), mask !== null ? 2 : 1, lantern.intensity, lantern.shadow);
+      const done = lantern.doneRgb ?? null;
+      gl.uniform4f(shader.uniform('uNgeLanternDone'), done?.[0] ?? 0, done?.[1] ?? 0, done?.[2] ?? 0, done !== null ? 1 : 0);
       const second = getNgeLanternSecond();
       if (second !== null && second.radiusNm > 0) {
         gl.uniform4f(shader.uniform('uNgeLantern2'), second.posNm[0], second.posNm[1], second.posNm[2], second.radiusNm);
@@ -629,6 +631,8 @@ highp float ngeHoloDot(highp vec2 p) {
         builder.addUniform('highp vec4', 'uNgeLantern');
         builder.addUniform('highp vec3', 'uNgeLanternLight');
         builder.addUniform('highp mat4', 'uNgeLanternMaskMatrix');
+        // Hide checked: the Checked colour (rgb) and on (w).
+        builder.addUniform('highp vec4', 'uNgeLanternDone');
         // Clicked branch: 1 on the clicked cell, 0 on any other.
         builder.addUniform('highp float', 'uNgeLanternMine');
         builder.addTextureSampler('sampler3D', 'uNgeLanternMask', ngeLanternMaskSymbol);
@@ -756,6 +760,16 @@ if (uNgeLanternLight.x > 0.5) {
     highp vec3 maskCoord = (uNgeLanternMaskMatrix * vec4(vertexPosition, 1.0)).xyz;
     highp float inMap = all(greaterThanEqual(maskCoord, vec3(0.0))) && all(lessThanEqual(maskCoord, vec3(1.0))) ? 1.0 : 0.0;
     lit *= uNgeLanternMine * inMap * smoothstep(0.15, 0.6, texture(uNgeLanternMask, maskCoord).r);
+  }
+  if (uNgeLanternDone.w > 0.5 && uNgeTintOn > 0.5) {
+    // Hide checked: where the highlight tint is the Checked colour, shadow.
+    highp vec3 doneCoord = (uNgeTintMatrix * vec4(vertexPosition, 1.0)).xyz;
+    if (all(greaterThanEqual(doneCoord, vec3(0.0))) && all(lessThanEqual(doneCoord, vec3(1.0)))) {
+      highp vec4 doneTint = texture(uNgeTint, doneCoord);
+      if (doneTint.a > 0.02 && distance(doneTint.rgb / doneTint.a, uNgeLanternDone.rgb) < 0.16) {
+        lit *= 1.0 - smoothstep(0.15, 0.55, doneTint.a);
+      }
+    }
   }
   // In shadow a cell keeps its shape and loses its colour.
   highp float grey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
