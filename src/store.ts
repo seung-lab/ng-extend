@@ -1123,6 +1123,10 @@ export interface UserPreferences {
   /** Calm screen: no animations or glows in the interface (src/util/calm.ts,
    *  annkri #144, Ames 2026-10-16). Defaults to false. */
   calmScreen?: boolean;
+  /** Settings, "Particles": a small burst where a Highlight, Tag, cut, merge
+   *  or Find Path point lands (src/util/point_particles.ts, Ames 2026-11-02).
+   *  On unless false. */
+  pointParticles?: boolean;
   /** Extra large cursor over the 2D and 3D views (body.nge-cursor-xl,
    *  ng-override.css; Ames 2026-10-22, for a big screen). Defaults to false. */
   cursorXL?: boolean;
@@ -1184,7 +1188,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];

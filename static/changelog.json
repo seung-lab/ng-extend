@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-02T15:11:00Z",
+      "title": "Particles on cut and merge points",
+      "digest": "minor",
+      "items": [
+        "Placing a cut point now sets off a small burst of particles in red or blue, and a merge point in gold, the way Highlight points do. Find Path points get green ones.",
+        "Settings has a new Particles switch, on by default. Turn it off to place every point with no particles. Thanks to Nseraf for the idea."
+      ]
+    },
+    {
       "at": "2026-11-02T15:03:09Z",
       "title": "Sandbox, tutorial and active time fixes",
       "digest": "minor",

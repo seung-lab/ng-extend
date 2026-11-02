@@ -13,6 +13,7 @@ import { claimTouchTaps } from '../util/touch_tap';
 import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
+import { pointParticlesOn } from '../util/point_particles';
 import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, handPointsToUndo, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
 import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz, mecKindOfLayer } from '../util/mec_marks';
 
@@ -277,7 +278,7 @@ async function place(x: number, y: number) {
   if (busy.value) return;
   const pick = pickUnderMouse();
   if ('error' in pick) { say(pick.error, true); return; }
-  runParticleBurst(x, y, rgbOf(styleOf().color));
+  if (pointParticlesOn()) runParticleBurst(x, y, rgbOf(styleOf().color));
   lastRoot.value = pick.root;
   const style = styleOf();
   if (!style.lab && noTrace.value) {

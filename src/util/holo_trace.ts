@@ -447,9 +447,10 @@ export function runPanelDraw(
 /**
  * A one-shot radial particle burst with light streaks, same additive-glow
  * family as the panel trace. Fired at a screen point (e.g. the tag panel on
- * submit). Sky blue by default; pass "r,g,b" to recolor.
+ * submit). Sky blue by default; pass "r,g,b" to recolor. `scale` shrinks or
+ * grows the throw and the streaks (the cut and merge points use 0.6).
  */
-export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): void {
+export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255', scale = 1): void {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   // Bigger and slower (Amy: the click burst was too small and faded too
   // fast): wider throw, longer life, gentler fade.
@@ -470,14 +471,14 @@ export function runParticleBurst(cx: number, cy: number, rgb = '53,181,255'): vo
     const a = Math.random() * 6.283;
     return {
       a,
-      sp: 70 + Math.random() * 135,         // px travelled over the burst
+      sp: (70 + Math.random() * 135) * scale, // px travelled over the burst
       r: 1.1 + Math.random() * 2.0,
       drag: 0.5 + Math.random() * 0.5,      // eases the tail of the flight
     };
   });
   const streaks = Array.from({ length: 9 }, () => ({
     a: Math.random() * 6.283,
-    len: 90 + Math.random() * 100,
+    len: (90 + Math.random() * 100) * scale,
   }));
 
   let raf = 0;
