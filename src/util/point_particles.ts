@@ -16,12 +16,17 @@
  * to each point, no device pixel scaling, a few particles and no full canvas
  * glow, and a new burst simply replaces the one still running.
  *
+ * In season the particles take a shape (src/util/season.ts): snowflakes in
+ * December, bats in late September and October, eggs around Easter. They
+ * keep the point's colour and still all go into one path.
+ *
  * Settings, "Particles" (userPrefs.pointParticles, on by default) turns this
  * and the Highlight and Tag mode bursts off together. Calm screen stops them
  * too, through the reduced motion check.
  */
 import { useUserPreferencesStore } from '../store';
 import { currentSegLayer } from '../datasets';
+import { addParticleShape, currentParticleShape, particleTurn, shapeIsStroked } from './season';
 
 export function pointParticlesOn(): boolean {
   try { return useUserPreferencesStore().prefs.pointParticles !== false; } catch { return true; }
@@ -50,7 +55,8 @@ function burst(x: number, y: number, rgb: string) {
   cancelAnimationFrame(raf);
   cv.style.transform = `translate(${Math.round(x - HALF)}px,${Math.round(y - HALF)}px)`;
   cv.style.display = 'block';
-  const parts = Array.from({ length: 16 }, () => ({ a: Math.random() * 6.283, sp: 40 + Math.random() * 60, r: 1 + Math.random() * 1.4 }));
+  const shape = currentParticleShape(), stroked = shapeIsStroked(shape);
+  const parts = Array.from({ length: 16 }, () => ({ a: Math.random() * 6.283, sp: 40 + Math.random() * 60, r: 1 + Math.random() * 1.4, seed: Math.random() }));
   const streaks = Array.from({ length: 6 }, () => ({ a: Math.random() * 6.283, len: 50 + Math.random() * 45 }));
   const c = ctx, t0 = performance.now();
   const draw = (now: number) => {
@@ -72,14 +78,14 @@ function burst(x: number, y: number, rgb: string) {
       c.fillStyle = `rgba(235,245,255,${(0.5 * (1 - q)).toFixed(3)})`;
       c.beginPath(); c.arc(HALF, HALF, 3 + 7 * (1 - q), 0, 6.283); c.fill();
     }
-    c.fillStyle = `rgba(${rgb},${(Math.pow(1 - k, 1.3) * 0.85).toFixed(3)})`;
+    const col = `rgba(${rgb},${(Math.pow(1 - k, 1.3) * 0.85).toFixed(3)})`;
     c.beginPath();
     const eo = 1 - Math.pow(1 - k, 2);
     for (const p of parts) {
       const px = HALF + Math.cos(p.a) * p.sp * eo, py = HALF + Math.sin(p.a) * p.sp * eo;
-      c.moveTo(px + p.r, py); c.arc(px, py, p.r * (1 - k * 0.35), 0, 6.283);
+      addParticleShape(c, shape, px, py, p.r * (1 - k * 0.35), particleTurn(shape, p.seed, k));
     }
-    c.fill();
+    if (stroked) { c.strokeStyle = col; c.lineWidth = 1; c.stroke(); } else { c.fillStyle = col; c.fill(); }
     raf = requestAnimationFrame(draw);
   };
   raf = requestAnimationFrame(draw);

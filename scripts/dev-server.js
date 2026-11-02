@@ -230,6 +230,15 @@ if (fs.existsSync(HALLOWEEN)) {
   console.log(`Copied Halloween models → ${dest}`);
 }
 
+// ── The Thanksgiving turkey (src/util/turkey.ts fetches /thanksgiving/*) ────
+const THANKSGIVING = path.join(__dirname, '..', 'static', 'thanksgiving');
+if (fs.existsSync(THANKSGIVING)) {
+  const dest = path.join(__dirname, '..', 'dist', 'dev', 'thanksgiving');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(THANKSGIVING)) fs.copyFileSync(path.join(THANKSGIVING, file), path.join(dest, file));
+  console.log(`Copied the Thanksgiving turkey → ${dest}`);
+}
+
 // ── Sound effects (src/util/scythe.ts plays /sfx/<name>.mp3) ─────────────────
 const SFX = path.join(__dirname, '..', 'static', 'sfx');
 if (fs.existsSync(SFX)) {

@@ -248,6 +248,15 @@ if (fs.existsSync(HALLOWEEN_DIR)) {
   }
   console.log(`Copied the Halloween models to ${dest}`);
 }
+// ── Copy the Thanksgiving turkey (src/util/turkey.ts): three.js and the model,
+// fetched only in Thanksgiving week.
+const THANKSGIVING_DIR = path.join(STATIC_DIR, 'thanksgiving');
+if (fs.existsSync(THANKSGIVING_DIR)) {
+  const dest = path.join(DIST_MIN, 'thanksgiving');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(THANKSGIVING_DIR)) fs.copyFileSync(path.join(THANKSGIVING_DIR, file), path.join(dest, file));
+  console.log(`Copied the Thanksgiving turkey to ${dest}`);
+}
 const SFX_DIR = path.join(STATIC_DIR, 'sfx');
 if (fs.existsSync(SFX_DIR)) {
   const dest = path.join(DIST_MIN, 'sfx');

@@ -19,6 +19,7 @@ import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startPointParticles } from './util/point_particles';
+import { startTurkey } from './util/turkey';
 import { startTabs } from './util/tabs';
 import { showOutageBanner } from './util/outage_banner';
 import { startPanelFront } from './util/panel_front';
@@ -441,6 +442,7 @@ function setupViewer() {
   startPumpkin(viewer);
   startScytheControls();
   startPointParticles();
+  startTurkey();
   startInvalidSegmentWatch(viewer);
   recoverCellHistory();
   startAnnotationClickSelect(viewer);

@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-02T17:46:16Z",
+      "title": "Seasonal turkey and particles",
+      "items": [
+        "In Thanksgiving week, a turkey now and then walks along the bottom of the screen and stops to gobble. Click it to make it hop. Settings has a switch to turn it off, and Calm screen keeps it away.",
+        "The particles where your points land take a seasonal shape: snowflakes in December, bats in late September and October, and eggs around Easter. Thanks to Nseraf for the idea."
+      ]
+    },
+    {
       "at": "2026-11-02T17:09:58Z",
       "title": "Lantern keeps your branch",
       "digest": "minor",
