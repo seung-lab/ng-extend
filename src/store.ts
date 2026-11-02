@@ -5161,10 +5161,35 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
   // Active time on each claim (src/util/claim_time.ts): the player's open
   // claims, each with its listed ID and its IDs after edits.
+  /** See refreshLaterRoots. */
+  const laterRoots = ref<Record<number, string[]>>({});
   const timedClaims = computed<TimedClaim[]>(() => myActiveClaims().filter(countsTime).map(t => ({
     id: t.id, dataset: t.dataset, kind: t.kind,
-    roots: [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id]].filter((r): r is string => !!r),
+    roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
+      .filter((r): r is string => !!r))],
   })));
+  /** Each timed claim's cell as it is now, from the server's edit history of
+   *  its listed ID: every merge and cut since, whoever made it, with or
+   *  without an anchor, and after a reload (Ames 2026-11-02: active time "is
+   *  not accurately tracking segs after merge and cuts"). Pieces cut off are
+   *  in it too; time spent on one is still time on the claim. */
+  async function refreshLaterRoots(): Promise<void> {
+    const ds = canonicalDataset(currentDatasetTag());
+    const mine = myActiveClaims().filter(t => countsTime(t) && canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
+    const next: Record<number, string[]> = {};
+    await Promise.all(mine.map(async t => {
+      const listed = String(t.segment_id);
+      let ends = descendantsSeen.get(listed);
+      if (!ends) { ends = latestDescendants(listed).catch(() => null); descendantsSeen.set(listed, ends); }
+      const found = await ends;
+      // A failed lookup keeps what was known.
+      if (found) next[t.id] = found.slice(0, 50); else if (laterRoots.value[t.id]) next[t.id] = laterRoots.value[t.id];
+    }));
+    laterRoots.value = next;
+  }
+  setTimeout(() => { refreshLaterRoots().catch(() => {}); }, 8000);
+  setInterval(() => { if (!document.hidden) refreshLaterRoots().catch(() => {}); }, 3 * 60_000);
+  watch(() => timedClaims.value.map(c => c.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
   startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
@@ -5174,7 +5199,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     descendantsSeen.clear();
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
-    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); }, 1500);
+    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
   });
 
   function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
