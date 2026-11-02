@@ -801,6 +801,47 @@ function favDrop(f: FavItem) {
 }
 function favDragEnd() { draggingFav.value = null; dropFav.value = ''; }
 
+// ── Trophy Case sections: two rows, then Show all (Ames 2026-11-02) ──────────
+// A laptop showed only Cell Completions: one long grid hid every section under it.
+// Each grid shows two full rows (its column count follows the window), most recent
+// first, and 'Show all N' opens it in place. On your own profile a section you open
+// stays open in this browser; someone else's starts closed.
+const TROPHY_OPEN_KEY = 'nge_trophy_open_v1';
+function readOpenSections(): string[] { try { const v = JSON.parse(localStorage.getItem(TROPHY_OPEN_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
+const ownOpenSections = ref<Set<string>>(new Set(readOpenSections()));
+const otherOpenSections = ref<Set<string>>(new Set());
+watch(() => props.viewUserId, () => { otherOpenSections.value = new Set(); });
+const openSections = computed(() => viewingOtherUser.value ? otherOpenSections.value : ownOpenSections.value);
+function toggleTrophySection(k: string) {
+  const next = new Set(openSections.value);
+  if (next.has(k)) next.delete(k); else next.add(k);
+  if (viewingOtherUser.value) { otherOpenSections.value = next; return; }
+  ownOpenSections.value = next;
+  try { localStorage.setItem(TROPHY_OPEN_KEY, JSON.stringify([...next])); } catch { /* private window */ }
+}
+const gridCols = ref<Record<string, number>>({});
+const gridObservers = new Map<string, { el: HTMLElement; ro: ResizeObserver }>();
+function watchTrophyGrid(k: string, el: unknown) {
+  const old = gridObservers.get(k);
+  if (old && old.el === el) return;
+  old?.ro.disconnect(); gridObservers.delete(k);
+  if (!(el instanceof HTMLElement)) return;
+  const measure = () => {
+    const n = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+    if (gridCols.value[k] !== n) gridCols.value = { ...gridCols.value, [k]: n };
+  };
+  const ro = new ResizeObserver(measure); ro.observe(el); gridObservers.set(k, { el, ro }); measure();
+}
+onUnmounted(() => { for (const g of gridObservers.values()) g.ro.disconnect(); gridObservers.clear(); });
+const TROPHY_ROWS = 2;
+function trophyLimit(k: string): number { return (gridCols.value[k] || 6) * TROPHY_ROWS; }
+function shownTrophies<T>(k: string, list: T[]): T[] { return openSections.value.has(k) ? list : list.slice(0, trophyLimit(k)); }
+/** The button under a section, or '' when everything already fits in two rows. */
+function trophyMoreLabel(k: string, list: unknown[]): string {
+  if (list.length <= trophyLimit(k)) return '';
+  return openSections.value.has(k) ? 'Show fewer' : `Show all ${list.length}`;
+}
+
 // ── Trophy Case sections in the player's own order ─────────────────────────
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
@@ -2499,9 +2540,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('cells', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('cells', el)">
               <div
-                v-for="badge in earnedExplorationBadges.earned"
+                v-for="badge in shownTrophies('cells', earnedExplorationBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--exploration"
                 :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
@@ -2518,6 +2559,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
             </div>
+            <button v-if="trophyMoreLabel('cells', earnedExplorationBadges.earned)" type="button" class="nge-trophy-more" :aria-expanded="openSections.has('cells')" @click="toggleTrophySection('cells')">{{ trophyMoreLabel('cells', earnedExplorationBadges.earned) }}</button>
           </div>
 
           <!-- Proofreading track -->
@@ -2531,9 +2573,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('editor', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('editor', el)">
               <div
-                v-for="badge in earnedBuildingBadges.earned"
+                v-for="badge in shownTrophies('editor', earnedBuildingBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--building"
                 :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
@@ -2550,6 +2592,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
             </div>
+            <button v-if="trophyMoreLabel('editor', earnedBuildingBadges.earned)" type="button" class="nge-trophy-more" :aria-expanded="openSections.has('editor')" @click="toggleTrophySection('editor')">{{ trophyMoreLabel('editor', earnedBuildingBadges.earned) }}</button>
           </div>
 
           <!-- Loyalty track -->
@@ -2563,9 +2606,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('loyalty', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('loyalty', el)">
               <div
-                v-for="badge in earnedLoyaltyBadges.earned"
+                v-for="badge in shownTrophies('loyalty', earnedLoyaltyBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--loyalty"
                 :title="`${badge.name}: ${badge.threshold} days of science`"
@@ -2582,6 +2625,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days of science</div>
               </div>
             </div>
+            <button v-if="trophyMoreLabel('loyalty', earnedLoyaltyBadges.earned)" type="button" class="nge-trophy-more" :aria-expanded="openSections.has('loyalty')" @click="toggleTrophySection('loyalty')">{{ trophyMoreLabel('loyalty', earnedLoyaltyBadges.earned) }}</button>
           </div>
 
           <!-- Competitions -->
@@ -2594,9 +2638,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('competitions', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('competitions', el)">
               <div
-                v-for="m in competitionMedals"
+                v-for="m in shownTrophies('competitions', competitionMedals)"
                 :key="m.tier"
                 class="nge-trophy-badge nge-trophy-badge--medal"
                 :class="{ 'nge-trophy-badge--selected': medalSelected(m) }"
@@ -2611,6 +2655,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div v-if="MEDAL_SUB[m.tier]" class="nge-trophy-medal-place">{{ MEDAL_SUB[m.tier] }}</div>
               </div>
             </div>
+            <button v-if="trophyMoreLabel('competitions', competitionMedals)" type="button" class="nge-trophy-more" :aria-expanded="openSections.has('competitions')" @click="toggleTrophySection('competitions')">{{ trophyMoreLabel('competitions', competitionMedals) }}</button>
           </div>
 
           <!-- Legacy Achievements (Ames 2026-11-02): what this player earned on the old cell and edit
@@ -2620,9 +2665,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <span class="nge-trophy-track-count">{{ legacyCells.length + legacyEdits.length }} earned before the update</span>
             </div>
             <div v-if="legacyCells.length" class="nge-trophy-legacy-sub">Cell Completions</div>
-            <div v-if="legacyCells.length" class="nge-trophy-grid">
+            <div v-if="legacyCells.length" class="nge-trophy-grid" :ref="el => watchTrophyGrid('legacy-cells', el)">
               <div
-                v-for="badge in legacyCells"
+                v-for="badge in shownTrophies('legacy-cells', legacyCells)"
                 :key="'legacy-' + badge.id"
                 class="nge-trophy-badge nge-trophy-badge--exploration nge-trophy-badge--legacy"
                 :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
@@ -2637,10 +2682,11 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
             </div>
+            <button v-if="trophyMoreLabel('legacy-cells', legacyCells)" type="button" class="nge-trophy-more" :aria-expanded="openSections.has('legacy-cells')" @click="toggleTrophySection('legacy-cells')">{{ trophyMoreLabel('legacy-cells', legacyCells) }}</button>
             <div v-if="legacyEdits.length" class="nge-trophy-legacy-sub">Editor Achievements</div>
-            <div v-if="legacyEdits.length" class="nge-trophy-grid">
+            <div v-if="legacyEdits.length" class="nge-trophy-grid" :ref="el => watchTrophyGrid('legacy-edits', el)">
               <div
-                v-for="badge in legacyEdits"
+                v-for="badge in shownTrophies('legacy-edits', legacyEdits)"
                 :key="'legacy-' + badge.id"
                 class="nge-trophy-badge nge-trophy-badge--building nge-trophy-badge--legacy"
                 :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
@@ -2655,6 +2701,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
             </div>
+            <button v-if="trophyMoreLabel('legacy-edits', legacyEdits)" type="button" class="nge-trophy-more" :aria-expanded="openSections.has('legacy-edits')" @click="toggleTrophySection('legacy-edits')">{{ trophyMoreLabel('legacy-edits', legacyEdits) }}</button>
           </div>
 
           <!-- Special Awards -->
@@ -2667,9 +2714,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('special', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('special', el)">
               <div
-                v-for="award in plainSpecialBadges"
+                v-for="award in shownTrophies('special', plainSpecialBadges)"
                 :key="award.id"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)), 'nge-trophy-badge--bronze': bronzeSlugs.includes(specialSlug(award)) }"
@@ -2680,6 +2727,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
               </div>
             </div>
+            <button v-if="trophyMoreLabel('special', plainSpecialBadges)" type="button" class="nge-trophy-more" :aria-expanded="openSections.has('special')" @click="toggleTrophySection('special')">{{ trophyMoreLabel('special', plainSpecialBadges) }}</button>
           </div>
 
           </div><!-- end main -->
@@ -4545,6 +4593,12 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* Sections in the player's own order: dragged by the grip in the heading */
 .nge-trophy-main { display: flex; flex-direction: column; }
 .nge-trophy-track { transition: opacity 0.15s ease, box-shadow 0.15s ease; border-radius: 10px; }
+.nge-trophy-more {
+  display: block; margin: 10px auto 0; padding: 6px 16px; border-radius: 999px; font: inherit; font-size: 0.8em; font-weight: 600;
+  letter-spacing: 0.03em; cursor: pointer; color: #b9d6ff; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(74, 158, 255, 0.3);
+  transition: background 0.15s, border-color 0.15s;
+}
+.nge-trophy-more:hover, .nge-trophy-more:focus-visible { background: rgba(74, 158, 255, 0.16); border-color: rgba(120, 190, 255, 0.6); outline: none; }
 .nge-trophy-track--legacy { margin-top: 8px; padding-top: 18px; border-top: 1px solid rgba(160, 180, 210, 0.14); }
 .nge-trophy-legacy-sub { font-size: 0.78em; font-weight: 600; letter-spacing: 0.04em; color: rgba(190, 205, 228, 0.7); margin: 10px 0 8px; }
 .nge-trophy-track.is-dragging { opacity: 0.45; }
