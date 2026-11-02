@@ -243,7 +243,9 @@ export function startClaimTimer(d: Deps) {
     if (d.kind !== 'merge' && d.kind !== 'split') return;
     bucket(id).edits++;
     const roots: string[] = Array.isArray(d.roots) ? d.roots.map(String) : [];
-    if (roots.length) aliases[id] = { roots, until: Date.now() + 60_000 };
+    // Until the claim's own ids catch up, which can take a while after a split
+    // (report 344): 60 s was sometimes not enough, and the time stopped.
+    if (roots.length) aliases[id] = { roots: [...new Set([...(aliases[id] && aliases[id].until > Date.now() ? aliases[id].roots : []), ...roots])], until: Date.now() + 30 * 60_000 };
   }) as EventListener);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void flush();

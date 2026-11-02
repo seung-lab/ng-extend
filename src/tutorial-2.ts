@@ -140,7 +140,7 @@ function findPathStep() {
   const tutorial = store.activeTutorial, step = store.getTutorialStep();
   const segLayers = () => ((window as any).viewer?.layerManager?.managedLayers ?? [])
     .filter((ml: any) => ml?.layer?.displayState?.objectAlpha);
-  setTimeout(() => { for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 0.35; }, 1500);
+  setTimeout(() => { for (const ml of segLayers()) ml.layer.displayState.objectAlpha.value = 0.6; }, 1500);  // 0.35 lost the thin branches (lalonso, report 321)
   const restore = setInterval(() => {
     const s = store.getTutorialStep();
     if (store.activeTutorial === tutorial && (s === step || s === step + 1)) return;
@@ -804,7 +804,7 @@ If you get confused in the future, hovering may help!`,
   {
     part: "Part 3 of 4 · Find your way",
     text: `
-Right now we are centered in the cell's soma. <strong>Press the "A" key</strong> to reveal the axis lines. 
+Right now we are centered in the cell's <strong>soma</strong>, the round cell body where its branches start. <strong>Press the "A" key</strong> to reveal the axis lines. 
 
 These lines converge at the point we are centered on and represent the volume's x, y, and z dimensions.
 

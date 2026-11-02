@@ -70,7 +70,7 @@ export const EXTENSION_CELLS: SandboxCell[] = [
   // Two more small ones further on, (59871, 38215, 136) and (59810, 38060,
   // 129), are a bonus and not checked.
   { id: 'f3dfed18-9592-46ed-8ca7-90310aea0d60', title: 'Cell 3', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6290470967705600', pieces: 2,
-    note: 'There are a few more small pieces at the very end of this branch. Add them if you like, but they are not needed to finish.' },
+    note: 'There are a few more small pieces at the very end of this branch. Add them if you like, but they are not needed to finish. The blue box is where this dataset\'s cells end: past it, the 2D images go on, but there is nothing to add.' },
 ];
 
 /** Every sandbox cell, kept out of the Merge and Cut tutorials' pools. */

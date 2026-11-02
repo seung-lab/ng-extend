@@ -5165,6 +5165,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
+    // Its later versions changed with this edit: ask again (AzureJay, report
+    // 344: active time stopped counting after a split).
+    descendantsSeen.clear();
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
     liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); }, 1500);

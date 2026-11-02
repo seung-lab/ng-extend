@@ -16,6 +16,7 @@ import { Step, useTutorialStore } from './store-pyr';
 import imgBravoNurro from './images/bravo-nurro.png';
 import imgWheresNurro from './images/wheres-nurro.png';
 import { beginPractice, cellIsCut, cellIsJoined, endPractice, ensureTool, groupProgress, type PracticeKind } from './practice';
+import { exitGrapheneTool } from './widgets/graphene_tool_utils';
 import type { SandboxCell } from './practice_pools';
 import { supabase } from './supabase';
 import { awardSpecialOnce } from './util/special_award';
@@ -400,6 +401,16 @@ ${W.intro(cell())}`;
           return;
         }
         if (mine !== taking) return;
+        // A cell left already solved (edits made after someone's success box,
+        // Luis Alonso, report 331) would congratulate at once: it is put back
+        // and taken again.
+        for (let again = 0; again < 3 && got && await isSolved(cell().id).catch(() => false); again++) {
+          practiceStatus(`This ${W.one} was left finished by someone else. Putting it back to its start, one moment.`);
+          await endPractice();
+          if (mine !== taking || store.activeTutorial !== tutorial || store.getTutorialStep() !== 0) return;
+          got = await take();
+        }
+        if (!got) { practiceStatus(`No ${W.one} came free. Try again in a few minutes.`); return; }
         // Watch only once the cell is held: with nothing held, the watch
         // would queue for a tutorial's cells.
         watchPractice(cfg.kind !== 'cut', W.hint, '', { advance: true });
@@ -463,6 +474,9 @@ ${progressBar()}
           recorded = Promise.resolve(recordTutorialDone(tutorial, id)).catch(() => {});
         }
         stopWatching();
+        // The cell is let go: edits made now would land on it for the next
+        // person (report 331), so the tool goes off.
+        try { exitGrapheneTool(); } catch { /* no tool on */ }
         endPractice();
       },
     } as Step,

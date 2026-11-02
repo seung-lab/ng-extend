@@ -140,6 +140,8 @@ const contextHint = computed(() => {
     if (totalPoints.value === 0) return touch ? 'Tap supervoxels to mark them' : 'Ctrl+Click on supervoxels to mark them';
     if (moreRedWanted.value) return touch ? 'Tap another red point' : 'Ctrl+Click another red point';
     if (store.redPointCount > 0 && store.bluePointCount === 0) return touch ? 'Tap Blue, then tap the other side' : 'Press G to swap to Blue group, then Ctrl+Click';
+    // One point a side often cuts off only part of the piece (lalonso, report 318).
+    if (store.redPointCount === 1 || store.bluePointCount === 1) return touch ? 'Ready. A few more points on each side give a cleaner cut' : 'Ready: press Enter. A few more points on each side give a cleaner cut';
     if (store.redPointCount > 0 && store.bluePointCount > 0) return touch ? 'Ready to submit' : 'Ready to submit. Press Enter';
     return touch ? 'Tap to add more points' : 'Ctrl+Click to add more points';
   }

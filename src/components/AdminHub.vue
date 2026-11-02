@@ -3301,10 +3301,9 @@ function practiceWhen(iso: string | null) {
           </div>
           <!-- The decision first (Ames 2026-10-05), then the other tools. -->
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
-            <button v-if="isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id || suggestAsked(row)"
-                    title="Asks Claude to read the code and suggest a fix for this report. One Claude run, 20 to 60 cents."
-                    @click="askForSuggestion(row)">{{ suggestAsked(row) ? 'Suggestion on its way…' : '✨ Suggest a fix' }}</button>
-            <button v-else class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
+            <!-- Suggest a fix is paused (Ames 2026-11-02: "I don't want to be
+                 paying for this"); its workflow, Triage Propose, is switched off. -->
+            <button v-if="!isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
             </button>
             <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">

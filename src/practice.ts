@@ -257,9 +257,12 @@ async function undoSinceBaseline(ex: PracticeExample, assertLease: () => Promise
   }
   const activeOps = { length: undoneCount };
   await assertLease();
-  const a = await rootOfSupervoxel(ex, ex.supervoxel_a);
-  const b = await rootOfSupervoxel(ex, ex.supervoxel_b);
-  if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${ex.supervoxel_a} and ${ex.supervoxel_b} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
+  // The spots the game itself checks: a cell whose own pair differs from them
+  // was marked ready while it still read as solved (report 331).
+  const [sa, sb] = checkSupervoxels(ex);
+  const a = await rootOfSupervoxel(ex, sa);
+  const b = await rootOfSupervoxel(ex, sb);
+  if (!a || !b) throw new Error(`could not look up the roots of supervoxels ${sa} and ${sb} on ${ex.pcg_server} ${ex.pcg_table} (see the console for the server's answer)`);
   // A cut example starts fused; a merge example starts separate.
   const wantFused = ex.kind === 'cut';
   if ((a === b) !== wantFused) {
