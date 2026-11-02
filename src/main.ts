@@ -1,5 +1,6 @@
 import { startViewAutosave } from './util/view_autosave';
 import { startClaimAutosave } from './util/claim_autosave';
+import { startScrollWatch } from './util/scroll_watch';
 import { startImageSource } from './util/image_source';
 import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
@@ -428,6 +429,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startScrollWatch();
   startClaimAutosave(viewer);
   // The active quest's annotations, saved to that quest cell as they change.
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
