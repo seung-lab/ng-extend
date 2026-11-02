@@ -499,14 +499,23 @@ async function itemToCard(c: Card, i: number) {
     error.value = e?.message ?? String(e);
   }
 }
+/** Who a box tags, as the board will send it (Ames 2026-11-02: "need some
+ *  visual indicator that tag worked"). */
+const taggedPeople = (text: string) => { const ids = tagsIn(text || ''); return people.value.filter(p => ids.includes(p.id)); };
+const sentTags = ref('');
+let sentTimer: any = null;
+function flashSent(text: string) { sentTags.value = text; clearTimeout(sentTimer); sentTimer = setTimeout(() => { sentTags.value = ''; }, 6000); }
 async function sendComment(c: Card) {
   const t = comment.value.trim();
   if (!t || busy.value) return;
   busy.value = true;
   try {
-    const { card } = await secureWrite<any>('todo.comment', { id: c.id, text: t, tagIds: tagsIn(t) });
+    const tagIds = tagsIn(t);
+    const { card } = await secureWrite<any>('todo.comment', { id: c.id, text: t, tagIds });
     if (card) put(card);
     comment.value = '';
+    const told = people.value.filter(p => tagIds.includes(p.id) && p.id !== backend.userId).map(p => p.name);
+    if (told.length) flashSent(`Sent to ${told.join(', ')}, in Pyr and Slack`);
   } catch (e: any) {
     error.value = e?.message ?? String(e);
   } finally {
@@ -981,6 +990,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
             </div>
+            <img v-if="(c.images || []).length" class="nge-todo-card-cover" :src="c.images[0]" alt="" loading="lazy" />
             <div class="nge-todo-card-title">{{ c.title }}</div>
             <div v-if="isLive(c) || buildBadges(c).length" class="nge-todo-badges" @click.stop>
               <span v-if="isLive(c)" class="nge-todo-badge nge-todo-badge--live" :title="c.status || 'Its test site build is in the live site'">✓ Live</span>
@@ -1181,8 +1191,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </div>
         <textarea ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
                   @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+        <div v-if="taggedPeople(comment).length" class="nge-todo-tagging">Tagging <span v-for="p in taggedPeople(comment)" :key="p.id" class="nge-todo-tag-chip" :style="{ background: colorOf(p.id) }">@{{ p.name }}</span></div>
         <div class="nge-todo-row">
           <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
+          <span v-if="sentTags" class="nge-todo-sent">✓ {{ sentTags }}</span>
         </div>
 
         <div class="nge-todo-foot">
@@ -1228,6 +1240,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-card { position: relative; }
 .nge-todo-card-tools { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; background: var(--card); border-radius: 6px; }
 .nge-todo-card:hover .nge-todo-card-tools, .nge-todo-card:focus-within .nge-todo-card-tools { display: flex; }
+.nge-todo-card-cover { display: block; width: 100%; max-height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 6px; background: rgba(127, 127, 127, 0.12); }
+.nge-todo-tagging { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 4px 0; font-size: 12.5px; color: var(--dim); }
+.nge-todo-tag-chip { color: #fff; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
+.nge-todo-sent { font-size: 12.5px; color: #1f9d55; font-weight: 600; margin-left: 8px; }
 .nge-todo-card-status { font-size: 12px; color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 .nge-todo-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .nge-todo-linkchip {

@@ -5747,23 +5747,37 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    */
   let reportReaderId: string | null = null;
   async function markReportNotesRead(reportId: string, excerpt: string | null) {
+    return markReportsNotesRead([{ id: reportId, excerpt }]);
+  }
+  /** Several reports at once: the triage board, on load, reads the notes of
+   *  every card already In progress or Done (Ames 2026-11-02: "Triage and
+   *  Notifs should be in sync"), whoever moved it and from wherever. */
+  async function markReportsNotesRead(reports: { id: string; excerpt: string | null }[]) {
     let uid = userId.value || reportReaderId;
     if (!uid && userEmail.value) {
       const { data } = await supabase.from('users').select('id').eq('middleauth_email', userEmail.value).single();
       uid = reportReaderId = (data as any)?.id ?? null;
     }
-    if (!uid || !reportId) return 0;
+    const wanted = reports.filter(r => r && r.id);
+    if (!uid || !wanted.length) return 0;
     const flat = (t: any) => String(t || '').replace(/\s+/g, ' ').trim();
-    const quote = flat(excerpt).slice(0, 60);
+    const quotes = wanted.map(r => flat(r.excerpt).slice(0, 60)).filter(Boolean);
     const { data: recent } = await supabase.from('notifications').select('id,title,body')
       .lte('send_at', new Date().toISOString()).order('send_at', { ascending: false }).limit(150);
     const hits = ((recent || []) as any[]).filter(n => {
       const body = String(n.body || '');
-      return body.includes(reportId) || (!!quote && String(n.title || '').startsWith('🗂') && flat(body).startsWith('"' + quote));
+      if (wanted.some(r => body.includes(r.id))) return true;
+      if (!String(n.title || '').startsWith('🗂')) return false;
+      const b = flat(body);
+      return quotes.some(q => b.startsWith('"' + q));
     }).map(n => Number(n.id));
     if (!hits.length) return 0;
-    const { data: had } = await supabase.from('notification_reads').select('notification_id').eq('user_id', uid).in('notification_id', hits);
-    const seen = new Set(((had || []) as any[]).map(r => Number(r.notification_id)));
+    // The gateway takes at most 100 values in one in().
+    const seen = new Set<number>();
+    for (let i = 0; i < hits.length; i += 90) {
+      const { data: had } = await supabase.from('notification_reads').select('notification_id').eq('user_id', uid).in('notification_id', hits.slice(i, i + 90));
+      for (const r of (had || []) as any[]) seen.add(Number(r.notification_id));
+    }
     const fresh = hits.filter(id => !seen.has(id));
     if (!fresh.length) return 0;
     const { error } = await supabase.from('notification_reads').upsert(fresh.map(id => ({ notification_id: id, user_id: uid })), { onConflict: 'notification_id,user_id' });
@@ -6533,7 +6547,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifications, notificationReads, notifRead, huntReportsShown, unreadNotificationCount, unreadAdminNotificationCount, unreadStaffNotificationCount, loadNotifications,
     notificationsHaveMore, loadMoreNotifications,
     adminNotifications, adminNotifHasMore, loadAdminNotifications, updateNotification,
-    markNotificationRead, markAllNotificationsRead, markReportNotesRead,
+    markNotificationRead, markAllNotificationsRead, markReportNotesRead, markReportsNotesRead,
     createNotification, createSelfNotification, announceAchievement, postDueChatAnnouncements, deleteNotification, dismissNotification,
     dismissAllNotifications,
     subscribeToNotifications, unsubscribeFromNotifications,

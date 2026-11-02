@@ -831,6 +831,15 @@ const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r
 const TODO_NOTE = 'To do';
 const isTodo = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(TODO_NOTE);
 /** Moving a card to In progress or Done reads its bell notes for you (Ames 2026-10-27). */
+/** On each load of the board (at most every five minutes): the notes of every
+ *  card already In progress or Done, read for you, however it got there. */
+let notesSweptAt = 0;
+function sweepMovedReportNotes() {
+  if (Date.now() - notesSweptAt < 5 * 60 * 1000) return;
+  notesSweptAt = Date.now();
+  const moved = triageRows.value.filter(r => ['progress', 'done'].includes(triageGroupOf(r)));
+  if (moved.length) void backend.markReportsNotesRead(moved.map(r => ({ id: r.id, excerpt: r.source_excerpt }))).catch(() => {});
+}
 async function readReportNotes(row: TriageRow) {
   try { await backend.markReportNotesRead(row.id, row.source_excerpt); }
   catch { /* the card moved; the notes just stay unread */ }
@@ -1037,6 +1046,7 @@ async function loadTriage() {
     }
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
+    sweepMovedReportNotes();
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
     applyTriageFocus();
