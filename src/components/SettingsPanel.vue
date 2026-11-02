@@ -83,6 +83,7 @@ const draftShowRadio = ref(true);
 const draftPumpkin = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
+const draftParticles = ref(true);
 const draftCursorXL = ref(false);
 const draftLargeText = ref(false);
 const draftHideTopBar = ref(false);
@@ -156,6 +157,7 @@ onMounted(() => {
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
+  draftParticles.value = prefsStore.prefs.pointParticles !== false;
   draftCursorXL.value = prefsStore.prefs.cursorXL === true;
   draftLargeText.value = prefsStore.prefs.largeText === true;
   draftHideTopBar.value = prefsStore.prefs.hideTopBar === true;
@@ -231,7 +233,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -621,6 +623,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="Today in Pyr is the short note each afternoon on what changed in Pyr that day. Off: it no longer comes to your bell. Other announcements still do.">
               <input type="checkbox" v-model="draftDailyDigest" />
               <span class="nge-settings-toggle-label">Show Today in Pyr daily updates</span>
+            </label>
+            <label class="nge-settings-toggle" title="On: a small burst of particles where your point lands, when you place a Highlight, Tag, cut, merge or Find Path point. Off: the points go down with no particles.">
+              <input type="checkbox" v-model="draftParticles" />
+              <span class="nge-settings-toggle-label">Particles</span>
             </label>
             <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
               <input type="checkbox" v-model="draftCalm" />
