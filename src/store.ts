@@ -5492,7 +5492,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
-    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) === 'admin').length
+    notifications.value.filter(n => !notifRead(n) && ['admin', 'access'].includes(notifKind(n.title, isAdmin.value))).length
   );
   /** Unread in the bell's Admin and Triage tabs together: the dot on the
    *  Player view chip, so admin alerts still show while those tabs are hidden. */
