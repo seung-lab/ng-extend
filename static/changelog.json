@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-02T15:30:59Z",
+      "title": "Active time counts looking around",
+      "digest": "minor",
+      "items": [
+        "Active time on a claimed cell now also counts moving, turning and zooming the view, not only marks, merges and cuts. Thanks to AzureJay."
+      ]
+    },
+    {
       "at": "2026-11-02T15:11:00Z",
       "title": "Particles on cut and merge points",
       "digest": "minor",
