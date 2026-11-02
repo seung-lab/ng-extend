@@ -4,6 +4,7 @@ import { secureWrite, caveToken } from '../secure_write';
 import { functionUrl } from '../functions_base';
 import {ref, shallowRef, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
 import { searchNamesOf, serverTagged, type AdminPerson } from '../util/admin_mentions';
+import { vAutogrow } from '../util/autogrow';
 import {useProofreadingBackendStore} from '../store';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
@@ -831,6 +832,15 @@ const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r
 const TODO_NOTE = 'To do';
 const isTodo = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(TODO_NOTE);
 /** Moving a card to In progress or Done reads its bell notes for you (Ames 2026-10-27). */
+/** On each load of the board (at most every five minutes): the notes of every
+ *  card already In progress or Done, read for you, however it got there. */
+let notesSweptAt = 0;
+function sweepMovedReportNotes() {
+  if (Date.now() - notesSweptAt < 5 * 60 * 1000) return;
+  notesSweptAt = Date.now();
+  const moved = triageRows.value.filter(r => ['progress', 'done'].includes(triageGroupOf(r)));
+  if (moved.length) void backend.markReportsNotesRead(moved.map(r => ({ id: r.id, excerpt: r.source_excerpt }))).catch(() => {});
+}
 async function readReportNotes(row: TriageRow) {
   try { await backend.markReportNotesRead(row.id, row.source_excerpt); }
   catch { /* the card moved; the notes just stay unread */ }
@@ -1037,6 +1047,7 @@ async function loadTriage() {
     }
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
+    sweepMovedReportNotes();
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
     applyTriageFocus();
@@ -2736,7 +2747,7 @@ function practiceWhen(iso: string | null) {
           <button type="button" title="Link" @click="fmtLink()">Link</button>
           <span class="nge-admin-fmthint">Paste formatted text and it keeps its bold, headings, lists and links.</span>
         </div>
-        <textarea ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste($event)"></textarea>
+        <textarea v-autogrow ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste($event)"></textarea>
         <div v-if="notifBody.trim()" class="nge-admin-fmtpreview">
           <div class="nge-admin-fmtpreview-label">Preview</div>
           <div class="nge-admin-fmtpreview-body" v-html="notifPreview"></div>
@@ -2958,7 +2969,7 @@ function practiceWhen(iso: string | null) {
         <input v-model="badgeName" class="nge-admin-input" placeholder="Badge name" />
         <input v-model="badgeSlug" class="nge-admin-input" placeholder="Code name (optional; made from the name when empty)"
                title="How the game finds this one when it gives it out by itself. The Merger Sandbox award is: merger-sandbox" />
-        <textarea v-model="badgeDesc" class="nge-admin-textarea" rows="2" placeholder="Description..."></textarea>
+        <textarea v-autogrow v-model="badgeDesc" class="nge-admin-textarea" rows="2" placeholder="Description..."></textarea>
         <label class="nge-admin-file-label">
           <input type="file" accept="image/*" @change="onBadgeImageChange" class="nge-admin-file-input" />
           {{ badgeImageFile ? badgeImageFile.name : 'Choose badge image...' }}
@@ -3298,7 +3309,7 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
           <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale"><template v-for="(pt, pi) in linkParts(row.rationale)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
-          <textarea
+          <textarea v-autogrow
             v-if="row.recommendation === 'message' && row.status === 'proposed'"
             v-model="triageEdits[row.id]"
             class="nge-triage-message"
@@ -3330,7 +3341,7 @@ function practiceWhen(iso: string | null) {
               <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
             </div>
             <template v-if="noteOpen[row.id]">
-              <textarea v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
+              <textarea v-autogrow v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
                         placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her. Paste a screenshot to add it."
                         @paste="onNotePaste($event, row)"
                         @input="onTagInput($event, v => noteDrafts[row.id] = v)" @keydown="onTagKey" @blur="tagPicker = null"
@@ -3352,7 +3363,7 @@ function practiceWhen(iso: string | null) {
           </div>
           <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
                never sent to the reporter (the message box above is). -->
-          <textarea
+          <textarea v-autogrow
             v-if="row.status === 'proposed'"
             v-model="triageNotes[row.id]"
             class="nge-triage-message nge-triage-comment"
@@ -3487,7 +3498,7 @@ function practiceWhen(iso: string | null) {
                 <button type="button" class="nge-triage-preview-toggle" :aria-pressed="replyPreviewOpen[row.id] ? 'true' : 'false'"
                         title="Show the message as the player will see it" @click="replyPreviewOpen[row.id] = !replyPreviewOpen[row.id]">{{ replyPreviewOpen[row.id] ? 'Hide preview' : 'Preview' }}</button>
               </div>
-              <textarea
+              <textarea v-autogrow
                 :ref="el => { reporterEls[row.id] = el; }"
                 v-model="reporterDrafts[row.id]"
                 class="nge-triage-message nge-triage-comment"
@@ -4651,6 +4662,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-rationale { font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.45; }
 .nge-triage-message {
+  flex-shrink: 0;
   background: rgba(0,0,0,0.3); border: 1px solid rgba(100,200,255,0.2);
   border-radius: 6px; color: #dde; font-size: 13.5px; padding: 8px 10px; resize: vertical;
 }

@@ -16,6 +16,7 @@ import { secureWrite } from '../secure_write';
 import { secureUpload } from '../secure_upload';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { useProofreadingBackendStore } from '../store';
+import { vAutogrow } from '../util/autogrow';
 import imgNurroHome from '../images/nurro-at-home600.png';
 import imgNurroBravo from '../images/bravo-nurro.png';
 import imgNurroWhere from '../images/wheres-nurro.png';
@@ -222,6 +223,32 @@ function cheer(c: Card) {
   nurroCheer.value = `Done! ${c.title}${who ? `. Nice work, ${who}!` : ''}`;
   window.clearTimeout(cheerTimer);
   cheerTimer = window.setTimeout(() => { nurroCheer.value = ''; }, 3500);
+}
+
+// ── Done, with pomp and circumstance (Ames 2026-11-02) ──
+// "✓ Done" on a card's face: the card shines gold, a burst of confetti flies
+// out of it, then it moves to Done and Nurro cheers.
+const DONE_COLORS = ['#4f8cff', '#7c9cff', '#38bdf8', '#2ec4b6', '#f5c542', '#ff6fae', '#a78bfa'];
+const party = ref<{ key: number; x: number; y: number; bits: { dx: number; dy: number; r: number; c: string; d: number; wide: boolean }[] } | null>(null);
+const winning = ref<string | null>(null);
+async function finish(c: Card, e?: MouseEvent) {
+  if (winning.value) return;
+  const card = (e?.currentTarget as HTMLElement | null)?.closest?.('.nge-todo-card, .nge-todo-panel') as HTMLElement | null;
+  const box = card?.getBoundingClientRect();
+  const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (box && !calm) {
+    party.value = { key: Date.now(), x: box.left + box.width / 2, y: box.top + Math.min(box.height / 2, 80),
+      bits: Array.from({ length: 64 }, (_, i) => {
+        const a = (i / 64) * Math.PI * 2 + Math.random() * 0.4, v = 120 + Math.random() * 220;
+        return { dx: Math.cos(a) * v, dy: Math.sin(a) * v - 80, r: Math.random() * 720 - 360, c: DONE_COLORS[i % DONE_COLORS.length], d: 0.9 + Math.random() * 0.7, wide: i % 3 === 0 };
+      }) };
+    const key = party.value.key;
+    setTimeout(() => { if (party.value?.key === key) party.value = null; }, 1800);
+  }
+  winning.value = c.id;
+  await new Promise(r => setTimeout(r, calm ? 0 : 650));
+  winning.value = null;
+  await moveTo(c, 'done');
 }
 
 // ── Numbers ──
@@ -499,14 +526,23 @@ async function itemToCard(c: Card, i: number) {
     error.value = e?.message ?? String(e);
   }
 }
+/** Who a box tags, as the board will send it (Ames 2026-11-02: "need some
+ *  visual indicator that tag worked"). */
+const taggedPeople = (text: string) => { const ids = tagsIn(text || ''); return people.value.filter(p => ids.includes(p.id)); };
+const sentTags = ref('');
+let sentTimer: any = null;
+function flashSent(text: string) { sentTags.value = text; clearTimeout(sentTimer); sentTimer = setTimeout(() => { sentTags.value = ''; }, 6000); }
 async function sendComment(c: Card) {
   const t = comment.value.trim();
   if (!t || busy.value) return;
   busy.value = true;
   try {
-    const { card } = await secureWrite<any>('todo.comment', { id: c.id, text: t, tagIds: tagsIn(t) });
+    const tagIds = tagsIn(t);
+    const { card } = await secureWrite<any>('todo.comment', { id: c.id, text: t, tagIds });
     if (card) put(card);
     comment.value = '';
+    const told = people.value.filter(p => tagIds.includes(p.id) && p.id !== backend.userId).map(p => p.name);
+    if (told.length) flashSent(`Sent to ${told.join(', ')}, in Pyr and Slack`);
   } catch (e: any) {
     error.value = e?.message ?? String(e);
   } finally {
@@ -885,6 +921,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <span class="nge-todo-stat-word">done this week</span>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="party" :key="party.key" class="nge-todo-party" aria-hidden="true" :style="{ left: party.x + 'px', top: party.y + 'px' }">
+        <i v-for="(b, i) in party.bits" :key="i" :class="{ 'nge-todo-party-bit--wide': b.wide }" class="nge-todo-party-bit"
+           :style="{ background: b.c, '--dx': b.dx + 'px', '--dy': b.dy + 'px', '--r': b.r + 'deg', animationDuration: b.d + 's' }"></i>
+      </div>
+    </Teleport>
     <div v-if="nurroCheer" class="nge-todo-cheer" role="status"><img :src="imgNurroBravo" alt="" /><span>{{ nurroCheer }}</span></div>
     <div v-if="error" class="nge-todo-error" role="alert">⚠ {{ error }} <button class="nge-todo-x" @click="error = ''" aria-label="Close">×</button></div>
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
@@ -929,7 +971,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                 <button type="button" title="Select some lines, then click: they become checklist items" @click="draftToChecklist">☑ Checklist</button>
                 <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages('new')">🖼 Image</button>
               </div>
-              <textarea :ref="setDraftNotesEl" v-model="draft.notes" class="nge-todo-input" rows="4" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
+              <textarea v-autogrow :ref="setDraftNotesEl" v-model="draft.notes" class="nge-todo-input" rows="4" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                         @input="onMentionInput($event, v => draft.notes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
                         data-nge-notes-paste @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
               <ul v-if="draft.checklist.length" class="nge-todo-check">
@@ -973,7 +1015,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </div>
 
           <article v-for="c in col.rows" :key="c.id" class="nge-todo-card" draggable="true"
-                   :class="{ 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id,
+                   :class="{ 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id, 'nge-todo-card--won': winning === c.id,
                              'nge-todo-card--drop-above': dropAt?.id === c.id && !dropAt.after, 'nge-todo-card--drop-below': dropAt?.id === c.id && dropAt.after }"
                    tabindex="0" @click="openUp(c)" @keydown.enter="openUp(c)"
                    @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c)">
@@ -981,6 +1023,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
             </div>
+            <div v-if="c.list !== 'done'" class="nge-todo-card-done" @click.stop>
+              <button type="button" class="nge-todo-done-btn" title="Move to Done" @click="finish(c, $event)">✓ Done</button>
+            </div>
+            <img v-if="(c.images || []).length" class="nge-todo-card-cover" :src="c.images[0]" alt="" loading="lazy" />
             <div class="nge-todo-card-title">{{ c.title }}</div>
             <div v-if="isLive(c) || buildBadges(c).length" class="nge-todo-badges" @click.stop>
               <span v-if="isLive(c)" class="nge-todo-badge nge-todo-badge--live" :title="c.status || 'Its test site build is in the live site'">✓ Live</span>
@@ -1081,6 +1127,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <select class="nge-todo-select" :value="openCard.list" aria-label="List" @change="onListChange(openCard, $event)">
             <option v-for="l in LISTS" :key="l.key" :value="l.key">{{ l.title }}</option>
           </select>
+          <button v-if="openCard.list !== 'done'" type="button" class="nge-todo-btn nge-todo-done-big" @click="finish(openCard, $event)">✓ Done</button>
         </div>
         <input ref="titleEl" v-model="editTitle" class="nge-todo-input nge-todo-title-edit" maxlength="200" aria-label="Title" title="Click to edit the title"
                @input="onMentionInput($event, v => editTitle = v)" @keydown="onTitleKey"
@@ -1140,7 +1187,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <button type="button" title="Select some lines, then click: they become checklist items" @click="cardToChecklist(openCard)">☑ Checklist</button>
             <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages(openCard)">🖼 Image</button>
           </div>
-          <textarea ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
+          <textarea v-autogrow ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                     @input="onMentionInput($event, v => editNotes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
                     data-nge-notes-paste @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
           <div class="nge-todo-row">
@@ -1179,10 +1226,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}</div>
           <div class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
         </div>
-        <textarea ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
+        <textarea v-autogrow ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
                   @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+        <div v-if="taggedPeople(comment).length" class="nge-todo-tagging">Tagging <span v-for="p in taggedPeople(comment)" :key="p.id" class="nge-todo-tag-chip" :style="{ background: colorOf(p.id) }">@{{ p.name }}</span></div>
         <div class="nge-todo-row">
           <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
+          <span v-if="sentTags" class="nge-todo-sent">✓ {{ sentTags }}</span>
         </div>
 
         <div class="nge-todo-foot">
@@ -1228,6 +1277,24 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-card { position: relative; }
 .nge-todo-card-tools { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; background: var(--card); border-radius: 6px; }
 .nge-todo-card:hover .nge-todo-card-tools, .nge-todo-card:focus-within .nge-todo-card-tools { display: flex; }
+.nge-todo-card-cover { display: block; width: 100%; max-height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 6px; background: rgba(127, 127, 127, 0.12); }
+.nge-todo-tagging { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 4px 0; font-size: 12.5px; color: var(--dim); }
+.nge-todo-tag-chip { color: #fff; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
+.nge-todo-sent { font-size: 12.5px; color: #1f9d55; font-weight: 600; margin-left: 8px; }
+.nge-todo-done-big { border-color: #1f9d55; color: #1f9d55; font-weight: 700; }
+.nge-todo-done-big:hover { background: #1f9d55; color: #fff; }
+.nge-todo-card-done { position: absolute; right: 8px; bottom: 8px; }
+.nge-todo-done-btn { font: 600 12px Inter, system-ui, sans-serif; padding: 3px 10px; border-radius: 12px; cursor: pointer;
+  border: 1px solid rgba(31, 157, 85, 0.45); background: rgba(31, 157, 85, 0.08); color: #1f9d55; opacity: 0; transition: opacity 0.15s, background 0.15s; }
+.nge-todo-card:hover .nge-todo-done-btn, .nge-todo-card:focus-within .nge-todo-done-btn { opacity: 1; }
+.nge-todo-done-btn:hover { background: #1f9d55; color: #fff; }
+@media (hover: none) { .nge-todo-done-btn { opacity: 1; } }
+.nge-todo-card--won { animation: nge-todo-won 0.65s ease-out; border-color: #f5c542 !important; }
+@keyframes nge-todo-won {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(245, 197, 66, 0); }
+  35% { transform: scale(1.04); box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.55), 0 0 36px rgba(245, 197, 66, 0.7); background: #fff8dc; }
+  100% { transform: scale(0.96); box-shadow: 0 0 22px rgba(245, 197, 66, 0.4); opacity: 0.6; }
+}
 .nge-todo-card-status { font-size: 12px; color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 .nge-todo-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .nge-todo-linkchip {
@@ -1364,6 +1431,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
   padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); scrollbar-width: thin;
 }
 .nge-todo-panel-top { display: flex; justify-content: space-between; align-items: center; }
+/* A long card scrolls; nothing in it is squeezed to fit (Marissa: the notes and
+   comment boxes were crushed to a sliver once the card was taller than the window). */
+.nge-todo-panel > *, .nge-todo-input { flex-shrink: 0; }
 .nge-todo-title-edit { font-size: 15px; font-weight: 700; }
 .nge-todo-select {
   background: var(--input); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 12.5px; padding: 4px 8px;
@@ -1399,6 +1469,15 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 
 <style>
 /* Teleported to the body, so not scoped. */
+.nge-todo-party { position: fixed; z-index: 10070; width: 0; height: 0; pointer-events: none; }
+.nge-todo-party-bit { position: absolute; left: -4px; top: -7px; width: 8px; height: 14px; border-radius: 2px;
+  animation: nge-todo-burst 1.2s cubic-bezier(.15,.7,.35,1) both; }
+.nge-todo-party-bit--wide { width: 12px; height: 8px; border-radius: 50%; }
+@keyframes nge-todo-burst {
+  0% { transform: translate(0, 0) rotate(0) scale(0.4); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--dx), calc(var(--dy) + 160px)) rotate(var(--r)) scale(1); opacity: 0; }
+}
 .nge-todo-mention {
   position: fixed; z-index: 10050; list-style: none; margin: 0; padding: 4px; min-width: 180px;
   background: #0f1626; border: 1px solid rgba(124, 156, 255, 0.4); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
