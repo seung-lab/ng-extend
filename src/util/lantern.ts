@@ -24,7 +24,7 @@ import {mat4} from 'neuroglancer/util/geom';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
 import {ngeGrapheneBranchGraph, ngeGrapheneBoxesOf, ngeGraphenePieceOf, ngeGrapheneThickness} from 'neuroglancer/datasource/graphene/frontend';
 import {clickedBranch, densestPiece, nearestPiece, type BranchGraph, type Segment} from './branch_tree';
-import {knownSomas, pickUnderMouse, sharedLabPick, highlightStyles} from './highlight';
+import {knownSomas, pickUnderMouse, sharedLabPick} from './highlight';
 import {currentSegLayer} from '../datasets';
 
 const KEY = 'nge-lantern-v1';
@@ -37,7 +37,7 @@ export const LANTERN_LIMITS = {
 const SHADOW = 0.26;
 
 export type LanternMode = 'cell' | 'branch';
-interface Saved { on: boolean; mode: LanternMode; sizeUm: number; flame: number; open: boolean; hideDone: boolean; }
+interface Saved { on: boolean; mode: LanternMode; sizeUm: number; flame: number; open: boolean; }
 const clamp = (v: unknown, r: {min: number; max: number; start: number}) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(r.min, Math.min(r.max, n)) : r.start;
@@ -51,9 +51,6 @@ function load(): Saved {
     sizeUm: clamp(s.sizeUm, LANTERN_LIMITS.sizeUm),
     flame: clamp(s.flame, LANTERN_LIMITS.flame),
     open: s.open !== false,
-    // Hide checked (Ames 2026-11-02: "hide what's done could be cool!"): on
-    // unless turned off.
-    hideDone: s.hideDone !== false,
   };
 }
 
@@ -167,7 +164,6 @@ function apply() {
     state.mask = null;
   }
   state.heightNm = 0;
-  state.doneRgb = lantern.hideDone ? checkedRgb() : null;
   // the dark closes in a little ahead of the light
   state.shadow = 1 - (1 - SHADOW) * smooth(Math.min(1, lit * 1.25));
   readView();
@@ -178,15 +174,6 @@ function apply() {
     ? {mode: lantern.mode, centerNm: Array.from(state.center, (v, i) => v * state.scaleNm[i]), radiusNm: state.radiusNm, heightNm: state.heightNm, intensity: state.intensity, shadow: state.shadow, lit,
        branch: state.mask ? {pieces: branch.pieces, dims: state.mask.dims, cellNm: branch.cellNm, reachNm: branch.reachNm, forkNm: branch.forkNm, somaNm: branch.somaNm, somaFrom: branch.somaFrom, wholeBlocks: branch.wholeBlocks, maskAtNm} : null}
     : null;
-}
-
-/** The player's Checked colour, rgb 0..1, for Hide checked. */
-function checkedRgb(): [number, number, number] | null {
-  try {
-    const hex = highlightStyles().find(s => s.key === 'checked')?.color;
-    if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
-    return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
-  } catch { return null; }
 }
 
 /** For checking: the branch map's value (0 to 255) at a point, nm. */
@@ -601,7 +588,7 @@ export function startLantern(v: any) {
   });
   watch(lantern, () => {
     if (tween === null) apply();
-    try { localStorage.setItem(KEY, JSON.stringify({mode: lantern.mode, sizeUm: lantern.sizeUm, flame: lantern.flame, open: lantern.open, hideDone: lantern.hideDone})); } catch { /* not remembered */ }
+    try { localStorage.setItem(KEY, JSON.stringify({mode: lantern.mode, sizeUm: lantern.sizeUm, flame: lantern.flame, open: lantern.open})); } catch { /* not remembered */ }
   }, {deep: true});
   window.addEventListener('pointerdown', onDown, true);
   window.addEventListener('pointerup', onUp, true);
