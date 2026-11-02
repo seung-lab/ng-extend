@@ -12,9 +12,9 @@
  * Smaller than Highlight's, since cut points often go down several at once.
  *
  * Kept light so placing points never waits on it (Ames 2026-11-02: the first
- * version made cut points feel slow): one small canvas made once and moved
- * to each point, no device pixel scaling, a few particles and no full canvas
- * glow, and a new burst simply replaces the one still running.
+ * version made cut points feel slow): one canvas made once and moved to each
+ * point, the glow drawn only around the point, all particles in one path,
+ * and a new burst simply replaces the one still running.
  *
  * Settings, "Particles" (userPrefs.pointParticles, on by default) turns this
  * and the Highlight and Tag mode bursts off together. Calm screen stops them
@@ -30,54 +30,69 @@ export function pointParticlesOn(): boolean {
 const CUT_RED = '255,90,90', CUT_BLUE = '80,150,255', MERGE_GOLD = '255,200,87', PATH_GREEN = '90,230,140';
 const WATCH_MS = 900;
 
-const SIZE = 220, HALF = SIZE / 2, DUR = 650;
+// The Highlight burst's look (holo_trace.ts runParticleBurst) at 0.6 of its
+// size, which Ames preferred over a thinner version (2026-11-02).
+const SCALE = 0.6, SIZE = 260, HALF = SIZE / 2, DUR = 1150;
 let cv: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
 let raf = 0;
 
-/** A small burst at (x, y) on the one shared canvas. */
+/** A burst at (x, y) on the one shared canvas. */
 function burst(x: number, y: number, rgb: string) {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   if (!cv) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     cv = document.createElement('canvas');
-    cv.width = SIZE; cv.height = SIZE;
+    cv.width = SIZE * dpr; cv.height = SIZE * dpr;
     cv.style.cssText = `position:fixed;left:0;top:0;width:${SIZE}px;height:${SIZE}px;pointer-events:none;z-index:100000;display:none;will-change:transform;`;
     cv.setAttribute('aria-hidden', 'true');
     document.body.appendChild(cv);
     ctx = cv.getContext('2d');
+    ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   if (!ctx) return;
   cancelAnimationFrame(raf);
   cv.style.transform = `translate(${Math.round(x - HALF)}px,${Math.round(y - HALF)}px)`;
   cv.style.display = 'block';
-  const parts = Array.from({ length: 16 }, () => ({ a: Math.random() * 6.283, sp: 40 + Math.random() * 60, r: 1 + Math.random() * 1.4 }));
-  const streaks = Array.from({ length: 6 }, () => ({ a: Math.random() * 6.283, len: 50 + Math.random() * 45 }));
+  const parts = Array.from({ length: 30 }, () => ({
+    a: Math.random() * 6.283,
+    sp: (70 + Math.random() * 135) * SCALE,
+    r: 1.1 + Math.random() * 2.0,
+    drag: 0.5 + Math.random() * 0.5,
+  }));
+  const streaks = Array.from({ length: 9 }, () => ({ a: Math.random() * 6.283, len: (90 + Math.random() * 100) * SCALE }));
   const c = ctx, t0 = performance.now();
   const draw = (now: number) => {
     const k = (now - t0) / DUR;
     c.clearRect(0, 0, SIZE, SIZE);
     if (k >= 1) { cv!.style.display = 'none'; return; }
     c.globalCompositeOperation = 'lighter';
-    if (k < 0.3) {
-      const q = k / 0.3, head = q * q * (3 - 2 * q);
-      c.lineCap = 'round'; c.lineWidth = 1.2;
+    if (k < 0.34) {
+      const q = k / 0.34, head = q * q * (3 - 2 * q);
+      c.lineCap = 'round'; c.lineWidth = 1.4;
       c.strokeStyle = `rgba(${rgb},${((1 - q) * 0.55).toFixed(3)})`;
       c.beginPath();
       for (const st of streaks) {
-        const r1 = 4 + head * st.len, r2 = 4 + head * st.len * 0.55;
+        const r1 = 6 + head * st.len, r2 = 6 + head * st.len * 0.55;
         c.moveTo(HALF + Math.cos(st.a) * r2, HALF + Math.sin(st.a) * r2);
         c.lineTo(HALF + Math.cos(st.a) * r1, HALF + Math.sin(st.a) * r1);
       }
       c.stroke();
-      c.fillStyle = `rgba(235,245,255,${(0.5 * (1 - q)).toFixed(3)})`;
-      c.beginPath(); c.arc(HALF, HALF, 3 + 7 * (1 - q), 0, 6.283); c.fill();
+      // The hot core, filled only over its own square, not the whole canvas.
+      const cr = 26 * (1 - q) + 4;
+      const core = c.createRadialGradient(HALF, HALF, 0, HALF, HALF, cr);
+      core.addColorStop(0, `rgba(220,240,255,${(0.5 * (1 - q)).toFixed(3)})`);
+      core.addColorStop(1, `rgba(${rgb},0)`);
+      c.fillStyle = core;
+      c.fillRect(HALF - cr, HALF - cr, cr * 2, cr * 2);
     }
-    c.fillStyle = `rgba(${rgb},${(Math.pow(1 - k, 1.3) * 0.85).toFixed(3)})`;
+    const al = (Math.pow(1 - k, 1.3) * 0.85).toFixed(3);
+    c.fillStyle = `rgba(${rgb},${al})`;
     c.beginPath();
-    const eo = 1 - Math.pow(1 - k, 2);
     for (const p of parts) {
-      const px = HALF + Math.cos(p.a) * p.sp * eo, py = HALF + Math.sin(p.a) * p.sp * eo;
-      c.moveTo(px + p.r, py); c.arc(px, py, p.r * (1 - k * 0.35), 0, 6.283);
+      const eo = 1 - Math.pow(1 - k, 1.6 + p.drag);
+      const px = HALF + Math.cos(p.a) * p.sp * eo, py = HALF + Math.sin(p.a) * p.sp * eo, pr = p.r * (1 - k * 0.35);
+      c.moveTo(px + pr, py); c.arc(px, py, pr, 0, 6.283);
     }
     c.fill();
     raf = requestAnimationFrame(draw);
