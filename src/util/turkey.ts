@@ -16,8 +16,11 @@
  * turkey.glb, about 360 KB) are fetched the first time the turkey comes out,
  * and it is drawn only while it walks.
  *
- * Settings, "Show the Thanksgiving turkey" (userPrefs.hideTurkey) turns it
- * off, and Calm screen keeps it away.
+ * The chat bar's turkey button (and Call the Turkey in the palette) calls it
+ * out at any time in the week.
+ *
+ * Settings, "Show the Thanksgiving turkey" (userPrefs.hideTurkey) turns the
+ * timed walks off, and Calm screen keeps it away altogether.
  *
  * Silent for now. A gobble sound can go in GOBBLE_SOUND below.
  */
@@ -84,15 +87,30 @@ function schedule(range: number[]) {
   timer = setTimeout(() => { timer = null; visit().finally(() => schedule(EVERY_MS)); }, between(range));
 }
 
-const mayShow = () => turkeySeason() && !turkeyHidden() && !isCalm() && !reduced() && !document.hidden;
+/** Calm screen and reduced motion always keep it away. */
+const mayMove = () => turkeySeason() && !isCalm() && !reduced() && !document.hidden;
+/** The timed walks also stop when the Settings switch is off. */
+const mayShow = () => mayMove() && !turkeyHidden();
 
-/** One walk across the bottom of the screen. Resolves when it has gone. */
-export async function visit(): Promise<void> {
-  if (walking || !mayShow()) return;
+let hopNow: (() => void) | null = null;
+
+/** The chat bar's turkey button and the palette's Call the Turkey: out it
+ *  comes, even with the timed walks switched off, and if it is already out,
+ *  it hops. Calm screen still keeps it away. */
+export function callTurkey() {
+  if (hopNow) { hopNow(); return; }
+  void visit(true);
+}
+
+/** One walk across the bottom of the screen. Resolves when it has gone.
+ *  `asked`: the player called it, so the Settings switch does not matter. */
+export async function visit(asked = false): Promise<void> {
+  const ok = asked ? mayMove : mayShow;
+  if (walking || !ok()) return;
   walking = true;
   try {
     const t = await load();
-    if (!cv || !hit || !mayShow()) return;
+    if (!cv || !hit || !ok()) return;
     const c = cv, h = hit;
     const rightward = Math.random() < 0.5, dir = rightward ? 1 : -1;
     const W = window.innerWidth, from = rightward ? -BOX : W, to = rightward ? W : -BOX;
@@ -109,12 +127,13 @@ export async function visit(): Promise<void> {
     place();
     const onClick = (e: Event) => { e.preventDefault(); e.stopPropagation(); t.hop(); };
     h.addEventListener('pointerdown', onClick);
+    hopNow = () => t.hop();
     await new Promise<void>(done => {
       const step = (now: number) => {
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
         // Calm screen or the switch turned off on the way: gone at once.
-        if (!mayShow()) { done(); return; }
+        if (!ok()) { done(); return; }
         let pace = 1, yaw = walkYaw;
         if (!stopped && (x - stopAt) * dir >= 0) {
           stopped = true; stoppedAt = now; t.gobble();
@@ -130,9 +149,12 @@ export async function visit(): Promise<void> {
       requestAnimationFrame(step);
     });
     h.removeEventListener('pointerdown', onClick);
+    hopNow = null;
     c.style.display = h.style.display = 'none';
   } catch { /* no turkey this time */ } finally {
     walking = false;
+    hopNow = null;
+
   }
 }
 

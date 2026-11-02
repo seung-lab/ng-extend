@@ -17,7 +17,7 @@ import {
   CellHistoryEntry,
 } from '../store';
 import { pumpkinSeason, togglePumpkin, smashPumpkins } from '../util/pumpkin';
-import { turkeySeason, visit } from '../util/turkey';
+import { turkeySeason, callTurkey } from '../util/turkey';
 import { setCellComplete, activeCaveServer, getLastCompletionProblem } from '../widgets/lightbulb_service';
 import { StatusMessage } from 'neuroglancer/status';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -242,7 +242,7 @@ function buildActions(): PaletteItem[] {
     category: 'tool',
     icon: '🦃',
     aliases: ['turkey', 'thanksgiving', 'gobble'],
-    action: () => { void visit(); },
+    action: () => callTurkey(),
   });
   if (ARCADE_ENABLED) items.push({
     id: 'pyr-arcade',

@@ -631,7 +631,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftParticles" />
               <span class="nge-settings-toggle-label">Particles</span>
             </label>
-            <label v-if="turkeySeason()" class="nge-settings-toggle" title="For Thanksgiving week, now and then a turkey walks along the bottom of the screen, stops to gobble, and walks off. Click it to make it hop. Off: no turkey. Calm screen keeps it away too.">
+            <label v-if="turkeySeason()" class="nge-settings-toggle" title="For Thanksgiving week, now and then a turkey walks along the bottom of the screen, stops to gobble, and walks off. Click it to make it hop. Off: it only comes out when you click the turkey button by the chat box. Calm screen keeps it away altogether.">
               <input type="checkbox" v-model="draftTurkey" />
               <span class="nge-settings-toggle-label">Show the Thanksgiving turkey</span>
             </label>
