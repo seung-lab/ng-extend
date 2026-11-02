@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-02T14:51:00Z",
+      "title": "Sparkly gems and award fireworks",
+      "digest": "minor",
+      "items": [
+        "In a Hunt, your gem now spins while it is checked, bursts into sparkles when you find something, and gives a little puff when it was not there.",
+        "Opening the Monthly or Pyr Year Champions sets off fireworks behind the card.",
+        "With Calm screen on, all of this stays still."
+      ]
+    },
+    {
       "at": "2026-11-01T22:53:37Z",
       "title": "Hide the Update ready reminder",
       "digest": "minor",
