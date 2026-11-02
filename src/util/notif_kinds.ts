@@ -16,7 +16,7 @@ export type NotifKind = 'main' | 'triage' | 'admin' | 'hunt';
 // To do board tags and hand overs start with 📋 (functions/todos.js makeTagger; Ames 2026-10-23).
 // Beta access requests from players not on Pilot testers (Ames 2026-10-24).
 // Dataset access requests too (Ames 2026-10-29: "these should be in Admin").
-const ADMIN_STARTS = ['🔑 Beta access request', '🔬 Retina access request', '🔓 Dataset access request', 'Proofreading Test:', '💬 Reply to your question from', '📋 '];
+const ADMIN_STARTS = ['🔑 Access update', '🔑 Beta access request', '🔬 Retina access request', '🔓 Dataset access request', 'Proofreading Test:', '💬 Reply to your question from', '📋 '];
 const TRIAGE_STARTS = ['🗂', '🎉 Fixed'];
 
 export function notifKind(title: string | null | undefined, isAdmin: boolean): NotifKind {

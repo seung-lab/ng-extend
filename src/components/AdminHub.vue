@@ -2,7 +2,8 @@
 import imgNurroBravo from '../images/bravo-nurro.png';
 import { secureWrite, caveToken } from '../secure_write';
 import { functionUrl } from '../functions_base';
-import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
+import {ref, shallowRef, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
+import { searchNamesOf, serverTagged, type AdminPerson } from '../util/admin_mentions';
 import {useProofreadingBackendStore} from '../store';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
@@ -829,6 +830,11 @@ const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r
  *  scripts/slack-triage-bridge.mjs looks for too. */
 const TODO_NOTE = 'To do';
 const isTodo = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(TODO_NOTE);
+/** Moving a card to In progress or Done reads its bell notes for you (Ames 2026-10-27). */
+async function readReportNotes(row: TriageRow) {
+  try { await backend.markReportNotesRead(row.id, row.source_excerpt); }
+  catch { /* the card moved; the notes just stay unread */ }
+}
 async function markInProgress(row: TriageRow, later = false) {
   if (triageActing.value) return;
   triageActing.value = row.id;
@@ -849,6 +855,7 @@ async function markInProgress(row: TriageRow, later = false) {
       ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
     } });
     if (later) { await loadTriage(); return; }
+    void readReportNotes(row);
     triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
@@ -948,6 +955,53 @@ async function saveNote(row: TriageRow) {
     noteSaving.value = null;
   }
 }
+
+// ── Tagging with a picker (Ames 2026-11-02: "like autocomplete so visually I
+// can see that they are being tagged") ──
+// "@Ce" lists the admins; Enter, Tab or a click puts in the whole name, which
+// always reaches them. Under the box, who will be tagged, read the server's way.
+const tagPeople = ref<AdminPerson[]>([]);
+let tagPeopleAsked = false;
+function loadTagPeople() {
+  if (tagPeopleAsked) return;
+  tagPeopleAsked = true;
+  secureWrite<any>('todo.list').then(d => { tagPeople.value = d?.people || []; }).catch(() => { tagPeopleAsked = false; });
+}
+const tagPicker = shallowRef<{ el: HTMLTextAreaElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
+const tagMatches = computed(() => {
+  const q = (tagPicker.value?.query || '').toLowerCase();
+  return tagPeople.value.filter(p => searchNamesOf(p).some(n => n.toLowerCase().includes(q))).slice(0, 6);
+});
+function onTagInput(e: Event, set: (v: string) => void) {
+  const el = e.target as HTMLTextAreaElement;
+  const upto = el.value.slice(0, el.selectionStart ?? el.value.length);
+  const m = upto.match(/(^|\s)@([^\s@]{0,30})$/);
+  if (m) loadTagPeople();
+  tagPicker.value = m ? { el, start: upto.length - m[2].length - 1, query: m[2], pick: 0, set } : null;
+}
+function pickTag(p: AdminPerson) {
+  const m = tagPicker.value;
+  if (!m) return;
+  const caret = m.el.selectionStart ?? m.el.value.length;
+  const value = m.el.value.slice(0, m.start) + '@' + p.name + ' ' + m.el.value.slice(caret);
+  m.set(value);
+  const at = m.start + p.name.length + 2;
+  tagPicker.value = null;
+  void nextTick(() => { m.el.focus(); m.el.setSelectionRange(at, at); });
+}
+function onTagKey(e: KeyboardEvent) {
+  e.stopPropagation();
+  const m = tagPicker.value;
+  if (!m || !tagMatches.value.length) return;
+  const n = tagMatches.value.length;
+  if (e.key === 'ArrowDown') { e.preventDefault(); tagPicker.value = { ...m, pick: (m.pick + 1) % n }; }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); tagPicker.value = { ...m, pick: (m.pick + n - 1) % n }; }
+  else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickTag(tagMatches.value[m.pick]); }
+  else if (e.key === 'Escape') { e.preventDefault(); tagPicker.value = null; }
+}
+const taggedIn = (text?: string) => serverTagged(text || '', tagPeople.value);
+// A box that already holds a tag (a draft from before) still shows who it reaches.
+watch(() => [...Object.values(triageNotes.value), ...Object.values(noteDrafts.value)].some(t => hasTag(t)), on => { if (on) loadTagPeople(); });
 
 // A tag typed in the card's comment box (Ames 2026-11-01): that box waits for
 // a decision and tells nobody, so a tag there goes out as a note, now.
@@ -1089,6 +1143,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     }
     delete triageNotes.value[row.id];
     if (status === 'done') cheerFor(row);
+    if (status === 'done' || (status === 'approved' && !discard)) void readReportNotes(row);
     await loadTriage();
     if (noteLost) {
       triageError.value = `Saved as ${status}, but your comment was not stored: the approver_note column does not exist yet. Run supabase-triage-approver-note.sql in the Supabase SQL editor. Your comment was: "${note}"`;
@@ -3278,7 +3333,9 @@ function practiceWhen(iso: string | null) {
               <textarea v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
                         placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her. Paste a screenshot to add it."
                         @paste="onNotePaste($event, row)"
-                        @keydown.stop @keyup.stop @keypress.stop></textarea>
+                        @input="onTagInput($event, v => noteDrafts[row.id] = v)" @keydown="onTagKey" @blur="tagPicker = null"
+                        @keyup.stop @keypress.stop></textarea>
+              <div v-if="taggedIn(noteDrafts[row.id]).length" class="nge-triage-tagging">Tagging <span v-for="p in taggedIn(noteDrafts[row.id])" :key="p.id" class="nge-triage-tag-chip">@{{ p.name }}</span></div>
               <div v-if="noteImages[row.id]" class="nge-triage-reply-attach">
                 <img v-if="noteImages[row.id].preview" :src="noteImages[row.id].preview" alt="The image going with this note" />
                 <span class="nge-triage-reply-attach-state">{{ noteImages[row.id].error || (noteImages[row.id].uploading ? 'Uploading…' : 'Goes with this note.') }}</span>
@@ -3301,8 +3358,10 @@ function practiceWhen(iso: string | null) {
             class="nge-triage-message nge-triage-comment"
             rows="2"
             placeholder="Comment (optional), saved with your decision. Type @Celia or @Marissa to tag them."
-            @keydown.stop @keyup.stop @keypress.stop
+            @input="onTagInput($event, v => triageNotes[row.id] = v)" @keydown="onTagKey" @blur="tagPicker = null"
+            @keyup.stop @keypress.stop
           ></textarea>
+          <div v-if="taggedIn(triageNotes[row.id]).length" class="nge-triage-tagging">Tagging <span v-for="p in taggedIn(triageNotes[row.id])" :key="p.id" class="nge-triage-tag-chip">@{{ p.name }}</span></div>
           <div v-if="row.status === 'proposed' && hasTag(triageNotes[row.id])" class="nge-triage-actions">
             <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id" title="Saves this as a note on the card and notifies who you tagged, in Pyr and in the report's Slack thread. Nothing else on the card changes."
                     @click="sendCommentTag(row)">{{ noteSaving === row.id ? 'Sending…' : '💬 Send tag' }}</button>
@@ -3498,6 +3557,13 @@ function practiceWhen(iso: string | null) {
       </div>
       </Teleport>
     </div>
+    <Teleport to="body">
+      <ul v-if="tagPicker && tagMatches.length" class="nge-todo-mention nge-todo-mention--light" role="listbox"
+          :style="{ left: tagPicker.el.getBoundingClientRect().left + 'px', top: tagPicker.el.getBoundingClientRect().bottom + 4 + 'px' }">
+        <li v-for="(p, i) in tagMatches" :key="p.id" role="option" :aria-selected="i === tagPicker.pick ? 'true' : 'false'"
+            :class="{ 'nge-todo-mention--pick': i === tagPicker.pick }" @mousedown.prevent="pickTag(p)">@{{ p.name }}</li>
+      </ul>
+    </Teleport>
   </div>
 </template>
 
@@ -4919,4 +4985,6 @@ li .nge-pilot-name--link { font:inherit; font-weight:700; color:#9fd3ff; backgro
 .nge-triage-dup-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: #fde7f1; color: #b0306f; margin-left: 4px; }
 .nge-triage-dup-badge--main { background: #e6f6f4; color: #11766c; }
 .nge-admin-ok { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #e6f6ee; color: #1d7038; font-size: 13px; }
+.nge-triage-tagging { margin: 4px 0 2px; font-size: 12.5px; color: #4a5b78; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.nge-triage-tag-chip { background: #e3ecff; color: #2450c8; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
 </style>

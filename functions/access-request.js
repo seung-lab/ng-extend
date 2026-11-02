@@ -749,8 +749,48 @@ async function datasetDecide(a, io) {
   return datasetList(a, io);
 }
 
+// ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
+// "when the player next logs in, not when the admin approves it". The bell
+// note a grant sends is the record: on a player's first load of a visit the
+// app asks here, and each grant not yet told gets one line. A chat row keyed
+// access:<dataset> is the guard, so it is said once. Grants from before this
+// began stay quiet.
+const GRANT_LINES_SINCE = '2026-10-30T00:00:00Z';
+const RETINA_ID = 'stroeh_mouse_retina';
+const DATASET_GRANT_TITLE = '🔓 You have access to ';
+function grantsIn(notes) {
+  const out = new Map();
+  for (const n of notes || []) {
+    const title = String((n && n.title) || '');
+    if (title === GRANTED_TITLE) out.set(RETINA_ID, 'the Retina');
+    else if (title.startsWith(DATASET_GRANT_TITLE)) {
+      const id = String(n.body || '').match(/#nge-open-dataset=([a-z0-9_]{2,40})/);
+      if (id) out.set(id[1], DATASET_SHORT[id[1]] || title.slice(DATASET_GRANT_TITLE.length));
+    }
+  }
+  return [...out].map(([dataset, label]) => ({dataset, label}));
+}
+async function grantLines(a, io) {
+  if (!io.me) return {announced: 0};
+  const notes = await io.sb('notifications?target_type=eq.user&target_id=eq.' + encodeURIComponent(io.me.id)
+    + '&send_at=gte.' + encodeURIComponent(GRANT_LINES_SINCE)
+    + '&or=' + encodeURIComponent(`(title.eq."${GRANTED_TITLE}",title.like."${DATASET_GRANT_TITLE}*")`)
+    + '&select=title,body&limit=40');
+  let announced = 0;
+  for (const g of grantsIn(notes)) {
+    const key = 'access:' + g.dataset;
+    const said = await io.sb('chat_messages?user_id=eq.' + encodeURIComponent(io.me.id) + '&dataset=eq.' + encodeURIComponent(key) + '&select=id&limit=1');
+    if (said.length) continue;
+    await io.sb('chat_messages', {method: 'POST', body: JSON.stringify({user_id: io.me.id, name: io.me.username || io.me.display_name || 'Player',
+      rank: 'achievement', text: `now has edit access to ${g.label}`, dataset: key})});
+    announced++;
+  }
+  return {announced};
+}
+
 async function handle(action, args, io) {
   const a = args || {};
+  if (action === 'access.grantLines') return grantLines(a, io);
   if (action === 'access.datasetStatus') return datasetStatus(a, io);
   if (action === 'access.dataset') return datasetRequest(a, io);
   if (action === 'access.datasetList') return datasetList(a, io);

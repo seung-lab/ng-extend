@@ -550,7 +550,7 @@ async function fileNewReports() {
  *  feed files a 🗂 title under its Triage tab). Once per card. */
 async function notifyAdminsOfReport(row) {
   const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
-  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" A new report is on the triage board. Click this note to open it. Press Suggest a fix there if you want Claude to look.`;
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" A new report is on the triage board. Click this note to open it. Press Suggest a fix there if you want Claude to look.\n\n#nge-triage-report=${row.id}`;
   let sent = 0;
   for (const id of await adminUserIds()) {
     if (await notifyUser(id, '🗂️ Feedback triage: new report', body)) sent++;
@@ -640,7 +640,7 @@ async function postProposals() {
  *  its card is posted, so it never comes round again. */
 async function notifyAdminsOfProposal(row) {
   const excerpt = String(row.source_excerpt || '').replace(/\s+/g, ' ').trim();
-  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it on the triage board (click this note), or in the Slack thread.`;
+  const body = `"${excerpt.length > 140 ? excerpt.slice(0, 137) + '...' : excerpt}" Claude has a suggestion ready. Approve or dismiss it on the triage board (click this note), or in the Slack thread.\n\n#nge-triage-report=${row.id}`;
   let sent = 0;
   for (const id of await adminUserIds()) {
     if (await notifyUser(id, '🗂️ Feedback triage: new suggestion', body)) sent++;
