@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-02T23:22:38Z",
+      "title": "Active time keeps up with your edits",
+      "digest": "minor",
+      "items": [
+        "Active time on a claimed cell now keeps counting after merges and cuts, and after a reload, instead of sometimes stopping once the cell's ID changed.",
+        "Halloween is over: the ghost has gone home."
+      ]
+    },
+    {
       "at": "2026-11-02T17:48:00Z",
       "title": "Highlight: dim what is checked",
       "digest": "minor",
