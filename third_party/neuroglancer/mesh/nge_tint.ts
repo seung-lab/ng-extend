@@ -21,6 +21,10 @@ export interface NgeMeshTint {
    *  it stands out by being bolder, not paler (Highlight mode's newest mark).
    *  RGB in 0..1; it must be a colour no other mark in the map uses. */
   glow?: [number, number, number];
+  /** "Dim checked" (Highlight, Ames 2026-11-02: "hide what's done"): marks
+   *  in this colour (RGB 0..1, the player's Checked colour) are drawn as a
+   *  dim grey instead, so what is left to check stands out. */
+  dim?: [number, number, number];
 }
 
 let current: NgeMeshTint|null = null;

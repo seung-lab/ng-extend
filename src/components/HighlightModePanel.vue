@@ -14,7 +14,7 @@ import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
 import { pointParticlesOn } from '../util/point_particles';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, handPointsToUndo, clearHighlights, tintRadiusNm, setTintRadiusNm, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, handPointsToUndo, clearHighlights, tintRadiusNm, setTintRadiusNm, dimChecked, setDimChecked, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
 import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz, mecKindOfLayer } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
@@ -225,6 +225,12 @@ const tintUm = ref(tintRadiusNm() / 1000);
 function onTintInput(e: Event) {
   tintUm.value = Number((e.target as HTMLInputElement).value);
   setTintRadiusNm(tintUm.value * 1000);
+}
+/** Checked stretches in their colour, or dimmed so what is left stands out. */
+const dimmed = ref(dimChecked());
+function setDimmed(on: boolean) {
+  dimmed.value = on;
+  setDimChecked(on);
 }
 /** Whether your highlights are showing, in 2D and in 3D alike. It is the
  *  highlight layers being switched on, so it follows the layer tabs too. */
@@ -720,6 +726,19 @@ onBeforeUnmount(() => {
           <button type="button" role="radio" :aria-checked="shown ? 'false' : 'true'" :tabindex="shown ? -1 : 0"
                   class="nge-hl-switch-opt nge-hl-switch-opt--hide" @click="setShown(false)"
                   @keydown.right.prevent.stop="setShown(false)" @keydown.left.prevent.stop="setShown(true)">Hide</button>
+        </div>
+      </div>
+      <!-- Dim checked (Ames 2026-11-02: "hide what's done"): Checked stretches
+           go a dim grey on the cell, so what is left to check stands out. -->
+      <div class="nge-hl-show3d" title="Dim turns the stretches you marked Checked a dim grey on the cell, so what is left to check stands out. With the Lantern on, they stay dim in its light too.">
+        <span id="nge-hl-dim-label">Checked</span>
+        <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-dim-label" :data-on="dimmed ? 'hide' : 'show'">
+          <button type="button" role="radio" :aria-checked="dimmed ? 'false' : 'true'" :tabindex="dimmed ? -1 : 0"
+                  class="nge-hl-switch-opt" @click="setDimmed(false)"
+                  @keydown.right.prevent.stop="setDimmed(true)" @keydown.left.prevent.stop="setDimmed(false)">Color</button>
+          <button type="button" role="radio" :aria-checked="dimmed ? 'true' : 'false'" :tabindex="dimmed ? 0 : -1"
+                  class="nge-hl-switch-opt nge-hl-switch-opt--hide" @click="setDimmed(true)"
+                  @keydown.right.prevent.stop="setDimmed(true)" @keydown.left.prevent.stop="setDimmed(false)">Dim</button>
         </div>
       </div>
       <!-- The foot of the box reads like a stats line: what just happened, a
