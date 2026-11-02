@@ -34,6 +34,13 @@ function startDrag(e: MouseEvent) {
   window.addEventListener('mouseup', up);
 }
 watch(() => twoD.open, open => { if (open && pos.value) void nextTick(() => { pos.value = keepOnScreen(pos.value!.left, pos.value!.top); }); });
+// The captures, large: both side by side over the whole window (Ames 2026-11-02).
+const big = ref(false);
+const bigShots = computed(() => twoD.captures.filter((c): c is NonNullable<typeof c> => !!c));
+/** The (i): what each tool is for, and how to use it. */
+const help = ref(false);
+function onBigKey(e: KeyboardEvent) { if (e.key === 'Escape') { e.stopPropagation(); big.value = false; } }
+watch(big, on => { if (on) window.addEventListener('keydown', onBigKey, true); else window.removeEventListener('keydown', onBigKey, true); });
 const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputElement).value.trim());
 </script>
 
@@ -41,7 +48,16 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
   <div v-if="twoD.open" ref="box" class="nge-2d" :style="pos ? { left: pos.left + 'px', top: pos.top + 'px' } : undefined" @keydown.stop @keyup.stop @keypress.stop>
     <div class="nge-2d-head" title="Drag to move" @mousedown="startDrag">
       <span class="nge-2d-title">2D Tools <span class="nge-2d-tag">prototype</span></span>
+      <button type="button" class="nge-2d-info" :class="{ 'nge-2d-info--on': help }" :aria-expanded="help" title="How these work" @click="help = !help">i</button>
       <button type="button" class="nge-2d-x" aria-label="Close" @click="twoD.open = false; twoD.lasso = false">×</button>
+    </div>
+
+    <div v-if="help" class="nge-2d-help">
+      <p>For working across a misalignment, where the cell jumps between slices.</p>
+      <p><b>Jump pairs:</b> on one side, press <b>+ New pair</b> to save spot A. Scroll to the other side and press <b>Set B</b>. Then <b>⇄</b> takes you back and forth at the same zoom, and <b>A</b> or <b>B</b> goes straight to one side. Click the name to rename it.</p>
+      <p><b>Lasso:</b> press <b>Lasso</b>, pick a colour and drag around a shape in the 2D view. It stays on that slice only. Scrolling still changes slices, and Esc stops drawing. Remove a shape with its × chip.</p>
+      <p><b>Compare:</b> press <b>Capture 1</b> on one slice and <b>Capture 2</b> on another. <b>View large</b> shows them side by side, and <b>Download</b> saves both in one picture, lassos included.</p>
+      <p class="nge-2d-small">From an idea and player script by Nseraf, Krzysztof Kruk and annkri. Drag this box by its top.</p>
     </div>
 
     <section>
@@ -75,17 +91,33 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
       <div class="nge-2d-row">
         <button type="button" class="nge-2d-btn" @click="capture(0)">Capture 1</button>
         <button type="button" class="nge-2d-btn" @click="capture(1)">Capture 2</button>
+        <button type="button" class="nge-2d-btn" :disabled="!hasCapture" @click="big = true">View large</button>
         <button type="button" class="nge-2d-btn" :disabled="!hasCapture" @click="downloadCompare">Download</button>
       </div>
       <div v-if="hasCapture" class="nge-2d-shots">
         <figure v-for="(c, i) in twoD.captures" :key="i" class="nge-2d-shot">
-          <img v-if="c" :src="c.url" :alt="'Capture ' + (i + 1)" />
+          <img v-if="c" :src="c.url" :alt="'Capture ' + (i + 1)" title="View large" class="nge-2d-shot-open" @click="big = true" />
           <div v-else class="nge-2d-empty">{{ i + 1 }}</div>
           <figcaption v-if="c">{{ c.label }}</figcaption>
         </figure>
       </div>
     </section>
 
+    <teleport to="body">
+      <div v-if="big" class="nge-2d-big" role="dialog" aria-label="Captures, large" @mousedown.self="big = false">
+        <div class="nge-2d-big-bar">
+          <span>Compare</span>
+          <button type="button" class="nge-2d-btn" @click="downloadCompare">Download</button>
+          <button type="button" class="nge-2d-x" aria-label="Close" @click="big = false">×</button>
+        </div>
+        <div class="nge-2d-big-row" @mousedown.self="big = false">
+          <figure v-for="(c, i) in bigShots" :key="i" class="nge-2d-big-shot">
+            <img :src="c.url" :alt="'Capture ' + (i + 1)" />
+            <figcaption>{{ c.label }}</figcaption>
+          </figure>
+        </div>
+      </div>
+    </teleport>
     <div v-if="twoD.note" class="nge-2d-note" role="status">{{ twoD.note }}</div>
     <div class="nge-2d-small">Kept in this browser, for this dataset.</div>
   </div>
@@ -125,5 +157,17 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
 .nge-2d-shot img, .nge-2d-empty { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.18); }
 .nge-2d-empty { display: flex; align-items: center; justify-content: center; color: #6c7f93; }
 .nge-2d-shot figcaption { margin-top: 2px; font-size: 9.5px; color: #9fb4c9; overflow-wrap: anywhere; }
+.nge-2d-shot-open { cursor: zoom-in; }
+.nge-2d-big { position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column; padding: 14px 18px 18px; background: rgba(3, 6, 12, 0.94); }
+.nge-2d-big-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font: 700 14px system-ui, sans-serif; color: #e8eef5; }
+.nge-2d-big-bar span { flex: 1; }
+.nge-2d-big-row { flex: 1; min-height: 0; display: flex; gap: 14px; justify-content: center; align-items: center; }
+.nge-2d-big-shot { flex: 1 1 0; min-width: 0; height: 100%; margin: 0; display: flex; flex-direction: column; justify-content: center; }
+.nge-2d-big-shot img { display: block; max-width: 100%; max-height: calc(100% - 24px); margin: 0 auto; object-fit: contain; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); }
+.nge-2d-big-shot figcaption { margin-top: 5px; text-align: center; font: 12px system-ui, sans-serif; color: #9fb4c9; }
+.nge-2d button.nge-2d-info { width: 18px; height: 18px; margin-left: auto; margin-right: 6px; padding: 0; font: italic 700 11px/16px Georgia, serif; color: #7ee0ff; background: none; border: 1px solid rgba(126, 224, 255, 0.55); border-radius: 50%; cursor: pointer; }
+.nge-2d button.nge-2d-info--on, .nge-2d button.nge-2d-info:hover { color: #05080f; background: #7ee0ff; }
+.nge-2d-help { padding: 6px 0 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.nge-2d-help p { margin: 0 0 6px; }
 .nge-2d-note { margin: 3px 0; color: #ffd24d; }
 </style>
