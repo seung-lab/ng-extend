@@ -27,6 +27,7 @@ import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistor
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
+import {datasetAccess} from '../util/dataset_access';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -452,7 +453,31 @@ async function loadDatasetStats() {
   }
 }
 
-watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
+// ── Edit access (Ames 2026-11-02: "should we show accesses unlocked in
+// profile?") ── The datasets that are earned: Retina, MEC and BANC. Your own
+// profile asks CAVE, so it is always right, with the date from the grant's
+// chat line when there is one. Someone else's shows only the grants on record
+// (since 2026-10-30): an older one is simply not shown, never "not yet".
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'banc'];
+const accessGrants = ref<Record<string, string>>({});
+let accessFor = '';
+async function loadAccess() {
+  const uid = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
+  if (!uid) return;
+  if (accessFor !== uid) accessGrants.value = {};
+  accessFor = uid;
+  const got = await backendStore.loadAccessGrants(uid);
+  if (accessFor === uid) accessGrants.value = got;
+}
+const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d.id === id)).filter((d): d is DatasetEntry => !!d).map(ds => {
+  const at = accessGrants.value[ds.id];
+  const state = viewingOtherUser.value ? (at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
+  const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  return { id: ds.id, label: ds.label, icon: SPECIES_ICONS[ds.species], state, when };
+}).filter(r => !viewingOtherUser.value || r.state === 'edit'));
+
+watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loadAccess(); } });
+watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') void loadAccess(); });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -2639,6 +2664,18 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
         <div class="nge-ds-tab-intro">
           {{ viewingOtherUser ? `The datasets ${profileName} has contributed to.` : 'The datasets you have contributed to.' }}
           Click one to switch your viewer to it.
+        </div>
+        <div v-if="accessRows.length" class="nge-ds-access">
+          <div class="nge-ds-access-title">Edit access</div>
+          <div class="nge-ds-access-row">
+            <span v-for="r in accessRows" :key="r.id" class="nge-ds-access-chip" :class="'nge-ds-access-chip--' + r.state"
+                  :title="r.state === 'edit' ? (r.when ? `Edit access since ${r.when}` : 'Edit access') : r.state === 'locked' ? 'Not unlocked yet. Ask for Edit Access in the menu once you have passed the edit test.' : 'Checking…'">
+              <span aria-hidden="true">{{ r.state === 'edit' ? '🔓' : r.state === 'locked' ? '🔒' : '…' }}</span>
+              {{ r.label }}
+              <small v-if="r.state === 'edit' && r.when">since {{ r.when }}</small>
+              <small v-else-if="r.state === 'locked'">not yet</small>
+            </span>
+          </div>
         </div>
         <button class="nge-ds-tab-progress" @click="openDatasetProgress">Dataset stats: what has been done on each dataset →</button>
         <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
@@ -5414,4 +5451,11 @@ body.nge-calm .nge-profile-stat-row--scout .nge-profile-stat-val { color: #d8dde
 body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, calc(18 * var(--nge-vh, 1vh))); height: min(150px, calc(18 * var(--nge-vh, 1vh))); }
 /* the streak's flame and count sit still in the plain colours */
 body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
+.nge-ds-access { margin: 6px 0 12px; }
+.nge-ds-access-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(160, 225, 255, 0.75); margin-bottom: 6px; }
+.nge-ds-access-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.nge-ds-access-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 13px; border: 1px solid rgba(124, 196, 255, 0.3); background: rgba(124, 196, 255, 0.06); color: #dbeeff; }
+.nge-ds-access-chip small { font-size: 11px; opacity: 0.7; }
+.nge-ds-access-chip--edit { border-color: rgba(110, 230, 150, 0.55); background: rgba(110, 230, 150, 0.1); }
+.nge-ds-access-chip--locked { opacity: 0.6; }
 </style>

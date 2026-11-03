@@ -4495,6 +4495,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch { return null; }
   }
 
+  /** When a player was given edit access to each dataset, from the chat line
+   *  each grant gets (functions/access-request.js, rows keyed access:<id>,
+   *  grants since 2026-10-30). {datasetId: ISO time}; {} when unreadable. */
+  async function loadAccessGrants(id: string): Promise<Record<string, string>> {
+    try {
+      const { data, error } = await supabase.from('chat_messages').select('dataset,created_at')
+        .eq('user_id', id).like('dataset', 'access:%').limit(20);
+      if (error || !data) return {};
+      const out: Record<string, string> = {};
+      for (const r of data as any[]) {
+        const ds = String(r.dataset || '').slice('access:'.length);
+        if (ds && (!out[ds] || r.created_at < out[ds])) out[ds] = r.created_at;
+      }
+      return out;
+    } catch { return {}; }
+  }
+
   /** A personal "thank you, for science" notification after someone's third
    *  edit. Guarded so a double count or a second tab can never send two. */
   async function sendThirdEditThanks() {
@@ -6556,7 +6573,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
-    leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt, loadLeaderboardDetail,
+    leaderboard, leaderboardMyRanks, loadDayTotal, loadAccessGrants, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     tasksPaged, taskCounts, taskPages, loadingMore, loadMoreTasks, findTasks, loadAvailableAfter,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
