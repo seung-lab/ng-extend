@@ -699,25 +699,26 @@ async function loadTriageNumbers() {
 // Done count five ("a finished card should be 5 fixes"). Tech magic art from
 // the badges repo (arcane/), an icon in a frame. A tier at 25, 50, 75, then
 // every 100. On the triage board only ("triage for now").
+// Techy names, never a witch (Ames 2026-11-02).
 const ARCANE: { at: number; name: string; art: string }[] = [
-  { at: 25, name: 'Wand Waver', art: arcane25 },
-  { at: 50, name: 'Potion Stirrer', art: arcane50 },
-  { at: 75, name: 'Spark Caster', art: arcane75 },
+  { at: 25, name: 'Bit Wrangler', art: arcane25 },
+  { at: 50, name: 'Patch Brewer', art: arcane50 },
+  { at: 75, name: 'Spark Coder', art: arcane75 },
   { at: 100, name: 'Apprentice Technomancer', art: arcane100 },
-  { at: 200, name: 'Hedge Witch of the Stack', art: arcane200 },
-  { at: 300, name: 'Rune Coder', art: arcane300 },
-  { at: 400, name: 'Spellwright', art: arcane400 },
-  { at: 500, name: 'Keeper of the Source', art: arcane500 },
-  { at: 600, name: 'Conjurer of Patches', art: arcane600 },
-  { at: 700, name: 'Enchantress of the Board', art: arcane700 },
-  { at: 800, name: 'Archmage of Triage', art: arcane800 },
-  { at: 900, name: 'Oracle of the Build', art: arcane900 },
-  { at: 1000, name: 'Grand Sorceress of Pyr', art: arcane1000 },
+  { at: 200, name: 'Stack Tracer', art: arcane200 },
+  { at: 300, name: 'Rune Compiler', art: arcane300 },
+  { at: 400, name: 'Syntax Smith', art: arcane400 },
+  { at: 500, name: 'Source Keeper', art: arcane500 },
+  { at: 600, name: 'Patch Architect', art: arcane600 },
+  { at: 700, name: 'Debug Seer', art: arcane700 },
+  { at: 800, name: 'Root Access', art: arcane800 },
+  { at: 900, name: 'Build Master', art: arcane900 },
+  { at: 1000, name: 'Grand Technomancer of Pyr', art: arcane1000 },
 ];
 const ARCANE_CARD = 5;
 /** Past 1000, a tier every 100 with the crown's art until its own is made. */
 function arcaneTier(at: number) {
-  return ARCANE.find(t => t.at === at) || { at, name: `Grand Sorceress of Pyr, ${Math.floor(at / 100) - 9} stars`, art: arcane1000 };
+  return ARCANE.find(t => t.at === at) || { at, name: `Grand Technomancer of Pyr, ${Math.floor(at / 100) - 9} stars`, art: arcane1000 };
 }
 const arcaneThresholds = (upTo: number) => {
   const out = ARCANE.map(t => t.at);
