@@ -757,7 +757,8 @@ const arcane = computed(() => {
   const current = earnedAt.length ? arcaneTier(earnedAt[earnedAt.length - 1]) : null;
   const prevAt = current ? current.at : 0;
   return { total, reports: arcaneReports.value, cards: arcaneCards.value, current, next: arcaneTier(nextAt), toGo: nextAt - total,
-    fill: Math.round(((total - prevAt) / (nextAt - prevAt)) * 100), tiers: all.slice(0, Math.max(earnedAt.length + 3, ARCANE.length)).map(arcaneTier), earned: earnedAt.length };
+    // Earned ones, and the next as a mystery: the rest stay secret (Ames 2026-11-02: "don't reveal what all the achievements are!").
+    fill: Math.round(((total - prevAt) / (nextAt - prevAt)) * 100), tiers: all.slice(0, earnedAt.length + 1).map(arcaneTier), earned: earnedAt.length };
 });
 const arcaneOpen = ref(false);
 // A tier crossed while you watch: its own moment.
@@ -3220,9 +3221,10 @@ function practiceWhen(iso: string | null) {
             <div class="nge-arcane-shelf-sub">{{ arcane.reports }} reports closed with Done, {{ arcane.cards }} To do {{ arcane.cards === 1 ? 'card' : 'cards' }} finished, at 5 each: <b>{{ arcane.total }}</b></div>
             <div class="nge-arcane-grid">
               <div v-for="t in arcane.tiers" :key="t.at" class="nge-arcane-tier" :class="{ 'nge-arcane-tier--locked': t.at > arcane.total }">
-                <img :src="t.art" alt="" />
-                <div class="nge-arcane-tier-name">{{ t.name }}</div>
-                <div class="nge-arcane-tier-at">{{ t.at.toLocaleString() }}</div>
+                <img v-if="t.at <= arcane.total" :src="t.art" alt="" />
+                <div v-else class="nge-arcane-mystery" aria-hidden="true">?</div>
+                <div class="nge-arcane-tier-name">{{ t.at <= arcane.total ? t.name : 'A secret' }}</div>
+                <div class="nge-arcane-tier-at">{{ t.at <= arcane.total ? t.at.toLocaleString() : `at ${t.at.toLocaleString()}, ${arcane.toGo} to go` }}</div>
               </div>
             </div>
           </div>
@@ -3253,7 +3255,7 @@ function practiceWhen(iso: string | null) {
             <div class="nge-arcane-text">
               <div class="nge-arcane-name">{{ arcane.current ? arcane.current.name : 'Arcane Fixes' }}</div>
               <div class="nge-arcane-bar"><span :style="{ width: arcane.fill + '%' }"></span></div>
-              <div class="nge-arcane-go"><b>{{ arcane.total }}</b> fixes · {{ arcane.toGo }} to {{ arcane.next.name }}</div>
+              <div class="nge-arcane-go"><b>{{ arcane.total }}</b> fixes · {{ arcane.toGo }} to the next</div>
             </div>
           </div>
           <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
@@ -5149,7 +5151,9 @@ li .nge-pilot-name--link { font:inherit; font-weight:700; color:#9fd3ff; backgro
 .nge-arcane-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
 .nge-arcane-tier { text-align: center; }
 .nge-arcane-tier img { width: 110px; height: 110px; filter: drop-shadow(0 4px 12px rgba(80, 110, 255, 0.4)); }
-.nge-arcane-tier--locked img { filter: grayscale(1) brightness(0.45); opacity: 0.6; }
+.nge-arcane-mystery { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center;
+  font: 800 46px Inter, system-ui, sans-serif; color: #7c9cff; background: radial-gradient(circle, #1b2552 0%, #0f1630 70%);
+  border: 3px dashed rgba(124, 156, 255, 0.45); box-shadow: 0 0 22px rgba(124, 156, 255, 0.25) inset; }
 .nge-arcane-tier-name { font: 700 12.5px Inter, system-ui, sans-serif; margin-top: 4px; }
 .nge-arcane-tier--locked .nge-arcane-tier-name { color: #6f7ba3; }
 .nge-arcane-tier-at { font-size: 11.5px; color: #8fa0d0; }
