@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-03T02:40:00Z",
+      "title": "Edit access tiles",
+      "digest": "minor",
+      "items": [
+        "The Edit access row in your profile has a fresh look, with Pyr's own lock icons, and shows on other players' profiles too."
+      ]
+    },
+    {
       "at": "2026-11-03T02:26:51Z",
       "title": "Your edit access in your profile",
       "items": [
