@@ -2129,14 +2129,15 @@ exports.ewSecureWrite = onRequest(
           // twice: the bell in Pyr, and a Slack message that pings them.
           if (typeof action === "string" && action.startsWith("todo.")) {
             needAdmin();
-            const { todoAction, restDb, makeTagger } = require("./todos");
+            const { todoAction, restDb, makeTagger, makeFollowBell } = require("./todos");
             if (!me) throw ewErr(403, "no EyeWire II profile");
             const byName = me.display_name || me.username || who.email;
             const site = EW_ORIGINS.some(o => o.test(String(req.headers.origin || ""))) && !/localhost/.test(String(req.headers.origin))
               ? String(req.headers.origin) : EW_LIVE_SITE;
             const tag = makeTagger({ sb, slackPost, slackToken: slackBotToken.value().trim(), channel: REVIEW_CHANNEL_ID, site, byName, meId: me.id });
             try {
-              out = await todoAction(action, args, { db: restDb(sb), me, byName, tag });
+              out = await todoAction(action, args, { db: restDb(sb), me, byName, tag,
+                follows: todoFollowStore, bell: makeFollowBell({ sb, site, byName, meId: me.id }) });
             } catch (e) {
               // Until the SQL is run the table is missing: say so plainly.
               if (!e.status && /supabase (404|400)/.test(String(e && e.message))) { out = { installed: false }; break; }
@@ -2333,6 +2334,18 @@ const principlesStore = {
   set: async (key, v) => {
     await db.collection("principles_agreements").doc(crypto.createHash("sha256").update(key).digest("hex")).set({ key, ...v });
   },
+};
+// Who follows each To do card (todos.js todo.follow, Ames 2026-11-02): one
+// Firestore document per card, so the cards table needs no new column.
+const todoFollowStore = {
+  all: async () => {
+    const snap = await db.collection("todo_followers").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && Array.isArray(v.ids)) out[d.id] = v.ids; });
+    return out;
+  },
+  get: async (cardId) => { const d = await db.collection("todo_followers").doc(String(cardId)).get(); return d.exists && Array.isArray(d.data().ids) ? d.data().ids : []; },
+  set: async (cardId, ids) => { await db.collection("todo_followers").doc(String(cardId)).set({ ids, at: new Date().toISOString() }); },
 };
 const betaMarkStore = {
   all: async () => {

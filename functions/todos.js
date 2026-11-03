@@ -14,6 +14,13 @@
  *   todo.save     a new card (no id) or changed fields of one card
  *   todo.comment  adds one comment to a card
  *   todo.delete   removes a card for good
+ *   todo.follow   follow or stop following a card (Ames 2026-11-02, from
+ *                 Asana): followers hear in the bell when it changes
+ *
+ * Checklist items can have their own owner and due day (subtasks, the same
+ * ask). Followers live apart from the card (deps.follows, Firestore in
+ * index.js), so no new column: the card's maker, its owner and anyone who
+ * comments follow it on their own, and anyone can stop.
  *
  * A card made from a player report (fields.triage_id) also puts that report
  * on the To do list on the triage board, so the robot never builds it, and
@@ -63,8 +70,15 @@ function cleanFields(f, isNew) {
   if ('owner_id' in f) out.owner_id = f.owner_id === null ? null : uuid(f.owner_id, 'owner');
   if ('checklist' in f) {
     if (!Array.isArray(f.checklist) || f.checklist.length > CHECK_MAX) fail(400, 'Bad checklist.');
-    out.checklist = f.checklist.map(c => ({ text: text(c && c.text, 300, 'A checklist item').trim(), done: !!(c && c.done) }))
-      .filter(c => c.text);
+    out.checklist = f.checklist.map(c => {
+      const item = { text: text(c && c.text, 300, 'A checklist item').trim(), done: !!(c && c.done) };
+      if (c && c.due) {
+        if (!/^\d{4}-\d\d-\d\d$/.test(String(c.due))) fail(400, 'A due date is a day, like 2026-10-31.');
+        item.due = String(c.due);
+      }
+      if (c && c.owner_id) item.owner_id = uuid(c.owner_id, 'item owner');
+      return item;
+    }).filter(c => c.text);
   }
   // Optional extras (supabase-admin-todos-fields.sql, Ames 2026-10-21).
   if ('status' in f) out.status = text(f.status, 200, 'The status').replace(/\s+/g, ' ').trim();
@@ -100,11 +114,48 @@ function tagged(people, ids) {
   return people.filter(p => want.has(p.id));
 }
 
-async function todoAction(action, args, {db, me, byName, tag, connectorBase = CONNECTOR_BASE}) {
+/** What changed, in words, for a follower's bell. Only a move in the list says nothing. */
+function changeWords(fields, before) {
+  if ('list' in fields && fields.list !== before.list) return fields.list === 'done' ? 'finished' : `moved to ${fields.list === 'doing' ? 'Doing' : 'To do'}`;
+  if ('checklist' in fields) {
+    const was = before.checklist || [], now = fields.checklist;
+    const ticked = now.filter((c, i) => c.done && !(was[i] && was[i].done) && was[i] && was[i].text === c.text);
+    if (ticked.length === 1) return `ticked "${ticked[0].text.slice(0, 80)}" on`;
+    if (now.length > was.length) return 'added to the checklist on';
+    return 'updated the checklist on';
+  }
+  if ('owner_id' in fields) return 'changed who owns';
+  if ('due_on' in fields) return 'changed the due day of';
+  if (['title', 'notes', 'status', 'links', 'images'].some(k => k in fields)) return 'updated';
+  return '';
+}
+const noFollows = { all: async () => ({}), get: async () => [], set: async () => {} };
+
+async function todoAction(action, args, {db, me, byName, tag, follows = noFollows, bell = async () => {}, connectorBase = CONNECTOR_BASE}) {
   const now = new Date().toISOString();
+  const meId = me && me.id;
+  /** Followers hear, but never the one who did it, nor anyone already told. */
+  const tellFollowers = async (card, what, said, skip = []) => {
+    if (!what) return;
+    const ids = (await follows.get(card.id)).filter(id => id !== meId && !skip.includes(id));
+    if (ids.length) await bell(ids, card, what, said);
+  };
+  const follow = async (cardId, ids) => {
+    const had = await follows.get(cardId);
+    const next = [...new Set([...had, ...ids.filter(Boolean)])];
+    if (next.length !== had.length) await follows.set(cardId, next);
+  };
   if (action === 'todo.list') {
-    const [cards, people] = await Promise.all([db.cards(), db.people()]);
-    return { cards, people: people.map(p => ({ id: p.id, name: p.name })) };
+    const [cards, people, followers] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({}))]);
+    return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers };
+  }
+  if (action === 'todo.follow') {
+    const id = uuid(args.id, 'card');
+    if (!meId) fail(403, 'No Pyr profile.');
+    const had = await follows.get(id);
+    const next = args.on === false ? had.filter(x => x !== meId) : [...new Set([...had, meId])];
+    await follows.set(id, next);
+    return { id, followers: next };
   }
 
   if (action === 'todo.save') {
@@ -123,6 +174,7 @@ async function todoAction(action, args, {db, me, byName, tag, connectorBase = CO
       if (!('list' in fields)) fields.list = 'todo';
       if (!('rank' in fields)) fields.rank = (await db.maxRank(fields.list)) + 1;
       card = await db.insert({ ...fields, created_by: byName, updated_at: now, done_at: fields.list === 'done' ? now : null });
+      await follow(card.id, [meId, fields.owner_id]).catch(() => {});
       if (fields.triage_id) await db.reportToTodo(fields.triage_id, byName);
       // Given to someone else as it is made: they hear about it.
       if (fields.owner_id && fields.owner_id !== (me && me.id)) {
@@ -145,11 +197,16 @@ async function todoAction(action, args, {db, me, byName, tag, connectorBase = CO
         const people = await db.people();
         const owner = people.filter(p => p.id === fields.owner_id);
         if (owner.length) await tag(owner, card, 'gave you');
+        await follow(id, [fields.owner_id]).catch(() => {});
       }
+      card.__changed = changeWords(fields, before);
     }
     const people = (Array.isArray(args.tagIds) && args.tagIds.length) ? await db.people() : [];
     const who = tagged(people, args.tagIds).filter(p => p.id !== (me && me.id));
     if (who.length) await tag(who, card, 'tagged you on');
+    const changed = card.__changed;
+    delete card.__changed;
+    if (!isNew) await tellFollowers(card, changed, '', [...who.map(p => p.id), fields.owner_id].filter(Boolean)).catch(e => console.warn('[todo] followers not told:', e.message));
     return { card };
   }
 
@@ -164,6 +221,8 @@ async function todoAction(action, args, {db, me, byName, tag, connectorBase = CO
     const people = (Array.isArray(args.tagIds) && args.tagIds.length) ? await db.people() : [];
     const who = tagged(people, args.tagIds).filter(p => p.id !== (me && me.id));
     if (who.length) await tag(who, card, 'tagged you on', body);
+    await follow(id, [meId]).catch(() => {});
+    await tellFollowers(card, 'commented on', body, who.map(p => p.id)).catch(e => console.warn('[todo] followers not told:', e.message));
     return { card };
   }
 
@@ -201,6 +260,19 @@ const SLACK_IDS = [
 function slackIdOf(person) {
   for (const s of SLACK_IDS) if (s.match.test(person.name || '') || s.match.test(person.email || '')) return s.id;
   return null;
+}
+
+/** Followers: the bell only, no Slack, so following stays quiet. */
+function makeFollowBell({ sb, site, byName, meId }) {
+  return async (ids, card, what, said) => {
+    const link = `${site}/?triage=board&todo=${card.id}`;
+    const quote = String(said || '').replace(/\s+/g, ' ').slice(0, 200);
+    const rows = ids.map(id => ({ title: `📋 ${byName} ${what} a To do you follow`.slice(0, 120),
+      body: `${card.title}${quote ? `\n\n"${quote}"` : ''}\n\n${link}`.slice(0, 500),
+      target_type: 'user', target_id: id, send_at: new Date().toISOString(), created_by: meId || null }));
+    try { await sb('notifications', { method: 'POST', body: JSON.stringify(rows) }); }
+    catch (e) { console.warn('[todo] follower bell failed:', e.message); }
+  };
 }
 
 /** Tells the people tagged on (or given) a card: the bell in Pyr, and a
@@ -262,4 +334,4 @@ function restDb(sb) {
   };
 }
 
-module.exports = { todoAction, restDb, slackIdOf, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE };
+module.exports = { todoAction, restDb, slackIdOf, cleanFields, makeTagger, hashKey, newKey, CONNECTOR_BASE, makeFollowBell };

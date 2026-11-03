@@ -127,3 +127,30 @@ test('card images must be ones added on the board', () => {
   assert.deepEqual(cleanFields({ images: [ok] }, false).images, [ok]);
   assert.throws(() => cleanFields({ images: ['https://evil.example/1.png'] }, false), /added on the board/);
 });
+
+// Subtasks, followers (Ames 2026-11-02, from Asana).
+function memFollows() { const m = {}; return { m, all: async () => ({ ...m }), get: async id => m[id] || [], set: async (id, ids) => { m[id] = ids; } }; }
+test('a checklist item keeps its own owner and due day', () => {
+  const f = cleanFields({ checklist: [{ text: 'Write it', done: false, due: '2026-11-10', owner_id: CELIA.id }, { text: 'Plain', done: true }] }, false);
+  assert.deepEqual(f.checklist, [{ text: 'Write it', done: false, due: '2026-11-10', owner_id: CELIA.id }, { text: 'Plain', done: true }]);
+  assert.throws(() => cleanFields({ checklist: [{ text: 'x', due: 'soon' }] }, false), /due date/);
+});
+test('the maker follows; a follower hears of changes, never of their own', async () => {
+  const db = memDb(), follows = memFollows(), told = [];
+  const bell = async (ids, card, what) => told.push({ ids, what });
+  const base = { db, byName: 'Ames', tag: async () => {}, follows, bell };
+  const { card } = await todoAction('todo.save', { fields: { title: 'Ship it' } }, { ...base, me: { id: AMES.id } });
+  assert.deepEqual(follows.m[card.id], [AMES.id]);
+  await todoAction('todo.follow', { id: card.id }, { ...base, me: { id: CELIA.id } });
+  assert.deepEqual(follows.m[card.id], [AMES.id, CELIA.id]);
+  await todoAction('todo.save', { id: card.id, fields: { list: 'done' } }, { ...base, me: { id: AMES.id } });
+  assert.deepEqual(told, [{ ids: [CELIA.id], what: 'finished' }]);
+  await todoAction('todo.save', { id: card.id, fields: { rank: 3 } }, { ...base, me: { id: AMES.id } });
+  assert.equal(told.length, 1, 'a drag in the list tells nobody');
+  await todoAction('todo.comment', { id: card.id, text: 'nice' }, { ...base, me: { id: CELIA.id } });
+  assert.deepEqual(told[1], { ids: [AMES.id], what: 'commented on' });
+  await todoAction('todo.follow', { id: card.id, on: false }, { ...base, me: { id: CELIA.id } });
+  assert.deepEqual(follows.m[card.id], [AMES.id]);
+  const list = await todoAction('todo.list', {}, { ...base, me: { id: AMES.id } });
+  assert.deepEqual(list.followers[card.id], [AMES.id]);
+});
