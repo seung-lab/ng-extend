@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-03T02:12:31Z",
+      "title": "Tidier merges and marks",
+      "digest": "minor",
+      "items": [
+        "If a merge fails because the two pieces were already merged, the old ID no longer stays in your segment list marked out of date: it is swapped for the cell as it is now.",
+        "Opening a newly claimed MEC cell or Super Quest no longer brings along the Marks from the cell you were on. Those stay saved with that cell."
+      ]
+    },
+    {
       "at": "2026-11-02T23:22:38Z",
       "title": "Active time keeps up with your edits",
       "digest": "minor",
