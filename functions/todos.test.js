@@ -154,3 +154,13 @@ test('the maker follows; a follower hears of changes, never of their own', async
   const list = await todoAction('todo.list', {}, { ...base, me: { id: AMES.id } });
   assert.deepEqual(list.followers[card.id], [AMES.id]);
 });
+
+test('a nickname tags too: @Marissa reaches M Sorek', () => {
+  const { tagIdsIn } = require('./todo-connector');
+  const MARISSA = { id: '55555555-5555-5555-5555-555555555555', name: 'M Sorek' };
+  const people = [AMES, CELIA, MARISSA];
+  assert.deepEqual(tagIdsIn('@Marissa can you look?', people), [MARISSA.id]);
+  assert.deepEqual(tagIdsIn('thanks @ames and @celia', people), [AMES.id, CELIA.id]);
+  assert.deepEqual(tagIdsIn('email marissa@x.org, no tag', people), []);
+  assert.deepEqual(tagIdsIn('@Marissanne is someone else', people), []);
+});
