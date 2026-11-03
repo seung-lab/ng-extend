@@ -694,7 +694,7 @@ async function loadTriageNumbers() {
   } catch { /* the cards simply show no number */ }
 }
 
-// ── Arcane Fixes: each admin's own Achievements (Ames 2026-10-27 to 11-02) ──
+// ── Pyr Fixes (first called Arcane Fixes; Ames 2026-11-02: "Pyr related"): each admin's own Achievements (Ames 2026-10-27 to 11-02) ──
 // Reports you closed with Done count one, To do cards you own that reached
 // Done count five ("a finished card should be 5 fixes"). Tech magic art from
 // the badges repo (arcane/), an icon in a frame. A tier at 25, 50, 75, then
@@ -3217,7 +3217,7 @@ function practiceWhen(iso: string | null) {
         <div v-if="arcaneOpen" class="nge-arcane-shelf" @click.self="arcaneOpen = false">
           <div class="nge-arcane-shelf-card">
             <button class="nge-arcane-close" aria-label="Close" @click="arcaneOpen = false">×</button>
-            <div class="nge-arcane-shelf-head">Arcane Fixes</div>
+            <div class="nge-arcane-shelf-head">Pyr Fixes</div>
             <div class="nge-arcane-shelf-sub">{{ arcane.reports }} reports closed with Done, {{ arcane.cards }} To do {{ arcane.cards === 1 ? 'card' : 'cards' }} finished, at 5 each: <b>{{ arcane.total }}</b></div>
             <div class="nge-arcane-grid">
               <div v-for="t in arcane.tiers" :key="t.at" class="nge-arcane-tier" :class="{ 'nge-arcane-tier--locked': t.at > arcane.total }">
@@ -3234,7 +3234,7 @@ function practiceWhen(iso: string | null) {
             <img :src="arcaneUnlock.art" alt="" />
             <div class="nge-arcane-unlock-kicker">New Achievement</div>
             <div class="nge-arcane-unlock-name">{{ arcaneUnlock.name }}</div>
-            <div class="nge-arcane-unlock-at">{{ arcaneUnlock.at.toLocaleString() }} arcane fixes</div>
+            <div class="nge-arcane-unlock-at">{{ arcaneUnlock.at.toLocaleString() }} Pyr fixes</div>
           </div>
         </div>
         <div class="nge-triage-head">
@@ -3247,13 +3247,13 @@ function practiceWhen(iso: string | null) {
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <button class="nge-admin-action-btn nge-triage-todo-open" @click="openTodoBoard"
                   title="The admins' own planning board: To do, Doing, Done"><span v-html="TODO_ICON"></span>To do board</button>
-          <!-- Arcane Fixes: my own Achievements. -->
+          <!-- Pyr Fixes: my own Achievements. -->
           <div v-if="arcane.total > 0" class="nge-arcane" role="button" tabindex="0" @click="arcaneOpen = !arcaneOpen" @keydown.enter="arcaneOpen = !arcaneOpen"
-               :title="`Arcane Fixes: ${arcane.reports} reports closed with Done, ${arcane.cards} To do cards finished (5 each)`">
+               :title="`Pyr Fixes: ${arcane.reports} reports closed with Done, ${arcane.cards} To do cards finished (5 each)`">
             <img v-if="arcane.current" :src="arcane.current.art" alt="" class="nge-arcane-art" />
             <span v-else class="nge-arcane-art nge-arcane-art--none" aria-hidden="true">✦</span>
             <div class="nge-arcane-text">
-              <div class="nge-arcane-name">{{ arcane.current ? arcane.current.name : 'Arcane Fixes' }}</div>
+              <div class="nge-arcane-name">{{ arcane.current ? arcane.current.name : 'Pyr Fixes' }}</div>
               <div class="nge-arcane-bar"><span :style="{ width: arcane.fill + '%' }"></span></div>
               <div class="nge-arcane-go"><b>{{ arcane.total }}</b> fixes · {{ arcane.toGo }} to the next</div>
             </div>
