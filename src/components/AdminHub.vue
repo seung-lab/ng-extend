@@ -21,6 +21,19 @@ import TestTriesTab from 'components/TestTriesTab.vue';
 import TutorialTimesTab from 'components/TutorialTimesTab.vue';
 import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
+import arcane25 from '../../static/badges/arcane/25.png';
+import arcane50 from '../../static/badges/arcane/50.png';
+import arcane75 from '../../static/badges/arcane/75.png';
+import arcane100 from '../../static/badges/arcane/100.png';
+import arcane200 from '../../static/badges/arcane/200.png';
+import arcane300 from '../../static/badges/arcane/300.png';
+import arcane400 from '../../static/badges/arcane/400.png';
+import arcane500 from '../../static/badges/arcane/500.png';
+import arcane600 from '../../static/badges/arcane/600.png';
+import arcane700 from '../../static/badges/arcane/700.png';
+import arcane800 from '../../static/badges/arcane/800.png';
+import arcane900 from '../../static/badges/arcane/900.png';
+import arcane1000 from '../../static/badges/arcane/1000.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
 import nurroMicroscope from '../../static/nurro/nurro-microscope.png';
@@ -646,7 +659,7 @@ async function loadTriageNumbers() {
     // 500 at a time: the server refuses a larger page, which is why the
     // numbers did not show at first.
     for (let from = 0, n = 0; ; from += 500) {
-      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at,source,source_id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
+      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at,reviewed_by,source,source_id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
       if (error || !data) return;
       for (const r of data as any[]) {
         next[r.id] = ++n;
@@ -673,10 +686,91 @@ async function loadTriageNumbers() {
       if (k === 'bug') bugs++; else if (k === 'feature') features++; else other++;
     }
     triageNumbers.value = next;
+    // Mine, for Arcane Fixes: closed with Done by me (below).
+    arcaneReports.value = closed.filter(r => r.status === 'done' && isMe(r.reviewed_by)).length;
+    void loadArcaneCards();
     // Keep the last good counts rather than show wrong ones.
     if (!catsFailed) triageTally.value = { bugs, features, other, today, days };
   } catch { /* the cards simply show no number */ }
 }
+
+// ── Arcane Fixes: each admin's own Achievements (Ames 2026-10-27 to 11-02) ──
+// Reports you closed with Done count one, To do cards you own that reached
+// Done count five ("a finished card should be 5 fixes"). Tech magic art from
+// the badges repo (arcane/), an icon in a frame. A tier at 25, 50, 75, then
+// every 100. On the triage board only ("triage for now").
+const ARCANE: { at: number; name: string; art: string }[] = [
+  { at: 25, name: 'Wand Waver', art: arcane25 },
+  { at: 50, name: 'Potion Stirrer', art: arcane50 },
+  { at: 75, name: 'Spark Caster', art: arcane75 },
+  { at: 100, name: 'Apprentice Technomancer', art: arcane100 },
+  { at: 200, name: 'Hedge Witch of the Stack', art: arcane200 },
+  { at: 300, name: 'Rune Coder', art: arcane300 },
+  { at: 400, name: 'Spellwright', art: arcane400 },
+  { at: 500, name: 'Keeper of the Source', art: arcane500 },
+  { at: 600, name: 'Conjurer of Patches', art: arcane600 },
+  { at: 700, name: 'Enchantress of the Board', art: arcane700 },
+  { at: 800, name: 'Archmage of Triage', art: arcane800 },
+  { at: 900, name: 'Oracle of the Build', art: arcane900 },
+  { at: 1000, name: 'Grand Sorceress of Pyr', art: arcane1000 },
+];
+const ARCANE_CARD = 5;
+/** Past 1000, a tier every 100 with the crown's art until its own is made. */
+function arcaneTier(at: number) {
+  return ARCANE.find(t => t.at === at) || { at, name: `Grand Sorceress of Pyr, ${Math.floor(at / 100) - 9} stars`, art: arcane1000 };
+}
+const arcaneThresholds = (upTo: number) => {
+  const out = ARCANE.map(t => t.at);
+  for (let at = 1100; at <= Math.max(1100, upTo + 100); at += 100) out.push(at);
+  return out;
+};
+// Who I am, as the board and Slack wrote it: my name, my name without a
+// middle initial, and my Slack id (functions/todos.js SLACK_IDS).
+const SLACK_SELF: [RegExp, string][] = [[/^(amy|ames)\b|^amy/i, 'slack:U02FH1DRC'], [/^celia/i, 'slack:U033NHWDE'], [/^(marissa|m sorek|sorek)/i, 'slack:U033TSX9A']];
+const plainName = (n: string) => String(n || '').toLowerCase().replace(/\b[a-z]\.\s*/g, '').replace(/\s+/g, ' ').trim();
+function isMe(by: string | null | undefined) {
+  const v = String(by || '').trim();
+  const mine = String(backend.userName || '').trim();
+  if (!v || !mine) return false;
+  if (v === mine || plainName(v) === plainName(mine)) return true;
+  if (backend.userEmail && v.toLowerCase() === String(backend.userEmail).toLowerCase()) return true;
+  return SLACK_SELF.some(([re, id]) => re.test(mine) && v === id);
+}
+const arcaneReports = ref(0);
+const arcaneCards = ref(0);
+let arcaneCardsAt = 0;
+async function loadArcaneCards() {
+  if (Date.now() - arcaneCardsAt < 60_000) return;
+  arcaneCardsAt = Date.now();
+  try {
+    const d = await secureWrite<any>('todo.list');
+    const me = (d?.people || []).find((p: any) => isMe(p.name));
+    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)))).length : 0;
+  } catch { /* the cards just do not count this time */ }
+}
+const arcane = computed(() => {
+  const total = arcaneReports.value + ARCANE_CARD * arcaneCards.value;
+  const all = arcaneThresholds(total);
+  const earnedAt = all.filter(at => at <= total);
+  const nextAt = all.find(at => at > total)!;
+  const current = earnedAt.length ? arcaneTier(earnedAt[earnedAt.length - 1]) : null;
+  const prevAt = current ? current.at : 0;
+  return { total, reports: arcaneReports.value, cards: arcaneCards.value, current, next: arcaneTier(nextAt), toGo: nextAt - total,
+    fill: Math.round(((total - prevAt) / (nextAt - prevAt)) * 100), tiers: all.slice(0, Math.max(earnedAt.length + 3, ARCANE.length)).map(arcaneTier), earned: earnedAt.length };
+});
+const arcaneOpen = ref(false);
+// A tier crossed while you watch: its own moment.
+const arcaneUnlock = ref<{ at: number; name: string; art: string } | null>(null);
+let arcaneSeen = -1;
+watch(() => arcane.value.total, (total, before) => {
+  if (arcaneSeen < 0) { if (total > 0) arcaneSeen = total; return; }
+  const crossed = arcaneThresholds(total).filter(at => at > (before ?? arcaneSeen) && at <= total);
+  arcaneSeen = total;
+  if (crossed.length) {
+    arcaneUnlock.value = arcaneTier(crossed[crossed.length - 1]);
+    setTimeout(() => { arcaneUnlock.value = null; }, 7000);
+  }
+});
 
 // ── What has been closed, and a moment of reward for closing one ──
 // Counted over every report, not only the ones on the board (Ames
@@ -3118,6 +3212,28 @@ function practiceWhen(iso: string | null) {
         <TodoBoard v-if="todoView" :light="triageBoard && triageLight" :focus-id="todoFocus" :report-numbers="triageNumbers"
                    :standalone="standalone" @back="todoView = false; loadTriage()" />
         <template v-else>
+        <div v-if="arcaneOpen" class="nge-arcane-shelf" @click.self="arcaneOpen = false">
+          <div class="nge-arcane-shelf-card">
+            <button class="nge-arcane-close" aria-label="Close" @click="arcaneOpen = false">×</button>
+            <div class="nge-arcane-shelf-head">Arcane Fixes</div>
+            <div class="nge-arcane-shelf-sub">{{ arcane.reports }} reports closed with Done, {{ arcane.cards }} To do {{ arcane.cards === 1 ? 'card' : 'cards' }} finished, at 5 each: <b>{{ arcane.total }}</b></div>
+            <div class="nge-arcane-grid">
+              <div v-for="t in arcane.tiers" :key="t.at" class="nge-arcane-tier" :class="{ 'nge-arcane-tier--locked': t.at > arcane.total }">
+                <img :src="t.art" alt="" />
+                <div class="nge-arcane-tier-name">{{ t.name }}</div>
+                <div class="nge-arcane-tier-at">{{ t.at.toLocaleString() }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="arcaneUnlock" class="nge-arcane-unlock" role="status" @click="arcaneUnlock = null">
+          <div class="nge-arcane-unlock-card">
+            <img :src="arcaneUnlock.art" alt="" />
+            <div class="nge-arcane-unlock-kicker">New Achievement</div>
+            <div class="nge-arcane-unlock-name">{{ arcaneUnlock.name }}</div>
+            <div class="nge-arcane-unlock-at">{{ arcaneUnlock.at.toLocaleString() }} arcane fixes</div>
+          </div>
+        </div>
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
           <!-- The page on its own has no game around it: a way back, in a new
@@ -3128,6 +3244,17 @@ function practiceWhen(iso: string | null) {
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <button class="nge-admin-action-btn nge-triage-todo-open" @click="openTodoBoard"
                   title="The admins' own planning board: To do, Doing, Done"><span v-html="TODO_ICON"></span>To do board</button>
+          <!-- Arcane Fixes: my own Achievements. -->
+          <div v-if="arcane.total > 0" class="nge-arcane" role="button" tabindex="0" @click="arcaneOpen = !arcaneOpen" @keydown.enter="arcaneOpen = !arcaneOpen"
+               :title="`Arcane Fixes: ${arcane.reports} reports closed with Done, ${arcane.cards} To do cards finished (5 each)`">
+            <img v-if="arcane.current" :src="arcane.current.art" alt="" class="nge-arcane-art" />
+            <span v-else class="nge-arcane-art nge-arcane-art--none" aria-hidden="true">✦</span>
+            <div class="nge-arcane-text">
+              <div class="nge-arcane-name">{{ arcane.current ? arcane.current.name : 'Arcane Fixes' }}</div>
+              <div class="nge-arcane-bar"><span :style="{ width: arcane.fill + '%' }"></span></div>
+              <div class="nge-arcane-go"><b>{{ arcane.total }}</b> fixes · {{ arcane.toGo }} to {{ arcane.next.name }}</div>
+            </div>
+          </div>
           <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
             <!-- Level: one for every 25 reports closed. The ring fills toward the next. -->
             <div class="nge-hud-level" :class="{ 'nge-hud-level--up': triageCheer?.levelUp }"
@@ -4999,4 +5126,39 @@ li .nge-pilot-name--link { font:inherit; font-weight:700; color:#9fd3ff; backgro
 .nge-admin-ok { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #e6f6ee; color: #1d7038; font-size: 13px; }
 .nge-triage-tagging { margin: 4px 0 2px; font-size: 12.5px; color: #4a5b78; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .nge-triage-tag-chip { background: #e3ecff; color: #2450c8; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
+/* Arcane Fixes. */
+.nge-arcane { display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(135deg, rgba(79, 140, 255, 0.14), rgba(167, 139, 250, 0.16)); border: 1px solid rgba(124, 156, 255, 0.4); }
+.nge-arcane:hover { border-color: #7c9cff; box-shadow: 0 0 14px rgba(124, 156, 255, 0.35); }
+.nge-arcane-art { width: 48px; height: 48px; filter: drop-shadow(0 2px 6px rgba(60, 80, 200, 0.45)); }
+.nge-arcane-art--none { display: grid; place-items: center; font-size: 26px; color: #7c9cff; }
+.nge-arcane-text { min-width: 150px; }
+.nge-arcane-name { font: 700 13px Inter, system-ui, sans-serif; color: #3d4fc4; }
+.nge-arcane-bar { height: 5px; border-radius: 3px; background: rgba(124, 156, 255, 0.2); margin: 4px 0 3px; overflow: hidden; }
+.nge-arcane-bar span { display: block; height: 100%; background: linear-gradient(90deg, #4f8cff, #a78bfa, #f5c542); }
+.nge-arcane-go { font-size: 11.5px; color: #5a6787; }
+.nge-arcane-shelf { position: fixed; inset: 0; z-index: 10040; background: rgba(12, 18, 40, 0.55); display: grid; place-items: center; }
+.nge-arcane-shelf-card { position: relative; width: min(860px, 92vw); max-height: 86vh; overflow: auto; padding: 22px 26px; border-radius: 18px;
+  background: #0f1630; color: #e6ecff; border: 1px solid rgba(124, 156, 255, 0.45); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+.nge-arcane-close { position: absolute; top: 10px; right: 14px; background: none; border: none; color: #9db3ff; font-size: 22px; cursor: pointer; }
+.nge-arcane-shelf-head { font: 800 22px Inter, system-ui, sans-serif; letter-spacing: 0.02em; background: linear-gradient(90deg, #7cc4ff, #c4b5fd, #f5d142);
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nge-arcane-shelf-sub { font-size: 13px; color: #aab8e0; margin: 4px 0 16px; }
+.nge-arcane-shelf-sub b { color: #f5d142; }
+.nge-arcane-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+.nge-arcane-tier { text-align: center; }
+.nge-arcane-tier img { width: 110px; height: 110px; filter: drop-shadow(0 4px 12px rgba(80, 110, 255, 0.4)); }
+.nge-arcane-tier--locked img { filter: grayscale(1) brightness(0.45); opacity: 0.6; }
+.nge-arcane-tier-name { font: 700 12.5px Inter, system-ui, sans-serif; margin-top: 4px; }
+.nge-arcane-tier--locked .nge-arcane-tier-name { color: #6f7ba3; }
+.nge-arcane-tier-at { font-size: 11.5px; color: #8fa0d0; }
+.nge-arcane-unlock { position: fixed; inset: 0; z-index: 10060; display: grid; place-items: center; background: rgba(12, 18, 40, 0.5); cursor: pointer; }
+.nge-arcane-unlock-card { text-align: center; padding: 26px 40px 30px; border-radius: 22px; background: #0f1630; color: #e6ecff;
+  border: 2px solid #f5c542; box-shadow: 0 0 60px rgba(124, 156, 255, 0.55), 0 0 30px rgba(245, 197, 66, 0.4); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+.nge-arcane-unlock-card img { width: 200px; height: 200px; animation: nge-arcane-spin-in 0.9s ease-out both; filter: drop-shadow(0 0 24px rgba(124, 156, 255, 0.8)); }
+.nge-arcane-unlock-kicker { margin-top: 8px; font: 700 12px Inter, system-ui, sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #9db3ff; }
+.nge-arcane-unlock-name { font: 800 26px Inter, system-ui, sans-serif; margin-top: 4px; color: #fff; }
+.nge-arcane-unlock-at { font-size: 13px; color: #f5d142; margin-top: 4px; }
+@keyframes nge-arcane-spin-in { from { transform: scale(0.3) rotate(-200deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nge-arcane-unlock-card, .nge-arcane-unlock-card img { animation: none; } }
 </style>
