@@ -1391,6 +1391,11 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       };
 
       submissions = submissions.filter(x => !x.locked && x.source);
+      // nge: every ID these merges touched, as sent. A failed merge (the same
+      // two pieces merged twice) left its old ID in the segment list, out of
+      // date (Nseraf, report 349); Pyr swaps such IDs for the current one.
+      const touched = new Set<string>();
+      for (const s of submissions) { touched.add(s.sink.rootId.toString()); touched.add(s.source!.rootId.toString()); }
       const segmentsToRemove = await bulkMergeHelper(submissions);
       const segmentsToAdd: Uint64[] = [];
       for (const submission of submissions) {
@@ -1409,6 +1414,10 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       selectedSegments.add(latestRoots);
       visibleSegments.add(latestRoots);
       merges.changed.dispatch();
+      try {
+        for (const s of submissions) { touched.add(s.sink.rootId.toString()); if (s.source) touched.add(s.source.rootId.toString()); }
+        window.dispatchEvent(new CustomEvent('nge-merge-batch-done', {detail: {roots: [...touched]}}));
+      } catch { /* tidying is never worth breaking a merge for */ }
     }
 }
 
