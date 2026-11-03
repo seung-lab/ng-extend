@@ -327,12 +327,10 @@ function buildBody(entries, sinceMs, nowMs, summary) {
     parts.push(`Since the last update on ${easternDay(new Date(sinceMs))}:`);
   }
   const n = entries.length;
-  const told = entries.filter(e => !isMinor(e));
-  if (told.length === 0) {
-    // Nothing but entries marked minor.
-    parts.push(`**TLDR:** ${n === 1 ? 'One small fix' : `${n} small fixes`} went live in Pyr today.`);
-    return parts.join('\n\n');
-  }
+  // A day of nothing but entries marked minor is still told, from those
+  // entries (Ames 2026-11-02, of "10 small fixes went live in Pyr today" and
+  // nothing else: "a tad waaaayyy too short").
+  const told = entries.some(e => !isMinor(e)) ? entries.filter(e => !isMinor(e)) : entries;
   if (!summary) {
     // No note to be had: one line, never the whole list. Headlines first, then the newest.
     const newestFirst = [...told].reverse();
@@ -393,8 +391,10 @@ function easternMinutes(d) {
   }
 
   const title = `${DIGEST_TAG}: ${easternDay(now)}`;
-  // Entries marked minor are never in the note; they still count in the total.
-  const told = entries.filter(e => !isMinor(e));
+  // Entries marked minor are left out of the note when there is anything
+  // else; they still count in the total. A day of only minor ones is told
+  // from them (see buildBody).
+  const told = entries.some(e => !isMinor(e)) ? entries.filter(e => !isMinor(e)) : entries;
   const summary = told.length ? await writeSummary(told) : null;
   let body = buildBody(entries, sinceMs, nowMs, summary);
   // The counts are a bonus: a failed count never holds back the note.
