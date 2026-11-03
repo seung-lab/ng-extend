@@ -6129,7 +6129,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   const notifLeader = leadership('pyr-leader-notifications');
   function subscribeToNotifications() {
     if (notifSubscription) return;
-    notifLeader.join();
+    // Only a signed-in tab stands: a signed-out one holding the lock would
+    // keep every signed-in tab from checking.
+    const stopStanding = watch(userId, id => { if (id) notifLeader.join(); else notifLeader.leave(); }, { immediate: true });
     // Private notifications cannot use an anonymous Realtime subscription.
     // Refresh through the identity-verified route, without overlapping requests.
     let refreshing = false;
@@ -6158,6 +6160,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     };
     notifSubscription = setInterval(() => { void check(); }, 60_000);
     notifStopShared = [
+      stopStanding,
       onSharedResult<SharedNotifs>('notifications', async shared => {
         const existing = new Set(notifications.value.map(n => n.id));
         try { await loadNotifications({ shared }); celebrateNew(existing); } catch { /* the next one */ }
@@ -7005,8 +7008,17 @@ export const useChatStore = defineStore('chat', () => {
   // (Ames 2026-10-25), among the tabs with chat connected; the rest are
   // handed the list. presenceTick runs in every tab so stale names drop.
   const presenceLeader = leadership('pyr-leader-chat');
+  // Only a signed-in tab stands, as for notifications: a signed-out one
+  // holding the lock would send no heartbeat for anyone.
+  let standingWatched = false;
   function startPresenceLoops() {
-    presenceLeader.join();
+    if (!standingWatched) {
+      standingWatched = true;
+      watch(() => useProofreadingBackendStore().userId, id => {
+        if (id && heartbeatTimer) presenceLeader.join(); else presenceLeader.leave();
+      });
+    }
+    if (useProofreadingBackendStore().userId) presenceLeader.join();
     if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader()) void heartbeat(); }, HEARTBEAT_MS);
     if (!staleTimer) staleTimer = setInterval(() => {
       presenceTick.value++;
