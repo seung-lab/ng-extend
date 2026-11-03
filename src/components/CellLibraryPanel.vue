@@ -46,6 +46,7 @@ import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
 import MecMarkStatus from './MecMarkStatus.vue';
+import { mecKindOfLayer } from '../util/mec_marks';
 import { buildState } from '../hunt_build';
 import { datasetLocked, findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -709,6 +710,20 @@ setCastClaimHooks({
   },
   reopen(id) { setWorkingTask(id); },
 });
+/** The lab's MEC marks on screen belong to the claim just left (saved with
+ *  it): a claim opened without a view of its own starts with none. They
+ *  stayed, and counted under the new claim (wolfryder101, report 350: a Super
+ *  Quest showed the 56 Checked of the cell before it). */
+function clearLeftMarks() {
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    if (ml.archived || !mecKindOfLayer(ml.name)) continue;
+    const src = ml.layer?.localAnnotations;
+    if (!src) continue;
+    try {
+      for (const a of [...src]) { const ref = src.getReference(a.id); try { src.delete(ref); } finally { ref.dispose(); } }
+    } catch (e) { console.warn('[cell library] could not clear the marks left from the last claim:', e); }
+  }
+}
 /** Save the view to the claim being worked on. False = stay put. */
 /** Claims completed or released here: finished, whatever the list says yet. */
 const endedClaims = new Set<number>();
@@ -793,9 +808,13 @@ async function switchToClaim(cell: CellRow) {
   // A quest on screen is saved and its layers put away BEFORE the claim's
   // view is saved or opened, so they never end up in the claim (annkri #145).
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
+  const leftId = workingTaskId;
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+  if (!openStartLink(t?.working_link || cell.startLink)) {
+    if (leftId && leftId !== cell.taskId) clearLeftMarks();
+    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+  }
   else void backend.anchorClaimAt(cell.taskId).catch(() => null);
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
@@ -905,10 +924,12 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   // layers (Amy 2026-09-28). Save the claim you were on first.
   const claimed = backend.tasks.find(t => t.segment_id === cell.segId && t.assigned_to === backend.userId
     && (t.status === 'assigned' || t.status === 'in_progress'));
+  const leftId = workingTaskId;
   if (await leaveCurrentWork(claimed?.id ?? null)) {
     // A quest, or a Hunt candidate, has no start view: go to the cell (a candidate's soma, the cell meant:
     // Ames 2026-10-28, report 279).
     if (!openStartLink(cell.startLink) && (cell.quest || (isHuntCandidate(cell) && (cell.nucCoords || cell.somaCoords)))) {
+      if (leftId && leftId !== claimed?.id) clearLeftMarks();
       jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
     }
     if (claimed) setWorkingTask(claimed.id);
