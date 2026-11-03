@@ -150,7 +150,9 @@ GRANT ALL ON public.proofreading_tests, public.proofreading_test_checks, public.
 
 -- What the burger menu may know with the public key: that a test exists and
 -- whether it is free. No answers, no rules beyond the hold.
-CREATE OR REPLACE VIEW public.proofreading_tests_public AS
+-- Runs as the person asking (security_invoker, 2026-11-02: Supabase's
+-- advisor flagged it as a SECURITY DEFINER view). Nothing in the app reads it.
+CREATE OR REPLACE VIEW public.proofreading_tests_public WITH (security_invoker = true) AS
   SELECT id, title, status, claimed_by, expires_at, hold_minutes
   FROM public.proofreading_tests WHERE enabled;
 GRANT SELECT ON public.proofreading_tests_public TO anon, authenticated, service_role;

@@ -469,18 +469,32 @@ const accessGrants = ref<Record<string, string>>({});
  *  access.profileAccess); null until it answers, or when it cannot say. */
 const otherEdit = ref<string[] | null>(null);
 let accessFor = '';
+// Asked once per player per visit, however often the tab is opened (Ames:
+// "make sure to clean up the querying"); the server keeps its CAVE answer
+// 10 minutes as well.
+const accessAsked = new Map<string, Promise<{ grants: Record<string, string>; edit: string[] | null }>>();
+function askAccess(uid: string, other: boolean) {
+  let p = accessAsked.get(uid);
+  if (!p) {
+    p = Promise.all([
+      backendStore.loadAccessGrants(uid),
+      other ? secureWrite<{ edit: string[] | null }>('access.profileAccess', { userId: uid })
+        .then(r => (Array.isArray(r?.edit) ? r.edit : null))
+        .catch(e => { console.warn('[profile] edit access lookup failed:', e?.message || e); return null; }) : Promise.resolve(null),
+    ]).then(([grants, edit]) => ({ grants, edit }));
+    accessAsked.set(uid, p);
+  }
+  return p;
+}
 async function loadAccess() {
   const uid = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
   if (!uid) return;
   if (accessFor !== uid) { accessGrants.value = {}; otherEdit.value = null; }
   accessFor = uid;
-  if (viewingOtherUser.value) {
-    void secureWrite<{ edit: string[] | null }>('access.profileAccess', { userId: uid })
-      .then(r => { if (accessFor === uid) otherEdit.value = Array.isArray(r?.edit) ? r.edit : null; })
-      .catch(e => console.warn('[profile] edit access lookup failed:', e?.message || e));
-  }
-  const got = await backendStore.loadAccessGrants(uid);
-  if (accessFor === uid) accessGrants.value = got;
+  const got = await askAccess(uid, viewingOtherUser.value);
+  if (accessFor !== uid) return;
+  accessGrants.value = got.grants;
+  otherEdit.value = got.edit;
 }
 const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d.id === id)).filter((d): d is DatasetEntry => !!d).map(ds => {
   const at = accessGrants.value[ds.id];
