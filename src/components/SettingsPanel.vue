@@ -770,7 +770,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftAnnotationGems" />
               <span class="nge-settings-toggle-label">Show point annotations as Pyr gems in 3D</span>
             </label>
-            <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer.">
+            <label class="nge-settings-toggle" title="Off: a click on a layer tab, or its number key (1 to 9), makes it the active layer; a right click, or Shift + the number, hides or shows it. On: a click or the number hides or shows it, as in neuroglancer, and Shift + the number makes it the active layer.">
               <input type="checkbox" v-model="draftClassicLayers" />
               <span class="nge-settings-toggle-label">Classic Layers (Click to hide)</span>
             </label>

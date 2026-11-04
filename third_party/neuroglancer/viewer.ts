@@ -729,7 +729,17 @@ export class Viewer extends RefCounted implements ViewerState {
       this.bindAction(`toggle-layer-${i}`, () => {
         const layer = this.layerManager.getLayerByNonArchivedIndex(i - 1);
         if (layer !== undefined) {
-          layer.setVisible(!layer.visible);
+          // nge: with Classic Layers, the plain number hides and shows, and
+          // Shift + the number makes it the active layer: the two swap
+          // (Nseraf, "tab change option").
+          let classic = false;
+          try { classic = JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').classicLayerClicks === true; } catch { /* default */ }
+          if (classic) {
+            this.selectedLayer.layer = layer;
+            this.selectedLayer.visible = true;
+          } else {
+            layer.setVisible(!layer.visible);
+          }
         }
       });
       this.bindAction(`toggle-pick-layer-${i}`, () => {

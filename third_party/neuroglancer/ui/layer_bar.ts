@@ -210,7 +210,7 @@ class LayerWidget extends RefCounted {
       if (l === layer) break;
     }
     const keys = n >= 1 && n <= 9 && !layer.archived
-        ? (classicLayerClicks() ? `. Key ${n}: on/off` : `. Key ${n}: activate. Shift+${n}: on/off`) : '';
+        ? (classicLayerClicks() ? `. Key ${n}: on/off. Shift+${n}: activate` : `. Key ${n}: activate. Shift+${n}: on/off`) : '';
     element.title = (classicLayerClicks()
         ? 'Left click to toggle on/off, right click to activate'
         : toggles2D(layer) ? 'Click to show or hide the 2D view, right click to toggle the layer on/off'
