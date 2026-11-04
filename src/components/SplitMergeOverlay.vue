@@ -439,7 +439,7 @@ function cancelTool() {
             <!-- Clears a piece from view; never edits (src/util/scythe.ts). -->
             <button v-if="!tutorialOnScreen" type="button" role="switch" class="nge-smo-reap" :class="{ 'is-on': reapAfterCut }" :aria-checked="reapAfterCut"
                     @click="setReapAfterCut(!reapAfterCut)"
-                    title="On: after each cut, your next click on a piece in 3D reaps it from view, then the cursor goes back to normal. Ctrl+Z brings a piece back. Shift+R takes up the scythe any time.">
+                    title="Shift+R: take up the scythe, or put it away. On: after each cut, your next click on a piece in 3D reaps it from view. Turning it off puts the scythe away. Ctrl+Z brings a piece back.">
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 22 L11 4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M12 3 C7 1.5 2.5 5.5 1 13 C4.5 9 8.5 7.5 14 7 Z" fill="#fff"/></svg>
               Scythe reap
               <span class="nge-smo-reap-track"><span class="nge-smo-reap-knob"></span></span>
