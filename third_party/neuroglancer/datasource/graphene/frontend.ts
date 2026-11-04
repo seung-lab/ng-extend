@@ -1437,6 +1437,8 @@ async function parseGrapheneError(e: HttpError) {
 async function withErrorMessageHTTP(promise: Promise<Response>, options: {
     initialMessage?: string,
     errorPrefix: string,
+    /** nge: the error bar it leaves up, so the caller can take it down. */
+    onErrorStatus?: (status: StatusMessage) => void,
   }): Promise<Response> {
     let status: StatusMessage|undefined = undefined;
     let dispose = () => {};
@@ -1458,6 +1460,7 @@ async function withErrorMessageHTTP(promise: Promise<Response>, options: {
         }
         status.setErrorMessage(errorPrefix + msg);
         status.setVisible(true);
+        options.onErrorStatus?.(status);
         throw new Error(`[${e.response.status}] ${errorPrefix}${msg}`);
       }
       // nge: a request that was stopped (Find Path closed, or too slow) or
@@ -1467,6 +1470,9 @@ async function withErrorMessageHTTP(promise: Promise<Response>, options: {
       throw e;
     }
 }
+
+/** nge: the error bar the last refused cut left up, if any. */
+let ngeLastSplitError: StatusMessage|undefined;
 
 export const GRAPH_SERVER_NOT_SPECIFIED = Symbol('Graph Server Not Specified.');
 
@@ -1599,6 +1605,11 @@ class GrapheneGraphServerInterface {
                ...x.position.map((val, i) => val * annotationToNanometers[i])])
     };
     ngeRefuseEdit('split', [...first, ...second].map(x => x.rootId), splitBody);
+    // nge: a refused cut's "Split failed" bar stayed up after the next cut
+    // went through, so a cut that worked looked like it failed (Ames
+    // 2026-11-04). Each new cut takes the last one's error down.
+    ngeLastSplitError?.dispose();
+    ngeLastSplitError = undefined;
 
     const promise =
         cancellableFetchSpecialOk(
@@ -1610,7 +1621,8 @@ class GrapheneGraphServerInterface {
 
     const response = await withErrorMessageHTTP(promise, {
       initialMessage: `Splitting ${first.length} sources from ${second.length} sinks`,
-      errorPrefix: 'Split failed: '
+      errorPrefix: 'Split failed: ',
+      onErrorStatus: status => { ngeLastSplitError = status; },
     });
     const jsonResp = await response.json();
     ngeGraphEdit('split', url, jsonResp);
@@ -2240,12 +2252,19 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
         multicutState.reset();
       }
     }));
+    // nge: one cut at a time. Enter pressed twice, or Enter and the button,
+    // sent the same cut twice: the first went through and the second was
+    // refused, so a cut that worked showed "Split failed" (Ames 2026-11-04).
+    let cutSending = false;
     const submitAction = async () => {
+      if (cutSending) return;
+      cutSending = true;
       submitIcon.classList.toggle('disabled', true);
       const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
       const annotationToNanometers =
           loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
       graphConnection.submitMulticut(annotationToNanometers).then(success => {
+        cutSending = false;
         submitIcon.classList.toggle('disabled', false);
         // nge: the cut bar shows how it went (in place, when the tool stays).
         window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success}}));
@@ -2257,6 +2276,7 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
       }, () => {
         // The server refused or failed: the status bar has said why. The
         // Submit icon comes back so the next try can go.
+        cutSending = false;
         submitIcon.classList.toggle('disabled', false);
         window.dispatchEvent(new CustomEvent('nge-cut-submitted', {detail: {success: false}}));
       });
