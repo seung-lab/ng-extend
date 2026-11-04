@@ -37,7 +37,9 @@ const FIRST_MS = [60_000, 120_000], EVERY_MS = [7 * 60_000, 12 * 60_000];
 const BOX = 190, SPEED = 95; // px and px per second
 const STOP_MS = 2600;
 
-export function turkeySeason(): boolean { return thanksgivingWeek(); }
+// PREVIEW ONLY (branch turkey-preview, never merged): ?turkey in the address
+// makes it Thanksgiving week, to see the turkey before the 22nd.
+export function turkeySeason(): boolean { return thanksgivingWeek() || /[?&]turkey/.test(location.search); }
 
 export function turkeyHidden(): boolean {
   try { return useUserPreferencesStore().prefs.hideTurkey === true; } catch { return false; }
