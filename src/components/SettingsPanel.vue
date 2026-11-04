@@ -72,7 +72,7 @@ function toggleFamily(id: string) {
   draftColorFamilies.value = on ? draftColorFamilies.value.filter(x => x !== id) : [...draftColorFamilies.value, id];
 }
 const PULSE_COLORS = [
-  { value: '', label: "Each cell's own colour: a blue cell pulses light blue" }, { value: '#59d8ff', label: 'Electric blue' },
+  { value: '', label: "Each cell's own color: a blue cell pulses light blue" }, { value: '#59d8ff', label: 'Electric blue' },
   { value: '#ffffff', label: 'White' }, { value: '#ffd34d', label: 'Gold' }, { value: '#ff6fd8', label: 'Pink' },
   { value: '#6dff8a', label: 'Green' }, { value: '#b48cff', label: 'Purple' }, { value: '#ff5a4f', label: 'Red' },
 ];
@@ -601,8 +601,8 @@ const props = defineProps<{ embedded?: boolean }>();
                 <option value="none">None</option>
               </select>
             </label>
-            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="The colour of the light that runs along the cell, with the Pulse look and with the P key.">
-              <span class="nge-settings-toggle-label">Pulse colour</span>
+            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="The color of the light that runs along the cell, with the Pulse look and with the P key.">
+              <span class="nge-settings-toggle-label">Pulse color</span>
               <div class="nge-pulse-swatches">
                 <button v-for="c in PULSE_COLORS" :key="c.value" type="button" class="nge-pulse-swatch"
                         :class="{ 'nge-pulse-swatch--own': !c.value, 'nge-pulse-swatch--on': draftPulseColor === c.value }"
@@ -617,8 +617,8 @@ const props = defineProps<{ embedded?: boolean }>();
             <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
             <!-- Preferred colour families (Nseraf, report 359): cells only take
                  colours from the families switched on (util/color_families.ts). -->
-            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="Cells take their colours only from the families you switch on, so annotations in other colours stay easy to see. L picks new colours within them. None on: the usual colours.">
-              <span class="nge-settings-toggle-label">Cell colours</span>
+            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="Cells take their colors only from the families you switch on, so annotations in other colors stay easy to see. L picks new colors within them. None selected: all the colors.">
+              <span class="nge-settings-toggle-label">Cell colors</span>
               <div class="nge-pulse-swatches">
                 <button v-for="f in COLOR_FAMILIES" :key="f.id" type="button" class="nge-pulse-swatch nge-family-swatch"
                         :class="{ 'nge-pulse-swatch--on': draftColorFamilies.includes(f.id) }"
@@ -626,7 +626,7 @@ const props = defineProps<{ embedded?: boolean }>();
                         :aria-pressed="draftColorFamilies.includes(f.id)" @click="toggleFamily(f.id)"></button>
               </div>
             </div>
-            <p class="nge-settings-hint nge-pulse-hint">{{ draftColorFamilies.length ? 'New cells only take colours from the families switched on. L picks again within them.' : 'Switch on the colour families you like, and cells only take those colours. None on: the usual colours.' }}</p>
+            <p class="nge-settings-hint nge-pulse-hint">{{ draftColorFamilies.length ? 'Cells only take colors from the families switched on. L picks again within them.' : 'Switch on the color families you like, and cells only take those colors. None selected: all the colors.' }}</p>
             <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
               <input type="checkbox" v-model="draftPumpkin" />
               <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
