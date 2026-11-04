@@ -68,3 +68,19 @@ test('a report: a Slack reply in its thread counts', () => {
 test('tags from before the start are never chased', () => {
   assert.equal(waitingTags([tagNote(60)], WED).length, 0);
 });
+
+test('due after 6 pm: nothing that evening, the ping comes at 9 am the next weekday', async () => {
+  const card = { id: CARD, title: 'x', list: 'doing', comments: [] };
+  // Tagged Wednesday 7 pm Eastern: due Thursday 7 pm.
+  const tagAt = Date.parse('2026-11-04T19:00:00-05:00');
+  const note = { ...tagNote(0, tagAt) };
+  const run = async (when) => { const w = world({ notes: [note], card }); w.io.now = Date.parse(when); return nudgeWaitingTags(w.io); };
+  assert.equal(await run('2026-11-05T19:30:00-05:00'), 0, 'Thursday 7:30 pm');
+  assert.equal(await run('2026-11-06T08:50:00-05:00'), 0, 'Friday 8:50 am');
+  assert.equal(await run('2026-11-06T09:05:00-05:00'), 1, 'Friday 9:05 am');
+  // Due Friday evening: Monday 9 am.
+  const fri = { ...tagNote(0, Date.parse('2026-11-05T19:00:00-05:00')) };
+  const runF = async (when) => { const w = world({ notes: [fri], card }); w.io.now = Date.parse(when); return nudgeWaitingTags(w.io); };
+  assert.equal(await runF('2026-11-07T10:00:00-05:00'), 0, 'Saturday');
+  assert.equal(await runF('2026-11-09T09:05:00-05:00'), 1, 'Monday 9:05 am');
+});
