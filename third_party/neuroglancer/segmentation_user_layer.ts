@@ -769,6 +769,8 @@ export class SegmentationUserLayer extends Base {
           kept.clear();
         }
         this.displayState.segmentationColorGroupState.value.segmentColorHash.randomize();
+        // nge: preferred colour families pick again (src/util/color_families.ts).
+        try { window.dispatchEvent(new CustomEvent('nge-recolor')); } catch { /* no window */ }
         break;
       }
       case 'clear-segments': {
