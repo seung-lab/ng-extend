@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { pumpkinSeason } from '../util/pumpkin';
 import { turkeySeason } from '../util/turkey';
+import { leavesSeason } from '../util/leaves';
 import {ref, onMounted, onUnmounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
@@ -83,6 +84,7 @@ const draftUndeleteCounter = ref(false);
 const draftShowRadio = ref(true);
 const draftPumpkin = ref(true);
 const draftTurkey = ref(true);
+const draftLeaves = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftParticles = ref(true);
@@ -158,6 +160,7 @@ onMounted(() => {
   draftShowRadio.value = prefsStore.prefs.hideRadio !== true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftTurkey.value = prefsStore.prefs.hideTurkey !== true;
+  draftLeaves.value = prefsStore.prefs.hideLeaves !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftParticles.value = prefsStore.prefs.pointParticles !== false;
@@ -236,7 +239,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -634,6 +637,10 @@ const props = defineProps<{ embedded?: boolean }>();
             <label v-if="turkeySeason()" class="nge-settings-toggle" title="For Thanksgiving week, now and then a turkey walks along the bottom of the screen, stops to gobble, and walks off. Click it to make it hop. Off: no turkey. The turkey button by the chat box turns him off and on too. Calm screen keeps him away.">
               <input type="checkbox" v-model="draftTurkey" />
               <span class="nge-settings-toggle-label">Show the Thanksgiving turkey</span>
+            </label>
+            <label v-if="leavesSeason()" class="nge-settings-toggle" title="In the fall, now and then a few autumn leaves drift down from the top of the screen. They never block a click. Off: no leaves. Calm screen keeps them away too.">
+              <input type="checkbox" v-model="draftLeaves" />
+              <span class="nge-settings-toggle-label">Falling leaves</span>
             </label>
             <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
               <input type="checkbox" v-model="draftCalm" />

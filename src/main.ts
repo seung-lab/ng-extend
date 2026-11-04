@@ -20,6 +20,7 @@ import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startPointParticles } from './util/point_particles';
 import { startTurkey } from './util/turkey';
+import { startLeaves } from './util/leaves';
 import { startTabs } from './util/tabs';
 import { showOutageBanner } from './util/outage_banner';
 import { startPanelFront } from './util/panel_front';
@@ -443,6 +444,7 @@ function setupViewer() {
   startScytheControls();
   startPointParticles();
   startTurkey();
+  startLeaves();
   startInvalidSegmentWatch(viewer);
   recoverCellHistory();
   startAnnotationClickSelect(viewer);

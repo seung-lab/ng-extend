@@ -1,6 +1,8 @@
 /**
  * Pyr's calendar of seasonal touches (Ames 2026-11-02).
  *
+ * - Fall (22 September to the end of Thanksgiving week): leaves fall from
+ *   the top of the screen now and then (src/util/leaves.ts).
  * - Thanksgiving week: the turkey walks along the bottom of the screen
  *   (src/util/turkey.ts).
  * - The point particles take a seasonal shape (Nseraf's idea, report #342):
@@ -35,6 +37,12 @@ export function thanksgivingWeek(now = seasonToday()): boolean {
   const t = thanksgiving(now.getFullYear()), d = t.getDate();
   const from = dayStart(now.getFullYear(), 10, d - 4), to = dayStart(now.getFullYear(), 10, d + 4);
   return now.getTime() >= from && now.getTime() < to;
+}
+
+/** Fall, for the falling leaves: 22 September to the end of Thanksgiving week. */
+export function fallSeason(now = seasonToday()): boolean {
+  const y = now.getFullYear(), t = now.getTime();
+  return t >= dayStart(y, 8, 22) && t < dayStart(y, 10, thanksgiving(y).getDate() + 4);
 }
 
 /** Easter Sunday (Western), worked out for any year (the Gregorian computus). */
