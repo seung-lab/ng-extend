@@ -146,7 +146,9 @@ const contextHint = computed(() => {
     return touch ? 'Tap to add more points' : 'Ctrl+Click to add more points';
   }
   if (isMerge.value && !store.pendingClose) {
-    if (store.mergeSubmissionCount === 0) return touch ? 'Tap two segments to draw a merge line' : 'Ctrl+Click on two segments to draw a merge line';
+    if (store.mergeSubmissionCount === 0) return touch ? 'Tap two segments to draw a merge line'
+      : prefsStore.prefs.quickMergeKey === true ? 'Point at a piece and press M, then the other piece and M (or Ctrl+Click both)'
+      : 'Ctrl+Click on two segments to draw a merge line';
     return `${store.mergeSubmissionCount} merge${store.mergeSubmissionCount !== 1 ? 's' : ''} queued`;
   }
   return '';
@@ -476,6 +478,7 @@ function cancelTool() {
               auto-submit
             </label>
             <span v-if="!isTouchRef" class="nge-smo-key-hint"><kbd>Ctrl+Click</kbd> Set points</span>
+            <span v-if="!isTouchRef && prefsStore.prefs.quickMergeKey === true" class="nge-smo-key-hint"><kbd>M</kbd> Point at a piece</span>
           </div>
 
           <button v-if="queueMin && hasMergeSegments" class="nge-smo-action-btn nge-smo-queue-chip" @click="setQueueMin(false)"
