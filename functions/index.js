@@ -1476,14 +1476,15 @@ const ISSUE_EMOJI = {
 // Slack reads <...> as a mention or a link and & as an entity: a report's
 // own words must never ping a channel or hide a link (Ames 2026-10-24).
 const slackText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-async function postIssueToSlack(token, raw) {
+// A new player report no longer tags Amy and Celia (Ames 2026-11-04: "I'm
+// mostly updating them via triage now"); access requests still do.
+async function postIssueToSlack(token, raw, { mention = false } = {}) {
   const issue = { ...raw, title: raw.title && slackText(raw.title), message: raw.message && slackText(raw.message),
     user: raw.user && slackText(raw.user), dataset: raw.dataset && slackText(raw.dataset), url: raw.url && slackText(raw.url) };
   try {
     const channel = await resolveReviewChannel(token);
     if (!channel) { console.error("[issue] review channel not found"); return; }
-    const mentionIds = await resolveReviewMentionIds(token);
-    const mentions = mentionIds.map((id) => `<@${id}>`).join(" ");
+    const mentions = mention ? (await resolveReviewMentionIds(token)).map((id) => `<@${id}>`).join(" ") : "";
     const emoji = ISSUE_EMOJI[issue.category] || ISSUE_EMOJI.Other;
     const lines = [
       `${emoji} *New site issue submitted* — _${issue.category}_`,
@@ -2379,7 +2380,7 @@ async function visitorBetaRequest(req, res, args) {
   const sb = ewSb(ewServiceKey.value().trim());
   try {
     const data = await require("./access-request").visitorBeta(args, { sb, wake: wakeBetaBoard,
-      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
+      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p, { mention: true }),
       notifyAdmins: async ({ title, body }) => {
         const rows = (await adminUserIds(sb)).map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500),
           target_type: "user", target_id: id, send_at: new Date().toISOString(), created_by: null }));
@@ -2440,7 +2441,7 @@ exports.ewAccessRequest = onRequest(
           } catch (e) { return null; }
         },
         // Beta access requests post like any report (Ames 2026-10-24).
-        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
+        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p, { mention: true }),
         notifyReviewers: async ({ title, body, image }) => {
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
