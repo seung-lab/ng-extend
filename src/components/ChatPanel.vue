@@ -32,6 +32,8 @@ import { currentDatasetTag } from '../datasets';
 import { huntNoteNow } from '../hunt';
 import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpkins } from '../util/pumpkin';
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
+import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
+import { leavesSeason, toggleLeaves, leavesHidden } from '../util/leaves';
 // The pumpkin button (Ames 2026-10-20): opens the field report card, which
 // hides or shows the pumpkins, goes to the patch, or hands out the hammer
 // (Ames 2026-10-25: "will there be a popup with hide pumpkin, go to the
@@ -48,6 +50,11 @@ function onPumpkin() { askPatch.value = true; }
 function togglePatch() { askPatch.value = false; togglePumpkin(); }
 function goToPatch() { askPatch.value = false; visitPumpkinPatch(); }
 function smashPatch() { askPatch.value = false; smashPumpkins(); }
+const showTurkeyBtn = turkeySeason();
+// The leaf button, in the fall; the turkey's takes its place in Thanksgiving week.
+const showLeavesBtn = leavesSeason() && !showTurkeyBtn;
+function leavesTitle(): string { return leavesHidden() ? 'Bring back the falling leaves' : 'Stop the falling leaves'; }
+function turkeyTitle(): string { return turkeyHidden() ? 'Bring the turkey back' : 'Send the turkey away'; }
 
 const emit = defineEmits({ hide: null });
 const chatStore = useChatStore();
@@ -1840,6 +1847,13 @@ function toggleCollapse() {
             <button v-if="showPumpkinBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: pumpkinOff() }"
                     @mousedown.prevent @click.stop="onPumpkin()" :title="pumpkinTitle()" :aria-label="pumpkinTitle()">🎃</button>
             <PumpkinPatchPrompt v-if="askPatch" @yes="goToPatch()" @no="askPatch = false" @smash="smashPatch()" @toggle="togglePatch()" />
+            <!-- The turkey button (Ames 2026-11-02), Thanksgiving week only:
+                 the turkey on and off, grey while off, as the pumpkin's is. -->
+            <button v-if="showTurkeyBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: turkeyHidden() }"
+                    @mousedown.prevent @click.stop="toggleTurkey()" :title="turkeyTitle()" :aria-label="turkeyTitle()">🦃</button>
+            <!-- The leaf button (Ames 2026-11-04), in the fall: leaves off and on. -->
+            <button v-if="showLeavesBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: leavesHidden() }"
+                    @mousedown.prevent @click.stop="toggleLeaves()" :title="leavesTitle()" :aria-label="leavesTitle()">🍁</button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"

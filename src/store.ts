@@ -1084,6 +1084,12 @@ export interface UserPreferences {
   /** Hide the Halloween pumpkin on the Sandbox cell (src/util/pumpkin.ts).
    *  Defaults to false: the pumpkin shows in season. */
   hidePumpkin?: boolean;
+  /** Hide the Thanksgiving turkey (src/util/turkey.ts). Defaults to false:
+   *  it walks by in Thanksgiving week. */
+  hideTurkey?: boolean;
+  /** Hide the falling autumn leaves (src/util/leaves.ts). Defaults to false:
+   *  they fall now and then in the fall. */
+  hideLeaves?: boolean;
   /** The tab the Cell Library opens on (Nik 2026-10-09). Unset: My Cells. */
   cellLibraryStartTab?: 'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links';
   /** Jumping to a cell ADDS it to the view instead of replacing what is

@@ -121,6 +121,19 @@ body.nge-fp-found .graphene-find-path > .neuroglancer-icon:first-child { animati
   50%      { box-shadow: 0 0 0 6px rgba(200, 164, 255, 0); }
 }
 
+/* Cancel (find_path_status.ts): the Cut and Merge bars' key chip. */
+.graphene-find-path > .nge-fp-cancel { gap: 6px; }
+.graphene-find-path > .nge-fp-cancel kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.3);
+  font: 600 9.5px 'Inter', sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+@media (hover: none) and (pointer: coarse) { .graphene-find-path > .nge-fp-cancel kbd { display: none; } }
+
 /* Precision mode: a toggle pill. The checkbox itself stays neuroglancer's. */
 .graphene-find-path > label {
   display: inline-flex !important;

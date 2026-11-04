@@ -20,6 +20,8 @@ import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
 import { startPointParticles } from './util/point_particles';
+import { startTurkey } from './util/turkey';
+import { startLeaves } from './util/leaves';
 import { startTabs } from './util/tabs';
 import { showOutageBanner } from './util/outage_banner';
 import { startPanelFront } from './util/panel_front';
@@ -230,7 +232,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // LoginModal doesn't fire — e.g. already authenticated or bypass).
   autoSelectSegLayer(viewer);
 
-  // Escape key handler: exit split/merge tools.
+  // Escape key handler: exit split/merge tools and Find Path.
   //
   // Attached to BOTH window and document in capture phase so we win against
   // NG's own keybinder no matter how the bubbling resolves. We also check the
@@ -243,7 +245,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const store = useSplitMergeOverlayStore();
     const toolDomPresent = !!(
       document.querySelector('.graphene-multicut') ||
-      document.querySelector('.graphene-merge-segments')
+      document.querySelector('.graphene-merge-segments') ||
+      document.querySelector('.graphene-find-path')
     );
     console.debug('[esc]', e.key, 'toolActive=', store.toolActive, 'toolDom=', toolDomPresent);
     if (!store.toolActive && !toolDomPresent) return;
@@ -443,6 +446,8 @@ function setupViewer() {
   startPumpkin(viewer);
   startScytheControls();
   startPointParticles();
+  startTurkey();
+  startLeaves();
   startInvalidSegmentWatch(viewer);
   recoverCellHistory();
   startAnnotationClickSelect(viewer);

@@ -1172,6 +1172,46 @@ const scopedIdentifiedFailed = ref(false);
 let scopedIdentifiedReq = 0;
 const SANDBOX_CANON = new Set(DATASETS.filter(d => d.section === 'sandbox').map(d => canonicalDataset(d.id)));
 const NOT_A_TYPE = /^\s*$|unknown|unsure|not sure|unclear/i;
+
+/** Every row of a query, 1,000 a request (PostgREST's cap), three requests at
+ *  a time instead of one after another: a player with 3,000 cells waited on
+ *  three trips in a row before the Overview could show anything (Ames
+ *  2026-11-04, Nseraf's profile). */
+async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data: any[] | null; error: any }>): Promise<T[]> {
+  const PAGE = 1000, AT_ONCE = 3;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE * AT_ONCE) {
+    const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE, from + (i + 1) * PAGE - 1)));
+    for (const { data, error } of got) {
+      if (error) throw error;
+      out.push(...(data ?? []));
+      if (!data || data.length < PAGE) return out;
+    }
+  }
+}
+
+// The Overview's numbers from the last visit to this profile, kept in this
+// browser, so they show as it opens and the fresh ones replace them when they
+// arrive (Ames 2026-11-04: "a long delay in loading cell completions and the
+// next stage"). Only for showing: nothing is saved from them.
+interface OverviewKept {
+  cells?: { today: number; week: number; all: number }; cellDays?: EffortDay[]; cellsDay?: string;
+  rows?: Array<{ cell: string; done_at: string; dataset: string }>;
+  edits?: { today: EditWindow; week: EditWindow; all: EditWindow }; editDays?: EffortDay[]; editsDay?: string;
+}
+const KEPT_KEY = 'nge-profile-overview:';
+function readKept(uid: string): OverviewKept {
+  try { return JSON.parse(localStorage.getItem(KEPT_KEY + uid) || '{}') || {}; } catch { return {}; }
+}
+function keep(uid: string, part: OverviewKept) {
+  try { localStorage.setItem(KEPT_KEY + uid, JSON.stringify({ ...readKept(uid), ...part })); } catch { /* full or private */ }
+}
+/** A curve's days, left as they are when the fresh ones match the kept
+ *  copy, so the curve does not draw itself a second time. */
+function setDays(target: { value: EffortDay[] | null }, days: EffortDay[]) {
+  if (target.value && JSON.stringify(target.value) === JSON.stringify(days)) return;
+  target.value = days;
+}
 async function loadScopedIdentifications() {
   const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
   const req = ++scopedIdentifiedReq;
@@ -1179,18 +1219,12 @@ async function loadScopedIdentifications() {
   if (!uid) { scopedIdentified.value = null; return; }
   try {
     const { supabase } = await import('../supabase');
-    const rows: Array<{ segment_after: string | null; dataset: string | null; success: boolean | null; metadata: any }> = [];
-    const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('edit_log')
+    const rows = await allRows<{ segment_after: string | null; dataset: string | null; success: boolean | null; metadata: any }>((a, b) =>
+      supabase.from('edit_log')
         .select('segment_after, dataset, success, metadata')
         .eq('user_id', uid).eq('operation', 'set_cell_type')
         .order('id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+        .range(a, b));
     if (req !== scopedIdentifiedReq) return;
     const latest = new Map<string, string>();  // oldest first, so the last word on a cell wins
     for (const r of rows) {
@@ -1241,6 +1275,28 @@ function denseDays(stamps: number[], weights?: number[]): EffortDay[] {
   return out;
 }
 
+/** A kept copy's windows. Today and the past 7 days move on with the clock,
+ *  so a copy from another day shows only its all time number (the others at
+ *  0) until the fresh ones arrive. */
+function keptWindows<W>(w: { today: W; week: W; all: W }, sameDay: boolean, zero: W) {
+  return sameDay ? w : { today: zero, week: zero, all: w.all };
+}
+function showKeptEdits(uid: string) {
+  if (scopedEdits.value) return;  // already showing this player's numbers
+  const k = readKept(uid);
+  if (!k.edits) return;
+  scopedEdits.value = keptWindows(k.edits, k.editsDay === localDay(Date.now()), { edits: 0, merges: 0, splits: 0 });
+  scopedEditDays.value = k.editDays ?? null;
+}
+function showKeptCells(uid: string) {
+  if (scopedCells.value) return;
+  const k = readKept(uid);
+  if (!k.cells) return;
+  scopedCells.value = keptWindows(k.cells, k.cellsDay === localDay(Date.now()), 0);
+  scopedCellDays.value = k.cellDays ?? null;
+  scopedCompletionRows.value = k.rows ?? null;
+}
+
 async function loadScopedEdits() {
   refreshActiveDatasetCanon();
   const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
@@ -1252,6 +1308,7 @@ async function loadScopedEdits() {
   // Sandbox profile said 0). Only the game's own log, as before.
   void canon;
   if (!uid) { scopedEdits.value = null; scopedEditDays.value = null; return; }
+  showKeptEdits(uid);
   try {
     // The player's hourly totals (Ames 2026-10-25: reading every edit on
     // every open was a large share of the database's load). An hour's edits
@@ -1275,23 +1332,18 @@ async function loadScopedEdits() {
         for (const w of wins) { w.edits += n; w.merges += h.merges; w.splits += h.splits; }
       }
       scopedEdits.value = out;
-      scopedEditDays.value = denseDays(stamps, weights);
+      setDays(scopedEditDays, denseDays(stamps, weights));
+      keep(uid, { edits: out, editDays: scopedEditDays.value, editsDay: localDay(Date.now()) });
       return;
     }
     // Before the hourly totals exist (supabase-db-load.sql step 6): every edit.
     const { supabase } = await import('../supabase');
-    const rows: Array<{ operation: string; timestamp: string; success: boolean | null }> = [];
-    const PAGE = 1000;  // PostgREST's default row cap per request
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('edit_log')
+    const rows = await allRows<{ operation: string; timestamp: string; success: boolean | null }>((a, b) =>
+      supabase.from('edit_log')
         .select('operation, timestamp, success')
         .eq('user_id', uid).in('operation', ['merge', 'split'])
         .order('id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+        .range(a, b));
     if (req !== scopedEditsReq) return;  // a newer load superseded this one
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const weekAgo = Date.now() - 7 * 86400000;
@@ -1311,7 +1363,7 @@ async function loadScopedEdits() {
       }
     }
     scopedEdits.value = out;
-    scopedEditDays.value = denseDays(stamps);
+    setDays(scopedEditDays, denseDays(stamps));
   } catch (e) {
     if (req !== scopedEditsReq) return;
     console.warn('[profile] per-dataset edits failed, showing all datasets:', e);
@@ -1332,17 +1384,12 @@ async function loadScopedCompletions() {
   scopedCellsFailed.value = false;
   void canon;
   if (!uid) { scopedCells.value = null; scopedCellDays.value = null; scopedCompletionRows.value = null; return; }
+  showKeptCells(uid);
   try {
     const { supabase } = await import('../supabase');
-    const rows: Array<{ dataset: string; cell: string; done_at: string }> = [];
-    const PAGE = 1000;  // PostgREST's default row cap per request
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell,done_at')
-        .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+    const rows = await allRows<{ dataset: string; cell: string; done_at: string }>((a, b) =>
+      supabase.from('ew_cell_completions').select('dataset,cell,done_at')
+        .eq('user_id', uid).order('cell', { ascending: true }).range(a, b));
     if (req !== scopedCellsReq) return;  // a newer load superseded this one
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const weekAgo = Date.now() - 7 * 86400000;
@@ -1359,8 +1406,10 @@ async function loadScopedCompletions() {
       if (t >= startOfToday.getTime()) out.today++;
     }
     scopedCells.value = out;
-    scopedCellDays.value = denseDays(stamps);
+    setDays(scopedCellDays, denseDays(stamps));
     scopedCompletionRows.value = kept.sort((a, b) => b.t - a.t).map(r => ({ cell: r.cell, done_at: r.done_at, dataset: r.dataset }));
+    // The newest rows are enough for the Recently completed list.
+    keep(uid, { cells: out, cellDays: scopedCellDays.value, rows: scopedCompletionRows.value.slice(0, 40), cellsDay: localDay(Date.now()) });
   } catch (e) {
     if (req !== scopedCellsReq) return;
     console.warn('[profile] per-dataset completions failed:', e);

@@ -69,7 +69,7 @@ export const PYR_KEYS: PyrKey[] = [
   { keys: ['shift+keyf'], label: 'Flight mode', group: 'Tools', owner: 'ExtensionBar', hidden: true },
   { keys: ['shift+keyr'], label: 'Scythe reap on or off', group: 'Tools', owner: 'scythe', where: '3D' },
   { keys: ['keyp'], label: 'Send a pulse along the cell under the mouse', group: 'Tools', owner: 'pulse_key', where: '3D' },
-  { keys: ['escape'], label: 'Leave the merge or cut tool', group: 'Tools', owner: 'main' },
+  { keys: ['escape'], label: 'Leave the merge, cut or Find Path tool', group: 'Tools', owner: 'main' },
   ...UNDELETE_KEYS.map(k => ({ ...k, group: 'Editing' as const, owner: 'undelete' })),
   { keys: ['delete', 'backspace'], label: 'Remove the cells picked in the list', group: 'Editing', owner: 'drag_reorder', where: 'Cells picked in the list', scoped: true },
   { keys: ['control+shift+keyc'], label: 'Mark the selected cell complete', group: 'Editing', owner: 'CommandPalette' },
