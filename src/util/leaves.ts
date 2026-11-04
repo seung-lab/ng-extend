@@ -31,7 +31,7 @@ import { AUTUMN, leafShapes, leafVein, pick } from './leaf_shapes';
 // Every five to ten minutes (Ames 2026-11-04).
 const FIRST_MS = [25_000, 50_000], EVERY_MS = [5 * 60_000, 10 * 60_000];
 /** How many may rest on the chat box at once, and for how long. */
-const MAX_RESTING = 7, REST_MS = [15_000, 30_000];
+const MAX_RESTING = 10, REST_MS = [15_000, 30_000];
 
 export function leavesSeason(): boolean { return fallSeason(); }
 
@@ -72,16 +72,17 @@ function newLeaf(kind: Kind, x: number, y: number, size: number): Leaf {
   };
 }
 
-/** The chat box leaves land on: the whole chat panel while it is open, or
- *  just its input bar while it sits quiet. Only one sitting low on screen. */
+/** The chat box leaves land on: the top of the whole chat panel while it is
+ *  open, however tall (Ames 2026-11-04: "I thought they were supposed to land
+ *  on top of chat!"), or its input bar while it sits quiet. */
 function chatBox(): DOMRect | null {
-  const low = (el: Element | null) => {
+  const shown = (el: Element | null) => {
     const r = el?.getBoundingClientRect();
-    return r && r.width && r.top > window.innerHeight * 0.55 ? r : null;
+    return r && r.width && r.top > 40 ? r : null;
   };
   const panel = document.querySelector('.nge-chat-float');
-  const open = panel && !panel.classList.contains('nge-chat-float--quiet') && !panel.classList.contains('nge-chat-float--collapsed') ? low(panel) : null;
-  return open ?? low(document.querySelector('.nge-chat-input-wrap'));
+  const open = panel && !panel.classList.contains('nge-chat-float--quiet') && !panel.classList.contains('nge-chat-float--collapsed') ? shown(panel) : null;
+  return open ?? shown(document.querySelector('.nge-chat-input-wrap'));
 }
 
 function blow(l: Leaf, dir = Math.random() < 0.5 ? -1 : 1) {
@@ -204,8 +205,20 @@ export function shower() {
     l.fall = 75 + Math.random() * 55;
     l.sway = 18 + Math.random() * 40;
     l.freq = 0.5 + Math.random() * 0.7;
-    l.lands = Math.random() < 0.45;
+    l.lands = Math.random() < 0.8;
     leaves.push(l);
+  }
+  // A few more over the chat box, so a little pile always gathers there.
+  const box = chatBox();
+  if (box) {
+    for (let i = 0; i < 4; i++) {
+      const l = newLeaf('fall', box.left + 20 + Math.random() * Math.max(0, box.width - 40), -30 - Math.random() * H * 0.5, 18 + Math.random() * 16);
+      l.fall = 75 + Math.random() * 55;
+      l.sway = 8 + Math.random() * 12;
+      l.freq = 0.5 + Math.random() * 0.7;
+      l.lands = true;
+      leaves.push(l);
+    }
   }
   run();
 }
