@@ -202,7 +202,7 @@ const path = require('path');
 const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
 const DEV_OUT = path.join(__dirname, '..', 'dist', 'dev', 'center-art');
 // 'loyalty' is copied only while LOYALTY_ENABLED is true (src/widgets/badge_definitions.ts).
-for (const track of ['building', 'exploration', 'loyalty']) {
+for (const track of ['building', 'exploration', 'loyalty', 'legacy-building', 'legacy-exploration']) {
   const srcDir = path.join(BADGE_ART, track);
   const destDir = path.join(DEV_OUT, track);
   if (fs.existsSync(srcDir)) {
@@ -228,6 +228,15 @@ if (fs.existsSync(HALLOWEEN)) {
     if (file.endsWith('.glb')) fs.copyFileSync(path.join(HALLOWEEN, file), path.join(dest, file));
   }
   console.log(`Copied Halloween models → ${dest}`);
+}
+
+// ── The Thanksgiving turkey (src/util/turkey.ts fetches /thanksgiving/*) ────
+const THANKSGIVING = path.join(__dirname, '..', 'static', 'thanksgiving');
+if (fs.existsSync(THANKSGIVING)) {
+  const dest = path.join(__dirname, '..', 'dist', 'dev', 'thanksgiving');
+  fs.mkdirSync(dest, { recursive: true });
+  for (const file of fs.readdirSync(THANKSGIVING)) fs.copyFileSync(path.join(THANKSGIVING, file), path.join(dest, file));
+  console.log(`Copied the Thanksgiving turkey → ${dest}`);
 }
 
 // ── Sound effects (src/util/scythe.ts plays /sfx/<name>.mp3) ─────────────────

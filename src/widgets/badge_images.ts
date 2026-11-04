@@ -6,7 +6,7 @@
  * Auto-generated — do not edit manually.
  */
 
-import { BADGE_DEFINITIONS } from './badge_definitions';
+import { BADGE_DEFINITIONS, LEGACY_BADGES } from './badge_definitions';
 
 /**
  * Base path for badge center-art PNGs.
@@ -20,5 +20,5 @@ const BASE = 'center-art';
  * to its PNG URL.
  */
 export const BADGE_IMAGE_MAP: Record<string, string> = Object.fromEntries(
-  BADGE_DEFINITIONS.map(b => [b.imageKey, `${BASE}/${b.imageKey}.png`])
+  [...BADGE_DEFINITIONS, ...LEGACY_BADGES].map(b => [b.imageKey, `${BASE}/${b.imageKey}.png`])
 );

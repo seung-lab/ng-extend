@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { pumpkinSeason } from '../util/pumpkin';
+import { turkeySeason } from '../util/turkey';
+import { leavesSeason } from '../util/leaves';
 import {ref, onMounted, onUnmounted, computed} from 'vue';
 import ModalOverlay from 'components/ModalOverlay.vue';
 import {useUserPreferencesStore, useLoginStore, useProofreadingBackendStore, useIssueTagStore, loginSession} from '../store';
@@ -63,6 +65,12 @@ const draftDailyDigest = ref(true);
 const draftHoverStyle = ref<'outline' | 'halo' | 'pulse' | 'hologram' | 'metallic' | 'saturate' | 'spotlight' | 'fade' | 'none'>('fade');
 /** The pulse's colour (Nseraf): '' a light tint of the cell's own. */
 const draftPulseColor = ref('');
+/** Preferred colour families (util/color_families.ts). */
+const draftColorFamilies = ref<string[]>([]);
+function toggleFamily(id: string) {
+  const on = draftColorFamilies.value.includes(id);
+  draftColorFamilies.value = on ? draftColorFamilies.value.filter(x => x !== id) : [...draftColorFamilies.value, id];
+}
 const PULSE_COLORS = [
   { value: '', label: "Each cell's own colour: a blue cell pulses light blue" }, { value: '#59d8ff', label: 'Electric blue' },
   { value: '#ffffff', label: 'White' }, { value: '#ffd34d', label: 'Gold' }, { value: '#ff6fd8', label: 'Pink' },
@@ -81,6 +89,8 @@ const draftClassicLayers = ref(false);
 const draftUndeleteCounter = ref(false);
 const draftShowRadio = ref(true);
 const draftPumpkin = ref(true);
+const draftTurkey = ref(true);
+const draftLeaves = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
 const draftParticles = ref(true);
@@ -150,12 +160,15 @@ onMounted(() => {
   draftDailyDigest.value = prefsStore.prefs.showDailyDigest !== false;
   draftHoverStyle.value = ngeHoverStyle.value;
   draftPulseColor.value = prefsStore.prefs.pulseColor || '';
+  draftColorFamilies.value = [...(prefsStore.prefs.colorFamilies ?? [])];
   draftImageDetail.value = prefsStore.prefs.imageDetail === 2 || prefsStore.prefs.imageDetail === 4 ? prefsStore.prefs.imageDetail : 1;
   draftImageSource.value = prefsStore.prefs.imageSource === 'americas' || prefsStore.prefs.imageSource === 'asia' ? prefsStore.prefs.imageSource : 'auto';
   draftClassicLayers.value = prefsStore.prefs.classicLayerClicks === true;
   draftUndeleteCounter.value = prefsStore.prefs.undeleteCounter === true;
   draftShowRadio.value = prefsStore.prefs.hideRadio !== true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
+  draftTurkey.value = prefsStore.prefs.hideTurkey !== true;
+  draftLeaves.value = prefsStore.prefs.hideLeaves !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
   draftParticles.value = prefsStore.prefs.pointParticles !== false;
@@ -235,10 +248,10 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
-    hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
+    hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
   });
   // Apply the ambient tag layer change immediately.
   useIssueTagStore().syncTagLayer();
@@ -264,6 +277,7 @@ async function handleSave() {
 // ── Toolbar icon choices (shared with the actual top bar) ──────
 import { TOOLBAR_ICON_DEFS, RETIRED_TOOLBAR_ICON_IDS, DEFAULT_TOOLBAR_ORDER, resolveToolbarOrder, markInjected } from '../data/toolbar-icons';
 import { iconArrived, isStaged, reveal, togglesInFull } from '../util/toolbar_staging';
+import { COLOR_FAMILIES } from '../util/color_families';
 
 // Only offer icons the top bar can actually show — exclude retired ones so this
 // grid matches the real toolbar rather than listing dead toggles.
@@ -601,6 +615,18 @@ const props = defineProps<{ embedded?: boolean }>();
               </div>
             </div>
             <p class="nge-settings-hint nge-pulse-hint">Press <b>P</b> with your mouse over a cell in 3D to send a pulse along it, whichever look you choose.</p>
+            <!-- Preferred colour families (Nseraf, report 359): cells only take
+                 colours from the families switched on (util/color_families.ts). -->
+            <div class="nge-settings-toggle nge-settings-pick nge-pulse-color" title="Cells take their colours only from the families you switch on, so annotations in other colours stay easy to see. L picks new colours within them. None on: the usual colours.">
+              <span class="nge-settings-toggle-label">Cell colours</span>
+              <div class="nge-pulse-swatches">
+                <button v-for="f in COLOR_FAMILIES" :key="f.id" type="button" class="nge-pulse-swatch nge-family-swatch"
+                        :class="{ 'nge-pulse-swatch--on': draftColorFamilies.includes(f.id) }"
+                        :style="{ background: f.swatch }" :title="f.label" :aria-label="f.label"
+                        :aria-pressed="draftColorFamilies.includes(f.id)" @click="toggleFamily(f.id)"></button>
+              </div>
+            </div>
+            <p class="nge-settings-hint nge-pulse-hint">{{ draftColorFamilies.length ? 'New cells only take colours from the families switched on. L picks again within them.' : 'Switch on the colour families you like, and cells only take those colours. None on: the usual colours.' }}</p>
             <label v-if="pumpkinSeason()" class="nge-settings-toggle" title="For Halloween, the Sandbox's starting cell wears a jack o' lantern over its cell body. Off: no pumpkin.">
               <input type="checkbox" v-model="draftPumpkin" />
               <span class="nge-settings-toggle-label">Show the Halloween pumpkin on the Sandbox cell</span>
@@ -629,6 +655,14 @@ const props = defineProps<{ embedded?: boolean }>();
             <label class="nge-settings-toggle" title="On: a small burst of particles where your point lands, when you place a Highlight, Tag, cut, merge or Find Path point. Off: the points go down with no particles.">
               <input type="checkbox" v-model="draftParticles" />
               <span class="nge-settings-toggle-label">Particles</span>
+            </label>
+            <label v-if="turkeySeason()" class="nge-settings-toggle" title="For Thanksgiving week, now and then a turkey walks along the bottom of the screen, stops to gobble, and walks off. Click it to make it hop. Off: no turkey. The turkey button by the chat box turns him off and on too. Calm screen keeps him away.">
+              <input type="checkbox" v-model="draftTurkey" />
+              <span class="nge-settings-toggle-label">Show the Thanksgiving turkey</span>
+            </label>
+            <label v-if="leavesSeason()" class="nge-settings-toggle" title="In the fall, now and then a few autumn leaves drift down from the top of the screen. They never block a click. Off: no leaves. The leaf button by the chat box turns them off and on too. Calm screen keeps them away.">
+              <input type="checkbox" v-model="draftLeaves" />
+              <span class="nge-settings-toggle-label">Falling leaves</span>
             </label>
             <label class="nge-settings-toggle" title="Stops the animations and takes away the glows around text, buttons and panels, for a quieter screen. The cells and the 3D view stay as they are. A few small animations follow after a reload.">
               <input type="checkbox" v-model="draftCalm" />
@@ -1720,4 +1754,5 @@ const props = defineProps<{ embedded?: boolean }>();
 .nge-pulse-swatch--pick.nge-pulse-swatch--on::after { content: ''; }
 .nge-pulse-swatch--pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
 .nge-pulse-hint { margin: 2px 0 8px; }
+.nge-family-swatch:not(.nge-pulse-swatch--on) { opacity: 0.45; }
 </style>

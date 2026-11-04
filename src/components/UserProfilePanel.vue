@@ -25,7 +25,7 @@ import MyCellsTab from 'components/MyCellsTab.vue';
 import { isMobileRef } from '../util/mobile';
 
 import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistoryStore, useProofreadingBackendStore, useHelpRequestStore, CellHistoryEntry} from '../store';
-import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
+import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, LEGACY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
 import {datasetAccess} from '../util/dataset_access';
@@ -633,6 +633,24 @@ function isBadgeEarned(badge: BadgeDefinition): boolean {
   return backendStore.holdsSaved(props.viewUserId || backendStore.userId, badge.track, badge.id);
 }
 
+/** Legacy Achievements: saved on the old ladder, or reached by its old number. */
+function isLegacyEarned(badge: BadgeDefinition): boolean {
+  if (statForTrack(badge.track) >= badge.threshold) return true;
+  return backendStore.holdsLegacy(props.viewUserId || backendStore.userId, badge.track, badge.id);
+}
+const legacyCells = computed(() => LEGACY_BADGES.filter(b => b.track === 'exploration' && isLegacyEarned(b)).reverse());
+const legacyEdits = computed(() => LEGACY_BADGES.filter(b => b.track === 'building' && isLegacyEarned(b)).reverse());
+function onLegacyClick(badge: BadgeDefinition) {
+  selectedSpecialBadge.value = null;
+  selectedBadge.value = selectedBadge.value?.id === badge.id ? null : badge;
+}
+/** A favorite's Achievement: the new ladder first, else the old one it was chosen from. */
+function favoriteDef(slug: string): BadgeDefinition | null {
+  const found = BADGE_DEFINITIONS.find(b => b.slug === slug);
+  if (found && isBadgeEarned(found)) return found;
+  return LEGACY_BADGES.find(b => b.slug === slug && isLegacyEarned(b)) || null;
+}
+
 function onBadgeClick(badge: BadgeDefinition) {
   if (!isBadgeEarned(badge)) return;
   selectedSpecialBadge.value = null;
@@ -699,8 +717,8 @@ const latestEarnedBadge = computed(() => {
 const favoriteBadgeSlug = computed(() => viewingOtherUser.value ? String(otherUserProfile.value?.favorite_badge || '') : backendStore.favoriteBadgeSlug);
 const favoriteBadge = computed<BadgeDefinition | null>(() => {
   if (favoriteBadgeSlug.value) {
-    const found = BADGE_DEFINITIONS.find(b => b.slug === favoriteBadgeSlug.value);
-    if (found && isBadgeEarned(found)) return found;
+    const found = favoriteDef(favoriteBadgeSlug.value);
+    if (found) return found;
   }
   return null;
 });
@@ -745,8 +763,8 @@ type FavTier = 'gold' | 'silver' | 'bronze';
 interface FavItem { slug: string; name: string; img: string; gold: boolean; tier: FavTier; def?: BadgeDefinition; award?: any }
 function favItem(slug: string, tier: FavTier): FavItem | null {
   const gold = tier === 'gold';
-  const def = BADGE_DEFINITIONS.find(b => b.slug === slug);
-  if (def) return isBadgeEarned(def) ? { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, tier, def } : null;
+  const def = favoriteDef(slug);
+  if (def) return { slug, name: def.name, img: getBadgeUrl(def.imageKey), gold, tier, def };
   const award = profileSpecialBadges.value.find((a: any) => specialSlug(a) === slug);
   const img = award?.badge?.thumbnail_url || award?.badge?.image_url;
   return award && img ? { slug, name: award.badge?.name || 'Award', img, gold, tier, award } : null;
@@ -836,10 +854,66 @@ function favDrop(f: FavItem) {
 }
 function favDragEnd() { draggingFav.value = null; dropFav.value = ''; }
 
+// ── Trophy Case sections: two rows, then Show all (Ames 2026-11-02) ──────────
+// A laptop showed only Cell Completions: one long grid hid every section under it.
+// Each grid shows two full rows (its column count follows the window), most recent
+// first, and 'Show all N' opens it in place. On your own profile a section you open
+// stays open in this browser; someone else's starts closed.
+const TROPHY_OPEN_KEY = 'nge_trophy_open_v1';
+function readOpenSections(): string[] { try { const v = JSON.parse(localStorage.getItem(TROPHY_OPEN_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
+const ownOpenSections = ref<Set<string>>(new Set(readOpenSections()));
+const otherOpenSections = ref<Set<string>>(new Set());
+watch(() => props.viewUserId, () => { otherOpenSections.value = new Set(); });
+const openSections = computed(() => viewingOtherUser.value ? otherOpenSections.value : ownOpenSections.value);
+function toggleTrophySection(k: string) {
+  const next = new Set(openSections.value);
+  if (next.has(k)) next.delete(k); else next.add(k);
+  if (viewingOtherUser.value) { otherOpenSections.value = next; return; }
+  ownOpenSections.value = next;
+  try { localStorage.setItem(TROPHY_OPEN_KEY, JSON.stringify([...next])); } catch { /* private window */ }
+}
+const gridCols = ref<Record<string, number>>({});
+const gridObservers = new Map<string, { el: HTMLElement; ro: ResizeObserver }>();
+function watchTrophyGrid(k: string, el: unknown) {
+  const old = gridObservers.get(k);
+  if (old && old.el === el) return;
+  old?.ro.disconnect(); gridObservers.delete(k);
+  if (!(el instanceof HTMLElement)) return;
+  const measure = () => {
+    const n = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+    if (gridCols.value[k] !== n) gridCols.value = { ...gridCols.value, [k]: n };
+  };
+  const ro = new ResizeObserver(measure); ro.observe(el); gridObservers.set(k, { el, ro }); measure();
+}
+onUnmounted(() => { for (const g of gridObservers.values()) g.ro.disconnect(); gridObservers.clear(); });
+const TROPHY_ROWS = 2;
+function trophyLimit(k: string): number { return (gridCols.value[k] || 6) * TROPHY_ROWS; }
+// Closed, the last slot of the second row is the '+N more' tile, so one fewer Achievement shows.
+function shownTrophies<T>(k: string, list: T[]): T[] {
+  if (openSections.value.has(k) || list.length <= trophyLimit(k)) return list;
+  return list.slice(0, trophyLimit(k) - 1);
+}
+function hiddenTrophies<T>(k: string, list: T[]): T[] {
+  if (openSections.value.has(k) || list.length <= trophyLimit(k)) return [];
+  return list.slice(trophyLimit(k) - 1);
+}
+/** The picture for any Trophy Case item, for the previews on the '+N more' tile. */
+function trophyArt(k: string, item: any): string {
+  if (k === 'competitions') return medalArt(item);
+  if (k === 'special') return item?.badge?.thumbnail_url || item?.badge?.image_url || '';
+  return getBadgeUrl(item?.imageKey || '');
+}
+/** The button under a section, or '' when everything already fits in two rows. */
+function trophyMoreLabel(k: string, list: unknown[]): string {
+  if (list.length <= trophyLimit(k)) return '';
+  return openSections.value.has(k) ? 'Show fewer' : '';
+}
+
 // ── Trophy Case sections in the player's own order ─────────────────────────
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
-const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'competitions', 'special'] as const;
+// Competitions first by default (Ames 2026-11-04); a player's own saved order still wins.
+const TROPHY_SECTIONS = ['competitions', 'cells', 'editor', 'loyalty', 'special'] as const;
 type TrophySection = typeof TROPHY_SECTIONS[number];
 const otherTrophyOrder = ref<string[]>([]);
 const trophyOrder = computed<TrophySection[]>(() => {
@@ -1098,6 +1172,46 @@ const scopedIdentifiedFailed = ref(false);
 let scopedIdentifiedReq = 0;
 const SANDBOX_CANON = new Set(DATASETS.filter(d => d.section === 'sandbox').map(d => canonicalDataset(d.id)));
 const NOT_A_TYPE = /^\s*$|unknown|unsure|not sure|unclear/i;
+
+/** Every row of a query, 1,000 a request (PostgREST's cap), three requests at
+ *  a time instead of one after another: a player with 3,000 cells waited on
+ *  three trips in a row before the Overview could show anything (Ames
+ *  2026-11-04, Nseraf's profile). */
+async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data: any[] | null; error: any }>): Promise<T[]> {
+  const PAGE = 1000, AT_ONCE = 3;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE * AT_ONCE) {
+    const got = await Promise.all(Array.from({ length: AT_ONCE }, (_, i) => page(from + i * PAGE, from + (i + 1) * PAGE - 1)));
+    for (const { data, error } of got) {
+      if (error) throw error;
+      out.push(...(data ?? []));
+      if (!data || data.length < PAGE) return out;
+    }
+  }
+}
+
+// The Overview's numbers from the last visit to this profile, kept in this
+// browser, so they show as it opens and the fresh ones replace them when they
+// arrive (Ames 2026-11-04: "a long delay in loading cell completions and the
+// next stage"). Only for showing: nothing is saved from them.
+interface OverviewKept {
+  cells?: { today: number; week: number; all: number }; cellDays?: EffortDay[]; cellsDay?: string;
+  rows?: Array<{ cell: string; done_at: string; dataset: string }>;
+  edits?: { today: EditWindow; week: EditWindow; all: EditWindow }; editDays?: EffortDay[]; editsDay?: string;
+}
+const KEPT_KEY = 'nge-profile-overview:';
+function readKept(uid: string): OverviewKept {
+  try { return JSON.parse(localStorage.getItem(KEPT_KEY + uid) || '{}') || {}; } catch { return {}; }
+}
+function keep(uid: string, part: OverviewKept) {
+  try { localStorage.setItem(KEPT_KEY + uid, JSON.stringify({ ...readKept(uid), ...part })); } catch { /* full or private */ }
+}
+/** A curve's days, left as they are when the fresh ones match the kept
+ *  copy, so the curve does not draw itself a second time. */
+function setDays(target: { value: EffortDay[] | null }, days: EffortDay[]) {
+  if (target.value && JSON.stringify(target.value) === JSON.stringify(days)) return;
+  target.value = days;
+}
 async function loadScopedIdentifications() {
   const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
   const req = ++scopedIdentifiedReq;
@@ -1105,18 +1219,12 @@ async function loadScopedIdentifications() {
   if (!uid) { scopedIdentified.value = null; return; }
   try {
     const { supabase } = await import('../supabase');
-    const rows: Array<{ segment_after: string | null; dataset: string | null; success: boolean | null; metadata: any }> = [];
-    const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('edit_log')
+    const rows = await allRows<{ segment_after: string | null; dataset: string | null; success: boolean | null; metadata: any }>((a, b) =>
+      supabase.from('edit_log')
         .select('segment_after, dataset, success, metadata')
         .eq('user_id', uid).eq('operation', 'set_cell_type')
         .order('id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+        .range(a, b));
     if (req !== scopedIdentifiedReq) return;
     const latest = new Map<string, string>();  // oldest first, so the last word on a cell wins
     for (const r of rows) {
@@ -1167,6 +1275,28 @@ function denseDays(stamps: number[], weights?: number[]): EffortDay[] {
   return out;
 }
 
+/** A kept copy's windows. Today and the past 7 days move on with the clock,
+ *  so a copy from another day shows only its all time number (the others at
+ *  0) until the fresh ones arrive. */
+function keptWindows<W>(w: { today: W; week: W; all: W }, sameDay: boolean, zero: W) {
+  return sameDay ? w : { today: zero, week: zero, all: w.all };
+}
+function showKeptEdits(uid: string) {
+  if (scopedEdits.value) return;  // already showing this player's numbers
+  const k = readKept(uid);
+  if (!k.edits) return;
+  scopedEdits.value = keptWindows(k.edits, k.editsDay === localDay(Date.now()), { edits: 0, merges: 0, splits: 0 });
+  scopedEditDays.value = k.editDays ?? null;
+}
+function showKeptCells(uid: string) {
+  if (scopedCells.value) return;
+  const k = readKept(uid);
+  if (!k.cells) return;
+  scopedCells.value = keptWindows(k.cells, k.cellsDay === localDay(Date.now()), 0);
+  scopedCellDays.value = k.cellDays ?? null;
+  scopedCompletionRows.value = k.rows ?? null;
+}
+
 async function loadScopedEdits() {
   refreshActiveDatasetCanon();
   const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
@@ -1178,6 +1308,7 @@ async function loadScopedEdits() {
   // Sandbox profile said 0). Only the game's own log, as before.
   void canon;
   if (!uid) { scopedEdits.value = null; scopedEditDays.value = null; return; }
+  showKeptEdits(uid);
   try {
     // The player's hourly totals (Ames 2026-10-25: reading every edit on
     // every open was a large share of the database's load). An hour's edits
@@ -1201,23 +1332,18 @@ async function loadScopedEdits() {
         for (const w of wins) { w.edits += n; w.merges += h.merges; w.splits += h.splits; }
       }
       scopedEdits.value = out;
-      scopedEditDays.value = denseDays(stamps, weights);
+      setDays(scopedEditDays, denseDays(stamps, weights));
+      keep(uid, { edits: out, editDays: scopedEditDays.value, editsDay: localDay(Date.now()) });
       return;
     }
     // Before the hourly totals exist (supabase-db-load.sql step 6): every edit.
     const { supabase } = await import('../supabase');
-    const rows: Array<{ operation: string; timestamp: string; success: boolean | null }> = [];
-    const PAGE = 1000;  // PostgREST's default row cap per request
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('edit_log')
+    const rows = await allRows<{ operation: string; timestamp: string; success: boolean | null }>((a, b) =>
+      supabase.from('edit_log')
         .select('operation, timestamp, success')
         .eq('user_id', uid).in('operation', ['merge', 'split'])
         .order('id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+        .range(a, b));
     if (req !== scopedEditsReq) return;  // a newer load superseded this one
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const weekAgo = Date.now() - 7 * 86400000;
@@ -1237,7 +1363,7 @@ async function loadScopedEdits() {
       }
     }
     scopedEdits.value = out;
-    scopedEditDays.value = denseDays(stamps);
+    setDays(scopedEditDays, denseDays(stamps));
   } catch (e) {
     if (req !== scopedEditsReq) return;
     console.warn('[profile] per-dataset edits failed, showing all datasets:', e);
@@ -1258,17 +1384,12 @@ async function loadScopedCompletions() {
   scopedCellsFailed.value = false;
   void canon;
   if (!uid) { scopedCells.value = null; scopedCellDays.value = null; scopedCompletionRows.value = null; return; }
+  showKeptCells(uid);
   try {
     const { supabase } = await import('../supabase');
-    const rows: Array<{ dataset: string; cell: string; done_at: string }> = [];
-    const PAGE = 1000;  // PostgREST's default row cap per request
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('ew_cell_completions').select('dataset,cell,done_at')
-        .eq('user_id', uid).order('cell', { ascending: true }).range(from, from + PAGE - 1);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < PAGE) break;
-    }
+    const rows = await allRows<{ dataset: string; cell: string; done_at: string }>((a, b) =>
+      supabase.from('ew_cell_completions').select('dataset,cell,done_at')
+        .eq('user_id', uid).order('cell', { ascending: true }).range(a, b));
     if (req !== scopedCellsReq) return;  // a newer load superseded this one
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const weekAgo = Date.now() - 7 * 86400000;
@@ -1285,8 +1406,10 @@ async function loadScopedCompletions() {
       if (t >= startOfToday.getTime()) out.today++;
     }
     scopedCells.value = out;
-    scopedCellDays.value = denseDays(stamps);
+    setDays(scopedCellDays, denseDays(stamps));
     scopedCompletionRows.value = kept.sort((a, b) => b.t - a.t).map(r => ({ cell: r.cell, done_at: r.done_at, dataset: r.dataset }));
+    // The newest rows are enough for the Recently completed list.
+    keep(uid, { cells: out, cellDays: scopedCellDays.value, rows: scopedCompletionRows.value.slice(0, 40), cellsDay: localDay(Date.now()) });
   } catch (e) {
     if (req !== scopedCellsReq) return;
     console.warn('[profile] per-dataset completions failed:', e);
@@ -1694,6 +1817,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                  public identifier; the address stays private. -->
 
 
+            <!-- Someone else's bio too (Nseraf, report 354: bios were only
+                 ever shown to their owner). -->
+            <div v-if="viewingOtherUser && otherUserProfile?.bio" class="nge-profile-bio">{{ otherUserProfile.bio }}</div>
             <template v-if="!viewingOtherUser">
               <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
               <button v-else class="nge-profile-bio-add" @click="activeTab = 'settings'">
@@ -2443,12 +2569,12 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(selectedSpecialBadge.awarded_at) }}</strong>
               </div>
-              <div v-if="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`)" class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
+              <div v-if="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`)" class="nge-trophy-featured-fav-label">★ Your favorite Achievement</div>
             </div>
             <button
               class="nge-trophy-featured-star"
               :class="{ 'nge-trophy-featured-star--active': favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) }"
-              :title="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? 'Remove from favorites' : 'Set as favorite badge'"
+              :title="favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? 'Remove from favorites' : 'Set as your favorite Achievement'"
               @click="toggleFavoriteSpecialBadge(selectedSpecialBadge)"
             >{{ favoriteBadgeSlug === (selectedSpecialBadge.badge?.slug || `special-${selectedSpecialBadge.id}`) ? '★' : '☆' }}</button>
           </div>
@@ -2475,7 +2601,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <div class="nge-trophy-featured-threshold">
                 Won on <strong>{{ formatDate(favoriteSpecialBadge.awarded_at) }}</strong>
               </div>
-              <div class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
+              <div class="nge-trophy-featured-fav-label">★ Your favorite Achievement</div>
             </div>
             <button
               class="nge-trophy-featured-star nge-trophy-featured-star--active"
@@ -2506,12 +2632,12 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
               <div class="nge-trophy-featured-threshold">
                 Unlocked at <strong>{{ featuredBadge.threshold.toLocaleString() }}</strong> {{ thresholdLabel(featuredBadge) }}
               </div>
-              <div v-if="favoriteBadgeSlug === featuredBadge.slug" class="nge-trophy-featured-fav-label">★ Your favorite badge</div>
+              <div v-if="favoriteBadgeSlug === featuredBadge.slug" class="nge-trophy-featured-fav-label">★ Your favorite Achievement</div>
             </div>
             <button
               class="nge-trophy-featured-star"
               :class="{ 'nge-trophy-featured-star--active': favoriteBadgeSlug === featuredBadge.slug }"
-              :title="favoriteBadgeSlug === featuredBadge.slug ? 'Remove from favorites' : 'Set as favorite badge'"
+              :title="favoriteBadgeSlug === featuredBadge.slug ? 'Remove from favorites' : 'Set as your favorite Achievement'"
               @click="toggleFavoriteBadge(featuredBadge)"
             >{{ favoriteBadgeSlug === featuredBadge.slug ? '★' : '☆' }}</button>
           </div>
@@ -2553,7 +2679,7 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 </button>
               </div>
             </template>
-            <div v-else class="nge-trophy-favs-empty">Pick a badge on the right, then star it.</div>
+            <div v-else class="nge-trophy-favs-empty">Pick an Achievement on the right, then star it.</div>
           </div>
           </div><!-- end side -->
 
@@ -2569,9 +2695,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('cells', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('cells', el)">
               <div
-                v-for="badge in earnedExplorationBadges.earned"
+                v-for="badge in shownTrophies('cells', earnedExplorationBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--exploration"
                 :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
@@ -2587,7 +2713,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
               </div>
+              <button v-if="hiddenTrophies('cells', earnedExplorationBadges.earned).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${earnedExplorationBadges.earned.length}`" :aria-expanded="false" @click="toggleTrophySection('cells')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('cells', earnedExplorationBadges.earned).slice(0, 3)" :key="i" :src="trophyArt('cells', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('cells', earnedExplorationBadges.earned).length }}</span>
+                <span class="nge-moretile-t">Show all {{ earnedExplorationBadges.earned.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('cells', earnedExplorationBadges.earned)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('cells')">Show fewer</button>
           </div>
 
           <!-- Proofreading track -->
@@ -2601,9 +2733,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('editor', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('editor', el)">
               <div
-                v-for="badge in earnedBuildingBadges.earned"
+                v-for="badge in shownTrophies('editor', earnedBuildingBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--building"
                 :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
@@ -2619,7 +2751,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
               </div>
+              <button v-if="hiddenTrophies('editor', earnedBuildingBadges.earned).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${earnedBuildingBadges.earned.length}`" :aria-expanded="false" @click="toggleTrophySection('editor')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('editor', earnedBuildingBadges.earned).slice(0, 3)" :key="i" :src="trophyArt('editor', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('editor', earnedBuildingBadges.earned).length }}</span>
+                <span class="nge-moretile-t">Show all {{ earnedBuildingBadges.earned.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('editor', earnedBuildingBadges.earned)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('editor')">Show fewer</button>
           </div>
 
           <!-- Loyalty track -->
@@ -2633,9 +2771,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('loyalty', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('loyalty', el)">
               <div
-                v-for="badge in earnedLoyaltyBadges.earned"
+                v-for="badge in shownTrophies('loyalty', earnedLoyaltyBadges.earned)"
                 :key="badge.id"
                 class="nge-trophy-badge nge-trophy-badge--loyalty"
                 :title="`${badge.name}: ${badge.threshold} days of science`"
@@ -2651,7 +2789,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ badge.name }}</div>
                 <div class="nge-trophy-badge-threshold">{{ badge.threshold }} days of science</div>
               </div>
+              <button v-if="hiddenTrophies('loyalty', earnedLoyaltyBadges.earned).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${earnedLoyaltyBadges.earned.length}`" :aria-expanded="false" @click="toggleTrophySection('loyalty')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('loyalty', earnedLoyaltyBadges.earned).slice(0, 3)" :key="i" :src="trophyArt('loyalty', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('loyalty', earnedLoyaltyBadges.earned).length }}</span>
+                <span class="nge-moretile-t">Show all {{ earnedLoyaltyBadges.earned.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('loyalty', earnedLoyaltyBadges.earned)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('loyalty')">Show fewer</button>
           </div>
 
           <!-- Competitions -->
@@ -2664,9 +2808,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('competitions', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('competitions', el)">
               <div
-                v-for="m in competitionMedals"
+                v-for="m in shownTrophies('competitions', competitionMedals)"
                 :key="m.tier"
                 class="nge-trophy-badge nge-trophy-badge--medal"
                 :class="{ 'nge-trophy-badge--selected': medalSelected(m) }"
@@ -2680,7 +2824,69 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <div class="nge-trophy-badge-name">{{ MEDAL_WORD[m.tier] }}</div>
                 <div v-if="MEDAL_SUB[m.tier]" class="nge-trophy-medal-place">{{ MEDAL_SUB[m.tier] }}</div>
               </div>
+              <button v-if="hiddenTrophies('competitions', competitionMedals).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${competitionMedals.length}`" :aria-expanded="false" @click="toggleTrophySection('competitions')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('competitions', competitionMedals).slice(0, 3)" :key="i" :src="trophyArt('competitions', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('competitions', competitionMedals).length }}</span>
+                <span class="nge-moretile-t">Show all {{ competitionMedals.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('competitions', competitionMedals)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('competitions')">Show fewer</button>
+          </div>
+
+          <!-- Legacy Achievements (Ames 2026-11-02): what this player earned on the old cell and edit
+               ladders, always at the foot of the case. -->
+          <div v-if="legacyCells.length + legacyEdits.length > 0" class="nge-trophy-track nge-trophy-track--legacy" style="order: 100;">
+            <div class="nge-trophy-track-label" style="color: #c9d4e6;">Legacy Achievements
+              <span class="nge-trophy-track-count">{{ legacyCells.length + legacyEdits.length }} earned before the update</span>
+            </div>
+            <div v-if="legacyCells.length" class="nge-trophy-legacy-sub">Cell Completions</div>
+            <div v-if="legacyCells.length" class="nge-trophy-grid" :ref="el => watchTrophyGrid('legacy-cells', el)">
+              <div
+                v-for="badge in shownTrophies('legacy-cells', legacyCells)"
+                :key="'legacy-' + badge.id"
+                class="nge-trophy-badge nge-trophy-badge--exploration nge-trophy-badge--legacy"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} cells`"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                }"
+                @click="onLegacyClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} cells</div>
+              </div>
+              <button v-if="hiddenTrophies('legacy-cells', legacyCells).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${legacyCells.length}`" :aria-expanded="false" @click="toggleTrophySection('legacy-cells')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('legacy-cells', legacyCells).slice(0, 3)" :key="i" :src="trophyArt('legacy-cells', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('legacy-cells', legacyCells).length }}</span>
+                <span class="nge-moretile-t">Show all {{ legacyCells.length }}</span>
+              </button>
+            </div>
+            <button v-if="trophyMoreLabel('legacy-cells', legacyCells)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('legacy-cells')">Show fewer</button>
+            <div v-if="legacyEdits.length" class="nge-trophy-legacy-sub">Editor Achievements</div>
+            <div v-if="legacyEdits.length" class="nge-trophy-grid" :ref="el => watchTrophyGrid('legacy-edits', el)">
+              <div
+                v-for="badge in shownTrophies('legacy-edits', legacyEdits)"
+                :key="'legacy-' + badge.id"
+                class="nge-trophy-badge nge-trophy-badge--building nge-trophy-badge--legacy"
+                :title="`${badge.name}: ${badge.threshold.toLocaleString()} edits`"
+                :class="{
+                  'nge-trophy-badge--selected': selectedBadge?.id === badge.id,
+                  'nge-trophy-badge--favorited': favoriteBadgeSlug === badge.slug,
+                }"
+                @click="onLegacyClick(badge)"
+              >
+                <img :src="getBadgeUrl(badge.imageKey)" :alt="badge.name" class="nge-trophy-badge-icon" loading="lazy" />
+                <div class="nge-trophy-badge-name">{{ badge.name }}</div>
+                <div class="nge-trophy-badge-threshold">{{ badge.threshold.toLocaleString() }} edits</div>
+              </div>
+              <button v-if="hiddenTrophies('legacy-edits', legacyEdits).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${legacyEdits.length}`" :aria-expanded="false" @click="toggleTrophySection('legacy-edits')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('legacy-edits', legacyEdits).slice(0, 3)" :key="i" :src="trophyArt('legacy-edits', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('legacy-edits', legacyEdits).length }}</span>
+                <span class="nge-moretile-t">Show all {{ legacyEdits.length }}</span>
+              </button>
+            </div>
+            <button v-if="trophyMoreLabel('legacy-edits', legacyEdits)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('legacy-edits')">Show fewer</button>
           </div>
 
           <!-- Special Awards -->
@@ -2693,9 +2899,9 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <button type="button" class="nge-trophy-track-nudge" title="Move down" aria-label="Move this section down" @click="moveSection('special', 1)">▼</button>
               </span>
             </div>
-            <div class="nge-trophy-grid">
+            <div class="nge-trophy-grid" :ref="el => watchTrophyGrid('special', el)">
               <div
-                v-for="award in plainSpecialBadges"
+                v-for="award in shownTrophies('special', plainSpecialBadges)"
                 :key="award.id"
                 class="nge-trophy-badge"
                 :class="{ 'nge-trophy-badge--selected': selectedSpecialBadge?.id === award.id, 'nge-trophy-badge--favorited': favoriteBadgeSlug === specialSlug(award), 'nge-trophy-badge--silver': silverSlugs.includes(specialSlug(award)), 'nge-trophy-badge--bronze': bronzeSlugs.includes(specialSlug(award)) }"
@@ -2705,7 +2911,13 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
                 <img :src="award.badge?.thumbnail_url || award.badge?.image_url" :alt="award.badge?.name" class="nge-trophy-badge-icon" />
                 <div class="nge-trophy-badge-name">{{ award.badge?.name || 'Award' }}</div>
               </div>
+              <button v-if="hiddenTrophies('special', plainSpecialBadges).length" type="button" class="nge-trophy-badge nge-trophy-moretile" :aria-label="`Show all ${plainSpecialBadges.length}`" :aria-expanded="false" @click="toggleTrophySection('special')">
+                <span class="nge-moretile-stack" aria-hidden="true"><img v-for="(x, i) in hiddenTrophies('special', plainSpecialBadges).slice(0, 3)" :key="i" :src="trophyArt('special', x)" alt="" :style="{ '--i': i }" /></span>
+                <span class="nge-moretile-n">+{{ hiddenTrophies('special', plainSpecialBadges).length }}</span>
+                <span class="nge-moretile-t">Show all {{ plainSpecialBadges.length }}</span>
+              </button>
             </div>
+            <button v-if="trophyMoreLabel('special', plainSpecialBadges)" type="button" class="nge-trophy-fewer" :aria-expanded="true" @click="toggleTrophySection('special')">Show fewer</button>
           </div>
 
           </div><!-- end main -->
@@ -4584,6 +4796,35 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 /* Sections in the player's own order: dragged by the grip in the heading */
 .nge-trophy-main { display: flex; flex-direction: column; }
 .nge-trophy-track { transition: opacity 0.15s ease, box-shadow 0.15s ease; border-radius: 10px; }
+.nge-trophy-more-old {
+  display: block; margin: 10px auto 0; padding: 6px 16px; border-radius: 999px; font: inherit; font-size: 0.8em; font-weight: 600;
+  letter-spacing: 0.03em; cursor: pointer; color: #b9d6ff; background: rgba(74, 158, 255, 0.08); border: 1px solid rgba(74, 158, 255, 0.3);
+  transition: background 0.15s, border-color 0.15s;
+}
+.nge-trophy-more-old:hover { background: rgba(74, 158, 255, 0.16); border-color: rgba(120, 190, 255, 0.6); outline: none; }
+/* the '+N more' tile: a tile like its neighbours, with the next pictures fanned behind the count */
+.nge-trophy-moretile {
+  position: relative; overflow: hidden; justify-content: center; gap: 2px; min-height: 96px; font: inherit; color: #dcebff;
+  background: rgba(74, 158, 255, 0.07); border: 1px solid rgba(110, 175, 255, 0.28);
+}
+.nge-trophy-moretile:hover, .nge-trophy-moretile:focus-visible {
+  background: rgba(74, 158, 255, 0.14); border-color: rgba(140, 195, 255, 0.6); box-shadow: 0 0 16px rgba(74, 158, 255, 0.25); outline: none;
+}
+.nge-moretile-stack { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.nge-moretile-stack img {
+  grid-area: 1 / 1; width: 62%; height: 62%; object-fit: contain; opacity: 0.45; filter: saturate(0.8);
+  transform: translateX(calc((var(--i) - 1) * 26%)) rotate(calc((var(--i) - 1) * 10deg)) scale(calc(1 - var(--i) * 0.06));
+  transition: opacity 0.2s, transform 0.2s;
+}
+.nge-trophy-moretile:hover .nge-moretile-stack img { opacity: 0.6; transform: translateX(calc((var(--i) - 1) * 32%)) rotate(calc((var(--i) - 1) * 14deg)) scale(calc(1 - var(--i) * 0.06)); }
+.nge-moretile-n { position: relative; font-family: "Orbitron", "Rajdhani", ui-monospace, Consolas, monospace; font-size: 1.7em; font-weight: 700; letter-spacing: 0.04em; color: #e6f2ff; text-shadow: 0 0 14px rgba(110, 180, 255, 0.7); }
+.nge-moretile-t { position: relative; font-size: 0.72em; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(190, 215, 250, 0.85); }
+.nge-trophy-grid .nge-trophy-moretile .nge-moretile-t { display: block; }
+.nge-trophy-fewer { display: block; margin: 8px 0 0 auto; padding: 2px 4px; border: 0; background: none; font: inherit; font-size: 0.78em; font-weight: 600; color: rgba(160, 195, 240, 0.8); cursor: pointer; }
+.nge-trophy-fewer:hover, .nge-trophy-fewer:focus-visible { color: #dcebff; text-decoration: underline; outline: none; }
+@media (prefers-reduced-motion: reduce) { .nge-moretile-stack img { transition: none; } }
+.nge-trophy-track--legacy { margin-top: 8px; padding-top: 18px; border-top: 1px solid rgba(160, 180, 210, 0.14); }
+.nge-trophy-legacy-sub { font-size: 0.78em; font-weight: 600; letter-spacing: 0.04em; color: rgba(190, 205, 228, 0.7); margin: 10px 0 8px; }
 .nge-trophy-track.is-dragging { opacity: 0.45; }
 .nge-trophy-track.is-drop { box-shadow: 0 -3px 0 0 rgba(120, 190, 255, 0.85); }
 .nge-trophy-track-move { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.15s ease; }
@@ -4602,16 +4843,17 @@ body:not(.nge-mobile) .nge-profile-modal { font-size: 1.05em; }
 @media (min-width: 901px) {
   body:not(.nge-mobile) .nge-profile-shell--trophy { width: calc(97 * var(--nge-vw, 1vw)); max-width: none; height: calc(94 * var(--nge-vh, 1vh)); max-height: calc(94 * var(--nge-vh, 1vh)); }
   body:not(.nge-mobile) .nge-profile-body--trophy > .nge-trophy-scroll {
-    display: grid; grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
+    /* one third for the Achievement on show, two thirds for the case (Ames 2026-11-02) */
+    display: grid; grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr);
     overflow: hidden; padding: 0;
   }
   body:not(.nge-mobile) .nge-trophy-side {
     --trophy-icon: min(300px, calc(24 * var(--nge-vw, 1vw)), calc(38 * var(--nge-vh, 1vh)));
     overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-    padding: 28px 22px 22px; border-right: 1px solid rgba(74, 158, 255, 0.1);
+    padding: 36px 40px 32px; border-right: 1px solid rgba(74, 158, 255, 0.1);
   }
   body:not(.nge-mobile) .nge-trophy-main {
-    overflow-y: auto; padding: 22px 26px 26px;
+    overflow-y: auto; padding: 32px 48px 40px;
     scrollbar-width: thin; scrollbar-color: rgba(74, 158, 255, 0.2) rgba(255, 255, 255, 0.03);
   }
   body:not(.nge-mobile) .nge-trophy-side .nge-trophy-featured {
@@ -5066,7 +5308,8 @@ body:not(.nge-mobile) .nge-profile-modal :deep(.nge-overlay.modal.overlay-conten
 .nge-profile-modal .nge-profile-body--admin { width: 100%; max-width: 720px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--week { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
 .nge-profile-modal .nge-profile-body--dstats { width: 100%; max-width: 1180px; align-self: center; max-height: none; }
-.nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1200px; align-self: center; }
+/* the Trophy Case takes the frame like the Overview (Ames 2026-11-02) */
+.nge-profile-modal .nge-profile-body--trophy { width: 100%; max-width: 1880px; align-self: center; }
 /* the Overview keeps the proportions it has at 1920 px: on a wider screen
    (Ames 2026-10-13, a 2560 px window: "look how bad this looks on a super
    wide screen") the rows no longer stretch, the body is capped and centred

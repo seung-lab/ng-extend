@@ -11,7 +11,7 @@
  * "Out of date" never changes back, so it is kept for the session. "Current"
  * can stop being true, so it is asked again after a minute.
  */
-import { isLatestRoots, latestDescendants } from '../widgets/pcg_service';
+import { isLatestRoots, latestDescendants, getRootFromSupervoxel } from '../widgets/pcg_service';
 import { currentSegLayer } from '../datasets';
 import { Uint64 } from 'neuroglancer/util/uint64';
 
@@ -84,8 +84,22 @@ window.addEventListener('nge-merge-batch-done', ((e: CustomEvent) => {
     const group = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
     const listed = roots.filter(r => { try { return !!group?.selectedSegments?.has(Uint64.parseString(r)) || !!group?.visibleSegments?.has(Uint64.parseString(r)); } catch { return false; } });
     if (!listed.length) return;
-    const flags = await isLatestRoots(listed).catch(() => null);
-    for (const id of listed) {
+    // A piece clicked before its cell had loaded is listed by its supervoxel
+    // ID (the short one), not the cell's: it stayed behind after the merge
+    // (Nseraf, report 358). It is swapped for the cell it is part of now.
+    const isSupervoxel = (id: string) => { try { return Uint64.parseString(id).high >>> 24 === 1; } catch { return false; } };
+    for (const id of listed.filter(isSupervoxel)) {
+      const root = await getRootFromSupervoxel(id).catch(() => null);
+      if (!root || root === id || !group) continue;
+      const sv = Uint64.parseString(id);
+      group.visibleSegments.delete(sv);
+      group.selectedSegments?.delete(sv);
+      group.visibleSegments.add(Uint64.parseString(root));
+    }
+    const cells = listed.filter(id => !isSupervoxel(id));
+    if (!cells.length) return;
+    const flags = await isLatestRoots(cells).catch(() => null);
+    for (const id of cells) {
       if (flags?.get(id) !== false) continue;
       known.set(id, { latest: false, at: Date.now() });
       await updateToCurrentId(id).catch(() => null);

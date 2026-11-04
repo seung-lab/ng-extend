@@ -124,12 +124,21 @@ function buildFrozenQueryBody(table: string, rootId: string): string {
  *  parsed row array, or null if both paths fail: "could not ask" is not "no
  *  rows" (Nseraf #192: CAVE answered 500 to both, and every cell type
  *  looked lost after an edit). */
+// A table whose queries fail with a server error is left alone for a while
+// (Nseraf, report 364: on the Sandbox and MEC the cell type table answered
+// 500, and every segment in view asked again, many times a second, which
+// lagged panning and cut points). "Could not ask" is still answered as null.
+const BACKOFF_MS = 2 * 60 * 1000;
+const liveDownUntil = new Map<string, number>();
+const tableDownUntil = new Map<string, number>();
 async function queryAnnotationsForRootId(
     caveServer: string, datastack: string,
     table: string, rootId: string): Promise<any[] | null> {
+  const key = `${caveServer}|${datastack}|${table}`;
+  if ((tableDownUntil.get(key) ?? 0) > Date.now()) return null;
   const nowIso = new Date().toISOString();
   // Live query — returns rows including post-materialization writes.
-  try {
+  if ((liveDownUntil.get(key) ?? 0) <= Date.now()) try {
     const res = await fetch(
       `${caveServer}/materialize/api/v3/datastack/${datastack}/query?return_pyarrow=false`,
       {
@@ -142,6 +151,7 @@ async function queryAnnotationsForRootId(
       console.info(`[lightbulb] live query ${table} → ${rows.length} rows`);
       return rows;
     }
+    if (res.status >= 500) liveDownUntil.set(key, Date.now() + BACKOFF_MS);
     console.warn(`[lightbulb] live query ${table} ${res.status} — falling back to materialized`);
   } catch (e) {
     console.warn(`[lightbulb] live query ${table} error — falling back to materialized:`, e);
@@ -162,7 +172,10 @@ async function queryAnnotationsForRootId(
       console.info(`[lightbulb] materialized v${version} ${table} → ${rows.length} rows`);
       return rows;
     }
-    console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}`);
+    if (res.status >= 500) {
+      tableDownUntil.set(key, Date.now() + BACKOFF_MS);
+      console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}; not asking this table again for 2 minutes`);
+    } else console.warn(`[lightbulb] materialized v${version} ${table} ${res.status}`);
   } catch (e) {
     console.warn(`[lightbulb] materialized ${table} error:`, e);
   }

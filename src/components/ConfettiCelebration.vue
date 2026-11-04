@@ -12,6 +12,8 @@ import { isCalm } from '../util/calm';
  */
 import { ref, onMounted, onUnmounted } from 'vue';
 import { isMobileRef } from '../util/mobile';
+import { leavesOn } from '../util/leaves';
+import { AUTUMN, leafShapes, pick } from '../util/leaf_shapes';
 
 /** inline: stay where it is placed instead of covering the whole page, so a
  *  panel can sit in front of it (the Champions cards, Ames 2026-10-26). */
@@ -57,7 +59,8 @@ interface Particle {
   drag: number;
   opacity: number;
   fadeRate: number;
-  shape: 'rect' | 'circle' | 'star';
+  shape: 'rect' | 'circle' | 'star' | 'leaf';
+  leaf?: Path2D;
 }
 
 /** Shades of one colour, drawn fresh each time: a random hue, then seven
@@ -75,7 +78,7 @@ function monoPalette(): string[] {
   return out;
 }
 
-function createParticles(count: number, palette: string[], origin?: { x: number; y: number }) {
+function createParticles(count: number, palette: string[], origin?: { x: number; y: number }, leafy = false) {
   const canvas = canvasRef.value;
   if (!canvas) return;
   // From a given point (a button that was pressed), or the usual place.
@@ -103,8 +106,11 @@ function createParticles(count: number, palette: string[], origin?: { x: number;
       drag: 0.98 + Math.random() * 0.015,
       opacity: 1,
       fadeRate: 0.003 + Math.random() * 0.004,
-      shape: shapes[Math.floor(Math.random() * shapes.length)],
+      shape: leafy ? 'leaf' : shapes[Math.floor(Math.random() * shapes.length)],
+      leaf: leafy ? pick(leafShapes()) : undefined,
     });
+    // Leaves drift down more slowly than paper.
+    if (leafy) { const p = particles[particles.length - 1]; p.gravity *= 0.55; p.drag -= 0.012; p.w += 6; }
   }
 }
 
@@ -258,6 +264,9 @@ function animateSparkles() {
       ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill();
     } else if (p.shape === 'star') {
       drawStar(ctx, 0, 0, p.w / 2);
+    } else if (p.shape === 'leaf' && p.leaf) {
+      ctx.scale(p.w * (0.3 + 0.7 * Math.abs(Math.cos(p.rotation * 2))), p.w);
+      ctx.fill(p.leaf);
     } else {
       ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
     }
@@ -306,9 +315,12 @@ function trigger(palette: string = 'default', intensity: number = 1, origin?: { 
   resizeCanvas();
   underUI.value = false;
   veilT = -1;
-  const colors = palette === 'mono' ? monoPalette() : (PALETTES[palette] || PALETTES.default);
-  const count = Math.round(80 * intensity);
-  createParticles(count, colors, origin);
+  // In the fall (with the falling leaves on), the confetti is autumn leaves
+  // (Ames 2026-11-04). Fewer pieces, since each leaf is bigger.
+  const leafy = leavesOn();
+  const colors = leafy ? AUTUMN : palette === 'mono' ? monoPalette() : (PALETTES[palette] || PALETTES.default);
+  const count = Math.round((leafy ? 55 : 80) * intensity);
+  createParticles(count, colors, origin, leafy);
   if (!animFrame) {
     animFrame = requestAnimationFrame(animateSparkles);
   }

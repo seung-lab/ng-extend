@@ -32,6 +32,7 @@ import goldYearTrophy from '../../static/images/champions/gold-year-trophy.png';
 import silverYearTrophy from '../../static/images/champions/silver-year-trophy.png';
 import bronzeYearTrophy from '../../static/images/champions/bronze-year-trophy.png';
 import weeklyTrophy from '../../static/images/champions/weekly-trophy.png';
+import { isAwardTitle } from '../util/award_title';
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits({ hide: null, 'open-help': null });
@@ -353,7 +354,7 @@ function isRead(id: number): boolean {
 }
 
 function isBadgeNotification(notif: any): boolean {
-  return notif?.title?.includes('New Achievement');
+  return isAwardTitle(notif?.title);
 }
 
 function openDetail(notif: any) {

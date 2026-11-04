@@ -28,7 +28,10 @@
   border-top: 2px solid rgba(200, 164, 255, 0.55);
   backdrop-filter: blur(8px);
   box-sizing: border-box;
-  width: 100%;
+  /* The whole width of the window, like the Cut and Merge bars. 100% was the
+     width of its own buttons, so the bar stopped partway across and the 3D
+     view showed past it (Ames 2026-11-04: "cut off by 3D"). */
+  width: 100vw;
   padding: 5px 16px !important;
   color: #e0e0e0;
   font: 13px/1.3 'Inter', 'Roboto', sans-serif;
@@ -120,6 +123,19 @@ body.nge-fp-found .graphene-find-path > .neuroglancer-icon:first-child { animati
   0%, 100% { box-shadow: 0 0 0 0 rgba(200, 164, 255, 0.55); }
   50%      { box-shadow: 0 0 0 6px rgba(200, 164, 255, 0); }
 }
+
+/* Cancel (find_path_status.ts): the Cut and Merge bars' key chip. */
+.graphene-find-path > .nge-fp-cancel { gap: 6px; }
+.graphene-find-path > .nge-fp-cancel kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.3);
+  font: 600 9.5px 'Inter', sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+@media (hover: none) and (pointer: coarse) { .graphene-find-path > .nge-fp-cancel kbd { display: none; } }
 
 /* Precision mode: a toggle pill. The checkbox itself stays neuroglancer's. */
 .graphene-find-path > label {
@@ -246,7 +262,7 @@ body.nge-fp-found .graphene-find-path > .neuroglancer-icon:first-child { animati
       "Path found!", "Path finding failed: ..." restyled to match the bar. ── */
 #statusContainer li.nge-fp-status {
   box-sizing: border-box;
-  width: 100%;
+  width: 100vw;
   display: flex;
   align-items: center;
   gap: 12px;

@@ -40,6 +40,9 @@ export const reapAfterCut = ref(savedReap());
 export function setReapAfterCut(on: boolean) {
   reapAfterCut.value = on;
   try { localStorage.setItem(REAP_KEY, on ? '1' : '0'); } catch { /* private window: for this visit */ }
+  // Off puts the scythe away too, if a cut had just handed it over (Ames
+  // 2026-11-04: "I turned it off but the scythe didn't go away").
+  if (!on) stopScythe();
 }
 /** This hold of the scythe ends with its first reap. */
 let oneClick = false;

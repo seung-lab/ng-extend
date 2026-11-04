@@ -35,6 +35,23 @@ function jumpToSegment(id: string) {
     (currentSegLayer()?.layer as any)?.displayState?.moveToSegment?.(Uint64.parseString(id));
   } catch { /* the layer went away */ }
 }
+/** Go to where queued merge i joins its two pieces: the middle of its line
+ *  (toknow, report 368: "add button jump to merge point"). The queue is
+ *  neuroglancer's, in the same order as the rows here. */
+function mergePoint(i: number): Float32Array | null {
+  try {
+    const gc = (currentSegLayer()?.layer as any)?.graphConnection?.value;
+    const m = gc?.state?.mergeState?.merges?.value?.[i];
+    const a = m?.sink?.position, b = m?.source?.position;
+    if (!a) return null;
+    return Float32Array.from(a, (v: number, k: number) => (b ? (v + b[k]) / 2 : v));
+  } catch { return null; }
+}
+function goToMergePoint(i: number) {
+  const p = mergePoint(i);
+  if (!p) return;
+  try { (window as any).viewer.navigationState.position.value = p; } catch { /* the view went away */ }
+}
 function hoverSegment(id: string | null) {
   try {
     const state = (currentSegLayer()?.layer as any)?.displayState?.segmentSelectionState;
@@ -424,7 +441,7 @@ function cancelTool() {
             <!-- Clears a piece from view; never edits (src/util/scythe.ts). -->
             <button v-if="!tutorialOnScreen" type="button" role="switch" class="nge-smo-reap" :class="{ 'is-on': reapAfterCut }" :aria-checked="reapAfterCut"
                     @click="setReapAfterCut(!reapAfterCut)"
-                    title="On: after each cut, your next click on a piece in 3D reaps it from view, then the cursor goes back to normal. Ctrl+Z brings a piece back. Shift+R takes up the scythe any time.">
+                    title="Shift+R: take up the scythe, or put it away. On: after each cut, your next click on a piece in 3D reaps it from view. Turning it off puts the scythe away. Ctrl+Z brings a piece back.">
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 22 L11 4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M12 3 C7 1.5 2.5 5.5 1 13 C4.5 9 8.5 7.5 14 7 Z" fill="#fff"/></svg>
               Scythe reap
               <span class="nge-smo-reap-track"><span class="nge-smo-reap-knob"></span></span>
@@ -509,6 +526,7 @@ function cancelTool() {
             <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[1])" title="Hover to light this segment up in the views. Right click to go to it."
                   @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[1])">{{ pair[1] }}</span>
             <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
+            <button v-if="pair[1]" class="nge-smo-merge-go" @click.stop="goToMergePoint(i)" title="Jump to where these two join" aria-label="Jump to this merge point">↗</button>
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
             <!-- why it failed, in the server's words, on a line of its own -->
             <div v-if="rowWhy(i)" class="nge-smo-merge-why">{{ rowWhy(i) }}</div>
@@ -1050,6 +1068,18 @@ function cancelTool() {
 .nge-smo-merge-row:hover .nge-smo-merge-remove {
   opacity: 0.7;
 }
+.nge-smo-merge-go {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  opacity: 0.75;
+  pointer-events: auto;
+}
+.nge-smo-merge-go:hover { opacity: 1; }
+.nge-smo-merge-go + .nge-smo-merge-remove { margin-left: 0; }
 .nge-smo-merge-remove:hover {
   opacity: 1 !important;
 }
@@ -1530,6 +1560,8 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
 .nge-smo-seg-id--colored:hover { outline: 1.5px solid rgba(255, 255, 255, 0.85); outline-offset: 1px; }
 .nge-smo-merge-num { font-variant-numeric: tabular-nums; }
 .nge-smo-merge-remove { color: #ff8a8a; border-radius: 4px; }
+.nge-smo-merge-go { color: #7ee8ff; border-radius: 4px; font-size: 14px; line-height: 1; }
+.nge-smo-merge-go:hover, .nge-smo-merge-go:focus-visible { background: rgb(126 232 255 / .14); outline: none; }
 .nge-smo-merge-status {
   margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
   letter-spacing: .06em; text-transform: uppercase; border: 1px solid rgb(196 228 255 / .25); color: rgb(196 228 255 / .85);

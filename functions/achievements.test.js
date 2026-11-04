@@ -6,12 +6,12 @@ const {readDefinitions} = require('../scripts/build-achievement-thresholds');
 
 test('the server\'s list is the app\'s list', () => {
   assert.deepEqual(TABLE, readDefinitions());
-  assert.equal(TABLE.length, 224);   // 100 Editor, 100 Cell Completions, 24 Loyalty
+  assert.equal(TABLE.length, 233);   // 75 Editor, 134 Cell Completions, 24 Loyalty (the 2026-11-02 redesign)
   assert.equal(TABLE.filter(a => a.track === 'loyalty').length, 24);
 });
 
 test('an achievement is announced only once the counter has reached it', () => {
-  const mallet = TABLE.find(a => a.track === 'building' && a.threshold === 100);
+  const mallet = TABLE.find(a => a.track === 'building' && a.threshold === 100);   // Glue on the redesigned ladder
   assert.throws(() => achievementRow('building', mallet.id, {total_edits: 99}), /Not earned yet/);
   const row = achievementRow('building', mallet.id, {total_edits: 100});
   assert.equal(row.text, `earned the ${mallet.name} achievement`);
@@ -32,9 +32,9 @@ test('the first cell achievements are 1, 5, 10, 15, 20 and each is announced', (
 
 test('cell tiers rise all the way and are round numbers', () => {
   const t = TABLE.filter(a => a.track === 'exploration').sort((a, b) => a.id - b.id).map(a => a.threshold);
-  assert.equal(t.length, 100);
+  assert.equal(t.length, 134);
   for (let i = 1; i < t.length; i++) assert.ok(t[i] > t[i - 1], `tier ${i + 1}`);
-  assert.equal(t[99], 54000);
+  assert.equal(t[133], 88000);
   for (const n of t.slice(1)) assert.equal(n % 5, 0, String(n));
 });
 
@@ -67,8 +67,9 @@ test('a Loyalty achievement is announced once the total days have reached it', (
 
 test('edit tiers rise all the way, in the steps Ames set', () => {
   const t = TABLE.filter(a => a.track === 'building').sort((a, b) => a.id - b.id).map(a => a.threshold);
-  assert.equal(t.length, 100);
+  assert.equal(t.length, 75);
   for (let i = 1; i < t.length; i++) assert.ok(t[i] > t[i - 1], `tier ${i + 1}`);
   assert.deepEqual(t.slice(0, 12), [1, 10, 25, 50, 100, 200, 300, 400, 500, 750, 1000, 1500]);
-  assert.equal(t[99], 650000);
+  assert.deepEqual(t.slice(23, 36), [10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 20000, 22500, 25000]);
+  assert.equal(t[74], 575000);
 });

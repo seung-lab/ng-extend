@@ -33,7 +33,7 @@ import {MeshLayer, MeshSource, MultiscaleMeshLayer} from 'neuroglancer/mesh/fron
 import {DisplayDimensionRenderInfo} from 'neuroglancer/navigation_state';
 import {ChunkTransformParameters, getChunkPositionFromCombinedGlobalLocalPositions, getChunkTransformParameters, RenderLayerTransformOrError} from 'neuroglancer/render_coordinate_transform';
 import {RenderLayer, RenderLayerRole} from 'neuroglancer/renderlayer';
-import {augmentSegmentId, resetTemporaryVisibleSegmentsState, SegmentationDisplayState3D, SegmentationLayerSharedObject, SegmentWidgetFactory, Uint64MapEntry} from 'neuroglancer/segmentation_display_state/frontend';
+import {augmentSegmentId, getBaseObjectColor, resetTemporaryVisibleSegmentsState, SegmentationDisplayState3D, SegmentationLayerSharedObject, SegmentWidgetFactory, Uint64MapEntry} from 'neuroglancer/segmentation_display_state/frontend';
 import {VisibleSegmentEquivalencePolicy} from 'neuroglancer/segmentation_graph/segment_id';
 import {ComputedSplit, SegmentationGraphSource, SegmentationGraphSourceConnection, SegmentationGraphSourceTab} from 'neuroglancer/segmentation_graph/source';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
@@ -1263,6 +1263,28 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     }
   }
 
+  /** nge: the colour a cell shows now (its own, or the one its ID gives it),
+   *  packed as neuroglancer keeps chosen colours; null when it can't be read. */
+  private ngeColorOf(root: Uint64|undefined): Uint64|null {
+    try {
+      if (!root) return null;
+      const c = getBaseObjectColor(this.layer.displayState, root, new Float32Array(4));
+      const packed = Math.round(c[0] * 255) | (Math.round(c[1] * 255) << 8) | (Math.round(c[2] * 255) << 16);
+      return new Uint64(packed >>> 0, 0);
+    } catch { return null; }
+  }
+  /** nge: a cell keeps its colour through an edit (Nseraf, report 359: after
+   *  a merge or cut it took a new random colour, often one his annotations
+   *  could not be read against). */
+  private ngeKeepColor(color: Uint64|null, root: Uint64|undefined) {
+    if (!color || !root) return;
+    try {
+      this.layer.displayState.segmentationColorGroupState.value.segmentStatedColors.set(root, color);
+      // Remembered, so L (re-colour) can still change it (Nseraf, report 370).
+      ((window as any).__ngeKeptColors ??= new Set<string>()).add(root.toString());
+    } catch { /* colours stay as they were */ }
+  }
+
   async submitMulticut(annotationToNanometers: Float64Array): Promise<boolean> {
     const {state: {multicutState}} = this;
     const {sinks, sources} = multicutState;
@@ -1271,8 +1293,27 @@ class GraphConnection extends SegmentationGraphSourceConnection {
           'Must select both red and blue groups to perform a multi-cut.', 7000);
       return false;
     } else {
-      const splitRoots = await this.graph.graphServer.splitSegments(
-          [...sinks], [...sources], annotationToNanometers);
+      const keptColor = this.ngeColorOf(multicutState.focusSegment.value);
+      const blueSv = [...sources][0]?.segmentId;
+      let splitRoots: Uint64[];
+      try {
+        splitRoots = await this.graph.graphServer.splitSegments(
+            [...sinks], [...sources], annotationToNanometers);
+      } catch (e) {
+        // nge: "could not acquire root lock" can come back for a cut the
+        // server did make (Nseraf, report 363). Look again: if the cell has
+        // newer IDs now, the cut went through, and it is shown as done.
+        const done = /root lock/i.test(String((e as any)?.message ?? e))
+            ? await this.graph.graphServer.ngeSplitLanded(multicutState.focusSegment.value) : null;
+        if (!done) throw e;
+        splitRoots = done;
+        try {
+          for (const el of Array.from(document.querySelectorAll('#statusContainer > *'))) {
+            if (/root lock/i.test(el.textContent || '')) (el.querySelector('button') as HTMLElement | null)?.click();
+          }
+          window.dispatchEvent(new CustomEvent('nge-split-recovered'));
+        } catch { /* the message stays; the cut is still shown */ }
+      }
       if (splitRoots.length === 0) {
         StatusMessage.showTemporaryMessage(`No split found.`, 3000);
         return false;
@@ -1284,6 +1325,9 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         segmentsState.selectedSegments.delete(focusSegment);
         for (const segment of [...sinks, ...sources]) {
           segmentsState.selectedSegments.delete(segment.rootId);
+        }
+        if (keptColor && blueSv) {
+          this.graph.getRoot(blueSv).then(r => this.ngeKeepColor(keptColor, r), () => {});
         }
         this.meshAddNewSegments(splitRoots);
         segmentsState.selectedSegments.add(splitRoots);
@@ -1426,7 +1470,9 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     for (let i = 1; i <= attempts; i++) {
       try {
         if (stop.isCanceled) throw new Error(submission.error || 'Stopped.');
+        const keptColor = this.ngeColorOf(submission.sink.rootId);
         const newRoot = await this.graph.graphServer.mergeSegments(submission.sink, submission.source!, annotationToNanometers, stop);
+        this.ngeKeepColor(keptColor, newRoot);
         const oldValues = new Uint64Set();
         oldValues.add(submission.sink.rootId);
         oldValues.add(submission.source!.rootId);
@@ -1750,6 +1796,34 @@ class GrapheneGraphServerInterface {
       final[i] = Uint64.parseString(jsonResp['new_root_ids'][i]);
     }
     return final;
+  }
+
+  /** nge: after a split reported as failed, did it happen anyway? The
+   *  cell's latest IDs when it has been replaced since, else null. */
+  async ngeSplitLanded(root: Uint64|undefined): Promise<Uint64[]|null> {
+    if (!root || this.url === '') return null;
+    try {
+      await new Promise(r => setTimeout(r, 2500));
+      const latest = await this.filterLatestRoots([root]);
+      if (latest.length) return null;  // still current: nothing was cut
+      const promise = cancellableFetchSpecialOk(this.credentialsProvider,
+          `${this.url}/root/${root.toJSON()}/lineage_graph`, {}, responseIdentity);
+      const body = await (await promise).text();
+      const next = new Map<string, string[]>();
+      for (const m of body.matchAll(/"source"\s*:\s*"?(\d+)"?\s*,\s*"target"\s*:\s*"?(\d+)/g)) {
+        (next.get(m[1]) ?? next.set(m[1], []).get(m[1])!).push(m[2]);
+      }
+      const start = root.toJSON(), ends: string[] = [], seen = new Set([start]), todo = [start];
+      while (todo.length) {
+        const n = todo.pop()!;
+        const kids = next.get(n) ?? [];
+        if (!kids.length && n !== start) ends.push(n);
+        for (const k of kids) if (!seen.has(k)) { seen.add(k); todo.push(k); }
+      }
+      return ends.length ? ends.map(x => Uint64.parseString(x)) : null;
+    } catch {
+      return null;
+    }
   }
 
   async filterLatestRoots(segments: Uint64[]): Promise<Uint64[]> {

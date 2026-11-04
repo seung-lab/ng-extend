@@ -10,8 +10,9 @@ const path = require('path');
 
 function readDefinitions() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'widgets', 'badge_definitions.ts'), 'utf8');
-  const re = /\{ id: (\d+), track: '(building|exploration)', sequence: \d+, slug: '([^']+)', code: '[^']*', name: '([^']+)'[^\n]*?threshold: ([\d_]+)/g;
-  const rows = [...src.matchAll(re)].map(m => ({id: Number(m[1]), track: m[2], slug: m[3], name: m[4], threshold: Number(m[5].replace(/_/g, ''))}));
+  const re = /\{ id: (\d+), track: '(building|exploration)', sequence: \d+, slug: '([^']+)', code: '[^']*', name: '((?:[^'\\]|\\.)+)'[^\n]*?threshold: ([\d_]+)/g;
+  // A name may hold an apostrophe, written \' (Cajal's Sketchbook).
+  const rows = [...src.matchAll(re)].map(m => ({id: Number(m[1]), track: m[2], slug: m[3], name: m[4].replace(/\\'/g, "'"), threshold: Number(m[5].replace(/_/g, ''))}));
   // Loyalty (live 2026-10-09) is written by hand as loyalty(n, days, 'slug', 'CODE', 'Name', ...); its id is 200 + n.
   const loyal = /^\s*loyalty\((\d+),\s*(\d+),\s*'([^']+)',\s*'[^']*',\s*'([^']+)'/gm;
   for (const m of src.matchAll(loyal)) rows.push({id: 200 + Number(m[1]), track: 'loyalty', slug: m[3], name: m[4], threshold: Number(m[2])});
@@ -20,7 +21,7 @@ function readDefinitions() {
 
 if (require.main === module) {
   const rows = readDefinitions();
-  if (rows.length !== 224) throw new Error(`expected 224 achievements (200 and 24 Loyalty), read ${rows.length}`);
+  if (rows.length !== 233) throw new Error(`expected 233 achievements (75 Editor, 134 Cell Completions, 24 Loyalty), read ${rows.length}`);
   const out = path.join(__dirname, '..', 'functions', 'achievement-thresholds.json');
   fs.writeFileSync(out, '[\n' + rows.map(r => '  ' + JSON.stringify(r)).join(',\n') + '\n]\n');
   console.log(`wrote ${rows.length} achievements to ${out}`);

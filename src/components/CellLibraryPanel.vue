@@ -506,7 +506,11 @@ const filteredCells = computed(() => {
     // its Marks show under it here too (Ames 2026-10-28).
     const myQuests = questCells.value.filter(c => isMyClaim(c));
     const myClaimed = list.filter(c => isMyClaim(c));
-    const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId);
+    // Completed: the latest first (annkri, report 352: they kept the cell
+    // list's order). A completion stamps the claim's updated time.
+    const doneAt = (c: CellRow) => backend.tasks.find(t => t.id === c.taskId)?.updated_at || '';
+    const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId)
+      .sort((a, b) => doneAt(b).localeCompare(doneAt(a)));
     list = [...myQuests, ...myClaimed, ...myCompleted];
   } else if (filter.value === 'available') {
     list = list.filter(c => c.status === 'pending');
@@ -1122,7 +1126,11 @@ const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).lengt
 /** The type list, when the cell is on the dataset on screen and that
  *  dataset's types may be written here (as in the Cell Profile). */
 function cellTypesFor(cell: CellRow): string[] {
-  if (canonicalDataset(cell.dataset || '') !== currentDatasetTag()) return [];
+  // A row of the cell list on screen carries no dataset of its own (''):
+  // it is this dataset's. Only a cell of another dataset is left without the
+  // picker. It was hidden for every list row, so a type could be set in the
+  // Cell Profile but not on Complete (Nseraf, report 355).
+  if (cell.dataset && canonicalDataset(cell.dataset) !== currentDatasetTag()) return [];
   if (getDatasetCaveConfig(currentSegLayerName()).cellTypeReadOnly) return [];
   return currentCellTypes();
 }

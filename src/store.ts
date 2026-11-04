@@ -12,6 +12,7 @@ import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears }
 import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
+import { achievementTestTrack } from './widgets/badge_definitions';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -1066,6 +1067,8 @@ export interface UserPreferences {
   hoverStyleAuto?: boolean;
   /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
   pulseColor?: string;
+  /** Preferred colour families for cells (util/color_families.ts); empty or unset: neuroglancer's own colours. */
+  colorFamilies?: string[];
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). It also sets the number
@@ -1085,6 +1088,12 @@ export interface UserPreferences {
   /** Hide the Halloween pumpkin on the Sandbox cell (src/util/pumpkin.ts).
    *  Defaults to false: the pumpkin shows in season. */
   hidePumpkin?: boolean;
+  /** Hide the Thanksgiving turkey (src/util/turkey.ts). Defaults to false:
+   *  it walks by in Thanksgiving week. */
+  hideTurkey?: boolean;
+  /** Hide the falling autumn leaves (src/util/leaves.ts). Defaults to false:
+   *  they fall now and then in the fall. */
+  hideLeaves?: boolean;
   /** The tab the Cell Library opens on (Nik 2026-10-09). Unset: My Cells. */
   cellLibraryStartTab?: 'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links';
   /** Jumping to a cell ADDS it to the view instead of replacing what is
@@ -1193,7 +1202,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -1515,6 +1524,12 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
           if (!keep && segId && segId !== '0') {
             const only = groupState.visibleSegments.size === 1 && groupState.visibleSegments.has(seg);
             if (!only) groupState.visibleSegments.clear();
+            // The list too: a jump replaces the view, and the cell before
+            // stayed in the segment list, hidden (Nseraf, report 365: a
+            // completed Hunt cell lingered after jumping to the next claim).
+            // The claim left was saved first (Cell Library leaveCurrentWork).
+            const listed = groupState.selectedSegments;
+            if (listed && !(listed.size === 1 && listed.has(seg))) listed.clear();
           }
           if (!groupState.visibleSegments.has(seg)) {
             groupState.visibleSegments.add(seg);
@@ -1890,7 +1905,17 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         requests.value.unshift(newReq);
       }
       const live = isLiveHelp(req);
-      if (live || opts.chat !== false) {
+      // A Hunt candidate is not named in chat: only admins and players with
+      // Retina edit access see those cells (Nseraf, report 366). The request
+      // itself is kept and answered as usual.
+      const huntCell = (() => {
+        try {
+          const id = String(req.segId || '');
+          return !!id && useProofreadingQueueStore().items.some(i =>
+            (i.segId === id || i.finalSegId === id) && /^Hunt (cell|candidate)/.test(i.notes || ''));
+        } catch { return false; }
+      })();
+      if (!huntCell && (live || opts.chat !== false)) {
         try {
           const note = (req.note || '').replace(/\s+/g, ' ').trim().slice(0, 110);
           const issue = live ? req.issueType.slice(LIVE_HELP.length).replace(/^[\s·:]+/, '') : (req.issueType || '');
@@ -4756,7 +4781,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // NOTE: middleauth_email is deliberately NOT selected. This loads OTHER
         // users' profiles, and fetching their address shipped it to the client
         // (visible in devtools) even once it stopped being rendered.
-        .select('id, display_name, username, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
+        .select('id, display_name, username, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
         .eq('id', targetUserId)
         .single();
       if (!user) return null;
@@ -5029,7 +5054,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** True when this claim is the cell `segId`: the ID it was listed under, or
    *  the cell's ID now, after edits. */
   function isTaskCell(t: ProofreadingTask, segId: string): boolean {
-    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId;
+    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId
+      || (t.assigned_to === userId.value && !!laterRoots.value[t.id]?.includes(segId));
   }
 
   /** Put back the listed ID of my open claims whose segment_id was rewritten
@@ -5190,16 +5216,48 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
       .filter((r): r is string => !!r))],
   })));
-  /** Each timed claim's cell as it is now, from the server's edit history of
+  /** Each of my claims' cell as it is now, from the server's edit history of
    *  its listed ID: every merge and cut since, whoever made it, with or
    *  without an anchor, and after a reload (Ames 2026-11-02: active time "is
    *  not accurately tracking segs after merge and cuts"). Pieces cut off are
-   *  in it too; time spent on one is still time on the claim. */
+   *  in it too; time spent on one is still time on the claim. The claim
+   *  itself is known by these IDs too (isTaskCell): a cut no longer leaves a
+   *  claim that neither new piece belongs to (st0ck53y, report 360).
+   *  Asked only for claims whose cell is on screen, or never asked yet, so an
+   *  edit costs one lookup, not one per claim (Ames: "clean up the querying"). */
+  /** When each of my claims last had its cell on screen (noteClaimsOnScreen). */
+  const claimSeenAt = new Map<number, number>();
+  /** Note which claims are on screen now: cheap, no lookups. Every 2 s. */
+  function noteClaimsOnScreen() {
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!vis) return;
+    const now = Date.now();
+    for (const t of myActiveClaims()) {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) {
+        try { if (r && /^\d+$/.test(r) && vis.has(Uint64.parseString(r))) { claimSeenAt.set(t.id, now); break; } } catch { /* not an ID */ }
+      }
+    }
+  }
+  setInterval(() => { if (!document.hidden) noteClaimsOnScreen(); }, 2000);
   async function refreshLaterRoots(): Promise<void> {
     const ds = canonicalDataset(currentDatasetTag());
-    const mine = myActiveClaims().filter(t => countsTime(t) && canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
+    const mine = myActiveClaims().filter(t => canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    const shown = (t: ProofreadingTask) => {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) { try { if (r && /^\d+$/.test(r) && vis?.has(Uint64.parseString(r))) return true; } catch { /* not an ID */ } }
+      return false;
+    };
+    // On screen now, or in the last half minute: an edit takes the claim's
+    // old ID out of the view before this runs, and a claim checked only
+    // "now" was skipped right after its own cut.
+    const now = Date.now();
+    for (const t of mine) if (shown(t)) claimSeenAt.set(t.id, now);
     const next: Record<number, string[]> = {};
     await Promise.all(mine.map(async t => {
+      const recent = now - (claimSeenAt.get(t.id) ?? 0) < 30_000;
+      if (laterRoots.value[t.id] && !recent) { next[t.id] = laterRoots.value[t.id]; return; }
       const listed = String(t.segment_id);
       let ends = descendantsSeen.get(listed);
       if (!ends) { ends = latestDescendants(listed).catch(() => null); descendantsSeen.set(listed, ends); }
@@ -5211,10 +5269,11 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
   setTimeout(() => { refreshLaterRoots().catch(() => {}); }, 8000);
   setInterval(() => { if (!document.hidden) refreshLaterRoots().catch(() => {}); }, 3 * 60_000);
-  watch(() => timedClaims.value.map(c => c.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
+  watch(() => myActiveClaims().map(t => t.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
   startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
+  let laterAgainTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
     // Its later versions changed with this edit: ask again (AzureJay, report
     // 344: active time stopped counting after a split).
@@ -5222,6 +5281,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
     liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
+    // Once more a little later, in case the server's history was not ready.
+    if (laterAgainTimer) clearTimeout(laterAgainTimer);
+    laterAgainTimer = setTimeout(() => { descendantsSeen.clear(); refreshLaterRoots().catch(() => {}); }, 10_000);
   });
 
   function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
@@ -6000,6 +6062,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  failure is silent (the achievement itself is unaffected). */
   function announceAchievement(track: string, badgeId: number, forUserId?: string) {
     if (!userId.value) return;
+    if (achievementTestTrack(track)) return;   // the new ladders: never in live chat from a test site
     // forUserId: a special award an admin has just given to someone else.
     if (forUserId || track === 'special') {
       secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
@@ -6388,12 +6451,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** This player holds this Achievement as a saved record. */
   function holdsSaved(who: string | null | undefined, track: string, badgeId: number | null | undefined): boolean {
     if (!who || badgeId == null) return false;
+    if (achievementTestTrack(track)) return false;   // saved ids belong to the live ladder
+    const key = badgeAwardKey(track, badgeId);
+    if (who === userId.value && myBadgeAwards.value.has(key)) return true;
+    return !!savedAwards.value[who]?.has(key);
+  }
+  /** A saved award on the old ladder (Legacy Achievements): read as saved, on every site. */
+  function holdsLegacy(who: string | null | undefined, track: string, badgeId: number): boolean {
+    if (!who) return false;
     const key = badgeAwardKey(track, badgeId);
     if (who === userId.value && myBadgeAwards.value.has(key)) return true;
     return !!savedAwards.value[who]?.has(key);
   }
   async function recordBadgeAward(track: string, badgeId: number) {
     if (!userId.value || badgeId == null) return;
+    if (achievementTestTrack(track)) return;   // the new ladders save nothing from a test site
     const key = badgeAwardKey(track, badgeId);
     if (myBadgeAwards.value.has(key)) return;   // already recorded this session
     myBadgeAwards.value.add(key);
@@ -6649,7 +6721,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
-    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved,
+    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved, holdsLegacy,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload
@@ -6905,6 +6977,8 @@ export const useChatStore = defineStore('chat', () => {
    *  the chat panel can flash to draw your eye. */
   const mentionPing = ref(0);
   const lastMentionFrom = ref('');
+  /** The message that @mentioned you (or replied to you) last. */
+  const lastMentionId = ref('');
   /** History paging: the oldest message loaded, and whether older ones exist. */
   const hasMoreHistory = ref(true);
   const loadingHistory = ref(false);
@@ -7642,6 +7716,7 @@ export const useChatStore = defineStore('chat', () => {
         const repliedToMe = !!row.reply_to && chatMessages.value.some(m => m.id === row.reply_to && m.userId === backend.userId);
         const mention = repliedToMe || (mentionsMe(row.text || '') && !onlineTarget(row.text || ''));
         if (mention) {
+          lastMentionId.value = row.id != null ? String(row.id) : '';
           mentionPing.value++; lastMentionFrom.value = row.name || '';
           alertMentionAway(row.name || 'Someone', row.text || '', true);
         } else if (!useUserPreferencesStore().prefs.chatMuted && row.notification_id == null && row.rank !== 'achievement') {
@@ -7828,6 +7903,6 @@ export const useChatStore = defineStore('chat', () => {
 
   return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
     pinned, loadPin, pinMessage,
-    panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
+    panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
 });
