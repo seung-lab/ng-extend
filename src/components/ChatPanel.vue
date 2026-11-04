@@ -292,14 +292,20 @@ watch(collapsed, (c) => chatStore.setPanelVisible(!c), { immediate: true });
 // Someone @mentioned you: flash the panel so it catches your eye mid-trace.
 const mentionFlash = ref(false);
 let mentionTimer: ReturnType<typeof setTimeout> | null = null;
+// While you are working elsewhere (chat open but clicked away), the glow
+// stays until you click back into chat, as EyeWire's did (Nseraf, report
+// 357: three flashes were easy to miss mid-trace).
+const mentionWaiting = ref(false);
 watch(() => chatStore.mentionPing, () => {
   mentionFlash.value = false;
   nextTick(() => {
     mentionFlash.value = true;
     if (mentionTimer) clearTimeout(mentionTimer);
-    mentionTimer = setTimeout(() => { mentionFlash.value = false; }, 3200);
+    if (chatFocused.value) mentionTimer = setTimeout(() => { mentionFlash.value = false; }, 3200);
+    else mentionWaiting.value = true;
   });
 });
+watch(chatFocused, f => { if (f && mentionWaiting.value) { mentionWaiting.value = false; mentionFlash.value = false; } });
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocPointerDown, true);
@@ -1414,7 +1420,7 @@ function toggleCollapse() {
     <div
       ref="panelEl"
       class="nge-chat-float"
-      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing, 'nge-chat-selecting': selectingText }"
+      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--mention-waiting': mentionFlash && mentionWaiting, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing, 'nge-chat-selecting': selectingText }"
       @focusin="onPanelFocusIn"
       :style="{
         ...(collapsed ? {} : { width: panelWidth + 'px', height: shownHeight + 'px' }),
@@ -2372,6 +2378,16 @@ function toggleCollapse() {
 /* Flash when someone @mentions you: an amber ring pulses three times. */
 .nge-chat-float--mentioned {
   animation: nge-chat-mention-flash 1s ease-in-out 3;
+}
+.nge-chat-float--mention-waiting {
+  animation: nge-chat-mention-flash 1s ease-in-out 3, nge-chat-mention-glow 2.4s ease-in-out 3s infinite;
+}
+@keyframes nge-chat-mention-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.45), 0 0 10px rgba(245, 166, 35, 0.2); }
+  50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8), 0 0 22px rgba(245, 166, 35, 0.45); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nge-chat-float--mention-waiting { animation: none; box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8); }
 }
 @keyframes nge-chat-mention-flash {
   0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.25), 0 0 0 rgba(245, 166, 35, 0); }
