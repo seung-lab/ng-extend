@@ -7,6 +7,7 @@
  * annotation tables, datastack, and aligned volume.
  */
 
+import {apprenticeFlag, apprenticeBlockMessage} from '../util/mentor_flag';
 import { reportWriteFailure } from '../util/error_reporting';
 import {getDatasetCaveConfig, isRegisteredDataset, EYEWIRE_II_CAVE_CONFIG, type DatasetCaveConfig} from '../config';
 import {useProofreadingBackendStore, useCellHistoryStore, useUserStatsStore} from '../store';
@@ -666,10 +667,19 @@ export async function setCellComplete(
     suppressCelebration?: boolean,
     /** Other segments the crosshairs may be on, e.g. a MEC nucleus when the
      *  cell around it is what gets marked. */
-    alsoAcceptAtCrosshair: string[] = []): Promise<boolean> {
+    alsoAcceptAtCrosshair: string[] = [],
+    /** forApprentice: a mentor completing an apprentice's cell (src/mentor.ts).
+     *  The mark goes to CAVE as usual, but it is not counted for the mentor:
+     *  the server credits the apprentice. */
+    opts: { forApprentice?: boolean } = {}): Promise<boolean> {
   const dsCfg = getActiveDatasetConfig();
   const {cellStatusTable, alignedVolume} = dsCfg;
   lastCompletionProblem = '';
+  // An apprentice's cells go to a mentor first (mentor program).
+  if (complete && !opts.forApprentice && apprenticeFlag.active) {
+    lastCompletionProblem = apprenticeBlockMessage();
+    return false;
+  }
   if (!caveServer) {
     console.warn('[lightbulb] No CAVE server — cannot save completion status.');
     return false;
@@ -798,7 +808,7 @@ export async function setCellComplete(
         document.dispatchEvent(new CustomEvent('nge:seg-status-changed', {
           detail: { segId: rootId, status: { isComplete: true } },
         }));
-        try {
+        if (!opts.forApprentice) try {
           const backend = useProofreadingBackendStore();
           if (backend.userId) {
             const p = pointOverride ?? getViewerPosition();
@@ -807,7 +817,7 @@ export async function setCellComplete(
           }
         } catch { /* non-critical */ }
         // Update local cell history & stats so Profile UI reflects immediately
-        try {
+        if (!opts.forApprentice) try {
           const historyStore = useCellHistoryStore();
           historyStore.upsert({
             segId: rootId,
@@ -824,7 +834,7 @@ export async function setCellComplete(
         // Skipped when suppressCelebration is set — used by the batch wizard so
         // we don't pop the overlay 25× during a batch; wizard fires its own
         // single batch celebration once the loop finishes.
-        if (!suppressCelebration) {
+        if (!suppressCelebration && !opts.forApprentice) {
           try {
             const backend = useProofreadingBackendStore();
             await backend.loadUserStats(); // refresh from DB

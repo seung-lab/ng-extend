@@ -38,6 +38,8 @@ import { mintShortStateLink } from '../util/state_link';
 import { teamAccess } from '../util/team_session';
 import { teamsState, createTeam, teamsOnDataset } from '../util/teams';
 import TeamsTab from './TeamsTab.vue';
+import MentoringTab from './MentoringTab.vue';
+import { mentorState, mentoringShown, isApprentice, sendForSecondLook, openInView as openMentorView, type MentorReview } from '../mentor';
 import AnnotationQuestsTab from './AnnotationQuestsTab.vue';
 import RetinaCastTab from './RetinaCastTab.vue';
 import { CAST, CAST_DATASET, setCastClaimHooks } from '../retina_cast';
@@ -158,7 +160,7 @@ function confirmDeleteTag(tag: IssueTag) {
 }
 
 const loading = ref(false);
-const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast'>(
+const filter = ref<'mine' | 'all' | 'available' | 'completed' | 'claimed' | 'hunt' | 'giants' | 'help' | 'links' | 'tags' | 'ai' | 'teams' | 'quests' | 'cast' | 'mentoring'>(
   // A tab asked for by whoever opened the library, else the one the player
   // chose in Settings, else My Cells.
   (props.initialTab as any) || useUserPreferencesStore().prefs.cellLibraryStartTab || 'mine',
@@ -1303,6 +1305,10 @@ async function submitComplete(cell: CellRow) {
 
 async function completeCell(cell: CellRow, done: { finalSegId: string; coords: string; link: string; notes?: string; status?: string; cellType?: string }) {
   if (!isLoggedIn.value || !cell.taskId) return;
+  // An apprentice's cell goes to a mentor instead (mentor program): nothing
+  // is written to CAVE, the claim or the sheet, and nothing counts, until a
+  // mentor completes it.
+  if (isApprentice()) { await sendForSecondLook(cell, { ...done, sheet: inSheet(cell) }); return; }
   // CAVE and the claim are independent, so write them at the same time (the
   // Complete button used to wait for one, then the other). The sheet waits for
   // the claim: the server only syncs a completed claim.
@@ -2035,7 +2041,7 @@ function forgetAfterSwitch() { try { sessionStorage.removeItem(AFTER_SWITCH_KEY)
  *  the dataset on screen): go to it. */
 function onOpenAsked(e: Event) {
   const tab = (e as CustomEvent).detail?.tab;
-  if (tab && ALL_CL_TABS.some(t => t.key === tab)) filter.value = tab;
+  if (tab && (ALL_CL_TABS.some(t => t.key === tab) || (tab === 'mentoring' && mentoringShown()))) filter.value = tab;
 }
 onMounted(() => document.addEventListener('nge:open-cell-library', onOpenAsked));
 onBeforeUnmount(() => document.removeEventListener('nge:open-cell-library', onOpenAsked));
@@ -2670,6 +2676,27 @@ function startDrag(e: MouseEvent) {
   window.addEventListener('mouseup', up);
 }
 
+// ── Mentor program (src/mentor.ts) ───────────────────────────────────
+/** This claim's trip to a mentor, if it has one. */
+function mentorFor(cell: CellRow): MentorReview | null {
+  if (cell.taskId == null || !mentorState.mine.length) return null;
+  return mentorState.mine.find(r => r.taskId === cell.taskId) ?? null;
+}
+/** Sent and not back yet: the claim waits, with no Complete or Release. */
+const withMentor = (cell: CellRow) => { const r = mentorFor(cell); return !!r && (r.state === 'waiting' || r.state === 'looking'); };
+const MENTOR_CHIP: Record<MentorReview['state'], string> = {
+  waiting: '🧭 Waiting for a mentor', looking: '🧭 With your mentor', suggestions: '🧭 Mentor suggestions', complete: '🧭 Mentor notes',
+};
+const mentorChip = (cell: CellRow) => { const r = mentorFor(cell); return r ? MENTOR_CHIP[r.state] : ''; };
+function openMentorCell(cell: CellRow) {
+  const r = mentorFor(cell);
+  if (!r) return;
+  try { openMentorView(r, 'apprentice'); } catch (e: any) { window.alert(e?.message || 'That cell cannot be opened here.'); }
+}
+const mentoringCount = computed(() => mentorState.apprentice && !mentorState.mentor
+  ? mentorState.mine.filter(r => r.state === 'suggestions').length
+  : mentorState.waiting + mentorState.yours);
+
 // ── Tab visibility (the hub was getting crowded) ─────────────────────
 // Users hide the tabs they never use from the panel's own little settings
 // popover. The active tab and deep-link targets always render.
@@ -3221,6 +3248,10 @@ const panelStyle = computed(() => ({
                       title="Two to four players on one cell, each working when they can">
                 Teams <b v-if="teamInvites">{{ teamInvites }}</b>
               </button>
+              <button v-if="mentoringShown()" :class="{ active: filter === 'mentoring', 'nge-cl-mentoring-tab': true }" @click="filter = 'mentoring'"
+                      title="The mentor program: a second look at a new player's first cells">
+                Mentoring <b v-if="mentoringCount">{{ mentoringCount }}</b>
+              </button>
               <button v-if="tabShown('tags')" :class="{ active: filter === 'tags', 'nge-cl-tags-tab': true }" @click="filter = 'tags'"
                       title="Scout tags: spots someone flagged to cut or extend">
                 Tags <b>{{ datasetTags.length }}</b>
@@ -3647,6 +3678,11 @@ const panelStyle = computed(() => ({
         <!-- ═══ TEAMS TAB (saved teams: two to four players on one cell) ═══ -->
         <div v-else-if="filter === 'teams' && teamsHere" class="nge-cl-list">
           <teams-tab />
+        </div>
+
+        <!-- ═══ MENTORING TAB (the mentor program, src/mentor.ts) ═══ -->
+        <div v-else-if="filter === 'mentoring' && mentoringShown()" class="nge-cl-list">
+          <mentoring-tab />
         </div>
 
         <!-- ═══ QUESTS TAB (annotate a cell, apart from completing it) ═══ -->
@@ -4155,7 +4191,15 @@ const panelStyle = computed(() => ({
               >{{ teamingUp === cellKey(cell) ? 'Starting…' : '👥 Team up' }}</button>
 
               <button
-                v-if="isMyClaim(cell)"
+                v-if="mentorFor(cell)"
+                class="nge-cl-btn nge-cl-btn--mentor"
+                :class="`nge-cl-btn--mentor-${mentorFor(cell)?.state}`"
+                @click="openMentorCell(cell)"
+                title="Open this cell with your mentor's notes"
+              >{{ mentorChip(cell) }}</button>
+
+              <button
+                v-if="isMyClaim(cell) && !withMentor(cell)"
                 class="nge-cl-btn nge-cl-btn--release"
                 :disabled="releasing.has(releaseKey(cell))"
                 @click="releaseCell(cell)"
@@ -4163,7 +4207,7 @@ const panelStyle = computed(() => ({
               ><span v-if="releasing.has(releaseKey(cell))" class="nge-cl-spin" />{{ releasing.has(releaseKey(cell)) ? 'Releasing…' : 'Release' }}</button>
 
               <button
-                v-if="isMyClaim(cell)"
+                v-if="isMyClaim(cell) && !withMentor(cell)"
                 class="nge-cl-btn nge-cl-btn--complete"
                 :class="{ 'nge-cl-btn--complete-open': completing?.key === cellKey(cell) }"
                 @click="completing?.key === cellKey(cell) ? (completing = null) : openComplete(cell)"
@@ -4257,7 +4301,7 @@ const panelStyle = computed(() => ({
                 :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link) || statusMissing(cell)"
                 :title="statusMissing(cell) ? 'Pick how the cell ended first' : undefined"
                 @click="submitComplete(cell)"
-              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : 'Mark complete' }}</button>
+              ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : (isApprentice() ? 'Send for a second look' : 'Mark complete') }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
           </div>
@@ -4955,6 +4999,10 @@ const panelStyle = computed(() => ({
   color: #a86;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-btn--mentor { border-color: rgba(120, 180, 255, 0.35); color: #9fc8ff; white-space: nowrap; }
+.nge-cl-btn--mentor:hover { background: rgba(120, 180, 255, 0.1); }
+.nge-cl-btn--mentor-suggestions { border-color: rgba(245, 209, 66, 0.55); color: #f5d142; }
+.nge-cl-btn--mentor-complete { border-color: rgba(124, 255, 178, 0.35); color: #9fe8c0; }
 .nge-cl-saved-at { align-self: center; font-size: 11px; color: rgba(200, 212, 228, 0.6); white-space: nowrap; padding: 0 4px; }
 .nge-cl-btn--saveview {
   border-color: rgba(100, 200, 255, 0.3);

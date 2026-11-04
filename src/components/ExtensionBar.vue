@@ -16,6 +16,7 @@ import AchievementToast from "components/AchievementToast.vue";
 import ActivityFeedPanel from "components/ActivityFeedPanel.vue";
 import AccessRequestPanel from "components/AccessRequestPanel.vue";
 import AccessReviewBar from "components/AccessReviewBar.vue";
+import MentorBox from "components/MentorBox.vue";
 import HuntPlacesBox from "components/HuntPlacesBox.vue";
 import HuntReportCard from "components/HuntReportCard.vue";
 import BuildQueueCard from "components/BuildQueueCard.vue";
@@ -513,6 +514,8 @@ watch(() => huntBackend.userId, async id => {
 // A reviewer opened an example from Admin Hub > Access requests: out of the
 // profile, into the view, with the review bar (AccessReviewBar).
 document.addEventListener('nge:access-review', () => { showProfile.value = false; showAccess.value = false; });
+// The same for a mentor program cell opened in the view (MentorBox).
+document.addEventListener('nge:mentor-view', () => { showProfile.value = false; showAccess.value = false; });
 // Checking a Hunt's places in the viewer (HuntPlacesBox): the profile covers the view.
 document.addEventListener('nge:hunt-check', () => { showProfile.value = false; });
 // The reports queue works on the view (HuntReportCard), so the Admin Hub steps aside for it (Ames 2026-10-27).
@@ -1255,6 +1258,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <activity-feed-panel v-if="showFeed" @hide="showFeed = false" />
   <access-request-panel v-if="showAccess" @hide="showAccess = false" />
   <access-review-bar />
+  <mentor-box />
   <hunt-places-box />
   <hunt-report-card v-if="huntBackend.isAdmin" />
   <build-queue-card v-if="huntBackend.isAdmin" />

@@ -1,4 +1,5 @@
 import { notifKind } from './util/notif_kinds';
+import { apprenticeFlag, apprenticeBlockMessage } from './util/mentor_flag';
 import { startViewHash } from './util/start_view';
 import { closeInSandboxView } from './util/sandbox_zoom';
 import { botReply, describeLastSeen, NURRO_NAME, onlineTarget } from './chat_bot';
@@ -4215,6 +4216,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Mark a task as completed with final segment/soma data. */
   async function completeTask(taskId: number, finalSegId?: string, somaCoords?: string) {
     if (!userId.value) return;
+    // An apprentice's cells go to a mentor from the Cell Library (mentor program).
+    if (apprenticeFlag.active) { error.value = apprenticeBlockMessage(); throw new Error(error.value); }
     try {
       await taskAction('complete', { id: taskId, final_segment_id: finalSegId, soma_coords: somaCoords });
       tellScripts('complete', taskId, finalSegId);

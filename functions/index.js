@@ -2857,3 +2857,47 @@ exports.ewSheetSync = onRequest(
   }
  }
 );
+
+// ── The mentor program, a proof of concept (supabase-mentors.sql) ───────────
+// Nseraf's idea (triage report 317), asked for by Ames 2026-11-04. A function of
+// its own, like ewAccessRequest and ewHunt: deploying it never replaces the
+// shared ewSecureWrite. Every rule is in mentors.js (tests: mentors.test.js).
+const EW_MENTOR_CODE_VERSION = "2026-11-04-mentor-poc-1";
+exports.ewMentor = onRequest(
+  { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
+  async (req, res) => {
+    if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+    if (Buffer.byteLength(JSON.stringify(req.body || {})) > 64000) return res.status(413).json({ error: "Input too large" });
+    const { action, token, ...args } = req.body || {};
+    if (action === "health") {
+      const probe = ewSb(ewServiceKey.value().trim());
+      try { await probe("admins?select=id&limit=1"); }
+      catch (e) { res.status(500).json({ ok: false, db: false, code: EW_MENTOR_CODE_VERSION }); return; }
+      let tables = true;
+      try { await probe("ew_mentor_reviews?select=id&limit=1"); await probe("ew_apprentices?select=user_id&limit=1"); await probe("ew_mentors?select=user_id&limit=1"); } catch (e) { tables = false; }
+      res.json({ ok: true, db: true, tables, code: EW_MENTOR_CODE_VERSION });
+      return;
+    }
+    if (typeof action !== "string" || !action.startsWith("mentor.")) { res.status(400).json({ error: `unknown action ${action}` }); return; }
+    const who = await ewVerify(token);
+    if (!who) { res.status(401).json({ error: "Sign in to Pyr again, then retry." }); return; }
+    const sb = ewSb(ewServiceKey.value().trim());
+    try {
+      const { me, isAdmin } = await pilotContext(sb, who);
+      if (!(await rateLimit({ ip: who.email }, true, "write:secure", !!isAdmin)).ok) return res.status(429).json({ error: "Please wait a moment, then try again." });
+      if (!me) throw ewErr(403, "No Pyr profile.");
+      const { mentorAction, restDb } = require("./mentors");
+      const key = ewServiceKey.value().trim();
+      const data = await mentorAction(action, args, { db: restDb(sb), me, isAdmin, now: new Date(),
+        // The apprentice's completion, recorded as saved teams credit a member (team.complete).
+        credit: (userId, row) => recordActivity({ rpc: ewRpc(key), who, me: { id: userId }, token, value: row,
+          insertLegacy: (r) => sb("edit_log", { method: "POST", body: JSON.stringify(r) }) }) });
+      res.json({ ok: true, data });
+    } catch (e) {
+      // Until the SQL is run the tables are missing: say so plainly, and the game hides the tab.
+      if (!e.status && /supabase (404|400)/.test(String(e && e.message)) && action === "mentor.status") { res.json({ ok: true, data: { installed: false } }); return; }
+      console.warn("[ewMentor]", action, who.email, e.message);
+      res.status(e.status || 500).json({ error: e.status ? e.message : "That could not be done. Try again in a moment." });
+    }
+  }
+);

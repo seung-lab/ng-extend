@@ -9,6 +9,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import ConfirmDialog from 'components/ConfirmDialog.vue';
 import DatasetRequestsList from 'components/DatasetRequestsList.vue';
+import MentorAdmin from 'components/MentorAdmin.vue';
 import { listAccessRequests, reviewAccessItem, decideAccess, reviewInView, reviewing, resetAccess,
   type AccessRequest, type AccessItem, type AccessFilter } from '../access_request';
 
@@ -128,6 +129,7 @@ const waiting = computed(() => requests.value.filter(r => r.status === 'submitte
         </button>
       </div>
     </div>
+    <MentorAdmin />
     <DatasetRequestsList />
     <h3 class="nge-accr-retina">Retina requests</h3>
     <p class="nge-accr-how">
