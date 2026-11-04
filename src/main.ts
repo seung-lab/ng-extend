@@ -946,11 +946,17 @@ function observeSplitMergeTools() {
   let lastStatusText = '';
   let lastStatusTime = 0;
   const STATUS_COOLDOWN_MS = 3000;
+  /** Error lines already shown: each is shown once, and stays still. The box
+   *  hid after 10 s while neuroglancer's own line stayed, so it was shown
+   *  again, and again, flashing on and off (Celia, report 369). */
+  const shownErrorLines = new WeakSet<Element>();
 
   /** Scan #statusContainer for split/merge related errors/info */
   function checkStatusMessages() {
     if (!store.toolActive && !store.pendingClose) return;
-    if (store.resultFlash) return; // already showing a result
+    // A success is showing: nothing to add. An error stays up for minutes
+    // now, so new lines (a retry, a new error) are still read under it.
+    if (store.resultFlash === 'success') return;
 
     const statusContainer = document.getElementById('statusContainer');
     if (!statusContainer) return;
@@ -977,12 +983,16 @@ function observeSplitMergeTools() {
       lastStatusTime = Date.now();
 
       if (lower.includes('failed') || lower.includes('error')) {
-        store.showResult('error', cleanText, 10000);  // long enough to read, or ask the guide
+        if (shownErrorLines.has(el)) continue;
+        shownErrorLines.add(el);
+        // Up until it is dismissed, or the next cut or merge replaces it.
+        store.showResult('error', cleanText, 5 * 60 * 1000);
         store.submitting = false;
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
         // Neuroglancer shows "Splitting source from sink..." during processing —
         // the authoritative signal that a split was actually submitted.
         splitSubmitted = true;
+        if (store.resultFlash === 'error') { store.resultFlash = ''; store.resultText = ''; }
         store.submitting = true;
         store.setStatusMessage('Splitting...');
       }
