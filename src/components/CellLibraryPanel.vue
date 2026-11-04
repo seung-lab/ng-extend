@@ -718,6 +718,23 @@ setCastClaimHooks({
  *  it): a claim opened without a view of its own starts with none. They
  *  stayed, and counted under the new claim (wolfryder101, report 350: a Super
  *  Quest showed the 56 Checked of the cell before it). */
+/** The claim just left was saved with its view; a claim with no view of its
+ *  own (MEC has no curated start views) starts from the dataset's own fresh
+ *  layers, not the last cell's (st0ck53y, report 373: "MEC managed layers do
+ *  not reset when claiming a new cell"). The player's display settings stay. */
+function freshLayersForClaim() {
+  try {
+    const ds = findDatasetBySegName(currentSegLayerName());
+    const viewer: any = (window as any).viewer;
+    if (!ds?.layers?.length || !viewer?.layerSpecification) { clearLeftMarks(); return; }
+    const snap = keepDisplayEnabled() ? snapshotDisplay() : null;
+    viewer.layerSpecification.restoreState(ds.layers);
+    restoreDisplayAfterLoad(snap);
+  } catch (e) {
+    console.warn('[cell library] could not start the claim with fresh layers:', e);
+    clearLeftMarks();
+  }
+}
 function clearLeftMarks() {
   for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
     if (ml.archived || !mecKindOfLayer(ml.name)) continue;
@@ -816,7 +833,7 @@ async function switchToClaim(cell: CellRow) {
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
   if (!openStartLink(t?.working_link || cell.startLink)) {
-    if (leftId && leftId !== cell.taskId) clearLeftMarks();
+    if (leftId && leftId !== cell.taskId) freshLayersForClaim();
     jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
   }
   else void backend.anchorClaimAt(cell.taskId).catch(() => null);
@@ -932,8 +949,11 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   if (await leaveCurrentWork(claimed?.id ?? null)) {
     // A quest, or a Hunt candidate, has no start view: go to the cell (a candidate's soma, the cell meant:
     // Ames 2026-10-28, report 279).
-    if (!openStartLink(cell.startLink) && (cell.quest || (isHuntCandidate(cell) && (cell.nucCoords || cell.somaCoords)))) {
-      if (leftId && leftId !== claimed?.id) clearLeftMarks();
+    // A cell with no start view (MEC) is opened too when you were on another
+    // claim, so the new claim is on screen and not the last one (report 373).
+    const leftOther = !!leftId && leftId !== claimed?.id;
+    if (!openStartLink(cell.startLink) && (cell.quest || ((isHuntCandidate(cell) || leftOther) && (cell.nucCoords || cell.somaCoords)))) {
+      if (leftOther) freshLayersForClaim();
       jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
     }
     if (claimed) setWorkingTask(claimed.id);
