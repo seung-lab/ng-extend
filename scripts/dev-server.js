@@ -202,7 +202,7 @@ const path = require('path');
 const BADGE_ART = path.join(__dirname, '..', 'static', 'badges', 'pyr', 'center-art');
 const DEV_OUT = path.join(__dirname, '..', 'dist', 'dev', 'center-art');
 // 'loyalty' is copied only while LOYALTY_ENABLED is true (src/widgets/badge_definitions.ts).
-for (const track of ['building', 'exploration', 'loyalty']) {
+for (const track of ['building', 'exploration', 'loyalty', 'legacy-building', 'legacy-exploration']) {
   const srcDir = path.join(BADGE_ART, track);
   const destDir = path.join(DEV_OUT, track);
   if (fs.existsSync(srcDir)) {

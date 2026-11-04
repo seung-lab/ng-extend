@@ -8,7 +8,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { richPieces, plainChatText, toggleMark, parseChatQuery, matchesChatQuery } from '../util/chat_text';
 import { booGhost, isBoo, inSeason } from '../util/spooky';
-import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
+import { BADGE_DEFINITIONS, LEGACY_BADGES } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
 import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_REACTION_GEM, CHAT_MAX_CHARS, chatTextLength } from '../store';
@@ -1068,7 +1068,9 @@ function achievementOf(msg: ChatMessage): ChatAchievement | null {
     const name = b?.name || (msg.parts.map(p => p.text || '').join('').match(/earned the (.+) award/)?.[1] ?? 'a special award');
     return { track: 'special', name, art: b?.thumbnail_url || b?.image_url || '', why: 'special award', specialId: Number(m[2]) };
   }
-  const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]));
+  // An 'earned' line from before the 2026-11 redesign names an old ladder id (1 to 200): it keeps its art.
+  const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]))
+    ?? LEGACY_BADGES.find(x => x.track === m[1] && x.id === Number(m[2]));
   if (!d) return null;
   const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : d.track === 'loyalty' ? 'days of science' : (d.threshold === 1 ? 'cell' : 'cells');
   return { track: d.track, name: d.name, art: BADGE_IMAGE_MAP[d.imageKey] || '', why: `${d.threshold.toLocaleString()} ${unit}`, slug: d.slug };

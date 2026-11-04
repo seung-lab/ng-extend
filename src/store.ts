@@ -12,6 +12,7 @@ import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears }
 import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
+import { achievementTestTrack } from './widgets/badge_definitions';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -6049,6 +6050,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  failure is silent (the achievement itself is unaffected). */
   function announceAchievement(track: string, badgeId: number, forUserId?: string) {
     if (!userId.value) return;
+    if (achievementTestTrack(track)) return;   // the new ladders: never in live chat from a test site
     // forUserId: a special award an admin has just given to someone else.
     if (forUserId || track === 'special') {
       secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
@@ -6437,12 +6439,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** This player holds this Achievement as a saved record. */
   function holdsSaved(who: string | null | undefined, track: string, badgeId: number | null | undefined): boolean {
     if (!who || badgeId == null) return false;
+    if (achievementTestTrack(track)) return false;   // saved ids belong to the live ladder
+    const key = badgeAwardKey(track, badgeId);
+    if (who === userId.value && myBadgeAwards.value.has(key)) return true;
+    return !!savedAwards.value[who]?.has(key);
+  }
+  /** A saved award on the old ladder (Legacy Achievements): read as saved, on every site. */
+  function holdsLegacy(who: string | null | undefined, track: string, badgeId: number): boolean {
+    if (!who) return false;
     const key = badgeAwardKey(track, badgeId);
     if (who === userId.value && myBadgeAwards.value.has(key)) return true;
     return !!savedAwards.value[who]?.has(key);
   }
   async function recordBadgeAward(track: string, badgeId: number) {
     if (!userId.value || badgeId == null) return;
+    if (achievementTestTrack(track)) return;   // the new ladders save nothing from a test site
     const key = badgeAwardKey(track, badgeId);
     if (myBadgeAwards.value.has(key)) return;   // already recorded this session
     myBadgeAwards.value.add(key);
@@ -6698,7 +6709,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
-    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved,
+    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved, holdsLegacy,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload

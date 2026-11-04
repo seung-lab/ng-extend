@@ -53,6 +53,7 @@ import {getPcgInfo} from '../widgets/pcg_service';
 import {mintShortStateLink} from '../util/state_link';
 import TutorialEditsTab from 'components/TutorialEditsTab.vue';
 import {rootOfSupervoxel, resetPracticeExample, ensureSupervoxels, anySupervoxelOf, type PracticeExample, type PracticeKind} from '../practice';
+import { isAwardTitle } from '../util/award_title';
 
 const backend = useProofreadingBackendStore();
 
@@ -1867,7 +1868,7 @@ function notifCategory(n: any): string {
   if (/^(🗂|🎉 Fixed|🔑 |🔬 |🔓 |📋 |Proofreading Test:)/u.test(t) || /tagged you on a report$/.test(t)) return 'adminAlert';
   if (/^Today in Pyr/.test(t)) return 'daily';
   if (t === '✨ New Achievement!' || t === 'New Achievement!') return 'customBadge';         // admin-awarded special badge
-  if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
+  if (isAwardTitle(t)) return 'personalBadge';     // tutorial / building / exploration
   return 'announcement';
 }
 
