@@ -19,7 +19,7 @@ export type NotifKind = 'main' | 'triage' | 'admin' | 'access' | 'hunt';
 // Access requests have a tab of their own again (Ames 2026-11-02: "access
 // requests can go back in own tab 'access'").
 const ACCESS_STARTS = ['🔑 Access update', '🔑 Beta access request', '🔬 Retina access request', '🔓 Dataset access request'];
-const ADMIN_STARTS = ['Proofreading Test:', '💬 Reply to your question from', '📋 '];
+const ADMIN_STARTS = ['⏰ Still waiting on you', 'Proofreading Test:', '💬 Reply to your question from', '📋 '];
 const TRIAGE_STARTS = ['🗂', '🎉 Fixed'];
 
 export function notifKind(title: string | null | undefined, isAdmin: boolean): NotifKind {
