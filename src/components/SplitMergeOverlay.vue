@@ -523,7 +523,7 @@ function cancelTool() {
             <span v-if="pair[1]" class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[1])" title="Hover to light this segment up in the views. Right click to go to it."
                   @mouseenter="hoverSegment(pair[1])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[1])">{{ pair[1] }}</span>
             <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
-            <button v-if="pair[1]" class="nge-smo-merge-go" @click.stop="goToMergePoint(i)" title="Go to where these two join" aria-label="Go to this merge point">⌖</button>
+            <button v-if="pair[1]" class="nge-smo-merge-go" @click.stop="goToMergePoint(i)" title="Jump to where these two join" aria-label="Jump to this merge point">↗</button>
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
             <!-- why it failed, in the server's words, on a line of its own -->
             <div v-if="rowWhy(i)" class="nge-smo-merge-why">{{ rowWhy(i) }}</div>
