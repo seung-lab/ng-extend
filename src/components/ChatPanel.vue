@@ -532,6 +532,22 @@ function repliedMsg(msg: ChatMessage): ChatMessage | null {
 }
 const flashedMsgId = ref<string | null>(null);
 let flashTimer = 0;
+/** A message meant for you (Ames 2026-11-04: "draw inspiration at how other
+ *  chats do this"): it @mentions you, or replies to one of your messages.
+ *  Shown as Discord and Slack do, with a warm band and a bar at its left. */
+function isForMe(msg: ChatMessage): boolean {
+  if (isMine(msg)) return false;
+  if ((msg.text || '').split(/\s+/).some(t => t.startsWith('@') && isSelfMention(t))) return true;
+  const to = (msg as any).replyTo;
+  return !!to && chatStore.chatMessages.some(m => String(m.id) === String(to) && isMine(m));
+}
+/** Open chat at the message that pinged you. */
+function goToMention() {
+  const id = chatStore.lastMentionId;
+  mentionWaiting.value = false;
+  mentionFlash.value = false;
+  if (id) goToMessage(id);
+}
 function goToMessage(id: string | null | undefined) {
   if (!id) return;
   const el = document.querySelector<HTMLElement>(`.nge-chat-float [data-msg-id="${CSS.escape(String(id))}"]`);
@@ -1465,7 +1481,10 @@ function toggleCollapse() {
           </div>
         </span>
         <span v-if="collapsed && unreadMessages" class="nge-chat-strip-unread" title="New messages"></span>
-        <span v-if="mentionFlash && chatStore.lastMentionFrom" class="nge-chat-mentioned-by">@ from {{ chatStore.lastMentionFrom }}</span>
+        <button v-if="mentionFlash && chatStore.lastMentionFrom" :key="chatStore.mentionPing" type="button" class="nge-chat-mentioned-by"
+                :title="`${chatStore.lastMentionFrom} mentioned you. Click to see the message.`" @click.stop="goToMention">
+          <span class="nge-chat-mentioned-at" aria-hidden="true">@</span>{{ chatStore.lastMentionFrom }}
+        </button>
         <span class="nge-chat-strip-spacer"></span>
         <button class="nge-chat-strip-btn nge-chat-tips-btn" :class="{ 'nge-chat-tips-btn--on': tipsOpen }"
                 @click.stop="tipsOpen ? (tipsOpen = false) : openTips()" :aria-pressed="tipsOpen"
@@ -1651,7 +1670,7 @@ function toggleCollapse() {
                   <div v-else class="nge-chat-daily-empty">No edits in the last 24 hours yet. The top spot is wide open!</div>
                 </div>
 
-                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery, 'nge-chat-msg--help': !!helpLead(msg) }"
+                <div v-else-if="msg.type === 'message'" class="nge-chat-msg" :class="{ 'nge-chat-fresh': isFresh(msg), 'nge-chat-recent': recentMsgs.has(msg), 'nge-chat-private': msg.private, 'nge-chat-msg--flash': msg.id != null && flashedMsgId === String(msg.id), 'nge-chat-msg--mine': isMine(msg), 'nge-chat-msg--hit': !!chatQuery, 'nge-chat-msg--help': !!helpLead(msg), 'nge-chat-msg--forme': isForMe(msg), 'nge-chat-msg--ping': mentionFlash && msg.id != null && String(msg.id) === chatStore.lastMentionId }"
                      @click="onMessageClick(msg, $event)"
                      :data-msg-id="msg.id != null ? String(msg.id) : undefined"
                      :title="msg.private ? 'Only you can see this' : undefined">
@@ -2398,32 +2417,88 @@ function toggleCollapse() {
 }
 .nge-chat-mention:hover { background: rgba(74, 158, 255, 0.25); color: #cfe0ff; }
 /* Flash when someone @mentions you: an amber ring pulses three times. */
-.nge-chat-float--mentioned {
-  animation: nge-chat-mention-flash 1s ease-in-out 3;
-}
-.nge-chat-float--mention-waiting {
-  animation: nge-chat-mention-flash 1s ease-in-out 3, nge-chat-mention-glow 2.4s ease-in-out 3s infinite;
-}
+/* A mention no longer rings the whole box (Ames 2026-11-04: "we don't want a
+   circle around the box"). The message itself lights up, and a pill pops
+   into the header (below). */
+.nge-chat-float--mentioned { animation: none; }
+.nge-chat-float--mention-waiting { animation: none; }
 @keyframes nge-chat-mention-glow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.45), 0 0 10px rgba(245, 166, 35, 0.2); }
   50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8), 0 0 22px rgba(245, 166, 35, 0.45); }
 }
+/* Messages meant for you: a warm band, a gold bar at the left. */
+.nge-chat-msg--forme {
+  background: linear-gradient(90deg, rgba(255, 190, 80, 0.16), rgba(255, 190, 80, 0.05) 70%, transparent);
+  box-shadow: inset 3px 0 0 #f5b942;
+  border-radius: 4px;
+}
+/* The one that just pinged you arrives with a little flourish: the bar
+   draws down, the band fills in, a glint runs across. */
+.nge-chat-msg--ping { position: relative; overflow: hidden; animation: nge-chat-ping-band 0.9s cubic-bezier(.2, .9, .3, 1.2) both; }
+.nge-chat-msg--ping::before {
+  content: ''; position: absolute; left: 0; top: 0; width: 3px; height: 100%;
+  background: linear-gradient(180deg, #ffe08a, #f5b942); transform-origin: top;
+  animation: nge-chat-ping-bar 0.45s ease-out both;
+}
+.nge-chat-msg--ping::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 35%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 236, 180, 0.35), transparent);
+  transform: skewX(-18deg); animation: nge-chat-ping-glint 0.9s 0.25s ease-out both;
+}
+@keyframes nge-chat-ping-band { from { background-color: rgba(255, 200, 90, 0.35); } to { background-color: transparent; } }
+@keyframes nge-chat-ping-bar { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes nge-chat-ping-glint { from { left: -40%; } to { left: 120%; } }
 @media (prefers-reduced-motion: reduce) {
-  .nge-chat-float--mention-waiting { animation: none; box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8); }
+  .nge-chat-msg--ping, .nge-chat-msg--ping::before, .nge-chat-msg--ping::after { animation: none; }
+  .nge-chat-mentioned-by, .nge-chat-mentioned-by::before, .nge-chat-mentioned-at { animation: none !important; }
 }
 @keyframes nge-chat-mention-flash {
   0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.25), 0 0 0 rgba(245, 166, 35, 0); }
   50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.95), 0 0 28px rgba(245, 166, 35, 0.55); }
 }
+/* The pill: pops in with a bounce and a burst of sparks, then breathes
+   softly until you look. Clicking it goes to the message. */
 .nge-chat-mentioned-by {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 4px;
   margin-left: 8px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #1a1204;
-  background: #f5a623;
-  white-space: nowrap;
+  padding: 2px 9px 2px 3px;
+  border: 0; border-radius: 999px;
+  font: 700 10.5px/1.3 inherit;
+  color: #2a1a00;
+  background: linear-gradient(135deg, #ffe28a, #f5b13d);
+  box-shadow: 0 2px 8px rgba(245, 170, 50, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  white-space: nowrap; cursor: pointer;
+  animation: nge-chat-pill-pop 0.55s cubic-bezier(.2, 1.6, .4, 1) both, nge-chat-pill-breathe 2.6s 0.8s ease-in-out infinite;
+}
+.nge-chat-mentioned-by:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.nge-chat-mentioned-at {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #2a1a00; color: #ffd36b; font-size: 10px; line-height: 1;
+  animation: nge-chat-at-spin 0.6s 0.1s ease-out both;
+}
+/* sparks: a ring of dots that bursts out once */
+.nge-chat-mentioned-by::before {
+  content: ''; position: absolute; left: 10px; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%;
+  pointer-events: none; opacity: 0;
+  box-shadow: 0 -12px #ffd36b, 10px -7px #ffb84d, 12px 4px #ffe28a, 4px 12px #ffd36b, -7px 10px #ffb84d, -12px 0 #ffe28a, -8px -9px #ffd36b;
+  animation: nge-chat-pill-sparks 0.7s 0.15s ease-out both;
+}
+@keyframes nge-chat-pill-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  80% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+@keyframes nge-chat-pill-breathe {
+  0%, 100% { box-shadow: 0 2px 8px rgba(245, 170, 50, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+  50% { box-shadow: 0 2px 14px rgba(245, 170, 50, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+}
+@keyframes nge-chat-at-spin { from { transform: rotate(-200deg) scale(0.4); } to { transform: none; } }
+@keyframes nge-chat-pill-sparks {
+  0% { opacity: 1; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(1.5); }
 }
 .nge-chat-mention--me {
   color: #ffe6a8;

@@ -6973,6 +6973,8 @@ export const useChatStore = defineStore('chat', () => {
    *  the chat panel can flash to draw your eye. */
   const mentionPing = ref(0);
   const lastMentionFrom = ref('');
+  /** The message that @mentioned you (or replied to you) last. */
+  const lastMentionId = ref('');
   /** History paging: the oldest message loaded, and whether older ones exist. */
   const hasMoreHistory = ref(true);
   const loadingHistory = ref(false);
@@ -7710,6 +7712,7 @@ export const useChatStore = defineStore('chat', () => {
         const repliedToMe = !!row.reply_to && chatMessages.value.some(m => m.id === row.reply_to && m.userId === backend.userId);
         const mention = repliedToMe || (mentionsMe(row.text || '') && !onlineTarget(row.text || ''));
         if (mention) {
+          lastMentionId.value = row.id != null ? String(row.id) : '';
           mentionPing.value++; lastMentionFrom.value = row.name || '';
           alertMentionAway(row.name || 'Someone', row.text || '', true);
         } else if (!useUserPreferencesStore().prefs.chatMuted && row.notification_id == null && row.rank !== 'achievement') {
@@ -7896,6 +7899,6 @@ export const useChatStore = defineStore('chat', () => {
 
   return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
     pinned, loadPin, pinMessage,
-    panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
+    panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
 });
