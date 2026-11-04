@@ -2778,7 +2778,7 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
           const finishing = lineTool.inProgressAnnotation.value !== undefined;
           lineTool.trigger(this.mouseState);
           if (finishing) sendNew();
-          else StatusMessage.showTemporaryMessage('Merge point placed. Point at the other piece and press M.', 4000);
+          else StatusMessage.showTemporaryMessage('Merge point placed. Click the other piece (or point at it and press M).', 4000);
           return;
         }
         // A first point with no second: closing drops it, as M always did.
@@ -2791,6 +2791,30 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
       // neuroglancer's own M closed merge instead (Ames 2026-11-04).
       ngeQuickMergeKey = quickKey;
       activation.registerDisposer(() => { if (ngeQuickMergeKey === quickKey) ngeQuickMergeKey = undefined; });
+      // With a first point placed, a plain click on the other piece is the
+      // second point (Ames 2026-11-04: "shouldn't it just let me click").
+      // A drag still turns the view; only a short, still click counts.
+      let down: {x: number, y: number, t: number, id: number}|undefined;
+      const inView = (t: EventTarget|null) => {
+        const el = t as HTMLElement|null;
+        return !!el?.closest?.('.neuroglancer-rendered-data-panel') &&
+            !el.closest('button, a, input, select, textarea, [role="button"], .neuroglancer-data-panel-layout-controls');
+      };
+      activation.registerEventListener(window, 'pointerdown', (e: PointerEvent) => {
+        down = undefined;
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.pointerType === 'touch') return;
+        if (lineTool.inProgressAnnotation.value === undefined || !inView(e.target)) return;
+        down = {x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId};
+      }, true);
+      activation.registerEventListener(window, 'pointerup', (e: PointerEvent) => {
+        const d = down;
+        down = undefined;
+        if (!d || d.id !== e.pointerId || lineTool.inProgressAnnotation.value === undefined) return;
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 600) return;
+        if (!onPiece()) return;
+        e.stopPropagation();
+        quickKey();
+      }, true);
       // Opened by a real M press: that press is the first point, if the
       // cursor is on a piece. The view may take a moment to say what is
       // under the cursor once merge has opened.
