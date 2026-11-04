@@ -2,7 +2,7 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
-      "at": "2026-11-04T20:48:14Z",
+      "at": "2026-11-04T20:53:08Z",
       "title": "Plain sparks on cut and merge",
       "digest": "minor",
       "items": [
@@ -10,10 +10,18 @@
       ]
     },
     {
+      "at": "2026-11-04T20:50:17Z",
+      "title": "Merge only by button",
+      "digest": "minor",
+      "items": [
+        "Cells picked in the Seg list are merged only with the Merge button. Pressing M no longer merges them, so a merge never happens by accident."
+      ]
+    },
+    {
       "at": "2026-11-04T20:33:27Z",
       "title": "Faster merges",
       "items": [
-        "Merge cells straight from the Seg list: Ctrl+click two or more cells (up to 10), then press M or click Merge. Pyr joins them where they come closest. The (i) beside Merge explains it.",
+        "Merge cells straight from the Seg list: Ctrl+click two or more cells (up to 10), then click Merge. Pyr joins them where they come closest. The (i) beside Merge explains it.",
         "Quick merge (Settings, Merging): point at a piece and press M, then click the other piece, or point at it and press M. The merge goes straight away, in 2D or 3D.",
         "A cut that worked no longer shows a leftover \"Split failed\" message, and pressing Enter twice no longer sends the same cut twice."
       ]

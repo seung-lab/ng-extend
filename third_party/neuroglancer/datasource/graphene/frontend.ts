@@ -2741,9 +2741,6 @@ if (typeof window !== 'undefined') {
     ngeLastMKeyDown = performance.now();
     // Merge open with quick merge on: M is a merge point (or closes merge
     // over empty space), and neuroglancer's own M does not also run.
-    // Two cells picked in the Seg list: M merges those (src/drag_reorder.ts).
-    const pickRow = document.querySelector('.nge-pick-merge-row') as HTMLElement|null;
-    if (pickRow && pickRow.style.display !== 'none' && pickRow.offsetParent !== null) return;
     if (ngeQuickMergeKey && ngeQuickMergeOn()) {
       e.preventDefault();
       e.stopPropagation();
