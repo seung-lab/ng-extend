@@ -151,18 +151,26 @@ function step(now: number) {
       l.rot += l.spin * dt;
       // Lands on the chat box: lies nearly flat on its top edge.
       if (l.lands && box && resting < MAX_RESTING && l.x > box.left + 8 && l.x < box.right - 8) {
-        const top = box.top - l.size * 0.18;
+        // Lying on its side, half its squeezed width above the edge, so all
+        // of it shows on top of the chat panel (which is drawn over this
+        // layer) instead of half of it tucking behind.
+        const squeeze = 0.45 + Math.random() * 0.3, top = box.top - l.size * squeeze * 0.5;
         if (before < top && l.y >= top) {
           l.kind = 'rest'; l.y = top; l.restTop = box.top;
-          l.rot = Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1) + (Math.random() - 0.5) * 0.5;
-          l.squeeze = 0.45 + Math.random() * 0.3;
+          l.rot = Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1) + (Math.random() - 0.4) * 0.3;
+          l.squeeze = squeeze;
           l.restUntil = now + between(REST_MS);
           resting++;
         }
       }
     } else if (l.kind === 'rest') {
-      // A gust in time, or the chat box moved or closed under it.
-      if (now > l.restUntil || !box || Math.abs(box.top - l.restTop) > 3 || l.x < box.left || l.x > box.right) blow(l);
+      if (now > l.restUntil) blow(l);
+      // The chat box changed under it (faded to its small size, grew, moved
+      // or closed): it slips off and falls again, landing on the new top if
+      // there is one, instead of blowing away at once.
+      else if (!box || Math.abs(box.top - l.restTop) > 3 || l.x < box.left || l.x > box.right) {
+        l.kind = 'fall'; l.baseX = l.x; l.sway = 4; l.freq = 0.6; l.fall = 90; l.lands = true;
+      }
     } else if (l.kind === 'blow') {
       l.vy += 140 * dt;
       l.x += l.vx * dt; l.y += l.vy * dt;
