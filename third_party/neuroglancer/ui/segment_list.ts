@@ -2049,8 +2049,16 @@ export class SegmentDisplayTab extends Tab {
                       sectionActions.recolor(pickedIds().map(id => id.toString()), hex);
                     }, 'Color for the picked cells');
                   });
+                  // nge: two picked cells can be merged straight from here
+                  // (Ames 2026-11-04). M does the same (src/drag_reorder.ts).
+                  const mergePicked = barBtn('Merge', 'Merge the two picked cells where they touch (M)', () => {
+                    const ids = pickedIds().map(id => id.toString());
+                    if (ids.length !== 2) return;
+                    window.dispatchEvent(new CustomEvent('nge-merge-cells', {detail: {ids}}));
+                    pickedSegments.clear();
+                  }, 'nge-pick-merge');
                   bar.append(
-                      barCount, moveTo,
+                      barCount, mergePicked, moveTo,
                       barBtn('Show', 'Show the picked cells', () => group.visibleSegments.set(pickedIds(), true)),
                       barBtn('Hide', 'Hide the picked cells', () => group.visibleSegments.set(pickedIds(), false)),
                       recolorPicked,
@@ -2084,6 +2092,7 @@ export class SegmentDisplayTab extends Tab {
                     const n = pickedSegments.ids.size;
                     bar.style.display = n ? '' : 'none';
                     barCount.textContent = `${n} picked`;
+                    mergePicked.style.display = n === 2 ? '' : 'none';
                     removeChildren(moveTo);
                     const opt = (value: string, text: string) => {
                       const o = document.createElement('option');

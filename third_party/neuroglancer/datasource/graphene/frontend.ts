@@ -18,7 +18,7 @@ import './graphene.css';
 
 import {AnnotationDisplayState, AnnotationLayerState} from 'neuroglancer/annotation/annotation_layer_state';
 import {LayerChunkProgressInfo} from 'neuroglancer/chunk_manager/base';
-import {Annotation, AnnotationReference, AnnotationSource, AnnotationType, Line, LocalAnnotationSource, makeDataBoundsBoundingBoxAnnotationSet, Point} from 'neuroglancer/annotation';
+import {Annotation, AnnotationReference, AnnotationSource, AnnotationType, Line, LocalAnnotationSource, makeAnnotationId, makeDataBoundsBoundingBoxAnnotationSet, Point} from 'neuroglancer/annotation';
 import {ChunkManager, WithParameters} from 'neuroglancer/chunk_manager/frontend';
 import {makeIdentityTransform} from 'neuroglancer/coordinate_transform';
 import {CredentialsManager} from 'neuroglancer/credentials_provider';
@@ -978,6 +978,16 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       this.visibleSegmentsChanged(segmentIds, add);
     }));
 
+    // nge: merge two cells picked in the Seg list (src/drag_reorder.ts,
+    // ui/segment_list.ts send this).
+    this.registerEventListener(window, 'nge-merge-cells', ((e: CustomEvent) => {
+      const ids: string[] = e.detail?.ids ?? [];
+      if (ids.length !== 2) return;
+      const parsed = ids.map(s => { const u = new Uint64(); return u.tryParseString(s) ? u : undefined; });
+      if (!parsed[0] || !parsed[1] || !segmentsState.selectedSegments.has(parsed[0]) || !segmentsState.selectedSegments.has(parsed[1])) return;
+      void this.ngeMergeCells(parsed[0], parsed[1]);
+    }) as EventListener);
+
     const {annotationLayerStates, state: {multicutState, findPathState}} = this;
     const loadedSubsource = getGraphLoadedSubsource(layer)!;
     const redGroup = makeColoredAnnotationState(layer, loadedSubsource, 'sinks', RED_COLOR);
@@ -1281,6 +1291,51 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         return true;
       }
     }
+  }
+
+  /**
+   * nge: merge two whole cells, picked in the Seg list, without placing
+   * points (Ames 2026-11-04: "control click two of them and then press M").
+   * The merge goes where the two cells come closest, found from their 3D
+   * shapes as loaded in the view. The server finds the piece of each cell at
+   * that spot. It is then an ordinary merge: bulkMerge, the edit guard, the
+   * edit count and the ID tidying after it.
+   */
+  async ngeMergeCells(a: Uint64, b: Uint64) {
+    const say = (text: string, ms = 6000) => StatusMessage.showTemporaryMessage(text, ms);
+    if (Uint64.equal(a, b)) { say('Pick two different cells to merge.'); return; }
+    const {visibleSegments} = this.segmentsState;
+    if (!visibleSegments.has(a) || !visibleSegments.has(b)) { say('Show both cells first: Pyr finds where they touch from their 3D shapes.'); return; }
+    const va = ngeCellVertices(this.layer, a), vb = ngeCellVertices(this.layer, b);
+    if (!va.length || !vb.length) { say('The 3D shape of one of these cells has not loaded yet. Wait a moment, then try again.'); return; }
+    const pair = ngeClosestPair(va, vb, NGE_MERGE_CELLS_MAX_NM);
+    if (!pair) { say(`These two cells do not touch (nowhere within ${NGE_MERGE_CELLS_MAX_NM / 1000} µm of each other), so Pyr cannot merge them. Use merge mode to place the points yourself.`, 9000); return; }
+    const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
+    const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
+    const inLayer = (p: number[]) => Float32Array.from(p.map((v, i) => v / toNm[i]));
+    const submission: MergeSubmission = {
+      id: makeAnnotationId(),
+      locked: false,
+      // The cell's own id: the server takes the piece of it at the point.
+      sink: {rootId: a.clone(), segmentId: a.clone(), position: inLayer(pair[0])},
+      source: {rootId: b.clone(), segmentId: b.clone(), position: inLayer(pair[1])},
+    };
+    const {merges} = this.state.mergeState;
+    if (merges.value.length >= MAX_MERGE_COUNT) { say(`Maximum of ${MAX_MERGE_COUNT} simultanous merges allowed.`); return; }
+    // Drawn as a merge line, and listed in merge mode, like any other.
+    this.mergeAnnotationState.source.add(mergeToLine(submission), /*commit=*/false);
+    const listed = merges.value.find(x => x.id === submission.id);
+    const sent = listed ?? submission;
+    sent.source = submission.source;
+    sent.sink = submission.sink;
+    if (!listed) merges.value = [...merges.value, sent];
+    try {
+      const ref = this.mergeAnnotationState.source.getReference(submission.id);
+      try { if (ref.value) this.mergeAnnotationState.source.commit(ref); } finally { ref.dispose(); }
+    } catch { /* the line is only a picture */ }
+    if (!sent.locked) await this.bulkMerge([sent]);
+    if (sent.error) say(`Merge failed: ${sent.error}`, 9000);
+    else if (sent.mergedRoot) say('Merged.', 3000);
   }
 
   deleteMergeSubmission = (submission: MergeSubmission) => {
@@ -2541,6 +2596,60 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.isTrusted && e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) ngeLastMKeyDown = performance.now();
   }, true);
+}
+
+/** nge: how far apart two picked cells may be and still be merged by Pyr. */
+const NGE_MERGE_CELLS_MAX_NM = 2000;
+
+/** nge: every vertex of a cell's 3D shape as loaded in the view, in nm. */
+function ngeCellVertices(layer: SegmentationUserLayer, root: Uint64): Float32Array[] {
+  const out: Float32Array[] = [];
+  const key = `${root.low},${root.high}`;  // the mesh layer's key (getObjectKey)
+  for (const rl of (layer as any).renderLayers ?? []) {
+    const src = rl?.source;
+    if (!src?.fragmentSource?.chunks || !src?.chunks || typeof src.getFragmentKey !== 'function') continue;
+    const manifest = src.chunks.get(key);
+    for (const fid of manifest?.fragmentIds ?? []) {
+      const vp: Float32Array|undefined = src.fragmentSource.chunks.get(src.getFragmentKey(key, fid).key)?.meshData?.vertexPositions;
+      if (vp && vp.length >= 3) out.push(vp);
+    }
+  }
+  return out;
+}
+
+/** nge: the closest vertex of `a` to a vertex of `b`, if any pair is within
+ *  maxNm: [pointA, pointB]. A grid over b's vertices, searched coarse to fine. */
+function ngeClosestPair(a: Float32Array[], b: Float32Array[], maxNm: number): [number[], number[]]|undefined {
+  for (const cell of [250, maxNm]) {
+    const grid = new Map<string, number[]>();
+    const keyOf = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+    for (const vp of b) {
+      for (let p = 0; p + 2 < vp.length; p += 3) {
+        const k = keyOf(vp[p], vp[p + 1], vp[p + 2]);
+        const list = grid.get(k);
+        // Each cell keeps up to 64 points: plenty to find the touching spot.
+        if (!list) grid.set(k, [vp[p], vp[p + 1], vp[p + 2]]);
+        else if (list.length < 192) list.push(vp[p], vp[p + 1], vp[p + 2]);
+      }
+    }
+    let best = cell * cell, found: [number[], number[]]|undefined;
+    for (const vp of a) {
+      for (let p = 0; p + 2 < vp.length; p += 3) {
+        const x = vp[p], y = vp[p + 1], z = vp[p + 2];
+        const i = Math.floor(x / cell), j = Math.floor(y / cell), k = Math.floor(z / cell);
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dk = -1; dk <= 1; dk++) {
+          const list = grid.get(`${i + di},${j + dj},${k + dk}`);
+          if (!list) continue;
+          for (let q = 0; q < list.length; q += 3) {
+            const d = (list[q] - x) ** 2 + (list[q + 1] - y) ** 2 + (list[q + 2] - z) ** 2;
+            if (d <= best) { best = d; found = [[x, y, z], [list[q], list[q + 1], list[q + 2]]]; }
+          }
+        }
+      }
+    }
+    if (found) return found;
+  }
+  return undefined;
 }
 
 // nge: 20, as in stock neuroglancer (was 10 here; player request 2026-10-08).
