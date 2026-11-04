@@ -5196,6 +5196,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  claim that neither new piece belongs to (st0ck53y, report 360).
    *  Asked only for claims whose cell is on screen, or never asked yet, so an
    *  edit costs one lookup, not one per claim (Ames: "clean up the querying"). */
+  /** When each of my claims last had its cell on screen (noteClaimsOnScreen). */
+  const claimSeenAt = new Map<number, number>();
+  /** Note which claims are on screen now: cheap, no lookups. Every 2 s. */
+  function noteClaimsOnScreen() {
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!vis) return;
+    const now = Date.now();
+    for (const t of myActiveClaims()) {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) {
+        try { if (r && /^\d+$/.test(r) && vis.has(Uint64.parseString(r))) { claimSeenAt.set(t.id, now); break; } } catch { /* not an ID */ }
+      }
+    }
+  }
+  setInterval(() => { if (!document.hidden) noteClaimsOnScreen(); }, 2000);
   async function refreshLaterRoots(): Promise<void> {
     const ds = canonicalDataset(currentDatasetTag());
     const mine = myActiveClaims().filter(t => canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
@@ -5205,9 +5220,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       for (const r of ids) { try { if (r && /^\d+$/.test(r) && vis?.has(Uint64.parseString(r))) return true; } catch { /* not an ID */ } }
       return false;
     };
+    // On screen now, or in the last half minute: an edit takes the claim's
+    // old ID out of the view before this runs, and a claim checked only
+    // "now" was skipped right after its own cut.
+    const now = Date.now();
+    for (const t of mine) if (shown(t)) claimSeenAt.set(t.id, now);
     const next: Record<number, string[]> = {};
     await Promise.all(mine.map(async t => {
-      if (laterRoots.value[t.id] && !shown(t)) { next[t.id] = laterRoots.value[t.id]; return; }
+      const recent = now - (claimSeenAt.get(t.id) ?? 0) < 30_000;
+      if (laterRoots.value[t.id] && !recent) { next[t.id] = laterRoots.value[t.id]; return; }
       const listed = String(t.segment_id);
       let ends = descendantsSeen.get(listed);
       if (!ends) { ends = latestDescendants(listed).catch(() => null); descendantsSeen.set(listed, ends); }
@@ -5223,6 +5244,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
+  let laterAgainTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
     // Its later versions changed with this edit: ask again (AzureJay, report
     // 344: active time stopped counting after a split).
@@ -5230,6 +5252,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
     liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
+    // Once more a little later, in case the server's history was not ready.
+    if (laterAgainTimer) clearTimeout(laterAgainTimer);
+    laterAgainTimer = setTimeout(() => { descendantsSeen.clear(); refreshLaterRoots().catch(() => {}); }, 10_000);
   });
 
   function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
