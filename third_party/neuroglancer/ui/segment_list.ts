@@ -2050,8 +2050,8 @@ export class SegmentDisplayTab extends Tab {
                     }, 'Color for the picked cells');
                   });
                   // nge: two picked cells can be merged straight from here
-                  // (Ames 2026-11-04). M does the same (src/drag_reorder.ts).
-                  const mergePicked = barBtn('Merge', 'Merge the picked cells where they touch (M)', () => {
+                  // (Ames 2026-11-04). Only this button: no key merges them, so a merge is never an accident.
+                  const mergePicked = barBtn('Merge', 'Merge the picked cells where they touch', () => {
                     const ids = pickedIds().map(id => id.toString());
                     if (ids.length < 2) return;
                     window.dispatchEvent(new CustomEvent('nge-merge-cells', {detail: {ids}}));
@@ -2063,8 +2063,7 @@ export class SegmentDisplayTab extends Tab {
                   const mergeInfo = document.createElement('p');
                   mergeInfo.className = 'nge-pick-merge-info';
                   mergeInfo.textContent = 'Merges the picked cells into one, joined where they come closest (up to 10 at once). ' +
-                      'They need to be showing in 3D. A cell more than 2 µm from the others is left out: use merge mode for those. ' +
-                      'Shortcut: Ctrl+click the cells, then press M.';
+                      'They need to be showing in 3D. A cell more than 2 µm from the others is left out: use merge mode for those.';
                   mergeInfo.style.display = 'none';
                   const mergeInfoBtn = barBtn('i', 'What does Merge do?', () => {
                     const open = mergeInfo.style.display === 'none';

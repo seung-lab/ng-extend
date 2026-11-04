@@ -5,7 +5,7 @@
       "at": "2026-11-04T20:33:27Z",
       "title": "Faster merges",
       "items": [
-        "Merge cells straight from the Seg list: Ctrl+click two or more cells (up to 10), then press M or click Merge. Pyr joins them where they come closest. The (i) beside Merge explains it.",
+        "Merge cells straight from the Seg list: Ctrl+click two or more cells (up to 10), then click Merge. Pyr joins them where they come closest. The (i) beside Merge explains it.",
         "Quick merge (Settings, Merging): point at a piece and press M, then click the other piece, or point at it and press M. The merge goes straight away, in 2D or 3D.",
         "A cut that worked no longer shows a leftover \"Split failed\" message, and pressing Enter twice no longer sends the same cut twice."
       ]

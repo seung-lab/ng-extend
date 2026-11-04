@@ -380,20 +380,8 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
     pickedSegments.clear();
     return;
   }
-  // M with two or more cells picked merges them where they touch (Ames 2026-11-04:
-  // "control click two of them and then press M"). Taken before
-  // neuroglancer's M, which would open merge mode instead.
-  if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && pickedSegments.ids.size >= 2) {
-    const panel = document.querySelector('.neuroglancer-segment-display-tab');
-    const got = getSelectedSegmentsSet(panel);
-    const ids = [...pickedSegments.ids].filter(s => { const u = new Uint64(); return u.tryParseString(s) && !!got?.set.has(u); });
-    if (ids.length < 2) return;
-    e.preventDefault();
-    e.stopPropagation();
-    window.dispatchEvent(new CustomEvent('nge-merge-cells', {detail: {ids}}));
-    pickedSegments.clear();
-    return;
-  }
+  // No key merges the picked cells: only the Merge button on the bar, so a
+  // merge is never an accident (Ames 2026-11-04).
   if (e.key !== 'Delete' && e.key !== 'Backspace') return;
   const panel = document.querySelector('.neuroglancer-segment-display-tab');
   const got = getSelectedSegmentsSet(panel);
