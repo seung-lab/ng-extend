@@ -1072,6 +1072,10 @@ export interface UserPreferences {
    *  keys: on, 1 to 9 show and hide layers; off, a number makes its layer the
    *  active one and Shift + the number shows or hides it (Ames 2026-10-24). */
   classicLayerClicks?: boolean;
+  /** Quick merge: with the cursor on a piece, M places a merge point there
+   *  (opening merge if needed); the second M on another piece sends that
+   *  merge. Defaults to false: M only opens and closes merge (Ames 2026-11-04). */
+  quickMergeKey?: boolean;
   /** Hide the EyeWire Radio speaker in the corner (Celia 2026-10-24).
    *  Defaults to false: it shows. */
   hideRadio?: boolean;

@@ -2511,6 +2511,18 @@ function mergeToLine(submission: MergeSubmission): Line {
   return res;
 }
 
+/** nge: quick merge with M is on (Settings > Merging; off by default). */
+function ngeQuickMergeOn(): boolean {
+  try { return JSON.parse(localStorage.getItem('nge_prefs_v1') || '{}').quickMergeKey === true; } catch { return false; }
+}
+/** When the player last pressed M themselves (not a button pressing it for them). */
+let ngeLastMKeyDown = -Infinity;
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.isTrusted && e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) ngeLastMKeyDown = performance.now();
+  }, true);
+}
+
 // nge: 20, as in stock neuroglancer (was 10 here; player request 2026-10-08).
 const MAX_MERGE_COUNT = 20;
 
@@ -2603,6 +2615,42 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
       event.stopPropagation();
       submitAction();
     });
+    // nge: quick merge (Ames 2026-11-04: "control click two of them and then
+    // press M"). With the setting on, M places a merge point on the piece
+    // under the cursor, as Ctrl+click does; the M that finishes a line sends
+    // that merge at once. The M that opened merge places the first point.
+    // M on empty space sends the merges waiting, or closes merge as before.
+    // The merge goes through bulkMerge like any other, so the edit guard,
+    // the edit count and the ID tidying after it all still apply.
+    if (ngeQuickMergeOn()) {
+      const onPiece = () => ngeGrapheneSelectionUnderMouse(this.layer, this.mouseState) !== undefined;
+      const sendNew = () => {
+        const fresh = merges.value.filter(x => x.source && !x.locked && !x.status);
+        if (fresh.length) graphConnection.bulkMerge(fresh);
+      };
+      const quickKey = () => {
+        if (onPiece()) {
+          const finishing = lineTool.inProgressAnnotation.value !== undefined;
+          lineTool.trigger(this.mouseState);
+          if (finishing) sendNew();
+          else StatusMessage.showTemporaryMessage('Merge point placed. Point at the other piece and press M.', 4000);
+          return;
+        }
+        // A first point with no second: closing drops it, as M always did.
+        const waiting = merges.value.filter(x => x.source && !x.locked && !x.status);
+        if (waiting.length && lineTool.inProgressAnnotation.value === undefined) { submitAction(); return; }
+        activation.cancel();
+      };
+      activation.bindInputEventMap(EventActionMap.fromObject({'at:keym': {action: 'nge-quick-merge-key'}}));
+      activation.bindAction('nge-quick-merge-key', event => {
+        event.stopPropagation();
+        quickKey();
+      });
+      // Opened by a real M press over a piece: that press is the first point.
+      if (performance.now() - ngeLastMKeyDown < 200) {
+        setTimeout(() => { if (!activation.wasDisposed && onPiece()) quickKey(); }, 0);
+      }
+    }
     body.appendChild(makeIcon({
       text: 'Clear',
       title: 'Clear pending merges',

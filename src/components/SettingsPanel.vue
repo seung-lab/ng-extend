@@ -90,6 +90,7 @@ const draftHideTopBar = ref(false);
 const draftImageLayerPanel = ref(false);
 const draftLibraryTab = ref<'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links'>('mine');
 const draftJumpAdds = ref(false);
+const draftQuickMerge = ref(false);
 const draftOfferRestore = ref(true);
 const draftAnnotationGems = ref(true);
 const draftAnnotationSetupTabs = ref(false);
@@ -164,6 +165,7 @@ onMounted(() => {
   draftImageLayerPanel.value = prefsStore.prefs.imageLayerPanel === true;
   draftLibraryTab.value = prefsStore.prefs.cellLibraryStartTab || 'mine';
   draftJumpAdds.value = prefsStore.prefs.jumpAddsToView === true;
+  draftQuickMerge.value = prefsStore.prefs.quickMergeKey === true;
   draftOfferRestore.value = prefsStore.prefs.offerViewRestore !== false;
   draftAnnotationGems.value = prefsStore.prefs.annotationGems !== false;
   draftAnnotationSetupTabs.value = prefsStore.prefs.showAnnotationSetupTabs === true;
@@ -233,7 +235,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetBareSwitch: draftBareSwitch.value, datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value,
@@ -657,6 +659,17 @@ const props = defineProps<{ embedded?: boolean }>();
         </div>
         <div class="nge-set-col nge-set-col--viewer">
           <div class="nge-set-col-head"><span class="nge-set-col-title">Viewer</span><span class="nge-set-col-sub">how it works</span></div>
+          <!-- Quick merge with M (Ames 2026-11-04: "control click two of them
+               and then press M"). Off by default while it is tried. -->
+          <div class="nge-settings-section nge-set-card--editing" :class="{ 'nge-set-folded': isFolded('editing') }">
+            <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('editing')" title="Fold or unfold this box" @click.prevent="toggleFold('editing')" @keydown.enter.prevent="toggleFold('editing')" @keydown.space.prevent="toggleFold('editing')">Merging<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
+            <p class="nge-settings-hint">How the M key merges.</p>
+            <label class="nge-settings-toggle" title="Point at one piece and press M, then point at the other piece and press M: the two are merged where you pointed. Works in 2D and 3D. M on empty space sends any merges waiting, or closes merge. Off: M only opens and closes merge.">
+              <input type="checkbox" v-model="draftQuickMerge" />
+              <span class="nge-settings-toggle-label">Quick merge: point at two pieces and press M on each</span>
+            </label>
+          </div>
+
           <div class="nge-settings-section nge-set-card--jump" :class="{ 'nge-set-folded': isFolded('jump') }">
             <label class="nge-settings-label nge-set-fold" role="button" tabindex="0" :aria-expanded="!isFolded('jump')" title="Fold or unfold this box" @click.prevent="toggleFold('jump')" @keydown.enter.prevent="toggleFold('jump')" @keydown.space.prevent="toggleFold('jump')">Jumping and views<span class="nge-set-fold-chev" aria-hidden="true">▾</span></label>
             <p class="nge-settings-hint">What happens when you jump to a cell or come back.</p>
