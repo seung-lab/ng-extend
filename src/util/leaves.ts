@@ -5,21 +5,24 @@
  * In the fall (src/util/season.ts: from 22 September to the end of
  * Thanksgiving week), now and then a light shower of autumn leaves drifts
  * down from the top of the screen, swaying and turning over as they go, and
- * is gone in about fifteen seconds. The first comes half a minute or so after
- * Pyr opens, then one every ten minutes or so.
+ * is gone in about ten seconds. The first comes half a minute or so after
+ * Pyr opens, then one every five to ten minutes.
  *
  * They never get in the way: one see-through canvas that ignores the mouse,
  * made for a shower and taken away after it. Nothing is drawn between
  * showers, and nothing at all outside the fall.
  *
- * Settings, "Falling leaves" (userPrefs.hideLeaves) turns them off, and Calm
- * screen keeps them away.
+ * The leaf button by the chat box (outside Thanksgiving week, when the turkey
+ * button takes its place) and Settings, "Falling leaves", are one switch
+ * (userPrefs.hideLeaves): off, the leaves go and the button goes grey; on, a
+ * shower falls straight away. Calm screen keeps them away.
  */
 import { useUserPreferencesStore } from '../store';
 import { isCalm } from './calm';
 import { fallSeason } from './season';
 
-const FIRST_MS = [25_000, 50_000], EVERY_MS = [8 * 60_000, 13 * 60_000];
+// Every five to ten minutes (Ames 2026-11-04).
+const FIRST_MS = [25_000, 50_000], EVERY_MS = [5 * 60_000, 10 * 60_000];
 
 export function leavesSeason(): boolean { return fallSeason(); }
 
@@ -75,7 +78,8 @@ export async function shower(): Promise<void> {
       // Spread out above the top, so they arrive over several seconds.
       y: -30 - Math.random() * H * 0.7,
       size: 18 + Math.random() * 16,
-      fall: 45 + Math.random() * 40,
+      // A little faster than at first (Ames: "They should fall a little faster").
+      fall: 75 + Math.random() * 55,
       sway: 18 + Math.random() * 40,
       freq: 0.5 + Math.random() * 0.7,
       phase: Math.random() * 6.283,
@@ -125,6 +129,13 @@ export async function shower(): Promise<void> {
     cv.remove();
     showering = false;
   }
+}
+
+/** The leaf button: leaves off (grey button), or back on with a shower now. */
+export function toggleLeaves() {
+  const hide = !leavesHidden();
+  try { useUserPreferencesStore().save({ hideLeaves: hide }); } catch { return; }
+  if (!hide) void shower();
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;

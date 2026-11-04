@@ -638,7 +638,7 @@ const props = defineProps<{ embedded?: boolean }>();
               <input type="checkbox" v-model="draftTurkey" />
               <span class="nge-settings-toggle-label">Show the Thanksgiving turkey</span>
             </label>
-            <label v-if="leavesSeason()" class="nge-settings-toggle" title="In the fall, now and then a few autumn leaves drift down from the top of the screen. They never block a click. Off: no leaves. Calm screen keeps them away too.">
+            <label v-if="leavesSeason()" class="nge-settings-toggle" title="In the fall, now and then a few autumn leaves drift down from the top of the screen. They never block a click. Off: no leaves. The leaf button by the chat box turns them off and on too. Calm screen keeps them away.">
               <input type="checkbox" v-model="draftLeaves" />
               <span class="nge-settings-toggle-label">Falling leaves</span>
             </label>
