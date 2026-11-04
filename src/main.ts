@@ -229,7 +229,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // LoginModal doesn't fire — e.g. already authenticated or bypass).
   autoSelectSegLayer(viewer);
 
-  // Escape key handler: exit split/merge tools.
+  // Escape key handler: exit split/merge tools and Find Path.
   //
   // Attached to BOTH window and document in capture phase so we win against
   // NG's own keybinder no matter how the bubbling resolves. We also check the
@@ -242,7 +242,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const store = useSplitMergeOverlayStore();
     const toolDomPresent = !!(
       document.querySelector('.graphene-multicut') ||
-      document.querySelector('.graphene-merge-segments')
+      document.querySelector('.graphene-merge-segments') ||
+      document.querySelector('.graphene-find-path')
     );
     console.debug('[esc]', e.key, 'toolActive=', store.toolActive, 'toolDom=', toolDomPresent);
     if (!store.toolActive && !toolDomPresent) return;
