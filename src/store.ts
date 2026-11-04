@@ -1511,6 +1511,12 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
           if (!keep && segId && segId !== '0') {
             const only = groupState.visibleSegments.size === 1 && groupState.visibleSegments.has(seg);
             if (!only) groupState.visibleSegments.clear();
+            // The list too: a jump replaces the view, and the cell before
+            // stayed in the segment list, hidden (Nseraf, report 365: a
+            // completed Hunt cell lingered after jumping to the next claim).
+            // The claim left was saved first (Cell Library leaveCurrentWork).
+            const listed = groupState.selectedSegments;
+            if (listed && !(listed.size === 1 && listed.has(seg))) listed.clear();
           }
           if (!groupState.visibleSegments.has(seg)) {
             groupState.visibleSegments.add(seg);
