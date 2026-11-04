@@ -1839,7 +1839,7 @@ function toggleCollapse() {
                     @mousedown.prevent @click.stop="toggleTurkey()" :title="turkeyTitle()" :aria-label="turkeyTitle()">🦃</button>
             <!-- The leaf button (Ames 2026-11-04), in the fall: leaves off and on. -->
             <button v-if="showLeavesBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: leavesHidden() }"
-                    @mousedown.prevent @click.stop="toggleLeaves()" :title="leavesTitle()" :aria-label="leavesTitle()">🍂</button>
+                    @mousedown.prevent @click.stop="toggleLeaves()" :title="leavesTitle()" :aria-label="leavesTitle()">🍁</button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
