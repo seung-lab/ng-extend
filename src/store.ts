@@ -5025,7 +5025,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** True when this claim is the cell `segId`: the ID it was listed under, or
    *  the cell's ID now, after edits. */
   function isTaskCell(t: ProofreadingTask, segId: string): boolean {
-    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId;
+    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId
+      || (t.assigned_to === userId.value && !!laterRoots.value[t.id]?.includes(segId));
   }
 
   /** Put back the listed ID of my open claims whose segment_id was rewritten
@@ -5186,16 +5187,27 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
       .filter((r): r is string => !!r))],
   })));
-  /** Each timed claim's cell as it is now, from the server's edit history of
+  /** Each of my claims' cell as it is now, from the server's edit history of
    *  its listed ID: every merge and cut since, whoever made it, with or
    *  without an anchor, and after a reload (Ames 2026-11-02: active time "is
    *  not accurately tracking segs after merge and cuts"). Pieces cut off are
-   *  in it too; time spent on one is still time on the claim. */
+   *  in it too; time spent on one is still time on the claim. The claim
+   *  itself is known by these IDs too (isTaskCell): a cut no longer leaves a
+   *  claim that neither new piece belongs to (st0ck53y, report 360).
+   *  Asked only for claims whose cell is on screen, or never asked yet, so an
+   *  edit costs one lookup, not one per claim (Ames: "clean up the querying"). */
   async function refreshLaterRoots(): Promise<void> {
     const ds = canonicalDataset(currentDatasetTag());
-    const mine = myActiveClaims().filter(t => countsTime(t) && canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
+    const mine = myActiveClaims().filter(t => canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    const shown = (t: ProofreadingTask) => {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) { try { if (r && /^\d+$/.test(r) && vis?.has(Uint64.parseString(r))) return true; } catch { /* not an ID */ } }
+      return false;
+    };
     const next: Record<number, string[]> = {};
     await Promise.all(mine.map(async t => {
+      if (laterRoots.value[t.id] && !shown(t)) { next[t.id] = laterRoots.value[t.id]; return; }
       const listed = String(t.segment_id);
       let ends = descendantsSeen.get(listed);
       if (!ends) { ends = latestDescendants(listed).catch(() => null); descendantsSeen.set(listed, ends); }
@@ -5207,7 +5219,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
   setTimeout(() => { refreshLaterRoots().catch(() => {}); }, 8000);
   setInterval(() => { if (!document.hidden) refreshLaterRoots().catch(() => {}); }, 3 * 60_000);
-  watch(() => timedClaims.value.map(c => c.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
+  watch(() => myActiveClaims().map(t => t.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
   startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
