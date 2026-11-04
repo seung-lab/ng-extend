@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-04T17:04:48Z",
+      "title": "Steady error boxes",
+      "digest": "minor",
+      "items": [
+        "A cut or merge error now shows once and stays still until you close it or retry, instead of flashing back every few seconds.",
+        "Clicking chat while it glows for an @mention opens it again."
+      ]
+    },
+    {
       "at": "2026-11-04T16:52:00Z",
       "title": "Announcements stay announcements, Competitions first",
       "digest": "minor",
