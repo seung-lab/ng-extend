@@ -46,6 +46,9 @@ export interface UrlHashBindingOptions {
  * An instance of this class manages a binding between a Trackable value and the URL hash state.
  * The binding is initialized in the constructor, and is removed when dispose is called.
  */
+/** nge: the longest view written to the page address (characters). */
+const NGE_MAX_HASH_CHARS = 900_000;
+
 export class UrlHashBinding extends RefCounted {
   /**
    * Most recently parsed or set state string.
@@ -87,11 +90,24 @@ export class UrlHashBinding extends RefCounted {
       let stateString = encodeFragment(JSON.stringify(cacheState.value));
       if (stateString !== this.prevStateString) {
         this.prevStateString = stateString;
-        if (decodeURIComponent(stateString) === '{}') {
-          history.replaceState(null, '', '#');
-        } else {
-          history.replaceState(null, '', '#!' + stateString);
+        // nge: a view too big for the address (Nseraf, report 371: MEC with
+        // thousands of marks) is not written there: Firefox stops taking it
+        // near 1 MB and Chrome will not reload an address over 2 MB. The
+        // flag tells Pyr to keep the view itself (src/util/reload_guard.ts).
+        let stale = stateString.length > NGE_MAX_HASH_CHARS;
+        if (!stale) {
+          try {
+            if (decodeURIComponent(stateString) === '{}') {
+              history.replaceState(null, '', '#');
+            } else {
+              history.replaceState(null, '', '#!' + stateString);
+              stale = location.hash.length < stateString.length;
+            }
+          } catch {
+            stale = true;
+          }
         }
+        (window as any).__ngeHashStale = stale;
       }
     }
   }

@@ -8,6 +8,7 @@ import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
+import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
 import {startColorFamilies} from './util/color_families';
 import {startScytheControls} from './util/scythe';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
@@ -431,7 +432,11 @@ function setupViewer() {
     }
     hashBinding.parseError;
   }));
+  // A reload of a view too big for the address comes back from this browser
+  // instead (report 371, util/reload_guard.ts).
+  const setAside = setAsideStaleAddress();
   hashBinding.updateFromUrlHash();
+  startReloadGuard(viewer, setAside, () => hashBinding.updateFromUrlHash());
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
   startScrollWatch();
