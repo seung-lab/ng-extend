@@ -41,6 +41,7 @@ import {SharedWatchableValue} from 'neuroglancer/shared_watchable_value';
 import {FrontendTransformedSource, getVolumetricTransformedSources, serializeAllTransformedSources, SliceViewChunkSource, SliceViewSingleResolutionSource} from 'neuroglancer/sliceview/frontend';
 import {SliceViewPanelRenderLayer, SliceViewRenderLayer} from 'neuroglancer/sliceview/renderlayer';
 import {StatusMessage} from 'neuroglancer/status';
+import {ngeConfirm} from 'neuroglancer/ui/nge_confirm';
 import {TrackableBoolean, TrackableBooleanCheckbox} from 'neuroglancer/trackable_boolean';
 import {makeCachedLazyDerivedWatchableValue, NestedStateManager, registerNested, TrackableValue, WatchableSet, WatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {AnnotationLayerView, MergedAnnotationStates, PlaceLineTool, makeAnnotationListElement} from 'neuroglancer/ui/annotations';
@@ -982,10 +983,14 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     // ui/segment_list.ts send this).
     this.registerEventListener(window, 'nge-merge-cells', ((e: CustomEvent) => {
       const ids: string[] = e.detail?.ids ?? [];
-      if (ids.length !== 2) return;
-      const parsed = ids.map(s => { const u = new Uint64(); return u.tryParseString(s) ? u : undefined; });
-      if (!parsed[0] || !parsed[1] || !segmentsState.selectedSegments.has(parsed[0]) || !segmentsState.selectedSegments.has(parsed[1])) return;
-      void this.ngeMergeCells(parsed[0], parsed[1]);
+      const parsed: Uint64[] = [];
+      for (const id of ids) {
+        const u = new Uint64();
+        if (!u.tryParseString(id) || !segmentsState.selectedSegments.has(u)) return;
+        if (!parsed.some(p => Uint64.equal(p, u))) parsed.push(u);
+      }
+      if (parsed.length < 2) return;
+      void this.ngeMergeCells(parsed);
     }) as EventListener);
 
     const {annotationLayerStates, state: {multicutState, findPathState}} = this;
@@ -1301,27 +1306,77 @@ class GraphConnection extends SegmentationGraphSourceConnection {
    * that spot. It is then an ordinary merge: bulkMerge, the edit guard, the
    * edit count and the ID tidying after it.
    */
-  async ngeMergeCells(a: Uint64, b: Uint64) {
+  async ngeMergeCells(cells: Uint64[]) {
     const say = (text: string, ms = 6000) => StatusMessage.showTemporaryMessage(text, ms);
-    if (Uint64.equal(a, b)) { say('Pick two different cells to merge.'); return; }
+    if (cells.length < 2) { say('Pick two or more different cells to merge.'); return; }
+    if (cells.length > NGE_MERGE_CELLS_MAX_COUNT) { say(`Pick up to ${NGE_MERGE_CELLS_MAX_COUNT} cells to merge at once.`); return; }
     const {visibleSegments} = this.segmentsState;
-    if (!visibleSegments.has(a) || !visibleSegments.has(b)) { say('Show both cells first: Pyr finds where they touch from their 3D shapes.'); return; }
-    const va = ngeCellVertices(this.layer, a), vb = ngeCellVertices(this.layer, b);
-    if (!va.length || !vb.length) { say('The 3D shape of one of these cells has not loaded yet. Wait a moment, then try again.'); return; }
-    const pair = ngeClosestPair(va, vb, NGE_MERGE_CELLS_MAX_NM);
-    if (!pair) { say(`These two cells do not touch (nowhere within ${NGE_MERGE_CELLS_MAX_NM / 1000} µm of each other), so Pyr cannot merge them. Use merge mode to place the points yourself.`, 9000); return; }
+    if (cells.some(c => !visibleSegments.has(c))) { say('Show all the picked cells first: Pyr finds where they touch from their 3D shapes.'); return; }
+    const verts = cells.map(c => ngeCellVertices(this.layer, c));
+    if (verts.some(v => !v.length)) { say('The 3D shape of one of these cells has not loaded yet. Wait a moment, then try again.'); return; }
+    // Where each pair of cells comes closest, then the shortest set of
+    // joins that links them all: one merge per join, closest first.
+    const pairs: {i: number, j: number, d: number, p: [number[], number[]]}[] = [];
+    for (let i = 0; i < cells.length; i++) {
+      for (let j = i + 1; j < cells.length; j++) {
+        const p = ngeClosestPair(verts[i], verts[j], NGE_MERGE_CELLS_MAX_NM);
+        if (p) pairs.push({i, j, d: Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1], p[0][2] - p[1][2]), p});
+      }
+    }
+    pairs.sort((x, y) => x.d - y.d);
+    const group = cells.map((_, k) => k);
+    const top = (k: number): number => group[k] === k ? k : (group[k] = top(group[k]));
+    const joins: typeof pairs = [];
+    for (const pr of pairs) {
+      const a = top(pr.i), b = top(pr.j);
+      if (a === b) continue;
+      group[a] = b;
+      joins.push(pr);
+    }
+    const apart = cells.length - 1 - joins.length;
+    if (!joins.length) {
+      say(`${cells.length === 2 ? 'These two cells do' : 'None of these cells'} touch (nowhere within ${NGE_MERGE_CELLS_MAX_NM / 1000} µm of each other), so Pyr cannot merge them. Use merge mode to place the points yourself.`, 9000);
+      return;
+    }
+    if (apart > 0 && !await ngeConfirm(
+        `${apart === 1 ? 'One cell does' : `${apart} cells do`} not touch the others (nowhere within ${NGE_MERGE_CELLS_MAX_NM / 1000} µm) and will be left out. Merge the rest?`,
+        {title: 'Merge cells'})) return;
     const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
     const toNm = loadedSubsource.loadedDataSource.transform.inputSpace.value.scales.map(x => x / 1e-9);
     const inLayer = (p: number[]) => Float32Array.from(p.map((v, i) => v / toNm[i]));
+    // Each cell's id now: after a merge, both cells have the merged id.
+    const now = cells.map(c => c.clone());
+    let done = 0;
+    for (const join of joins) {
+      const a = now[join.i], b = now[join.j];
+      if (Uint64.equal(a, b)) continue;
+      const merged = await this.ngeSendCellMerge(a, b, inLayer(join.p[0]), inLayer(join.p[1]));
+      if (!merged) {
+        if (done) say(`${done} of ${joins.length} merges went through; the next one failed. Check the cell, then try again.`, 9000);
+        return;
+      }
+      done++;
+      const was = [a.clone(), b.clone()];
+      for (let k = 0; k < now.length; k++) {
+        if (was.some(w => Uint64.equal(w, now[k]))) now[k] = merged.clone();
+      }
+    }
+    say(joins.length === 1 ? 'Merged.' : `Merged ${joins.length + 1} cells into one.`, 4000);
+  }
+
+  /** nge: one merge of two whole cells at the given points (layer coordinates).
+   *  The cell's merged id, or undefined (the status bar says why). */
+  private async ngeSendCellMerge(a: Uint64, b: Uint64, pa: Float32Array, pb: Float32Array): Promise<Uint64|undefined> {
+    const say = (text: string, ms = 6000) => StatusMessage.showTemporaryMessage(text, ms);
     const submission: MergeSubmission = {
       id: makeAnnotationId(),
       locked: false,
       // The cell's own id: the server takes the piece of it at the point.
-      sink: {rootId: a.clone(), segmentId: a.clone(), position: inLayer(pair[0])},
-      source: {rootId: b.clone(), segmentId: b.clone(), position: inLayer(pair[1])},
+      sink: {rootId: a.clone(), segmentId: a.clone(), position: pa},
+      source: {rootId: b.clone(), segmentId: b.clone(), position: pb},
     };
     const {merges} = this.state.mergeState;
-    if (merges.value.length >= MAX_MERGE_COUNT) { say(`Maximum of ${MAX_MERGE_COUNT} simultanous merges allowed.`); return; }
+    if (merges.value.length >= MAX_MERGE_COUNT) { say(`Maximum of ${MAX_MERGE_COUNT} simultanous merges allowed.`); return undefined; }
     // Drawn as a merge line, and listed in merge mode, like any other.
     this.mergeAnnotationState.source.add(mergeToLine(submission), /*commit=*/false);
     const listed = merges.value.find(x => x.id === submission.id);
@@ -1333,9 +1388,18 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       const ref = this.mergeAnnotationState.source.getReference(submission.id);
       try { if (ref.value) this.mergeAnnotationState.source.commit(ref); } finally { ref.dispose(); }
     } catch { /* the line is only a picture */ }
-    if (!sent.locked) await this.bulkMerge([sent]);
-    if (sent.error) say(`Merge failed: ${sent.error}`, 9000);
-    else if (sent.mergedRoot) say('Merged.', 3000);
+    if (!sent.locked) {
+      await this.bulkMerge([sent]);
+    } else {
+      // Auto-submit already sent it: wait for the answer.
+      await new Promise<void>(resolve => {
+        const check = () => { if (sent.mergedRoot || (sent.error && !sent.locked)) { off(); resolve(); } };
+        const off = merges.changed.add(check);
+        check();
+      });
+    }
+    if (sent.error || !sent.mergedRoot) { say(`Merge failed: ${sent.error || 'no answer'}`, 9000); return undefined; }
+    return sent.mergedRoot;
   }
 
   deleteMergeSubmission = (submission: MergeSubmission) => {
@@ -2616,6 +2680,8 @@ if (typeof window !== 'undefined') {
 
 /** nge: how far apart two picked cells may be and still be merged by Pyr. */
 const NGE_MERGE_CELLS_MAX_NM = 2000;
+/** nge: how many picked cells Pyr merges at once. */
+const NGE_MERGE_CELLS_MAX_COUNT = 10;
 
 /** nge: every vertex of a cell's 3D shape as loaded in the view, in nm. */
 function ngeCellVertices(layer: SegmentationUserLayer, root: Uint64): Float32Array[] {

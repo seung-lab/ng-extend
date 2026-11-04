@@ -2051,9 +2051,9 @@ export class SegmentDisplayTab extends Tab {
                   });
                   // nge: two picked cells can be merged straight from here
                   // (Ames 2026-11-04). M does the same (src/drag_reorder.ts).
-                  const mergePicked = barBtn('Merge', 'Merge the two picked cells where they touch (M)', () => {
+                  const mergePicked = barBtn('Merge', 'Merge the picked cells where they touch (M)', () => {
                     const ids = pickedIds().map(id => id.toString());
-                    if (ids.length !== 2) return;
+                    if (ids.length < 2) return;
                     window.dispatchEvent(new CustomEvent('nge-merge-cells', {detail: {ids}}));
                     pickedSegments.clear();
                   }, 'nge-pick-merge');
@@ -2062,9 +2062,9 @@ export class SegmentDisplayTab extends Tab {
                   mergeRow.className = 'nge-pick-merge-row';
                   const mergeInfo = document.createElement('p');
                   mergeInfo.className = 'nge-pick-merge-info';
-                  mergeInfo.textContent = 'Merges the two picked cells into one, joined where they come closest. ' +
-                      'Both need to be showing in 3D. Cells more than 2 µm apart are not merged: use merge mode for those. ' +
-                      'Shortcut: Ctrl+click two cells, then press M.';
+                  mergeInfo.textContent = 'Merges the picked cells into one, joined where they come closest (up to 10 at once). ' +
+                      'They need to be showing in 3D. A cell more than 2 µm from the others is left out: use merge mode for those. ' +
+                      'Shortcut: Ctrl+click the cells, then press M.';
                   mergeInfo.style.display = 'none';
                   const mergeInfoBtn = barBtn('i', 'What does Merge do?', () => {
                     const open = mergeInfo.style.display === 'none';
@@ -2109,7 +2109,7 @@ export class SegmentDisplayTab extends Tab {
                     const n = pickedSegments.ids.size;
                     bar.style.display = n ? '' : 'none';
                     barCount.textContent = `${n} picked`;
-                    mergeRow.style.display = n === 2 ? '' : 'none';
+                    mergeRow.style.display = n >= 2 ? '' : 'none';
                     removeChildren(moveTo);
                     const opt = (value: string, text: string) => {
                       const o = document.createElement('option');
