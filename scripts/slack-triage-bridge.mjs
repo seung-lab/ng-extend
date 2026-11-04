@@ -1224,6 +1224,19 @@ async function collectNotes() {
   return kept;
 }
 
+/** Tags that wait more than a day (scripts/tag-nudge.mjs). */
+async function nudgeTags() {
+  const { nudgeWaitingTags } = await import('./tag-nudge.mjs');
+  const get = async path => { const r = await sb(path); if (!r.ok) throw new Error(`${path.split('?')[0]} ${r.status}`); return r.json(); };
+  const sent = await nudgeWaitingTags({
+    get, channel: CHANNEL,
+    post: async (table, rows) => { const r = await sb(table, { method: 'POST', body: JSON.stringify(rows) }); if (!r.ok) throw new Error(`${table} ${r.status}`); },
+    slack: (channel, threadTs, text) => slack('chat.postMessage', { channel, text, unfurl_links: false, ...(threadTs ? { thread_ts: threadTs } : {}) }),
+  });
+  if (sent) console.log(`[bridge] tag reminders: ${sent} sent`);
+  return sent;
+}
+
 /** During a quiet period, one summary to Amy at QUIET_REMIND_AT. */
 async function quietReminder() {
   const at = Date.parse(QUIET_REMIND_AT), now = Date.now();
@@ -1349,6 +1362,8 @@ let LOOP = false;
   if ((process.env.BRIDGE_PASS || '1') === '1') {
     await tokenReminder().catch(e => console.warn('[bridge] token reminder failed:', e.message));
     if (LOOP) await quietReminder().catch(e => console.warn('[bridge] quiet reminder failed:', e.message));
+    // Tags not answered in a day: a Slack ping each weekday until they are (tag-nudge.mjs, Ames 2026-11-04).
+    await nudgeTags().catch(e => console.warn('[bridge] tag reminders failed:', e.message));
   }
   console.log(`[bridge] done: ${posted} posted, ${halted} stopped, ${acted} decided, ${echoed} echoed, ${started} started, ${nagged} nagged, ${announced} announced (sync ${COLS ? 'on' : 'off'}, loop ${LOOP ? 'on' : 'off'})`);
 })().catch(e => { console.error('[bridge] fatal:', e.message); process.exit(1); });

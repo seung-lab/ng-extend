@@ -28,13 +28,15 @@ type ListKey = 'todo' | 'doing' | 'done';
 type Size = 'S' | 'M' | 'L';
 interface Card {
   id: string; title: string; notes: string; list: ListKey; rank: number; size: Size | null;
-  owner_id: string | null; checklist: { text: string; done: boolean }[];
+  owner_id: string | null; checklist: Item[];
   comments: { by: string; text: string; at: string }[];
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
   // Optional (supabase-admin-todos-fields.sql).
   links?: Link[]; status?: string; due_on?: string | null; images?: string[];
 }
 interface Person { id: string; name: string }
+/** A checklist item; owner and due day make it a subtask (Ames 2026-11-02, from Asana). */
+interface Item { text: string; done: boolean; due?: string; owner_id?: string }
 
 const LISTS: { key: ListKey; title: string; hint: string; empty: string }[] = [
   { key: 'todo', title: 'To do', hint: 'What we mean to do', empty: 'Nothing waiting.' },
@@ -47,6 +49,8 @@ const DONE_DAYS = 14;
 
 const cards = ref<Card[]>([]);
 const people = ref<Person[]>([]);
+/** Who follows each card (functions/todos.js todo.follow). */
+const followers = ref<Record<string, string[]>>({});
 const loading = ref(true);
 const error = ref('');
 const notInstalled = ref(false);
@@ -62,6 +66,7 @@ async function load() {
     if (data?.installed === false) { notInstalled.value = true; return; }
     cards.value = data.cards || [];
     people.value = data.people || [];
+    followers.value = data.followers || {};
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
@@ -154,17 +159,18 @@ const firstName = (name: string) => {
   return String(name || '').split(/\s+/)[0];
 };
 /** Whose a checklist item is: the first admin tagged in it. */
-function itemOwner(text: string): Person | null {
-  const ids = tagsIn(text);
+function itemOwner(x: string | Item): Person | null {
+  if (typeof x !== 'string' && x.owner_id) return people.value.find(p => p.id === x.owner_id) || null;
+  const ids = tagsIn(typeof x === 'string' ? x : x.text);
   return ids.length ? people.value.find(p => p.id === ids[0]) || null : null;
 }
-const itemName = (text: string) => itemOwner(text)?.name || '';
-const itemColor = (text: string) => colorOf(itemOwner(text)?.id);
+const itemName = (x: string | Item) => itemOwner(x)?.name || '';
+const itemColor = (x: string | Item) => colorOf(itemOwner(x)?.id);
 /** Ticks per person, for items that have an owner. */
 function perPerson(c: Card): { id: string; name: string; done: number; all: number }[] {
   const out = new Map<string, { id: string; name: string; done: number; all: number }>();
   for (const it of c.checklist) {
-    const p = itemOwner(it.text);
+    const p = itemOwner(it);
     if (!p) continue;
     const row = out.get(p.id) || { id: p.id, name: p.name, done: 0, all: 0 };
     row.all++; if (it.done) row.done++;
@@ -188,7 +194,7 @@ function isMine(c: Card): boolean {
   const id = myId.value;
   if (!id) return true;
   if (c.owner_id === id) return true;
-  if (c.checklist.some(it => tagsIn(it.text).includes(id))) return true;
+  if (c.checklist.some(it => it.owner_id === id || tagsIn(it.text).includes(id))) return true;
   return tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
 }
 const MINE_KEY = 'nge-todo-mine';
@@ -513,6 +519,56 @@ async function addItem(c: Card) {
   newItem.value = '';
   await save(c, { checklist: [...c.checklist, { text: t, done: false }] }, { tagIds: tagsIn(t) });
 }
+const setItem = (c: Card, i: number, patch: Partial<Item>) => save(c, { checklist: c.checklist.map((x, k) => {
+  if (k !== i) return x;
+  const next: Item = { ...x, ...patch };
+  if (!next.due) delete next.due;
+  if (!next.owner_id) delete next.owner_id;
+  return next;
+}) });
+const fieldValue = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value || undefined;
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const iFollow = (c: Card) => !!myId.value && (followers.value[c.id] || []).includes(myId.value);
+async function toggleFollow(c: Card) {
+  const on = !iFollow(c);
+  try {
+    const r = await secureWrite<any>('todo.follow', { id: c.id, on });
+    followers.value = { ...followers.value, [c.id]: r?.followers || [] };
+  } catch (e: any) { error.value = e?.message ?? String(e); }
+}
+const followerNames = (c: Card) => (followers.value[c.id] || []).map(id => people.value.find(p => p.id === id)?.name).filter(Boolean) as string[];
+
+// ── My Tasks (Ames 2026-11-02, from Asana): everything that is mine in one
+// list, cards I own and checklist items that are mine, by due day. ──
+const myTasksOpen = ref(false);
+type Task = { key: string; card: Card; text: string; due: string | null; item: number | null };
+const myTasks = computed(() => {
+  const me = myId.value;
+  if (!me) return [] as { head: string; rows: Task[]; late?: boolean }[];
+  const out: Task[] = [];
+  for (const c of cards.value) {
+    if (c.list === 'done') continue;
+    if (c.owner_id === me) out.push({ key: c.id, card: c, text: c.title, due: c.due_on || null, item: null });
+    c.checklist.forEach((it, i) => {
+      if (!it.done && itemOwner(it)?.id === me) out.push({ key: `${c.id}:${i}`, card: c, text: it.text, due: it.due || null, item: i });
+    });
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = (d: string) => new Date(d + 'T00:00:00').getTime();
+  const week = today.getTime() + 7 * 864e5;
+  const groups: { head: string; rows: Task[]; late?: boolean }[] = [
+    { head: 'Overdue', rows: [], late: true }, { head: 'Today', rows: [] }, { head: 'This week', rows: [] }, { head: 'Later', rows: [] }, { head: 'No due day', rows: [] }];
+  for (const t of out.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))) {
+    if (!t.due) groups[4].rows.push(t);
+    else if (day(t.due) < today.getTime()) groups[0].rows.push(t);
+    else if (day(t.due) === today.getTime()) groups[1].rows.push(t);
+    else if (day(t.due) < week) groups[2].rows.push(t);
+    else groups[3].rows.push(t);
+  }
+  return groups.filter(g => g.rows.length);
+});
+const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.length, 0));
+function openTask(t: Task) { myTasksOpen.value = false; openUp(t.card); }
 const toggleItem = (c: Card, i: number) => save(c, { checklist: c.checklist.map((x, k) => (k === i ? { ...x, done: !x.done } : x)) });
 const removeItem = (c: Card, i: number) => save(c, { checklist: c.checklist.filter((_, k) => k !== i) });
 /** A checklist item becomes a card of its own, under this one. */
@@ -906,10 +962,24 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★ Mine' : '☆ Mine' }}</button>
+      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; openId = null"
+              title="Everything that is yours: cards you own and checklist items for you, by due day">📌 My Tasks<b v-if="myTaskCount" class="nge-todo-mytasks-n">{{ myTaskCount }}</b></button>
       <button class="nge-todo-btn" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
     </div>
-    <div v-if="!openCard && !notInstalled" class="nge-todo-stats" aria-label="Board numbers">
+    <div v-if="myTasksOpen && !openCard" class="nge-todo-mytasks-panel">
+      <div class="nge-todo-mytasks-head">📌 My Tasks <span>{{ myTaskCount }} open</span></div>
+      <div v-if="!myTaskCount" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
+      <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
+        <h4 :class="{ 'nge-todo-mytasks-late': g.late }">{{ g.head }} · {{ g.rows.length }}</h4>
+        <button v-for="t in g.rows" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
+          <span class="nge-todo-mytask-kind">{{ t.item === null ? '▣' : '☐' }}</span>
+          <span class="nge-todo-mytask-text">{{ t.text }}<small v-if="t.item !== null"> in {{ t.card.title }}</small></span>
+          <span v-if="t.due" class="nge-todo-mytask-due" :class="{ 'nge-todo-mytasks-late': g.late }">{{ dueWords(t.due) }}</span>
+        </button>
+      </section>
+    </div>
+    <div v-if="!openCard && !notInstalled && !myTasksOpen" class="nge-todo-stats" aria-label="Board numbers">
       <img :src="imgNurroHome" alt="" class="nge-todo-nurro" />
       <div class="nge-todo-stat nge-todo-stat--todo"><b>{{ stats.todo }}</b><span>to do</span></div>
       <div class="nge-todo-stat nge-todo-stat--doing"><b>{{ stats.doing }}</b><span>doing</span></div>
@@ -932,7 +1002,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
-      <div v-if="!openCard" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
+      <div v-if="!openCard && !myTasksOpen" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
         <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
           <button v-if="isFolded(col.key)" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
@@ -1128,6 +1198,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <option v-for="l in LISTS" :key="l.key" :value="l.key">{{ l.title }}</option>
           </select>
           <button v-if="openCard.list !== 'done'" type="button" class="nge-todo-btn nge-todo-done-big" @click="finish(openCard, $event)">✓ Done</button>
+          <button type="button" class="nge-todo-btn nge-todo-follow" :class="{ 'nge-todo-follow--on': iFollow(openCard) }" :disabled="!myId" @click="toggleFollow(openCard)"
+                  :title="(followerNames(openCard).length ? 'Following: ' + followerNames(openCard).join(', ') + '. ' : '') + 'Followers get a bell in Pyr when this card changes.'">{{ iFollow(openCard) ? '🔔 Following' : '🔕 Follow' }}<b v-if="followerNames(openCard).length" class="nge-todo-follow-n">{{ followerNames(openCard).length }}</b></button>
         </div>
         <input ref="titleEl" v-model="editTitle" class="nge-todo-input nge-todo-title-edit" maxlength="200" aria-label="Title" title="Click to edit the title"
                @input="onMentionInput($event, v => editTitle = v)" @keydown="onTitleKey"
@@ -1210,7 +1282,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <div class="nge-todo-label">Checklist<template v-if="openCard.checklist.length"> · {{ checkCount(openCard).done }}/{{ checkCount(openCard).all }}</template></div>
         <ul class="nge-todo-check">
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done }">
-            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it.text)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it.text) }" :title="'For ' + itemName(it.text)">{{ itemName(it.text).slice(0, 1).toUpperCase() }}</span> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+            <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
+                    @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
+              <option value="">{{ itemOwner(it) && !it.owner_id ? '@ in the text' : 'Nobody' }}</option>
+              <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+            <input type="date" class="nge-todo-item-due" :class="{ 'nge-todo-item-due--late': !it.done && it.due && it.due < todayIso() }"
+                   :value="it.due || ''" aria-label="Due day" title="Due day" @change="setItem(openCard, i, { due: fieldValue($event) })" />
             <button class="nge-todo-mini" title="Comment on this item" @click="commentOn(it.text)">💬 Comment</button>
             <button class="nge-todo-mini" title="Remove this item" aria-label="Remove" @click="removeItem(openCard, i)">×</button>
           </li>
@@ -1295,6 +1374,25 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
   35% { transform: scale(1.04); box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.55), 0 0 36px rgba(245, 197, 66, 0.7); background: #fff8dc; }
   100% { transform: scale(0.96); box-shadow: 0 0 22px rgba(245, 197, 66, 0.4); opacity: 0.6; }
 }
+.nge-todo-mytasks-n, .nge-todo-follow-n { margin-left: 6px; font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--accent); color: #fff; }
+.nge-todo-follow--on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.nge-todo-item-owner { font: inherit; font-size: 11.5px; max-width: 110px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--input); color: var(--dim); }
+.nge-todo-item-due { font: inherit; font-size: 11.5px; width: 118px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--input); color: var(--dim); }
+.nge-todo-item-due--late { color: #d64545; border-color: rgba(214, 69, 69, 0.5); font-weight: 700; }
+.nge-todo-mytasks-panel { max-width: 860px; margin: 10px auto; width: 100%; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow-y: auto; }
+.nge-todo-mytasks-head { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+.nge-todo-mytasks-head span { font-size: 13px; font-weight: 500; color: var(--dim); margin-left: 6px; }
+.nge-todo-mytasks-empty { display: flex; align-items: center; gap: 12px; color: var(--dim); }
+.nge-todo-mytasks-empty img { width: 90px; }
+.nge-todo-mytasks-group h4 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.nge-todo-mytasks-late { color: #d64545 !important; }
+.nge-todo-mytask { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; margin: 0 0 4px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer; }
+.nge-todo-mytask:hover { border-color: var(--accent); }
+.nge-todo-mytask-kind { color: var(--accent); }
+.nge-todo-mytask-text { flex: 1; }
+.nge-todo-mytask-text small { color: var(--dim); margin-left: 4px; }
+.nge-todo-mytask-due { font-size: 12px; color: var(--dim); white-space: nowrap; }
 .nge-todo-card-status { font-size: 12px; color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 .nge-todo-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .nge-todo-linkchip {
@@ -1451,6 +1549,8 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-check label { flex: 1 1 auto; display: flex; gap: 6px; align-items: flex-start; cursor: pointer; overflow-wrap: anywhere; }
 .nge-todo-check input { accent-color: var(--accent-strong); margin-top: 3px; }
 .nge-todo-check--done span { text-decoration: line-through; color: var(--dim); }
+/* An item's avatar sits by its words (the card face one sits at the far right). */
+.nge-todo-check .nge-todo-avatar--small { margin-left: 0; flex: 0 0 auto; margin-top: 2px; }
 .nge-todo-mini { background: none; border: none; color: var(--dim); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
 .nge-todo-mini:hover { color: var(--accent); }
 .nge-todo-comment { border-left: 2px solid var(--line); padding-left: 8px; }

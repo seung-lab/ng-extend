@@ -8,7 +8,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { richPieces, plainChatText, toggleMark, parseChatQuery, matchesChatQuery } from '../util/chat_text';
 import { booGhost, isBoo, inSeason } from '../util/spooky';
-import { BADGE_DEFINITIONS } from '../widgets/badge_definitions';
+import { BADGE_DEFINITIONS, LEGACY_BADGES } from '../widgets/badge_definitions';
 import { BADGE_IMAGE_MAP } from '../widgets/badge_images';
 import { storeToRefs } from 'pinia';
 import { useChatStore, useProofreadingBackendStore, useUserPreferencesStore, ChatMessage, isSelfMentionToken, CHAT_REACTION_QUICK, CHAT_REACTION_MORE, CHAT_REACTION_GEM, CHAT_MAX_CHARS, chatTextLength } from '../store';
@@ -299,13 +299,25 @@ watch(collapsed, (c) => chatStore.setPanelVisible(!c), { immediate: true });
 // Someone @mentioned you: flash the panel so it catches your eye mid-trace.
 const mentionFlash = ref(false);
 let mentionTimer: ReturnType<typeof setTimeout> | null = null;
+// While you are working elsewhere (chat open but clicked away), the glow
+// stays until you click back into chat, as EyeWire's did (Nseraf, report
+// 357: three flashes were easy to miss mid-trace).
+const mentionWaiting = ref(false);
 watch(() => chatStore.mentionPing, () => {
   mentionFlash.value = false;
   nextTick(() => {
     mentionFlash.value = true;
     if (mentionTimer) clearTimeout(mentionTimer);
-    mentionTimer = setTimeout(() => { mentionFlash.value = false; }, 3200);
+    if (chatFocused.value) mentionTimer = setTimeout(() => { mentionFlash.value = false; }, 3200);
+    else mentionWaiting.value = true;
   });
+});
+// Cleared just after the click, not at its start: clearing on pointerdown
+// removed the "@ from" tag under the pointer, the click never reached the
+// header, and chat did not open (Ames 2026-11-04).
+watch(chatFocused, f => {
+  if (!f || !mentionWaiting.value) return;
+  setTimeout(() => { if (chatFocused.value) { mentionWaiting.value = false; mentionFlash.value = false; } }, 400);
 });
 
 onUnmounted(() => {
@@ -1063,7 +1075,9 @@ function achievementOf(msg: ChatMessage): ChatAchievement | null {
     const name = b?.name || (msg.parts.map(p => p.text || '').join('').match(/earned the (.+) award/)?.[1] ?? 'a special award');
     return { track: 'special', name, art: b?.thumbnail_url || b?.image_url || '', why: 'special award', specialId: Number(m[2]) };
   }
-  const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]));
+  // An 'earned' line from before the 2026-11 redesign names an old ladder id (1 to 200): it keeps its art.
+  const d = BADGE_DEFINITIONS.find(x => x.track === m[1] && x.id === Number(m[2]))
+    ?? LEGACY_BADGES.find(x => x.track === m[1] && x.id === Number(m[2]));
   if (!d) return null;
   const unit = d.track === 'building' ? (d.threshold === 1 ? 'edit' : 'edits') : d.track === 'loyalty' ? 'days of science' : (d.threshold === 1 ? 'cell' : 'cells');
   return { track: d.track, name: d.name, art: BADGE_IMAGE_MAP[d.imageKey] || '', why: `${d.threshold.toLocaleString()} ${unit}`, slug: d.slug };
@@ -1421,7 +1435,7 @@ function toggleCollapse() {
     <div
       ref="panelEl"
       class="nge-chat-float"
-      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing, 'nge-chat-selecting': selectingText }"
+      :class="{ 'nge-chat-float--collapsed': collapsed, 'nge-chat-float--dragging': isDragging, 'nge-chat-float--mentioned': mentionFlash, 'nge-chat-float--mention-waiting': mentionFlash && mentionWaiting, 'nge-chat-float--quiet': isQuiet, 'nge-chat-float--resizing': isResizing, 'nge-chat-selecting': selectingText }"
       @focusin="onPanelFocusIn"
       :style="{
         ...(collapsed ? {} : { width: panelWidth + 'px', height: shownHeight + 'px' }),
@@ -2386,6 +2400,16 @@ function toggleCollapse() {
 /* Flash when someone @mentions you: an amber ring pulses three times. */
 .nge-chat-float--mentioned {
   animation: nge-chat-mention-flash 1s ease-in-out 3;
+}
+.nge-chat-float--mention-waiting {
+  animation: nge-chat-mention-flash 1s ease-in-out 3, nge-chat-mention-glow 2.4s ease-in-out 3s infinite;
+}
+@keyframes nge-chat-mention-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.45), 0 0 10px rgba(245, 166, 35, 0.2); }
+  50% { box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8), 0 0 22px rgba(245, 166, 35, 0.45); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nge-chat-float--mention-waiting { animation: none; box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.8); }
 }
 @keyframes nge-chat-mention-flash {
   0%, 100% { box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.25), 0 0 0 rgba(245, 166, 35, 0); }

@@ -251,15 +251,18 @@ export function startClaimTimer(d: Deps) {
   // cell's new IDs keep counting until the claim's own ID catches up.
   window.addEventListener('nge-graph-edit', ((e: CustomEvent) => {
     work(true);
-    const id = claimTime.running;
+    // The claim on screen, even when the timer was paused (the first edit
+    // after a break): its new IDs must still be known, or it never resumes.
+    const id = claimTime.running ?? (deps ? claimOnScreen() : null) ?? workingId;
     if (id == null) return;
     const d = e.detail || {};
     if (d.kind !== 'merge' && d.kind !== 'split') return;
     bucket(id).edits++;
     const roots: string[] = Array.isArray(d.roots) ? d.roots.map(String) : [];
     // Until the claim's own ids catch up, which can take a while after a split
-    // (report 344): 60 s was sometimes not enough, and the time stopped.
-    if (roots.length) aliases[id] = { roots: [...new Set([...(aliases[id] && aliases[id].until > Date.now() ? aliases[id].roots : []), ...roots])], until: Date.now() + 30 * 60_000 };
+    // (report 344): 60 s was sometimes not enough, and the time stopped. Kept
+    // for the visit: an old ID is simply no longer on screen.
+    if (roots.length) aliases[id] = { roots: [...new Set([...(aliases[id] && aliases[id].until > Date.now() ? aliases[id].roots : []), ...roots])], until: Date.now() + 12 * 3600_000 };
   }) as EventListener);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void flush();

@@ -27,6 +27,10 @@
 }
 .neuroglancer-show-panel-borders .neuroglancer-panel {
   border-color: rgba(20, 30, 50, 0.4) !important;
+  /* No top edge: under the layer tabs it read as a dark gap between the
+     tabs and the view (Ames 2026-11-04: "it always bugged me"). A panel
+     below another still has that one's bottom edge between them. */
+  border-top-width: 0 !important;
 }
 
 /* ── Coordinate display ──

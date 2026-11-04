@@ -23,3 +23,9 @@ test('sends once a day, to every admin, never to chat', async () => {
   assert.ok(sent.every(r => r.post_to_chat === false && r.title === '🔑 Access update: October 30'));
   had = [{ id: 1 }]; await go(); assert.equal(sent.length, 2);
 });
+test('a dataset request names its dataset', async () => {
+  const { gatherAccess } = await import('./access-update.mjs');
+  const get = async (t) => t === 'site_issues' ? [{ user_name: 'toknow', category: 'Dataset access', title: 'Medial Entorhinal Cortex access request from toknow' }] : [];
+  const { requests } = await gatherAccess(get, '2026-11-01T00:00:00Z');
+  assert.deepEqual(requests, [{ name: 'toknow', what: 'Medial Entorhinal Cortex' }]);
+});

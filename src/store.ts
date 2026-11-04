@@ -12,6 +12,7 @@ import { dayMilestonesReached, isBigDayMilestone, nextDayMilestone, wholeYears }
 import { secureWrite } from './secure_write';
 import { newOpKey, queueActivity, serverMayRecover, startActivityOutbox } from './activity_outbox';
 import { trackSave } from './save_status';
+import { achievementTestTrack } from './widgets/badge_definitions';
 import {Ref, ref, reactive, computed, watch} from 'vue';
 import {ngeDefaultHoverStyle, ngeHoverStyle, ngeParseHoverStyle, ngeParsePulseColor, ngePulseColor} from 'neuroglancer/segmentation_display_state/frontend';
 import {defineStore} from 'pinia';
@@ -41,6 +42,7 @@ import {Uint64} from "neuroglancer/util/uint64";
 import {NGE_KEEP_CUT_OPEN_KEY, ngeKeepCutOpen} from 'neuroglancer/datasource/graphene/frontend';
 import {setStatedColor} from "./widgets/widget_utils";
 import {mintShortStateLink} from "./util/state_link";
+import {anyTabVisible, leadership, onSharedResult, shareResult} from './util/tabs';
 
 declare const CONFIG: Config|undefined;
 declare const DEFAULT_SETTINGS: {  [key: string]: any }
@@ -1516,6 +1518,12 @@ export const useCellHistoryStore = defineStore('cellHistory', () => {
           if (!keep && segId && segId !== '0') {
             const only = groupState.visibleSegments.size === 1 && groupState.visibleSegments.has(seg);
             if (!only) groupState.visibleSegments.clear();
+            // The list too: a jump replaces the view, and the cell before
+            // stayed in the segment list, hidden (Nseraf, report 365: a
+            // completed Hunt cell lingered after jumping to the next claim).
+            // The claim left was saved first (Cell Library leaveCurrentWork).
+            const listed = groupState.selectedSegments;
+            if (listed && !(listed.size === 1 && listed.has(seg))) listed.clear();
           }
           if (!groupState.visibleSegments.has(seg)) {
             groupState.visibleSegments.add(seg);
@@ -1891,7 +1899,17 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         requests.value.unshift(newReq);
       }
       const live = isLiveHelp(req);
-      if (live || opts.chat !== false) {
+      // A Hunt candidate is not named in chat: only admins and players with
+      // Retina edit access see those cells (Nseraf, report 366). The request
+      // itself is kept and answered as usual.
+      const huntCell = (() => {
+        try {
+          const id = String(req.segId || '');
+          return !!id && useProofreadingQueueStore().items.some(i =>
+            (i.segId === id || i.finalSegId === id) && /^Hunt (cell|candidate)/.test(i.notes || ''));
+        } catch { return false; }
+      })();
+      if (!huntCell && (live || opts.chat !== false)) {
         try {
           const note = (req.note || '').replace(/\s+/g, ' ').trim().slice(0, 110);
           const issue = live ? req.issueType.slice(LIVE_HELP.length).replace(/^[\s·:]+/, '') : (req.issueType || '');
@@ -4501,6 +4519,23 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     } catch { return null; }
   }
 
+  /** When a player was given edit access to each dataset, from the chat line
+   *  each grant gets (functions/access-request.js, rows keyed access:<id>,
+   *  grants since 2026-10-30). {datasetId: ISO time}; {} when unreadable. */
+  async function loadAccessGrants(id: string): Promise<Record<string, string>> {
+    try {
+      const { data, error } = await supabase.from('chat_messages').select('dataset,created_at')
+        .eq('user_id', id).like('dataset', 'access:%').limit(20);
+      if (error || !data) return {};
+      const out: Record<string, string> = {};
+      for (const r of data as any[]) {
+        const ds = String(r.dataset || '').slice('access:'.length);
+        if (ds && (!out[ds] || r.created_at < out[ds])) out[ds] = r.created_at;
+      }
+      return out;
+    } catch { return {}; }
+  }
+
   /** A personal "thank you, for science" notification after someone's third
    *  edit. Guarded so a double count or a second tab can never send two. */
   async function sendThirdEditThanks() {
@@ -4740,7 +4775,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // NOTE: middleauth_email is deliberately NOT selected. This loads OTHER
         // users' profiles, and fetching their address shipped it to the client
         // (visible in devtools) even once it stopped being rendered.
-        .select('id, display_name, username, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
+        .select('id, display_name, username, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
         .eq('id', targetUserId)
         .single();
       if (!user) return null;
@@ -5013,7 +5048,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** True when this claim is the cell `segId`: the ID it was listed under, or
    *  the cell's ID now, after edits. */
   function isTaskCell(t: ProofreadingTask, segId: string): boolean {
-    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId;
+    return t.segment_id === segId || currentRoots.value[t.id] === segId || liveRoots.value[t.id] === segId
+      || (t.assigned_to === userId.value && !!laterRoots.value[t.id]?.includes(segId));
   }
 
   /** Put back the listed ID of my open claims whose segment_id was rewritten
@@ -5167,20 +5203,81 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   }
   // Active time on each claim (src/util/claim_time.ts): the player's open
   // claims, each with its listed ID and its IDs after edits.
+  /** See refreshLaterRoots. */
+  const laterRoots = ref<Record<number, string[]>>({});
   const timedClaims = computed<TimedClaim[]>(() => myActiveClaims().filter(countsTime).map(t => ({
     id: t.id, dataset: t.dataset, kind: t.kind,
-    roots: [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id]].filter((r): r is string => !!r),
+    roots: [...new Set([t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])]
+      .filter((r): r is string => !!r))],
   })));
+  /** Each of my claims' cell as it is now, from the server's edit history of
+   *  its listed ID: every merge and cut since, whoever made it, with or
+   *  without an anchor, and after a reload (Ames 2026-11-02: active time "is
+   *  not accurately tracking segs after merge and cuts"). Pieces cut off are
+   *  in it too; time spent on one is still time on the claim. The claim
+   *  itself is known by these IDs too (isTaskCell): a cut no longer leaves a
+   *  claim that neither new piece belongs to (st0ck53y, report 360).
+   *  Asked only for claims whose cell is on screen, or never asked yet, so an
+   *  edit costs one lookup, not one per claim (Ames: "clean up the querying"). */
+  /** When each of my claims last had its cell on screen (noteClaimsOnScreen). */
+  const claimSeenAt = new Map<number, number>();
+  /** Note which claims are on screen now: cheap, no lookups. Every 2 s. */
+  function noteClaimsOnScreen() {
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!vis) return;
+    const now = Date.now();
+    for (const t of myActiveClaims()) {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) {
+        try { if (r && /^\d+$/.test(r) && vis.has(Uint64.parseString(r))) { claimSeenAt.set(t.id, now); break; } } catch { /* not an ID */ }
+      }
+    }
+  }
+  setInterval(() => { if (!document.hidden) noteClaimsOnScreen(); }, 2000);
+  async function refreshLaterRoots(): Promise<void> {
+    const ds = canonicalDataset(currentDatasetTag());
+    const mine = myActiveClaims().filter(t => canonicalDataset(t.dataset || '') === ds && /^\d+$/.test(String(t.segment_id || '')));
+    const vis = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    const shown = (t: ProofreadingTask) => {
+      const ids = [t.segment_id, currentRoots.value[t.id], liveRoots.value[t.id], ...(laterRoots.value[t.id] ?? [])];
+      for (const r of ids) { try { if (r && /^\d+$/.test(r) && vis?.has(Uint64.parseString(r))) return true; } catch { /* not an ID */ } }
+      return false;
+    };
+    // On screen now, or in the last half minute: an edit takes the claim's
+    // old ID out of the view before this runs, and a claim checked only
+    // "now" was skipped right after its own cut.
+    const now = Date.now();
+    for (const t of mine) if (shown(t)) claimSeenAt.set(t.id, now);
+    const next: Record<number, string[]> = {};
+    await Promise.all(mine.map(async t => {
+      const recent = now - (claimSeenAt.get(t.id) ?? 0) < 30_000;
+      if (laterRoots.value[t.id] && !recent) { next[t.id] = laterRoots.value[t.id]; return; }
+      const listed = String(t.segment_id);
+      let ends = descendantsSeen.get(listed);
+      if (!ends) { ends = latestDescendants(listed).catch(() => null); descendantsSeen.set(listed, ends); }
+      const found = await ends;
+      // A failed lookup keeps what was known.
+      if (found) next[t.id] = found.slice(0, 50); else if (laterRoots.value[t.id]) next[t.id] = laterRoots.value[t.id];
+    }));
+    laterRoots.value = next;
+  }
+  setTimeout(() => { refreshLaterRoots().catch(() => {}); }, 8000);
+  setInterval(() => { if (!document.hidden) refreshLaterRoots().catch(() => {}); }, 3 * 60_000);
+  watch(() => myActiveClaims().map(t => t.id).join(','), () => { refreshLaterRoots().catch(() => {}); });
   startClaimTimer({ claims: () => timedClaims.value, signedIn: () => !!userId.value });
 
   let liveRootTimer: ReturnType<typeof setTimeout> | null = null;
+  let laterAgainTimer: ReturnType<typeof setTimeout> | null = null;
   window.addEventListener('nge-graph-edit', () => {
     // Its later versions changed with this edit: ask again (AzureJay, report
     // 344: active time stopped counting after a split).
     descendantsSeen.clear();
     // A burst of edits is one lookup, shortly after the last of them.
     if (liveRootTimer) clearTimeout(liveRootTimer);
-    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); }, 1500);
+    liveRootTimer = setTimeout(() => { refreshLiveRoots().catch(() => {}); refreshLaterRoots().catch(() => {}); }, 1500);
+    // Once more a little later, in case the server's history was not ready.
+    if (laterAgainTimer) clearTimeout(laterAgainTimer);
+    laterAgainTimer = setTimeout(() => { descendantsSeen.clear(); refreshLaterRoots().catch(() => {}); }, 10_000);
   });
 
   function _findTaskByPoint(point: ClaimPoint): ProofreadingTask | undefined {
@@ -5498,7 +5595,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** Unread in the bell's Admin tab (util/notif_kinds.ts): its own red count
    *  on the bell (Ames 2026-10-21). Always 0 for players. */
   const unreadAdminNotificationCount = computed(() =>
-    notifications.value.filter(n => !notifRead(n) && notifKind(n.title, isAdmin.value) === 'admin').length
+    notifications.value.filter(n => !notifRead(n) && ['admin', 'access'].includes(notifKind(n.title, isAdmin.value))).length
   );
   /** Unread in the bell's Admin and Triage tabs together: the dot on the
    *  Player view chip, so admin alerts still show while those tabs are hidden. */
@@ -5533,10 +5630,18 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     await loadNotifications();
   }
   let grantLinesAsked = false;
-  async function loadNotifications(opts: { newOnly?: boolean } = {}) {
+  /** What the leader tab read on its minute check, for the other tabs
+   *  (util/tabs.ts). reads and dismissed come with a full check only. */
+  interface SharedNotifs { user: string; at: string; rows: any[]; groupIds: string[]; reads?: number[]; dismissed?: number[] }
+  /** shared: rows another tab's check read. They are merged as a check of
+   *  this tab's own would be, without asking the server. share: hand what
+   *  this check read to the other tabs. */
+  async function loadNotifications(opts: { newOnly?: boolean; share?: boolean; shared?: SharedNotifs } = {}) {
     if (!userId.value) return;
-    const now = new Date().toISOString();
-    const newOnly = !!opts.newOnly && !!notifCheckedAt;
+    const s = opts.shared;
+    if (s && s.user !== userId.value) return;
+    const now = s ? s.at : new Date().toISOString();
+    const newOnly = s ? true : !!opts.newOnly && !!notifCheckedAt;
 
     if (!newOnly) {
       // Get user's group IDs for group-targeted notifications
@@ -5556,7 +5661,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       .limit(newOnly ? 50 : notifLimit.value);
     if (newOnly) query = query.or(`id.gt.${notifMaxId},send_at.gt.${notifCheckedAt}`);
 
-    const { data: allNotifs } = await query;
+    const allNotifs = s ? s.rows : (await query).data;
     if (!allNotifs) return;
     // A grant is said in chat the next time the player comes in, not when the
     // admin approves it (Ames 2026-10-30): only the first load of a visit
@@ -5569,12 +5674,19 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     }
     if (!newOnly) notificationsHaveMore.value = allNotifs.length >= notifLimit.value;
     for (const n of allNotifs as any[]) if (Number(n.id) > notifMaxId) notifMaxId = Number(n.id);
-    notifCheckedAt = now;
-    if (newOnly && !allNotifs.length) return;
+    if (!s || now > notifCheckedAt) notifCheckedAt = now;
+    if (s) {
+      // What the leader knows of groups, reads and dismissals, added to what
+      // this tab knows (a read or dismissal never goes back).
+      notifGroupIds = s.groupIds;
+      if (s.reads) notificationReads.value = new Set([...notificationReads.value, ...s.reads]);
+      if (s.dismissed) notificationDismissals.value = new Set([...notificationDismissals.value, ...s.dismissed]);
+    }
+    if (newOnly && !allNotifs.length && !s?.dismissed?.length) return;
     // The server already picks what is meant for this player. A group
     // notification for a group joined since the last full load: read the
     // memberships again so it is not filtered out here.
-    if (newOnly && (allNotifs as any[]).some(n => n.target_type === 'group' && !notifGroupIds.includes(String(n.target_id)))) {
+    if (!s && newOnly && (allNotifs as any[]).some(n => n.target_type === 'group' && !notifGroupIds.includes(String(n.target_id)))) {
       const { data: memberships } = await supabase
         .from('user_group_members')
         .select('group_id')
@@ -5609,6 +5721,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       const gone = reads.filter((r: any) => r.dismissed).map((r: any) => r.notification_id);
       notificationReads.value = readsFailed ? new Set([...notificationReads.value, ...ids]) : new Set(ids);
       notificationDismissals.value = readsFailed ? new Set([...notificationDismissals.value, ...gone]) : new Set(gone);
+      if (opts.share) shareResult('notifications', { user: userId.value, at: now, rows: allNotifs, groupIds: notifGroupIds, reads: ids, dismissed: gone } as SharedNotifs);
+    } else if (opts.share && !s) {
+      shareResult('notifications', { user: userId.value, at: now, rows: allNotifs, groupIds: notifGroupIds } as SharedNotifs);
     }
 
     // "Stop sending at" is a deadline for DELIVERY, not for the notification
@@ -5941,6 +6056,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
    *  failure is silent (the achievement itself is unaffected). */
   function announceAchievement(track: string, badgeId: number, forUserId?: string) {
     if (!userId.value) return;
+    if (achievementTestTrack(track)) return;   // the new ladders: never in live chat from a test site
     // forUserId: a special award an admin has just given to someone else.
     if (forUserId || track === 'special') {
       secureWrite('chat.achievement', { track, badgeId, ...(forUserId ? { userId: forUserId } : {}) }).catch(() => { /* not announced */ });
@@ -6068,28 +6184,51 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     if (error) console.warn('[notifications] dismiss-all failed:', error.message);
   }
 
+  let notifStopShared: (() => void)[] = [];
+  // Chosen among the tabs that are checking (signed in), so the leader is
+  // never a signed-out tab with nothing to ask for.
+  const notifLeader = leadership('pyr-leader-notifications');
   function subscribeToNotifications() {
     if (notifSubscription) return;
+    // Only a signed-in tab stands: a signed-out one holding the lock would
+    // keep every signed-in tab from checking.
+    const stopStanding = watch(userId, id => { if (id) notifLeader.join(); else notifLeader.leave(); }, { immediate: true });
     // Private notifications cannot use an anonymous Realtime subscription.
     // Refresh through the identity-verified route, without overlapping requests.
     let refreshing = false;
     let checks = 0;
-    notifSubscription = setInterval(async () => {
-      if (refreshing || document.hidden) return;
+    // A new achievement in the feed opens its celebration, in every tab.
+    const celebrateNew = (existing: Set<number>) => {
+      const row = notifications.value.find(n => !existing.has(n.id) &&
+        n.title?.includes('New Achievement') && n.target_type !== 'group' &&
+        (!n.target_id || n.target_id === userId.value));
+      if (row) pendingBadgeCelebration.value = {
+        title: row.title, body: row.body || '', imageUrl: row.image_url || row.thumbnail_url || '',
+      };
+    };
+    // Only the leader tab asks (Ames 2026-10-25: one check per browser, not
+    // one per tab), while any Pyr tab is in front, and shares what it read.
+    const check = async () => {
+      if (refreshing || !notifLeader.isLeader() || !anyTabVisible()) return;
       refreshing = true;
       checks++;
       const existing = new Set(notifications.value.map(n => n.id));
       try {
-        await loadNotifications({ newOnly: checks % 10 !== 0 });
-        const row = notifications.value.find(n => !existing.has(n.id) &&
-          n.title?.includes('New Achievement') && n.target_type !== 'group' &&
-          (!n.target_id || n.target_id === userId.value));
-        if (row) pendingBadgeCelebration.value = {
-          title: row.title, body: row.body || '', imageUrl: row.image_url || row.thumbnail_url || '',
-        };
+        await loadNotifications({ newOnly: checks % 10 !== 0, share: true });
+        celebrateNew(existing);
       } catch { /* retry on the next refresh */ }
       finally { refreshing = false; }
-    }, 60_000);
+    };
+    notifSubscription = setInterval(() => { void check(); }, 60_000);
+    notifStopShared = [
+      stopStanding,
+      onSharedResult<SharedNotifs>('notifications', async shared => {
+        const existing = new Set(notifications.value.map(n => n.id));
+        try { await loadNotifications({ shared }); celebrateNew(existing); } catch { /* the next one */ }
+      }),
+      // The leader closed and this tab took over: its check is due now.
+      notifLeader.onChange((leader, takeover) => { if (leader && takeover) void check(); }),
+    ];
   }
 
   function unsubscribeFromNotifications() {
@@ -6097,6 +6236,9 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
       clearInterval(notifSubscription);
       notifSubscription = null;
     }
+    for (const stop of notifStopShared) stop();
+    notifStopShared = [];
+    notifLeader.leave();
   }
 
   // ── User Groups ───────────────────────────────────────────────────────
@@ -6303,12 +6445,21 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   /** This player holds this Achievement as a saved record. */
   function holdsSaved(who: string | null | undefined, track: string, badgeId: number | null | undefined): boolean {
     if (!who || badgeId == null) return false;
+    if (achievementTestTrack(track)) return false;   // saved ids belong to the live ladder
+    const key = badgeAwardKey(track, badgeId);
+    if (who === userId.value && myBadgeAwards.value.has(key)) return true;
+    return !!savedAwards.value[who]?.has(key);
+  }
+  /** A saved award on the old ladder (Legacy Achievements): read as saved, on every site. */
+  function holdsLegacy(who: string | null | undefined, track: string, badgeId: number): boolean {
+    if (!who) return false;
     const key = badgeAwardKey(track, badgeId);
     if (who === userId.value && myBadgeAwards.value.has(key)) return true;
     return !!savedAwards.value[who]?.has(key);
   }
   async function recordBadgeAward(track: string, badgeId: number) {
     if (!userId.value || badgeId == null) return;
+    if (achievementTestTrack(track)) return;   // the new ladders save nothing from a test site
     const key = badgeAwardKey(track, badgeId);
     if (myBadgeAwards.value.has(key)) return;   // already recorded this session
     myBadgeAwards.value.add(key);
@@ -6537,7 +6688,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
-    leaderboard, leaderboardMyRanks, loadDayTotal, leaderboardState, leaderboardAt, loadLeaderboardDetail,
+    leaderboard, leaderboardMyRanks, loadDayTotal, loadAccessGrants, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     tasksPaged, taskCounts, taskPages, loadingMore, loadMoreTasks, findTasks, loadAvailableAfter,
     logEdit, postActivity, subscribeToFeed, unsubscribeFromFeed,
@@ -6564,7 +6715,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     loadGroupMembers, addGroupMembers, removeGroupMember, searchUsers,
     // Special Badges
     specialBadges, mySpecialBadges,
-    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved,
+    myBadgeAwards, badgeAwardsLoaded, loadMyBadgeAwards, recordBadgeAward, loadSavedAwards, holdsSaved, holdsLegacy,
     loadSpecialBadges, loadMySpecialBadges, loadUserSpecialBadges,
     createSpecialBadge, awardBadge, awardBadgeToGroup, revokeBadge,
     // Image Upload
@@ -6883,9 +7034,8 @@ export const useChatStore = defineStore('chat', () => {
     void loadMissed();
     pollTimer = setInterval(() => { void loadMissed(); }, POLL_MS);
     // Being online, and who else is, never needed the live connection either.
-    void heartbeat().then(loadOnline);
-    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
-    if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; if (!document.hidden) void loadOnline(); }, 60_000);
+    void heartbeat().then(() => loadOnline());
+    startPresenceLoops();
   }
   function stopPolling() {
     polling.value = false;
@@ -6924,6 +7074,34 @@ export const useChatStore = defineStore('chat', () => {
   });
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let staleTimer: ReturnType<typeof setInterval> | null = null;
+  // One tab per browser says the player is here and reads who else is
+  // (Ames 2026-10-25), among the tabs with chat connected; the rest are
+  // handed the list. presenceTick runs in every tab so stale names drop.
+  const presenceLeader = leadership('pyr-leader-chat');
+  // Only a signed-in tab stands, as for notifications: a signed-out one
+  // holding the lock would send no heartbeat for anyone.
+  let standingWatched = false;
+  function startPresenceLoops() {
+    if (!standingWatched) {
+      standingWatched = true;
+      watch(() => useProofreadingBackendStore().userId, id => {
+        if (id && heartbeatTimer) presenceLeader.join(); else presenceLeader.leave();
+      });
+    }
+    if (useProofreadingBackendStore().userId) presenceLeader.join();
+    if (!heartbeatTimer) heartbeatTimer = setInterval(() => { if (presenceLeader.isLeader()) void heartbeat(); }, HEARTBEAT_MS);
+    if (!staleTimer) staleTimer = setInterval(() => {
+      presenceTick.value++;
+      if (presenceLeader.isLeader() && anyTabVisible()) void loadOnline(true);
+    }, 60_000);
+  }
+  // The leader closed: this tab says so at once instead of up to a minute on.
+  presenceLeader.onChange((leader, takeover) => {
+    if (leader && takeover && channel) void heartbeat().then(() => loadOnline(true));
+  });
+  onSharedResult<{ user: string; online: typeof online.value }>('chat-online', m => {
+    if (channel && m && m.user === useProofreadingBackendStore().userId) online.value = m.online;
+  });
 
   function sysLine(type: 'join' | 'leave', name: string) {
     const now = new Date();
@@ -7093,7 +7271,7 @@ export const useChatStore = defineStore('chat', () => {
     if (error) console.warn('[chat] presence heartbeat failed:', error.message);
   }
 
-  async function loadOnline() {
+  async function loadOnline(share = false) {
     const since = new Date(Date.now() - ONLINE_MS).toISOString();
     let { data, error } = await supabase.from('chat_presence')
       .select(presenceTakesDataset() ? 'user_id,name,last_seen_at,dataset' : 'user_id,name,last_seen_at').gte('last_seen_at', since).limit(500);
@@ -7105,6 +7283,7 @@ export const useChatStore = defineStore('chat', () => {
     const next: Record<string, { name: string; lastSeen: number; dataset?: string }> = {};
     for (const r of data as any[]) next[r.user_id] = { name: r.name, lastSeen: new Date(r.last_seen_at).getTime(), ...(r.dataset ? { dataset: r.dataset } : {}) };
     online.value = next;
+    if (share) shareResult('chat-online', { user: useProofreadingBackendStore().userId, online: next });
   }
 
   function onPresence(payload: any) {
@@ -7568,9 +7747,8 @@ export const useChatStore = defineStore('chat', () => {
           if (subscribedOnce) void loadMissed();
           subscribedOnce = true;
           // Say we're here (other open chats show the join), then who else is.
-          void heartbeat().then(loadOnline);
-          if (!heartbeatTimer) heartbeatTimer = setInterval(() => { void heartbeat(); }, HEARTBEAT_MS);
-          if (!staleTimer) staleTimer = setInterval(() => { presenceTick.value++; if (!document.hidden) void loadOnline(); }, 60_000);
+          void heartbeat().then(() => loadOnline());
+          startPresenceLoops();
         }
       });
     };
@@ -7699,6 +7877,7 @@ export const useChatStore = defineStore('chat', () => {
       leavePresence();
       if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
       if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
+      presenceLeader.leave();
       window.removeEventListener('pagehide', leavePresence);
       document.removeEventListener('visibilitychange', beatWhenBack);
       online.value = {};

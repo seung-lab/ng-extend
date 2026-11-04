@@ -26,6 +26,29 @@ function toolKind(tool: any): string {
 }
 const isGrapheneTool = (kind: string) => /multicut|merge|graphene|line/.test(kind);
 
+/** Which graphene tool neuroglancer itself has on: 'multicut', 'merge', null
+ *  for none, or undefined when it cannot be told. The tool's bar can outlive
+ *  the tool (Nseraf, report 361: the cut bar stayed after merge took over,
+ *  and the game stayed in cut mode until a reload), so the bar alone is not
+ *  proof. */
+export function activeGrapheneToolKind(): 'multicut' | 'merge' | null | undefined {
+  const viewer = (window as any)['viewer'];
+  if (!viewer?.layerManager) return undefined;
+  try {
+    const kinds: string[] = [];
+    for (const ml of viewer.layerManager.managedLayers ?? []) {
+      const t = ml.layer?.tool?.value;
+      if (t) kinds.push(toolKind(t));
+    }
+    const gtb = viewer.globalToolBinder || viewer.toolBinder?.globalBinder || viewer.toolBinder;
+    const bound = gtb?.activeTool_?.tool;
+    if (bound) kinds.push(toolKind(bound));
+    if (kinds.some(k => /multicut/.test(k))) return 'multicut';
+    if (kinds.some(k => /merge/.test(k))) return 'merge';
+    return null;
+  } catch { return undefined; }
+}
+
 export function exitGrapheneTool() {
   const viewer = (window as any)['viewer'];
   if (!viewer) return;

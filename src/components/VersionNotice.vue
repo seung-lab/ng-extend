@@ -223,5 +223,10 @@ watch([() => version.newer, folded], () => { inBar.value = !!document.querySelec
 }
 #extensionBar .nge-ver-chip.nge-ver-chip--bar:hover:not(.nge-ver-chip--busy),
 #extensionBar .nge-ver-chip.nge-ver-chip--bar.holo-on { border-color: rgba(var(--ver-line), 0.95) !important; box-shadow: 0 0 12px rgba(var(--ver-line), 0.3); }
+/* The bar's own button rules (10pt text, display block) reached the two
+   buttons inside the pill: the words came out big and the light sat against
+   the edge (Ames 2026-11-02). Put them back to the pill's own look. */
+#extensionBar .nge-ver-chip .nge-ver-chip-go { display: inline-flex !important; align-items: center; gap: 7px; font: 600 10px 'Orbitron', 'Inter', sans-serif !important; letter-spacing: 0.14em; }
+#extensionBar .nge-ver-chip .nge-ver-chip-x { display: inline-flex !important; align-items: center; justify-content: center; font: 700 12px/1 system-ui, sans-serif !important; letter-spacing: 0; }
 #extensionBar .nge-ver-chip .nge-ver-pip { display: inline-block !important; width: 7px !important; height: 7px !important; border-radius: 50%; background: rgb(var(--ver-line)) !important; box-shadow: 0 0 8px rgba(var(--ver-line), 0.9); }
 </style>

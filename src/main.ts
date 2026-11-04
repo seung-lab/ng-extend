@@ -64,7 +64,7 @@ import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useUserPreferencesStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
-import {exitGrapheneTool} from './widgets/graphene_tool_utils';
+import {exitGrapheneTool, activeGrapheneToolKind} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
@@ -231,7 +231,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // LoginModal doesn't fire — e.g. already authenticated or bypass).
   autoSelectSegLayer(viewer);
 
-  // Escape key handler: exit split/merge tools.
+  // Escape key handler: exit split/merge tools and Find Path.
   //
   // Attached to BOTH window and document in capture phase so we win against
   // NG's own keybinder no matter how the bubbling resolves. We also check the
@@ -244,7 +244,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const store = useSplitMergeOverlayStore();
     const toolDomPresent = !!(
       document.querySelector('.graphene-multicut') ||
-      document.querySelector('.graphene-merge-segments')
+      document.querySelector('.graphene-merge-segments') ||
+      document.querySelector('.graphene-find-path')
     );
     console.debug('[esc]', e.key, 'toolActive=', store.toolActive, 'toolDom=', toolDomPresent);
     if (!store.toolActive && !toolDomPresent) return;
@@ -950,11 +951,17 @@ function observeSplitMergeTools() {
   let lastStatusText = '';
   let lastStatusTime = 0;
   const STATUS_COOLDOWN_MS = 3000;
+  /** Error lines already shown: each is shown once, and stays still. The box
+   *  hid after 10 s while neuroglancer's own line stayed, so it was shown
+   *  again, and again, flashing on and off (Celia, report 369). */
+  const shownErrorLines = new WeakSet<Element>();
 
   /** Scan #statusContainer for split/merge related errors/info */
   function checkStatusMessages() {
     if (!store.toolActive && !store.pendingClose) return;
-    if (store.resultFlash) return; // already showing a result
+    // A success is showing: nothing to add. An error stays up for minutes
+    // now, so new lines (a retry, a new error) are still read under it.
+    if (store.resultFlash === 'success') return;
 
     const statusContainer = document.getElementById('statusContainer');
     if (!statusContainer) return;
@@ -981,12 +988,16 @@ function observeSplitMergeTools() {
       lastStatusTime = Date.now();
 
       if (lower.includes('failed') || lower.includes('error')) {
-        store.showResult('error', cleanText, 10000);  // long enough to read, or ask the guide
+        if (shownErrorLines.has(el)) continue;
+        shownErrorLines.add(el);
+        // Up until it is dismissed, or the next cut or merge replaces it.
+        store.showResult('error', cleanText, 5 * 60 * 1000);
         store.submitting = false;
       } else if (lower.includes('splitting') || lower.includes('finding split')) {
         // Neuroglancer shows "Splitting source from sink..." during processing —
         // the authoritative signal that a split was actually submitted.
         splitSubmitted = true;
+        if (store.resultFlash === 'error') { store.resultFlash = ''; store.resultText = ''; }
         store.submitting = true;
         store.setStatusMessage('Splitting...');
       }
@@ -994,12 +1005,38 @@ function observeSplitMergeTools() {
     }
   }
 
+  const orphanScans = new WeakMap<Element, number>();
+  // A cut the server called failed ("could not acquire root lock") but made
+  // (report 363): the error flash goes, and the cut is shown as done.
+  window.addEventListener('nge-split-recovered', () => {
+    store.dismissResult();
+    splitSubmitted = true;
+    if (store.toolActive === 'multicut') store.beginSuccessClose('Split complete');
+  });
   function scanToolState() {
     // Don't scan during success-hold close animation
     if (store.pendingClose) return;
 
-    const multicutEl = document.querySelector('.graphene-multicut');
-    const mergeEl = document.querySelector('.graphene-merge-segments');
+    let multicutEl = document.querySelector('.graphene-multicut');
+    let mergeEl = document.querySelector('.graphene-merge-segments');
+    // A tool's bar left behind after the tool went (Nseraf, report 361: the
+    // cut bar stayed under merge, and cut mode could not be left until F5).
+    // Neuroglancer says which tool is really on; a bar it does not back is
+    // set aside, once it has been alone for a few scans.
+    const kind = activeGrapheneToolKind();
+    if (kind !== undefined) {
+      const orphan = (el: Element | null, on: boolean) => {
+        if (!el || on) { if (el) orphanScans.delete(el); return el; }
+        const n = (orphanScans.get(el) ?? 0) + 1;
+        orphanScans.set(el, n);
+        if (n < 4) return el;
+        console.warn('[tool bar] removing a bar its tool no longer backs:', el.className);
+        el.remove();
+        return null;
+      };
+      multicutEl = orphan(multicutEl, kind === 'multicut');
+      mergeEl = orphan(mergeEl, kind === 'merge');
+    }
 
     if (multicutEl) {
       store.setToolState('multicut');

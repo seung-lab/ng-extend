@@ -28,7 +28,9 @@ export async function gatherAccess(get, sinceIso) {
   const issues = await get('site_issues', `select=user_name,category,title&category=in.("Beta access","Dataset access")&created_at=gte.${since}`);
   const requests = [
     ...retina.map(r => ({ name: r.player_name, what: 'Retina' })),
-    ...issues.map(i => ({ name: i.user_name, what: i.category === 'Beta access' ? 'Beta' : 'A dataset' })),
+    // A dataset request is titled "<dataset> access request from <name>" (functions/access-request.js).
+    ...issues.map(i => ({ name: i.user_name, what: i.category === 'Beta access' ? 'Beta'
+      : (String(i.title || '').split(' access request from ')[0].trim() || 'A dataset') })),
   ];
   const notes = await get('notifications', `select=title,target_id&target_type=eq.user&send_at=gte.${since}`
     + `&or=${encodeURIComponent(`(title.eq."${RETINA_GRANT}",title.like."${DATASET_GRANT}*")`)}`);

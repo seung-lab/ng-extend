@@ -23,13 +23,15 @@ export function searchNamesOf(p: AdminPerson): string[] {
 }
 
 const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** Who the server will tag for this text: the same rule as tagIdsIn. */
+/** Who the server will tag for this text: the same rule as tagIdsIn, nicknames included. */
 export function serverTagged(text: string, people: AdminPerson[]): AdminPerson[] {
   const t = String(text || '').toLowerCase();
   return people.filter(p => {
     const name = String(p.name || '').toLowerCase();
     if (!name) return false;
-    const first = '@' + name.split(/\s+/)[0];
-    return t.includes('@' + name) || new RegExp(escapeRe(first) + '(?![a-z0-9])').test(t);
+    if (t.includes('@' + name)) return true;
+    const words = [name.split(/\s+/)[0]];
+    for (const [re, nick] of NICKNAMES) if (re.test(name)) words.push(...nick.map(n => n.toLowerCase()));
+    return words.some(w => w && new RegExp('@' + escapeRe(w) + '(?![a-z0-9])').test(t));
   });
 }
