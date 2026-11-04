@@ -305,7 +305,13 @@ watch(() => chatStore.mentionPing, () => {
     else mentionWaiting.value = true;
   });
 });
-watch(chatFocused, f => { if (f && mentionWaiting.value) { mentionWaiting.value = false; mentionFlash.value = false; } });
+// Cleared just after the click, not at its start: clearing on pointerdown
+// removed the "@ from" tag under the pointer, the click never reached the
+// header, and chat did not open (Ames 2026-11-04).
+watch(chatFocused, f => {
+  if (!f || !mentionWaiting.value) return;
+  setTimeout(() => { if (chatFocused.value) { mentionWaiting.value = false; mentionFlash.value = false; } }, 400);
+});
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocPointerDown, true);
