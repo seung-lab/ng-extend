@@ -912,7 +912,8 @@ function trophyMoreLabel(k: string, list: unknown[]): string {
 // ── Trophy Case sections in the player's own order ─────────────────────────
 // Drag a section by its heading (Ames 2026-10-09). The order is saved with
 // the profile, so visitors see the case the way its owner arranged it.
-const TROPHY_SECTIONS = ['cells', 'editor', 'loyalty', 'competitions', 'special'] as const;
+// Competitions first by default (Ames 2026-11-04); a player's own saved order still wins.
+const TROPHY_SECTIONS = ['competitions', 'cells', 'editor', 'loyalty', 'special'] as const;
 type TrophySection = typeof TROPHY_SECTIONS[number];
 const otherTrophyOrder = ref<string[]>([]);
 const trophyOrder = computed<TrophySection[]>(() => {

@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-04T16:52:00Z",
+      "title": "Announcements stay announcements, Competitions first",
+      "digest": "minor",
+      "items": [
+        "A notice that mentions new Achievements no longer opens the Achievement Unlocked card. Only real Achievement awards do.",
+        "Competitions now come first in the Trophy Case. You can still drag the sections into your own order."
+      ]
+    },
+    {
       "at": "2026-11-04T16:05:00Z",
       "title": "All new Achievements and a bigger Trophy Case",
       "digest": "headline",

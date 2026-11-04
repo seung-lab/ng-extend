@@ -20,6 +20,7 @@ import ConfettiCelebration from 'components/ConfettiCelebration.vue';
 import { runPanelTrace } from '../util/holo_trace';
 import { celebrationCellCounts } from '../util/dataset_contribution';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
+import { isAwardTitle } from '../util/award_title';
 
 const statsStore = useUserStatsStore();
 const { stats } = storeToRefs(statsStore);
@@ -436,7 +437,7 @@ watch(() => backend.notifications.length, () => {
   const newNotifs = backend.notifications.filter(n => Number(n.id) > seenNotifMax);
   seenNotifMax = Math.max(seenNotifMax, top);
   for (const notif of newNotifs) {
-    if (notif.title?.includes('New Achievement')) {
+    if (isAwardTitle(notif.title)) {
       if (!claimCelebration(notif.title)) continue;
       const { name, description } = parseBadgeBody(notif.body || '');
       addToast({
