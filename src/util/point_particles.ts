@@ -16,10 +16,8 @@
  * point, the glow drawn only around the point, all particles in one path,
  * and a new burst simply replaces the one still running.
  *
- * In season the particles take a shape (src/util/season.ts): bats in late
- * September and October, leaves in November, snowflakes in December, eggs
- * around Easter. They
- * keep the point's colour and still all go into one path.
+ * Always plain dots, whatever the season (Ames 2026-11-04: seasonal shapes on
+ * cut and merge were "too much"). Highlight's burst keeps its seasonal shape.
  *
  * Settings, "Particles" (userPrefs.pointParticles, on by default) turns this
  * and the Highlight and Tag mode bursts off together. Calm screen stops them
@@ -27,7 +25,6 @@
  */
 import { useUserPreferencesStore } from '../store';
 import { currentSegLayer } from '../datasets';
-import { addParticleShape, currentParticleShape, particleTurn, shapeIsStroked } from './season';
 
 export function pointParticlesOn(): boolean {
   try { return useUserPreferencesStore().prefs.pointParticles !== false; } catch { return true; }
@@ -60,13 +57,11 @@ function burst(x: number, y: number, rgb: string) {
   cancelAnimationFrame(raf);
   cv.style.transform = `translate(${Math.round(x - HALF)}px,${Math.round(y - HALF)}px)`;
   cv.style.display = 'block';
-  const shape = currentParticleShape(), stroked = shapeIsStroked(shape);
   const parts = Array.from({ length: 30 }, () => ({
     a: Math.random() * 6.283,
     sp: (70 + Math.random() * 135) * SCALE,
     r: 1.1 + Math.random() * 2.0,
     drag: 0.5 + Math.random() * 0.5,
-    seed: Math.random(),
   }));
   const streaks = Array.from({ length: 9 }, () => ({ a: Math.random() * 6.283, len: (90 + Math.random() * 100) * SCALE }));
   const c = ctx, t0 = performance.now();
@@ -98,10 +93,11 @@ function burst(x: number, y: number, rgb: string) {
     c.beginPath();
     for (const p of parts) {
       const eo = 1 - Math.pow(1 - k, 1.6 + p.drag);
-      const px = HALF + Math.cos(p.a) * p.sp * eo, py = HALF + Math.sin(p.a) * p.sp * eo;
-      addParticleShape(c, shape, px, py, p.r * (1 - k * 0.35), particleTurn(shape, p.seed, k));
+      const px = HALF + Math.cos(p.a) * p.sp * eo, py = HALF + Math.sin(p.a) * p.sp * eo, pr = p.r * (1 - k * 0.35);
+      c.moveTo(px + pr, py); c.arc(px, py, pr, 0, 6.283);
     }
-    if (stroked) { c.strokeStyle = col; c.lineWidth = 1; c.stroke(); } else { c.fillStyle = col; c.fill(); }
+    c.fillStyle = col;
+    c.fill();
     raf = requestAnimationFrame(draw);
   };
   raf = requestAnimationFrame(draw);

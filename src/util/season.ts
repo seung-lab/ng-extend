@@ -5,7 +5,8 @@
  *   the top of the screen now and then (src/util/leaves.ts).
  * - Thanksgiving week: the turkey walks along the bottom of the screen
  *   (src/util/turkey.ts).
- * - The point particles take a seasonal shape (Nseraf's idea, report #342):
+ * - Highlight's point burst takes a seasonal shape (Nseraf's idea, report #342;
+ *   the cut, merge and Find Path bursts stay plain dots, Ames 2026-11-04):
  *   bats from late September to the end of October, leaves in November
  *   (Ames 2026-11-04), snowflakes in December, eggs around Easter, and the
  *   usual dots the rest of the year.
