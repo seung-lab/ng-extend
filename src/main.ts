@@ -991,6 +991,13 @@ function observeSplitMergeTools() {
   }
 
   const orphanScans = new WeakMap<Element, number>();
+  // A cut the server called failed ("could not acquire root lock") but made
+  // (report 363): the error flash goes, and the cut is shown as done.
+  window.addEventListener('nge-split-recovered', () => {
+    store.dismissResult();
+    splitSubmitted = true;
+    if (store.toolActive === 'multicut') store.beginSuccessClose('Split complete');
+  });
   function scanToolState() {
     // Don't scan during success-hold close animation
     if (store.pendingClose) return;

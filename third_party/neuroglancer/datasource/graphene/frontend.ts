@@ -1256,8 +1256,25 @@ class GraphConnection extends SegmentationGraphSourceConnection {
           'Must select both red and blue groups to perform a multi-cut.', 7000);
       return false;
     } else {
-      const splitRoots = await this.graph.graphServer.splitSegments(
-          [...sinks], [...sources], annotationToNanometers);
+      let splitRoots: Uint64[];
+      try {
+        splitRoots = await this.graph.graphServer.splitSegments(
+            [...sinks], [...sources], annotationToNanometers);
+      } catch (e) {
+        // nge: "could not acquire root lock" can come back for a cut the
+        // server did make (Nseraf, report 363). Look again: if the cell has
+        // newer IDs now, the cut went through, and it is shown as done.
+        const done = /root lock/i.test(String((e as any)?.message ?? e))
+            ? await this.graph.graphServer.ngeSplitLanded(multicutState.focusSegment.value) : null;
+        if (!done) throw e;
+        splitRoots = done;
+        try {
+          for (const el of Array.from(document.querySelectorAll('#statusContainer > *'))) {
+            if (/root lock/i.test(el.textContent || '')) (el.querySelector('button') as HTMLElement | null)?.click();
+          }
+          window.dispatchEvent(new CustomEvent('nge-split-recovered'));
+        } catch { /* the message stays; the cut is still shown */ }
+      }
       if (splitRoots.length === 0) {
         StatusMessage.showTemporaryMessage(`No split found.`, 3000);
         return false;
@@ -1619,6 +1636,34 @@ class GrapheneGraphServerInterface {
       final[i] = Uint64.parseString(jsonResp['new_root_ids'][i]);
     }
     return final;
+  }
+
+  /** nge: after a split reported as failed, did it happen anyway? The
+   *  cell's latest IDs when it has been replaced since, else null. */
+  async ngeSplitLanded(root: Uint64|undefined): Promise<Uint64[]|null> {
+    if (!root || this.url === '') return null;
+    try {
+      await new Promise(r => setTimeout(r, 2500));
+      const latest = await this.filterLatestRoots([root]);
+      if (latest.length) return null;  // still current: nothing was cut
+      const promise = cancellableFetchSpecialOk(this.credentialsProvider,
+          `${this.url}/root/${root.toJSON()}/lineage_graph`, {}, responseIdentity);
+      const body = await (await promise).text();
+      const next = new Map<string, string[]>();
+      for (const m of body.matchAll(/"source"\s*:\s*"?(\d+)"?\s*,\s*"target"\s*:\s*"?(\d+)/g)) {
+        (next.get(m[1]) ?? next.set(m[1], []).get(m[1])!).push(m[2]);
+      }
+      const start = root.toJSON(), ends: string[] = [], seen = new Set([start]), todo = [start];
+      while (todo.length) {
+        const n = todo.pop()!;
+        const kids = next.get(n) ?? [];
+        if (!kids.length && n !== start) ends.push(n);
+        for (const k of kids) if (!seen.has(k)) { seen.add(k); todo.push(k); }
+      }
+      return ends.length ? ends.map(x => Uint64.parseString(x)) : null;
+    } catch {
+      return null;
+    }
   }
 
   async filterLatestRoots(segments: Uint64[]): Promise<Uint64[]> {
