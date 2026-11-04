@@ -1263,7 +1263,11 @@ class GraphConnection extends SegmentationGraphSourceConnection {
    *  could not be read against). */
   private ngeKeepColor(color: Uint64|null, root: Uint64|undefined) {
     if (!color || !root) return;
-    try { this.layer.displayState.segmentationColorGroupState.value.segmentStatedColors.set(root, color); } catch { /* colours stay as they were */ }
+    try {
+      this.layer.displayState.segmentationColorGroupState.value.segmentStatedColors.set(root, color);
+      // Remembered, so L (re-colour) can still change it (Nseraf, report 370).
+      ((window as any).__ngeKeptColors ??= new Set<string>()).add(root.toString());
+    } catch { /* colours stay as they were */ }
   }
 
   async submitMulticut(annotationToNanometers: Float64Array): Promise<boolean> {

@@ -760,6 +760,14 @@ export class SegmentationUserLayer extends Base {
   handleAction(action: string, context: SegmentationActionContext) {
     switch (action) {
       case 'recolor': {
+        // nge: colours kept through a merge or cut are let go, so L re-colours
+        // those cells too; colours a player chose stay (Nseraf, report 370).
+        const kept: Set<string>|undefined = (window as any).__ngeKeptColors;
+        if (kept?.size) {
+          const stated = this.displayState.segmentationColorGroupState.value.segmentStatedColors;
+          for (const id of kept) { try { stated.delete(Uint64.parseString(id)); } catch { /* not an ID */ } }
+          kept.clear();
+        }
         this.displayState.segmentationColorGroupState.value.segmentColorHash.randomize();
         break;
       }
