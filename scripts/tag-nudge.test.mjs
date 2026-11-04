@@ -26,10 +26,12 @@ function world({ notes, card, pinged = [] }) {
   } };
 }
 
-test('weekdays from 10 am Eastern only', () => {
+test('weekdays, 9 am to 6 pm Eastern only', () => {
   assert.equal(isNudgeTime(new Date(WED)), true);
   assert.equal(isNudgeTime(new Date('2026-11-07T16:00:00Z')), false, 'Saturday');
   assert.equal(isNudgeTime(new Date('2026-11-05T13:00:00Z')), false, '8 am Eastern');
+  assert.equal(isNudgeTime(new Date('2026-11-05T14:00:00Z')), true, '9 am Eastern');
+  assert.equal(isNudgeTime(new Date('2026-11-05T23:05:00Z')), false, '6:05 pm Eastern');
 });
 test('under 24 hours is not waiting yet', () => {
   assert.equal(waitingTags([tagNote(20)], WED).length, 0);

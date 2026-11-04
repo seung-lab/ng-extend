@@ -8,8 +8,8 @@
 // leaves a note on that report, or writes in the report's Slack thread after
 // it. Finished, deleted or closed work is never chased. Each ping leaves a
 // "⏰ Still waiting on you" bell with the same link, which is how a day's ping
-// is known to be sent: once a day per person and card, Monday to Friday from
-// 10 am Eastern, however many bridge runs there are. Run from the bridge's
+// is known to be sent: once a day per person and card, Monday to Friday
+// between 9 am and 6 pm Eastern, never after, however many bridge runs there are. Run from the bridge's
 // first pass (slack-triage-bridge.mjs).
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -29,7 +29,7 @@ const SLACK_IDS = [
 ];
 export const slackIdOf = name => (SLACK_IDS.find(s => s.match.test(String(name || ''))) || {}).id || null;
 
-/** Eastern time parts, for "a weekday, from 10 am". */
+/** Eastern time parts, for "a weekday, 9 am to 6 pm" (Ames 2026-11-04). */
 export function eastern(now) {
   const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit' });
   const p = Object.fromEntries(f.formatToParts(now).map(x => [x.type, x.value]));
@@ -37,7 +37,7 @@ export function eastern(now) {
 }
 export function isNudgeTime(now) {
   const e = eastern(now);
-  return !['Sat', 'Sun'].includes(e.weekday) && e.hour >= 10 && e.hour < 18;
+  return !['Sat', 'Sun'].includes(e.weekday) && e.hour >= 9 && e.hour < 18;
 }
 
 /** The waiting tags: one per person and card, the newest tag of each. */
