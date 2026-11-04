@@ -1892,7 +1892,17 @@ export const useHelpRequestStore = defineStore('helpRequests', () => {
         requests.value.unshift(newReq);
       }
       const live = isLiveHelp(req);
-      if (live || opts.chat !== false) {
+      // A Hunt candidate is not named in chat: only admins and players with
+      // Retina edit access see those cells (Nseraf, report 366). The request
+      // itself is kept and answered as usual.
+      const huntCell = (() => {
+        try {
+          const id = String(req.segId || '');
+          return !!id && useProofreadingQueueStore().items.some(i =>
+            (i.segId === id || i.finalSegId === id) && /^Hunt (cell|candidate)/.test(i.notes || ''));
+        } catch { return false; }
+      })();
+      if (!huntCell && (live || opts.chat !== false)) {
         try {
           const note = (req.note || '').replace(/\s+/g, ' ').trim().slice(0, 110);
           const issue = live ? req.issueType.slice(LIVE_HELP.length).replace(/^[\s·:]+/, '') : (req.issueType || '');
