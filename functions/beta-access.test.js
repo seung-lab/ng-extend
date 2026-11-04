@@ -15,8 +15,18 @@ const GOOD = {name: 'New Player', email: 'New.Player@Example.org'};
 function world() {
   const issues = [];
   const triage = [];
-  const told = [], posted = [];
+  const told = [], posted = [], pilots = ['invited@hotmail.example', 'joined@hotmail.example'], users = ['joined@hotmail.example'];
   const sb = async (p, init = {}) => {
+    if (p.startsWith('pilot_members?on_conflict=') && init.method === 'POST') { pilots.push(JSON.parse(init.body).email); return []; }
+    if (p.startsWith('users?')) {
+      const e = (new URLSearchParams(p.split('?')[1]).get('middleauth_email') || '').replace(/^eq\./, '');
+      return users.includes(e) ? [{id: 'u-' + e}] : [];
+    }
+    if (p.startsWith('site_issues?') && p.includes('message=like.')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const want = (q.get('message') || '').replace(/^like\./, '').replace(/^\*|\*$/g, '');
+      return issues.filter(i => String(i.message).includes(want)).map(i => ({id: i.id}));
+    }
     if (p.startsWith('site_issues?')) {
       const q = new URLSearchParams(p.split('?')[1]);
       const cat = (q.get('category') || '').replace(/^eq\./, '');
@@ -28,6 +38,11 @@ function world() {
       const sid = (q.get('source_id') || '').replace(/^eq\./, '');
       return triage.filter(t => t.source_id === sid);
     }
+    if (p.startsWith('pilot_members?')) {
+      const q = new URLSearchParams(p.split('?')[1]);
+      const e = (q.get('email') || '').replace(/^eq\./, '');
+      return pilots.includes(e) ? [{email: e}] : [];
+    }
     if (p === 'site_issues' && init.method === 'POST') {
       for (const r of JSON.parse(init.body)) issues.push({id: 'i' + (issues.length + 1), created_at: new Date(Date.now() + issues.length).toISOString(), ...r});
       return [];
@@ -38,7 +53,7 @@ function world() {
   const io = (over = {}) => ({sb, me, who: {email: 'signin@example.org'}, isAdmin: false, isPilot: false,
     notifyAdmins: async n => { told.push(n); }, notifyReviewers: async () => { throw new Error('beta goes to every admin'); },
     postIssue: async p => { posted.push(p); }, ...over});
-  return {issues, triage, told, posted, io};
+  return {issues, triage, told, posted, pilots, io};
 }
 
 test('a tester or an admin is invited, and nothing is filed', async () => {
@@ -74,6 +89,50 @@ test('the request: one triage report, one bell to every admin, one Slack post', 
   assert.match(w.told[0].body, /Their note:\n\nI proofread on EyeWire for years/);
   assert.strictEqual(w.posted.length, 1);
   for (const t of [r.title, r.message, w.told[0].title, w.told[0].body]) assert.doesNotMatch(t, /[–—]/);
+});
+
+test('invited under another address: the request says so, and the sign in email is still the one to add', async () => {
+  const w = world();
+  const out = await handle('access.beta', {name: 'New Player', email: 'Invited@Hotmail.example'}, w.io());
+  assert.deepStrictEqual(out, {invited: false, requested: true, invitedAs: true});
+  const r = w.issues[0];
+  assert.strictEqual(r.title, 'Invited tester on another Google account: New Player');
+  assert.match(r.message, /Invited as: invited@hotmail\.example, already on Pilot testers\./);
+  assert.match(r.message, /Sign in email: signin@example\.org\. To let them in/);
+  assert.match(w.told[0].body, /Already invited as invited\\@hotmail\\\.example/);
+  // An address not on the list gets no Invited line.
+  const w2 = world();
+  assert.deepStrictEqual(await handle('access.beta', GOOD, w2.io()), {invited: false, requested: true});
+  assert.doesNotMatch(w2.issues[0].message, /Invited as/);
+});
+
+test('use my invite: the sign in account joins Pilot testers at once, and every admin is told', async () => {
+  const w = world();
+  const out = await handle('access.linkInvite', {email: ' Invited@Hotmail.example '}, w.io());
+  assert.deepStrictEqual(out, {invited: true, linked: true});
+  assert.ok(w.pilots.includes('signin@example.org'));
+  assert.strictEqual(w.issues.length, 1);
+  assert.match(w.issues[0].message, /was invited as invited@hotmail\.example and joined as signin@example\.org/);
+  assert.strictEqual(w.told.length, 1);
+  assert.ok(w.told[0].body.includes(String.raw`turn signin\@example\.org off`), w.told[0].body);
+  // The same invite from a second Google account goes to an admin instead.
+  const again = await handle('access.linkInvite', {email: 'invited@hotmail.example'}, w.io({who: {email: 'other@example.org'}, me: {id: 'u-other', display_name: 'Other'}}));
+  assert.deepStrictEqual(again, {invited: false, requested: true, review: true});
+  assert.ok(!w.pilots.includes('other@example.org'));
+  assert.match(w.issues[1].message, /already brought in another Google account/);
+});
+
+test('use my invite: not invited, own address, or someone already plays under it', async () => {
+  const w = world();
+  await assert.rejects(handle('access.linkInvite', {email: 'nobody@example.org'}, w.io()), /couldn't find an invite/);
+  await assert.rejects(handle('access.linkInvite', {email: 'signin@example.org'}, w.io()), /the account you are signed in with/);
+  await assert.rejects(handle('access.linkInvite', {email: 'not an email'}, w.io()), /does not look right/);
+  const r = await handle('access.linkInvite', {email: 'joined@hotmail.example'}, w.io());
+  assert.deepStrictEqual(r, {invited: false, requested: true, review: true});
+  assert.ok(!w.pilots.includes('signin@example.org'));
+  assert.match(w.issues[0].message, /Someone already plays Pyr with that invite email/);
+  // A tester already in is just in.
+  assert.deepStrictEqual(await handle('access.linkInvite', {email: 'x@y.org'}, w.io({isPilot: true})), {invited: true});
 });
 
 test('once only: a second request files nothing, and status says requested', async () => {
