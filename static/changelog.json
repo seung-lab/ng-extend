@@ -2,6 +2,16 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-04T15:50:43Z",
+      "title": "Smoother Sandbox and MEC, tidier merges",
+      "items": [
+        "Less lag in the Sandbox and MEC: when the server can't answer a cell type lookup, Pyr waits a little instead of asking again for every cell in view.",
+        "If you merge a piece before its cell has loaded, the short ID left in your segment list is now replaced by the merged cell.",
+        "Help requests on Hunt candidates no longer show up in chat.",
+        "The Merge Queue's jump button is now the usual jump arrow."
+      ]
+    },
+    {
       "at": "2026-11-04T15:35:12Z",
       "title": "2D Tools for misalignments",
       "digest": "headline",
