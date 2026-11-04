@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-04T21:19:04Z",
+      "title": "Fresh layers for new MEC claims",
+      "items": [
+        "Claiming or opening a new MEC cell while working on another now starts from fresh layers and takes you to the new cell. Your previous cell's view is saved first.",
+        "Nurro explains the \"Split failed\" error and how to fix your cut."
+      ]
+    },
+    {
       "at": "2026-11-04T21:09:09Z",
       "title": "Classic Layers: Shift switches",
       "digest": "minor",
