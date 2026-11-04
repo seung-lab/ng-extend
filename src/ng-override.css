@@ -114,6 +114,9 @@ label.perspective-panel-show-slice-views { bottom: calc(2px + var(--nge-bottom-b
 /* The music button has the corner (RadioPlayer.vue); Sections sits left of
    it, on the same line, centred on the button's height. */
 body.nge-radio-on label.perspective-panel-show-slice-views { right: 46px; bottom: calc(10px + var(--nge-bottom-bar, 0px)); }
+/* And above the merge and cut bar, as the music button rises (Luis Alonso, report 338). */
+body.nge-tool-bar-open label.perspective-panel-show-slice-views { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
+body.nge-tool-bar-open.nge-radio-on label.perspective-panel-show-slice-views { bottom: calc(38px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-position-widget { bottom: calc(6px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 body.nge-tool-bar-open .neuroglancer-mouse-position-widget { bottom: calc(7px + var(--nge-tool-bar-h, 66px) + var(--nge-bottom-bar, 0px)); }
 /* The merge and cut bar runs the full width of the window and covered the

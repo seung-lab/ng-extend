@@ -46,6 +46,7 @@ import { pendingCompleteRequest } from '../util/complete_claim';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { ensureMecLayers, SUPER_QUEST_LAYERS, SUPER_QUEST_DROP } from '../util/mec_layers';
 import MecMarkStatus from './MecMarkStatus.vue';
+import { mecKindOfLayer } from '../util/mec_marks';
 import { buildState } from '../hunt_build';
 import { datasetLocked, findDatasetBySegName, findDatasetByCanonical, switchToDataset, canonicalDataset, segLayerName, currentSegLayerName, currentSegLayer, currentCellTypes, currentDatasetTag, cellTypeLabel, datasetDisplayName, datasetAbbrev, DATASETS, DATASET_GROUPS, SPECIES_ICONS, type DatasetEntry } from '../datasets';
 import { CONNECTOME_QUEST_RESOURCES } from '../data/connectome-quest';
@@ -505,7 +506,11 @@ const filteredCells = computed(() => {
     // its Marks show under it here too (Ames 2026-10-28).
     const myQuests = questCells.value.filter(c => isMyClaim(c));
     const myClaimed = list.filter(c => isMyClaim(c));
-    const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId);
+    // Completed: the latest first (annkri, report 352: they kept the cell
+    // list's order). A completion stamps the claim's updated time.
+    const doneAt = (c: CellRow) => backend.tasks.find(t => t.id === c.taskId)?.updated_at || '';
+    const myCompleted = list.filter(c => c.status === 'completed' && c.assignedTo === backend.userId)
+      .sort((a, b) => doneAt(b).localeCompare(doneAt(a)));
     list = [...myQuests, ...myClaimed, ...myCompleted];
   } else if (filter.value === 'available') {
     list = list.filter(c => c.status === 'pending');
@@ -709,11 +714,31 @@ setCastClaimHooks({
   },
   reopen(id) { setWorkingTask(id); },
 });
+/** The lab's MEC marks on screen belong to the claim just left (saved with
+ *  it): a claim opened without a view of its own starts with none. They
+ *  stayed, and counted under the new claim (wolfryder101, report 350: a Super
+ *  Quest showed the 56 Checked of the cell before it). */
+function clearLeftMarks() {
+  for (const ml of (window as any).viewer?.layerManager?.managedLayers ?? []) {
+    if (ml.archived || !mecKindOfLayer(ml.name)) continue;
+    const src = ml.layer?.localAnnotations;
+    if (!src) continue;
+    try {
+      for (const a of [...src]) { const ref = src.getReference(a.id); try { src.delete(ref); } finally { ref.dispose(); } }
+    } catch (e) { console.warn('[cell library] could not clear the marks left from the last claim:', e); }
+  }
+}
 /** Save the view to the claim being worked on. False = stay put. */
+/** Claims completed or released here: finished, whatever the list says yet. */
+const endedClaims = new Set<number>();
 async function leaveCurrentWork(nextTaskId: number | null): Promise<boolean> {
   // Nothing marked as the working claim, but one of yours is on screen: that
   // is the work, so it is saved too (annkri: lost a cell opening a help request).
-  const id = workingTaskId ?? myOpenClaims.value.find(claimInView)?.taskId ?? null;
+  // Only when it is plainly that one, and never a claim just completed or let
+  // go: the list may not have dropped it yet, and the server refuses a save on
+  // it, which asked "could not be saved" over nothing (Nseraf, report 339).
+  const onScreen = myOpenClaims.value.filter(c => c.taskId != null && !endedClaims.has(c.taskId) && claimInView(c));
+  const id = workingTaskId ?? (onScreen.length === 1 ? onScreen[0].taskId : null);
   if (!id || id === nextTaskId) return true;
   const t = backend.tasks.find(x => x.id === id);
   if (!t || t.assigned_to !== backend.userId || (t.status !== 'assigned' && t.status !== 'in_progress')) return true;
@@ -787,9 +812,13 @@ async function switchToClaim(cell: CellRow) {
   // A quest on screen is saved and its layers put away BEFORE the claim's
   // view is saved or opened, so they never end up in the claim (annkri #145).
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
+  const leftId = workingTaskId;
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
-  if (!openStartLink(t?.working_link || cell.startLink)) jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+  if (!openStartLink(t?.working_link || cell.startLink)) {
+    if (leftId && leftId !== cell.taskId) clearLeftMarks();
+    jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
+  }
   else void backend.anchorClaimAt(cell.taskId).catch(() => null);
   jumpedSegId.value = cell.segId;
   setWorkingTask(cell.taskId);
@@ -899,10 +928,12 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   // layers (Amy 2026-09-28). Save the claim you were on first.
   const claimed = backend.tasks.find(t => t.segment_id === cell.segId && t.assigned_to === backend.userId
     && (t.status === 'assigned' || t.status === 'in_progress'));
+  const leftId = workingTaskId;
   if (await leaveCurrentWork(claimed?.id ?? null)) {
     // A quest, or a Hunt candidate, has no start view: go to the cell (a candidate's soma, the cell meant:
     // Ames 2026-10-28, report 279).
     if (!openStartLink(cell.startLink) && (cell.quest || (isHuntCandidate(cell) && (cell.nucCoords || cell.somaCoords)))) {
+      if (leftId && leftId !== claimed?.id) clearLeftMarks();
       jumpToCell(cell.segId, cell.nucCoords || cell.somaCoords, cell.nucleusId, false, cell.liveSegId);
     }
     if (claimed) setWorkingTask(claimed.id);
@@ -1023,6 +1054,7 @@ async function releaseHeld(t: ProofreadingTask) {
   releasing.add(key);
   let ok = false;
   try { ok = await backend.releaseTaskById(t.id); } finally { releasing.delete(key); }
+  if (ok) endedClaims.add(t.id);
   if (ok && workingTaskId === t.id) setWorkingTask(null);
   if (!ok) { claimError.value = backend.error || 'Could not release this claim.'; return; }
   const held = heldHere(await backend.loadMyActiveClaims());
@@ -1094,7 +1126,11 @@ const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).lengt
 /** The type list, when the cell is on the dataset on screen and that
  *  dataset's types may be written here (as in the Cell Profile). */
 function cellTypesFor(cell: CellRow): string[] {
-  if (canonicalDataset(cell.dataset || '') !== currentDatasetTag()) return [];
+  // A row of the cell list on screen carries no dataset of its own (''):
+  // it is this dataset's. Only a cell of another dataset is left without the
+  // picker. It was hidden for every list row, so a type could be set in the
+  // Cell Profile but not on Complete (Nseraf, report 355).
+  if (cell.dataset && canonicalDataset(cell.dataset) !== currentDatasetTag()) return [];
   if (getDatasetCaveConfig(currentSegLayerName()).cellTypeReadOnly) return [];
   return currentCellTypes();
 }
@@ -1259,6 +1295,7 @@ async function completeCell(cell: CellRow, done: { finalSegId: string; coords: s
   // the completed cell (report 308). The server only takes it on an open claim.
   if (done.link) await backend.saveWorkingLink(cell.taskId, done.link).catch(() => false);
   await backend.completeTask(cell.taskId, done.finalSegId, done.coords);
+  endedClaims.add(cell.taskId);
   if (workingTaskId === cell.taskId) setWorkingTask(null);
   // Axon complete: labelled as such, not marked proofread (lightbulb_service).
   if (done.status === AXON_COMPLETE) {
@@ -1353,6 +1390,7 @@ async function releaseCell(cell: typeof cells.value[0]) {
   }
   if (completing.value?.key === cellKey(cell)) completing.value = null;
   if (slimSeg.value === cell.segId) expandFull();
+  if (cell.taskId) endedClaims.add(cell.taskId);
   if (cell.taskId && workingTaskId === cell.taskId) setWorkingTask(null);
   // Dispatch event so seg dot pips update
   document.dispatchEvent(new CustomEvent('nge:seg-status-changed', { detail: { segmentId: cell.segId, status: 'released' } }));
@@ -4052,7 +4090,7 @@ const panelStyle = computed(() => ({
                 </div>
                 <div v-if="questEndsSoon(cell)" class="nge-cl-time nge-cl-quest-ends">{{ questEndsSoon(cell) }}</div>
                 <div v-if="isMyClaim(cell) && claimTimeLabel(cell.taskId)" class="nge-cl-time" :class="{ 'nge-cl-time--on': claimTime.running === cell.taskId }"
-                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have done real work on it in the last 5 minutes (a mark, an annotation or highlight, a merge or split, or Save view). It adds up across visits and devices.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
+                     title="Your active time on this cell: counted while the cell is on screen, Pyr is in front, and you have worked on it in the last 5 minutes: moving, turning or zooming the view, a mark, a highlight, a merge or cut, or Save view.">Active time: {{ claimTimeLabel(cell.taskId) }}</div>
               </div>
             </div>
 

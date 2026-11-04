@@ -40,6 +40,13 @@ const title = ref('');
  *  to write LESS"). The box that holds what they wrote stays closed until
  *  "Add details" opens it. */
 const detailsOpen = ref(false);
+/** Details are short unless they ask for more (Ames 2026-11-02: "some of the
+ *  reports are too long"). "I need to add more" lifts it to what the report
+ *  server keeps (functions/index.js submitIssue, 4000). */
+const DETAILS_SHORT = 500;
+const DETAILS_LONG = 4000;
+const detailsLong = ref(false);
+const detailsMax = computed(() => detailsLong.value ? DETAILS_LONG : DETAILS_SHORT);
 const sending = ref(false);
 /** Attach a share link of the current view (on by default; Celia's ask). */
 const attachView = ref(true);
@@ -462,9 +469,14 @@ onBeforeUnmount(() => {
           rows="3"
           placeholder="Anything else that helps, like what you expected."
           aria-label="Details"
+          :maxlength="detailsMax"
           @keydown.stop @keyup.stop @keypress.stop
           @input="error = ''"
         ></textarea>
+        <div v-if="detailsOpen" class="nge-fb-count" :class="{ 'nge-fb-count--full': message.length >= detailsMax }">
+          <span>{{ message.length }} / {{ detailsMax }}</span>
+          <button v-if="!detailsLong && message.length >= DETAILS_SHORT - 50" type="button" class="nge-fb-more nge-fb-more--inline" @click="detailsLong = true">I need to add more</button>
+        </div>
 
         <label class="nge-fb-attach">
           <input type="checkbox" v-model="attachView" />
@@ -610,6 +622,9 @@ onBeforeUnmount(() => {
   color: #9db3ff; font: inherit; font-size: 0.82em; cursor: pointer;
 }
 .nge-fb-more:hover { color: #c5d3ff; text-decoration: underline; }
+.nge-fb-count { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -2px 0 8px; font-size: 0.78em; color: #8a9bc0; }
+.nge-fb-count--full span { color: #ffd08a; }
+.nge-fb-more--inline { display: inline; margin: 0; }
 .nge-fb-note {
   width: 100%;
   background: rgba(0, 0, 0, 0.25);

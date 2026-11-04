@@ -11,6 +11,7 @@ import BlogEditor from 'components/BlogEditor.vue';
 import { startDatasetTransition } from '../util/dataset_transition';
 import { loadContribution, showsAllStats, datasetTagVariants as sharedTagVariants } from '../util/dataset_contribution';
 import { datasetKey } from '../util/completion_rule';
+import { editHours } from '../util/player_summary';
 import WeeklyRecapPanel from 'components/WeeklyRecapPanel.vue';
 import DatasetStatsPanel from 'components/DatasetStatsPanel.vue';
 import SettingsPanel from 'components/SettingsPanel.vue';
@@ -27,6 +28,10 @@ import {useLoginStore, useUserStatsStore, useUserPreferencesStore, useCellHistor
 import {BADGE_DEFINITIONS, BUILDING_BADGES, EXPLORATION_BADGES, LOYALTY_BADGES, BadgeDefinition, BadgeTrack, statKeyForTrack, unitForTrack} from '../widgets/badge_definitions';
 import {BADGE_IMAGE_MAP} from '../widgets/badge_images';
 import {DATASETS, DatasetEntry, SPECIES_ICONS, segLayerName, canonicalDataset, currentSegLayerName, switchToDataset, isDatasetShown} from '../datasets';
+import {datasetAccess} from '../util/dataset_access';
+import {secureWrite} from '../secure_write';
+import lockIcon from '../images/lock-icon.png';
+import unlockIcon from '../images/unlock-icon.png';
 import {useIssueTagStore, type IssueTag} from '../store';
 import {EYEWIRE_FLAG} from '../data/countries';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
@@ -452,7 +457,55 @@ async function loadDatasetStats() {
   }
 }
 
-watch(activeTab, tab => { if (tab === 'datasets') loadDatasetStats(); });
+// ── Edit access (Ames 2026-11-02: "should we show accesses unlocked in
+// profile?") ── The datasets that are earned: Retina, MEC and BANC. Your own
+// profile asks CAVE, so it is always right, with the date from the grant's
+// chat line when there is one. Someone else's shows only the grants on record
+// (since 2026-10-30): an older one is simply not shown, never "not yet".
+const ACCESS_DATASETS = ['stroeh_mouse_retina', 'pni_mec', 'banc'];
+/** Short names for the tiles. */
+const ACCESS_NAMES: Record<string, string> = { stroeh_mouse_retina: 'Retina', pni_mec: 'MEC', banc: 'BANC' };
+const accessGrants = ref<Record<string, string>>({});
+/** Someone else's edit access as CAVE has it (functions/access-request.js,
+ *  access.profileAccess); null until it answers, or when it cannot say. */
+const otherEdit = ref<string[] | null>(null);
+let accessFor = '';
+// Asked once per player per visit, however often the tab is opened (Ames:
+// "make sure to clean up the querying"); the server keeps its CAVE answer
+// 10 minutes as well.
+const accessAsked = new Map<string, Promise<{ grants: Record<string, string>; edit: string[] | null }>>();
+function askAccess(uid: string, other: boolean) {
+  let p = accessAsked.get(uid);
+  if (!p) {
+    p = Promise.all([
+      backendStore.loadAccessGrants(uid),
+      other ? secureWrite<{ edit: string[] | null }>('access.profileAccess', { userId: uid })
+        .then(r => (Array.isArray(r?.edit) ? r.edit : null))
+        .catch(e => { console.warn('[profile] edit access lookup failed:', e?.message || e); return null; }) : Promise.resolve(null),
+    ]).then(([grants, edit]) => ({ grants, edit }));
+    accessAsked.set(uid, p);
+  }
+  return p;
+}
+async function loadAccess() {
+  const uid = (viewingOtherUser.value ? props.viewUserId : backendStore.userId) || '';
+  if (!uid) return;
+  if (accessFor !== uid) { accessGrants.value = {}; otherEdit.value = null; }
+  accessFor = uid;
+  const got = await askAccess(uid, viewingOtherUser.value);
+  if (accessFor !== uid) return;
+  accessGrants.value = got.grants;
+  otherEdit.value = got.edit;
+}
+const accessRows = computed(() => ACCESS_DATASETS.map(id => DATASETS.find(d => d.id === id)).filter((d): d is DatasetEntry => !!d).map(ds => {
+  const at = accessGrants.value[ds.id];
+  const state = viewingOtherUser.value ? (otherEdit.value ? (otherEdit.value.includes(ds.id) ? 'edit' : 'locked') : at ? 'edit' : 'unknown') : datasetAccess(ds.caveDataset) === 'edit' ? 'edit' : datasetAccess(ds.caveDataset) === 'unknown' ? 'unknown' : 'locked';
+  const when = at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  return { id: ds.id, label: ds.label, name: ACCESS_NAMES[ds.id] || ds.shortLabel, icon: SPECIES_ICONS[ds.species], state, when };
+}).filter(r => !viewingOtherUser.value || otherEdit.value || r.state === 'edit'));
+
+watch(activeTab, tab => { if (tab === 'datasets') { loadDatasetStats(); void loadAccess(); } });
+watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') void loadAccess(); });
 watch(() => props.viewUserId, () => { if (activeTab.value === 'datasets') loadDatasetStats(); });
 
 /** Whose part the Dataset Stats strip shows: the person whose profile this
@@ -1093,16 +1146,17 @@ function localDay(t: number): string {
   const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-/** A dense run of days from the first stamp to today, zeros where nothing happened. */
-function denseDays(stamps: number[]): EffortDay[] {
+/** A dense run of days from the first stamp to today, zeros where nothing
+ *  happened. `weights[i]` is how many stamp i stands for (an hour's edits). */
+function denseDays(stamps: number[], weights?: number[]): EffortDay[] {
   if (!stamps.length) return [];
   const counts = new Map<string, number>();
   let first = Infinity;
-  for (const t of stamps) {
+  stamps.forEach((t, i) => {
     first = Math.min(first, t);
     const k = localDay(t);
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
+    counts.set(k, (counts.get(k) ?? 0) + (weights ? weights[i] : 1));
+  });
   const out: EffortDay[] = [];
   const d = new Date(first); d.setHours(0, 0, 0, 0);
   const end = new Date(); end.setHours(0, 0, 0, 0);
@@ -1125,6 +1179,32 @@ async function loadScopedEdits() {
   void canon;
   if (!uid) { scopedEdits.value = null; scopedEditDays.value = null; return; }
   try {
+    // The player's hourly totals (Ames 2026-10-25: reading every edit on
+    // every open was a large share of the database's load). An hour's edits
+    // fall on the day and window its first minute does, so Today and the 7
+    // days can differ from the edit by edit count by an hour at the edge.
+    const hours = await editHours(uid);
+    if (hours) {
+      if (req !== scopedEditsReq) return;
+      const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+      const weekAgo = Date.now() - 7 * 86400000;
+      const blank = (): EditWindow => ({ edits: 0, merges: 0, splits: 0 });
+      const out = { today: blank(), week: blank(), all: blank() };
+      const stamps: number[] = [], weights: number[] = [];
+      for (const h of hours) {
+        const n = h.merges + h.splits;
+        if (n <= 0) continue;
+        stamps.push(h.hour); weights.push(n);
+        const wins = [out.all];
+        if (h.hour >= weekAgo) wins.push(out.week);
+        if (h.hour >= startOfToday.getTime()) wins.push(out.today);
+        for (const w of wins) { w.edits += n; w.merges += h.merges; w.splits += h.splits; }
+      }
+      scopedEdits.value = out;
+      scopedEditDays.value = denseDays(stamps, weights);
+      return;
+    }
+    // Before the hourly totals exist (supabase-db-load.sql step 6): every edit.
     const { supabase } = await import('../supabase');
     const rows: Array<{ operation: string; timestamp: string; success: boolean | null }> = [];
     const PAGE = 1000;  // PostgREST's default row cap per request
@@ -1217,12 +1297,20 @@ async function loadScopedCompletions() {
   }
 }
 
-loadScopedEdits();
-loadScopedCompletions();
-loadScopedIdentifications();
-watch(() => backendStore.userId, () => { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); });
+// When the Overview's numbers were last read, and whose. Coming back to
+// Overview within 30 seconds reuses them (2026-10-25: every tab switch read
+// the whole record again).
+let overviewRead = { uid: '' as string | null | undefined, at: 0 };
+function loadOverview(force = false) {
+  const uid = viewingOtherUser.value ? props.viewUserId : backendStore.userId;
+  if (!force && overviewRead.uid === uid && Date.now() - overviewRead.at < 30_000) return;
+  overviewRead = { uid, at: Date.now() };
+  loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications();
+}
+loadOverview(true);
+watch(() => backendStore.userId, () => loadOverview(true));
 // Re-scope when coming back to Overview (the Datasets tab can switch datasets).
-watch(activeTab, tab => { if (tab === 'overview') { loadScopedEdits(); loadScopedCompletions(); loadScopedIdentifications(); } });
+watch(activeTab, tab => { if (tab === 'overview') loadOverview(); });
 
 /** Edits section numbers: this dataset's, or career-wide if edit_log failed. */
 const overviewEdits = computed(() => {
@@ -1606,6 +1694,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                  public identifier; the address stays private. -->
 
 
+            <!-- Someone else's bio too (Nseraf, report 354: bios were only
+                 ever shown to their owner). -->
+            <div v-if="viewingOtherUser && otherUserProfile?.bio" class="nge-profile-bio">{{ otherUserProfile.bio }}</div>
             <template v-if="!viewingOtherUser">
               <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
               <button v-else class="nge-profile-bio-add" @click="activeTab = 'settings'">
@@ -2639,6 +2730,19 @@ No cells completed yet. <template v-if="!viewingOtherUser">Your recently complet
         <div class="nge-ds-tab-intro">
           {{ viewingOtherUser ? `The datasets ${profileName} has contributed to.` : 'The datasets you have contributed to.' }}
           Click one to switch your viewer to it.
+        </div>
+        <div v-if="accessRows.length" class="nge-ds-access">
+          <div class="nge-ds-access-title"><span class="nge-ds-access-tick" aria-hidden="true"></span>Edit access</div>
+          <div class="nge-ds-access-row">
+            <div v-for="r in accessRows" :key="r.id" class="nge-ds-access-tile" :class="'nge-ds-access-tile--' + r.state"
+                 :title="r.state === 'edit' ? `${r.label}: edit access${r.when ? ` since ${r.when}` : ''}` : r.state === 'locked' ? (viewingOtherUser ? `${r.label}: not unlocked yet` : `${r.label}: not unlocked yet. Pass the edit test, then Ask for Edit Access in the menu.`) : `${r.label}: checking…`">
+              <img :src="r.state === 'edit' ? unlockIcon : lockIcon" class="nge-ds-access-icon" alt="" draggable="false" />
+              <span class="nge-ds-access-text">
+                <span class="nge-ds-access-name">{{ r.name }}</span>
+                <span class="nge-ds-access-state">{{ r.state === 'edit' ? (r.when ? `Unlocked · ${r.when}` : 'Unlocked') : r.state === 'locked' ? 'Locked' : 'Checking' }}</span>
+              </span>
+            </div>
+          </div>
         </div>
         <button class="nge-ds-tab-progress" @click="openDatasetProgress">Dataset stats: what has been done on each dataset →</button>
         <div v-if="datasetStatsLoading && !Object.keys(datasetStats).length" class="nge-ds-tab-loading">
@@ -5414,4 +5518,30 @@ body.nge-calm .nge-profile-stat-row--scout .nge-profile-stat-val { color: #d8dde
 body.nge-calm .nge-profile-viz-badge-icon, body.nge-calm .nge-profile-viz-badge-icon--large { width: min(150px, calc(18 * var(--nge-vh, 1vh))); height: min(150px, calc(18 * var(--nge-vh, 1vh))); }
 /* the streak's flame and count sit still in the plain colours */
 body.nge-calm .nge-profile-streak-count { color: #e6c98a; text-shadow: none; }
+.nge-ds-access { margin: 8px 0 14px; }
+.nge-ds-access-title { display: flex; align-items: center; gap: 8px; font: 600 11px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(160, 225, 255, 0.85); margin-bottom: 8px; }
+.nge-ds-access-tick { width: 14px; height: 2px; background: linear-gradient(90deg, #7cf2ff, transparent); box-shadow: 0 0 6px #7cf2ff; }
+.nge-ds-access-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.nge-ds-access-tile {
+  --c: 124, 242, 255;
+  position: relative; display: flex; align-items: center; gap: 10px; min-width: 150px; padding: 8px 16px 8px 8px; overflow: hidden;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: linear-gradient(135deg, rgba(var(--c), 0.16), rgba(20, 40, 80, 0.55) 55%, rgba(var(--c), 0.08));
+  box-shadow: inset 0 0 0 1px rgba(var(--c), 0.55), inset 0 0 18px rgba(var(--c), 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.nge-ds-access-tile::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px); }
+.nge-ds-access-tile::after { content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; pointer-events: none; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.18), transparent); transform: skewX(-18deg); opacity: 0; }
+.nge-ds-access-tile--edit:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px rgba(var(--c), 0.9), inset 0 0 22px rgba(var(--c), 0.22), 0 0 14px rgba(var(--c), 0.25); }
+.nge-ds-access-tile--edit:hover::after { opacity: 1; animation: nge-ds-access-sweep 0.9s ease; }
+@keyframes nge-ds-access-sweep { from { left: -60%; } to { left: 120%; } }
+.nge-ds-access-icon { width: 34px; height: 34px; flex-shrink: 0; object-fit: contain; filter: drop-shadow(0 0 6px rgba(var(--c), 0.55)); }
+.nge-ds-access-text { display: flex; flex-direction: column; gap: 3px; }
+.nge-ds-access-name { font: 700 14px/1 'Orbitron', 'Rajdhani', sans-serif; letter-spacing: 0.08em; color: #eafcff; text-shadow: 0 0 8px rgba(var(--c), 0.45); }
+.nge-ds-access-state { font: 600 10px/1 ui-monospace, 'Cascadia Code', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(var(--c)); }
+.nge-ds-access-tile--edit { --c: 110, 240, 170; }
+.nge-ds-access-tile--locked { --c: 150, 170, 200; opacity: 0.7; }
+.nge-ds-access-tile--locked .nge-ds-access-icon { filter: grayscale(0.6) brightness(0.85); }
+.nge-ds-access-tile--unknown { opacity: 0.55; }
+@media (prefers-reduced-motion: reduce) { .nge-ds-access-tile { transition: none; } .nge-ds-access-tile--edit:hover { transform: none; } .nge-ds-access-tile--edit:hover::after { animation: none; opacity: 0; } }
 </style>

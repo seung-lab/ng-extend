@@ -2,7 +2,9 @@
 import imgNurroBravo from '../images/bravo-nurro.png';
 import { secureWrite, caveToken } from '../secure_write';
 import { functionUrl } from '../functions_base';
-import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
+import {ref, shallowRef, computed, watch, nextTick, onMounted, onUnmounted} from 'vue';
+import { searchNamesOf, serverTagged, type AdminPerson } from '../util/admin_mentions';
+import { vAutogrow } from '../util/autogrow';
 import {useProofreadingBackendStore} from '../store';
 import GrowingNeuron from 'components/GrowingNeuron.vue';
 import {etNaiveToUtcIso, utcIsoToEtNaive, formatEt} from '../util/et_time';
@@ -19,6 +21,19 @@ import TestTriesTab from 'components/TestTriesTab.vue';
 import TutorialTimesTab from 'components/TutorialTimesTab.vue';
 import TodoBoard from 'components/TodoBoard.vue';
 import nurroDance from '../../static/nurro/nurro-dance.png';
+import arcane25 from '../../static/badges/arcane/25.png';
+import arcane50 from '../../static/badges/arcane/50.png';
+import arcane75 from '../../static/badges/arcane/75.png';
+import arcane100 from '../../static/badges/arcane/100.png';
+import arcane200 from '../../static/badges/arcane/200.png';
+import arcane300 from '../../static/badges/arcane/300.png';
+import arcane400 from '../../static/badges/arcane/400.png';
+import arcane500 from '../../static/badges/arcane/500.png';
+import arcane600 from '../../static/badges/arcane/600.png';
+import arcane700 from '../../static/badges/arcane/700.png';
+import arcane800 from '../../static/badges/arcane/800.png';
+import arcane900 from '../../static/badges/arcane/900.png';
+import arcane1000 from '../../static/badges/arcane/1000.png';
 import nurroTrophy from '../../static/nurro/nurro-trophy.png';
 import nurroCelebrate from '../../static/nurro/nurro-celebrate.png';
 import nurroMicroscope from '../../static/nurro/nurro-microscope.png';
@@ -644,7 +659,7 @@ async function loadTriageNumbers() {
     // 500 at a time: the server refuses a larger page, which is why the
     // numbers did not show at first.
     for (let from = 0, n = 0; ; from += 500) {
-      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at,source,source_id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
+      const { data, error } = await supabase.from('feedback_triage').select('id,status,recommendation,impl_state,reviewed_at,reviewed_by,source,source_id').order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, from + 499);
       if (error || !data) return;
       for (const r of data as any[]) {
         next[r.id] = ++n;
@@ -671,10 +686,93 @@ async function loadTriageNumbers() {
       if (k === 'bug') bugs++; else if (k === 'feature') features++; else other++;
     }
     triageNumbers.value = next;
+    // Mine, for Arcane Fixes: closed with Done by me (below).
+    arcaneReports.value = closed.filter(r => r.status === 'done' && isMe(r.reviewed_by)).length;
+    void loadArcaneCards();
     // Keep the last good counts rather than show wrong ones.
     if (!catsFailed) triageTally.value = { bugs, features, other, today, days };
   } catch { /* the cards simply show no number */ }
 }
+
+// ── Pyr Fixes (first called Arcane Fixes; Ames 2026-11-02: "Pyr related"): each admin's own Achievements (Ames 2026-10-27 to 11-02) ──
+// Reports you closed with Done count one, To do cards you own that reached
+// Done count five ("a finished card should be 5 fixes"). Tech magic art from
+// the badges repo (arcane/), an icon in a frame. A tier at 25, 50, 75, then
+// every 100. On the triage board only ("triage for now").
+// Techy names, never a witch (Ames 2026-11-02).
+const ARCANE: { at: number; name: string; art: string }[] = [
+  { at: 25, name: 'Bit Wrangler', art: arcane25 },
+  { at: 50, name: 'Patch Brewer', art: arcane50 },
+  { at: 75, name: 'Spark Coder', art: arcane75 },
+  { at: 100, name: 'Apprentice Technomancer', art: arcane100 },
+  { at: 200, name: 'Stack Tracer', art: arcane200 },
+  { at: 300, name: 'Rune Compiler', art: arcane300 },
+  { at: 400, name: 'Syntax Smith', art: arcane400 },
+  { at: 500, name: 'Source Keeper', art: arcane500 },
+  { at: 600, name: 'Patch Architect', art: arcane600 },
+  { at: 700, name: 'Debug Seer', art: arcane700 },
+  { at: 800, name: 'Root Access', art: arcane800 },
+  { at: 900, name: 'Build Master', art: arcane900 },
+  { at: 1000, name: 'Grand Technomancer of Pyr', art: arcane1000 },
+];
+const ARCANE_CARD = 5;
+/** Past 1000, a tier every 100 with the crown's art until its own is made. */
+function arcaneTier(at: number) {
+  return ARCANE.find(t => t.at === at) || { at, name: `Grand Technomancer of Pyr, ${Math.floor(at / 100) - 9} stars`, art: arcane1000 };
+}
+const arcaneThresholds = (upTo: number) => {
+  const out = ARCANE.map(t => t.at);
+  for (let at = 1100; at <= Math.max(1100, upTo + 100); at += 100) out.push(at);
+  return out;
+};
+// Who I am, as the board and Slack wrote it: my name, my name without a
+// middle initial, and my Slack id (functions/todos.js SLACK_IDS).
+const SLACK_SELF: [RegExp, string][] = [[/^(amy|ames)\b|^amy/i, 'slack:U02FH1DRC'], [/^celia/i, 'slack:U033NHWDE'], [/^(marissa|m sorek|sorek)/i, 'slack:U033TSX9A']];
+const plainName = (n: string) => String(n || '').toLowerCase().replace(/\b[a-z]\.\s*/g, '').replace(/\s+/g, ' ').trim();
+function isMe(by: string | null | undefined) {
+  const v = String(by || '').trim();
+  const mine = String(backend.userName || '').trim();
+  if (!v || !mine) return false;
+  if (v === mine || plainName(v) === plainName(mine)) return true;
+  if (backend.userEmail && v.toLowerCase() === String(backend.userEmail).toLowerCase()) return true;
+  return SLACK_SELF.some(([re, id]) => re.test(mine) && v === id);
+}
+const arcaneReports = ref(0);
+const arcaneCards = ref(0);
+let arcaneCardsAt = 0;
+async function loadArcaneCards() {
+  if (Date.now() - arcaneCardsAt < 60_000) return;
+  arcaneCardsAt = Date.now();
+  try {
+    const d = await secureWrite<any>('todo.list');
+    const me = (d?.people || []).find((p: any) => isMe(p.name));
+    arcaneCards.value = me ? (d?.cards || []).filter((c: any) => c.list === 'done' && (c.owner_id === me.id || (!c.owner_id && isMe(c.created_by)))).length : 0;
+  } catch { /* the cards just do not count this time */ }
+}
+const arcane = computed(() => {
+  const total = arcaneReports.value + ARCANE_CARD * arcaneCards.value;
+  const all = arcaneThresholds(total);
+  const earnedAt = all.filter(at => at <= total);
+  const nextAt = all.find(at => at > total)!;
+  const current = earnedAt.length ? arcaneTier(earnedAt[earnedAt.length - 1]) : null;
+  const prevAt = current ? current.at : 0;
+  return { total, reports: arcaneReports.value, cards: arcaneCards.value, current, next: arcaneTier(nextAt), toGo: nextAt - total,
+    // Earned ones, and the next as a mystery: the rest stay secret (Ames 2026-11-02: "don't reveal what all the achievements are!").
+    fill: Math.round(((total - prevAt) / (nextAt - prevAt)) * 100), tiers: all.slice(0, earnedAt.length + 1).map(arcaneTier), earned: earnedAt.length };
+});
+const arcaneOpen = ref(false);
+// A tier crossed while you watch: its own moment.
+const arcaneUnlock = ref<{ at: number; name: string; art: string } | null>(null);
+let arcaneSeen = -1;
+watch(() => arcane.value.total, (total, before) => {
+  if (arcaneSeen < 0) { if (total > 0) arcaneSeen = total; return; }
+  const crossed = arcaneThresholds(total).filter(at => at > (before ?? arcaneSeen) && at <= total);
+  arcaneSeen = total;
+  if (crossed.length) {
+    arcaneUnlock.value = arcaneTier(crossed[crossed.length - 1]);
+    setTimeout(() => { arcaneUnlock.value = null; }, 7000);
+  }
+});
 
 // ── What has been closed, and a moment of reward for closing one ──
 // Counted over every report, not only the ones on the board (Ames
@@ -829,6 +927,20 @@ const isLater = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r
  *  scripts/slack-triage-bridge.mjs looks for too. */
 const TODO_NOTE = 'To do';
 const isTodo = (r: TriageRow) => r.status === 'approved' && !r.impl_state && (r.approver_note || '').startsWith(TODO_NOTE);
+/** Moving a card to In progress or Done reads its bell notes for you (Ames 2026-10-27). */
+/** On each load of the board (at most every five minutes): the notes of every
+ *  card already In progress or Done, read for you, however it got there. */
+let notesSweptAt = 0;
+function sweepMovedReportNotes() {
+  if (Date.now() - notesSweptAt < 5 * 60 * 1000) return;
+  notesSweptAt = Date.now();
+  const moved = triageRows.value.filter(r => ['progress', 'done'].includes(triageGroupOf(r)));
+  if (moved.length) void backend.markReportsNotesRead(moved.map(r => ({ id: r.id, excerpt: r.source_excerpt }))).catch(() => {});
+}
+async function readReportNotes(row: TriageRow) {
+  try { await backend.markReportNotesRead(row.id, row.source_excerpt); }
+  catch { /* the card moved; the notes just stay unread */ }
+}
 async function markInProgress(row: TriageRow, later = false) {
   if (triageActing.value) return;
   triageActing.value = row.id;
@@ -844,8 +956,12 @@ async function markInProgress(row: TriageRow, later = false) {
         : `${BY_HAND_NOTE}: being fixed with Claude, not by the robot.${comment ? ' ' + comment : ''}`,
       reviewed_by: who,
       reviewed_at: new Date().toISOString(),
+      // Deciding a card is reading its reply, as Done does: an unread one kept
+      // the card on the board after Later (Ames 2026-11-02).
+      ...(hasNewReply(row) ? { feedback_log: await logWithRepliesSeen(row) } : {}),
     } });
     if (later) { await loadTriage(); return; }
+    void readReportNotes(row);
     triageOpen.value.progress = true;
     await loadTriage();
   } catch (e: any) {
@@ -946,6 +1062,53 @@ async function saveNote(row: TriageRow) {
   }
 }
 
+// ── Tagging with a picker (Ames 2026-11-02: "like autocomplete so visually I
+// can see that they are being tagged") ──
+// "@Ce" lists the admins; Enter, Tab or a click puts in the whole name, which
+// always reaches them. Under the box, who will be tagged, read the server's way.
+const tagPeople = ref<AdminPerson[]>([]);
+let tagPeopleAsked = false;
+function loadTagPeople() {
+  if (tagPeopleAsked) return;
+  tagPeopleAsked = true;
+  secureWrite<any>('todo.list').then(d => { tagPeople.value = d?.people || []; }).catch(() => { tagPeopleAsked = false; });
+}
+const tagPicker = shallowRef<{ el: HTMLTextAreaElement; start: number; query: string; pick: number; set: (v: string) => void } | null>(null);
+const tagMatches = computed(() => {
+  const q = (tagPicker.value?.query || '').toLowerCase();
+  return tagPeople.value.filter(p => searchNamesOf(p).some(n => n.toLowerCase().includes(q))).slice(0, 6);
+});
+function onTagInput(e: Event, set: (v: string) => void) {
+  const el = e.target as HTMLTextAreaElement;
+  const upto = el.value.slice(0, el.selectionStart ?? el.value.length);
+  const m = upto.match(/(^|\s)@([^\s@]{0,30})$/);
+  if (m) loadTagPeople();
+  tagPicker.value = m ? { el, start: upto.length - m[2].length - 1, query: m[2], pick: 0, set } : null;
+}
+function pickTag(p: AdminPerson) {
+  const m = tagPicker.value;
+  if (!m) return;
+  const caret = m.el.selectionStart ?? m.el.value.length;
+  const value = m.el.value.slice(0, m.start) + '@' + p.name + ' ' + m.el.value.slice(caret);
+  m.set(value);
+  const at = m.start + p.name.length + 2;
+  tagPicker.value = null;
+  void nextTick(() => { m.el.focus(); m.el.setSelectionRange(at, at); });
+}
+function onTagKey(e: KeyboardEvent) {
+  e.stopPropagation();
+  const m = tagPicker.value;
+  if (!m || !tagMatches.value.length) return;
+  const n = tagMatches.value.length;
+  if (e.key === 'ArrowDown') { e.preventDefault(); tagPicker.value = { ...m, pick: (m.pick + 1) % n }; }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); tagPicker.value = { ...m, pick: (m.pick + n - 1) % n }; }
+  else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickTag(tagMatches.value[m.pick]); }
+  else if (e.key === 'Escape') { e.preventDefault(); tagPicker.value = null; }
+}
+const taggedIn = (text?: string) => serverTagged(text || '', tagPeople.value);
+// A box that already holds a tag (a draft from before) still shows who it reaches.
+watch(() => [...Object.values(triageNotes.value), ...Object.values(noteDrafts.value)].some(t => hasTag(t)), on => { if (on) loadTagPeople(); });
+
 // A tag typed in the card's comment box (Ames 2026-11-01): that box waits for
 // a decision and tells nobody, so a tag there goes out as a note, now.
 const hasTag = (text?: string) => /(^|\s)@\p{L}/u.test(text || '');
@@ -980,6 +1143,7 @@ async function loadTriage() {
     }
     // Discarded reports are off the board unless you ask for older ones.
     triageRows.value = rows.filter(r => triageShowReviewed.value || !isDiscarded(r) || hasNewReply(r));
+    sweepMovedReportNotes();
     void loadReporters(triageRows.value);
     void loadTriageNumbers();
     applyTriageFocus();
@@ -1086,6 +1250,7 @@ async function setTriageStatus(row: TriageRow, status: 'approved' | 'dismissed' 
     }
     delete triageNotes.value[row.id];
     if (status === 'done') cheerFor(row);
+    if (status === 'done' || (status === 'approved' && !discard)) void readReportNotes(row);
     await loadTriage();
     if (noteLost) {
       triageError.value = `Saved as ${status}, but your comment was not stored: the approver_note column does not exist yet. Run supabase-triage-approver-note.sql in the Supabase SQL editor. Your comment was: "${note}"`;
@@ -1695,7 +1860,12 @@ function notifCategory(n: any): string {
   const t = n.title || '';
   if (t.includes('Weekly Champions') || t.includes('Monthly Champions') || t.includes('Year Champions')) return 'weeklyChampions';
   if (t.includes('Week in Science') || t.includes('Month in Science') || t.includes('Year in Science')) return 'weeklyRecap';
-  if (t.includes('Response to your help request')) return 'helpResponse';
+  if (t.includes('Response to your help request') || t.includes('Was your help request answered')) return 'helpResponse';
+  // Sent one by one from the triage board, or by the robot to admins (Ames
+  // 2026-11-02: Announcements is for what we composed, not these).
+  if (/update on your report|replied to your feedback|Reply to your question from/i.test(t)) return 'reportReply';
+  if (/^(🗂|🎉 Fixed|🔑 |🔬 |🔓 |📋 |Proofreading Test:)/u.test(t) || /tagged you on a report$/.test(t)) return 'adminAlert';
+  if (/^Today in Pyr/.test(t)) return 'daily';
   if (t === '✨ New Achievement!' || t === 'New Achievement!') return 'customBadge';         // admin-awarded special badge
   if (t.includes('New Achievement')) return 'personalBadge';     // tutorial / building / exploration
   return 'announcement';
@@ -1708,6 +1878,9 @@ const NOTIF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'personalBadge',   label: 'Personal badges' },
   { key: 'weeklyRecap',     label: 'Weekly, monthly and yearly recaps' },
   { key: 'helpResponse',    label: 'Help replies' },
+  { key: 'reportReply',     label: 'Replies to reports' },
+  { key: 'adminAlert',      label: 'Alerts to admins' },
+  { key: 'daily',           label: 'Today in Pyr' },
 ];
 const NOTIF_FILTER_KEY = 'nge-admin-notif-filters-v1';
 // Default ON: the admin's own broadcasts + the global weekly champions post.
@@ -2670,7 +2843,7 @@ function practiceWhen(iso: string | null) {
           <button type="button" title="Link" @click="fmtLink()">Link</button>
           <span class="nge-admin-fmthint">Paste formatted text and it keeps its bold, headings, lists and links.</span>
         </div>
-        <textarea ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste($event)"></textarea>
+        <textarea v-autogrow ref="notifBodyEl" v-model="notifBody" class="nge-admin-textarea" rows="6" placeholder="Message body..." @paste="onNotifPaste($event)"></textarea>
         <div v-if="notifBody.trim()" class="nge-admin-fmtpreview">
           <div class="nge-admin-fmtpreview-label">Preview</div>
           <div class="nge-admin-fmtpreview-body" v-html="notifPreview"></div>
@@ -2892,7 +3065,7 @@ function practiceWhen(iso: string | null) {
         <input v-model="badgeName" class="nge-admin-input" placeholder="Badge name" />
         <input v-model="badgeSlug" class="nge-admin-input" placeholder="Code name (optional; made from the name when empty)"
                title="How the game finds this one when it gives it out by itself. The Merger Sandbox award is: merger-sandbox" />
-        <textarea v-model="badgeDesc" class="nge-admin-textarea" rows="2" placeholder="Description..."></textarea>
+        <textarea v-autogrow v-model="badgeDesc" class="nge-admin-textarea" rows="2" placeholder="Description..."></textarea>
         <label class="nge-admin-file-label">
           <input type="file" accept="image/*" @change="onBadgeImageChange" class="nge-admin-file-input" />
           {{ badgeImageFile ? badgeImageFile.name : 'Choose badge image...' }}
@@ -3041,6 +3214,29 @@ function practiceWhen(iso: string | null) {
         <TodoBoard v-if="todoView" :light="triageBoard && triageLight" :focus-id="todoFocus" :report-numbers="triageNumbers"
                    :standalone="standalone" @back="todoView = false; loadTriage()" />
         <template v-else>
+        <div v-if="arcaneOpen" class="nge-arcane-shelf" @click.self="arcaneOpen = false">
+          <div class="nge-arcane-shelf-card">
+            <button class="nge-arcane-close" aria-label="Close" @click="arcaneOpen = false">×</button>
+            <div class="nge-arcane-shelf-head">Pyr Patchtacular</div>
+            <div class="nge-arcane-shelf-sub">{{ arcane.reports }} reports closed with Done, {{ arcane.cards }} To do {{ arcane.cards === 1 ? 'card' : 'cards' }} finished, at 5 each: <b>{{ arcane.total }}</b></div>
+            <div class="nge-arcane-grid">
+              <div v-for="t in arcane.tiers" :key="t.at" class="nge-arcane-tier" :class="{ 'nge-arcane-tier--locked': t.at > arcane.total }">
+                <img v-if="t.at <= arcane.total" :src="t.art" alt="" />
+                <div v-else class="nge-arcane-mystery" aria-hidden="true">?</div>
+                <div class="nge-arcane-tier-name">{{ t.at <= arcane.total ? t.name : 'A secret' }}</div>
+                <div class="nge-arcane-tier-at">{{ t.at <= arcane.total ? t.at.toLocaleString() : `at ${t.at.toLocaleString()}, ${arcane.toGo} to go` }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="arcaneUnlock" class="nge-arcane-unlock" role="status" @click="arcaneUnlock = null">
+          <div class="nge-arcane-unlock-card">
+            <img :src="arcaneUnlock.art" alt="" />
+            <div class="nge-arcane-unlock-kicker">New Achievement</div>
+            <div class="nge-arcane-unlock-name">{{ arcaneUnlock.name }}</div>
+            <div class="nge-arcane-unlock-at">{{ arcaneUnlock.at.toLocaleString() }} Pyr fixes</div>
+          </div>
+        </div>
         <div class="nge-triage-head">
           <label class="nge-admin-label">Feedback Triage</label>
           <!-- The page on its own has no game around it: a way back, in a new
@@ -3051,6 +3247,17 @@ function practiceWhen(iso: string | null) {
           <a v-if="!standalone" class="nge-admin-action-btn nge-triage-newtab" :href="boardUrl" target="_blank" rel="noopener" title="Open the triage board on its own page, without the game">↗ New tab</a>
           <button class="nge-admin-action-btn nge-triage-todo-open" @click="openTodoBoard"
                   title="The admins' own planning board: To do, Doing, Done"><span v-html="TODO_ICON"></span>To do board</button>
+          <!-- Pyr Patchtacular: my own Achievements. -->
+          <div v-if="arcane.total > 0" class="nge-arcane" role="button" tabindex="0" @click="arcaneOpen = !arcaneOpen" @keydown.enter="arcaneOpen = !arcaneOpen"
+               :title="`Pyr Patchtacular: ${arcane.reports} reports closed with Done, ${arcane.cards} To do cards finished (5 each)`">
+            <img v-if="arcane.current" :src="arcane.current.art" alt="" class="nge-arcane-art" />
+            <span v-else class="nge-arcane-art nge-arcane-art--none" aria-hidden="true">✦</span>
+            <div class="nge-arcane-text">
+              <div class="nge-arcane-name">{{ arcane.current ? arcane.current.name : 'Pyr Patchtacular' }}</div>
+              <div class="nge-arcane-bar"><span :style="{ width: arcane.fill + '%' }"></span></div>
+              <div class="nge-arcane-go"><b>{{ arcane.total }}</b> fixes · {{ arcane.toGo }} to the next</div>
+            </div>
+          </div>
           <div class="nge-triage-score" :class="{ 'nge-triage-score--lit': !!triageCheer }">
             <!-- Level: one for every 25 reports closed. The ring fills toward the next. -->
             <div class="nge-hud-level" :class="{ 'nge-hud-level--up': triageCheer?.levelUp }"
@@ -3232,7 +3439,7 @@ function practiceWhen(iso: string | null) {
           </div>
           <div v-if="isNewReport(row)" class="nge-triage-rationale">{{ suggestAsked(row) ? 'Claude is reading the code. A suggested fix will appear on this card in a few minutes; press Refresh.' : 'No suggestion has been asked for. Fix it by hand, or ask Claude to suggest a fix (one Claude run).' }}</div>
           <div v-else-if="row.rationale && !hadNoSuggestion(row)" class="nge-triage-rationale"><template v-for="(pt, pi) in linkParts(row.rationale)" :key="pi"><a v-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer" @click.stop>{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template></div>
-          <textarea
+          <textarea v-autogrow
             v-if="row.recommendation === 'message' && row.status === 'proposed'"
             v-model="triageEdits[row.id]"
             class="nge-triage-message"
@@ -3264,10 +3471,12 @@ function practiceWhen(iso: string | null) {
               <span class="nge-triage-spec-text"><template v-for="(pt, pi) in linkParts(n.text)" :key="pi"><a v-if="isNoteImage(pt.href)" class="nge-triage-note-pic" :href="pt.href" target="_blank" rel="noopener noreferrer"><img :src="pt.href" alt="An image on this note" loading="lazy" /></a><a v-else-if="pt.href" class="nge-triage-link" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><template v-else>{{ pt.t }}</template></template><span class="nge-triage-reporter-by"> · {{ n.by }}, {{ relTime(n.at) }}</span></span>
             </div>
             <template v-if="noteOpen[row.id]">
-              <textarea v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
+              <textarea v-autogrow v-model="noteDrafts[row.id]" class="nge-triage-message nge-triage-comment" rows="2" maxlength="2000"
                         placeholder="A note for the admins. Nothing else changes. Type @Celia to tag her. Paste a screenshot to add it."
                         @paste="onNotePaste($event, row)"
-                        @keydown.stop @keyup.stop @keypress.stop></textarea>
+                        @input="onTagInput($event, v => noteDrafts[row.id] = v)" @keydown="onTagKey" @blur="tagPicker = null"
+                        @keyup.stop @keypress.stop></textarea>
+              <div v-if="taggedIn(noteDrafts[row.id]).length" class="nge-triage-tagging">Tagging <span v-for="p in taggedIn(noteDrafts[row.id])" :key="p.id" class="nge-triage-tag-chip">@{{ p.name }}</span></div>
               <div v-if="noteImages[row.id]" class="nge-triage-reply-attach">
                 <img v-if="noteImages[row.id].preview" :src="noteImages[row.id].preview" alt="The image going with this note" />
                 <span class="nge-triage-reply-attach-state">{{ noteImages[row.id].error || (noteImages[row.id].uploading ? 'Uploading…' : 'Goes with this note.') }}</span>
@@ -3284,24 +3493,25 @@ function practiceWhen(iso: string | null) {
           </div>
           <!-- Reviewer comment, saved with Approve or Dismiss. Internal: it is
                never sent to the reporter (the message box above is). -->
-          <textarea
+          <textarea v-autogrow
             v-if="row.status === 'proposed'"
             v-model="triageNotes[row.id]"
             class="nge-triage-message nge-triage-comment"
             rows="2"
             placeholder="Comment (optional), saved with your decision. Type @Celia or @Marissa to tag them."
-            @keydown.stop @keyup.stop @keypress.stop
+            @input="onTagInput($event, v => triageNotes[row.id] = v)" @keydown="onTagKey" @blur="tagPicker = null"
+            @keyup.stop @keypress.stop
           ></textarea>
+          <div v-if="taggedIn(triageNotes[row.id]).length" class="nge-triage-tagging">Tagging <span v-for="p in taggedIn(triageNotes[row.id])" :key="p.id" class="nge-triage-tag-chip">@{{ p.name }}</span></div>
           <div v-if="row.status === 'proposed' && hasTag(triageNotes[row.id])" class="nge-triage-actions">
             <button class="nge-admin-primary-btn" :disabled="noteSaving === row.id" title="Saves this as a note on the card and notifies who you tagged, in Pyr and in the report's Slack thread. Nothing else on the card changes."
                     @click="sendCommentTag(row)">{{ noteSaving === row.id ? 'Sending…' : '💬 Send tag' }}</button>
           </div>
           <!-- The decision first (Ames 2026-10-05), then the other tools. -->
           <div v-if="row.status === 'proposed'" class="nge-triage-actions">
-            <button v-if="isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id || suggestAsked(row)"
-                    title="Asks Claude to read the code and suggest a fix for this report. One Claude run, 20 to 60 cents."
-                    @click="askForSuggestion(row)">{{ suggestAsked(row) ? 'Suggestion on its way…' : '✨ Suggest a fix' }}</button>
-            <button v-else class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
+            <!-- Suggest a fix is paused (Ames 2026-11-02: "I don't want to be
+                 paying for this"); its workflow, Triage Propose, is switched off. -->
+            <button v-if="!isNewReport(row)" class="nge-admin-primary-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'approved')">
               {{ (row.recommendation === 'message' ? 'Approve + Send' : 'Approve') + (triageNotes[row.id]?.trim() ? ' with comment' : '') }}
             </button>
             <button class="nge-admin-action-btn" :disabled="triageActing === row.id" @click="setTriageStatus(row, 'dismissed')">
@@ -3418,7 +3628,7 @@ function practiceWhen(iso: string | null) {
                 <button type="button" class="nge-triage-preview-toggle" :aria-pressed="replyPreviewOpen[row.id] ? 'true' : 'false'"
                         title="Show the message as the player will see it" @click="replyPreviewOpen[row.id] = !replyPreviewOpen[row.id]">{{ replyPreviewOpen[row.id] ? 'Hide preview' : 'Preview' }}</button>
               </div>
-              <textarea
+              <textarea v-autogrow
                 :ref="el => { reporterEls[row.id] = el; }"
                 v-model="reporterDrafts[row.id]"
                 class="nge-triage-message nge-triage-comment"
@@ -3488,6 +3698,13 @@ function practiceWhen(iso: string | null) {
       </div>
       </Teleport>
     </div>
+    <Teleport to="body">
+      <ul v-if="tagPicker && tagMatches.length" class="nge-todo-mention nge-todo-mention--light" role="listbox"
+          :style="{ left: tagPicker.el.getBoundingClientRect().left + 'px', top: tagPicker.el.getBoundingClientRect().bottom + 4 + 'px' }">
+        <li v-for="(p, i) in tagMatches" :key="p.id" role="option" :aria-selected="i === tagPicker.pick ? 'true' : 'false'"
+            :class="{ 'nge-todo-mention--pick': i === tagPicker.pick }" @mousedown.prevent="pickTag(p)">@{{ p.name }}</li>
+      </ul>
+    </Teleport>
   </div>
 </template>
 
@@ -4575,6 +4792,7 @@ a.nge-admin-subtab { text-decoration: none; display: inline-flex; align-items: c
 }
 .nge-triage-rationale { font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.45; }
 .nge-triage-message {
+  flex-shrink: 0;
   background: rgba(0,0,0,0.3); border: 1px solid rgba(100,200,255,0.2);
   border-radius: 6px; color: #dde; font-size: 13.5px; padding: 8px 10px; resize: vertical;
 }
@@ -4909,4 +5127,43 @@ li .nge-pilot-name--link { font:inherit; font-weight:700; color:#9fd3ff; backgro
 .nge-triage-dup-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: #fde7f1; color: #b0306f; margin-left: 4px; }
 .nge-triage-dup-badge--main { background: #e6f6f4; color: #11766c; }
 .nge-admin-ok { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #e6f6ee; color: #1d7038; font-size: 13px; }
+.nge-triage-tagging { margin: 4px 0 2px; font-size: 12.5px; color: #4a5b78; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.nge-triage-tag-chip { background: #e3ecff; color: #2450c8; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
+/* Arcane Fixes. */
+.nge-arcane { display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(135deg, rgba(79, 140, 255, 0.14), rgba(167, 139, 250, 0.16)); border: 1px solid rgba(124, 156, 255, 0.4); }
+.nge-arcane:hover { border-color: #7c9cff; box-shadow: 0 0 14px rgba(124, 156, 255, 0.35); }
+.nge-arcane-art { width: 48px; height: 48px; filter: drop-shadow(0 2px 6px rgba(60, 80, 200, 0.45)); }
+.nge-arcane-art--none { display: grid; place-items: center; font-size: 26px; color: #7c9cff; }
+.nge-arcane-text { min-width: 150px; }
+.nge-arcane-name { font: 700 13px Inter, system-ui, sans-serif; color: #3d4fc4; }
+.nge-arcane-bar { height: 5px; border-radius: 3px; background: rgba(124, 156, 255, 0.2); margin: 4px 0 3px; overflow: hidden; }
+.nge-arcane-bar span { display: block; height: 100%; background: linear-gradient(90deg, #4f8cff, #a78bfa, #f5c542); }
+.nge-arcane-go { font-size: 11.5px; color: #5a6787; }
+.nge-arcane-shelf { position: fixed; inset: 0; z-index: 10040; background: rgba(12, 18, 40, 0.55); display: grid; place-items: center; }
+.nge-arcane-shelf-card { position: relative; width: min(860px, 92vw); max-height: 86vh; overflow: auto; padding: 22px 26px; border-radius: 18px;
+  background: #0f1630; color: #e6ecff; border: 1px solid rgba(124, 156, 255, 0.45); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+.nge-arcane-close { position: absolute; top: 10px; right: 14px; background: none; border: none; color: #9db3ff; font-size: 22px; cursor: pointer; }
+.nge-arcane-shelf-head { font: 800 22px Inter, system-ui, sans-serif; letter-spacing: 0.02em; background: linear-gradient(90deg, #7cc4ff, #c4b5fd, #f5d142);
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nge-arcane-shelf-sub { font-size: 13px; color: #aab8e0; margin: 4px 0 16px; }
+.nge-arcane-shelf-sub b { color: #f5d142; }
+.nge-arcane-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+.nge-arcane-tier { text-align: center; }
+.nge-arcane-tier img { width: 110px; height: 110px; filter: drop-shadow(0 4px 12px rgba(80, 110, 255, 0.4)); }
+.nge-arcane-mystery { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center;
+  font: 800 46px Inter, system-ui, sans-serif; color: #7c9cff; background: radial-gradient(circle, #1b2552 0%, #0f1630 70%);
+  border: 3px dashed rgba(124, 156, 255, 0.45); box-shadow: 0 0 22px rgba(124, 156, 255, 0.25) inset; }
+.nge-arcane-tier-name { font: 700 12.5px Inter, system-ui, sans-serif; margin-top: 4px; }
+.nge-arcane-tier--locked .nge-arcane-tier-name { color: #6f7ba3; }
+.nge-arcane-tier-at { font-size: 11.5px; color: #8fa0d0; }
+.nge-arcane-unlock { position: fixed; inset: 0; z-index: 10060; display: grid; place-items: center; background: rgba(12, 18, 40, 0.5); cursor: pointer; }
+.nge-arcane-unlock-card { text-align: center; padding: 26px 40px 30px; border-radius: 22px; background: #0f1630; color: #e6ecff;
+  border: 2px solid #f5c542; box-shadow: 0 0 60px rgba(124, 156, 255, 0.55), 0 0 30px rgba(245, 197, 66, 0.4); animation: nge-zero-pop 0.6s cubic-bezier(.2,1.6,.4,1) both; }
+.nge-arcane-unlock-card img { width: 200px; height: 200px; animation: nge-arcane-spin-in 0.9s ease-out both; filter: drop-shadow(0 0 24px rgba(124, 156, 255, 0.8)); }
+.nge-arcane-unlock-kicker { margin-top: 8px; font: 700 12px Inter, system-ui, sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #9db3ff; }
+.nge-arcane-unlock-name { font: 800 26px Inter, system-ui, sans-serif; margin-top: 4px; color: #fff; }
+.nge-arcane-unlock-at { font-size: 13px; color: #f5d142; margin-top: 4px; }
+@keyframes nge-arcane-spin-in { from { transform: scale(0.3) rotate(-200deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nge-arcane-unlock-card, .nge-arcane-unlock-card img { animation: none; } }
 </style>

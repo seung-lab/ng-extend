@@ -11,17 +11,21 @@
  *   2026-10-27: "a special category of hunt submission notifications").
  * - main: everything else.
  */
-export type NotifKind = 'main' | 'triage' | 'admin' | 'hunt';
+export type NotifKind = 'main' | 'triage' | 'admin' | 'access' | 'hunt';
 
 // To do board tags and hand overs start with 📋 (functions/todos.js makeTagger; Ames 2026-10-23).
 // Beta access requests from players not on Pilot testers (Ames 2026-10-24).
 // Dataset access requests too (Ames 2026-10-29: "these should be in Admin").
-const ADMIN_STARTS = ['🔑 Beta access request', '🔬 Retina access request', '🔓 Dataset access request', 'Proofreading Test:', '💬 Reply to your question from', '📋 '];
+// Access requests have a tab of their own again (Ames 2026-11-02: "access
+// requests can go back in own tab 'access'").
+const ACCESS_STARTS = ['🔑 Access update', '🔑 Beta access request', '🔬 Retina access request', '🔓 Dataset access request'];
+const ADMIN_STARTS = ['Proofreading Test:', '💬 Reply to your question from', '📋 '];
 const TRIAGE_STARTS = ['🗂', '🎉 Fixed'];
 
 export function notifKind(title: string | null | undefined, isAdmin: boolean): NotifKind {
   if (!isAdmin) return 'main';
   const t = title || '';
+  if (ACCESS_STARTS.some(s => t.startsWith(s))) return 'access';
   if (ADMIN_STARTS.some(s => t.startsWith(s))) return 'admin';
   // Hunters' reports of what the answers missed (functions/hunts.js), a tab of their own (Ames 2026-10-27).
   if (t.startsWith('🔎 Hunt report')) return 'hunt';

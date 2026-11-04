@@ -462,6 +462,8 @@ export class MeshShaderManager {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 1);
       const glow = tint.glow;
       gl.uniform4f(shader.uniform('uNgeTintGlow'), glow?.[0] ?? 0, glow?.[1] ?? 0, glow?.[2] ?? 0, glow ? 1 : 0);
+      const dim = tint.dim;
+      gl.uniform4f(shader.uniform('uNgeTintDim'), dim?.[0] ?? 0, dim?.[1] ?? 0, dim?.[2] ?? 0, dim ? 1 : 0);
     } else {
       gl.uniform1f(shader.uniform('uNgeTintOn'), 0);
     }
@@ -619,6 +621,8 @@ highp float ngeHoloDot(highp vec2 p) {
 `);
         builder.addUniform('highp mat4', 'uNgeModel');
         builder.addUniform('highp vec4', 'uNgeTintGlow');
+        // Dim checked: the Checked colour (rgb) and on (w).
+        builder.addUniform('highp vec4', 'uNgeTintDim');
         builder.addTextureSampler('sampler3D', 'uNgeTint', ngeTintSamplerSymbol);
         builder.addUniform('highp mat4', 'uNgeFineMatrix');
         builder.addUniform('highp float', 'uNgeFineOn');
@@ -725,7 +729,14 @@ if (uNgeTintOn > 0.5) {
       // 0.95 + 0.35 a large mark (a whole arbor from Beyond) burned out to a
       // pale blank, most of all in yellow (Ames 2026-10-10).
       highp float tintLight = mix(lightingFactor, min(1.0, 0.58 + 0.44 * lightingFactor), isGlow);
-      vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
+      // Dim checked: a Checked mark (its newest, lighter shade too) is drawn
+      // as a dim grey of the cell, so what is left to check stands out.
+      if (uNgeTintDim.w > 0.5 && distance(tintRgb, uNgeTintDim.rgb) < 0.16) {
+        highp float cellGrey = dot(vColor.rgb, vec3(0.299, 0.587, 0.114));
+        vColor.rgb = mix(vColor.rgb, vec3(cellGrey) * 0.32, min(1.0, tint.a * 1.15));
+      } else {
+        vColor.rgb = mix(vColor.rgb, tintLight * tintRgb, min(1.0, tint.a * 1.15));
+      }
     }
   }
 }

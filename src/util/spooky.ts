@@ -64,7 +64,14 @@ export function inSeason(now = new Date()): boolean {
 }
 /** The reaper's days: 30 and 31 October, the player's own time. */
 export function reaperDay(now = new Date()): boolean { return now.getMonth() === 9 && (now.getDate() === 30 || now.getDate() === 31); }
-const testOn = () => { try { return localStorage.getItem(TEST_KEY) === '1'; } catch { return false; } };
+// Out of season the ghost stays away, even for an admin who once called one
+// (Ames 2026-11-02: "the ghost is still there!"): the saved switch is cleared.
+const testOn = () => {
+  try {
+    if (!inSeason()) { localStorage.removeItem(TEST_KEY); return false; }
+    return localStorage.getItem(TEST_KEY) === '1';
+  } catch { return false; }
+};
 /** What the ghost button shows: is the haunting on, and is it the season. */
 export const spooky = reactive({ on: inSeason() || testOn(), season: inSeason() });
 /** The haunting: the Lantern is on, and it is the season (or it was switched on by hand). */

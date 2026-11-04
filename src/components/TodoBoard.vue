@@ -16,6 +16,7 @@ import { secureWrite } from '../secure_write';
 import { secureUpload } from '../secure_upload';
 import { renderSafeMarkdown } from '../util/safe_markdown';
 import { useProofreadingBackendStore } from '../store';
+import { vAutogrow } from '../util/autogrow';
 import imgNurroHome from '../images/nurro-at-home600.png';
 import imgNurroBravo from '../images/bravo-nurro.png';
 import imgNurroWhere from '../images/wheres-nurro.png';
@@ -27,13 +28,15 @@ type ListKey = 'todo' | 'doing' | 'done';
 type Size = 'S' | 'M' | 'L';
 interface Card {
   id: string; title: string; notes: string; list: ListKey; rank: number; size: Size | null;
-  owner_id: string | null; checklist: { text: string; done: boolean }[];
+  owner_id: string | null; checklist: Item[];
   comments: { by: string; text: string; at: string }[];
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
   // Optional (supabase-admin-todos-fields.sql).
   links?: Link[]; status?: string; due_on?: string | null; images?: string[];
 }
 interface Person { id: string; name: string }
+/** A checklist item; owner and due day make it a subtask (Ames 2026-11-02, from Asana). */
+interface Item { text: string; done: boolean; due?: string; owner_id?: string }
 
 const LISTS: { key: ListKey; title: string; hint: string; empty: string }[] = [
   { key: 'todo', title: 'To do', hint: 'What we mean to do', empty: 'Nothing waiting.' },
@@ -46,6 +49,8 @@ const DONE_DAYS = 14;
 
 const cards = ref<Card[]>([]);
 const people = ref<Person[]>([]);
+/** Who follows each card (functions/todos.js todo.follow). */
+const followers = ref<Record<string, string[]>>({});
 const loading = ref(true);
 const error = ref('');
 const notInstalled = ref(false);
@@ -61,6 +66,7 @@ async function load() {
     if (data?.installed === false) { notInstalled.value = true; return; }
     cards.value = data.cards || [];
     people.value = data.people || [];
+    followers.value = data.followers || {};
     if (pendingFocus) {
       const c = cards.value.find(x => x.id === pendingFocus);
       pendingFocus = null;
@@ -153,17 +159,18 @@ const firstName = (name: string) => {
   return String(name || '').split(/\s+/)[0];
 };
 /** Whose a checklist item is: the first admin tagged in it. */
-function itemOwner(text: string): Person | null {
-  const ids = tagsIn(text);
+function itemOwner(x: string | Item): Person | null {
+  if (typeof x !== 'string' && x.owner_id) return people.value.find(p => p.id === x.owner_id) || null;
+  const ids = tagsIn(typeof x === 'string' ? x : x.text);
   return ids.length ? people.value.find(p => p.id === ids[0]) || null : null;
 }
-const itemName = (text: string) => itemOwner(text)?.name || '';
-const itemColor = (text: string) => colorOf(itemOwner(text)?.id);
+const itemName = (x: string | Item) => itemOwner(x)?.name || '';
+const itemColor = (x: string | Item) => colorOf(itemOwner(x)?.id);
 /** Ticks per person, for items that have an owner. */
 function perPerson(c: Card): { id: string; name: string; done: number; all: number }[] {
   const out = new Map<string, { id: string; name: string; done: number; all: number }>();
   for (const it of c.checklist) {
-    const p = itemOwner(it.text);
+    const p = itemOwner(it);
     if (!p) continue;
     const row = out.get(p.id) || { id: p.id, name: p.name, done: 0, all: 0 };
     row.all++; if (it.done) row.done++;
@@ -187,7 +194,7 @@ function isMine(c: Card): boolean {
   const id = myId.value;
   if (!id) return true;
   if (c.owner_id === id) return true;
-  if (c.checklist.some(it => tagsIn(it.text).includes(id))) return true;
+  if (c.checklist.some(it => it.owner_id === id || tagsIn(it.text).includes(id))) return true;
   return tagsIn(`${c.title} ${c.notes} ${c.comments.map(x => x.text).join(' ')}`).includes(id);
 }
 const MINE_KEY = 'nge-todo-mine';
@@ -222,6 +229,32 @@ function cheer(c: Card) {
   nurroCheer.value = `Done! ${c.title}${who ? `. Nice work, ${who}!` : ''}`;
   window.clearTimeout(cheerTimer);
   cheerTimer = window.setTimeout(() => { nurroCheer.value = ''; }, 3500);
+}
+
+// ── Done, with pomp and circumstance (Ames 2026-11-02) ──
+// "✓ Done" on a card's face: the card shines gold, a burst of confetti flies
+// out of it, then it moves to Done and Nurro cheers.
+const DONE_COLORS = ['#4f8cff', '#7c9cff', '#38bdf8', '#2ec4b6', '#f5c542', '#ff6fae', '#a78bfa'];
+const party = ref<{ key: number; x: number; y: number; bits: { dx: number; dy: number; r: number; c: string; d: number; wide: boolean }[] } | null>(null);
+const winning = ref<string | null>(null);
+async function finish(c: Card, e?: MouseEvent) {
+  if (winning.value) return;
+  const card = (e?.currentTarget as HTMLElement | null)?.closest?.('.nge-todo-card, .nge-todo-panel') as HTMLElement | null;
+  const box = card?.getBoundingClientRect();
+  const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (box && !calm) {
+    party.value = { key: Date.now(), x: box.left + box.width / 2, y: box.top + Math.min(box.height / 2, 80),
+      bits: Array.from({ length: 64 }, (_, i) => {
+        const a = (i / 64) * Math.PI * 2 + Math.random() * 0.4, v = 120 + Math.random() * 220;
+        return { dx: Math.cos(a) * v, dy: Math.sin(a) * v - 80, r: Math.random() * 720 - 360, c: DONE_COLORS[i % DONE_COLORS.length], d: 0.9 + Math.random() * 0.7, wide: i % 3 === 0 };
+      }) };
+    const key = party.value.key;
+    setTimeout(() => { if (party.value?.key === key) party.value = null; }, 1800);
+  }
+  winning.value = c.id;
+  await new Promise(r => setTimeout(r, calm ? 0 : 650));
+  winning.value = null;
+  await moveTo(c, 'done');
 }
 
 // ── Numbers ──
@@ -486,6 +519,56 @@ async function addItem(c: Card) {
   newItem.value = '';
   await save(c, { checklist: [...c.checklist, { text: t, done: false }] }, { tagIds: tagsIn(t) });
 }
+const setItem = (c: Card, i: number, patch: Partial<Item>) => save(c, { checklist: c.checklist.map((x, k) => {
+  if (k !== i) return x;
+  const next: Item = { ...x, ...patch };
+  if (!next.due) delete next.due;
+  if (!next.owner_id) delete next.owner_id;
+  return next;
+}) });
+const fieldValue = (e: Event) => (e.target as HTMLInputElement | HTMLSelectElement).value || undefined;
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const iFollow = (c: Card) => !!myId.value && (followers.value[c.id] || []).includes(myId.value);
+async function toggleFollow(c: Card) {
+  const on = !iFollow(c);
+  try {
+    const r = await secureWrite<any>('todo.follow', { id: c.id, on });
+    followers.value = { ...followers.value, [c.id]: r?.followers || [] };
+  } catch (e: any) { error.value = e?.message ?? String(e); }
+}
+const followerNames = (c: Card) => (followers.value[c.id] || []).map(id => people.value.find(p => p.id === id)?.name).filter(Boolean) as string[];
+
+// ── My Tasks (Ames 2026-11-02, from Asana): everything that is mine in one
+// list, cards I own and checklist items that are mine, by due day. ──
+const myTasksOpen = ref(false);
+type Task = { key: string; card: Card; text: string; due: string | null; item: number | null };
+const myTasks = computed(() => {
+  const me = myId.value;
+  if (!me) return [] as { head: string; rows: Task[]; late?: boolean }[];
+  const out: Task[] = [];
+  for (const c of cards.value) {
+    if (c.list === 'done') continue;
+    if (c.owner_id === me) out.push({ key: c.id, card: c, text: c.title, due: c.due_on || null, item: null });
+    c.checklist.forEach((it, i) => {
+      if (!it.done && itemOwner(it)?.id === me) out.push({ key: `${c.id}:${i}`, card: c, text: it.text, due: it.due || null, item: i });
+    });
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = (d: string) => new Date(d + 'T00:00:00').getTime();
+  const week = today.getTime() + 7 * 864e5;
+  const groups: { head: string; rows: Task[]; late?: boolean }[] = [
+    { head: 'Overdue', rows: [], late: true }, { head: 'Today', rows: [] }, { head: 'This week', rows: [] }, { head: 'Later', rows: [] }, { head: 'No due day', rows: [] }];
+  for (const t of out.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))) {
+    if (!t.due) groups[4].rows.push(t);
+    else if (day(t.due) < today.getTime()) groups[0].rows.push(t);
+    else if (day(t.due) === today.getTime()) groups[1].rows.push(t);
+    else if (day(t.due) < week) groups[2].rows.push(t);
+    else groups[3].rows.push(t);
+  }
+  return groups.filter(g => g.rows.length);
+});
+const myTaskCount = computed(() => myTasks.value.reduce((n, g) => n + g.rows.length, 0));
+function openTask(t: Task) { myTasksOpen.value = false; openUp(t.card); }
 const toggleItem = (c: Card, i: number) => save(c, { checklist: c.checklist.map((x, k) => (k === i ? { ...x, done: !x.done } : x)) });
 const removeItem = (c: Card, i: number) => save(c, { checklist: c.checklist.filter((_, k) => k !== i) });
 /** A checklist item becomes a card of its own, under this one. */
@@ -499,14 +582,23 @@ async function itemToCard(c: Card, i: number) {
     error.value = e?.message ?? String(e);
   }
 }
+/** Who a box tags, as the board will send it (Ames 2026-11-02: "need some
+ *  visual indicator that tag worked"). */
+const taggedPeople = (text: string) => { const ids = tagsIn(text || ''); return people.value.filter(p => ids.includes(p.id)); };
+const sentTags = ref('');
+let sentTimer: any = null;
+function flashSent(text: string) { sentTags.value = text; clearTimeout(sentTimer); sentTimer = setTimeout(() => { sentTags.value = ''; }, 6000); }
 async function sendComment(c: Card) {
   const t = comment.value.trim();
   if (!t || busy.value) return;
   busy.value = true;
   try {
-    const { card } = await secureWrite<any>('todo.comment', { id: c.id, text: t, tagIds: tagsIn(t) });
+    const tagIds = tagsIn(t);
+    const { card } = await secureWrite<any>('todo.comment', { id: c.id, text: t, tagIds });
     if (card) put(card);
     comment.value = '';
+    const told = people.value.filter(p => tagIds.includes(p.id) && p.id !== backend.userId).map(p => p.name);
+    if (told.length) flashSent(`Sent to ${told.join(', ')}, in Pyr and Slack`);
   } catch (e: any) {
     error.value = e?.message ?? String(e);
   } finally {
@@ -870,10 +962,24 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
       <span class="nge-todo-sub">Our own planning, apart from player reports. Type @ to tag an admin: they get the bell in Pyr and a ping in Slack. Start a checklist item with @name to make it theirs. Paste a picture anywhere.</span>
       <button class="nge-todo-btn nge-todo-mine" :class="{ 'nge-todo-mine--on': mineOnly }" :disabled="!myId" @click="toggleMine"
               :title="myId ? 'Only cards you own, are tagged on, or have checklist items on' : 'Your Pyr name is not on the board yet'">{{ mineOnly ? '★ Mine' : '☆ Mine' }}</button>
+      <button class="nge-todo-btn nge-todo-mytasks" :class="{ 'nge-todo-mine--on': myTasksOpen }" :disabled="!myId" @click="myTasksOpen = !myTasksOpen; openId = null"
+              title="Everything that is yours: cards you own and checklist items for you, by due day">📌 My Tasks<b v-if="myTaskCount" class="nge-todo-mytasks-n">{{ myTaskCount }}</b></button>
       <button class="nge-todo-btn" @click="openConnect" title="Let your own Claude or ChatGPT work this board">🔌 Connect your AI</button>
       <button class="nge-todo-btn" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
     </div>
-    <div v-if="!openCard && !notInstalled" class="nge-todo-stats" aria-label="Board numbers">
+    <div v-if="myTasksOpen && !openCard" class="nge-todo-mytasks-panel">
+      <div class="nge-todo-mytasks-head">📌 My Tasks <span>{{ myTaskCount }} open</span></div>
+      <div v-if="!myTaskCount" class="nge-todo-mytasks-empty"><img :src="imgNurroHome" alt="" />Nothing is yours right now. Enjoy it!</div>
+      <section v-for="g in myTasks" :key="g.head" class="nge-todo-mytasks-group">
+        <h4 :class="{ 'nge-todo-mytasks-late': g.late }">{{ g.head }} · {{ g.rows.length }}</h4>
+        <button v-for="t in g.rows" :key="t.key" type="button" class="nge-todo-mytask" @click="openTask(t)">
+          <span class="nge-todo-mytask-kind">{{ t.item === null ? '▣' : '☐' }}</span>
+          <span class="nge-todo-mytask-text">{{ t.text }}<small v-if="t.item !== null"> in {{ t.card.title }}</small></span>
+          <span v-if="t.due" class="nge-todo-mytask-due" :class="{ 'nge-todo-mytasks-late': g.late }">{{ dueWords(t.due) }}</span>
+        </button>
+      </section>
+    </div>
+    <div v-if="!openCard && !notInstalled && !myTasksOpen" class="nge-todo-stats" aria-label="Board numbers">
       <img :src="imgNurroHome" alt="" class="nge-todo-nurro" />
       <div class="nge-todo-stat nge-todo-stat--todo"><b>{{ stats.todo }}</b><span>to do</span></div>
       <div class="nge-todo-stat nge-todo-stat--doing"><b>{{ stats.doing }}</b><span>doing</span></div>
@@ -885,12 +991,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <span class="nge-todo-stat-word">done this week</span>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="party" :key="party.key" class="nge-todo-party" aria-hidden="true" :style="{ left: party.x + 'px', top: party.y + 'px' }">
+        <i v-for="(b, i) in party.bits" :key="i" :class="{ 'nge-todo-party-bit--wide': b.wide }" class="nge-todo-party-bit"
+           :style="{ background: b.c, '--dx': b.dx + 'px', '--dy': b.dy + 'px', '--r': b.r + 'deg', animationDuration: b.d + 's' }"></i>
+      </div>
+    </Teleport>
     <div v-if="nurroCheer" class="nge-todo-cheer" role="status"><img :src="imgNurroBravo" alt="" /><span>{{ nurroCheer }}</span></div>
     <div v-if="error" class="nge-todo-error" role="alert">⚠ {{ error }} <button class="nge-todo-x" @click="error = ''" aria-label="Close">×</button></div>
     <div v-if="notInstalled" class="nge-todo-empty">The To do board needs its table: run supabase-admin-todos.sql in the Supabase SQL editor, then Refresh.</div>
 
     <div v-else class="nge-todo-body">
-      <div v-if="!openCard" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
+      <div v-if="!openCard && !myTasksOpen" class="nge-todo-lists" :style="{ gridTemplateColumns: listColumns }">
         <section v-for="col in columns" :key="col.key" class="nge-todo-list" :class="[`nge-todo-list--${col.key}`, { 'nge-todo-list--folded': isFolded(col.key) }]"
                  @dragover="onDragOverList($event, col.key)" @drop="onDrop($event, col.key)">
           <button v-if="isFolded(col.key)" type="button" class="nge-todo-rail" :title="'Open ' + col.title" @click="toggleFold(col.key)">
@@ -929,7 +1041,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                 <button type="button" title="Select some lines, then click: they become checklist items" @click="draftToChecklist">☑ Checklist</button>
                 <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages('new')">🖼 Image</button>
               </div>
-              <textarea :ref="setDraftNotesEl" v-model="draft.notes" class="nge-todo-input" rows="4" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
+              <textarea v-autogrow :ref="setDraftNotesEl" v-model="draft.notes" class="nge-todo-input" rows="4" maxlength="8000" placeholder="Notes (optional). Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                         @input="onMentionInput($event, v => draft.notes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
                         data-nge-notes-paste @paste="onNotesPaste($event, 'new')" @dragover.prevent @drop="onNotesDrop($event, 'new')"></textarea>
               <ul v-if="draft.checklist.length" class="nge-todo-check">
@@ -973,7 +1085,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </div>
 
           <article v-for="c in col.rows" :key="c.id" class="nge-todo-card" draggable="true"
-                   :class="{ 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id,
+                   :class="{ 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id, 'nge-todo-card--won': winning === c.id,
                              'nge-todo-card--drop-above': dropAt?.id === c.id && !dropAt.after, 'nge-todo-card--drop-below': dropAt?.id === c.id && dropAt.after }"
                    tabindex="0" @click="openUp(c)" @keydown.enter="openUp(c)"
                    @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c)">
@@ -981,6 +1093,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
             </div>
+            <div v-if="c.list !== 'done'" class="nge-todo-card-done" @click.stop>
+              <button type="button" class="nge-todo-done-btn" title="Move to Done" @click="finish(c, $event)">✓ Done</button>
+            </div>
+            <img v-if="(c.images || []).length" class="nge-todo-card-cover" :src="c.images[0]" alt="" loading="lazy" />
             <div class="nge-todo-card-title">{{ c.title }}</div>
             <div v-if="isLive(c) || buildBadges(c).length" class="nge-todo-badges" @click.stop>
               <span v-if="isLive(c)" class="nge-todo-badge nge-todo-badge--live" :title="c.status || 'Its test site build is in the live site'">✓ Live</span>
@@ -1081,6 +1197,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <select class="nge-todo-select" :value="openCard.list" aria-label="List" @change="onListChange(openCard, $event)">
             <option v-for="l in LISTS" :key="l.key" :value="l.key">{{ l.title }}</option>
           </select>
+          <button v-if="openCard.list !== 'done'" type="button" class="nge-todo-btn nge-todo-done-big" @click="finish(openCard, $event)">✓ Done</button>
+          <button type="button" class="nge-todo-btn nge-todo-follow" :class="{ 'nge-todo-follow--on': iFollow(openCard) }" :disabled="!myId" @click="toggleFollow(openCard)"
+                  :title="(followerNames(openCard).length ? 'Following: ' + followerNames(openCard).join(', ') + '. ' : '') + 'Followers get a bell in Pyr when this card changes.'">{{ iFollow(openCard) ? '🔔 Following' : '🔕 Follow' }}<b v-if="followerNames(openCard).length" class="nge-todo-follow-n">{{ followerNames(openCard).length }}</b></button>
         </div>
         <input ref="titleEl" v-model="editTitle" class="nge-todo-input nge-todo-title-edit" maxlength="200" aria-label="Title" title="Click to edit the title"
                @input="onMentionInput($event, v => editTitle = v)" @keydown="onTitleKey"
@@ -1140,7 +1259,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             <button type="button" title="Select some lines, then click: they become checklist items" @click="cardToChecklist(openCard)">☑ Checklist</button>
             <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages(openCard)">🖼 Image</button>
           </div>
-          <textarea ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
+          <textarea v-autogrow ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
                     @input="onMentionInput($event, v => editNotes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
                     data-nge-notes-paste @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
           <div class="nge-todo-row">
@@ -1163,7 +1282,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <div class="nge-todo-label">Checklist<template v-if="openCard.checklist.length"> · {{ checkCount(openCard).done }}/{{ checkCount(openCard).all }}</template></div>
         <ul class="nge-todo-check">
           <li v-for="(it, i) in openCard.checklist" :key="i" :class="{ 'nge-todo-check--done': it.done }">
-            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it.text)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it.text) }" :title="'For ' + itemName(it.text)">{{ itemName(it.text).slice(0, 1).toUpperCase() }}</span> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+            <label><input type="checkbox" :checked="it.done" @change="toggleItem(openCard, i)" /> <span v-if="itemOwner(it)" class="nge-todo-avatar nge-todo-avatar--small" :style="{ background: itemColor(it) }" :title="'For ' + itemName(it)">{{ itemName(it).slice(0, 1).toUpperCase() }}</span> <span><template v-for="(pt, k) in parts(it.text)" :key="k"><b v-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></span></label>
+            <select class="nge-todo-item-owner" :value="it.owner_id || ''" aria-label="Who this item is for" title="Who this item is for"
+                    @change="setItem(openCard, i, { owner_id: fieldValue($event) })">
+              <option value="">{{ itemOwner(it) && !it.owner_id ? '@ in the text' : 'Nobody' }}</option>
+              <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+            <input type="date" class="nge-todo-item-due" :class="{ 'nge-todo-item-due--late': !it.done && it.due && it.due < todayIso() }"
+                   :value="it.due || ''" aria-label="Due day" title="Due day" @change="setItem(openCard, i, { due: fieldValue($event) })" />
             <button class="nge-todo-mini" title="Comment on this item" @click="commentOn(it.text)">💬 Comment</button>
             <button class="nge-todo-mini" title="Remove this item" aria-label="Remove" @click="removeItem(openCard, i)">×</button>
           </li>
@@ -1179,10 +1305,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}</div>
           <div class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
         </div>
-        <textarea ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
+        <textarea v-autogrow ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
                   @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
+        <div v-if="taggedPeople(comment).length" class="nge-todo-tagging">Tagging <span v-for="p in taggedPeople(comment)" :key="p.id" class="nge-todo-tag-chip" :style="{ background: colorOf(p.id) }">@{{ p.name }}</span></div>
         <div class="nge-todo-row">
           <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
+          <span v-if="sentTags" class="nge-todo-sent">✓ {{ sentTags }}</span>
         </div>
 
         <div class="nge-todo-foot">
@@ -1228,6 +1356,43 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-card { position: relative; }
 .nge-todo-card-tools { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; background: var(--card); border-radius: 6px; }
 .nge-todo-card:hover .nge-todo-card-tools, .nge-todo-card:focus-within .nge-todo-card-tools { display: flex; }
+.nge-todo-card-cover { display: block; width: 100%; max-height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 6px; background: rgba(127, 127, 127, 0.12); }
+.nge-todo-tagging { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 4px 0; font-size: 12.5px; color: var(--dim); }
+.nge-todo-tag-chip { color: #fff; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
+.nge-todo-sent { font-size: 12.5px; color: #1f9d55; font-weight: 600; margin-left: 8px; }
+.nge-todo-done-big { border-color: #1f9d55; color: #1f9d55; font-weight: 700; }
+.nge-todo-done-big:hover { background: #1f9d55; color: #fff; }
+.nge-todo-card-done { position: absolute; right: 8px; bottom: 8px; }
+.nge-todo-done-btn { font: 600 12px Inter, system-ui, sans-serif; padding: 3px 10px; border-radius: 12px; cursor: pointer;
+  border: 1px solid rgba(31, 157, 85, 0.45); background: rgba(31, 157, 85, 0.08); color: #1f9d55; opacity: 0; transition: opacity 0.15s, background 0.15s; }
+.nge-todo-card:hover .nge-todo-done-btn, .nge-todo-card:focus-within .nge-todo-done-btn { opacity: 1; }
+.nge-todo-done-btn:hover { background: #1f9d55; color: #fff; }
+@media (hover: none) { .nge-todo-done-btn { opacity: 1; } }
+.nge-todo-card--won { animation: nge-todo-won 0.65s ease-out; border-color: #f5c542 !important; }
+@keyframes nge-todo-won {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(245, 197, 66, 0); }
+  35% { transform: scale(1.04); box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.55), 0 0 36px rgba(245, 197, 66, 0.7); background: #fff8dc; }
+  100% { transform: scale(0.96); box-shadow: 0 0 22px rgba(245, 197, 66, 0.4); opacity: 0.6; }
+}
+.nge-todo-mytasks-n, .nge-todo-follow-n { margin-left: 6px; font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--accent); color: #fff; }
+.nge-todo-follow--on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.nge-todo-item-owner { font: inherit; font-size: 11.5px; max-width: 110px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--input); color: var(--dim); }
+.nge-todo-item-due { font: inherit; font-size: 11.5px; width: 118px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--input); color: var(--dim); }
+.nge-todo-item-due--late { color: #d64545; border-color: rgba(214, 69, 69, 0.5); font-weight: 700; }
+.nge-todo-mytasks-panel { max-width: 860px; margin: 10px auto; width: 100%; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow-y: auto; }
+.nge-todo-mytasks-head { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+.nge-todo-mytasks-head span { font-size: 13px; font-weight: 500; color: var(--dim); margin-left: 6px; }
+.nge-todo-mytasks-empty { display: flex; align-items: center; gap: 12px; color: var(--dim); }
+.nge-todo-mytasks-empty img { width: 90px; }
+.nge-todo-mytasks-group h4 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.nge-todo-mytasks-late { color: #d64545 !important; }
+.nge-todo-mytask { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; margin: 0 0 4px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer; }
+.nge-todo-mytask:hover { border-color: var(--accent); }
+.nge-todo-mytask-kind { color: var(--accent); }
+.nge-todo-mytask-text { flex: 1; }
+.nge-todo-mytask-text small { color: var(--dim); margin-left: 4px; }
+.nge-todo-mytask-due { font-size: 12px; color: var(--dim); white-space: nowrap; }
 .nge-todo-card-status { font-size: 12px; color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 .nge-todo-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .nge-todo-linkchip {
@@ -1364,6 +1529,9 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
   padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); scrollbar-width: thin;
 }
 .nge-todo-panel-top { display: flex; justify-content: space-between; align-items: center; }
+/* A long card scrolls; nothing in it is squeezed to fit (Marissa: the notes and
+   comment boxes were crushed to a sliver once the card was taller than the window). */
+.nge-todo-panel > *, .nge-todo-input { flex-shrink: 0; }
 .nge-todo-title-edit { font-size: 15px; font-weight: 700; }
 .nge-todo-select {
   background: var(--input); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 12.5px; padding: 4px 8px;
@@ -1381,6 +1549,8 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-check label { flex: 1 1 auto; display: flex; gap: 6px; align-items: flex-start; cursor: pointer; overflow-wrap: anywhere; }
 .nge-todo-check input { accent-color: var(--accent-strong); margin-top: 3px; }
 .nge-todo-check--done span { text-decoration: line-through; color: var(--dim); }
+/* An item's avatar sits by its words (the card face one sits at the far right). */
+.nge-todo-check .nge-todo-avatar--small { margin-left: 0; flex: 0 0 auto; margin-top: 2px; }
 .nge-todo-mini { background: none; border: none; color: var(--dim); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
 .nge-todo-mini:hover { color: var(--accent); }
 .nge-todo-comment { border-left: 2px solid var(--line); padding-left: 8px; }
@@ -1399,6 +1569,15 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 
 <style>
 /* Teleported to the body, so not scoped. */
+.nge-todo-party { position: fixed; z-index: 10070; width: 0; height: 0; pointer-events: none; }
+.nge-todo-party-bit { position: absolute; left: -4px; top: -7px; width: 8px; height: 14px; border-radius: 2px;
+  animation: nge-todo-burst 1.2s cubic-bezier(.15,.7,.35,1) both; }
+.nge-todo-party-bit--wide { width: 12px; height: 8px; border-radius: 50%; }
+@keyframes nge-todo-burst {
+  0% { transform: translate(0, 0) rotate(0) scale(0.4); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--dx), calc(var(--dy) + 160px)) rotate(var(--r)) scale(1); opacity: 0; }
+}
 .nge-todo-mention {
   position: fixed; z-index: 10050; list-style: none; margin: 0; padding: 4px; min-width: 180px;
   background: #0f1626; border: 1px solid rgba(124, 156, 255, 0.4); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);

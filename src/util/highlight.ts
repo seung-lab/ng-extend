@@ -969,6 +969,18 @@ export function clearHighlights() {
 // from a saved view tint the cell too.
 
 const TINT_KEY = 'nge_highlight_tint_nm';
+const DIM_KEY = 'nge_highlight_dim_checked';
+/** Dim checked (Ames 2026-11-02: "hide what's done could be cool!"): the
+ *  stretches marked Checked are drawn as a dim grey on the cell instead of
+ *  their colour, so what is left to check stands out, with the Lantern on or
+ *  off. Off by default; remembered in this browser. */
+export function dimChecked(): boolean {
+  try { return localStorage.getItem(DIM_KEY) === '1'; } catch { return false; }
+}
+export function setDimChecked(on: boolean) {
+  try { localStorage.setItem(DIM_KEY, on ? '1' : '0'); } catch { /* */ }
+  scheduleTint();
+}
 /** How far from the path the tint reaches, in nanometres. */
 export function tintRadiusNm(): number {
   try { const v = Number(localStorage.getItem(TINT_KEY)); if (v >= 500 && v <= 10000) return v; } catch { /* */ }
@@ -1145,7 +1157,9 @@ function buildTint(): NgeMeshTint | null {
   (window as any).__ngeHighlightTint = { segments: segs.length, boxes: extraTintBoxes.length, dims: [nx, ny, nz], cellNm: cell, radiusNm: r };
   const glowSeg = segs.find(s => s.latest);
   const glow = glowSeg ? glowSeg.rgb.map(c => c / 255) as [number, number, number] : undefined;
-  return { data, dims: [nx, ny, nz], gridFromGlobal: m, glow };
+  const checked = dimChecked() ? highlightStyles().find(s => s.key === 'checked')?.color : undefined;
+  const dim = checked && HEX.test(checked) ? hexRgb(checked).map(c => c / 255) as [number, number, number] : undefined;
+  return { data, dims: [nx, ny, nz], gridFromGlobal: m, glow, dim };
 }
 
 let tintTimer: ReturnType<typeof setTimeout> | null = null;

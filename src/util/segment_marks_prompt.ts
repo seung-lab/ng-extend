@@ -11,6 +11,26 @@
 import { reactive } from 'vue';
 import { currentSegLayer } from '../datasets';
 import { marksNowOn, removeTrackedMarks, type TrackedMark } from './highlight';
+import { getPcgInfo, authHeaders } from '../widgets/pcg_service';
+
+/** Are these still whole cells on the server? An id a merge or cut replaced is
+ *  not: that segment was edited, not removed, however late its new id turns up
+ *  (Nseraf 2026-11-01: asked to delete marks after a merge). If the server can't
+ *  say, it counts as edited, so a player is not asked over nothing. */
+async function stillLatest(roots: string[]): Promise<boolean> {
+  try {
+    const pcg = getPcgInfo();
+    if (!pcg) return false;
+    const res = await fetch(`${pcg.server}/segmentation/api/v1/table/${pcg.table}/is_latest_roots?int64_as_str=1`, {
+      method: 'POST',
+      headers: { ...(authHeaders(pcg.server) as Record<string, string>), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node_ids: roots }),
+    });
+    if (!res.ok) return false;
+    const latest = (await res.json())?.is_latest;
+    return Array.isArray(latest) && latest.length === roots.length && latest.every(Boolean);
+  } catch { return false; }
+}
 
 export const segmentMarksPrompt = reactive<{ counts: { label: string; n: number }[] }>({ counts: [] });
 let found: TrackedMark[] = [];
@@ -45,6 +65,7 @@ async function decide() {
   pending = new Set();
   added = false;
   if (replaced || !roots.length || roots.length > MAX_REMOVED) return;
+  if (!(await stillLatest(roots))) return;
   let marks: TrackedMark[] = [];
   try { marks = await marksNowOn(roots); } catch (e) { console.warn('[marks] could not look for this segment\'s marks:', e); }
   if (!marks.length) return;

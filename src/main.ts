@@ -1,5 +1,6 @@
 import { startViewAutosave } from './util/view_autosave';
 import { startClaimAutosave } from './util/claim_autosave';
+import { startScrollWatch } from './util/scroll_watch';
 import { startImageSource } from './util/image_source';
 import { startQuestWorkWatch } from './annotation_quests';
 import { startSegmentationServerWatch } from './util/segmentation_server_watch';
@@ -17,6 +18,7 @@ import { startLockedLayers } from './util/locked_layers';
 import { startSandboxZoom } from './util/sandbox_zoom';
 import { startCellLinks } from './util/cell_link';
 import { startCalm } from './util/calm';
+import { startPointParticles } from './util/point_particles';
 import { startTabs } from './util/tabs';
 import { showOutageBanner } from './util/outage_banner';
 import { startPanelFront } from './util/panel_front';
@@ -60,7 +62,7 @@ import App from 'components/App.vue';
 import TriagePage from 'components/TriagePage.vue';
 import {useIssueTagStore, useLayersStore, useProofreadingBackendStore, useSegmentAnnotationStore, useSplitMergeOverlayStore, useUserPreferencesStore, useVolumesStore} from 'src/store';
 import {useStatsStore} from './store-pyr';
-import {exitGrapheneTool} from './widgets/graphene_tool_utils';
+import {exitGrapheneTool, activeGrapheneToolKind} from './widgets/graphene_tool_utils';
 import {Viewer} from 'neuroglancer/viewer';
 import {setDefaultInputEventBindings} from 'neuroglancer/ui/default_input_event_bindings';
 import {bindDefaultCopyHandler, bindDefaultPasteHandler} from 'neuroglancer/ui/default_clipboard_handling';
@@ -428,6 +430,7 @@ function setupViewer() {
   hashBinding.updateFromUrlHash();
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
+  startScrollWatch();
   startClaimAutosave(viewer);
   // The active quest's annotations, saved to that quest cell as they change.
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);
@@ -437,6 +440,7 @@ function setupViewer() {
   startSpooky(viewer);
   startPumpkin(viewer);
   startScytheControls();
+  startPointParticles();
   startInvalidSegmentWatch(viewer);
   recoverCellHistory();
   startAnnotationClickSelect(viewer);
@@ -986,12 +990,38 @@ function observeSplitMergeTools() {
     }
   }
 
+  const orphanScans = new WeakMap<Element, number>();
+  // A cut the server called failed ("could not acquire root lock") but made
+  // (report 363): the error flash goes, and the cut is shown as done.
+  window.addEventListener('nge-split-recovered', () => {
+    store.dismissResult();
+    splitSubmitted = true;
+    if (store.toolActive === 'multicut') store.beginSuccessClose('Split complete');
+  });
   function scanToolState() {
     // Don't scan during success-hold close animation
     if (store.pendingClose) return;
 
-    const multicutEl = document.querySelector('.graphene-multicut');
-    const mergeEl = document.querySelector('.graphene-merge-segments');
+    let multicutEl = document.querySelector('.graphene-multicut');
+    let mergeEl = document.querySelector('.graphene-merge-segments');
+    // A tool's bar left behind after the tool went (Nseraf, report 361: the
+    // cut bar stayed under merge, and cut mode could not be left until F5).
+    // Neuroglancer says which tool is really on; a bar it does not back is
+    // set aside, once it has been alone for a few scans.
+    const kind = activeGrapheneToolKind();
+    if (kind !== undefined) {
+      const orphan = (el: Element | null, on: boolean) => {
+        if (!el || on) { if (el) orphanScans.delete(el); return el; }
+        const n = (orphanScans.get(el) ?? 0) + 1;
+        orphanScans.set(el, n);
+        if (n < 4) return el;
+        console.warn('[tool bar] removing a bar its tool no longer backs:', el.className);
+        el.remove();
+        return null;
+      };
+      multicutEl = orphan(multicutEl, kind === 'multicut');
+      mergeEl = orphan(mergeEl, kind === 'merge');
+    }
 
     if (multicutEl) {
       store.setToolState('multicut');

@@ -39,6 +39,7 @@ import DatasetTransition from "components/DatasetTransition.vue";
 import FlightMode from "components/FlightMode.vue";
 import PhotoMode from "components/PhotoMode.vue";
 import PyrArcade from "components/PyrArcade.vue";
+import {celebrateSpecialDay} from "../util/special_days";
 import { ARCADE_ENABLED } from "../util/arcade";
 import { isShowcaseHash, showcaseOpened } from "../showcase";
 import FeedbackModal from "components/FeedbackModal.vue";
@@ -220,6 +221,7 @@ function shareActionFacebook() {
 }
 
 onMounted(() => {
+  celebrateSpecialDay();
   // Keep Pyr icon in top-left (don't overwrite with CaveLogo)
   // Clicking a chat announcement opens the notification feed and asks it to
   // surface that specific notification.

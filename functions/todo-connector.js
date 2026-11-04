@@ -86,13 +86,24 @@ function personByName(name, people, me) {
   throw userError(`${starts.length ? 'More than one' : 'No'} admin matches "${name}". Admins: ${people.map(p => p.name).join(', ')}.`);
 }
 
-/** Admins tagged in a text: "@" and their whole name or their first name. */
+/** What the admins call each other, beside their Pyr names (Ames 2026-11-02:
+ *  "@Marissa" typed by hand tagged nobody, her Pyr name being "M Sorek"). */
+const NICKNAMES = [
+  [/^(amy|ames)\b|^amy/i, ['amy', 'ames']],
+  [/^celia/i, ['celia']],
+  [/^(marissa|m sorek|sorek)/i, ['marissa', 'sorek']],
+];
+const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Admins tagged in a text: "@" and their whole name, their first name, or a nickname. */
 function tagIdsIn(text, people) {
   const t = String(text || '').toLowerCase();
   return people.filter(p => {
-    const full = '@' + p.name.toLowerCase();
-    const first = '@' + p.name.toLowerCase().split(/\s+/)[0];
-    return t.includes(full) || new RegExp(first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z0-9])').test(t);
+    const name = String(p.name || '').toLowerCase();
+    if (!name) return false;
+    if (t.includes('@' + name)) return true;
+    const words = [name.split(/\s+/)[0]];
+    for (const [re, nick] of NICKNAMES) if (re.test(name)) words.push(...nick);
+    return words.some(w => w && new RegExp('@' + escapeRe(w) + '(?![a-z0-9])').test(t));
   }).map(p => p.id);
 }
 

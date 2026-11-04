@@ -24,7 +24,8 @@ const branchHint = computed(() => {
   if (lanternBranch.status === 'lit') return `${tap} another branch, or empty space to put it out`;
   return `${tap} a branch to light it`;
 });
-const showGhost = computed(() => spooky.season || backend.showAdminUi);
+// Halloween week only, admins too (Ames 2026-11-02).
+const showGhost = computed(() => spooky.season);
 
 // The bar can be dragged anywhere by its grip (Ames 2026-10-10: "I need to be
 // able to move the lantern box"). Its place is remembered in this browser;

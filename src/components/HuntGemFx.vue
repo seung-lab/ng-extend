@@ -7,11 +7,20 @@
  * gray, and a gem on a problem found already gets a soft blue ring. The Hunt box
  * says the same in words. With Calm screen or reduced motion: no motion, just
  * the gem and its word. Nothing here catches the mouse.
+ * The spin, the burst and the puff are PixelFX (Ames 2026-11-01); the drawn
+ * gem and its sparks stay for players who see no motion.
  */
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { huntState } from '../hunt';
+import { collectBurst, gemSpin, poof } from '../vendor/pixelfx/pyr.js';
+import { fxRamp, playFx } from '../util/pixelfx';
 
-const shown = ref<null | { key: number; x: number; y: number; result: string; head: string; sub: string }>(null);
+const shown = ref<null | { key: number; x: number; y: number; result: string; kind?: string; head: string; sub: string }>(null);
+const root = ref<HTMLElement | null>(null);
+/** A PixelFX effect is playing for what is on screen, so the drawn one steps aside. */
+const pixelSpin = ref(false);
+const pixelAnswer = ref(false);
+let spin: { stop(): void } | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
 const pending = computed(() => {
@@ -19,12 +28,28 @@ const pending = computed(() => {
   return p && p.x != null && p.y != null ? { x: p.x, y: p.y, gem: p.gem } : null;
 });
 
+watch(pending, p => {
+  spin?.stop();
+  spin = p ? playFx(gemSpin, {
+    x: p.x as number, y: p.y as number, anchorY: -19, layer: 'front', host: root.value ?? undefined,
+    options: p.gem === 'merge' ? { palette: fxRamp('#5aaaff') } : {},
+  }) : null;
+  pixelSpin.value = !!spin;
+});
+onBeforeUnmount(() => spin?.stop());
+
 watch(() => huntState.news?.at, () => {
   const n = huntState.news;
   if (!n || n.x == null || n.y == null) return;
   const head = n.result === 'hit' ? 'Got it!' : n.result === 'miss' ? 'Not there' : n.result === 'already' ? 'Found already' : n.result === 'edge' ? 'Edge of the dataset' : 'No gem';
   const sub = n.result === 'hit' ? (n.kind === 'merge' ? 'Missing extension' : 'Merger') : n.result === 'miss' && n.other ? (n.other === 'merge' ? 'Needs an extension' : 'Needs a cut') : '';
-  shown.value = { key: n.at, x: n.x, y: n.y, result: n.result, head, sub };
+  shown.value = { key: n.at, x: n.x, y: n.y, result: n.result, kind: n.kind, head, sub };
+  const host = root.value ?? undefined;
+  pixelAnswer.value = !!(n.result === 'hit'
+    ? playFx(collectBurst, { x: n.x, y: n.y, anchorY: -30, host, options: { palette: fxRamp(n.kind === 'merge' ? '#9b5cff' : '#f5d142') } })
+    : n.result === 'miss'
+      ? playFx(poof, { x: n.x, y: n.y, anchorY: -17, scale: 1, host, options: { palette: ['#232a36', '#3a4454', '#566274', '#7d8799', '#a8b2c2', '#d4dbe6'], stars: ['#7d8799', '#a8b2c2', '#d4dbe6'] } })
+      : null);
   if (hideTimer) clearTimeout(hideTimer);
   hideTimer = setTimeout(() => { shown.value = null; }, n.result === 'hit' ? 1900 : 1500);
 });
@@ -34,13 +59,13 @@ const sparks = Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * 360, d: 46 
 </script>
 
 <template>
-  <div class="nge-gemfx" aria-hidden="true">
+  <div ref="root" class="nge-gemfx" aria-hidden="true">
     <div v-if="pending && !shown" class="nge-gemfx-spot" :style="{ left: pending.x + 'px', top: pending.y + 'px' }">
-      <svg class="nge-gemfx-spin" :class="`nge-gemfx-spin--${pending.gem}`" viewBox="0 0 24 24" width="26" height="26"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
+      <svg v-if="!pixelSpin" class="nge-gemfx-spin" :class="`nge-gemfx-spin--${pending.gem}`" viewBox="0 0 24 24" width="26" height="26"><path d="M5 9 L9 4 L15 4 L19 9 L12 20 Z" fill="currentColor"/></svg>
     </div>
     <div v-if="shown" :key="shown.key" class="nge-gemfx-spot" :class="[`nge-gemfx--${shown.result}`, { 'nge-gemfx--ext': shown.result === 'hit' && shown.kind === 'merge' }]" :style="{ left: shown.x + 'px', top: shown.y + 'px' }">
-      <span v-if="shown.result === 'hit'" class="nge-gemfx-ring"></span>
-      <template v-if="shown.result === 'hit'">
+      <span v-if="shown.result === 'hit' && !pixelAnswer" class="nge-gemfx-ring"></span>
+      <template v-if="shown.result === 'hit' && !pixelAnswer">
         <span v-for="(s, i) in sparks" :key="i" class="nge-gemfx-spark" :style="{ '--a': s.a + 'deg', '--d': s.d + 'px' }"></span>
       </template>
       <span v-if="shown.result === 'already'" class="nge-gemfx-ring nge-gemfx-ring--blue"></span>

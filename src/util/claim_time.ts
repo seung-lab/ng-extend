@@ -8,8 +8,8 @@
  *   - the player did real work on it in the last 5 minutes (Ames 2026-10-28:
  *     "active means actually annotating or highlighting"): placed, moved or
  *     removed a point or a highlight in an annotation layer (the lab's marks
- *     are such points), merged or split, or saved the view. Looking around,
- *     turning and zooming alone do not count. A change counts only right
+ *     are such points), merged or split, saved the view, or (since Ames
+ *     2026-11-02) moved, turned or zoomed the view. A change counts only right
  *     after the player's own click or key, so what Pyr changes by itself
  *     never does.
  * Only one claim counts at a time: the claim being worked on when it is on
@@ -89,6 +89,19 @@ let lastWork = 0;
 /** A change within this long of the player's own click or key is theirs. */
 const OWN_MS = 4000;
 function work(own = false) { if (own || Date.now() - lastInput < OWN_MS) lastWork = Date.now(); }
+/** Looking counts as work too (Ames 2026-11-02: "count looking and moving as
+ *  active time"): the player moving, zooming or turning the view themself, in
+ *  2D or 3D. A view that moves on its own (a spin, a jump) does not count:
+ *  only a change within OWN_MS of their own click, key or scroll. */
+let navWatched: any = null;
+function watchNavigation() {
+  const v = (window as any).viewer;
+  if (!v || navWatched === v) return;
+  navWatched = v;
+  for (const state of [v.navigationState, v.perspectiveNavigationState]) {
+    try { state?.changed?.add(() => work()); } catch { /* not a signal */ }
+  }
+}
 /** Annotation layers already listened to. */
 const watched = new WeakSet<object>();
 function watchAnnotationLayers() {
@@ -167,6 +180,7 @@ function tick() {
   if (!deps || !deps.signedIn()) { claimTime.running = null; return; }
   const now = Date.now();
   watchAnnotationLayers();
+  watchNavigation();
   const active = document.visibilityState === 'visible' && document.hasFocus() && now - lastWork < IDLE_MS;
   const id = active ? claimOnScreen() : null;
   claimTime.running = id;
@@ -237,13 +251,18 @@ export function startClaimTimer(d: Deps) {
   // cell's new IDs keep counting until the claim's own ID catches up.
   window.addEventListener('nge-graph-edit', ((e: CustomEvent) => {
     work(true);
-    const id = claimTime.running;
+    // The claim on screen, even when the timer was paused (the first edit
+    // after a break): its new IDs must still be known, or it never resumes.
+    const id = claimTime.running ?? (deps ? claimOnScreen() : null) ?? workingId;
     if (id == null) return;
     const d = e.detail || {};
     if (d.kind !== 'merge' && d.kind !== 'split') return;
     bucket(id).edits++;
     const roots: string[] = Array.isArray(d.roots) ? d.roots.map(String) : [];
-    if (roots.length) aliases[id] = { roots, until: Date.now() + 60_000 };
+    // Until the claim's own ids catch up, which can take a while after a split
+    // (report 344): 60 s was sometimes not enough, and the time stopped. Kept
+    // for the visit: an old ID is simply no longer on screen.
+    if (roots.length) aliases[id] = { roots: [...new Set([...(aliases[id] && aliases[id].until > Date.now() ? aliases[id].roots : []), ...roots])], until: Date.now() + 12 * 3600_000 };
   }) as EventListener);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void flush();

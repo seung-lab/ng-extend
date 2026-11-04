@@ -749,8 +749,73 @@ async function datasetDecide(a, io) {
   return datasetList(a, io);
 }
 
+// ── The chat line for a grant (Ames 2026-10-30) ──────────────────────────
+// "when the player next logs in, not when the admin approves it". The bell
+// note a grant sends is the record: on a player's first load of a visit the
+// app asks here, and each grant not yet told gets one line. A chat row keyed
+// access:<dataset> is the guard, so it is said once. Grants from before this
+// began stay quiet.
+const GRANT_LINES_SINCE = '2026-10-30T00:00:00Z';
+const RETINA_ID = 'stroeh_mouse_retina';
+const DATASET_GRANT_TITLE = '🔓 You have access to ';
+function grantsIn(notes) {
+  const out = new Map();
+  for (const n of notes || []) {
+    const title = String((n && n.title) || '');
+    if (title === GRANTED_TITLE) out.set(RETINA_ID, 'the Retina');
+    else if (title.startsWith(DATASET_GRANT_TITLE)) {
+      const id = String(n.body || '').match(/#nge-open-dataset=([a-z0-9_]{2,40})/);
+      if (id) out.set(id[1], DATASET_SHORT[id[1]] || title.slice(DATASET_GRANT_TITLE.length));
+    }
+  }
+  return [...out].map(([dataset, label]) => ({dataset, label}));
+}
+async function grantLines(a, io) {
+  if (!io.me) return {announced: 0};
+  const notes = await io.sb('notifications?target_type=eq.user&target_id=eq.' + encodeURIComponent(io.me.id)
+    + '&send_at=gte.' + encodeURIComponent(GRANT_LINES_SINCE)
+    + '&or=' + encodeURIComponent(`(title.eq."${GRANTED_TITLE}",title.like."${DATASET_GRANT_TITLE}*")`)
+    + '&select=title,body&limit=40');
+  let announced = 0;
+  for (const g of grantsIn(notes)) {
+    const key = 'access:' + g.dataset;
+    const said = await io.sb('chat_messages?user_id=eq.' + encodeURIComponent(io.me.id) + '&dataset=eq.' + encodeURIComponent(key) + '&select=id&limit=1');
+    if (said.length) continue;
+    await io.sb('chat_messages', {method: 'POST', body: JSON.stringify({user_id: io.me.id, name: io.me.username || io.me.display_name || 'Player',
+      rank: 'achievement', text: `now has edit access to ${g.label}`, dataset: key})});
+    announced++;
+  }
+  return {announced};
+}
+
+// ── Edit access on a profile (Ames 2026-11-02: "should we show accesses
+// unlocked in profile?" and "I don't see this on Nik's") ── Which of the
+// earned datasets a player can edit, read from CAVE with the admin token, so
+// it is right for grants of any date. Only these three are told, and only
+// "can edit": nothing else about their account. Kept 10 minutes per player.
+const PROFILE_ACCESS = {'stroeh-mouse-retina': 'stroeh_mouse_retina', HiMC: 'pni_mec', BANC: 'banc'};
+const PROFILE_ACCESS_MS = 10 * 60 * 1000;
+const profileAccessSeen = new Map();
+async function profileAccess(a, io) {
+  if (!io.me) fail(401, 'Sign in to see this.');
+  const userId = String(a.userId || '');
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) fail(400, 'Invalid player');
+  const hit = profileAccessSeen.get(userId);
+  if (hit && Date.now() - hit.at < PROFILE_ACCESS_MS) return hit.value;
+  const users = await io.sb('users?id=eq.' + encodeURIComponent(userId) + '&select=cave_user_id&limit=1');
+  const caveId = Number(Array.isArray(users) && users[0] ? users[0].cave_user_id : NaN);
+  if (!io.caveAccessOf || !Number.isSafeInteger(caveId) || caveId <= 0) return {edit: null};
+  const cave = await io.caveAccessOf(caveId);
+  if (!cave) return {edit: null};
+  const value = {edit: (cave.edit || []).map(ds => PROFILE_ACCESS[ds]).filter(Boolean)};
+  profileAccessSeen.set(userId, {at: Date.now(), value});
+  return value;
+}
+
 async function handle(action, args, io) {
   const a = args || {};
+  if (action === 'access.profileAccess') return profileAccess(a, io);
+  if (action === 'access.grantLines') return grantLines(a, io);
   if (action === 'access.datasetStatus') return datasetStatus(a, io);
   if (action === 'access.dataset') return datasetRequest(a, io);
   if (action === 'access.datasetList') return datasetList(a, io);

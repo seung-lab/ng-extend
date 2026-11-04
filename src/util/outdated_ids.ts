@@ -72,6 +72,27 @@ export function currentIdsOf(id: string): Promise<string[] | null> {
   return p;
 }
 
+// After a batch of merges, any ID it touched that is still in the segment
+// list but no longer current is swapped for the cell as it is now: a merge
+// that failed (the same two pieces merged twice) put the old ID back and left
+// it there, marked out of date (Nseraf, report 349). Asked fresh, not from
+// the minute-long "current" memory, as these IDs just changed.
+window.addEventListener('nge-merge-batch-done', ((e: CustomEvent) => {
+  const roots: string[] = Array.isArray(e.detail?.roots) ? e.detail.roots.filter((r: string) => /^\d+$/.test(r) && r !== '0') : [];
+  if (!roots.length) return;
+  setTimeout(async () => {
+    const group = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value;
+    const listed = roots.filter(r => { try { return !!group?.selectedSegments?.has(Uint64.parseString(r)) || !!group?.visibleSegments?.has(Uint64.parseString(r)); } catch { return false; } });
+    if (!listed.length) return;
+    const flags = await isLatestRoots(listed).catch(() => null);
+    for (const id of listed) {
+      if (flags?.get(id) !== false) continue;
+      known.set(id, { latest: false, at: Date.now() });
+      await updateToCurrentId(id).catch(() => null);
+    }
+  }, 1500);
+}) as EventListener);
+
 export async function updateToCurrentId(id: string): Promise<string[] | null> {
   const ends = await currentIdsOf(id);
   if (!ends) return null;

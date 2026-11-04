@@ -48,6 +48,7 @@
  */
 
 import { nextBatch, untouched } from './sheet-batches.mjs';
+import { mirrorChanges, MIRROR_FIELDS } from './sheet-mirror.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -590,25 +591,48 @@ async function mirrorSheet(cfg) {
     const prev = best.get(r.segId);
     if (!prev || rank > prev.rank) best.set(r.segId, { rank, r });
   }
-  const now = new Date().toISOString();
   const out = [...best.values()].map(({ r }) => ({
     dataset: cfg.dataset, segment_id: r.segId, status: r.status || null, proofreader: r.who || null,
-    date_complete: sheetDate(r.date), cell_type: r.type || null, synced_at: now,
+    date_complete: sheetDate(r.date), cell_type: r.type || null,
   }));
   const dated = out.filter(o => o.date_complete).length, typed = out.filter(o => o.cell_type).length;
   console.log(`[mirror] ${rows.length} sheet rows, ${out.length} cells (${dated} with a date, ${typed} with a type)`);
-  if (dryRun || !out.length) return 0;
-  for (let i = 0; i < out.length; i += 500) {
+  if (!out.length) return 0;
+  // Only what is new or changed is written (scripts/sheet-mirror.mjs).
+  const existing = await mirrorRows(cfg.dataset);
+  // Before supabase-dataset-stats.sql is installed there is nowhere to write.
+  if (existing === null) { console.log('[mirror] ew_sheet_cells does not exist yet (run supabase-dataset-stats.sql). Nothing written.'); return 0; }
+  const { writes, added, changed, unchanged } = mirrorChanges(out, existing);
+  console.log(`[mirror] table has ${existing.length}; ${added} new, ${changed} changed, ${unchanged} unchanged`);
+  if (dryRun || !writes.length) return 0;
+  const now = new Date().toISOString();
+  for (let i = 0; i < writes.length; i += 500) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/ew_sheet_cells?on_conflict=dataset,segment_id`, {
       method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(out.slice(i, i + 500)),
+      body: JSON.stringify(writes.slice(i, i + 500).map(w => ({ ...w, synced_at: now }))),
     });
-    // Before supabase-dataset-stats.sql is installed there is nowhere to write.
-    if (r.status === 404) { console.log('[mirror] ew_sheet_cells does not exist yet (run supabase-dataset-stats.sql). Nothing written.'); return 0; }
     if (!r.ok) throw new Error(`mirror write ${r.status}: ${await r.text()}`);
   }
-  console.log(`[mirror] wrote ${out.length} row(s)`);
-  return out.length;
+  console.log(`[mirror] wrote ${writes.length} row(s)`);
+  return writes.length;
+}
+
+/** A dataset's rows in ew_sheet_cells, a page at a time by segment_id (no
+ *  OFFSET, which rereads every earlier page). Null when the table is missing. */
+async function mirrorRows(dataset) {
+  const all = [];
+  const select = ['segment_id', ...MIRROR_FIELDS].join(',');
+  let after = null;
+  for (;;) {
+    const from = after === null ? '' : `&segment_id=gt.${encodeURIComponent(after)}`;
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/ew_sheet_cells?dataset=eq.${encodeURIComponent(dataset)}&select=${select}${from}&order=segment_id.asc&limit=1000`, { headers: supabaseHeaders });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`mirror read ${r.status}: ${await r.text()}`);
+    const page = await r.json();
+    all.push(...page);
+    if (page.length < 1000) return all;
+    after = page[page.length - 1].segment_id;
+  }
 }
 
 async function retireOldSource(dataset, sheetId) {
