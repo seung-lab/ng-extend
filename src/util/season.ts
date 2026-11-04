@@ -6,14 +6,16 @@
  * - Thanksgiving week: the turkey walks along the bottom of the screen
  *   (src/util/turkey.ts).
  * - The point particles take a seasonal shape (Nseraf's idea, report #342):
- *   snowflakes in December, bats from late September to the end of October,
- *   eggs around Easter, and the usual dots the rest of the year.
+ *   bats from late September to the end of October, leaves in November
+ *   (Ames 2026-11-04), snowflakes in December, eggs around Easter, and the
+ *   usual dots the rest of the year.
  *
  * To try a season on any day, set a date in the browser console:
  *   localStorage.setItem('nge.seasonDate', '2026-11-26')
  * and reload. Remove it (localStorage.removeItem('nge.seasonDate')) to go
  * back to today.
  */
+import { MAPLE } from './leaf_shapes';
 
 /** Today, or the test date set in localStorage. */
 export function seasonToday(): Date {
@@ -56,12 +58,13 @@ export function easter(year: number): Date {
   return new Date(year, month - 1, day);
 }
 
-export type ParticleShape = 'dot' | 'snow' | 'bat' | 'egg';
+export type ParticleShape = 'dot' | 'snow' | 'bat' | 'egg' | 'leaf';
 
 /** The shape point particles take today. */
 export function particleShape(now = seasonToday()): ParticleShape {
   const y = now.getFullYear(), m = now.getMonth(), t = now.getTime();
   if (m === 11) return 'snow';
+  if (m === 10) return 'leaf';
   if (t >= dayStart(y, 8, 20) && t < dayStart(y, 10, 1)) return 'bat';
   const e = easter(y);
   // Palm Sunday through Easter Monday.
@@ -99,6 +102,16 @@ export function addParticleShape(c: CanvasRenderingContext2D, shape: ParticleSha
       p = arm(L * 0.55, -L * 0.28); c.moveTo(p[0], p[1]); p = arm(L * 0.75, 0); c.lineTo(p[0], p[1]);
       p = arm(L * 0.55, L * 0.28); c.lineTo(p[0], p[1]);
     }
+    return;
+  }
+  if (shape === 'leaf') {
+    // A maple leaf, about as big as a bat.
+    const s = r * 6.5;
+    MAPLE.forEach(([px, py], i) => {
+      const p = P(px * s, py * s);
+      if (i) c.lineTo(p[0], p[1]); else c.moveTo(p[0], p[1]);
+    });
+    c.closePath();
     return;
   }
   if (shape === 'egg') {
@@ -142,5 +155,6 @@ export function particleTurn(shape: ParticleShape, seed: number, k: number): num
   if (shape === 'bat') return Math.sin(k * 22 + seed * 6.283) * 0.35;
   if (shape === 'snow') return seed * 1.05 + k * (seed - 0.5) * 3;
   if (shape === 'egg') return (seed - 0.5) * 1.2 + k * (seed - 0.5) * 5;
+  if (shape === 'leaf') return seed * 6.283 + k * (seed - 0.5) * 4 + Math.sin(k * 14 + seed * 6.283) * 0.3;
   return 0;
 }

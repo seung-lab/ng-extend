@@ -16,7 +16,8 @@
  * turkey.glb, about 360 KB) are fetched the first time the turkey comes out,
  * and it is drawn only while it walks.
  *
- * Where the chat box is, he hops up onto it and walks along its top.
+ * Where the chat box is, he hops up onto it and walks along its top. In the
+ * fall he kicks up leaves as he goes (src/util/leaves.ts).
  *
  * The turkey button by the chat box, Settings ("Show the Thanksgiving
  * turkey") and the palette are one switch (userPrefs.hideTurkey). Calm
@@ -27,6 +28,7 @@
 import { useUserPreferencesStore } from '../store';
 import { isCalm } from './calm';
 import { thanksgivingWeek } from './season';
+import { kickLeaves } from './leaves';
 
 /** A file in static/ to play when it gobbles, or '' for none. */
 const GOBBLE_SOUND = '';
@@ -181,6 +183,8 @@ export async function visit(): Promise<void> {
           if (pace > 0) { jump = { from: y, to: ground, t0: now }; t.hop(); }
         }
         place();
+        // Leaves fly up behind his feet as he walks (Ames 2026-11-04).
+        if (speed > 0 && !jump) kickLeaves(x + BOX / 2, window.innerHeight - y - 2, dir);
         t.frame(Math.min(1, speed), yaw);
         if ((to - x) * dir <= 0) { done(); return; }
         requestAnimationFrame(step);
