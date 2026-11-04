@@ -33,7 +33,7 @@ import {MeshLayer, MeshSource, MultiscaleMeshLayer} from 'neuroglancer/mesh/fron
 import {DisplayDimensionRenderInfo} from 'neuroglancer/navigation_state';
 import {ChunkTransformParameters, getChunkPositionFromCombinedGlobalLocalPositions, getChunkTransformParameters, RenderLayerTransformOrError} from 'neuroglancer/render_coordinate_transform';
 import {RenderLayer, RenderLayerRole} from 'neuroglancer/renderlayer';
-import {augmentSegmentId, resetTemporaryVisibleSegmentsState, SegmentationDisplayState3D, SegmentationLayerSharedObject, SegmentWidgetFactory, Uint64MapEntry} from 'neuroglancer/segmentation_display_state/frontend';
+import {augmentSegmentId, getBaseObjectColor, resetTemporaryVisibleSegmentsState, SegmentationDisplayState3D, SegmentationLayerSharedObject, SegmentWidgetFactory, Uint64MapEntry} from 'neuroglancer/segmentation_display_state/frontend';
 import {VisibleSegmentEquivalencePolicy} from 'neuroglancer/segmentation_graph/segment_id';
 import {ComputedSplit, SegmentationGraphSource, SegmentationGraphSourceConnection, SegmentationGraphSourceTab} from 'neuroglancer/segmentation_graph/source';
 import {SegmentationUserLayer} from 'neuroglancer/segmentation_user_layer';
@@ -1248,6 +1248,24 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     }
   }
 
+  /** nge: the colour a cell shows now (its own, or the one its ID gives it),
+   *  packed as neuroglancer keeps chosen colours; null when it can't be read. */
+  private ngeColorOf(root: Uint64|undefined): Uint64|null {
+    try {
+      if (!root) return null;
+      const c = getBaseObjectColor(this.layer.displayState, root, new Float32Array(4));
+      const packed = Math.round(c[0] * 255) | (Math.round(c[1] * 255) << 8) | (Math.round(c[2] * 255) << 16);
+      return new Uint64(packed >>> 0, 0);
+    } catch { return null; }
+  }
+  /** nge: a cell keeps its colour through an edit (Nseraf, report 359: after
+   *  a merge or cut it took a new random colour, often one his annotations
+   *  could not be read against). */
+  private ngeKeepColor(color: Uint64|null, root: Uint64|undefined) {
+    if (!color || !root) return;
+    try { this.layer.displayState.segmentationColorGroupState.value.segmentStatedColors.set(root, color); } catch { /* colours stay as they were */ }
+  }
+
   async submitMulticut(annotationToNanometers: Float64Array): Promise<boolean> {
     const {state: {multicutState}} = this;
     const {sinks, sources} = multicutState;
@@ -1256,6 +1274,8 @@ class GraphConnection extends SegmentationGraphSourceConnection {
           'Must select both red and blue groups to perform a multi-cut.', 7000);
       return false;
     } else {
+      const keptColor = this.ngeColorOf(multicutState.focusSegment.value);
+      const blueSv = [...sources][0]?.segmentId;
       let splitRoots: Uint64[];
       try {
         splitRoots = await this.graph.graphServer.splitSegments(
@@ -1286,6 +1306,9 @@ class GraphConnection extends SegmentationGraphSourceConnection {
         segmentsState.selectedSegments.delete(focusSegment);
         for (const segment of [...sinks, ...sources]) {
           segmentsState.selectedSegments.delete(segment.rootId);
+        }
+        if (keptColor && blueSv) {
+          this.graph.getRoot(blueSv).then(r => this.ngeKeepColor(keptColor, r), () => {});
         }
         this.meshAddNewSegments(splitRoots);
         segmentsState.selectedSegments.add(splitRoots);
@@ -1324,7 +1347,9 @@ class GraphConnection extends SegmentationGraphSourceConnection {
     for (let i = 1; i <= attempts; i++) {
       try {
         if (stop.isCanceled) throw new Error(submission.error || 'Stopped.');
+        const keptColor = this.ngeColorOf(submission.sink.rootId);
         const newRoot = await this.graph.graphServer.mergeSegments(submission.sink, submission.source!, annotationToNanometers, stop);
+        this.ngeKeepColor(keptColor, newRoot);
         const oldValues = new Uint64Set();
         oldValues.add(submission.sink.rootId);
         oldValues.add(submission.source!.rootId);
