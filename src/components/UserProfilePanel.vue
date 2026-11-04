@@ -1694,6 +1694,9 @@ onUnmounted(() => clearTimeout(stageTimer));
                  public identifier; the address stays private. -->
 
 
+            <!-- Someone else's bio too (Nseraf, report 354: bios were only
+                 ever shown to their owner). -->
+            <div v-if="viewingOtherUser && otherUserProfile?.bio" class="nge-profile-bio">{{ otherUserProfile.bio }}</div>
             <template v-if="!viewingOtherUser">
               <div class="nge-profile-bio" v-if="prefs.bio">{{ prefs.bio }}</div>
               <button v-else class="nge-profile-bio-add" @click="activeTab = 'settings'">

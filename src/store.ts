@@ -4752,7 +4752,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
         // NOTE: middleauth_email is deliberately NOT selected. This loads OTHER
         // users' profiles, and fetching their address shipped it to the client
         // (visible in devtools) even once it stopped being rendered.
-        .select('id, display_name, username, flag, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
+        .select('id, display_name, username, flag, bio, total_edits, total_merges, total_splits, cells_completed, current_streak, longest_streak, last_edit_date, favorite_badge')
         .eq('id', targetUserId)
         .single();
       if (!user) return null;
