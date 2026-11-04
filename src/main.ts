@@ -8,6 +8,7 @@ import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
+import {startColorFamilies} from './util/color_families';
 import {startScytheControls} from './util/scythe';
 import { startInvalidSegmentWatch } from './util/invalid_segment_watch';
 import { recoverCellHistory } from './util/cell_history';
@@ -434,6 +435,7 @@ function setupViewer() {
   // Autosave the view to the player's account and offer it back (user_views).
   startViewAutosave(viewer, () => useProofreadingBackendStore().userId || null);
   startScrollWatch();
+  startColorFamilies();
   startClaimAutosave(viewer);
   // The active quest's annotations, saved to that quest cell as they change.
   startQuestWorkWatch(viewer, () => useProofreadingBackendStore().userId || null);

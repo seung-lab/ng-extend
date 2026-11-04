@@ -1067,6 +1067,8 @@ export interface UserPreferences {
   hoverStyleAuto?: boolean;
   /** The pulse's colour, '#rrggbb', or '' for a tint of the cell's own (Nseraf). */
   pulseColor?: string;
+  /** Preferred colour families for cells (util/color_families.ts); empty or unset: neuroglancer's own colours. */
+  colorFamilies?: string[];
   /** Classic layer tabs: left click hides or shows a layer, right click
    *  selects it (neuroglancer's own way). Defaults to false: left click
    *  selects, right click hides (Ames 2026-10-06). It also sets the number
@@ -1196,7 +1198,7 @@ export const useUserPreferencesStore = defineStore('userPrefs', () => {
   // here: they live on the public profile row. localStorage stays the fast
   // local copy, so the app works before sign in and if Supabase is down.
   const SYNCED: (keyof UserPreferences)[] = ['toolbarIcons', 'toolbarIconsInjected', 'chatMuted', 'chatFadeAway', 'chatMarkMine', 'chatSize', 'radio',
-    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
+    'helpMuted', 'showScoutTags', 'segShowId', 'viewerPerf', 'imageDetail', 'imageSource', 'calmScreen', 'pointParticles', 'datasetBareSwitch', 'datasetStartViews', 'extraDatasets', 'highlightStyles', 'notifDelivered', 'cutPointSize', 'cursorXL', 'largeText', 'hideTopBar', 'imageLayerPanel', 'hoverStyle', 'pulseColor', 'colorFamilies', 'toolbarStage', 'notifOneList', 'notifCategories', 'showDailyDigest'];
   const syncedPart = (src: any) => {
     const out: Record<string, unknown> = {};
     for (const k of SYNCED) if (src && src[k] !== undefined) out[k] = src[k];
@@ -6971,6 +6973,8 @@ export const useChatStore = defineStore('chat', () => {
    *  the chat panel can flash to draw your eye. */
   const mentionPing = ref(0);
   const lastMentionFrom = ref('');
+  /** The message that @mentioned you (or replied to you) last. */
+  const lastMentionId = ref('');
   /** History paging: the oldest message loaded, and whether older ones exist. */
   const hasMoreHistory = ref(true);
   const loadingHistory = ref(false);
@@ -7708,6 +7712,7 @@ export const useChatStore = defineStore('chat', () => {
         const repliedToMe = !!row.reply_to && chatMessages.value.some(m => m.id === row.reply_to && m.userId === backend.userId);
         const mention = repliedToMe || (mentionsMe(row.text || '') && !onlineTarget(row.text || ''));
         if (mention) {
+          lastMentionId.value = row.id != null ? String(row.id) : '';
           mentionPing.value++; lastMentionFrom.value = row.name || '';
           alertMentionAway(row.name || 'Someone', row.text || '', true);
         } else if (!useUserPreferencesStore().prefs.chatMuted && row.notification_id == null && row.rank !== 'achievement') {
@@ -7894,6 +7899,6 @@ export const useChatStore = defineStore('chat', () => {
 
   return { chatMessages, connected, polling, unreadMessages, unreadCount, connect, sendMessage, postAnnouncement, markRead, disconnect, deleteMessage, onlineCount, online,
     pinned, loadPin, pinMessage,
-    panelVisible, setPanelVisible, mentionPing, lastMentionFrom,
+    panelVisible, setPanelVisible, mentionPing, lastMentionFrom, lastMentionId,
     hasMoreHistory, loadingHistory, loadOlder, reactions, toggleReaction, mentionNotify, setMentionNotify };
 });
