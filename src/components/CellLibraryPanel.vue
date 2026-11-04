@@ -1122,7 +1122,11 @@ const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).lengt
 /** The type list, when the cell is on the dataset on screen and that
  *  dataset's types may be written here (as in the Cell Profile). */
 function cellTypesFor(cell: CellRow): string[] {
-  if (canonicalDataset(cell.dataset || '') !== currentDatasetTag()) return [];
+  // A row of the cell list on screen carries no dataset of its own (''):
+  // it is this dataset's. Only a cell of another dataset is left without the
+  // picker. It was hidden for every list row, so a type could be set in the
+  // Cell Profile but not on Complete (Nseraf, report 355).
+  if (cell.dataset && canonicalDataset(cell.dataset) !== currentDatasetTag()) return [];
   if (getDatasetCaveConfig(currentSegLayerName()).cellTypeReadOnly) return [];
   return currentCellTypes();
 }
