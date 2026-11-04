@@ -2,6 +2,17 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-04T14:45:42Z",
+      "title": "Claims follow cuts, and cut mode can't get stuck",
+      "items": [
+        "After a cut or a merge, your claim keeps recognising its cell under the new IDs.",
+        "Cut mode can no longer get stuck on screen until a reload.",
+        "The Cell Library's Complete form has the cell type picker again, the same list as the cell's Δ panel.",
+        "Other players' bios now show on their profile.",
+        "My Cells lists your completed cells latest first."
+      ]
+    },
+    {
       "at": "2026-11-03T02:40:00Z",
       "title": "Edit access tiles",
       "digest": "minor",
