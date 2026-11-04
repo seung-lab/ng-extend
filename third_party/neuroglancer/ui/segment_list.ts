@@ -2057,8 +2057,24 @@ export class SegmentDisplayTab extends Tab {
                     window.dispatchEvent(new CustomEvent('nge-merge-cells', {detail: {ids}}));
                     pickedSegments.clear();
                   }, 'nge-pick-merge');
+                  // Its own row, with an (i) that says what it does (Ames 2026-11-04).
+                  const mergeRow = document.createElement('div');
+                  mergeRow.className = 'nge-pick-merge-row';
+                  const mergeInfo = document.createElement('p');
+                  mergeInfo.className = 'nge-pick-merge-info';
+                  mergeInfo.textContent = 'Merges the two picked cells into one, joined where they come closest. ' +
+                      'Both need to be showing in 3D. Cells more than 2 µm apart are not merged: use merge mode for those. ' +
+                      'Shortcut: Ctrl+click two cells, then press M.';
+                  mergeInfo.style.display = 'none';
+                  const mergeInfoBtn = barBtn('i', 'What does Merge do?', () => {
+                    const open = mergeInfo.style.display === 'none';
+                    mergeInfo.style.display = open ? '' : 'none';
+                    mergeInfoBtn.classList.toggle('nge-pick-info--on', open);
+                  }, 'nge-pick-info');
+                  mergeInfoBtn.setAttribute('aria-label', 'What does Merge do?');
+                  mergeRow.append(mergePicked, mergeInfoBtn, mergeInfo);
                   bar.append(
-                      barCount, mergePicked, moveTo,
+                      barCount, moveTo,
                       barBtn('Show', 'Show the picked cells', () => group.visibleSegments.set(pickedIds(), true)),
                       barBtn('Hide', 'Hide the picked cells', () => group.visibleSegments.set(pickedIds(), false)),
                       recolorPicked,
@@ -2068,7 +2084,8 @@ export class SegmentDisplayTab extends Tab {
                         group.selectedSegments.delete(ids);
                         pickedSegments.clear();
                       }, 'nge-pick-remove'),
-                      barBtn('\u2715', 'Unpick (Esc)', () => pickedSegments.clear(), 'nge-pick-clear'));
+                      barBtn('\u2715', 'Unpick (Esc)', () => pickedSegments.clear(), 'nge-pick-clear'),
+                      mergeRow);
                   moveTo.addEventListener('change', () => {
                     const v = moveTo.value;
                     moveTo.value = '';
@@ -2092,7 +2109,7 @@ export class SegmentDisplayTab extends Tab {
                     const n = pickedSegments.ids.size;
                     bar.style.display = n ? '' : 'none';
                     barCount.textContent = `${n} picked`;
-                    mergePicked.style.display = n === 2 ? '' : 'none';
+                    mergeRow.style.display = n === 2 ? '' : 'none';
                     removeChildren(moveTo);
                     const opt = (value: string, text: string) => {
                       const o = document.createElement('option');

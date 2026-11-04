@@ -1494,6 +1494,14 @@ body.nge-seg-show-id .neuroglancer-segment-list-entry.nge-seg-labelled .nge-labe
 .nge-pick-btn:hover, .nge-pick-move:hover { border-color: rgba(140, 180, 235, 0.7); }
 .nge-pick-remove:hover { border-color: #e06060; color: #ffb3b3; }
 .nge-pick-clear { margin-left: auto; }
+/* Merge, with two cells picked: a row of its own, and an (i) */
+.nge-pick-merge-row { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nge-pick-info {
+  width: 20px; height: 20px; padding: 0 !important; border-radius: 50% !important;
+  font-style: italic; font-weight: 700; line-height: 18px; text-align: center;
+}
+.nge-pick-info--on { border-color: #87ceeb !important; color: #87ceeb !important; }
+.nge-pick-merge-info { flex: 1 0 100%; margin: 2px 0 0; color: rgba(220, 230, 245, 0.85); line-height: 1.4; }
 .nge-pick-color { width: 22px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; }
 
 /* folder headings: the name gets the room; copy buttons are left to the

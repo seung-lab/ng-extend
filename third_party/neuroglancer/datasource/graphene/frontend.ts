@@ -2592,9 +2592,25 @@ function ngeQuickMergeOn(): boolean {
 }
 /** When the player last pressed M themselves (not a button pressing it for them). */
 let ngeLastMKeyDown = -Infinity;
+/** The open merge tool's quick merge M, while merge is open with quick merge on. */
+let ngeQuickMergeKey: (() => void)|undefined;
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.isTrusted && e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) ngeLastMKeyDown = performance.now();
+    if (!e.isTrusted || e.code !== 'KeyM' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const t = e.target as HTMLElement|null;
+    if (t && (t.closest?.('input, textarea, select') || t.isContentEditable)) return;
+    if (e.repeat) { if (ngeQuickMergeKey) { e.preventDefault(); e.stopPropagation(); } return; }
+    ngeLastMKeyDown = performance.now();
+    // Merge open with quick merge on: M is a merge point (or closes merge
+    // over empty space), and neuroglancer's own M does not also run.
+    // Two cells picked in the Seg list: M merges those (src/drag_reorder.ts).
+    const pickRow = document.querySelector('.nge-pick-merge-row') as HTMLElement|null;
+    if (pickRow && pickRow.style.display !== 'none' && pickRow.offsetParent !== null) return;
+    if (ngeQuickMergeKey && ngeQuickMergeOn()) {
+      e.preventDefault();
+      e.stopPropagation();
+      ngeQuickMergeKey();
+    }
   }, true);
 }
 
@@ -2770,14 +2786,23 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
         if (waiting.length && lineTool.inProgressAnnotation.value === undefined) { submitAction(); return; }
         activation.cancel();
       };
-      activation.bindInputEventMap(EventActionMap.fromObject({'at:keym': {action: 'nge-quick-merge-key'}}));
-      activation.bindAction('nge-quick-merge-key', event => {
-        event.stopPropagation();
-        quickKey();
-      });
-      // Opened by a real M press over a piece: that press is the first point.
-      if (performance.now() - ngeLastMKeyDown < 200) {
-        setTimeout(() => { if (!activation.wasDisposed && onPiece()) quickKey(); }, 0);
+      // M is taken on the page itself (ngeQuickMergeKeydown), wherever the
+      // keyboard is: the 3D view does not always have it, and then
+      // neuroglancer's own M closed merge instead (Ames 2026-11-04).
+      ngeQuickMergeKey = quickKey;
+      activation.registerDisposer(() => { if (ngeQuickMergeKey === quickKey) ngeQuickMergeKey = undefined; });
+      // Opened by a real M press: that press is the first point, if the
+      // cursor is on a piece. The view may take a moment to say what is
+      // under the cursor once merge has opened.
+      if (performance.now() - ngeLastMKeyDown < 300) {
+        let tries = 0;
+        const firstPoint = () => {
+          if (activation.wasDisposed) return;
+          if (onPiece()) { quickKey(); return; }
+          if (++tries < 4) { setTimeout(firstPoint, 60); return; }
+          StatusMessage.showTemporaryMessage('Merge is open. Point at a piece and press M to place a merge point.', 4000);
+        };
+        setTimeout(firstPoint, 0);
       }
     }
     body.appendChild(makeIcon({
