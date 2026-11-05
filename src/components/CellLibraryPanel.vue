@@ -2707,6 +2707,18 @@ const MENTOR_CHIP: Record<MentorReview['state'], string> = {
   // Short: with suggestions the row also carries Release and Complete.
   waiting: '🧭 Waiting for a mentor', looking: '🧭 With your mentor', suggestions: '🧭 Suggestions', complete: '🧭 Mentor notes',
 };
+/** Which of the apprentice's mentor cells this one is (Ames 2026-11-05: "add
+ *  like a n/5 here"): its own number if it went before (sent back with
+ *  suggestions), else the next one after those done and those with the mentor. */
+function mentorCellNumber(cell: CellRow): number {
+  const a = mentorState.apprentice;
+  if (!isApprentice() || !a) return 0;
+  const sent = [...mentorState.mine].sort((x, y) => Date.parse(x.sentAt) - Date.parse(y.sentAt));
+  const at = sent.findIndex(r => r.taskId === cell.taskId);
+  if (at >= 0) return Math.min(at + 1, a.cellsNeeded);
+  const open = mentorState.mine.filter(r => r.state !== 'complete').length;
+  return Math.min(a.cellsDone + open + 1, a.cellsNeeded);
+}
 const mentorChip = (cell: CellRow) => { const r = mentorFor(cell); return r ? MENTOR_CHIP[r.state] : ''; };
 function openMentorCell(cell: CellRow) {
   const r = mentorFor(cell);
@@ -4316,6 +4328,7 @@ const panelStyle = computed(() => ({
               <button class="nge-cl-complete-recheck" :disabled="completing.checking" @click="runCrosshairCheck(cell)">Check again</button>
             </div>
             <div class="nge-cl-complete-actions">
+              <span v-if="mentorCellNumber(cell)" class="nge-cl-mentor-n" :title="`Your mentor looks at your first ${mentorState.apprentice?.cellsNeeded ?? 5} cells`">🧭 Mentor cell {{ mentorCellNumber(cell) }} of {{ mentorState.apprentice?.cellsNeeded ?? 5 }}</span>
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
                 :disabled="!!completeBlocked(cell)"
@@ -5023,6 +5036,7 @@ const panelStyle = computed(() => ({
   color: #a86;
 }
 .nge-cl-btn--release:hover { background: rgba(255, 170, 68, 0.08); }
+.nge-cl-mentor-n { margin-right: auto; align-self: center; font-size: 13px; color: #9fc8ff; white-space: nowrap; }
 .nge-cl-btn--mentor { border-color: rgba(120, 180, 255, 0.35); color: #9fc8ff; white-space: nowrap; }
 .nge-cl-btn--mentor:hover { background: rgba(120, 180, 255, 0.1); }
 .nge-cl-btn--mentor-suggestions { border-color: rgba(245, 209, 66, 0.55); color: #f5d142; }
