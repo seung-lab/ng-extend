@@ -351,7 +351,9 @@ function toggleAutoSubmit() {
  *  left mouse users, and anyone in a tutorial, without a way to submit. */
 function submitTool(kind: 'multicut' | 'merge') {
   const title = kind === 'multicut' ? 'Submit multicut' : 'Submit merge';
-  const icon = document.querySelector(`.neuroglancer-icon[title="${title}"]`) as HTMLElement | null;
+  // The newest bar's button: an older bar left behind had a Submit that did
+  // nothing (report 376).
+  const icon = (Array.from(document.querySelectorAll(`.neuroglancer-icon[title="${title}"]`)).pop() ?? null) as HTMLElement | null;
   if (icon) { icon.click(); return; }
   // Fallback: the tool's own Enter binding.
   const viewer = (window as any)['viewer'];

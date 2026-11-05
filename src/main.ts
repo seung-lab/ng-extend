@@ -1024,8 +1024,20 @@ function observeSplitMergeTools() {
     // Don't scan during success-hold close animation
     if (store.pendingClose) return;
 
-    let multicutEl = document.querySelector('.graphene-multicut');
-    let mergeEl = document.querySelector('.graphene-merge-segments');
+    // Two bars for one tool: an old one stayed when the tool was opened again
+    // (Nseraf, reports 376 and 386: a second bar under the cut bar, and the
+    // Submit button pressed the old one, so nothing happened). The newest is
+    // the live one; older ones go once they have been seen twice.
+    for (const sel of ['.graphene-multicut', '.graphene-merge-segments']) {
+      const all = Array.from(document.querySelectorAll(sel));
+      for (const old of all.slice(0, -1)) {
+        const n = (orphanScans.get(old) ?? 0) + 1;
+        orphanScans.set(old, n);
+        if (n >= 2) { console.warn('[tool bar] removing an older second bar:', sel); (old.closest('li') ?? old).remove(); }
+      }
+    }
+    let multicutEl = Array.from(document.querySelectorAll('.graphene-multicut')).pop() ?? null;
+    let mergeEl = Array.from(document.querySelectorAll('.graphene-merge-segments')).pop() ?? null;
     // A tool's bar left behind after the tool went (Nseraf, report 361: the
     // cut bar stayed under merge, and cut mode could not be left until F5).
     // Neuroglancer says which tool is really on; a bar it does not back is
