@@ -5700,7 +5700,8 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     notifLimit.value += NOTIF_PAGE;
     await loadNotifications();
   }
-  let grantLinesAsked = false;
+  /** Grants already sent to the server for their chat line. */
+  const grantLinesAsked = new Set<string>();
   /** What the leader tab read on its minute check, for the other tabs
    *  (util/tabs.ts). reads and dismissed come with a full check only. */
   interface SharedNotifs { user: string; at: string; rows: any[]; groupIds: string[]; reads?: number[]; dismissed?: number[] }
@@ -5734,14 +5735,15 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
 
     const allNotifs = s ? s.rows : (await query).data;
     if (!allNotifs) return;
-    // A grant is said in chat the next time the player comes in, not when the
-    // admin approves it (Ames 2026-10-30): only the first load of a visit
-    // looks, so a grant that lands mid visit waits for the next one.
-    if (!grantLinesAsked) {
-      grantLinesAsked = true;
-      if ((allNotifs as any[]).some(n => n.target_type === 'user' && String(n.send_at) >= '2026-10-30' && (n.title === '🎉 Congratulations! Your edit access has been granted!' || String(n.title || '').startsWith('🔓 You have access to ')))) {
-        void secureWrite('access.grantLines').catch(() => {});
-      }
+    // A grant is said in chat once the player is in Pyr to see it (Ames
+    // 2026-10-30): on the first load of a visit, or as it lands when they are
+    // already playing (Ames 2026-11-05: granted Ryan MEC while he was in
+    // chat, and no line came). The server says each grant once.
+    const grants = (allNotifs as any[]).filter(n => n.target_type === 'user' && String(n.send_at) >= '2026-10-30'
+      && (n.title === '🎉 Congratulations! Your edit access has been granted!' || String(n.title || '').startsWith('🔓 You have access to ')));
+    if (grants.some(n => !grantLinesAsked.has(String(n.id)))) {
+      for (const n of grants) grantLinesAsked.add(String(n.id));
+      void secureWrite('access.grantLines').catch(() => {});
     }
     if (!newOnly) notificationsHaveMore.value = allNotifs.length >= notifLimit.value;
     for (const n of allNotifs as any[]) if (Number(n.id) > notifMaxId) notifMaxId = Number(n.id);
