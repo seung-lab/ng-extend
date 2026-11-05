@@ -359,6 +359,11 @@ async function cutHintFor(ex: any): Promise<{ hint: CutHint | null; trusted: boo
   if (hit) return hit;
   let anchor: number[] | null = null;
   try { if (ex.point_a && ex.point_b) anchor = centroid([JSON.parse(ex.point_a), JSON.parse(ex.point_b)].map((p: any) => p.slice(0, 3).map(Number))); } catch { anchor = null; }
+  // Mergers 7 and 8 were registered without A and B points, so their hints
+  // were shown unchecked, in whatever unit the view kept them, off to one
+  // side of the cell, and the view never moved to them (Ames, 2026-11-05:
+  // "why are the points over there?"). Where the cell is, from the pools.
+  if (!anchor) { const spots = SANDBOX_CELLS.find(c => c.id === ex.id)?.spots; if (spots?.length) anchor = centroid(spots); }
   const recorded = CUT_HINTS[ex.id] ?? null;
   if (!anchor && recorded) anchor = centroid([...recorded.red, ...recorded.blue]);
   let out: { hint: CutHint | null; trusted: boolean } = { hint: recorded, trusted: !!recorded };
@@ -406,6 +411,7 @@ function withoutStrays(h: CutHint): CutHint {
   return { red: keep(h.red), blue: keep(h.blue) };
 }
 
+const zoomedForCut = new Set<string>();
 /** The red and blue hint points for the cell on screen. Exported so the
  *  first cut can start with them showing. */
 export async function showWhereToCut(perColour = 4): Promise<boolean> {
@@ -420,10 +426,17 @@ export async function showWhereToCut(perColour = 4): Promise<boolean> {
   // Bring the view to the spot, so the 2D images show the section the points
   // are in. Only for points checked against the cell.
   if (trusted) {
-    try {
-      const pos = getViewer()?.navigationState?.position;
-      if (pos) pos.value = Float32Array.from(centroid([...red, ...blue]));
-    } catch (e) { /* the pins still show */ }
+    // The first time on each cell, also zoom in: from the cell's own view
+    // the join was far off and small (Ames, 2026-11-05: "zoom is still too
+    // far away"). Later presses only re-centre, so the zoom does not keep
+    // shrinking.
+    if (!zoomedForCut.has(ex.id)) { zoomedForCut.add(ex.id); focusOn([...red, ...blue], 0.3, 1); }
+    else {
+      try {
+        const pos = getViewer()?.navigationState?.position;
+        if (pos) pos.value = Float32Array.from(centroid([...red, ...blue]));
+      } catch (e) { /* the pins still show */ }
+    }
   }
   // Red and blue Pyr gems in the scene itself, so neurons in front hide
   // them. If the layers cannot be added, the flat pins still show.

@@ -8,7 +8,10 @@
  * standalone exercise: they must not be handed out as stand-ins by the Cut
  * tutorial, and someone on one of them does not hold the Cut tutorial.
  */
-export interface SandboxCell { id: string; title: string; hintState: string; /** Extension Sandbox: how many pieces are missing. */ pieces?: number; /** A line added to its first box. */ note?: string; }
+export interface SandboxCell { id: string; title: string; hintState: string; /** Extension Sandbox: how many pieces are missing. */ pieces?: number; /** A line added to its first box. */ note?: string;
+  /** Where the cell is (viewer voxels), for a cell registered without its
+   *  A and B points: the hint points are checked against these. */
+  spots?: number[][]; }
 
 export const SANDBOX_CELLS: SandboxCell[] = [
   { id: 'da3819dc-84b0-43df-a77c-55e46049a124', title: 'Merger 1', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5758135507615744' },
@@ -21,13 +24,15 @@ export const SANDBOX_CELLS: SandboxCell[] = [
   { id: '814be870-9149-4474-876f-195e0af0bd08', title: 'Merger 6', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/5747243973869568' },
   // Ames, 2026-10-24: the cell at (61906, 44918, 1492), the piece fused to it
   // at (61795, 44659, 1506). Her own cut, operation 2499, is the reference.
-  { id: '2f8c4066-202e-44f7-88b1-5dbd0335adde', title: 'Merger 7', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6209159015956480' },
+  { id: '2f8c4066-202e-44f7-88b1-5dbd0335adde', title: 'Merger 7', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/6209159015956480',
+    spots: [[61906, 44918, 1492], [61795, 44659, 1506]] },
   // Ames, 2026-10-24, harder: two branches crossing in an X with no clear
   // border (Andrearwen's example). Spots either side at (61010, 43273, 1557)
   // and (60986, 43313, 1566). A player cut it on 2026-10-13 (operation 2018,
   // which parts the two spots); Ames merged it again (operation 2502), and
   // the baseline is just after.
-  { id: 'b5656b45-bd19-4b39-ac9d-65902b1a1b94', title: 'Merger 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4924675628990464' },
+  { id: 'b5656b45-bd19-4b39-ac9d-65902b1a1b94', title: 'Merger 8', hintState: 'middleauth+https://global.brain-wire-test.org/nglstate/api/v1/4924675628990464',
+    spots: [[61010, 43273, 1557], [60986, 43313, 1566]] },
 ];
 
 /** How many mergers the sandbox holds. Every "all N mergers" a player reads
