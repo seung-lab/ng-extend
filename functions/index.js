@@ -2875,7 +2875,21 @@ exports.ewSheetSync = onRequest(
 // Nseraf's idea (triage report 317), asked for by Ames 2026-11-04. A function of
 // its own, like ewAccessRequest and ewHunt: deploying it never replaces the
 // shared ewSecureWrite. Every rule is in mentors.js (tests: mentors.test.js).
-const EW_MENTOR_CODE_VERSION = "2026-11-05-mentor-practice";
+const EW_MENTOR_CODE_VERSION = "2026-11-05-mentor-texts";
+// The bells' texts as admins changed them (mentors.js TEXTS; Ames 2026-11-05:
+// "add an edit button so Celia can change it"). One Firestore doc per message.
+const mentorTextStore = {
+  all: async () => {
+    const snap = await db.collection("mentor_texts").get();
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); if (v && v.title && v.body) out[d.id] = { title: v.title, body: v.body, by: v.by || "", at: v.at || "" }; });
+    return out;
+  },
+  set: async (key, v) => {
+    const ref = db.collection("mentor_texts").doc(String(key));
+    if (v) await ref.set(v); else await ref.delete();
+  },
+};
 exports.ewMentor = onRequest(
   { region: "us-central1", secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 10 },
   async (req, res) => {
@@ -2901,7 +2915,7 @@ exports.ewMentor = onRequest(
       if (!me) throw ewErr(403, "No Pyr profile.");
       const { mentorAction, restDb } = require("./mentors");
       const key = ewServiceKey.value().trim();
-      const data = await mentorAction(action, args, { db: restDb(sb), me, isAdmin, now: new Date(),
+      const data = await mentorAction(action, args, { db: restDb(sb), me, isAdmin, now: new Date(), texts: mentorTextStore,
         // The apprentice's completion, recorded as saved teams credit a member (team.complete).
         credit: (userId, row) => recordActivity({ rpc: ewRpc(key), who, me: { id: userId }, token, value: row,
           insertLegacy: (r) => sb("edit_log", { method: "POST", body: JSON.stringify(r) }) }) });

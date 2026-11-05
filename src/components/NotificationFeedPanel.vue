@@ -6,6 +6,7 @@ import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore } from '../store';
 import { secureWrite } from '../secure_write';
+import { mentorTextFor, saveMentorText, type MentorText } from '../mentor';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
 import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRecapTitle, yearFromRecapTitle } from '../util/recap_week';
@@ -200,6 +201,33 @@ watch(() => props.visible, (v) => {
 
 const lightboxUrl = ref<string | null>(null);
 const openNotif = ref<any | null>(null);
+// A mentor program bell: admins can change the text every bell of its kind
+// is sent with (Ames 2026-11-05: "add an edit button here so Celia can change it").
+const mentorText = ref<MentorText | null>(null);
+const textEdit = ref<{ title: string; body: string; busy: boolean; error: string } | null>(null);
+const textSaved = ref('');
+watch(openNotif, async n => {
+  mentorText.value = null; textEdit.value = null; textSaved.value = '';
+  if (!n || !backend.isAdmin || n.preview) return;
+  const title = String(n.title || '');
+  try { const t = await mentorTextFor(title); if (openNotif.value === n) mentorText.value = t; } catch { /* not installed, or not an admin */ }
+});
+function startTextEdit() {
+  const t = mentorText.value;
+  if (t) { textEdit.value = { title: t.title, body: t.body, busy: false, error: '' }; textSaved.value = ''; }
+}
+async function saveTextEdit(original = false) {
+  const t = mentorText.value, e = textEdit.value;
+  if (!t || !e) return;
+  e.busy = true; e.error = '';
+  try {
+    const list = await saveMentorText(t.key, original ? t.defaultTitle : e.title, original ? t.defaultBody : e.body);
+    mentorText.value = list.find(x => x.key === t.key) ?? t;
+    textEdit.value = null;
+    textSaved.value = original ? 'Back to the original text. Bells sent from now on use it.' : 'Saved. Bells sent from now on use this text.';
+  } catch (err: any) { e.error = err?.message || 'That was not saved.'; }
+  finally { if (textEdit.value) textEdit.value.busy = false; }
+}
 const confirmDeleteAll = ref(false);
 
 // Admins get the triage loop's alerts (a new suggestion to approve, a report
@@ -1275,6 +1303,28 @@ function padRank(rank: number): string {
                     @click="onDetailBodyClick"
                   ></div>
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
+                  <!-- Admins: the text every bell of this kind is sent with. -->
+                  <div v-if="mentorText" class="nge-notif-textedit">
+                    <template v-if="textEdit">
+                      <div class="nge-notif-textedit-head">Every "{{ mentorText.label }}" bell uses this text</div>
+                      <label class="nge-notif-textedit-label" for="nge-notif-textedit-title">Title</label>
+                      <input id="nge-notif-textedit-title" v-model="textEdit.title" class="nge-notif-textedit-input" maxlength="120" />
+                      <label class="nge-notif-textedit-label" for="nge-notif-textedit-body">Message</label>
+                      <textarea id="nge-notif-textedit-body" v-model="textEdit.body" class="nge-notif-textedit-input" rows="5" maxlength="1500"></textarea>
+                      <p v-if="mentorText.vars.length" class="nge-notif-textedit-hint">Filled in when the bell is sent: <code v-for="v in mentorText.vars" :key="v">{{ '{' + v + '}' }}</code></p>
+                      <p v-if="textEdit.error" class="nge-notif-textedit-err" role="alert">{{ textEdit.error }}</p>
+                      <div class="nge-notif-textedit-actions">
+                        <button v-if="mentorText.edited" class="nge-notif-textedit-btn" :disabled="textEdit.busy" @click="saveTextEdit(true)">Use the original</button>
+                        <button class="nge-notif-textedit-btn" :disabled="textEdit.busy" @click="textEdit = null">Cancel</button>
+                        <button class="nge-notif-textedit-btn nge-notif-textedit-btn--save" :disabled="textEdit.busy || !textEdit.title.trim() || !textEdit.body.trim()" @click="saveTextEdit()">{{ textEdit.busy ? 'Saving…' : 'Save' }}</button>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <button class="nge-notif-textedit-btn" @click="startTextEdit">✎ Edit this message</button>
+                      <span v-if="textSaved" class="nge-notif-textedit-saved" role="status">{{ textSaved }}</span>
+                      <span v-else-if="mentorText.edited && mentorText.editedBy" class="nge-notif-textedit-meta">Last changed by {{ mentorText.editedBy }}</span>
+                    </template>
+                  </div>
                 </template>
                 <!-- A reply the team asked for: one per request, with what a report carries. -->
                 <div v-if="replyAsked" class="nge-notif-reply">
@@ -2094,6 +2144,22 @@ span.nge-notif-reply-part { cursor: default; }
   background: linear-gradient(90deg, rgb(var(--nd-cyan) / 0.55), rgb(var(--nd-accent) / 0.18) 45%, transparent);
 }
 
+.nge-notif-textedit { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgb(var(--nd-cyan) / 0.18); display: flex; flex-direction: column; gap: 6px; }
+.nge-notif-textedit > .nge-notif-textedit-btn { align-self: flex-start; }
+.nge-notif-textedit-head { font-size: 13px; letter-spacing: 0.04em; color: rgb(var(--nd-cyan) / 0.9); }
+.nge-notif-textedit-label { font-size: 12px; color: rgba(220, 230, 245, 0.7); margin-top: 4px; }
+.nge-notif-textedit-input { font: inherit; font-size: 14px; color: #eef4fb; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(160, 200, 255, 0.25); border-radius: 6px; padding: 6px 8px; resize: vertical; width: 100%; box-sizing: border-box; }
+.nge-notif-textedit-input:focus { outline: none; border-color: rgb(var(--nd-cyan) / 0.7); }
+.nge-notif-textedit-hint { margin: 2px 0 0; font-size: 12px; color: rgba(220, 230, 245, 0.65); }
+.nge-notif-textedit-hint code { margin-left: 6px; padding: 1px 5px; border-radius: 4px; background: rgba(160, 200, 255, 0.12); color: #cfe3ff; font-size: 12px; }
+.nge-notif-textedit-err { margin: 2px 0 0; color: #f5d142; font-size: 13px; }
+.nge-notif-textedit-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
+.nge-notif-textedit-btn { font: inherit; font-size: 13px; padding: 4px 11px; border-radius: 6px; border: 1px solid rgba(160, 200, 255, 0.3); background: rgba(255, 255, 255, 0.04); color: #cfe3ff; cursor: pointer; }
+.nge-notif-textedit-btn:hover:not(:disabled) { background: rgba(160, 200, 255, 0.1); }
+.nge-notif-textedit-btn:disabled { opacity: 0.5; cursor: default; }
+.nge-notif-textedit-btn--save { border-color: rgb(var(--nd-cyan) / 0.7); color: rgb(var(--nd-cyan)); }
+.nge-notif-textedit-saved { font-size: 13px; color: rgba(124, 255, 178, 0.9); }
+.nge-notif-textedit-meta { font-size: 12px; color: rgba(220, 230, 245, 0.55); }
 .nge-notif-detail-body {
   font-size: 0.95em;
   color: rgb(var(--nd-dim));

@@ -12,8 +12,20 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useDragBox } from '../util/drag_box';
 import { useProofreadingBackendStore } from '../store';
+import { apprenticeFlag } from '../util/mentor_flag';
 import { inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
   completeForApprentice, startMentor, loadMentor, shortCell, type MentorNote } from '../mentor';
+
+// An apprentice who completes a cell any other way gets this in the middle
+// of the screen, not as small error text (Ames 2026-11-05).
+const blocked = ref(false);
+const onBlocked = () => { blocked.value = true; };
+document.addEventListener('nge:mentor-blocked', onBlocked);
+onBeforeUnmount(() => document.removeEventListener('nge:mentor-blocked', onBlocked));
+function openLibrary() {
+  blocked.value = false;
+  document.dispatchEvent(new CustomEvent('nge:open-cell-library', { detail: { tab: 'mine' } }));
+}
 
 // Start the program's status read once a player is signed in.
 const backend = useProofreadingBackendStore();
@@ -90,6 +102,19 @@ const STATE: Record<string, string> = {
 </script>
 
 <template>
+  <div v-if="blocked" class="nge-mblk" @click.self="blocked = false">
+    <div class="nge-mblk-card" role="alertdialog" aria-labelledby="nge-mblk-title" aria-describedby="nge-mblk-text">
+      <span class="nge-mblk-corner nge-mblk-corner--tl" aria-hidden="true"></span>
+      <span class="nge-mblk-corner nge-mblk-corner--br" aria-hidden="true"></span>
+      <div class="nge-mblk-kicker">Mentor program</div>
+      <h2 id="nge-mblk-title" class="nge-mblk-title">🧭 Your mentor takes a second look first</h2>
+      <p id="nge-mblk-text" class="nge-mblk-text">For your first {{ apprenticeFlag.cellsNeeded }} cells, complete a claimed cell from the Cell Library. It goes to your mentor, who completes it with you or sends suggestions.</p>
+      <div class="nge-mblk-actions">
+        <button class="nge-mblk-btn" @click="blocked = false">OK</button>
+        <button class="nge-mblk-btn nge-mblk-btn--go" @click="openLibrary">Open the Cell Library</button>
+      </div>
+    </div>
+  </div>
   <div v-if="r" ref="boxEl" class="nge-mbx" :class="{ 'nge-mbx--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Mentor program cell">
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : 'Your mentor\'s notes' }}</span>
@@ -136,6 +161,21 @@ const STATE: Record<string, string> = {
 </template>
 
 <style scoped>
+.nge-mblk { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 16px; background: rgba(2, 6, 14, 0.55); backdrop-filter: blur(2px); }
+.nge-mblk-card { position: relative; width: min(460px, 100%); box-sizing: border-box; padding: 18px 20px 16px; border-radius: 12px;
+  background: linear-gradient(180deg, rgba(14, 24, 44, 0.98), rgba(8, 14, 28, 0.98)); border: 1px solid rgba(120, 180, 255, 0.45);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(120, 180, 255, 0.08) inset;
+  font-family: 'Inter', 'Segoe UI', sans-serif; color: #dce6f5; }
+.nge-mblk-corner { position: absolute; width: 12px; height: 12px; border-color: rgba(159, 200, 255, 0.8); border-style: solid; }
+.nge-mblk-corner--tl { top: 6px; left: 6px; border-width: 1px 0 0 1px; }
+.nge-mblk-corner--br { bottom: 6px; right: 6px; border-width: 0 1px 1px 0; }
+.nge-mblk-kicker { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #9fc8ff; }
+.nge-mblk-title { margin: 6px 0 8px; font-size: 19px; font-weight: 600; color: #eef4fb; line-height: 1.3; }
+.nge-mblk-text { margin: 0; font-size: 15px; line-height: 1.5; color: rgba(220, 230, 245, 0.85); }
+.nge-mblk-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.nge-mblk-btn { font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.05); color: #dce6f5; cursor: pointer; }
+.nge-mblk-btn:hover { background: rgba(120, 180, 255, 0.12); }
+.nge-mblk-btn--go { border-color: rgba(120, 180, 255, 0.6); color: #9fc8ff; }
 .nge-mbx {
   position: fixed; right: 16px; top: 64px; z-index: 9000;
   width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; box-sizing: border-box;

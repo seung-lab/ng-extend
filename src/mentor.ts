@@ -331,3 +331,24 @@ export function ago(iso: string | null | undefined): string {
 
 // For tests and for looking around in the console, as window.ngeTeam is.
 (window as any).ngeMentor = { setCellComplete, state: mentorState, inView, loadMentor, loadQueue, sendForSecondLook, openInView, closeView, readNotesLayer, isApprentice };
+
+// ── The bells' texts (admins, Ames 2026-11-05: "an edit button so Celia can change it") ──
+export interface MentorText { key: string; label: string; to: string; vars: string[]; title: string; body: string; defaultTitle: string; defaultBody: string; edited: boolean; editedBy: string | null }
+let textsCache: Promise<MentorText[]> | null = null;
+export function loadMentorTexts(fresh = false): Promise<MentorText[]> {
+  if (fresh || !textsCache) textsCache = call<MentorText[]>('mentor.texts').catch(e => { textsCache = null; throw e; });
+  return textsCache;
+}
+/** A title pattern: the text with each {name} matching anything. */
+const titlePattern = (t: string) => new RegExp('^' + t.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\\?\{(\w+)\\?\}/g, '.+?') + '$');
+/** The program's message a bell was sent from (by its title, as written now
+ *  or originally), or null for any other bell. Admins only. */
+export async function mentorTextFor(title: string): Promise<MentorText | null> {
+  if (!/^(🧭|🎉|🏆)/u.test(title)) return null;
+  const list = await loadMentorTexts();
+  return list.find(t => titlePattern(t.title).test(title) || titlePattern(t.defaultTitle).test(title)) ?? null;
+}
+export async function saveMentorText(key: string, title: string, body: string): Promise<MentorText[]> {
+  await call('mentor.setText', { key, title, body });
+  return loadMentorTexts(true);
+}
