@@ -30,8 +30,15 @@ export const COLOR_FAMILIES: ColorFamily[] = [
   { id: 'pink', label: 'Pinks', swatch: '#ff6fcf', hues: [300, 335] },
 ];
 
-/** IDs this module coloured, so they can be let go again. */
-const given = new Set<string>();
+/** IDs this module coloured, so they can be let go again, after a refresh
+ *  too: the colours are in the saved view (Nseraf, report 375). */
+const GIVEN_KEY = 'nge-family-colors';
+const given = new Set<string>((() => { try { return JSON.parse(localStorage.getItem(GIVEN_KEY) || '[]'); } catch { return []; } })());
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function saveGiven() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; try { localStorage.setItem(GIVEN_KEY, JSON.stringify([...given].slice(-3000))); } catch { /* this visit only */ } }, 1000);
+}
 let seed = 0;
 
 function hash(s: string): number {
@@ -67,6 +74,7 @@ function letGo() {
   const st = colorState();
   if (st) for (const id of given) { try { st.segmentStatedColors.delete(Uint64.parseString(id)); } catch { /* not an ID */ } }
   given.clear();
+  saveGiven();
 }
 /** Colour the cells in view that have no colour of their own yet. */
 function paint() {
@@ -83,6 +91,7 @@ function paint() {
     if (st.segmentStatedColors.get(seg, tmp)) continue;
     st.segmentStatedColors.set(seg.clone(), colorFor(id, families));
     given.add(id);
+    saveGiven();
   }
 }
 

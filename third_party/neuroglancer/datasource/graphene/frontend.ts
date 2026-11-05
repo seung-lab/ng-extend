@@ -1282,6 +1282,13 @@ class GraphConnection extends SegmentationGraphSourceConnection {
       this.layer.displayState.segmentationColorGroupState.value.segmentStatedColors.set(root, color);
       // Remembered, so L (re-colour) can still change it (Nseraf, report 370).
       ((window as any).__ngeKeptColors ??= new Set<string>()).add(root.toString());
+      // Kept across a refresh too: the colour is in the saved view, and L
+      // must still be able to let it go (Nseraf, report 375).
+      try {
+        const saved: string[] = JSON.parse(localStorage.getItem('nge-kept-colors') || '[]');
+        saved.push(root.toString());
+        localStorage.setItem('nge-kept-colors', JSON.stringify(saved.slice(-3000)));
+      } catch { /* this visit only */ }
     } catch { /* colours stay as they were */ }
   }
 
