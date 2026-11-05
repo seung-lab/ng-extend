@@ -16,15 +16,18 @@ const backendStore = useProofreadingBackendStore();
 type Tab = 'day' | 'week' | 'alltime';
 const activeTab    = ref<Tab>('day');
 
-// Metric toggle: ranks by edits (split+merge) or completions (mark_complete).
-// Persists across sessions in localStorage.
-type Metric = 'edits' | 'completions';
+// Metric toggle: ranks by edits (split+merge), completions (mark_complete),
+// or Quests: Cilia Quests submitted on the Retina, as the profile counts them
+// (Ames 2026-11-05). Persists across sessions in localStorage.
+type Metric = 'edits' | 'completions' | 'quests';
 const METRIC_STORAGE_KEY = 'nge-leaderboard-metric';
-const initialMetric = (localStorage.getItem(METRIC_STORAGE_KEY) as Metric) || 'edits';
-const metric = ref<Metric>(initialMetric === 'completions' ? 'completions' : 'edits');
+const initialMetric = (() => { try { return localStorage.getItem(METRIC_STORAGE_KEY); } catch { return null; } })();
+const metric = ref<Metric>(initialMetric === 'completions' || initialMetric === 'quests' ? initialMetric : 'edits');
+const isQuests = computed(() => metric.value === 'quests');
 function setMetric(m: Metric) {
   metric.value = m;
   try { localStorage.setItem(METRIC_STORAGE_KEY, m); } catch {}
+  if (m === 'quests') void backendStore.loadQuestBoard();
 }
 const selectedUser = ref<DemoUser | null>(null);
 const selectedBadgeId = ref<number | null>(null);
@@ -129,8 +132,14 @@ function depart(): Promise<void> {
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
   backendStore.loadLeaderboard();
+  // The Quests board is read only while it is the one shown.
+  if (isQuests.value) void backendStore.loadQuestBoard();
   // Every two minutes: each refresh is a read in every tab with the board open.
-  refreshTimer = setInterval(() => { if (!document.hidden) backendStore.loadLeaderboard(); }, 120_000);
+  refreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (isQuests.value) void backendStore.loadQuestBoard();
+    else backendStore.loadLeaderboard();
+  }, 120_000);
 });
 onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 
@@ -140,6 +149,29 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 // view isn't deployed yet. The DemoUser stats fields are reused as
 // generic time-window slots — the leaderboard's metric/tab selection
 // decides how to interpret them.
+// Quests: the stats slots hold Cilia Quests submitted (24h slot = the current
+// US Eastern day, the sheet's Date column).
+const questUsers = computed<DemoUser[]>(() => backendStore.questBoard.map((u: any) => ({
+  id: u.id,
+  name: u.display_name || 'Anonymous',
+  flag: u.flag || '',
+  bio: '',
+  stats: {
+    editsAllTime: u.quests_alltime ?? 0,
+    mergesAllTime: 0,
+    splitsAllTime: 0,
+    editsThisWeek: u.quests_week ?? 0,
+    mergesThisWeek: 0,
+    splitsThisWeek: 0,
+    editsThisMonth: u.quests_today ?? 0,
+    mergesThisMonth: 0,
+    splitsThisMonth: 0,
+    cellsSubmitted: 0,
+    currentStreak: u.current_streak || 0,
+    longestStreak: 0,
+  },
+})));
+
 const supabaseUsers = computed<DemoUser[]>(() => {
   return backendStore.leaderboard.map((u: any) => {
     const isCompletions = metric.value === 'completions';
@@ -170,14 +202,31 @@ const supabaseUsers = computed<DemoUser[]>(() => {
   });
 });
 
-const metricLabel = computed(() => metric.value === 'completions' ? 'Cells' : 'Edits');
+const metricLabel = computed(() => isQuests.value ? 'Quests' : metric.value === 'completions' ? 'Cells' : 'Edits');
 
 // Only real players, ever. With nothing to show the board says why (below);
 // it used to fill itself with made-up demo players (audit, 2026-10-05).
-const userSource = computed(() => supabaseUsers.value);
+// On Quests, only players with time in the window shown.
+const userSource = computed(() => isQuests.value ? questUsers.value.filter(u => editCountForTab(u) > 0) : supabaseUsers.value);
+
+/** The score cell. Counts up with the rows. */
+function scoreText(user: DemoUser): string {
+  return Math.round(editCountForTab(user) * rollK.value).toLocaleString();
+}
 
 /** Why there are no rows, or a note above the rows; '' when all is well. */
 const boardNote = computed(() => {
+  if (isQuests.value) {
+    const qs = backendStore.questBoardState;
+    if (qs === 'loading' && !questUsers.value.length) return 'Loading the board';
+    if (qs === 'unavailable') return questUsers.value.length
+      ? 'The board could not be refreshed just now. These are the last numbers it read.'
+      : 'The quest sheet could not be read just now. Please try again in a moment.';
+    if (!boardRows.value.length) return activeTab.value === 'alltime'
+      ? 'Nobody has finished a Cilia Quest yet.'
+      : activeTab.value === 'day' ? 'Nobody has finished a Cilia Quest today yet.' : 'Nobody has finished a Cilia Quest this week yet.';
+    return '';
+  }
   const st = backendStore.leaderboardState;
   if (st === 'loading' && !supabaseUsers.value.length) return 'Loading the board';
   if (st === 'unavailable') return supabaseUsers.value.length
@@ -189,10 +238,12 @@ const boardNote = computed(() => {
   return '';
 });
 /** No rows at all on the tab being shown. */
-const boardBlank = computed(() =>
+const boardBlank = computed(() => isQuests.value ? !questUsers.value.length :
   !supabaseUsers.value.length || (backendStore.leaderboardState === 'alltime-only' && activeTab.value !== 'alltime'));
-const readAt = computed(() => backendStore.leaderboardAt
-  ? new Date(backendStore.leaderboardAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+const readAt = computed(() => {
+  const at = isQuests.value ? backendStore.questBoardAt : backendStore.leaderboardAt;
+  return at ? new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+});
 
 // Sort users by the active tab's edit metric.
 //   day → editsThisMonth field (now repurposed to hold edits_24h)
@@ -225,7 +276,8 @@ const boardRows = computed<{ user: DemoUser; rank: number; below: boolean }[]>((
   if (at >= BOARD_SIZE) {
     // The loaded list only holds the top of each ranking, so the true place
     // comes from the server's count of players ahead.
-    const rank = Math.max(backendStore.leaderboardMyRanks[rankingColumn.value] ?? 0, at + 1);
+    // The Quests board holds every player with quest time, so its place is exact.
+    const rank = isQuests.value ? at + 1 : Math.max(backendStore.leaderboardMyRanks[rankingColumn.value] ?? 0, at + 1);
     rows.push({ user: all[at], rank, below: true });
   }
   return rows;
@@ -287,6 +339,9 @@ const earnedExplorationForUser = computed(() => {
 });
 
 function selectUser(user: DemoUser) {
+  // The card shows edits and Achievements; on the Quests board a row opens
+  // the player's profile instead (a sheet name with no player opens nothing).
+  if (isQuests.value) { if (!user.id.startsWith('sheet:')) openFullProfile(user.id); return; }
   selectedUser.value = user;
   selectedBadgeId.value = null;
   // The board's rows carry only what the board draws; the card's all-time
@@ -449,7 +504,8 @@ onUnmounted(() => {
 
         <div class="nge-lb-tabs">
           <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'day' }"
-                  @click="activeTab = 'day'">24h</button>
+                  :title="isQuests ? 'Today, in US Eastern time' : undefined"
+                  @click="activeTab = 'day'">{{ isQuests ? 'Today' : '24h' }}</button>
           <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'week' }"
                   @click="activeTab = 'week'">Week</button>
           <button class="nge-lb-tab" :class="{ 'nge-lb-tab--active': activeTab === 'alltime' }"
@@ -468,7 +524,14 @@ onUnmounted(() => {
             :class="{ 'nge-lb-metric--active': metric === 'completions' }"
             @click="setMetric('completions')"
           >Cells</button>
+          <button
+            class="nge-lb-metric"
+            :class="{ 'nge-lb-metric--active': metric === 'quests' }"
+            title="Cilia Quests finished on the Retina"
+            @click="setMetric('quests')"
+          >Quests</button>
         </div>
+        <div v-if="isQuests" class="nge-lb-quest-lead">Cilia Quests finished on the Retina. Days are US Eastern time.</div>
 
         <div ref="contentEl" class="nge-lb-content">
           <div v-if="boardNote" class="nge-lb-note" role="status">{{ boardNote }}</div>
@@ -478,7 +541,7 @@ onUnmounted(() => {
                 <th class="nge-lb-th nge-lb-th--rank">#</th>
                 <th class="nge-lb-th">Name</th>
                 <th class="nge-lb-th nge-lb-th--num">{{ metricLabel }}</th>
-                <th class="nge-lb-th nge-lb-th--badge">★</th>
+                <th v-if="!isQuests" class="nge-lb-th nge-lb-th--badge">★</th>
               </tr>
             </thead>
             <tbody>
@@ -505,7 +568,7 @@ onUnmounted(() => {
                        class="nge-lb-flag-img"
                        :src="flagImgUrl(userFlag(user))" />
                   <span v-else class="nge-lb-flag-fallback">🌐</span>
-                  <span class="nge-lb-name nge-lb-name--clickable" @click.stop="openFullProfile(user.id)" title="View profile">{{ user.name }}</span>
+                  <span class="nge-lb-name nge-lb-name--clickable" @click.stop="user.id.startsWith('sheet:') ? undefined : openFullProfile(user.id)" title="View profile">{{ user.name }}</span>
                   <span v-if="isYou(user)" class="nge-lb-you-tag">you</span>
                   <span v-if="user.stats.currentStreak > 0" class="nge-lb-streak"
                         :title="`${user.stats.currentStreak}-day streak`">
@@ -513,9 +576,9 @@ onUnmounted(() => {
                   </span>
                 </td>
                 <td class="nge-lb-td nge-lb-td--num">
-                  {{ Math.round(editCountForTab(user) * rollK).toLocaleString() }}
+                  {{ scoreText(user) }}
                 </td>
-                <td class="nge-lb-td nge-lb-td--badge">
+                <td v-if="!isQuests" class="nge-lb-td nge-lb-td--badge">
                   <img
                     v-if="topBadge(user)"
                     :src="getBadgeUrl(topBadge(user)?.imageKey ?? '')"
@@ -1324,6 +1387,10 @@ onUnmounted(() => {
 }
 
 .nge-lb-badge-none { color: #444; }
+.nge-lb-quest-lead {
+  padding: 6px 16px 0; text-align: center; flex-shrink: 0;
+  font-size: 11.5px; color: rgba(160, 195, 230, 0.7);
+}
 .nge-lb-note {
   margin: 14px 16px; padding: 10px 12px; border-radius: 8px;
   font-size: 12.5px; line-height: 1.45; color: #cfe3ff;

@@ -691,7 +691,16 @@ let workingSet = false;
 try { workingSet = sessionStorage.getItem(WORKING_KEY) !== null; } catch {}
 // The other tabs answer within a moment of this one opening.
 if (!workingSet) setTimeout(() => { if (!workingSet && !otherTabCount()) workingTaskId = readWorking(localStorage); }, 1200);
+/** The claim last worked on, once none is: completed or released, it is no
+ *  longer the working claim, but its marks are still on screen. The next
+ *  claim opened counts as leaving it, and starts with fresh layers (Nseraf,
+ *  report 393: completed a cell, claimed a Super Quest, and its annotations
+ *  stayed on the new cell). */
+let lastLeftId: number | null = null;
+const leftClaimId = () => workingTaskId ?? lastLeftId;
 function setWorkingTask(id: number | null) {
+  if (id === null && workingTaskId !== null) lastLeftId = workingTaskId;
+  if (id !== null) lastLeftId = null;
   workingTaskId = id;
   workingSet = true;
   setTimerWorkingClaim(id);
@@ -831,7 +840,7 @@ async function switchToClaim(cell: CellRow) {
   // A quest on screen is saved and its layers put away BEFORE the claim's
   // view is saved or opened, so they never end up in the claim (annkri #145).
   document.dispatchEvent(new CustomEvent('nge:leaving-for-cell', { detail: { segId: cell.segId } }));
-  const leftId = workingTaskId;
+  const leftId = leftClaimId();
   if (!(await leaveCurrentWork(cell.taskId))) return;
   const t = backend.tasks.find(x => x.id === cell.taskId);
   if (!openStartLink(t?.working_link || cell.startLink)) {
@@ -947,7 +956,7 @@ async function claimCellNow(cell: typeof cells.value[0]) {
   // layers (Amy 2026-09-28). Save the claim you were on first.
   const claimed = backend.tasks.find(t => t.segment_id === cell.segId && t.assigned_to === backend.userId
     && (t.status === 'assigned' || t.status === 'in_progress'));
-  const leftId = workingTaskId;
+  const leftId = leftClaimId();
   if (await leaveCurrentWork(claimed?.id ?? null)) {
     // A quest, or a Hunt candidate, has no start view: go to the cell (a candidate's soma, the cell meant:
     // Ames 2026-10-28, report 279).
@@ -1143,6 +1152,16 @@ function linkLooksValid(link: string) { return /^https:\/\/[^\s"'<>]+$/i.test((l
 // again, and went in by mistake (toknow, report 237). A dataset with one
 // ending shows no choice.
 /** True when this cell's dataset asks for an ending and none is picked yet. */
+/** Why Mark complete can't be pressed yet, or '' when it can. */
+function completeBlocked(cell: CellRow): string {
+  const c = completing.value;
+  if (!c) return '';
+  if (c.submitting || c.checking) return 'Working on it…';
+  if (statusMissing(cell)) return 'Pick how the cell ended first (How did it end?).';
+  if (!c.ok) return 'Move the crosshairs inside the finished cell, then press Check again.';
+  if (!linkLooksValid(c.link)) return 'Add a link to your finished cell: press Use my current view.';
+  return '';
+}
 const statusMissing = (cell: CellRow) => completeStatusesFor(cell.dataset).length > 0 && !completing.value?.status;
 
 /** The type list, when the cell is on the dataset on screen and that
@@ -4299,12 +4318,15 @@ const panelStyle = computed(() => ({
             <div class="nge-cl-complete-actions">
               <button
                 class="nge-cl-btn nge-cl-btn--complete"
-                :disabled="completing.submitting || completing.checking || !completing.ok || !linkLooksValid(completing.link) || statusMissing(cell)"
-                :title="statusMissing(cell) ? 'Pick how the cell ended first' : undefined"
+                :disabled="!!completeBlocked(cell)"
+                :title="completeBlocked(cell) || undefined"
                 @click="submitComplete(cell)"
               ><span v-if="completing.submitting" class="nge-cl-spin" />{{ completing.submitting ? (completing.checking ? 'Checking crosshairs…' : 'Saving…') : (isApprentice() ? 'Send for a second look' : 'Mark complete') }}</button>
               <button class="nge-cl-btn" :disabled="completing.submitting" @click="completing = null">Cancel</button>
             </div>
+            <!-- Why Mark complete can't be pressed yet, said plainly (a player
+                 could not tell why it stayed grey, Ames 2026-11-05). -->
+            <div v-if="completeBlocked(cell) && !completing.submitting && !completing.checking" class="nge-cl-complete-msg nge-cl-complete-why">{{ completeBlocked(cell) }}</div>
           </div>
           </template>
           <div v-if="!slimCell && (filteredCells.length > shownCells.length || (serverHasMore && !search.trim()))" class="nge-cl-more">
@@ -4981,6 +5003,7 @@ const panelStyle = computed(() => ({
 .nge-cl-complete-msg { font-size: 0.8em; line-height: 1.4; color: #bcd; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nge-cl-complete-msg--ok { color: #6d9; }
 .nge-cl-complete-msg--bad { color: #f98; }
+.nge-cl-complete-why { color: #ffcf8a; margin-top: 6px; }
 .nge-cl-complete-recheck {
   margin-left: auto;
   background: none;

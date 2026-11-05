@@ -2382,6 +2382,8 @@ const MULTICUT_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:touchtap1x2': {action: 'nge-tap-double'},
   'at:shift?+keyg': {action: 'swap-group'},
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
 });
 
 /** nge: "Keep open after a cut", the preference at the right end of the cut
@@ -2456,9 +2458,14 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
     // sent the same cut twice: the first went through and the second was
     // refused, so a cut that worked showed "Split failed" (Ames 2026-11-04).
     let cutSending = false;
+    let cutSentAt = 0;
     const submitAction = async () => {
-      if (cutSending) return;
+      // A cut the server never answers (it was down, and the request kept
+      // retrying) held this lock until F5, and every cut after it did
+      // nothing (Nseraf, report 376). After 30 s another try may go.
+      if (cutSending && Date.now() - cutSentAt < 30_000) return;
       cutSending = true;
+      cutSentAt = Date.now();
       submitIcon.classList.toggle('disabled', true);
       const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
       const annotationToNanometers =
@@ -2819,6 +2826,8 @@ const MAX_MERGE_COUNT = 20;
 
 const MERGE_SEGMENTS_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
   // EyeWire II: merge places its own points. Without this, ctrl+click ran the
   // viewer's general "annotate" action, which uses whichever layer is
   // selected: entering merge straight from an annotation layer dropped an
@@ -3062,6 +3071,8 @@ class MergeSegmentsTool extends LayerTool<SegmentationUserLayer> {
 
 const FIND_PATH_INPUT_EVENT_MAP = EventActionMap.fromObject({
   'at:shift?+enter': {action: 'submit'},
+  // nge: the number pad's Enter submits too (Nseraf, report 385).
+  'at:shift?+numpadenter': {action: 'submit'},
   'at:shift?+control+mousedown0': {action: 'add-point'},
   'at:touchtap1x1': {action: 'nge-tap-place'},
   'at:touchtap1x2': {action: 'nge-tap-double'},

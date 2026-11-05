@@ -351,7 +351,9 @@ function toggleAutoSubmit() {
  *  left mouse users, and anyone in a tutorial, without a way to submit. */
 function submitTool(kind: 'multicut' | 'merge') {
   const title = kind === 'multicut' ? 'Submit multicut' : 'Submit merge';
-  const icon = document.querySelector(`.neuroglancer-icon[title="${title}"]`) as HTMLElement | null;
+  // The newest bar's button: an older bar left behind had a Submit that did
+  // nothing (report 376).
+  const icon = (Array.from(document.querySelectorAll(`.neuroglancer-icon[title="${title}"]`)).pop() ?? null) as HTMLElement | null;
   if (icon) { icon.click(); return; }
   // Fallback: the tool's own Enter binding.
   const viewer = (window as any)['viewer'];
@@ -519,6 +521,10 @@ function cancelTool() {
         </div>
         <div class="nge-smo-merge-panel-list">
           <div v-for="(pair, i) in store.mergeSegments" :key="i" class="nge-smo-merge-row">
+            <!-- One line that never wraps: the IDs shorten instead, so the ×
+                 stays beside its pair (toknow, report 389: it fell to a line
+                 of its own under every pair). -->
+            <div class="nge-smo-merge-line">
             <span class="nge-smo-merge-num">{{ i + 1 }}.</span>
             <span class="nge-smo-seg-id nge-smo-seg-id--hover nge-smo-seg-id--colored" :style="segChipStyle(pair[0])" title="Hover to light this segment up in the views. Right click to go to it."
                   @mouseenter="hoverSegment(pair[0])" @mouseleave="hoverSegment(null)" @contextmenu.prevent="jumpToSegment(pair[0])">{{ pair[0] }}</span>
@@ -528,6 +534,7 @@ function cancelTool() {
             <span v-if="rowStatus(i)" class="nge-smo-merge-status" :class="'nge-smo-merge-status--' + rowStatus(i)">{{ rowStatus(i) }}</span>
             <button v-if="pair[1]" class="nge-smo-merge-go" @click.stop="goToMergePoint(i)" title="Jump to where these two join" aria-label="Jump to this merge point">↗</button>
             <button v-if="rowRemovable(i)" class="nge-smo-merge-remove" @click.stop="store.removeMergeSegment(i)" title="Remove this merge pair">×</button>
+            </div>
             <!-- why it failed, in the server's words, on a line of its own -->
             <div v-if="rowWhy(i)" class="nge-smo-merge-why">{{ rowWhy(i) }}</div>
           </div>
@@ -1573,9 +1580,12 @@ body.nge-mobile .nge-smo-keep-open { display: none; }
 .nge-smo-merge-remove:hover, .nge-smo-merge-remove:focus-visible { background: rgb(255 90 90 / .14); outline: none; }
 /* A failed merge says why, under its row: the server's own words, wrapped.
    (Not a hover card: the list scrolls, and would clip one.) */
-.nge-smo-merge-row { flex-wrap: wrap; }
+.nge-smo-merge-row { display: block; }
+.nge-smo-merge-line { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; min-width: 0; }
+.nge-smo-merge-line .nge-smo-seg-id { flex: 0 1 auto; min-width: 0; }
+.nge-smo-merge-line > :not(.nge-smo-seg-id) { flex-shrink: 0; }
 .nge-smo-merge-why {
-  flex: 0 0 100%; box-sizing: border-box; margin: 1px 0 3px; padding-left: 23px;
+  box-sizing: border-box; margin: 1px 0 3px; padding-left: 23px;
   font-family: 'Inter', system-ui, sans-serif; font-size: 11px; line-height: 1.35; color: #ffb4b4;
   white-space: normal; overflow-wrap: anywhere; user-select: text;
 }

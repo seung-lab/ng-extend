@@ -4918,6 +4918,71 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
     leaderboardState.value = 'unavailable';
   }
 
+  // ── Quests board: Cilia Quests on the Retina (Ames 2026-11-05) ────────
+  /** One row per annotator on the quest sheet: quests submitted today (US
+   *  Eastern day, the sheet's Date column), in the last 7 days and all time.
+   *  Counted the way the profile counts them (questCounts: cilium annotated
+   *  or no cilium), by the annotator's name. The
+   *  sheet list is the one the Cell Library reads (cached 5 minutes on the
+   *  server); the only database read is the players matching those names. */
+  const questBoard: Ref<any[]> = ref([]);
+  const questBoardState: Ref<'loading' | 'ok' | 'unavailable'> = ref('loading');
+  const questBoardAt: Ref<number> = ref(0);
+  /** M/D/YYYY to a day number, or null. */
+  const sheetDay = (v: string) => {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim());
+    return m ? Date.UTC(+m[3], +m[1] - 1, +m[2]) / 86400000 : null;
+  };
+  async function loadQuestBoard() {
+    try {
+      const { listQuests, nameKey, questCounts } = await import('./annotation_quests');
+      const { rows } = await listQuests();
+      const today = sheetDay(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date()))!;
+      const byKey = new Map<string, { name: string; today: number; week: number; all: number }>();
+      for (const r of rows) {
+        const key = nameKey(r.annotator);
+        if (!questCounts(r.status) || !key) continue;
+        const c = byKey.get(key) ?? { name: r.annotator.trim(), today: 0, week: 0, all: 0 };
+        const d = sheetDay(r.date);
+        c.all++;
+        if (d !== null && d > today - 7 && d <= today) c.week++;
+        if (d === today) c.today++;
+        byKey.set(key, c);
+      }
+      // The players behind the sheet's names, matched like the profile does.
+      const names = [...new Set([...byKey.values()].map(c => c.name))].slice(0, 300);
+      const players = new Map<string, any>();
+      if (names.length) {
+        const COLS = 'id, display_name, username, flag, current_streak';
+        const [byName, byUser] = await Promise.all([
+          supabase.from('users').select(COLS).in('display_name', names),
+          supabase.from('users').select(COLS).in('username', names),
+        ]);
+        for (const u of [...(byName.data ?? []), ...(byUser.data ?? [])] as any[]) {
+          for (const k of [nameKey(u.display_name), nameKey(u.username)]) if (k && byKey.has(k) && !players.has(k)) players.set(k, u);
+        }
+      }
+      questBoard.value = [...byKey.entries()].map(([key, c]) => {
+        const u = players.get(key);
+        return {
+          id: u?.id ?? `sheet:${key}`,
+          display_name: u?.display_name || c.name,
+          flag: u?.flag ?? '',
+          current_streak: u?.current_streak ?? 0,
+          quests_today: c.today,
+          quests_week: c.week,
+          quests_alltime: c.all,
+        };
+      });
+      questBoardState.value = 'ok';
+      questBoardAt.value = Date.now();
+      return;
+    } catch (e: any) {
+      console.warn('[backend] loadQuestBoard error:', e?.message ?? e);
+    }
+    questBoardState.value = 'unavailable';
+  }
+
   // ── Weekly podium counts: how many times a user finished top-3 ──────
   /** Result shape: { gold, silver, bronze } counts for one user.
    *  metric defaults to 'edits' for backward compatibility. Pass 'completions'
@@ -6697,6 +6762,7 @@ export const useProofreadingBackendStore = defineStore('proofreadingBackend', ()
   return {
     userId, userEmail, userName, tasks, activeTaskId, activityFeed, loading, error,
     username, chatHandle, validateUsername, isUsernameAvailable, saveUsername, suggestUsername,
+    questBoard, questBoardState, questBoardAt, loadQuestBoard,
     leaderboard, leaderboardMyRanks, loadDayTotal, loadAccessGrants, leaderboardState, leaderboardAt, loadLeaderboardDetail,
     syncUser, captureCaveUserId, loadTasks, claimTask, releaseTask, completeTask,
     tasksPaged, taskCounts, taskPages, loadingMore, loadMoreTasks, findTasks, loadAvailableAfter,

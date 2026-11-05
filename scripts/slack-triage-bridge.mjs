@@ -1282,6 +1282,7 @@ async function announceDone() {
   const rows = await res.json();
   let announced = 0;
   for (const row of rows) {
+    // Shipped still tags the approvers (Ames 2026-11-04: "Change shipped tag is ok").
     const tags = APPROVERS.map(id => `<@${id}>`).join(' ');
     const note = (row.result_note || '').trim();
     const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ${tags} ✓`);
