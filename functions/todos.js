@@ -14,6 +14,9 @@
  *   todo.save     a new card (no id) or changed fields of one card
  *   todo.comment  adds one comment to a card
  *   todo.delete   removes a card for good
+ *   todo.commentEdit  {id, index, text}: its writer changes a comment; the
+ *                 first wording is kept as `original` (Ames 2026-11-05: "edit
+ *                 ... comments with show original")
  *   todo.follow   follow or stop following a card (Ames 2026-11-02, from
  *                 Asana): followers hear in the bell when it changes
  *
@@ -148,6 +151,21 @@ async function todoAction(action, args, {db, me, byName, tag, follows = noFollow
   if (action === 'todo.list') {
     const [cards, people, followers] = await Promise.all([db.cards(), db.people(), follows.all().catch(() => ({}))]);
     return { cards, people: people.map(p => ({ id: p.id, name: p.name })), followers };
+  }
+  if (action === 'todo.commentEdit') {
+    const id = uuid(args.id, 'card');
+    const body = text(args.text, COMMENT_MAX, 'The comment').trim();
+    if (!body) fail(400, 'Write something first.');
+    const before = await db.card(id);
+    if (!before) fail(404, 'That card is gone. Refresh the board.');
+    const i = Number(args.index);
+    const list = [...(before.comments || [])];
+    const old = Number.isInteger(i) ? list[i] : null;
+    if (!old) fail(404, 'That comment is gone. Refresh the board.');
+    if (old.by !== byName) fail(403, 'Only the person who wrote a comment can change it.');
+    if (old.text === body) return { card: before };
+    list[i] = { ...old, text: body, edited_at: now, original: old.original ?? old.text };
+    return { card: await db.patch(id, { comments: list, updated_at: now }) };
   }
   if (action === 'todo.follow') {
     const id = uuid(args.id, 'card');

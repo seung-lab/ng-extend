@@ -164,3 +164,16 @@ test('a nickname tags too: @Marissa reaches M Sorek', () => {
   assert.deepEqual(tagIdsIn('email marissa@x.org, no tag', people), []);
   assert.deepEqual(tagIdsIn('@Marissanne is someone else', people), []);
 });
+
+test('a comment can be changed by its writer, and its first wording is kept', async () => {
+  const db = memDb();
+  const base = { db, tag: async () => {} };
+  const { card } = await todoAction('todo.save', { fields: { title: 'x' } }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  await todoAction('todo.comment', { id: card.id, text: 'first try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  const r1 = await todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'second try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  assert.equal(r1.card.comments[0].text, 'second try');
+  assert.equal(r1.card.comments[0].original, 'first try');
+  const r2 = await todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'third try' }, { ...base, me: { id: AMES.id }, byName: 'Ames' });
+  assert.equal(r2.card.comments[0].original, 'first try', 'the first wording stays the original');
+  await assert.rejects(todoAction('todo.commentEdit', { id: card.id, index: 0, text: 'mine now' }, { ...base, me: { id: CELIA.id }, byName: 'Celia' }), /Only the person/);
+});
