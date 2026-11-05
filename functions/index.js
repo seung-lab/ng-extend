@@ -2984,7 +2984,7 @@ exports.ewMentor = onRequest(
 //   reply    the player: their updated link and notes, to the sheet.
 //   firebase deploy --only functions:ewQuestReview,functions:ewQuestReviewCheck --project eyewire-ii-e4d52
 const EW_SHEET_IDENTITY = `eyewire-sheet-sync@${process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId || "eyewire-ii-e4d52"}.iam.gserviceaccount.com`;
-const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.credential.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
+const ewSheetsApi = () => { const {sheetsApi} = require("./sheet-sync"); const cred = admin.applicationDefault(); return (path, init) => sheetsApi(cred, path, init); };
 exports.ewQuestReview = onRequest(
   { region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], cors: EW_ORIGINS, invoker: "public", maxInstances: 2, concurrency: 1, timeoutSeconds: 120 },
   async (req, res) => {
@@ -3020,12 +3020,13 @@ exports.ewQuestReview = onRequest(
     }
   }
 );
-// Twice a day (Celia: "once or twice a day"), 8 in the morning and 4 in the
-// afternoon Eastern: one read of the Review status column, and the waiting
-// rows' own cells only when there are any.
+// Celia asked for once or twice a day: 8 in the morning and 4 in the
+// afternoon Eastern, "0 8,16 * * *". Every 5 minutes while Celia tests it
+// (Ames 2026-11-05); put the twice a day schedule back after. Each run is one
+// read of the Review status column, plus the waiting rows' own cells.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 exports.ewQuestReviewCheck = onSchedule(
-  { schedule: "0 8,16 * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
+  { schedule: "*/5 * * * *", timeZone: "America/New_York", region: "us-central1", serviceAccount: EW_SHEET_IDENTITY, secrets: [ewServiceKey], timeoutSeconds: 300, retryCount: 0 },
   async () => {
     const out = await require("./quest-review").check({ api: ewSheetsApi(), sb: ewSb(ewServiceKey.value().trim()) });
     console.info("[ewQuestReviewCheck]", JSON.stringify({ checked: out.checked, results: out.results.map(r => ({ row: r.row, index: r.index, sent: r.sent, why: r.why })) }));

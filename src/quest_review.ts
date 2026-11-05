@@ -18,17 +18,21 @@ export const reviewLinkIn = (body: string | null | undefined) => (String(body ||
 
 export interface ReviewState { status: string; accepted: string; playerLink: string; playerNotes: string; reviewer: string; index: string }
 
-async function call<T>(action: string, body: Record<string, unknown>): Promise<T> {
+const call = async <T>(action: string, body: Record<string, unknown>): Promise<T> => (await post({ ...body, action })).data as T;
+async function post(body: Record<string, unknown>): Promise<any> {
   const token = caveToken();
   if (!token) throw new Error('Sign in to Pyr first.');
   const res = await fetch((window as any).__NGE_QUEST_REVIEW_URL || functionUrl('ewQuestReview'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
-    body: JSON.stringify({ ...body, action, token }),
+    body: JSON.stringify({ ...body, token }),
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(out.error || 'The review sheet could not be reached.');
-  return out.data as T;
+  return out;
 }
-export const getReview = (segmentId: string) => call<ReviewState>('get', { segmentId });
+export interface CheckResult { checked: number; results: { row: number; index: string; annotator: string; sent: boolean; why?: string }[] }
+/** Admins: send every review marked "Send Review" now, without waiting for the timer. */
+export const sendWaitingReviews = () => post({ action: 'check' }) as Promise<CheckResult>;
+export const getReview =(segmentId: string) => call<ReviewState>('get', { segmentId });
 export const replyToReview = (segmentId: string, link: string, notes: string) =>
   call<{ status: string; playerLink: string; playerNotes: string }>('reply', { segmentId, link, notes });
