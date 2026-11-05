@@ -15,6 +15,7 @@ import { ref, shallowRef, computed, nextTick, onMounted, onUnmounted, watch } fr
 import { secureWrite } from '../secure_write';
 import { secureUpload } from '../secure_upload';
 import { renderSafeMarkdown } from '../util/safe_markdown';
+import { htmlToMarkdown } from '../util/html_to_markdown';
 import { useProofreadingBackendStore } from '../store';
 import { vAutogrow } from '../util/autogrow';
 import imgNurroHome from '../images/nurro-at-home600.png';
@@ -967,6 +968,61 @@ function takeLines(box: TextBox): string[] {
   box.set((v.slice(0, start) + v.slice(end + 1)).replace(/\n{3,}/g, '\n\n').replace(/\s+$/, ''));
   return items;
 }
+// ── The notes editor on an open card: a page you write on, like a document.
+// It shows formatting as you type; what is kept is the same Markdown as before
+// (htmlToMarkdown), so the card, the AI connector and old notes all still read it.
+const richEl = ref<HTMLElement | null>(null);
+watch(notesEditing, on => {
+  if (!on) return;
+  void nextTick(() => {
+    const el = richEl.value;
+    if (!el) return;
+    el.innerHTML = editNotes.value ? renderSafeMarkdown(editNotes.value, true) : '';
+    el.focus();
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+    const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r);
+  });
+});
+function syncRich() { if (richEl.value) editNotes.value = htmlToMarkdown(richEl.value.innerHTML).replace(/\n{3,}/g, '\n\n').trim(); }
+function richCmd(cmd: string) { richEl.value?.focus(); document.execCommand(cmd); syncRich(); }
+/** "- " or "* " starts a bulleted list, "1. " a numbered one, as in a document. */
+function onRichInput() {
+  const sel = window.getSelection();
+  const node = sel?.anchorNode;
+  if (node && node.nodeType === Node.TEXT_NODE && sel!.anchorOffset <= 3) {
+    const t = (node as Text).data.replace(/\u00a0/g, ' ');
+    const m = t.match(/^([-*•]|1[.)]) /);
+    const inList = !!(node.parentElement && node.parentElement.closest('li'));
+    if (m && !inList && sel!.anchorOffset === m[0].length) {
+      (node as Text).data = t.slice(m[0].length);
+      document.execCommand(m[1].startsWith('1') ? 'insertOrderedList' : 'insertUnorderedList');
+    }
+  }
+  syncRich();
+}
+function onRichKey(e: KeyboardEvent) {
+  e.stopPropagation();   // the game's keys stay out of the notes
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (openCard.value) { void saveNotes(openCard.value); notesEditing.value = false; } }
+}
+/** Pasted text keeps its bold, lists and links, and nothing else (safe). Images go on the card. */
+function onRichPaste(e: ClipboardEvent, c: Card) {
+  if (imageFiles(e).length) return onNotesPaste(e, c);
+  const html = e.clipboardData?.getData('text/html');
+  const text = e.clipboardData?.getData('text/plain') || '';
+  e.preventDefault();
+  if (html) document.execCommand('insertHTML', false, renderSafeMarkdown(htmlToMarkdown(html), true));
+  else document.execCommand('insertText', false, text);
+  syncRich();
+}
+/** The selected lines leave the notes and become checklist items. */
+async function richToChecklist(c: Card) {
+  const sel = window.getSelection();
+  const items = (sel?.toString() || '').split(/\n+/).map(l => l.replace(LIST_MARK, '').trim()).filter(Boolean);
+  if (!items.length) { error.value = 'Select the lines that should become checklist items.'; return; }
+  document.execCommand('delete');
+  syncRich();
+  await save(c, { notes: editNotes.value, checklist: [...c.checklist, ...items.map(text => ({ text, done: false }))] }, { tagIds: tagsIn(items.join(' ')) });
+}
 const draftNotesEl = ref<HTMLTextAreaElement | null>(null);
 const cardNotesEl = ref<HTMLTextAreaElement | null>(null);
 // The add form sits inside the lists' v-for, where a plain ref becomes a list.
@@ -1408,15 +1464,17 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           <button v-if="!notesEditing && openCard.notes" type="button" class="nge-todo-mini" @click="notesEditing = true">✎ Edit</button></div>
         <template v-if="notesEditing">
           <div class="nge-todo-fmtbar" role="toolbar" aria-label="Formatting">
-            <button type="button" title="Bold" @click="fmtBold(cardBox)"><b>B</b></button>
-            <button type="button" title="Bulleted list" @click="fmtList(cardBox, false)">• Bullets</button>
-            <button type="button" title="Numbered list" @click="fmtList(cardBox, true)">1. Numbers</button>
-            <button type="button" title="Select some lines, then click: they become checklist items" @click="cardToChecklist(openCard)">☑ Checklist</button>
+            <button type="button" title="Bold (Ctrl+B)" @mousedown.prevent @click="richCmd('bold')"><b>B</b></button>
+            <button type="button" title="Italic (Ctrl+I)" @mousedown.prevent @click="richCmd('italic')"><i>I</i></button>
+            <button type="button" title="Bulleted list (or type - and a space)" @mousedown.prevent @click="richCmd('insertUnorderedList')">• Bullets</button>
+            <button type="button" title="Numbered list (or type 1. and a space)" @mousedown.prevent @click="richCmd('insertOrderedList')">1. Numbers</button>
+            <button type="button" title="Select some lines, then click: they become checklist items" @mousedown.prevent @click="richToChecklist(openCard)">☑ Checklist</button>
             <button type="button" title="Add an image. You can also paste or drop one into the notes." @click="pickImages(openCard)">🖼 Image</button>
           </div>
-          <textarea v-autogrow ref="cardNotesEl" v-model="editNotes" class="nge-todo-input" rows="7" maxlength="8000" placeholder="Type @ to tag someone. Select lines and click Checklist to turn them into items." aria-label="Notes"
-                    @input="onMentionInput($event, v => editNotes = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
-                    data-nge-notes-paste @paste="onNotesPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></textarea>
+          <div ref="richEl" class="nge-todo-input nge-todo-rich nge-todo-md" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Notes"
+               data-placeholder="Write here. Type @ and a name to tag someone. Select lines and click Checklist to turn them into items."
+               @input="onRichInput" @keydown="onRichKey" @keyup.stop @keypress.stop
+               data-nge-notes-paste @paste="onRichPaste($event, openCard)" @dragover.prevent @drop="onNotesDrop($event, openCard)"></div>
           <div class="nge-todo-row">
             <button class="nge-todo-btn nge-todo-btn--primary" @click="saveNotes(openCard); notesEditing = false">Save notes</button>
             <button class="nge-todo-btn" @click="editNotes = openCard.notes; notesEditing = false">Cancel</button>
@@ -1584,6 +1642,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-helper-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 8px; border-radius: 12px; font-size: 12.5px; font-weight: 600;
   border: 1px solid var(--pc); color: var(--text); background: color-mix(in srgb, var(--pc) 14%, transparent); }
 .nge-todo-avatar--helper { margin-left: -6px; box-shadow: 0 0 0 2px var(--card); }
+.nge-todo-rich { min-height: 140px; max-height: 60vh; overflow-y: auto; padding: 10px 12px; line-height: 1.55; font-size: 14px; cursor: text; outline: none; white-space: normal; }
+.nge-todo-rich:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.18); }
+.nge-todo-rich:empty::before { content: attr(data-placeholder); color: var(--dim); pointer-events: none; }
+.nge-todo-rich p { margin: 0 0 8px; }
+.nge-todo-rich ul, .nge-todo-rich ol { margin: 0 0 8px; padding-left: 22px; }
 .nge-todo-item-edit { flex: 1 1 auto; min-width: 0; padding: 2px 6px; font-size: inherit; }
 .nge-todo-linkish { background: none; border: none; padding: 0; margin-left: 4px; color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; }
 .nge-todo-linkish:hover { text-decoration: underline; }
