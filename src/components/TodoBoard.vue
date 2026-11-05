@@ -231,6 +231,53 @@ function cheer(c: Card) {
   cheerTimer = window.setTimeout(() => { nurroCheer.value = ''; }, 3500);
 }
 
+// ── Resizable cards (Ames 2026-11-04: "drag to resize vertical and horizontal
+// the individual cards within their sections", "then default to that size when
+// I click to open"). The corner handle sets a card's width and height; narrow
+// cards sit side by side in their list. Kept in this browser, per card; a
+// double click on the corner puts it back. An opened card opens that wide. ──
+const SIZE_KEY = 'nge-todo-card-sizes';
+const cardSizes = ref<Record<string, { w: number; h: number }>>((() => {
+  try { return JSON.parse(localStorage.getItem(SIZE_KEY) || '{}') || {}; } catch { return {}; }
+})());
+const saveSizes = () => { try { localStorage.setItem(SIZE_KEY, JSON.stringify(cardSizes.value)); } catch { /* storage blocked */ } };
+const resizingId = ref<string | null>(null);
+function cardStyle(c: Card) {
+  const z = cardSizes.value[c.id];
+  return z ? { width: z.w + 'px', height: z.h + 'px', overflow: 'hidden' } : {};
+}
+function startResize(e: PointerEvent, c: Card) {
+  e.preventDefault(); e.stopPropagation();
+  const card = (e.currentTarget as HTMLElement).closest('.nge-todo-card') as HTMLElement | null;
+  const list = card?.parentElement;
+  if (!card || !list) return;
+  const box = card.getBoundingClientRect();
+  const room = list.clientWidth - 16;
+  const x0 = e.clientX, y0 = e.clientY;
+  resizingId.value = c.id;
+  const move = (ev: PointerEvent) => {
+    const w = Math.round(Math.min(room, Math.max(170, box.width + ev.clientX - x0)));
+    const h = Math.round(Math.max(64, box.height + ev.clientY - y0));
+    cardSizes.value = { ...cardSizes.value, [c.id]: { w, h } };
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    saveSizes();
+    setTimeout(() => { resizingId.value = null; }, 0);   // the click after a drag does not open the card
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+function resetSize(c: Card) {
+  const next = { ...cardSizes.value };
+  delete next[c.id];
+  cardSizes.value = next;
+  saveSizes();
+}
+/** The open card is as wide as its card was made, never narrower than reads well. */
+const openWidth = (c: Card) => { const z = cardSizes.value[c.id]; return z ? { maxWidth: Math.max(520, z.w) + 'px' } : {}; };
+
 // ── Done, with pomp and circumstance (Ames 2026-11-02) ──
 // "✓ Done" on a card's face: the card shines gold, a burst of confetti flies
 // out of it, then it moves to Done and Nurro cheers.
@@ -1066,10 +1113,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                 <button type="button" class="nge-todo-mini" @click="linkDraft = null">Cancel</button>
               </div>
               <div class="nge-todo-row">
-                <span class="nge-todo-sizepick" role="radiogroup" aria-label="Size">
-                  <button v-for="s in SIZES" :key="s" type="button" role="radio" class="nge-todo-size" :class="{ 'nge-todo-size--on': draft.size === s }"
-                          :aria-checked="draft.size === s ? 'true' : 'false'" :title="SIZE_WORDS[s]" @click="draft.size = draft.size === s ? null : s">{{ s }}</button>
-                </span>
                 <select class="nge-todo-select" :value="draft.owner_id" aria-label="Owner" @change="onDraftOwner($event)">
                   <option value="">Owner (optional)</option>
                   <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
@@ -1084,18 +1127,17 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
             </form>
           </div>
 
-          <article v-for="c in col.rows" :key="c.id" class="nge-todo-card" draggable="true"
+          <article v-for="c in col.rows" :key="c.id" class="nge-todo-card" :draggable="resizingId !== c.id" :style="cardStyle(c)"
                    :class="{ 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id, 'nge-todo-card--won': winning === c.id,
                              'nge-todo-card--drop-above': dropAt?.id === c.id && !dropAt.after, 'nge-todo-card--drop-below': dropAt?.id === c.id && dropAt.after }"
-                   tabindex="0" @click="openUp(c)" @keydown.enter="openUp(c)"
+                   tabindex="0" @click="resizingId || openUp(c)" @keydown.enter="openUp(c)"
                    @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c)">
             <div class="nge-todo-card-tools" @click.stop>
               <button type="button" class="nge-todo-mini" title="Edit" aria-label="Edit" @click="editCard(c)">✎</button>
               <button type="button" class="nge-todo-mini" title="Delete" aria-label="Delete" @click="deleteCard(c)">🗑</button>
             </div>
-            <div v-if="c.list !== 'done'" class="nge-todo-card-done" @click.stop>
-              <button type="button" class="nge-todo-done-btn" title="Move to Done" @click="finish(c, $event)">✓ Done</button>
-            </div>
+            <span class="nge-todo-card-resize" title="Drag to resize this card. Double click to put it back." aria-hidden="true"
+                  @pointerdown="startResize($event, c)" @click.stop @dblclick.stop="resetSize(c)" @dragstart.prevent></span>
             <img v-if="(c.images || []).length" class="nge-todo-card-cover" :src="c.images[0]" alt="" loading="lazy" />
             <div class="nge-todo-card-title">{{ c.title }}</div>
             <div v-if="isLive(c) || buildBadges(c).length" class="nge-todo-badges" @click.stop>
@@ -1116,9 +1158,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <span v-if="(c.images || []).length" class="nge-todo-chip" title="Images">🖼 {{ c.images.length }}</span>
               <span v-if="c.comments.length" class="nge-todo-chip" title="Comments">💬 {{ c.comments.length }}</span>
               <span v-if="c.triage_id" class="nge-todo-chip" title="Made from a player report">{{ reportLabel(c.triage_id) }}</span>
+            </div>
+            <div class="nge-todo-card-foot">
+              <span class="nge-todo-card-by">{{ c.owner_id ? nameOf(c.owner_id) : (c.created_by || '') }}<template v-if="c.updated_at"> · {{ ago(c.updated_at) }}</template></span>
+              <button v-if="c.list !== 'done'" type="button" class="nge-todo-done-btn" title="Move to Done" @click.stop="finish(c, $event)">✓ Done</button>
               <span v-if="c.owner_id" class="nge-todo-avatar" :style="{ background: colorOf(c.owner_id) }" :title="'Owner: ' + nameOf(c.owner_id)">{{ initialOf(c.owner_id) }}</span>
             </div>
-            <div class="nge-todo-card-by">{{ c.owner_id ? nameOf(c.owner_id) : (c.created_by || '') }}<template v-if="c.updated_at"> · {{ ago(c.updated_at) }}</template></div>
             <div v-if="waitingOn(c).length" class="nge-todo-waiting">Waiting on {{ waitingOn(c).map(p => firstName(p.name)).join(', ') }}</div>
           </article>
           <div v-if="dropAt?.list === col.key && !dropAt.id" class="nge-todo-drop-end"></div>
@@ -1190,7 +1235,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </section>
       </nav>
       <div v-if="openCard" class="nge-todo-focus">
-      <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card">
+      <aside class="nge-todo-panel nge-todo-panel--focus" :key="openCard.id" aria-label="Card" :style="openWidth(openCard)">
         <div class="nge-todo-panel-top">
           <button type="button" class="nge-todo-btn" title="Back to the board (Esc)" @click="openId = null">← Board</button>
           <button type="button" class="nge-todo-btn nge-todo-cardlink" :title="cardLink(openCard)" @click="copyCardLink(openCard)">{{ linkCopied === openCard.id ? '✓ Link copied' : '🔗 Copy link to this card' }}</button>
@@ -1207,12 +1252,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         <a v-if="openCard.triage_id" class="nge-todo-link" :href="reportHref(openCard.triage_id)" target="_blank" rel="noopener">{{ reportLabel(openCard.triage_id) }}: open it on the triage board ↗</a>
 
         <div class="nge-todo-field">
-          <span class="nge-todo-label">Size</span>
-          <span class="nge-todo-sizepick" role="radiogroup" aria-label="Size">
-            <button v-for="s in SIZES" :key="s" type="button" role="radio" class="nge-todo-size" :class="{ 'nge-todo-size--on': openCard.size === s }"
-                    :aria-checked="openCard.size === s ? 'true' : 'false'" :title="SIZE_WORDS[s]"
-                    @click="save(openCard, { size: openCard.size === s ? null : s })">{{ s }}</button>
-          </span>
           <span class="nge-todo-label">Owner</span>
           <select class="nge-todo-select" :value="openCard.owner_id || ''" aria-label="Owner"
                   @change="onOwnerChange(openCard, $event)">
@@ -1393,6 +1432,17 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-mytask-text { flex: 1; }
 .nge-todo-mytask-text small { color: var(--dim); margin-left: 4px; }
 .nge-todo-mytask-due { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.nge-todo-list { display: flex; flex-wrap: wrap; align-content: flex-start; column-gap: 8px; }
+.nge-todo-list > * { flex: 0 0 100%; min-width: 0; }
+.nge-todo-list > .nge-todo-card { box-sizing: border-box; }
+.nge-todo-list > .nge-todo-card[style*="width"] { flex: 0 0 auto; }
+.nge-todo-card-resize { position: absolute; right: 2px; bottom: 2px; width: 14px; height: 14px; cursor: nwse-resize; opacity: 0; transition: opacity 0.15s; touch-action: none;
+  background: linear-gradient(135deg, transparent 0 45%, var(--dim) 45% 52%, transparent 52% 65%, var(--dim) 65% 72%, transparent 72%); border-radius: 0 0 6px 0; }
+.nge-todo-card:hover .nge-todo-card-resize { opacity: 0.8; }
+.nge-todo-card-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 22px; }
+.nge-todo-card-foot .nge-todo-card-by { margin: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nge-todo-card-foot .nge-todo-avatar { margin-left: 0; flex: 0 0 auto; }
+.nge-todo-card-foot .nge-todo-done-btn { flex: 0 0 auto; }
 .nge-todo-card-status { font-size: 12px; color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 .nge-todo-links { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .nge-todo-linkchip {
