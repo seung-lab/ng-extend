@@ -219,6 +219,30 @@ test('who may see what', async () => {
   await assert.rejects(call(2, 'mentor.addMentor', {username: 'second'}), /Admins only/);
 });
 
+test('an admin can be their own apprentice to test alone: no one else is rung, no Mentor Achievement to themself', async () => {
+  const {db, credited, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'ames'});
+  assert.equal((await admin('mentor.status')).apprentice.status, 'active');
+  db._state.notes.length = 0;
+  const {review} = await call(1, 'mentor.send', {taskId: 1, dataset: 'pinky100', rootId: '901'}, {admin: true});
+  assert.deepEqual(db._state.notes, [], 'a real mentor is not rung by an admin test');
+  // A player apprentice still cannot take their own cell.
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const own = (await send(call, 4, 2)).review;
+  await assert.rejects(call(4, 'mentor.claim', {reviewId: own.id}), /Mentors only|not you/);
+  // The admin takes their own and goes through all five.
+  await admin('mentor.claim', {reviewId: review.id});
+  await admin('mentor.complete', {reviewId: review.id});
+  for (let i = 3; i <= CELLS_NEEDED + 1; i++) {
+    const r = (await call(1, 'mentor.send', {taskId: 10 + i, dataset: 'pinky100', rootId: String(900 + i)}, {admin: true})).review;
+    assert.equal(r.state, 'looking', 'straight back to themself as mentor');
+    await admin('mentor.complete', {reviewId: r.id});
+  }
+  assert.equal(credited.filter(c => c.userId === U(1)).length, CELLS_NEEDED);
+  assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Apprentice', U(1)]]);
+});
+
 test('copy has no dashes and says Achievement, never badge', () => {
   const src = require('fs').readFileSync(require.resolve('./mentors'), 'utf8');
   const strings = src.match(/(['`])(?:(?!\1)[^\\\n]|\\.)*\1/g).filter(s => / /.test(s) && /^['`][A-Z🧭🎉🏆]/u.test(s));

@@ -156,8 +156,9 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (r.mentor_id) {
         await db.notify(r.mentor_id, again ? `🧭 ${who} sent a cell back to you` : `🧭 ${who} sent you a cell`,
           `${who} sent cell ${cellName(r)} for a second look. Open Cell Library, Mentoring.`, meId);
-      } else if (!mine.length) {
+      } else if (!mine.length && !isAdmin) {
         // A new apprentice's first cell: one bell to each mentor with room. Never one per cell.
+        // An admin apprentice is a test (Ames 2026-11-04: no test players yet): nobody is rung.
         for (const m of await db.activeMentors()) {
           if (m.user_id === meId) continue;
           if ((await db.apprenticesOf(m.user_id)).filter(x => x.status === 'active').length >= MAX_APPRENTICES) continue;
@@ -195,7 +196,8 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
     case 'mentor.claim': {
       needReviewer();
       const r = await loadReview(args.reviewId);
-      if (r.apprentice_id === meId) fail(409, 'A mentor looks at your cell, not you.');
+      // An admin may take their own cell, to try both sides alone (Ames 2026-11-04).
+      if (r.apprentice_id === meId && !isAdmin) fail(409, 'A mentor looks at your cell, not you.');
       if (r.state === 'complete') fail(409, 'That cell is complete already.');
       if (r.state === 'suggestions') fail(409, 'That cell is back with the apprentice.');
       if (r.mentor_id && r.mentor_id !== meId) {
@@ -260,7 +262,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
         await db.notify(r.apprentice_id, '🏆 Apprentice Achievement',
           `You finished the mentor program. From now on your cells count the moment you complete them. Thank you, ${nameOf(me)}, too.`, meId);
-        if (a.mentor_id) {
+        if (a.mentor_id && a.mentor_id !== a.user_id) {
           await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
           await db.notify(a.mentor_id, '🏆 Mentor Achievement', `${a.user_name} finished the mentor program with you.`, meId);
         }
