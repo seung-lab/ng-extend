@@ -135,6 +135,20 @@ function swallow(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', swallow, true));
 onUnmounted(() => window.removeEventListener('keydown', swallow, true));
+
+// Let in while waiting (Ames 2026-11-05: "does it send them an email?"): a
+// player who asked from inside Pyr and is still on this screen hears at once.
+// Once a minute while the screen is up and the tab in front, ask again; let
+// in, it says so and opens the game.
+const letIn = ref(false);
+const waitCheck = window.setInterval(async () => {
+  if (!show.value || !requested.value || letIn.value || document.visibilityState !== 'visible') return;
+  try {
+    const s = await secureWrite<{ invited?: boolean }>('access.betaStatus');
+    if (s?.invited) { letIn.value = true; setTimeout(() => location.reload(), 2500); }
+  } catch { /* the next minute asks again */ }
+}, 60 * 1000);
+onUnmounted(() => window.clearInterval(waitCheck));
 </script>
 
 <template>
@@ -182,6 +196,13 @@ onUnmounted(() => window.removeEventListener('keydown', swallow, true));
           <button class="nge-beta-btn" :disabled="sending" @click="request">{{ sending ? 'Sending...' : 'Request beta access' }}</button>
           <p v-if="error" class="nge-beta-error" role="alert">{{ error }}</p>
         </template>
+        <div v-else-if="letIn" class="nge-beta-text nge-beta-text--done" role="status">
+          <span class="nge-beta-check" aria-hidden="true">🎉</span>
+          <div>
+            <p class="nge-beta-thanks">You're in! Welcome to Pyr. Opening the game for you now...</p>
+            <p class="nge-beta-sign">The Pyr (pronounced "peer") team at Princeton University</p>
+          </div>
+        </div>
         <template v-else>
           <!-- Ames 2026-10-26: the thanks, the sign off, and things to do meanwhile. -->
           <div class="nge-beta-text nge-beta-text--done">
