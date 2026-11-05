@@ -1476,8 +1476,9 @@ const ISSUE_EMOJI = {
 // Slack reads <...> as a mention or a link and & as an entity: a report's
 // own words must never ping a channel or hide a link (Ames 2026-10-24).
 const slackText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-// A new player report no longer tags Amy and Celia (Ames 2026-11-04: "I'm
-// mostly updating them via triage now"); access requests still do.
+// Nothing posted to triage tags Amy and Celia any more (Ames 2026-11-04: "I'm
+// mostly updating them via triage now", then "I thought u were gonna stop
+// tagging me and Celia in triage?"): not reports, not access requests.
 async function postIssueToSlack(token, raw, { mention = false } = {}) {
   const issue = { ...raw, title: raw.title && slackText(raw.title), message: raw.message && slackText(raw.message),
     user: raw.user && slackText(raw.user), dataset: raw.dataset && slackText(raw.dataset), url: raw.url && slackText(raw.url) };
@@ -2289,7 +2290,8 @@ const EW_ACCESS_CODE_VERSION = "2026-10-30-grant-lines-1";
 // Who is told of a new request: a bell to these Pyr usernames, and a post in
 // #access_test (or #citsci_feedback until that channel exists) tagging them.
 const ACCESS_REVIEWER_USERNAMES = ["amy", "celiad", "m_sorek"]; // Ames added herself 2026-10-16
-const ACCESS_SLACK_MENTIONS = ["U02FH1DRC", "U033NHWDE", "U033TSX9A"]; // amy, celia, sorek.m: Marissa stays tagged on access requests (Ames 2026-10-27)
+// Marissa stays tagged on access requests (Ames 2026-10-27); Amy and Celia no longer (Ames 2026-11-04).
+const ACCESS_SLACK_MENTIONS = ["U033TSX9A"]; // sorek.m
 const ACCESS_SLACK_CHANNEL_NAME = "access_test";
 // Eyewire_2_Edit on stroeh-mouse-retina (memory note ng-extend-production-access).
 const ACCESS_CAVE_GROUP = 203;
@@ -2380,7 +2382,7 @@ async function visitorBetaRequest(req, res, args) {
   const sb = ewSb(ewServiceKey.value().trim());
   try {
     const data = await require("./access-request").visitorBeta(args, { sb, wake: wakeBetaBoard,
-      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p, { mention: true }),
+      postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
       notifyAdmins: async ({ title, body }) => {
         const rows = (await adminUserIds(sb)).map((id) => ({ title: String(title).slice(0, 120), body: String(body).slice(0, 1500),
           target_type: "user", target_id: id, send_at: new Date().toISOString(), created_by: null }));
@@ -2441,7 +2443,7 @@ exports.ewAccessRequest = onRequest(
           } catch (e) { return null; }
         },
         // Beta access requests post like any report (Ames 2026-10-24).
-        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p, { mention: true }),
+        postIssue: (p) => postIssueToSlack(slackBotToken.value(), p),
         notifyReviewers: async ({ title, body, image }) => {
           const list = ACCESS_REVIEWER_USERNAMES.map((u) => `"${u}"`).join(",");
           const people = await sb("users?select=id&username=in.(" + encodeURIComponent(list) + ")");
