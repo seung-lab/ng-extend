@@ -406,12 +406,12 @@ function settleWithin(p: Promise<unknown> | unknown, what: string): Promise<void
 onMounted(async () => {
     const startT = performance.now();
     if (props.step.state) {
-        // Advanced Interface: the annotation layers the player filled keep
+        // Advanced Interface and Annotations: the annotation layers the player filled keep
         // their points when a step loads its own view (Ames 2026-10-18:
         // "when I hit next it deleted my annotations!").
         // Its views also leave the Selection panel shut: it sat where the
         // layer side panel goes.
-        const advanced = tutorialStore.activeTutorial === 2;
+        const advanced = tutorialStore.activeTutorial === 2 || tutorialStore.activeTutorial === 14;
         const keep = advanced ? playerAnnotationLayers() : [];
         if (advanced) setStateRewriter(async (st: any) => {
             if (st && typeof st === 'object') st.selection = { ...(st.selection || {}), visible: false };

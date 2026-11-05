@@ -226,6 +226,9 @@ export const useTutorialStore = defineStore("tutorial", () => {
   // exercise at a time, never resumed, so it is not stored.
   const tutorialStep9: Ref<number> = ref(-1);
   const tutorialStep13: Ref<number> = ref(-1);
+  // Tutorial 14, Annotations (src/tutorial-annotations.ts): short, so a
+  // reload starts it again from the menu.
+  const tutorialStep14: Ref<number> = ref(-1);
 
   // Tutorial 10, the CA3 dataset tour (src/tutorial-ca3-tour.ts). Local only.
   const tutorialStep10: Ref<number> = ref(
@@ -251,6 +254,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     if (activeTutorial.value === 8) return tutorialStep8.value;
     if (activeTutorial.value === 9) return tutorialStep9.value;
     if (activeTutorial.value === 13) return tutorialStep13.value;
+    if (activeTutorial.value === 14) return tutorialStep14.value;
     if (activeTutorial.value === 10) return tutorialStep10.value;
     if (activeTutorial.value === 11) return tutorialStep11.value;
     return tutorialStep4.value;
@@ -266,6 +270,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     else if (activeTutorial.value === 8) tutorialStep8.value = val;
     else if (activeTutorial.value === 9) tutorialStep9.value = val;
     else if (activeTutorial.value === 13) tutorialStep13.value = val;
+    else if (activeTutorial.value === 14) tutorialStep14.value = val;
     else if (activeTutorial.value === 10) tutorialStep10.value = val;
     else if (activeTutorial.value === 11) tutorialStep11.value = val;
     else tutorialStep4.value = val;
@@ -404,6 +409,7 @@ export const useTutorialStore = defineStore("tutorial", () => {
     tutorialStep8,
     tutorialStep9,
     tutorialStep13,
+    tutorialStep14,
     tutorialStep10,
     tutorialStep11,
     hydrateFromSupabase,
