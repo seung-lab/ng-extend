@@ -2,6 +2,14 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-05T19:15:00Z",
+      "title": "Tidier Merge Queue",
+      "digest": "minor",
+      "items": [
+        "In the Merge Queue, each pair's remove button sits on the same line as the pair again, so the list is half as tall."
+      ]
+    },
+    {
       "at": "2026-11-05T17:05:00Z",
       "title": "Clearer hints and highlights",
       "items": [
