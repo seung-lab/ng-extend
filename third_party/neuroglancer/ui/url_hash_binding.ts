@@ -87,7 +87,18 @@ export class UrlHashBinding extends RefCounted {
     const {generation} = cacheState;
     if (generation !== this.prevStateGeneration) {
       this.prevStateGeneration = cacheState.generation;
-      let stateString = encodeFragment(JSON.stringify(cacheState.value));
+      const json = JSON.stringify(cacheState.value);
+      // nge: a view too big for the address is not encoded for it (that took
+      // a second on a big MEC view, after every edit: Nseraf, report 383).
+      // Pyr keeps it itself, from this same text (src/util/reload_guard.ts).
+      if (json.length > NGE_MAX_HASH_CHARS) {
+        (window as any).__ngeHashStale = true;
+        (window as any).__ngeStaleJson = json;
+        this.prevStateString = undefined;
+        return;
+      }
+      (window as any).__ngeStaleJson = undefined;
+      let stateString = encodeFragment(json);
       if (stateString !== this.prevStateString) {
         this.prevStateString = stateString;
         // nge: a view too big for the address (Nseraf, report 371: MEC with

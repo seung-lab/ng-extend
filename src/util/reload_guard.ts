@@ -94,7 +94,9 @@ export function startReloadGuard(viewer: any, setAside: string | null, readAddre
     const stale = !!(window as any).__ngeHashStale;
     try {
       if (stale) {
-        const text = JSON.stringify(viewer.state.toJSON());
+        // The text neuroglancer just made for the address, when it has it:
+        // making it again froze the view for a second (report 383).
+        const text = (window as any).__ngeStaleJson || JSON.stringify(viewer.state.toJSON());
         void put(tabId(), text).then(() => { try { sessionStorage.setItem(STALE_KEY, '1'); } catch { /* private mode */ } })
           .catch(e => console.warn('[reload guard] could not keep the view:', e));
       } else if (sessionStorage.getItem(STALE_KEY) === '1') {

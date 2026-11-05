@@ -2458,9 +2458,14 @@ class MulticutSegmentsTool extends LayerTool<SegmentationUserLayer> {
     // sent the same cut twice: the first went through and the second was
     // refused, so a cut that worked showed "Split failed" (Ames 2026-11-04).
     let cutSending = false;
+    let cutSentAt = 0;
     const submitAction = async () => {
-      if (cutSending) return;
+      // A cut the server never answers (it was down, and the request kept
+      // retrying) held this lock until F5, and every cut after it did
+      // nothing (Nseraf, report 376). After 30 s another try may go.
+      if (cutSending && Date.now() - cutSentAt < 30_000) return;
       cutSending = true;
+      cutSentAt = Date.now();
       submitIcon.classList.toggle('disabled', true);
       const loadedSubsource = getGraphLoadedSubsource(this.layer)!;
       const annotationToNanometers =
