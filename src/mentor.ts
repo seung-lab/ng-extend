@@ -67,7 +67,15 @@ export const practiceOffered = () => typeof location !== 'undefined'
   && (/^claude-mentor-poc-dot-/.test(location.hostname) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname));
 /** Shown to mentors, admins and apprentices once the program is installed,
  *  and to everyone on the test site, so they can practice. */
-export const mentoringShown = () => mentorState.installed && (mentorState.mentor || mentorState.admin || !!mentorState.apprentice || practiceOffered());
+/** A completed mentor cell stays in the Mentoring tab for a week (Ames
+ *  2026-11-05: "expire mentored cells after 1 week"); its notes stay on the
+ *  cell's Mentor notes button in My Cells. Open cells always stay. */
+export const KEEP_COMPLETED_MS = 7 * 24 * 3600 * 1000;
+export const stillShown = (r: MentorReview) => r.state !== 'complete' || Date.now() - Date.parse(r.decidedAt || r.sentAt) < KEEP_COMPLETED_MS;
+/** Shown to mentors and admins, to an apprentice, and to a graduate while a
+ *  cell of theirs is still listed; on the test site, to everyone (practice). */
+export const mentoringShown = () => mentorState.installed && (mentorState.mentor || mentorState.admin || isApprentice()
+  || (!!mentorState.apprentice && mentorState.mine.some(stillShown)) || practiceOffered());
 /** Join as a practice apprentice, or leave. */
 export async function joinPractice() { await call('mentor.join'); await loadMentor(); }
 export async function leavePractice() { await call('mentor.leave'); await loadMentor(); }

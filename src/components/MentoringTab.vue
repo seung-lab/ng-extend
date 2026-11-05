@@ -9,7 +9,7 @@
  * anyone: the first mentor to take an apprentice's cell stays with them.
  */
 import { computed, onMounted, ref } from 'vue';
-import { mentorState, loadMentor, loadQueue, handBack, openInView, cannotOpen, shortCell, ago, practiceOffered, joinPractice, leavePractice, type MentorReview } from '../mentor';
+import { stillShown, mentorState, loadMentor, loadQueue, handBack, openInView, cannotOpen, shortCell, ago, practiceOffered, joinPractice, leavePractice, type MentorReview } from '../mentor';
 
 const busy = ref<number | string | null>(null);
 const error = ref('');
@@ -26,8 +26,9 @@ const STATE: Record<MentorReview['state'], string> = {
  *  mentor, then the completed ones, newest first. */
 const ORDER: Record<MentorReview['state'], number> = { suggestions: 0, looking: 1, waiting: 2, complete: 3 };
 const myCells = computed(() => {
-  const sent = [...mentorState.mine].sort((x, y) => Date.parse(x.sentAt) - Date.parse(y.sentAt));
+  const sent = [...mentorState.mine].sort((x, y) => Date.parse(x.sentAt) - Date.parse(y.sentAt) || x.id - y.id);
   return sent.map((r, i) => ({ r, n: i + 1 }))
+    .filter(x => stillShown(x.r))
     .sort((x, y) => ORDER[x.r.state] - ORDER[y.r.state] || Date.parse(y.r.decidedAt || y.r.sentAt) - Date.parse(x.r.decidedAt || x.r.sentAt));
 });
 function pill(r: MentorReview): string {
@@ -86,7 +87,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
     </section>
 
     <!-- The apprentice -->
-    <section v-if="a" class="nge-mt-sec">
+    <section v-if="a && (a.status === 'active' || myCells.length)" class="nge-mt-sec">
       <h4>Your mentor cells <span v-if="a.practice" class="nge-mt-n">practice</span></h4>
       <div class="nge-mt-progress" :aria-label="`${a.cellsDone} of ${a.cellsNeeded} mentor cells done`">
         <span v-for="i in a.cellsNeeded" :key="i" class="nge-mt-dot" :class="{ 'nge-mt-dot--done': i <= a.cellsDone }"></span>
@@ -100,8 +101,8 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
         Practice: nothing you complete is recorded.
         <button class="nge-mt-btn" :disabled="busy === 'practice'" @click="practice(false)">Leave practice</button>
       </p>
-      <p class="nge-mt-how" v-else-if="a.status === 'finished'">You finished the mentor program{{ a.mentorName ? ` with ${a.mentorName}` : '' }}. Your mentor's notes stay here.</p>
-      <p v-if="!mentorState.mine.length" class="nge-mt-empty">No cells sent yet. Claim a cell, proofread it, and press Complete.</p>
+      <p class="nge-mt-how" v-else-if="a.status === 'finished'">You finished the mentor program{{ a.mentorName ? ` with ${a.mentorName}` : '' }}. Completed cells stay here for a week; your mentor's notes stay on each cell in My Cells.</p>
+      <p v-if="!myCells.length" class="nge-mt-empty">{{ mentorState.mine.length ? 'Nothing waiting. Claim your next cell, proofread it, and press Complete.' : 'No cells sent yet. Claim a cell, proofread it, and press Complete.' }}</p>
       <div v-for="{ r, n } in myCells" :key="r.id" class="nge-mt-row" :class="`nge-mt-row--${r.state}`">
         <div class="nge-mt-main">
           <span class="nge-mt-cell">Cell {{ n }}</span>
@@ -119,7 +120,7 @@ const idleLong = (r: MentorReview) => Date.now() - Date.parse(r.touchedAt || r.s
       <section class="nge-mt-sec">
         <h4>Waiting for a mentor <span class="nge-mt-n">{{ q.waiting.length }}</span></h4>
         <p class="nge-mt-how" v-if="mentorState.mentor">
-          Take a look at a cell first. Nothing changes until you press Mentor in its box: then you are that player's mentor for the rest of their {{ mentorState.apprentice?.cellsNeeded || 5 }} cells. A cell left a day goes back here for another mentor.
+          Take a look at a cell first. Nothing changes until you press Become their mentor in its box. Then you look at all of that player's mentor cells, and answer each within a day, or it goes back here for another mentor.
           You are mentoring {{ q.slots.used }} of {{ q.slots.max }}.
         </p>
         <p v-if="!q.waiting.length" class="nge-mt-empty">Nothing is waiting.</p>

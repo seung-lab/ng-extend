@@ -42,7 +42,10 @@ const canAct = computed(() => mentor.value && r.value?.state === 'looking' && r.
 /** Only looking (Ames 2026-11-05): a mentor's cell they have not taken yet.
  *  The button takes it, and with a player's first cell, them as an apprentice. */
 const preview = computed(() => mentor.value && !!r.value && r.value.state !== 'complete' && r.value.state !== 'suggestions' && !canAct.value);
-const takeLabel = computed(() => r.value && r.value.mentorId === backend.userId ? 'Review this cell' : `Mentor ${r.value?.apprenticeName || 'this player'}`);
+// Signing up to mentor someone, said plainly (Ames 2026-11-05: "make it clearer
+// when they are signing up for being a mentor").
+const becoming = computed(() => !!r.value && r.value.mentorId !== backend.userId);
+const takeLabel = computed(() => becoming.value ? `Become ${r.value?.apprenticeName || 'this player'}'s mentor` : 'Review this cell');
 async function takeIt() {
   const cur = inView.value;
   if (!cur) return;
@@ -173,7 +176,16 @@ const STATE: Record<string, string> = {
     </div>
 
     <div v-if="preview" class="nge-mbx-preview">
-      <p class="nge-mbx-meta">You are only looking: nothing changes and nobody is told{{ r.mentorId ? '' : `, and ${r.apprenticeName} is not yours` }} until you press the button.</p>
+      <template v-if="becoming">
+        <p class="nge-mbx-ask">Become {{ r.apprenticeName }}'s mentor?</p>
+        <ul class="nge-mbx-terms">
+          <li>You look at each of their mentor cells, leave notes, and send suggestions or complete it.</li>
+          <li>Answer each cell within a day, or it goes to another mentor.</li>
+          <li>They get a bell saying you are their mentor.</li>
+        </ul>
+        <p class="nge-mbx-meta">You are only looking now. Nothing changes until you press the button.</p>
+      </template>
+      <p v-else class="nge-mbx-meta">{{ r.apprenticeName }} is yours. Press the button to review this cell.</p>
       <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="takeIt">{{ busy ? 'Taking…' : takeLabel }}</button>
     </div>
     <template v-if="canAct">
@@ -253,7 +265,9 @@ const STATE: Record<string, string> = {
 .nge-mbx-btn--suggest { border-color: #f5d142; color: #f5d142; background: rgba(245, 209, 66, 0.1); margin-left: auto; }
 .nge-mbx-btn--done { border-color: #7CFFB2; color: #7CFFB2; background: rgba(124, 255, 178, 0.1); }
 .nge-mbx-err { color: #f5d142; margin: 8px 0 0; }
-.nge-mbx-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.nge-mbx-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.nge-mbx-ask { margin: 0; font-size: 16px; font-weight: 600; color: #eef4fb; }
+.nge-mbx-terms { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.45; color: rgba(220, 230, 245, 0.85); }
 .nge-mbx-said { color: rgba(124, 255, 178, 0.9); margin: 8px 0 0; font-size: 14px; }
 .nge-mbx-next { margin-top: 10px; border-color: rgba(120, 180, 255, 0.6); color: #9fc8ff; background: rgba(120, 180, 255, 0.1); }
 </style>
