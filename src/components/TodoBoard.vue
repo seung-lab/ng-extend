@@ -30,7 +30,7 @@ type Size = 'S' | 'M' | 'L';
 interface Card {
   id: string; title: string; notes: string; list: ListKey; rank: number; size: Size | null;
   owner_id: string | null; checklist: Item[];
-  comments: { by: string; text: string; at: string; edited_at?: string; original?: string }[];
+  comments: { by: string; text: string; at: string; edited_at?: string; original?: string; reply_to?: string }[];
   triage_id: string | null; created_by: string | null; created_at: string; updated_at: string; done_at: string | null;
   // Optional (supabase-admin-todos-fields.sql).
   links?: Link[]; status?: string; due_on?: string | null; images?: string[];
@@ -749,6 +749,48 @@ async function saveCommentEdit(c: Card, i: number) {
 }
 /** A date box opens its calendar on any click (Ames 2026-11-05: "click for a calendar"). */
 function openCalendar(e: Event) { try { (e.target as HTMLInputElement).showPicker?.(); } catch { /* the browser opens it its own way */ } }
+// ── Replies, one level deep (Ames 2026-11-05: "we need replies like nested
+// replies"). A reply names its thread's first comment (reply_to, its time). ──
+type CommentRow = { cm: Card['comments'][number]; i: number; depth: number; rootAt: string; last: boolean };
+function commentRows(c: Card): CommentRow[] {
+  const list = c.comments || [];
+  const roots = new Set(list.filter(x => !x.reply_to).map(x => x.at));
+  const replies = new Map<string, { cm: Card['comments'][number]; i: number }[]>();
+  const out: CommentRow[] = [];
+  list.forEach((cm, i) => {
+    if (cm.reply_to && roots.has(cm.reply_to)) replies.set(cm.reply_to, [...(replies.get(cm.reply_to) || []), { cm, i }]);
+  });
+  list.forEach((cm, i) => {
+    if (cm.reply_to && roots.has(cm.reply_to)) return;   // shown under its thread
+    const kids = replies.get(cm.at) || [];
+    out.push({ cm, i, depth: 0, rootAt: cm.at, last: !kids.length });
+    kids.forEach((k, n) => out.push({ cm: k.cm, i: k.i, depth: 1, rootAt: cm.at, last: n === kids.length - 1 }));
+  });
+  return out;
+}
+const replyTo = ref<string | null>(null);
+const replyText = ref('');
+const replyEl = ref<HTMLTextAreaElement | HTMLTextAreaElement[] | null>(null);
+const threadStarter = (c: Card, at: string) => c.comments.find(x => x.at === at)?.by || 'this';
+function startReply(at: string) {
+  replyTo.value = at; replyText.value = '';
+  void nextTick(() => { const el = Array.isArray(replyEl.value) ? replyEl.value[0] : replyEl.value; el?.focus(); });
+}
+async function sendReply(c: Card) {
+  const t = replyText.value.trim();
+  if (!t || busy.value || !replyTo.value) return;
+  busy.value = true;
+  try {
+    const tagIds = tagsIn(t);
+    const { card } = await secureWrite<any>('todo.comment', { id: c.id, text: t, tagIds, replyTo: replyTo.value });
+    if (card) put(card);
+    replyTo.value = null; replyText.value = '';
+  } catch (e: any) {
+    error.value = e?.message ?? String(e);
+  } finally {
+    busy.value = false;
+  }
+}
 async function sendComment(c: Card) {
   const t = comment.value.trim();
   if (!t || busy.value) return;
@@ -1587,8 +1629,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
         </form>
 
         <div ref="commentsHead" class="nge-todo-label">Comments</div>
-        <div v-for="(cm, i) in openCard.comments" :key="i" class="nge-todo-comment">
+        <div v-for="{ cm, i, depth, rootAt, last } in commentRows(openCard)" :key="i" class="nge-todo-comment" :class="{ 'nge-todo-comment--reply': depth }">
           <div class="nge-todo-comment-by">{{ cm.by }} · {{ ago(cm.at) }}<template v-if="cm.edited_at"> · edited <button type="button" class="nge-todo-linkish" @click="toggleOriginal(openCard.id, i)">{{ shownOriginal[openCard.id + ':' + i] ? 'Hide original' : 'Show original' }}</button></template>
+            <button type="button" class="nge-todo-linkish nge-todo-comment-reply" @click="startReply(rootAt)">↩ Reply</button>
             <button v-if="isMyComment(cm) && commentEdit !== i" type="button" class="nge-todo-linkish nge-todo-comment-edit" @click="commentEdit = i; commentDraft = cm.text">✎ Edit</button></div>
           <template v-if="commentEdit === i">
             <textarea v-autogrow v-model="commentDraft" class="nge-todo-input" rows="2" maxlength="2000" aria-label="Edit comment"
@@ -1600,6 +1643,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
           </template>
           <div v-else class="nge-todo-notes nge-todo-md" v-html="commentHtml(cm.text)"></div>
           <div v-if="cm.original && shownOriginal[openCard.id + ':' + i]" class="nge-todo-original"><span>Original</span> {{ cm.original }}</div>
+          <div v-if="last && replyTo === rootAt" class="nge-todo-reply-box">
+            <textarea v-autogrow ref="replyEl" v-model="replyText" class="nge-todo-input" rows="2" maxlength="2000" aria-label="Reply"
+                      :placeholder="'Reply to ' + threadStarter(openCard, rootAt) + '. Type @ to tag someone.'"
+                      @input="onMentionInput($event, v => replyText = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop
+                      @keydown.ctrl.enter="sendReply(openCard)"></textarea>
+            <div class="nge-todo-row">
+              <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !replyText.trim()" @click="sendReply(openCard)">Reply</button>
+              <button class="nge-todo-btn" @click="replyTo = null">Cancel</button>
+            </div>
+          </div>
         </div>
         <div class="nge-todo-fmtbar" role="toolbar" aria-label="Comment formatting">
           <button type="button" title="Bold" @mousedown.prevent @click="fmtBold(commentBox)"><b>B</b></button>
@@ -1728,6 +1781,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-rich ul, .nge-todo-rich ol { margin: 0 0 8px; padding-left: 22px; }
 .nge-todo-comment-pic { display: block; margin: 6px 0; }
 .nge-todo-comment-pic img { display: block; max-width: min(100%, 520px); max-height: 360px; border-radius: 8px; border: 1px solid var(--line); }
+.nge-todo-comment--reply { margin-left: 26px; border-left-color: rgba(79, 140, 255, 0.45) !important; }
+.nge-todo-comment-reply { opacity: 0; transition: opacity 0.15s; }
+.nge-todo-comment:hover .nge-todo-comment-reply { opacity: 1; }
+.nge-todo-reply-box { margin: 6px 0 4px; }
 .nge-todo-item-edit { flex: 1 1 auto; min-width: 0; padding: 2px 6px; font-size: inherit; }
 .nge-todo-linkish { background: none; border: none; padding: 0; margin-left: 4px; color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; }
 .nge-todo-linkish:hover { text-decoration: underline; }
