@@ -300,6 +300,44 @@ test('graduating celebrates: both Achievement bells match the award pattern of t
   assert.equal(db._state.awards.filter(a => a.name === 'Mentor').length, 1);
 });
 
+test('an Achievement an admin changed in Special Badges is never written over, and its bell carries their picture', async () => {
+  const {restDb, APPRENTICE_BADGE} = require('./mentors');
+  const calls = [];
+  const sb = async (path, opts = {}) => {
+    calls.push(`${opts.method || 'GET'} ${path.split('?')[0]}`);
+    if (path.startsWith('special_badges?slug=eq.')) return [{id: 7, image_url: 'https://art.test/ames.png'}];
+    if (path.startsWith('special_badge_awards')) return [{badge_id: 7}];
+    return [];
+  };
+  const out = await restDb(sb).award(APPRENTICE_BADGE, U(4), 'test');
+  assert.deepEqual(out, {first: true, image: 'https://art.test/ames.png'});
+  assert.ok(!calls.includes('POST special_badges'), `the Achievement was written: ${calls.join(', ')}`);
+  // Missing: made once, then read back.
+  const calls2 = []; let made = false;
+  const sb2 = async (path, opts = {}) => {
+    calls2.push(`${opts.method || 'GET'} ${path.split('?')[0]}`);
+    if (path.startsWith('special_badges?slug=eq.')) return made ? [{id: 8, image_url: APPRENTICE_BADGE.image_url}] : [];
+    if (path.startsWith('special_badges?on_conflict')) { made = true; return []; }
+    return [];
+  };
+  const out2 = await restDb(sb2).award(APPRENTICE_BADGE, U(4), 'test');
+  assert.deepEqual(out2, {first: false, image: APPRENTICE_BADGE.image_url});
+  assert.equal(calls2.filter(c => c === 'POST special_badges').length, 1);
+});
+
+test('the graduation bell carries the picture the Achievement has now', async () => {
+  const {db, call, admin} = setup();
+  db._state.badgeArt = {'mentor-program-apprentice': 'https://art.test/apprentice.png'};
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  for (let i = 1; i <= CELLS_NEEDED; i++) {
+    const r = (await send(call, 4, i)).review;
+    await call(2, 'mentor.claim', {reviewId: r.id});
+    await call(2, 'mentor.complete', {reviewId: r.id});
+  }
+  assert.equal(db._state.notes.find(n => n.title === 'New Achievement: Apprentice').image, 'https://art.test/apprentice.png');
+});
+
 test('copy has no dashes and says Achievement, never badge', () => {
   const src = require('fs').readFileSync(require.resolve('./mentors'), 'utf8');
   const strings = src.match(/(['`])(?:(?!\1)[^\\\n]|\\.)*\1/g).filter(s => / /.test(s) && /^['`][A-Z🧭🎉🏆]/u.test(s));

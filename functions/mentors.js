@@ -340,14 +340,15 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
       await bell(r.apprentice_id, 'complete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed});
       if (finished) {
-        await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
+        // The picture is the Achievement's own (an admin may change it in Special Badges).
+        const won = await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
         // In the form the game celebrates: the unlock card and confetti (Ames 2026-11-05).
-        await bell(r.apprentice_id, 'apprenticeAchievement', {mentor: nameOf(me)}, APPRENTICE_BADGE.image_url);
+        await bell(r.apprentice_id, 'apprenticeAchievement', {mentor: nameOf(me)}, won.image);
         if (a.mentor_id && a.mentor_id !== a.user_id) {
           // Once per mentor: the Achievement and its celebration the first time,
           // a plain bell for every apprentice after that.
-          const first = await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
-          if (first) await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name}, MENTOR_BADGE.image_url);
+          const m = await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
+          if (m.first) await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name}, m.image);
           else await bell(a.mentor_id, 'mentorFinishedAgain', {apprentice: a.user_name});
         }
       }
@@ -534,12 +535,17 @@ function restDb(sb) {
       const rows = await sb(`users?username=ilike.${enc(want)}&select=id,username,display_name&limit=10`);
       return (rows || []).find(u => String(u.username || '').toLowerCase() === want) || null;
     },
+    // {first, image}: whether this player had it before, and the Achievement's
+    // picture. The Achievement is made only if it is missing, so a name or
+    // picture an admin set in Special Badges is never written over.
     award: async (badge, userId, reason) => {
-      const b = await one(upsert('special_badges', 'slug', badge));
-      if (!b) return false;
+      const bySlug = () => one(sb(`special_badges?slug=eq.${enc(badge.slug)}&select=id,image_url,thumbnail_url&limit=1`));
+      let b = await bySlug();
+      if (!b) { await post('special_badges?on_conflict=slug', badge, 'resolution=ignore-duplicates,return=minimal'); b = await bySlug(); }
+      if (!b) return {first: false, image: badge.image_url};
       // Only a row that was not there before comes back.
       const rows = await post('special_badge_awards?on_conflict=badge_id,user_id', {badge_id: b.id, user_id: userId, reason: String(reason).slice(0, 200)}, 'resolution=ignore-duplicates,return=representation');
-      return Array.isArray(rows) && rows.length > 0;
+      return {first: Array.isArray(rows) && rows.length > 0, image: b.image_url || b.thumbnail_url || badge.image_url};
     },
     notify: (userId, title, body, by, image) => post('notifications', {title, body, target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: by || null,
       ...(image ? {image_url: image, thumbnail_url: image} : {})}, 'return=minimal')
@@ -579,7 +585,11 @@ function memDb(users = []) {
     },
     findUser: async id => copy(users.find(u => u.id === id) || null),
     findUserByName: async name => copy(users.find(u => String(u.username).toLowerCase() === name.toLowerCase()) || null),
-    award: async (badge, userId, reason) => { if (s.awards.some(a => a.slug === badge.slug && a.userId === userId)) return false; s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); return true; },
+    award: async (badge, userId, reason) => {
+      const image = (s.badgeArt && s.badgeArt[badge.slug]) || badge.image_url;
+      if (s.awards.some(a => a.slug === badge.slug && a.userId === userId)) return {first: false, image};
+      s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); return {first: true, image};
+    },
     notify: async (userId, title, body, by, image) => { s.notes.push({to: userId, title, body, ...(image ? {image} : {})}); },
   };
 }
