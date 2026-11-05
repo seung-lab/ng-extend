@@ -3,7 +3,7 @@
 // node --test functions/mentors.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {mentorAction, memDb, CELLS_NEEDED, MAX_APPRENTICES, OVERDUE_MS} = require('./mentors');
+const {mentorAction, memDb, memTexts, TEXTS, CELLS_NEEDED, MAX_APPRENTICES, OVERDUE_MS} = require('./mentors');
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const users = [
@@ -241,6 +241,63 @@ test('an admin can be their own apprentice to test alone: no one else is rung, n
   }
   assert.equal(credited.filter(c => c.userId === U(1)).length, CELLS_NEEDED);
   assert.deepEqual(db._state.awards.map(a => [a.name, a.userId]), [['Apprentice', U(1)]]);
+});
+
+test('admins change a bell text; the next bell uses it; names in braces are filled in', async () => {
+  const db = memDb(users), texts = memTexts();
+  const call = (n, action, args = {}, admin = false) => mentorAction(action, args, {db, me: who(n), isAdmin: admin, texts, credit: async () => {}});
+  await assert.rejects(call(2, 'mentor.texts'), /Admins only/);
+  await assert.rejects(call(2, 'mentor.setText', {key: 'welcome', title: 'x', body: 'y'}), /Admins only/);
+  const list = await call(1, 'mentor.texts', {}, true);
+  assert.equal(list.length, Object.keys(TEXTS).length);
+  assert.deepEqual(list.find(t => t.key === 'welcome').vars, ['needed']);
+  await assert.rejects(call(1, 'mentor.setText', {key: 'welcome', title: 'Hi {mentor}', body: 'b'}, true), /cannot use \{mentor\}. It can use \{needed\}/);
+  await assert.rejects(call(1, 'mentor.setText', {key: 'nope', title: 'a', body: 'b'}, true), /Unknown message/);
+  await call(1, 'mentor.setText', {key: 'welcome', title: '🧭 Hello, new proofreader', body: 'Your first {needed} cells come with a guide.'}, true);
+  await call(1, 'mentor.addApprentice', {username: 'newbie'}, true);
+  assert.deepEqual(db._state.notes.at(-1), {to: U(4), title: '🧭 Hello, new proofreader', body: 'Your first 5 cells come with a guide.'});
+  assert.equal((await call(1, 'mentor.texts', {}, true)).find(t => t.key === 'welcome').edited, true);
+  // Back to the original: the change is forgotten.
+  const d = TEXTS.welcome;
+  assert.equal((await call(1, 'mentor.setText', {key: 'welcome', title: d.title, body: d.body}, true)).edited, false);
+  assert.deepEqual(texts._m, {});
+});
+
+test('every default text uses only its own names, and has no dashes or "badge"', () => {
+  for (const [k, d] of Object.entries(TEXTS)) {
+    const used = [...`${d.title} ${d.body}`.matchAll(/\{(\w+)\}/g)].map(m => m[1]);
+    for (const u of used) assert.ok(d.vars.includes(u), `${k} uses {${u}}`);
+    assert.ok(!/ [-–—] |—|–/.test(d.title + d.body), `dash in ${k}`);
+    assert.ok(!/badge/i.test(d.title + d.body), `badge in ${k}`);
+  }
+});
+
+test('graduating celebrates: both Achievement bells match the award pattern of the game, with the picture; a second graduate gives the mentor a plain bell', async () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/util/award_title.ts'), 'utf8');
+  const AWARD = new RegExp(src.match(/const AWARD_TITLE = \/(.+)\/u;/)[1], 'u');
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  const finish = async n => {
+    await admin('mentor.addApprentice', {username: who(n).username});
+    for (let i = 1; i <= CELLS_NEEDED; i++) {
+      const r = (await send(call, n, n * 100 + i)).review;
+      await call(2, 'mentor.claim', {reviewId: r.id});
+      await call(2, 'mentor.complete', {reviewId: r.id});
+    }
+  };
+  await finish(4);
+  const first = db._state.notes.filter(x => AWARD.test(x.title));
+  assert.deepEqual(first.map(x => [x.to, x.title]), [[U(4), 'New Achievement: Apprentice'], [U(2), 'New Achievement: Mentor']]);
+  for (const b of first) {
+    assert.match(b.body, /^You earned the "(Apprentice|Mentor)" Achievement! /, 'the game reads the name from the quotes');
+    assert.ok(b.image, 'with the Achievement picture');
+  }
+  await finish(5);
+  const mentorBells = db._state.notes.filter(x => x.to === U(2) && /finished the mentor program/.test(x.body));
+  assert.equal(mentorBells.length, 2);
+  assert.ok(!AWARD.test(mentorBells[1].title), 'no second unlock card for the same Achievement');
+  assert.equal(mentorBells[1].title, '🧭 second finished the mentor program');
+  assert.equal(db._state.awards.filter(a => a.name === 'Mentor').length, 1);
 });
 
 test('copy has no dashes and says Achievement, never badge', () => {

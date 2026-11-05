@@ -51,6 +51,59 @@ const MENTOR_BADGE = {slug: 'mentor-program-mentor', name: 'Mentor',
   description: 'Saw an apprentice through the mentor program.',
   image_url: ART + 'nurro-trophy.png', thumbnail_url: ART + 'nurro-trophy.png'};
 
+/**
+ * Every bell the program sends, as a template (Ames 2026-11-05: an Edit
+ * button on the bell "so Celia can change it"). {name} is filled in when the
+ * bell is sent; `vars` lists the names a text may use. An admin's change is
+ * kept in `texts` (Firestore, mentor_texts) and used for every bell after it.
+ */
+const TEXTS = {
+  welcome: {label: 'Welcome (added by an admin)', to: 'apprentice', vars: ['needed'],
+    title: '🧭 Welcome to the mentor program',
+    body: 'Your next {needed} cells get a second look from an experienced player. When you complete a cell from the Cell Library, it goes to a mentor, who completes it with you or sends you suggestions. Each one counts for you once your mentor completes it.'},
+  practiceWelcome: {label: 'Welcome (practice)', to: 'apprentice', vars: ['needed'],
+    title: '🧭 Welcome to the mentor program (practice)',
+    body: 'Your next {needed} cells go to a mentor when you complete them. This is practice: nothing you complete is recorded, and each cell is let go when your mentor completes it.'},
+  newApprentice: {label: 'A new apprentice is waiting', to: 'mentors', vars: ['apprentice'],
+    title: '🧭 A new apprentice is waiting for a mentor',
+    body: '{apprentice} sent their first cell for a second look. Open Cell Library, Mentoring, to take it.'},
+  sent: {label: 'A cell sent to the mentor', to: 'mentor', vars: ['apprentice', 'cell'],
+    title: '🧭 {apprentice} sent you a cell',
+    body: '{apprentice} sent cell {cell} for a second look. Open Cell Library, Mentoring.'},
+  sentAgain: {label: 'A cell sent back after suggestions', to: 'mentor', vars: ['apprentice', 'cell'],
+    title: '🧭 {apprentice} sent a cell back to you',
+    body: '{apprentice} sent cell {cell} for a second look. Open Cell Library, Mentoring.'},
+  haveMentor: {label: 'You have a mentor', to: 'apprentice', vars: ['mentor'],
+    title: '🧭 You have a mentor',
+    body: '{mentor} is your mentor for your first cells. They will look at each one you send.'},
+  suggestions: {label: 'Suggestions', to: 'apprentice', vars: ['mentor', 'cell'],
+    title: '🧭 Your mentor has suggestions',
+    body: '{mentor} left suggestions on cell {cell}. Open Cell Library, Mentoring, to see them in the view. When you are done, send it again.'},
+  complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed'],
+    title: '🎉 Your cell is complete',
+    body: '{mentor} completed cell {cell} with you. It counts for you. {done} of {needed} mentor cells done.'},
+  practiceComplete: {label: 'Cell complete (practice)', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed'],
+    title: '🎉 Your cell is complete (practice)',
+    body: '{mentor} completed cell {cell} with you. This was practice, so nothing was recorded and the cell is free again. {done} of {needed} mentor cells done.'},
+  // The two Achievement bells keep the form the game celebrates (src/util/award_title.ts): a title
+  // starting "New Achievement:" and a text starting 'You earned the "<name>" Achievement!'.
+  apprenticeAchievement: {label: 'Apprentice Achievement (keep "New Achievement:" so it celebrates)', to: 'apprentice', vars: ['mentor'],
+    title: 'New Achievement: Apprentice',
+    body: 'You earned the "Apprentice" Achievement! You finished the mentor program with {mentor}. From now on your cells count the moment you complete them.'},
+  practiceFinished: {label: 'Practice finished', to: 'apprentice', vars: ['mentor'],
+    title: '🏆 Practice finished',
+    body: 'You finished the practice mentor program with {mentor}. In the real program this is when the Apprentice Achievement comes.'},
+  mentorAchievement: {label: 'Mentor Achievement (keep "New Achievement:" so it celebrates)', to: 'mentor', vars: ['apprentice'],
+    title: 'New Achievement: Mentor',
+    body: 'You earned the "Mentor" Achievement! {apprentice} finished the mentor program with you.'},
+  mentorFinishedAgain: {label: 'Another apprentice finished', to: 'mentor', vars: ['apprentice'],
+    title: '🧭 {apprentice} finished the mentor program',
+    body: '{apprentice} finished the mentor program with you. Thank you for mentoring.'},
+};
+const TITLE_MAX = 120;
+const BODY_MAX = 1500;
+const fill = (text, vars) => String(text).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+
 const fail = (status, message) => { throw Object.assign(new Error(message), {status}); };
 const nameOf = u => String((u && (u.username || u.display_name)) || 'Player').slice(0, 40);
 const uuid = (v, what) => { const s = String(v || ''); if (!UUID.test(s)) fail(400, `Bad ${what}.`); return s.toLowerCase(); };
@@ -84,7 +137,7 @@ const apprenticeOut = a => a && ({
 /** Left alone too long: (ms since it was last touched) > 48 h. */
 const idleFor = (r, now) => now - Date.parse(r.touched_at || r.sent_at || 0);
 
-async function mentorAction(action, args, {db, me, isAdmin = false, credit, now = new Date()}) {
+async function mentorAction(action, args, {db, me, isAdmin = false, credit, now = new Date(), texts = null}) {
   if (!me || !me.id) fail(403, 'No Pyr profile.');
   const meId = String(me.id).toLowerCase();
   const t = now.getTime();
@@ -95,6 +148,14 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
   const mayReview = isMentor;
   const needReviewer = () => { if (!mayReview) fail(403, 'Mentors only.'); };
   const needAdmin = () => { if (!isAdmin) fail(403, 'Admins only.'); };
+  // Admins' changes to the texts, read once per request and only if a bell is sent.
+  let edited = null;
+  const textOf = async key => {
+    if (edited === null) { try { edited = (texts && (await texts.all())) || {}; } catch (e) { edited = {}; } }
+    const t = edited[key] || {};
+    return {title: t.title || TEXTS[key].title, body: t.body || TEXTS[key].body};
+  };
+  const bell = async (to, key, vars, image) => { const t = await textOf(key); await db.notify(to, fill(t.title, vars), fill(t.body, vars), meId, image); };
 
   /** A cell taken by a mentor and then left 48 hours goes back to the queue,
    *  and so does the apprentice, so another mentor can take them. Done on
@@ -164,16 +225,14 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       }
       const who = nameOf(me);
       if (r.mentor_id) {
-        await db.notify(r.mentor_id, again ? `🧭 ${who} sent a cell back to you` : `🧭 ${who} sent you a cell`,
-          `${who} sent cell ${cellName(r)} for a second look. Open Cell Library, Mentoring.`, meId);
+        await bell(r.mentor_id, again ? 'sentAgain' : 'sent', {apprentice: who, cell: cellName(r)});
       } else if (!mine.length && !isAdmin) {
         // A new apprentice's first cell: one bell to each mentor with room. Never one per cell.
         // An admin apprentice is a test (Ames 2026-11-04: no test players yet): nobody is rung.
         for (const m of await db.activeMentors()) {
           if (m.user_id === meId) continue;
           if ((await db.apprenticesOf(m.user_id)).filter(x => x.status === 'active').length >= MAX_APPRENTICES) continue;
-          await db.notify(m.user_id, '🧭 A new apprentice is waiting for a mentor',
-            `${who} sent their first cell for a second look. Open Cell Library, Mentoring, to take it.`, meId);
+          await bell(m.user_id, 'newApprentice', {apprentice: who});
         }
       }
       return {review: reviewOut(r), apprentice: apprenticeOut(await db.getApprentice(meId))};
@@ -217,7 +276,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (isMentor && a && a.status === 'active' && !a.mentor_id) {
         if ((await slotsUsed()) >= MAX_APPRENTICES) fail(409, `You are mentoring ${MAX_APPRENTICES} players already. Finish with one first, or hand one back.`);
         await db.patchApprentice(a.user_id, {mentor_id: meId, mentor_name: nameOf(me)});
-        await db.notify(a.user_id, '🧭 You have a mentor', `${nameOf(me)} is your mentor for your first cells. They will look at each one you send.`, meId);
+        await bell(a.user_id, 'haveMentor', {mentor: nameOf(me)});
       }
       const out = await db.patchReview(r.id, {mentor_id: meId, mentor_name: nameOf(me), state: 'looking', claimed_at: r.claimed_at || stamp, touched_at: stamp});
       return reviewOut(out);
@@ -238,8 +297,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const n = notesFrom(args, r);
       if (!n.notes.length && !n.cell_note) fail(400, 'Leave at least one suggestion, as a note in the view or for the whole cell.');
       const out = await db.patchReview(r.id, {...n, state: 'suggestions', decided_at: stamp, touched_at: stamp});
-      await db.notify(r.apprentice_id, '🧭 Your mentor has suggestions',
-        `${nameOf(me)} left suggestions on cell ${cellName(r)}. Open Cell Library, Mentoring, to see them in the view. When you are done, send it again.`, meId);
+      await bell(r.apprentice_id, 'suggestions', {mentor: nameOf(me), cell: cellName(r)});
       return reviewOut(out);
     }
     case 'mentor.complete': {
@@ -262,10 +320,8 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         const needed = (a && a.cells_needed) || CELLS_NEEDED;
         const finished = !!a && a.status === 'active' && doneCount >= needed;
         if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
-        await db.notify(r.apprentice_id, '🎉 Your cell is complete (practice)',
-          `${nameOf(me)} completed cell ${cellName(r)} with you. This was practice, so nothing was recorded and the cell is free again. ${Math.min(doneCount, needed)} of ${needed} mentor cells done.`, meId);
-        if (finished) await db.notify(r.apprentice_id, '🏆 Practice finished',
-          `You finished the practice mentor program with ${nameOf(me)}. In the real program this is when the Apprentice Achievement comes.`, meId);
+        await bell(r.apprentice_id, 'practiceComplete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed});
+        if (finished) await bell(r.apprentice_id, 'practiceFinished', {mentor: nameOf(me)});
         return {review: reviewOut(await db.getReview(r.id)), finished, practice: true};
       }
       try {
@@ -282,15 +338,17 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const needed = (a && a.cells_needed) || CELLS_NEEDED;
       const finished = !!a && a.status === 'active' && doneCount >= needed;
       if (a) await db.patchApprentice(a.user_id, {cells_done: doneCount, ...(finished ? {status: 'finished', finished_at: stamp} : {})});
-      await db.notify(r.apprentice_id, '🎉 Your cell is complete',
-        `${nameOf(me)} completed cell ${cellName(r)} with you. It counts for you. ${Math.min(doneCount, needed)} of ${needed} mentor cells done.`, meId);
+      await bell(r.apprentice_id, 'complete', {mentor: nameOf(me), cell: cellName(r), done: Math.min(doneCount, needed), needed});
       if (finished) {
         await db.award(APPRENTICE_BADGE, r.apprentice_id, `Finished the mentor program with ${nameOf(me)}`);
-        await db.notify(r.apprentice_id, '🏆 Apprentice Achievement',
-          `You finished the mentor program. From now on your cells count the moment you complete them. Thank you, ${nameOf(me)}, too.`, meId);
+        // In the form the game celebrates: the unlock card and confetti (Ames 2026-11-05).
+        await bell(r.apprentice_id, 'apprenticeAchievement', {mentor: nameOf(me)}, APPRENTICE_BADGE.image_url);
         if (a.mentor_id && a.mentor_id !== a.user_id) {
-          await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
-          await db.notify(a.mentor_id, '🏆 Mentor Achievement', `${a.user_name} finished the mentor program with you.`, meId);
+          // Once per mentor: the Achievement and its celebration the first time,
+          // a plain bell for every apprentice after that.
+          const first = await db.award(MENTOR_BADGE, a.mentor_id, `Mentored ${a.user_name}`);
+          if (first) await bell(a.mentor_id, 'mentorAchievement', {apprentice: a.user_name}, MENTOR_BADGE.image_url);
+          else await bell(a.mentor_id, 'mentorFinishedAgain', {apprentice: a.user_name});
         }
       }
       return {review: reviewOut(await db.getReview(r.id)), finished};
@@ -314,8 +372,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (was && was.status === 'active') fail(409, 'You are in the mentor program already.');
       await db.putApprentice({user_id: meId, user_name: nameOf(me), mentor_id: null, mentor_name: null, status: 'active',
         cells_needed: CELLS_NEEDED, cells_done: 0, started_at: stamp, finished_at: null, added_by: null});
-      await db.notify(meId, '🧭 Welcome to the mentor program (practice)',
-        `Your next ${CELLS_NEEDED} cells go to a mentor when you complete them. This is practice: nothing you complete is recorded, and each cell is let go when your mentor completes it.`, meId);
+      await bell(meId, 'practiceWelcome', {needed: CELLS_NEEDED});
       return {ok: true, apprentice: apprenticeOut(await db.getApprentice(meId))};
     }
     case 'mentor.leave': {
@@ -324,6 +381,33 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       if (!isPractice(a)) fail(403, 'An admin added you. Ask an admin to take you out.');
       await db.patchApprentice(meId, {status: 'left', finished_at: stamp});
       return {ok: true};
+    }
+
+    // ── The texts of the bells (admins) ─────────────────────────────────
+    case 'mentor.texts': {
+      needAdmin();
+      const saved = (texts && (await texts.all())) || {};
+      return Object.entries(TEXTS).map(([key, d]) => ({key, label: d.label, to: d.to, vars: d.vars,
+        title: (saved[key] && saved[key].title) || d.title, body: (saved[key] && saved[key].body) || d.body,
+        defaultTitle: d.title, defaultBody: d.body, edited: !!saved[key], editedBy: (saved[key] && saved[key].by) || null}));
+    }
+    case 'mentor.setText': {
+      needAdmin();
+      if (!texts) fail(503, 'The texts cannot be saved here.');
+      const key = String(args.key || '');
+      const d = TEXTS[key];
+      if (!d) fail(400, 'Unknown message.');
+      const title = clean(args.title, TITLE_MAX + 1), body = clean(args.body, BODY_MAX + 1);
+      // Both back to the original: the change is forgotten.
+      if ((!title || title === d.title) && (!body || body === d.body)) { await texts.set(key, null); return {key, title: d.title, body: d.body, edited: false}; }
+      if (!title) fail(400, 'The title cannot be empty.');
+      if (!body) fail(400, 'The text cannot be empty.');
+      if (title.length > TITLE_MAX) fail(400, `The title can be at most ${TITLE_MAX} characters.`);
+      if (body.length > BODY_MAX) fail(400, `The text can be at most ${BODY_MAX} characters.`);
+      const unknown = [...new Set([...`${title} ${body}`.matchAll(/\{(\w+)\}/g)].map(m => m[1]))].filter(k => !d.vars.includes(k));
+      if (unknown.length) fail(400, `This message cannot use {${unknown[0]}}. It can use ${d.vars.map(v => `{${v}}`).join(', ')}.`);
+      await texts.set(key, {title, body, by: nameOf(me), at: stamp});
+      return {key, title, body, edited: true};
     }
 
     // ── Admins ──────────────────────────────────────────────────────────
@@ -366,8 +450,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       // Only cells from now on: nothing they completed before changes.
       await db.putApprentice({user_id: u.id, user_name: nameOf(u), mentor_id: null, mentor_name: null, status: 'active',
         cells_needed: CELLS_NEEDED, cells_done: 0, started_at: stamp, finished_at: null, added_by: meId});
-      await db.notify(u.id, '🧭 Welcome to the mentor program',
-        `Your next ${CELLS_NEEDED} cells get a second look from an experienced player. When you complete a cell from the Cell Library, it goes to a mentor, who completes it with you or sends you suggestions. Each one counts for you once your mentor completes it.`, meId);
+      await bell(u.id, 'welcome', {needed: CELLS_NEEDED});
       return {ok: true, name: nameOf(u)};
     }
     case 'mentor.removeApprentice': {
@@ -442,12 +525,24 @@ function restDb(sb) {
     completeTask: (userId, taskId, finalSeg, coords) => sb('rpc/pilot_task_action', {method: 'POST',
       body: JSON.stringify({p_user: userId, p_action: 'complete', p_args: {id: taskId, final_segment_id: finalSeg || undefined, soma_coords: coords || undefined}})}),
     findUser: id => one(sb(`users?id=eq.${id}&select=id,username,display_name&limit=1`)),
-    findUserByName: name => one(sb(`users?username=ilike.${enc(name.replace(/[%_*,()]/g, ''))}&select=id,username,display_name&limit=1`)),
+    // Case is ignored, nothing else: "_" is kept (it was stripped, so m_sorek
+    // was looked for as msorek, Ames 2026-11-05), and as "_" also matches any
+    // one letter in ilike, only an exact name is taken from what comes back.
+    findUserByName: async name => {
+      const want = String(name).trim().toLowerCase();
+      if (!want || /[%*,()"\\]/.test(want)) return null;
+      const rows = await sb(`users?username=ilike.${enc(want)}&select=id,username,display_name&limit=10`);
+      return (rows || []).find(u => String(u.username || '').toLowerCase() === want) || null;
+    },
     award: async (badge, userId, reason) => {
       const b = await one(upsert('special_badges', 'slug', badge));
-      if (b) await post('special_badge_awards?on_conflict=badge_id,user_id', {badge_id: b.id, user_id: userId, reason: String(reason).slice(0, 200)}, 'resolution=ignore-duplicates,return=minimal');
+      if (!b) return false;
+      // Only a row that was not there before comes back.
+      const rows = await post('special_badge_awards?on_conflict=badge_id,user_id', {badge_id: b.id, user_id: userId, reason: String(reason).slice(0, 200)}, 'resolution=ignore-duplicates,return=representation');
+      return Array.isArray(rows) && rows.length > 0;
     },
-    notify: (userId, title, body, by) => post('notifications', {title, body, target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: by || null}, 'return=minimal')
+    notify: (userId, title, body, by, image) => post('notifications', {title, body, target_type: 'user', target_id: userId, send_at: new Date().toISOString(), created_by: by || null,
+      ...(image ? {image_url: image, thumbnail_url: image} : {})}, 'return=minimal')
       .catch(e => console.error('[mentors] notification not sent', e && e.message)),
   };
 }
@@ -484,9 +579,15 @@ function memDb(users = []) {
     },
     findUser: async id => copy(users.find(u => u.id === id) || null),
     findUserByName: async name => copy(users.find(u => String(u.username).toLowerCase() === name.toLowerCase()) || null),
-    award: async (badge, userId, reason) => { if (!s.awards.some(a => a.slug === badge.slug && a.userId === userId)) s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); },
-    notify: async (userId, title, body) => { s.notes.push({to: userId, title, body}); },
+    award: async (badge, userId, reason) => { if (s.awards.some(a => a.slug === badge.slug && a.userId === userId)) return false; s.awards.push({slug: badge.slug, name: badge.name, userId, reason}); return true; },
+    notify: async (userId, title, body, by, image) => { s.notes.push({to: userId, title, body, ...(image ? {image} : {})}); },
   };
 }
 
-module.exports = {mentorAction, restDb, memDb, CELLS_NEEDED, MAX_APPRENTICES, OVERDUE_MS, APPRENTICE_BADGE, MENTOR_BADGE};
+/** The texts held in memory: for the tests and the stand-in server. */
+function memTexts() {
+  const m = {};
+  return {_m: m, all: async () => JSON.parse(JSON.stringify(m)), set: async (k, v) => { if (v) m[k] = v; else delete m[k]; }};
+}
+
+module.exports = {mentorAction, restDb, memDb, memTexts, TEXTS, CELLS_NEEDED, MAX_APPRENTICES, OVERDUE_MS, APPRENTICE_BADGE, MENTOR_BADGE};
