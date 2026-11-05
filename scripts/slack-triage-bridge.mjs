@@ -1282,9 +1282,10 @@ async function announceDone() {
   const rows = await res.json();
   let announced = 0;
   for (const row of rows) {
-    // No tags: Amy and Celia follow along on the triage board (Ames 2026-11-04).
+    // Shipped still tags the approvers (Ames 2026-11-04: "Change shipped tag is ok").
+    const tags = APPROVERS.map(id => `<@${id}>`).join(' ');
     const note = (row.result_note || '').trim();
-    const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ✓`);
+    const posted = await say(row, `🔧 Change shipped for this one${note ? `: ${note}` : ''}. ${tags} ✓`);
     await patchRow(row.id, { done_slack_ts: posted.ts });
     // Slack mention syntax means nothing in the game; drop it there.
     const plain = note.replace(/<@[A-Z0-9]+>/g, 'a tester').replace(/<(https?:[^|>]+)(\|[^>]*)?>/g, '$1');
