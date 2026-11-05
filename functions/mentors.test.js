@@ -55,9 +55,10 @@ test('a first cell bells each mentor with room once, then the first mentor to ta
   // Nseraf takes the first; the apprentice is now theirs, and the second cell too can only be theirs.
   await call(2, 'mentor.claim', {reviewId: review.id});
   assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, 'Nseraf');
-  const q = await call(3, 'mentor.queue');
-  const second = q.waiting.find(r => r.taskId === 2);
-  assert.ok(second, 'the unclaimed second cell is still in the queue');
+  // The second cell, sent before Nseraf took the first, went with them.
+  assert.equal((await call(3, 'mentor.queue')).waiting.length, 0, 'annkri does not see it');
+  const second = (await call(2, 'mentor.queue')).yours.find(r => r.taskId === 2);
+  assert.ok(second, 'the second cell is Nseraf\'s');
   await call(2, 'mentor.claim', {reviewId: second.id});
   await assert.rejects(call(3, 'mentor.claim', {reviewId: second.id}), /Nseraf is looking/);
   // A third cell goes straight to Nseraf with one bell.
@@ -336,6 +337,31 @@ test('the graduation bell carries the picture the Achievement has now', async ()
     await call(2, 'mentor.complete', {reviewId: r.id});
   }
   assert.equal(db._state.notes.find(n => n.title === 'New Achievement: Apprentice').image, 'https://art.test/apprentice.png');
+});
+
+test('one mentor per apprentice: cells sent before pairing go with them, and another mentor can neither see nor take them', async () => {
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addMentor', {username: 'annkri'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  // Three cells sent before anyone took one: all waiting, no mentor.
+  const [c1, c2, c3] = [(await send(call, 4, 1)).review, (await send(call, 4, 2)).review, (await send(call, 4, 3)).review];
+  await call(2, 'mentor.claim', {reviewId: c1.id});
+  assert.equal((await db.getReview(c2.id)).mentor_id, U(2), 'the other waiting cells move to the new mentor');
+  assert.equal((await db.getReview(c3.id)).mentor_id, U(2));
+  const q = await call(3, 'mentor.queue');
+  assert.equal(q.waiting.length, 0, 'annkri does not see them');
+  await assert.rejects(call(3, 'mentor.claim', {reviewId: c2.id}), /Nseraf is looking/);
+  // Even a cell that somehow has no mentor of its own stays with the apprentice's mentor.
+  await db.patchReview(c3.id, {mentor_id: null, mentor_name: null});
+  assert.equal((await call(3, 'mentor.queue')).waiting.length, 0);
+  await assert.rejects(call(3, 'mentor.claim', {reviewId: c3.id}), /Nseraf is this player's mentor/);
+  assert.equal((await call(2, 'mentor.queue')).waiting.length, 1, 'their own mentor still sees it');
+  assert.equal(db._state.notes.filter(n => n.title === '🧭 You have a mentor').length, 1, 'one You have a mentor bell');
+  // After Hand back, another mentor may take them.
+  await call(2, 'mentor.handBack', {apprenticeId: U(4)});
+  await call(3, 'mentor.claim', {reviewId: c2.id});
+  assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, 'annkri');
 });
 
 test('copy has no dashes and says Achievement, never badge', () => {

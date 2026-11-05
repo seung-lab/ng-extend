@@ -175,6 +175,12 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
     if (!r) fail(404, 'That cell is no longer waiting for a mentor.');
     return r;
   }
+  /** Cells nobody has taken, as this mentor may take them: a cell from an
+   *  apprentice who has a mentor shows only to that mentor (and admins). */
+  const waitingForMe = async open => {
+    const mentorOf = new Map((await db.allApprentices()).filter(a => a.status === 'active').map(a => [a.user_id, a.mentor_id]));
+    return open.filter(r => r.state === 'waiting' && !r.mentor_id && (isAdmin || !mentorOf.get(r.apprentice_id) || mentorOf.get(r.apprentice_id) === meId));
+  };
   const slotsUsed = async () => (await db.apprenticesOf(meId)).filter(a => a.status === 'active').length;
 
   switch (action) {
@@ -185,7 +191,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       out.mine = a ? (await db.reviewsOfApprentice(meId)).map(reviewOut) : [];
       if (mayReview) {
         const open = await returnIdle(await db.openReviews());
-        out.waiting = open.filter(r => r.state === 'waiting' && !r.mentor_id).length;
+        out.waiting = (await waitingForMe(open)).length;
         out.yours = open.filter(r => r.mentor_id === meId && r.state !== 'suggestions').length;
       }
       return out;
@@ -250,7 +256,7 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const open = await returnIdle(await db.openReviews());
       const mineA = isMentor ? (await db.apprenticesOf(meId)).filter(a => a.status === 'active') : [];
       return {
-        waiting: open.filter(r => r.state === 'waiting' && !r.mentor_id).map(reviewOut),
+        waiting: (await waitingForMe(open)).map(reviewOut),
         yours: open.filter(r => r.mentor_id === meId).map(reviewOut),
         apprentices: mineA.map(apprenticeOut),
         slots: {used: mineA.length, max: MAX_APPRENTICES},
@@ -273,9 +279,16 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
         if (!isAdmin) fail(409, `${r.mentor_name || 'Another mentor'} is looking at this cell.`);
       }
       const a = await db.getApprentice(r.apprentice_id);
+      // One mentor per apprentice (Ames 2026-11-05: "it let multiple ppl be my
+      // mentor"): a cell sent before they had one is theirs too. An admin may still step in.
+      if (a && a.status === 'active' && a.mentor_id && a.mentor_id !== meId && !isAdmin)
+        fail(409, `${a.mentor_name || 'Another mentor'} is this player's mentor.`);
       if (isMentor && a && a.status === 'active' && !a.mentor_id) {
         if ((await slotsUsed()) >= MAX_APPRENTICES) fail(409, `You are mentoring ${MAX_APPRENTICES} players already. Finish with one first, or hand one back.`);
         await db.patchApprentice(a.user_id, {mentor_id: meId, mentor_name: nameOf(me)});
+        // Their other cells still waiting come with them.
+        for (const o of await db.reviewsOfApprentice(a.user_id))
+          if (o.id !== r.id && o.state === 'waiting' && !o.mentor_id) await db.patchReview(o.id, {mentor_id: meId, mentor_name: nameOf(me)});
         await bell(a.user_id, 'haveMentor', {mentor: nameOf(me)});
       }
       const out = await db.patchReview(r.id, {mentor_id: meId, mentor_name: nameOf(me), state: 'looking', claimed_at: r.claimed_at || stamp, touched_at: stamp});
