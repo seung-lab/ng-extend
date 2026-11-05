@@ -102,7 +102,7 @@ test('suggestions: nothing counts, the apprentice keeps the cell, sends it back 
   assert.equal(s.state, 'suggestions');
   assert.equal(s.notes[0].text, 'Cut here', 'notes saved earlier are kept');
   assert.equal(credited.length, 0);
-  assert.deepEqual(db._state.notes.map(n => [n.to, n.title]), [[U(4), '🧭 Your mentor has suggestions']]);
+  assert.deepEqual(db._state.notes.map(n => [n.to, n.title]), [[U(4), 'Your mentor has suggestions']]);
   // The apprentice reads the notes, and the mentor cannot complete it while it is theirs.
   const mine = (await call(4, 'mentor.status')).mine;
   assert.equal(mine[0].cellNote, 'You missed an extension near the soma.');
@@ -254,10 +254,10 @@ test('admins change a bell text; the next bell uses it; names in braces are fill
   assert.deepEqual(list.find(t => t.key === 'welcome').vars, ['needed']);
   await assert.rejects(call(1, 'mentor.setText', {key: 'welcome', title: 'Hi {mentor}', body: 'b'}, true), /cannot use \{mentor\}. It can use \{needed\}/);
   await assert.rejects(call(1, 'mentor.setText', {key: 'nope', title: 'a', body: 'b'}, true), /Unknown message/);
-  await call(1, 'mentor.setText', {key: 'welcome', title: '🧭 Hello, new proofreader', body: 'Your first {needed} cells come with a guide.'}, true);
+  await call(1, 'mentor.setText', {key: 'welcome', title: 'Hello, new proofreader', body: 'Your first {needed} cells come with a guide.'}, true);
   await call(1, 'mentor.addApprentice', {username: 'newbie'}, true);
   const last = db._state.notes.at(-1);
-  assert.deepEqual([last.to, last.title, last.body], [U(4), '🧭 Hello, new proofreader', 'Your first 5 cells come with a guide.']);
+  assert.deepEqual([last.to, last.title, last.body], [U(4), 'Hello, new proofreader', 'Your first 5 cells come with a guide.']);
   assert.equal((await call(1, 'mentor.texts', {}, true)).find(t => t.key === 'welcome').edited, true);
   // Back to the original: the change is forgotten.
   const d = TEXTS.welcome;
@@ -298,7 +298,7 @@ test('graduating celebrates: both Achievement bells match the award pattern of t
   const mentorBells = db._state.notes.filter(x => x.to === U(2) && /finished the mentor program/.test(x.body));
   assert.equal(mentorBells.length, 2);
   assert.ok(!AWARD.test(mentorBells[1].title), 'no second unlock card for the same Achievement');
-  assert.equal(mentorBells[1].title, '🧭 second finished the mentor program');
+  assert.equal(mentorBells[1].title, 'second finished the mentor program');
   assert.equal(db._state.awards.filter(a => a.name === 'First Wrap').length, 1);
 });
 
@@ -358,7 +358,7 @@ test('one mentor per apprentice: cells sent before pairing go with them, and ano
   assert.equal((await call(3, 'mentor.queue')).waiting.length, 0);
   await assert.rejects(call(3, 'mentor.claim', {reviewId: c3.id}), /Nseraf is this player's mentor/);
   assert.equal((await call(2, 'mentor.queue')).waiting.length, 1, 'their own mentor still sees it');
-  assert.equal(db._state.notes.filter(n => n.title === '🧭 You have a mentor').length, 1, 'one You have a mentor bell');
+  assert.equal(db._state.notes.filter(n => n.title === 'You have a mentor').length, 1, 'one You have a mentor bell');
   // After Hand back, another mentor may take them.
   await call(2, 'mentor.handBack', {apprenticeId: U(4)});
   await call(3, 'mentor.claim', {reviewId: c2.id});
@@ -371,8 +371,8 @@ test('the welcome and You have a mentor bells carry the program picture and say 
   await admin('mentor.addApprentice', {username: 'newbie'});
   const r = (await send(call, 4, 1)).review;
   await call(2, 'mentor.claim', {reviewId: r.id});
-  const welcome = db._state.notes.find(n => n.title === '🧭 Welcome to the mentor program');
-  const have = db._state.notes.find(n => n.title === '🧭 You have a mentor');
+  const welcome = db._state.notes.find(n => n.title === 'Welcome to the mentor program');
+  const have = db._state.notes.find(n => n.title === 'You have a mentor');
   assert.match(welcome.image, /mentor-bell\.jpg$/);
   assert.match(have.image, /mentor-bell\.jpg$/);
   assert.equal(have.body, 'Nseraf is your mentor. They will look at your first 5 cells and give you feedback before each one counts.');
@@ -399,8 +399,8 @@ test('the Mentor row: a tier at 1, 5, 10, 25 and 50 graduates, each celebrated o
   assert.deepEqual(tiers(), ['First Wrap']);
   for (let k = 1; k < 5; k++) await finish(extra[k], k);
   assert.deepEqual(tiers(), ['First Wrap', 'Myelin Maker']);
-  assert.deepEqual(bells(), ['New Achievement: First Wrap', '🧭 grad1 finished the mentor program', '🧭 grad2 finished the mentor program',
-    '🧭 grad3 finished the mentor program', 'New Achievement: Myelin Maker']);
+  assert.deepEqual(bells(), ['New Achievement: First Wrap', 'grad1 finished the mentor program', 'grad2 finished the mentor program',
+    'grad3 finished the mentor program', 'New Achievement: Myelin Maker']);
   const five = db._state.notes.find(n => n.title === 'New Achievement: Myelin Maker');
   assert.match(five.body, /^You earned the "Myelin Maker" Achievement! grad4 finished the mentor program with you\. Apprentices graduated with you: 5\.$/);
   assert.match(five.image, /mentor-5\.png$/);
@@ -435,6 +435,25 @@ test('24 hours: a cell sent to a mentor who never opens it goes back to the queu
   assert.ok(q.waiting.some(x => x.id === r2.id), 'open to any mentor after a day');
   await call(3, 'mentor.claim', {reviewId: r2.id});
   assert.equal((await call(4, 'mentor.status')).apprentice.mentorName, 'annkri');
+});
+
+test('a bell finds its cell, completed too, only for the players in it; the mentor bells wear the Mentor icon; no compass in titles', async () => {
+  const {db, call, admin} = setup();
+  await admin('mentor.addMentor', {username: 'Nseraf'});
+  await admin('mentor.addApprentice', {username: 'newbie'});
+  const r = (await send(call, 4, 1, {rootId: '1000008001'})).review;
+  await call(2, 'mentor.claim', {reviewId: r.id});
+  await call(2, 'mentor.complete', {reviewId: r.id});
+  assert.equal((await call(2, 'mentor.byCell', {tail: '8001'})).role, 'mentor');
+  assert.equal((await call(2, 'mentor.byCell', {tail: '8001'})).review.state, 'complete');
+  assert.equal((await call(4, 'mentor.byCell', {tail: '8001'})).role, 'apprentice');
+  assert.equal(await call(5, 'mentor.byCell', {tail: '8001'}), null, 'not someone else\'s');
+  await assert.rejects(call(2, 'mentor.byCell', {tail: '80'}), /Which cell/);
+  const r2 = (await send(call, 4, 2)).review;
+  const sentBell = db._state.notes.find(n => n.title === 'newbie sent you a cell');
+  assert.match(sentBell.image, /tiers\/mentor-1\.png$/);
+  assert.ok(db._state.notes.every(n => !n.title.startsWith('🧭')), 'no compass');
+  assert.ok(r2);
 });
 
 test('copy has no dashes and says Achievement, never badge', () => {

@@ -392,7 +392,7 @@ const titlePattern = (t: string) => new RegExp('^' + t.replace(/[.*+?^$()|[\]\\]
  *  or originally), or null for any other bell. Admins only. */
 export async function mentorTextFor(title: string): Promise<MentorText | null> {
   const ours = [APPRENTICE_ACHIEVEMENT, ...MENTOR_TIERS.map(t => t.name)].map(n => `New Achievement: ${n}`);
-  if (!/^(🧭|🎉|🏆)/u.test(title) && !ours.includes(title)) return null;
+  if (!PROGRAM_TITLE.test(title) && !ours.includes(title)) return null;
   const list = await loadMentorTexts();
   return list.find(t => titlePattern(t.title).test(title) || titlePattern(t.defaultTitle).test(title)) ?? null;
 }
@@ -404,8 +404,10 @@ export async function saveMentorText(key: string, title: string, body: string): 
 // ── From a bell to its cell, and its people (Ames 2026-11-05: "need a way to jump to the response", "make username clickable") ──
 /** The cell a program bell is about, found by the "...1234" in its text: the
  *  player's own cell (apprentice), or one in the mentor's queue. */
+/** A mentor program bell, by its title, with or without the old compass. */
+export const PROGRAM_TITLE = /^(🧭 |🎉 |🏆 )?(Welcome to the mentor program|A new apprentice is waiting for a mentor|.+ sent you a cell|.+ sent a cell back to you|You have a mentor|Your mentor has suggestions|Your cell is complete|.+ finished the mentor program|Practice finished)/u;
 export async function reviewForBell(title: string, body: string): Promise<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null> {
-  if (!/^(🧭|🎉)/u.test(title)) return null;
+  if (!PROGRAM_TITLE.test(title)) return null;
   const m = String(body || '').match(/\.\.\.(\d{4})\b/);
   if (!m) return null;
   const hit = (r: MentorReview) => [r.rootId, r.segmentId].some(id => !!id && id.endsWith(m[1]));
@@ -420,7 +422,9 @@ export async function reviewForBell(title: string, body: string): Promise<{ revi
     const r = q ? [...q.yours, ...q.waiting].find(hit) : undefined;
     if (r) return { review: r, role: 'mentor' };
   }
-  return mine ? { review: mine, role: 'apprentice' } : null;
+  if (mine) return { review: mine, role: 'apprentice' };
+  // Not open any more (completed, say): ask the server, which knows every cell of this player's.
+  try { return await call<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null>('mentor.byCell', { tail: m[1] }); } catch { return null; }
 }
 /** Names a program bell may mention, with their player ids. */
 export function knownPlayers(review?: MentorReview | null): Map<string, string> {

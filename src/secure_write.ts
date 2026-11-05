@@ -50,7 +50,7 @@ export type SecureAction =
   | 'hunt.notes' | 'hunt.test' | 'hunt.test_drop' | 'hunt.drop' | 'hunt.start' | 'hunt.duplicate'
   | 'mentor.status' | 'mentor.send' | 'mentor.sheetDone' | 'mentor.queue' | 'mentor.review' | 'mentor.claim' | 'mentor.saveNotes'
   | 'mentor.suggest' | 'mentor.complete' | 'mentor.handBack' | 'mentor.admin' | 'mentor.addMentor' | 'mentor.removeMentor'
-  | 'mentor.addApprentice' | 'mentor.removeApprentice' | 'mentor.texts' | 'mentor.setText' | 'mentor.join' | 'mentor.leave';
+  | 'mentor.addApprentice' | 'mentor.removeApprentice' | 'mentor.texts' | 'mentor.setText' | 'mentor.byCell' | 'mentor.join' | 'mentor.leave';
 
 /** Returns the row (or result) the function wrote; throws with a readable message. */
 export async function secureWrite<T = any>(action: SecureAction, args: Record<string, any> = {}): Promise<T> {

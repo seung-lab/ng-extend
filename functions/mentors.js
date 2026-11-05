@@ -71,27 +71,29 @@ const MENTOR_TIERS = [
  */
 // The program's picture (Ames 2026-11-05: "we need an image"), pinned to the commit that added it.
 const MENTOR_PICTURE = 'https://raw.githubusercontent.com/seung-lab/ng-extend/553d8af8606204d3270e8fbb441926866927c049/static/mentor/mentor-bell.jpg';
+// The mentor's bells wear the first Mentor tier (Ames's "mentor 1" art).
+const MENTOR_ICON = RAW + '4e2fa0fc71d7997feea1ef2e44d8e5011a4ecb23/static/mentor/tiers/mentor-1.png';
 const TEXTS = {
   welcome: {label: 'Welcome (added by an admin)', to: 'apprentice', vars: ['needed'], image: MENTOR_PICTURE,
-    title: '🧭 Welcome to the mentor program',
+    title: 'Welcome to the mentor program',
     body: 'Your next {needed} cells get a second look from an experienced player. When you complete a cell from the Cell Library, it goes to a mentor, who completes it with you or sends you suggestions. Each one counts for you once your mentor completes it.'},
   practiceWelcome: {label: 'Welcome (practice)', to: 'apprentice', vars: ['needed'], image: MENTOR_PICTURE,
-    title: '🧭 Welcome to the mentor program (practice)',
+    title: 'Welcome to the mentor program (practice)',
     body: 'Your next {needed} cells go to a mentor when you complete them. This is practice: nothing you complete is recorded, and each cell is let go when your mentor completes it.'},
-  newApprentice: {label: 'A new apprentice is waiting', to: 'mentors', vars: ['apprentice'],
-    title: '🧭 A new apprentice is waiting for a mentor',
+  newApprentice: {label: 'A new apprentice is waiting', to: 'mentors', vars: ['apprentice'], image: MENTOR_ICON,
+    title: 'A new apprentice is waiting for a mentor',
     body: '{apprentice} sent their first cell for a second look. Open Cell Library, Mentoring, to take it.'},
-  sent: {label: 'A cell sent to the mentor', to: 'mentor', vars: ['apprentice', 'cell'],
-    title: '🧭 {apprentice} sent you a cell',
+  sent: {label: 'A cell sent to the mentor', to: 'mentor', vars: ['apprentice', 'cell'], image: MENTOR_ICON,
+    title: '{apprentice} sent you a cell',
     body: '{apprentice} sent cell {cell} for a second look. Open Cell Library, Mentoring.'},
-  sentAgain: {label: 'A cell sent back after suggestions', to: 'mentor', vars: ['apprentice', 'cell'],
-    title: '🧭 {apprentice} sent a cell back to you',
+  sentAgain: {label: 'A cell sent back after suggestions', to: 'mentor', vars: ['apprentice', 'cell'], image: MENTOR_ICON,
+    title: '{apprentice} sent a cell back to you',
     body: '{apprentice} sent cell {cell} for a second look. Open Cell Library, Mentoring.'},
   haveMentor: {label: 'You have a mentor', to: 'apprentice', vars: ['mentor', 'needed'], image: MENTOR_PICTURE,
-    title: '🧭 You have a mentor',
+    title: 'You have a mentor',
     body: '{mentor} is your mentor. They will look at your first {needed} cells and give you feedback before each one counts.'},
   suggestions: {label: 'Suggestions', to: 'apprentice', vars: ['mentor', 'cell'],
-    title: '🧭 Your mentor has suggestions',
+    title: 'Your mentor has suggestions',
     body: '{mentor} left suggestions on cell {cell}. Open Cell Library, Mentoring, to see them in the view. When you are done, send it again.'},
   complete: {label: 'Cell complete', to: 'apprentice', vars: ['mentor', 'cell', 'done', 'needed'],
     title: '🎉 Your cell is complete',
@@ -110,8 +112,8 @@ const TEXTS = {
   mentorAchievement: {label: 'Mentor Achievement tier (keep "New Achievement:" so it celebrates)', to: 'mentor', vars: ['apprentice', 'achievement', 'graduates'],
     title: 'New Achievement: {achievement}',
     body: 'You earned the "{achievement}" Achievement! {apprentice} finished the mentor program with you. Apprentices graduated with you: {graduates}.'},
-  mentorFinishedAgain: {label: 'Another apprentice finished', to: 'mentor', vars: ['apprentice', 'graduates'],
-    title: '🧭 {apprentice} finished the mentor program',
+  mentorFinishedAgain: {label: 'Another apprentice finished', to: 'mentor', vars: ['apprentice', 'graduates'], image: MENTOR_ICON,
+    title: '{apprentice} finished the mentor program',
     body: '{apprentice} finished the mentor program with you. Apprentices graduated with you: {graduates}. Thank you for mentoring.'},
 };
 const TITLE_MAX = 120;
@@ -282,6 +284,18 @@ async function mentorAction(action, args, {db, me, isAdmin = false, credit, now 
       const r = await loadReview(args.reviewId);
       if (r.apprentice_id !== meId && r.mentor_id !== meId && !mayReview) fail(403, 'Not your cell.');
       return reviewOut(r);
+    }
+    case 'mentor.byCell': {
+      // The cell a program bell is about, found by the last digits of its id
+      // (Ames 2026-11-05: "needs jump button", a completed cell too). Only the
+      // player's own cells, as apprentice or as mentor, or any for an admin.
+      const tail = String(args.tail || '');
+      if (!/^\d{4}$/.test(tail)) fail(400, 'Which cell?');
+      const hit = r => [r.root_id, r.segment_id].some(id => !!id && String(id).endsWith(tail));
+      const mine = [...(await db.reviewsOfApprentice(meId)), ...(await db.reviewsOfMentor(meId))];
+      const r = mine.find(hit) || (isAdmin ? (await db.openReviews()).find(hit) : null);
+      if (!r) return null;
+      return {review: reviewOut(r), role: r.mentor_id === meId ? 'mentor' : r.apprentice_id === meId ? 'apprentice' : 'mentor'};
     }
     case 'mentor.claim': {
       needReviewer();
@@ -546,6 +560,7 @@ function restDb(sb) {
     patchApprentice: (id, p) => one(patch(`ew_apprentices?user_id=eq.${id}`, {...p, updated_at: new Date().toISOString()})),
     getReview: id => one(sb(`ew_mentor_reviews?id=eq.${id}&limit=1`)),
     reviewsOfApprentice: id => sb(`ew_mentor_reviews?apprentice_id=eq.${id}&order=sent_at.desc&limit=100`),
+    reviewsOfMentor: id => sb(`ew_mentor_reviews?mentor_id=eq.${id}&order=sent_at.desc&limit=100`),
     openReviews: () => sb('ew_mentor_reviews?state=in.(waiting,looking,suggestions)&order=sent_at.asc&limit=200'),
     insertReview: row => one(post('ew_mentor_reviews', row)),
     patchReview: (id, p) => one(patch(`ew_mentor_reviews?id=eq.${id}`, p)),
@@ -612,6 +627,7 @@ function memDb(users = []) {
     patchApprentice: async (id, p) => { const a = appr(id); if (a) Object.assign(a, p); return copy(a || null); },
     getReview: async id => copy(rev(id) || null),
     reviewsOfApprentice: async id => copy(s.reviews.filter(r => r.apprentice_id === id).reverse()),
+    reviewsOfMentor: async id => copy(s.reviews.filter(r => r.mentor_id === id).reverse()),
     openReviews: async () => copy(s.reviews.filter(r => OPEN.includes(r.state))),
     insertReview: async row => { const r = {id: ++s.n, sheet_done: false, decided_at: null, cell_note: null, ...row}; s.reviews.push(r); return copy(r); },
     patchReview: async (id, p) => { const r = rev(id); if (r) Object.assign(r, p); return copy(r || null); },
