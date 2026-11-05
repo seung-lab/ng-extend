@@ -6,7 +6,7 @@ import { withVideoEmbeds } from '../util/video_embeds';
 import { notifKind, type NotifKind } from '../util/notif_kinds';
 import { useProofreadingBackendStore, useHelpRequestStore, useUserPreferencesStore } from '../store';
 import { secureWrite } from '../secure_write';
-import { mentorTextFor, saveMentorText, type MentorText } from '../mentor';
+import { mentorTextFor, saveMentorText, reviewForBell, knownPlayers, linkPlayers, openInView as openMentorCell, takeCell, cannotOpen as mentorCannotOpen, type MentorText, type MentorReview } from '../mentor';
 import { mintShortStateLink } from '../util/state_link';
 import { openStartLink } from '../util/start_link';
 import { recapWeekStart, recapMonth, recapYear, weekFromRecapTitle, monthFromRecapTitle, yearFromRecapTitle } from '../util/recap_week';
@@ -206,6 +206,33 @@ const openNotif = ref<any | null>(null);
 const mentorText = ref<MentorText | null>(null);
 const textEdit = ref<{ title: string; body: string; busy: boolean; error: string } | null>(null);
 const textSaved = ref('');
+// A mentor program bell: its cell, to open in the view, and its people, as links.
+const mentorJump = ref<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null>(null);
+const mentorJumpNote = ref('');
+const bellPlayers = ref<Map<string, string>>(new Map());
+watch(openNotif, async n => {
+  mentorJump.value = null; mentorJumpNote.value = ''; bellPlayers.value = new Map();
+  if (n && /^(🧭|🎉)/u.test(String(n.title || ''))) {
+    try {
+      const j = await reviewForBell(String(n.title || ''), String(n.body || ''));
+      if (openNotif.value === n) { mentorJump.value = j; bellPlayers.value = knownPlayers(j?.review); }
+    } catch { /* the program is not installed */ }
+  }
+});
+async function openBellCell() {
+  const j = mentorJump.value;
+  if (!j) return;
+  mentorJumpNote.value = '';
+  try {
+    const why = mentorCannotOpen(j.review);
+    if (why) { mentorJumpNote.value = why; return; }
+    // A mentor's cell nobody has taken yet is taken first.
+    const r = j.role === 'mentor' && j.review.state === 'waiting' && !j.review.mentorId ? await takeCell(j.review) : j.review;
+    openMentorCell(r, j.role);
+    closeDetail();
+    emit('hide');
+  } catch (e: any) { mentorJumpNote.value = e?.message || 'That cell could not be opened.'; }
+}
 watch(openNotif, async n => {
   mentorText.value = null; textEdit.value = null; textSaved.value = '';
   if (!n || !backend.isAdmin || n.preview) return;
@@ -516,6 +543,15 @@ async function onDetailBodyClick(e: MouseEvent) {
   if (a?.getAttribute('href') === '#nge-tutorial-edits') {
     e.preventDefault();
     document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { tab: 'tutorialEdits' } }));
+    emit('hide');
+    return;
+  }
+  // A player named in a mentor program bell (Ames 2026-11-05: "make username clickable"): their profile.
+  const player = a?.getAttribute('href')?.match(/^#nge-player=([0-9a-f-]{36})$/i);
+  if (player) {
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent('nge:open-profile', { detail: { userId: player[1] } }));
+    closeDetail();
     emit('hide');
     return;
   }
@@ -1300,10 +1336,15 @@ function padRank(rank: number): string {
                   <div class="nge-notif-detail-rule" aria-hidden="true"></div>
                   <div
                     class="nge-notif-detail-body"
-                    v-html="withVideoEmbeds(renderMarkdown(cleanCopy(detailBody)))"
+                    v-html="linkPlayers(withVideoEmbeds(renderMarkdown(cleanCopy(detailBody))), bellPlayers)"
                     @click="onDetailBodyClick"
                   ></div>
                   <p v-if="helpSolvedNote" class="nge-notif-help-solved" role="status">{{ helpSolvedNote }}</p>
+                  <!-- A mentor program bell: straight to its cell, notes and all. -->
+                  <div v-if="mentorJump" class="nge-notif-mentorjump">
+                    <button class="nge-notif-mentorjump-btn" @click="openBellCell">🧭 {{ mentorJump.role === 'mentor' ? 'Take a look' : 'See it in the view' }}</button>
+                    <span v-if="mentorJumpNote" class="nge-notif-textedit-err" role="alert">{{ mentorJumpNote }}</span>
+                  </div>
                   <!-- Admins: the text every bell of this kind is sent with. -->
                   <div v-if="mentorText" class="nge-notif-textedit">
                     <template v-if="textEdit">
@@ -2145,6 +2186,10 @@ span.nge-notif-reply-part { cursor: default; }
   background: linear-gradient(90deg, rgb(var(--nd-cyan) / 0.55), rgb(var(--nd-accent) / 0.18) 45%, transparent);
 }
 
+.nge-notif-mentorjump { margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nge-notif-mentorjump-btn { font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 7px; border: 1px solid rgb(var(--nd-cyan) / 0.65); background: rgb(var(--nd-cyan) / 0.1); color: rgb(var(--nd-cyan)); cursor: pointer; }
+.nge-notif-mentorjump-btn:hover { background: rgb(var(--nd-cyan) / 0.18); }
+.nge-notif-detail-body :deep(a.nge-notif-player) { color: rgb(var(--nd-cyan)); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .nge-notif-textedit { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgb(var(--nd-cyan) / 0.18); display: flex; flex-direction: column; gap: 6px; }
 .nge-notif-textedit > .nge-notif-textedit-btn { align-self: flex-start; }
 .nge-notif-textedit-head { font-size: 13px; letter-spacing: 0.04em; color: rgb(var(--nd-cyan) / 0.9); }

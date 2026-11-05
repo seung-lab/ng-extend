@@ -390,3 +390,55 @@ export async function saveMentorText(key: string, title: string, body: string): 
   await call('mentor.setText', { key, title, body });
   return loadMentorTexts(true);
 }
+
+// ── From a bell to its cell, and its people (Ames 2026-11-05: "need a way to jump to the response", "make username clickable") ──
+/** The cell a program bell is about, found by the "...1234" in its text: the
+ *  player's own cell (apprentice), or one in the mentor's queue. */
+export async function reviewForBell(title: string, body: string): Promise<{ review: MentorReview; role: 'mentor' | 'apprentice' } | null> {
+  if (!/^(🧭|🎉)/u.test(title)) return null;
+  const m = String(body || '').match(/\.\.\.(\d{4})\b/);
+  if (!m) return null;
+  const hit = (r: MentorReview) => [r.rootId, r.segmentId].some(id => !!id && id.endsWith(m[1]));
+  if (!mentorState.loaded) await loadMentor();
+  // "Your mentor ..." bells are the apprentice's; "... sent you a cell" the mentor's.
+  const forMentor = /sent (you|a cell back to you)|waiting for a mentor/.test(title);
+  const mine = mentorState.mine.find(hit);
+  if (mine && !forMentor) return { review: mine, role: 'apprentice' };
+  if (mentorState.mentor || mentorState.admin) {
+    await loadQueue().catch(() => {});
+    const q = mentorState.queue;
+    const r = q ? [...q.yours, ...q.waiting].find(hit) : undefined;
+    if (r) return { review: r, role: 'mentor' };
+  }
+  return mine ? { review: mine, role: 'apprentice' } : null;
+}
+/** Names a program bell may mention, with their player ids. */
+export function knownPlayers(review?: MentorReview | null): Map<string, string> {
+  const out = new Map<string, string>();
+  const add = (name?: string | null, id?: string | null) => { if (name && id && !out.has(name)) out.set(name, id); };
+  if (review) { add(review.mentorName, review.mentorId); add(review.apprenticeName, review.apprenticeId); }
+  add(mentorState.apprentice?.mentorName, mentorState.apprentice?.mentorId);
+  for (const r of mentorState.mine) add(r.mentorName, r.mentorId);
+  for (const a of mentorState.queue?.apprentices ?? []) add(a.name, a.id);
+  for (const r of [...(mentorState.queue?.yours ?? []), ...(mentorState.queue?.waiting ?? [])]) add(r.apprenticeName, r.apprenticeId);
+  return out;
+}
+/** A bell's rendered text with the first mention of each known player as a
+ *  link to their profile (#nge-player=<id>). Only text is touched, never a tag. */
+export function linkPlayers(html: string, players: Map<string, string>): string {
+  if (!players.size) return html;
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const done = new Set<string>();
+  return html.split(/(<[^>]*>)/).map(part => {
+    if (part.startsWith('<')) return part;
+    for (const [name, id] of players) {
+      if (done.has(name) || !/^[0-9a-f-]{36}$/i.test(id)) continue;
+      const shown = esc(name);
+      const at = part.indexOf(shown);
+      if (at < 0) continue;
+      done.add(name);
+      part = part.slice(0, at) + `<a href="#nge-player=${id}" class="nge-notif-player">${shown}</a>` + part.slice(at + shown.length);
+    }
+    return part;
+  }).join('');
+}
