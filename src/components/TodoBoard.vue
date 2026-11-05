@@ -263,7 +263,7 @@ async function quickAdd() {
   if (!title || busy.value) return;
   busy.value = true;
   try {
-    const { card } = await secureWrite<any>('todo.save', { fields: { title, notes: '', list: 'todo' }, tagIds: tagsIn(title) });
+    const { card } = await secureWrite<any>('todo.save', { fields: { title, notes: '', list: 'todo', rank: topRank('todo') }, tagIds: tagsIn(title) });
     if (card) put(card);
     quick.value = '';
   } catch (e: any) {
@@ -576,7 +576,7 @@ async function addCard(list: ListKey) {
   busy.value = true;
   try {
     const d = draft.value;
-    const fields: Record<string, any> = { title, notes: d.notes, size: d.size, list };
+    const fields: Record<string, any> = { title, notes: d.notes, size: d.size, list, rank: topRank(list) };
     // Only what was filled in, so a board without the new columns still adds.
     if (d.status.trim()) fields.status = d.status.trim();
     if (d.owner_id) fields.owner_id = d.owner_id;
@@ -596,10 +596,12 @@ async function addCard(list: ListKey) {
   }
 }
 
+/** The top of a list: a rank below every card already in it. */
+const topRank = (list: ListKey) => Math.min(1, ...cards.value.filter(x => x.list === list).map(x => x.rank)) - 1;
 // ── Dragging, along a list and between lists ──
 // The card takes a rank between its new neighbours, so only it is written.
 const dragId = ref<string | null>(null);
-const dropAt = ref<{ list: ListKey; id: string | null; after: boolean } | null>(null);
+const dropAt = ref<{ list: ListKey; id: string | null; after: boolean; side?: boolean } | null>(null);
 function onDragStart(e: DragEvent, c: Card) {
   dragId.value = c.id;
   if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', c.id); }
@@ -608,8 +610,10 @@ function onDragOverCard(e: DragEvent, list: ListKey, c: Card) {
   if (!dragId.value) return;
   e.preventDefault();
   e.stopPropagation();
-  const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  dropAt.value = c.id === dragId.value ? null : { list, id: c.id, after: e.clientY > box.top + box.height / 2 };
+  const el = e.currentTarget as HTMLElement;
+  const box = el.getBoundingClientRect();
+  const side = !!el.parentElement && box.width < el.parentElement.clientWidth * 0.75;
+  dropAt.value = c.id === dragId.value ? null : { list, id: c.id, side, after: side ? e.clientX > box.left + box.width / 2 : e.clientY > box.top + box.height / 2 };
 }
 function onDragOverList(e: DragEvent, list: ListKey) {
   if (!dragId.value) return;
@@ -760,7 +764,7 @@ const removeItem = (c: Card, i: number) => save(c, { checklist: c.checklist.filt
 async function itemToCard(c: Card, i: number) {
   const item = c.checklist[i];
   try {
-    const { card } = await secureWrite<any>('todo.save', { fields: { title: item.text.slice(0, 200), notes: `From the checklist of "${c.title}".`, list: 'todo' } });
+    const { card } = await secureWrite<any>('todo.save', { fields: { title: item.text.slice(0, 200), notes: `From the checklist of "${c.title}".`, list: 'todo', rank: topRank('todo') } });
     if (card) put(card);
     await removeItem(c, i);
   } catch (e: any) {
@@ -1413,7 +1417,7 @@ async function onPagePaste(e: ClipboardEvent) {
   busy.value = true;
   try {
     const day = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const { card } = await secureWrite<any>('todo.save', { fields: { title: `Pasted picture, ${day}`, notes: '', list: 'todo' } });
+    const { card } = await secureWrite<any>('todo.save', { fields: { title: `Pasted picture, ${day}`, notes: '', list: 'todo', rank: topRank('todo') } });
     if (!card) return;
     put(card);
     const c = cards.value.find(x => x.id === card.id);
@@ -1564,7 +1568,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 
           <article v-for="c in col.rows" :key="c.id" class="nge-todo-card" :draggable="resizingId !== c.id" :style="cardStyle(c)"
                    :class="{ 'nge-todo-card--open': openId === c.id, 'nge-todo-card--dragging': dragId === c.id, 'nge-todo-card--won': winning === c.id,
-                             'nge-todo-card--drop-above': dropAt?.id === c.id && !dropAt.after, 'nge-todo-card--drop-below': dropAt?.id === c.id && dropAt.after }"
+                             'nge-todo-card--drop-above': dropAt?.id === c.id && !dropAt.after && !dropAt.side, 'nge-todo-card--drop-below': dropAt?.id === c.id && dropAt.after && !dropAt.side,
+                             'nge-todo-card--drop-left': dropAt?.id === c.id && !dropAt.after && dropAt.side, 'nge-todo-card--drop-right': dropAt?.id === c.id && dropAt.after && dropAt.side }"
                    tabindex="0" @click="resizingId || openUp(c)" @keydown.enter="openUp(c)"
                    @dragstart="onDragStart($event, c)" @dragend="onDragEnd" @dragover="onDragOverCard($event, col.key, c)">
             <div class="nge-todo-card-tools" @click.stop>
@@ -1924,7 +1929,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-mytask-text { flex: 1; }
 .nge-todo-mytask-text small { color: var(--dim); margin-left: 4px; }
 .nge-todo-mytask-due { font-size: 12px; color: var(--dim); white-space: nowrap; }
-.nge-todo-list { display: flex; flex-wrap: wrap; align-content: flex-start; column-gap: 8px; }
+.nge-todo-list { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: flex-start; column-gap: 8px; }
 .nge-todo-list > * { flex: 0 0 100%; min-width: 0; }
 .nge-todo-list > .nge-todo-card { box-sizing: border-box; }
 .nge-todo-list > .nge-todo-card[style*="width"] { flex: 0 0 auto; }
@@ -1939,6 +1944,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-card-last b { font-weight: 700; color: var(--accent-strong); }
 .nge-todo-chip--btn { cursor: pointer; font: inherit; font-size: 11.5px; color: inherit; background: transparent; appearance: none; -webkit-appearance: none; }
 .nge-todo-chip--btn:hover { border-color: var(--accent); }
+.nge-todo-card-foot { padding-right: 12px; }
 .nge-todo-card-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 22px; }
 .nge-todo-card-foot .nge-todo-card-by { margin: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nge-todo-card-foot .nge-todo-avatar { margin-left: 0; flex: 0 0 auto; }
@@ -2086,6 +2092,8 @@ a.nge-todo-linkchip:hover, .nge-todo-linkchip a:hover { text-decoration: underli
 .nge-todo-card--dragging { opacity: 0.4; }
 .nge-todo-card--drop-above { box-shadow: 0 -3px 0 0 var(--accent); }
 .nge-todo-card--drop-below { box-shadow: 0 3px 0 0 var(--accent); }
+.nge-todo-card--drop-left { box-shadow: -4px 0 0 0 var(--accent); }
+.nge-todo-card--drop-right { box-shadow: 4px 0 0 0 var(--accent); }
 .nge-todo-drop-end { height: 3px; border-radius: 2px; background: var(--accent); margin: 2px 0 8px; }
 .nge-todo-card-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .nge-todo-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
