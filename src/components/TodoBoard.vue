@@ -602,7 +602,7 @@ function openAt(c: Card, part: 'comments') {
   if (part === 'comments') setTimeout(toComments, 60);
 }
 /** A comment as one plain line for the card's face. */
-const plainLine = (t: string) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+const plainLine = (t: string) => String(t || '').replace(/https?:\/\/\S+\/todo-images\/\S+/g, '🖼').replace(/\s+/g, ' ').trim().slice(0, 140);
 function openUp(c: Card) {
   connectOpen.value = false;
   openId.value = c.id;
@@ -941,6 +941,14 @@ function fmtBold(box: TextBox) {
   box.set(v.slice(0, a) + '**' + inner + '**' + v.slice(b));
   void nextTick(() => { el.focus(); el.setSelectionRange(a + 2, a + 2 + inner.length); });
 }
+/** Italic in a plain box (the new card form): *words* (Celia, report 398). */
+function fmtItalic(box: TextBox) {
+  const el = box.el; if (!el) return;
+  const v = box.get(), a = el.selectionStart, b = el.selectionEnd;
+  const inner = v.slice(a, b) || 'italic text';
+  box.set(v.slice(0, a) + '*' + inner + '*' + v.slice(b));
+  void nextTick(() => { el.focus(); el.setSelectionRange(a + 1, a + 1 + inner.length); });
+}
 /** The whole lines the selection touches: [start, end) in the text. */
 function selectedLines(el: HTMLTextAreaElement, v: string) {
   const a = el.selectionStart, b = Math.max(el.selectionStart, el.selectionEnd - (el.selectionEnd > el.selectionStart && v[el.selectionEnd - 1] === '\n' ? 1 : 0));
@@ -1129,6 +1137,34 @@ onMounted(() => document.addEventListener('keydown', onKey));
 // checklist or anywhere on it), the card being added, or, on the board
 // itself, a new card in To do holding the picture, opened so you can name it.
 // The notes boxes handle their own paste (onNotesPaste), so they are skipped.
+// ── Pictures in comments (Ames 2026-11-05: "I want to reply with an image").
+// Pasted, dropped or picked, a picture is kept with the board's images and
+// goes into the comment as its link, which the thread shows as the picture. ──
+const commentImageBusy = ref(0);
+const isBoardImage = (href?: string) => !!href && /\/admin-uploads\/todo-images\/[^?#\s]+\.(png|jpe?g|gif|webp)$/i.test(href);
+async function addCommentImages(files: FileList | File[] | null | undefined) {
+  for (const f of [...(files || [])]) {
+    commentImageBusy.value++;
+    try {
+      const url = await uploadImage(f);
+      if (url) comment.value = (comment.value.replace(/\s+$/, '') + (comment.value.trim() ? '\n' : '') + url + '\n');
+    } finally { commentImageBusy.value--; }
+  }
+}
+function onCommentPaste(e: ClipboardEvent) {
+  const files = imageFiles(e);
+  if (files.length) { e.preventDefault(); void addCommentImages(files); }
+}
+function onCommentDrop(e: DragEvent) {
+  const files = imageFiles(e);
+  if (files.length) { e.preventDefault(); void addCommentImages(files); }
+}
+const commentPicker = ref<HTMLInputElement | null>(null);
+function onCommentPicked(e: Event) {
+  const input = e.target as HTMLInputElement;
+  void addCommentImages(input.files);
+  input.value = '';
+}
 async function onPagePaste(e: ClipboardEvent) {
   if ((e.target as HTMLElement | null)?.closest?.('[data-nge-notes-paste]')) return;
   const files = imageFiles(e);
@@ -1238,6 +1274,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
                      @keydown.stop @keyup.stop @keypress.stop />
               <div class="nge-todo-fmtbar" role="toolbar" aria-label="Formatting">
                 <button type="button" title="Bold" @click="fmtBold(draftBox)"><b>B</b></button>
+                <button type="button" title="Italic" @click="fmtItalic(draftBox)"><i>I</i></button>
                 <button type="button" title="Bulleted list" @click="fmtList(draftBox, false)">• Bullets</button>
                 <button type="button" title="Numbered list" @click="fmtList(draftBox, true)">1. Numbers</button>
                 <button type="button" title="Select some lines, then click: they become checklist items" @click="draftToChecklist">☑ Checklist</button>
@@ -1529,14 +1566,18 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
               <button class="nge-todo-btn" @click="commentEdit = null">Cancel</button>
             </div>
           </template>
-          <div v-else class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
+          <div v-else class="nge-todo-notes"><template v-for="(pt, k) in parts(cm.text)" :key="k"><a v-if="isBoardImage(pt.href)" class="nge-todo-comment-pic" :href="pt.href" target="_blank" rel="noopener noreferrer" title="Open full size"><img :src="pt.href" alt="A picture in this comment" loading="lazy" /></a><a v-else-if="pt.href" :href="pt.href" target="_blank" rel="noopener noreferrer">{{ pt.t }}</a><b v-else-if="pt.tag" class="nge-todo-tag">{{ pt.t }}</b><template v-else>{{ pt.t }}</template></template></div>
           <div v-if="cm.original && shownOriginal[openCard.id + ':' + i]" class="nge-todo-original"><span>Original</span> {{ cm.original }}</div>
         </div>
-        <textarea v-autogrow ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone." aria-label="Comment"
+        <textarea v-autogrow ref="commentEl" v-model="comment" class="nge-todo-input" rows="2" maxlength="2000" placeholder="Write a comment. Type @ to tag someone. Paste or drop a picture to add it." aria-label="Comment"
+                  data-nge-notes-paste @paste="onCommentPaste" @dragover.prevent @drop="onCommentDrop"
                   @input="onMentionInput($event, v => comment = v)" @keydown="onMentionKey" @keyup.stop @keypress.stop></textarea>
         <div v-if="taggedPeople(comment).length" class="nge-todo-tagging">Tagging <span v-for="p in taggedPeople(comment)" :key="p.id" class="nge-todo-tag-chip" :style="{ background: colorOf(p.id) }">@{{ p.name }}</span></div>
         <div class="nge-todo-row">
-          <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
+          <button class="nge-todo-btn nge-todo-btn--primary" :disabled="busy || !!commentImageBusy || !comment.trim()" @click="sendComment(openCard)">Comment</button>
+          <button type="button" class="nge-todo-btn" title="Add a picture to this comment" @click="commentPicker?.click()">🖼 Picture</button>
+          <span v-if="commentImageBusy" class="nge-todo-warn">Uploading…</span>
+          <input ref="commentPicker" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden @change="onCommentPicked" />
           <span v-if="sentTags" class="nge-todo-sent">✓ {{ sentTags }}</span>
         </div>
 
@@ -1647,6 +1688,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey));
 .nge-todo-rich:empty::before { content: attr(data-placeholder); color: var(--dim); pointer-events: none; }
 .nge-todo-rich p { margin: 0 0 8px; }
 .nge-todo-rich ul, .nge-todo-rich ol { margin: 0 0 8px; padding-left: 22px; }
+.nge-todo-comment-pic { display: block; margin: 6px 0; }
+.nge-todo-comment-pic img { display: block; max-width: min(100%, 520px); max-height: 360px; border-radius: 8px; border: 1px solid var(--line); }
 .nge-todo-item-edit { flex: 1 1 auto; min-width: 0; padding: 2px 6px; font-size: inherit; }
 .nge-todo-linkish { background: none; border: none; padding: 0; margin-left: 4px; color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; }
 .nge-todo-linkish:hover { text-decoration: underline; }
