@@ -183,6 +183,8 @@ export async function sendForSecondLook(cell: { taskId?: number | null; segId: s
   mentorState.apprentice = out.apprentice;
   const at = mentorState.mine.findIndex(r => r.id === out.review.id);
   if (at >= 0) mentorState.mine[at] = out.review; else mentorState.mine.unshift(out.review);
+  // The mentor's suggestions on this cell have been answered: their bell is read.
+  markBellsRead(out.review, /suggestions/);
   // The cell complete celebration, mentor style (Ames 2026-11-05).
   const a = out.apprentice;
   celebrate({ kind: 'sent', mentorName: a?.mentorName ?? null, done: a?.cellsDone ?? 0, needed: a?.cellsNeeded ?? 5, practice: !!a?.practice }, done.finalSegId);
@@ -331,6 +333,7 @@ export async function sendSuggestions(cellNote: string): Promise<MentorReview> {
   const cur = inView.value;
   if (!cur) throw new Error('No cell open.');
   const out = await call<MentorReview>('mentor.suggest', { reviewId: cur.review.id, notes: readNotesLayer(), cellNote });
+  markBellsRead(cur.review, /sent (you|a cell back to you)/);
   cur.review = out;
   void loadQueue().catch(() => {});
   return out;
@@ -351,6 +354,7 @@ export async function completeForApprentice(cellNote: string): Promise<{ finishe
     if (!ok) throw new Error(getLastCompletionProblem() || 'CAVE did not take the mark. Nothing was completed. Try again in a moment.');
   }
   const out = await call<{ review: MentorReview; finished: boolean }>('mentor.complete', { reviewId: r.id, root: r.rootId, notes: readNotesLayer(), cellNote });
+  markBellsRead(r, /sent (you|a cell back to you)/);
   cur.review = out.review;
   void loadQueue().catch(() => {});
   return { finished: out.finished };
@@ -456,4 +460,21 @@ export function linkPlayers(html: string, players: Map<string, string>): string 
     }
     return part;
   }).join('');
+}
+
+/** Mark this player's unread program bells about a cell read, once the cell
+ *  is answered (Ames 2026-11-05: "mark the notifs read if I Complete/Submit
+ *  for feedback that cell"). Found by the cell's ID in the bell, whole or as
+ *  the old "...1234"; `kind` picks which bells (by title). */
+export function markBellsRead(r: MentorReview, kind: RegExp) {
+  try {
+    const backend = useProofreadingBackendStore();
+    const tails = [r.rootId, r.segmentId].filter(Boolean).map(id => String(id).slice(-4));
+    for (const n of backend.notifications as any[]) {
+      const m = String(n.body || '').match(/cell (?:\.\.\.)?(\d{4,24})\b/);
+      if (!m || !tails.includes(m[1].slice(-4)) || !kind.test(String(n.title || '')) || !PROGRAM_TITLE.test(String(n.title || ''))) continue;
+      if (backend.notificationReads?.has?.(n.id)) continue;
+      void backend.markNotificationRead(n.id);
+    }
+  } catch (e) { console.warn('[mentor] bells not marked read', e); }
 }

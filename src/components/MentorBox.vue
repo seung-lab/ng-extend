@@ -13,6 +13,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useDragBox } from '../util/drag_box';
 import { useProofreadingBackendStore } from '../store';
 import { apprenticeFlag } from '../util/mentor_flag';
+import { MENTOR_TIERS } from '../util/mentor_tiers';
+const MENTOR_ICON = MENTOR_TIERS[0].image;
 import { joinPractice, takeCell, loadQueue, mentorState, openInView, cannotOpen, shortCell as cellLabel, type MentorReview } from '../mentor';
 import { inView, closeView, hasNotesLayer, readNotesLayer, writeNotesLayer, viewerPosition, flyTo, saveNotes, sendSuggestions,
   completeForApprentice, startMentor, loadMentor, shortCell, type MentorNote } from '../mentor';
@@ -82,7 +84,7 @@ const said = ref('');
 let timer: number | undefined;
 watch(cur, c => {
   window.clearInterval(timer);
-  error.value = ''; said.value = ''; newNote.value = ''; nextCell.value = null; confirmComplete.value = false;
+  error.value = ''; said.value = ''; newNote.value = ''; nextCell.value = null; allDone.value = false; confirmComplete.value = false;
   cellNote.value = c?.review.cellNote ?? '';
   notes.value = c?.review.notes ?? [];
   if (c) timer = window.setInterval(() => {
@@ -109,7 +111,10 @@ function remove(id: string) {
 // make a Next UI if there is another cell?"): their own first, then any
 // nobody has taken, oldest first.
 const nextCell = ref<MentorReview | null>(null);
+// Nothing else waiting (Ames 2026-11-05: "maybe we need an all done?").
+const allDone = ref(false);
 async function findNext() {
+  allDone.value = false;
   nextCell.value = null;
   try { await loadQueue(); } catch { return; }
   const q = mentorState.queue, here = r.value?.id;
@@ -117,6 +122,13 @@ async function findNext() {
   const mine = q.yours.filter(x => x.id !== here && (x.state === 'waiting' || x.state === 'looking'));
   const open = q.waiting.filter(x => x.id !== here);
   nextCell.value = [...mine, ...open].find(x => !cannotOpen(x)) ?? null;
+  allDone.value = !nextCell.value;
+}
+/** Skip (Ames 2026-11-05): only looking, so nothing to undo; on to the next. */
+async function skip() {
+  busy.value = true;
+  try { await findNext(); } finally { busy.value = false; }
+  if (nextCell.value) openNext();
 }
 function openNext() {
   const n = nextCell.value;
@@ -183,10 +195,14 @@ const STATE: Record<string, string> = {
     </div>
   </div>
   <div v-if="r" ref="boxEl" class="nge-mbx" :class="{ 'nge-mbx--dragging': dragging }" :style="posStyle" role="dialog" aria-label="Mentor program cell">
+    <div class="nge-mbx-bar" title="Drag to move" @pointerdown="startDrag">
+      <img :src="MENTOR_ICON" alt="" class="nge-mbx-bar-icon" />
+      <span class="nge-mbx-bar-label">{{ mentor ? 'Mentor Mode' : 'Mentor notes' }}</span>
+      <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
+    </div>
     <div class="nge-mbx-head" title="Drag to move" @pointerdown="startDrag">
       <span class="nge-mbx-title">{{ mentor ? r.apprenticeName : 'Your mentor\'s notes' }}</span>
       <span class="nge-mbx-pos">{{ shortCell(r) }}{{ r.rounds > 1 ? `, try ${r.rounds}` : '' }}</span>
-      <button class="nge-mbx-x" title="Close this box and take the notes away" aria-label="Close" @pointerdown.stop @click="close">×</button>
     </div>
 
     <template v-if="mentor">
@@ -215,7 +231,10 @@ const STATE: Record<string, string> = {
         <p class="nge-mbx-meta">You are only looking now. Nothing changes until you press the button.</p>
       </template>
       <p v-else class="nge-mbx-meta">{{ r.apprenticeName }} is yours. Press the button to review this cell.</p>
-      <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="takeIt">{{ busy ? 'Taking…' : takeLabel }}</button>
+      <div class="nge-mbx-actions nge-mbx-actions--preview">
+        <button class="nge-mbx-btn" :disabled="busy" title="Leave this cell for another mentor and look at the next one" @click="skip">Skip</button>
+        <button class="nge-mbx-btn nge-mbx-btn--done" :disabled="busy" @click="takeIt">{{ busy ? 'Taking…' : takeLabel }}</button>
+      </div>
     </div>
     <template v-if="canAct">
       <div class="nge-mbx-add">
@@ -232,7 +251,7 @@ const STATE: Record<string, string> = {
     </template>
     <template v-else>
       <p v-if="r.cellNote" class="nge-mbx-quote">{{ r.mentorName || 'Mentor' }}: {{ r.cellNote }}</p>
-      <p v-if="mentor" class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : 'This cell is back with the apprentice.' }}</p>
+      <p v-if="mentor && !preview" class="nge-mbx-meta">{{ r.state === 'complete' ? 'This cell is complete.' : 'This cell is back with the apprentice.' }}</p>
     </template>
 
     <div v-if="confirmComplete && canAct" class="nge-mbx-confirm" role="group" aria-label="Confirm complete">
@@ -246,6 +265,10 @@ const STATE: Record<string, string> = {
     </div>
     <p v-if="error" class="nge-mbx-err" role="alert">{{ error }}</p>
     <p v-else-if="said" class="nge-mbx-said" role="status">{{ said }}</p>
+    <div v-if="allDone && mentor && !nextCell" class="nge-mbx-alldone" role="status">
+      <span>All done. Nothing else is waiting for you. Thank you!</span>
+      <button class="nge-mbx-btn" @click="close">Close</button>
+    </div>
     <button v-if="nextCell && mentor" class="nge-mbx-btn nge-mbx-next" @click="openNext">Next cell: {{ nextCell.apprenticeName }}, {{ cellLabel(nextCell) }}</button>
   </div>
 </template>
@@ -277,7 +300,13 @@ const STATE: Record<string, string> = {
   backdrop-filter: blur(8px);
   font-family: 'Inter', 'Segoe UI', sans-serif; color: #dce6f5; font-size: 15px;
 }
-.nge-mbx-head { display: flex; align-items: baseline; gap: 8px; cursor: grab; user-select: none; touch-action: none; margin: -12px -14px 0; padding: 12px 14px 4px; }
+.nge-mbx-bar { display: flex; align-items: center; gap: 8px; cursor: grab; user-select: none; touch-action: none; margin: -12px -14px 8px; padding: 7px 10px 7px 12px;
+  border-bottom: 1px solid rgba(120, 180, 255, 0.3); border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, rgba(120, 180, 255, 0.16), rgba(245, 209, 66, 0.08)); }
+.nge-mbx--dragging .nge-mbx-bar { cursor: grabbing; }
+.nge-mbx-bar-icon { width: 26px; height: 26px; object-fit: contain; filter: drop-shadow(0 0 6px rgba(120, 180, 255, 0.5)); }
+.nge-mbx-bar-label { flex: 1; font-family: 'Orbitron', 'Inter', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #cfe3ff; }
+.nge-mbx-head { display: flex; align-items: baseline; gap: 8px; cursor: grab; user-select: none; touch-action: none; padding: 0 0 4px; }
 .nge-mbx--dragging .nge-mbx-head { cursor: grabbing; }
 .nge-mbx-title { font-size: 17px; font-weight: 600; color: #9fc8ff; }
 .nge-mbx-pos { margin-left: auto; color: rgba(220, 230, 245, 0.7); }
@@ -308,7 +337,11 @@ const STATE: Record<string, string> = {
 .nge-mbx-confirm .nge-mbx-actions { justify-content: flex-end; margin-top: 8px; }
 .nge-mbx-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .nge-mbx-ask { margin: 0; font-size: 16px; font-weight: 600; color: #eef4fb; }
-.nge-mbx-terms { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.45; color: rgba(220, 230, 245, 0.85); }
+.nge-mbx-terms li { list-style: none; position: relative; }
+.nge-mbx-terms li::before { content: '•'; position: absolute; left: -12px; color: #9fc8ff; }
+.nge-mbx-terms { margin: 0; padding-left: 14px; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.45; color: rgba(220, 230, 245, 0.85); }
 .nge-mbx-said { color: rgba(124, 255, 178, 0.9); margin: 8px 0 0; font-size: 14px; }
+.nge-mbx-actions--preview { margin-top: 0; }
+.nge-mbx-alldone { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(124, 255, 178, 0.35); background: rgba(124, 255, 178, 0.06); color: #c9f5dc; font-size: 14px; }
 .nge-mbx-next { margin-top: 10px; border-color: rgba(120, 180, 255, 0.6); color: #9fc8ff; background: rgba(120, 180, 255, 0.1); }
 </style>
