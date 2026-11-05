@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** The 2D Tools box, a prototype (util/two_d_tools.ts). */
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import EditableText from './EditableText.vue';
 import { twoD, startTwoDTools, addPair, setSide, renamePair, removePair, goTo, jumpAcross, toggleSkip, removeShape, clearSlice, capture, downloadCompare, LASSO_COLORS, type JumpPair } from '../util/two_d_tools';
 
 onMounted(startTwoDTools);
@@ -42,6 +43,15 @@ const help = ref(false);
 function onBigKey(e: KeyboardEvent) { if (e.key === 'Escape') { e.stopPropagation(); big.value = false; } }
 watch(big, on => { if (on) window.addEventListener('keydown', onBigKey, true); else window.removeEventListener('keydown', onBigKey, true); });
 const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputElement).value.trim());
+/** The (i) text, one paragraph per line. Admins can edit it in the game; an
+ *  edit waits for Ames's approval (Ames 2026-11-05: "make sure it sends to
+ *  me for review"). */
+const HELP_TEXT = [
+  'For working across a misalignment, where the cell jumps between slices.',
+  '<b>Jump pairs:</b> on one side, press <b>+ New pair</b> to save spot A. Scroll to the other side and press <b>Set B</b>. Then <b>⇄</b>, or the <b>J</b> key, takes you across at the same zoom, to the matching place on the other side. <b>A</b> or <b>B</b> goes straight to one side. With <b>Skip</b> on, scrolling into the slices between A and B lands you on the far side, so the bad slices are stepped over. Known bad stretches come ready made, and offer <b>Jump over</b> when you reach them. Click the name to rename it.',
+  '<b>Lasso:</b> press <b>Lasso</b>, pick a color and drag around a shape in the 2D view. It stays on that slice only. Scrolling still changes slices, and Esc stops drawing. Remove a shape with its × chip.',
+  '<b>Compare:</b> press <b>Capture 1</b> on one slice and <b>Capture 2</b> on another. <b>View large</b> shows them side by side, and <b>Download</b> saves both in one picture, lassos included.',
+];
 </script>
 
 <template>
@@ -53,10 +63,7 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
     </div>
 
     <div v-if="help" class="nge-2d-help">
-      <p>For working across a misalignment, where the cell jumps between slices.</p>
-      <p><b>Jump pairs:</b> on one side, press <b>+ New pair</b> to save spot A. Scroll to the other side and press <b>Set B</b>. Then <b>⇄</b>, or the <b>J</b> key, takes you across at the same zoom, to the matching place on the other side. <b>A</b> or <b>B</b> goes straight to one side. With <b>Skip</b> on, scrolling into the slices between A and B lands you on the far side, so the bad slices are stepped over. Known bad stretches come ready made, and offer <b>Jump over</b> when you reach them. Click the name to rename it.</p>
-      <p><b>Lasso:</b> press <b>Lasso</b>, pick a color and drag around a shape in the 2D view. It stays on that slice only. Scrolling still changes slices, and Esc stops drawing. Remove a shape with its × chip.</p>
-      <p><b>Compare:</b> press <b>Capture 1</b> on one slice and <b>Capture 2</b> on another. <b>View large</b> shows them side by side, and <b>Download</b> saves both in one picture, lassos included.</p>
+      <EditableText text-key="howto.2d_tools" :original="HELP_TEXT" list-class="nge-2d-help-text" approval label="2D Tools instructions" />
       <p class="nge-2d-small">From an idea and player script by Nseraf, Krzysztof Kruk and annkri. Drag this box by its top.</p>
     </div>
 
@@ -175,5 +182,7 @@ const onName = (p: JumpPair, e: Event) => renamePair(p, (e.target as HTMLInputEl
 .nge-2d button.nge-2d-info--on, .nge-2d button.nge-2d-info:hover { color: #05080f; background: #7ee0ff; }
 .nge-2d-help { padding: 6px 0 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .nge-2d-help p { margin: 0 0 6px; }
+.nge-2d-help :deep(.nge-2d-help-text) { list-style: none; margin: 0; padding: 0; }
+.nge-2d-help :deep(.nge-2d-help-text li) { margin: 0 0 6px; }
 .nge-2d-note { margin: 3px 0; color: #ffd24d; }
 </style>
