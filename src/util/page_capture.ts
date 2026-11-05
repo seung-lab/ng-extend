@@ -99,6 +99,10 @@ export async function capturePage(timeoutMs = 12000): Promise<HTMLCanvasElement>
       width: w, height: h, scale,
       backgroundColor: '#000000',
       style: { margin: '0' },
+      // Panels as scrolled, not back at the top: a screenshot of the Cell
+      // Library showed its first rows, not the cell on screen (andrearwen,
+      // 2026-11-05). The other features keep their defaults.
+      features: { restoreScrollPosition: true },
       ...(cssText ? { font: { cssText } } : {}),
       filter: (node: Node) => {
         if (!(node instanceof Element)) return true;
